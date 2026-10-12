@@ -1,0 +1,1 @@
+Temporary Firefly Forge GitHub connector acceptance fixture.
