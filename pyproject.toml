@@ -40,8 +40,8 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/firefly_forge"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"studio/dist" = "firefly_forge/static"
+[tool.hatch.build.hooks.custom]
+path = "scripts/build_hook.py"
 
 [tool.hatch.build.targets.sdist.force-include]
 "studio/dist" = "studio/dist"
