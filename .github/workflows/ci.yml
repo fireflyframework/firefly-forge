@@ -34,3 +34,5 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: docker build --tag firefly-forge:ci .
+      - name: Exercise the non-root runtime image
+        run: docker run --rm -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" --entrypoint /app/.venv/bin/python firefly-forge:ci /tmp/container_smoke.py

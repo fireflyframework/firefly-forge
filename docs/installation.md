@@ -23,6 +23,11 @@ cd ..
 Expected: Studio writes its production build to `studio/dist/`. The API serves
 this build; a source checkout without it has no built browser application.
 
+The supplied Docker image also includes Python, Node.js, PHP and Composer for
+primary product verification. Choose a configured API provider or an authorized
+bridge endpoint inside a container; host CLI subscription logins are not copied
+into images. Java, Rust and .NET require their matching runtime/toolchain.
+
 ## 2. Configure access
 
 Choose a strong, unique token and set it in your shell before starting Forge.

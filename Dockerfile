@@ -5,8 +5,13 @@ RUN npm ci
 COPY studio/ ./
 RUN npm run build
 
-FROM python:3.13-slim
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && apt-get clean
+FROM python:3.13-slim-trixie
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates php-cli php-mbstring php-xml php-curl php-sqlite3 php-zip composer && apt-get clean
+COPY --from=studio /usr/local/bin/node /usr/local/bin/node
+COPY --from=studio /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 RUN pip install --no-cache-dir uv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./
