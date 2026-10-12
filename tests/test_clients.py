@@ -2,6 +2,7 @@
 import httpx
 from click.testing import CliRunner
 
+from firefly_forge import __version__
 from firefly_forge.cli import main
 from firefly_forge.client import ForgeClient
 from firefly_forge.mcp_server import create_server
@@ -12,7 +13,7 @@ def test_client_carries_authentication_and_validated_run():
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer fixture-token"
         assert request.url.path == "/api/v1/runs"
-        assert b'"publish":false' in request.content
+        assert b'"skills"' not in request.content
         return httpx.Response(201, json={"id": "run-one", "status": "queued"})
 
     with ForgeClient("http://factory.invalid", "fixture-token") as client:
@@ -35,6 +36,18 @@ async def test_mcp_tools_have_real_input_contracts():
         "get_run",
         "cancel_run",
         "publish_run",
+        "get_development_plan",
+        "get_execution_journal",
+        "resume_run",
+        "handoff_run",
+        "list_source_connections",
+        "connect_granted_repository",
+        "search_project_knowledge",
+        "index_verified_source",
+        "remember_verified_run",
+        "list_deployment_targets",
+        "deploy_verified_run",
+        "rollback_deployment",
     }
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]
@@ -42,7 +55,7 @@ async def test_mcp_tools_have_real_input_contracts():
 
 def test_cli_version_and_command_help():
     runner = CliRunner()
-    assert "0.1.0" in runner.invoke(main, ["--version"]).output
+    assert __version__ in runner.invoke(main, ["--version"]).output
     result = runner.invoke(main, ["run", "--help"])
     assert result.exit_code == 0
     assert "--check" in result.output and "--publish" in result.output

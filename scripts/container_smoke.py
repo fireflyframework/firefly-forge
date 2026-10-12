@@ -21,7 +21,7 @@ async def main() -> None:
     ):
         assert (await client.get("/api/v1/health")).status_code == 401
         assert (await client.get("/api/v1/health", headers={"Authorization": f"Bearer {token}"})).status_code == 200
-        assert "Firefly Forge" in (await client.get("/")).text
+        assert "firefly forge" in (await client.get("/")).text
     print("Non-root container smoke passed: Studio, authenticated API, Python, Node.js, PHP and Composer")
 
 

@@ -1,11 +1,11 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Turn a brief into verified software
 
-![Firefly Forge: from brief to verified software](assets/banner.svg)
+![firefly forge: from brief to verified software](assets/banner.svg)
 
-Firefly Forge is the Firefly software factory. Give it a product brief, a Git
+firefly forge is the Firefly software factory. Give it a product brief, a Git
 repository and a stack. A coding agent implements the change in an isolated
-workspace. Forge runs verification, records the evidence and presents the diff
+workspace. forge runs verification, records the evidence and presents the diff
 for your review.
 
 Start with **PyFly** or **LaraFly**. Choose a browser frontend or deliver an API
@@ -20,6 +20,11 @@ provider, or an authorized internal bridge connection.
 | Create a Laravel service | [LaraFly walkthrough](larafly.md) |
 | Add an existing repository | [Git repositories](scm.md) |
 | Configure a coding provider | [Agents](agents.md) |
+| Maintain or test an existing product | [Workflows](workflows.md) |
+| Select project policies | [Policies](policies.md) |
+| Add cited context and project memory | [Knowledge](knowledge.md) |
+| Continue interrupted work | [Recovery](recovery.md) |
+| Deliver a verified change | [Deployment](deployment.md) |
 | Understand verification and publication | [Capabilities and limits](capabilities.md) |
 
 ## Follow the production line
@@ -32,7 +37,7 @@ that a product works. Publication is an explicit run option, disabled by default
 
 [Open the diagram at full size](diagrams/factory.svg)
 
-Forge is an early product for trusted development operators. Read its
+forge is an early product for trusted development operators. Read its
 [security model](security.md) before exposing the API or giving it access to a
 repository. Each run retains the original brief, provider, selected profiles,
 progress events, verification results and change evidence.

@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Create a PyFly service
 
-PyFly is the primary Python backend profile. Forge gives the agent the current
+PyFly is the primary Python backend profile. forge gives the agent the current
 Firefly contracts: typed models, controllers, dependency injection, asynchronous
 services and the Starlette web adapter. PyFly is distributed through its
 official GitHub Releases; do not assume a similarly named PyPI package is the
@@ -9,7 +9,7 @@ framework.
 
 ## Prerequisites
 
-Install Python 3.13+, uv and the coding provider on the Forge server. Register a
+Install Python 3.13+, uv and the coding provider on the forge server. Register a
 repository and confirm that it can be cloned. Choose **PyFly** in New product
 and **API only** for a service exercise. Add a browser frontend when your brief
 actually needs one.
@@ -35,7 +35,7 @@ retry rather than accepting a generic completion report.
 
 Read **Verification** and execute the generated project's launch instructions.
 Send valid, overlapping and invalid reservation requests. The product's README
-must identify its actual port, paths and environment; Forge does not assign a
+must identify its actual port, paths and environment; forge does not assign a
 universal port to generated applications.
 
 The selected profile is an instruction contract, not a promise that every

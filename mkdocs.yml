@@ -1,4 +1,4 @@
-site_name: Firefly Forge
+site_name: firefly forge
 site_description: Build and verify software with Firefly's software factory.
 site_author: Firefly Software Foundation
 site_url: https://fireflyframework.github.io/firefly-forge/
@@ -15,9 +15,20 @@ theme:
   logo: assets/forge-lockup.svg
   favicon: assets/favicon.svg
   palette:
-    scheme: slate
-    primary: custom
-    accent: custom
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark appearance
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light appearance
   features:
     - navigation.tabs
     - navigation.sections
@@ -51,10 +62,16 @@ nav:
       - Choose a stack: profiles.md
       - Connect Git repositories: scm.md
       - Choose an agent: agents.md
+      - Configure provider access: configuration.md
+      - Build, maintain and test: workflows.md
+      - Project and central policies: policies.md
+      - Cited knowledge and memory: knowledge.md
       - Internal bridge connection: bridge.md
   - Operate:
       - Architecture: architecture.md
       - Operations: operations.md
+      - Recover and hand off: recovery.md
+      - Deploy and roll back: deployment.md
       - Security: security.md
       - HTTP API: api.md
   - Project:

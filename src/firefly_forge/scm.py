@@ -5,33 +5,115 @@ from __future__ import annotations
 
 import base64
 import os
+import tempfile
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
 
+from firefly_forge.configuration import redact_secrets
 from firefly_forge.process import checked
 
 
-async def clone(repository: dict[str, Any], destination: Path, branch: str) -> str:
+@asynccontextmanager
+async def git_credentials(credentials: dict[str, str] | None) -> AsyncIterator[dict[str, str] | None]:
+    if not credentials:
+        yield None
+        return
+    with tempfile.TemporaryDirectory(prefix="forge-git-auth-") as directory:
+        helper = Path(directory) / "askpass"
+        helper.write_text(
+            "#!/usr/bin/env python3\nimport os,sys,re\nfrom urllib.parse import urlsplit\n"
+            "match=re.search(r'https?://[^\\s\\']+',sys.argv[1])\n"
+            "expected=urlsplit(os.environ['FORGE_GIT_ORIGIN'])\n"
+            "actual=urlsplit(match.group(0)) if match else None\n"
+            "if actual is None or (actual.scheme,actual.hostname,actual.port)!= "
+            "(expected.scheme,expected.hostname,expected.port): sys.exit(1)\n"
+            "print(os.environ['FORGE_GIT_USERNAME'] if 'username' in sys.argv[1].lower() "
+            "else os.environ['FORGE_GIT_PASSWORD'])\n"
+        )
+        helper.chmod(0o700)
+        yield {
+            **credentials,
+            "GIT_ASKPASS": str(helper),
+            "GIT_CONFIG_COUNT": "2",
+            "GIT_CONFIG_KEY_0": "credential.helper",
+            "GIT_CONFIG_VALUE_0": "",
+            "GIT_CONFIG_KEY_1": "http.followRedirects",
+            "GIT_CONFIG_VALUE_1": "false",
+        }
+
+
+async def clone(
+    repository: dict[str, Any], destination: Path, branch: str, *, env: dict[str, str] | None = None
+) -> str:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    await checked(
-        [
-            "git",
-            "clone",
-            "--no-hardlinks",
-            "--single-branch",
-            "--branch",
-            repository["default_branch"],
-            "--",
-            repository["url"],
-            str(destination),
-        ],
-        destination.parent,
-    )
+    async with git_credentials(env) as credential_environment:
+        try:
+            await checked(
+                [
+                    "git",
+                    "clone",
+                    "--no-hardlinks",
+                    "--single-branch",
+                    "--branch",
+                    repository["default_branch"],
+                    "--",
+                    repository["url"],
+                    str(destination),
+                ],
+                destination.parent,
+                env=credential_environment,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(redact_secrets(str(exc), env or {})) from None
     await checked(["git", "checkout", "-b", branch], destination)
     return await checked(["git", "rev-parse", "HEAD"], destination)
+
+
+async def push(
+    workspace: Path,
+    branch: str,
+    *,
+    env: dict[str, str] | None = None,
+    repository_url: str | None = None,
+    revision: str | None = None,
+) -> None:
+    if repository_url and await checked(["git", "remote", "get-url", "--push", "origin"], workspace) != repository_url:
+        raise ValueError("Git push origin changed from the authorized repository")
+    repository_url = repository_url or await checked(["git", "remote", "get-url", "--push", "origin"], workspace)
+    revision = revision or await checked(["git", "rev-parse", "HEAD"], workspace)
+    # Worker-controlled Git hooks and TLS settings never receive application credentials.
+    with tempfile.TemporaryDirectory(prefix="forge-publication-") as directory:
+        staging = Path(directory)
+        hooks = staging / "empty-hooks"
+        hooks.mkdir()
+        await checked(["git", "init", "--quiet"], staging)
+        await checked(
+            ["git", "-c", f"core.hooksPath={hooks}", "fetch", "--no-tags", "--", str(workspace), revision], staging
+        )
+        async with git_credentials(env) as credential_environment:
+            try:
+                await checked(
+                    [
+                        "git",
+                        "-c",
+                        f"core.hooksPath={hooks}",
+                        "-c",
+                        "http.sslVerify=true",
+                        "push",
+                        "--",
+                        repository_url,
+                        f"{revision}:refs/heads/{branch}",
+                    ],
+                    staging,
+                    env=credential_environment,
+                )
+            except RuntimeError as exc:
+                raise RuntimeError(redact_secrets(str(exc), env or {})) from None
 
 
 def coordinates(url: str) -> tuple[str, str, str]:
@@ -51,9 +133,17 @@ class PullRequests:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
 
-    async def create(self, repository: dict[str, Any], branch: str, title: str, body: str) -> str:
+    async def create(
+        self,
+        repository: dict[str, Any],
+        branch: str,
+        title: str,
+        body: str,
+        *,
+        authentication: tuple[str, str] | None = None,
+    ) -> str:
         provider = repository["provider"]
-        token = os.environ.get(f"FORGE_{provider.upper()}_TOKEN", "")
+        token = authentication[0] if authentication else os.environ.get(f"FORGE_{provider.upper()}_TOKEN", "")
         if provider == "git":
             raise ValueError("Generic Git supports branches and patches; select a provider to create pull requests")
         if not token:
@@ -67,12 +157,13 @@ class PullRequests:
             api = os.environ.get(
                 "FORGE_GITHUB_API", "https://api.github.com" if host == "github.com" else f"{base}/api/v3"
             )
+            api = authentication[1] if authentication else api
             endpoint = f"{api.rstrip('/')}/repos/{path}/pulls"
             payload = {"head": branch, "base": target, "title": title[:200], "body": body, "draft": True}
         elif provider == "gitlab":
-            api = os.environ.get("FORGE_GITLAB_API", f"{base}/api/v4")
+            api = authentication[1] if authentication else os.environ.get("FORGE_GITLAB_API", f"{base}/api/v4")
             endpoint = f"{api.rstrip('/')}/projects/{quote(path, safe='')}/merge_requests"
-            headers = {"PRIVATE-TOKEN": token}
+            headers = {"Authorization": f"Bearer {token}"} if authentication else {"PRIVATE-TOKEN": token}
             payload = {
                 "source_branch": branch,
                 "target_branch": target,

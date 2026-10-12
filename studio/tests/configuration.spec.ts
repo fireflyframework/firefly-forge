@@ -1,0 +1,153 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { expect, test } from "@playwright/test";
+
+test("operator configures an AI without reading back its key and selects versioned project policies", async ({
+  page,
+}) => {
+  let saved: unknown;
+  let selected: unknown;
+  const provider = {
+    id: "agentic",
+    name: "Firefly Agentic",
+    ready: true,
+    detail: "Endpoint configured; execution has not been verified",
+    auth_mode: "api_key",
+    model: "openai:available-model",
+    config: { model: "openai:available-model", api_key_configured: true },
+    fields: [
+      {
+        key: "model",
+        label: "Model",
+        secret: false,
+        required: true,
+        placeholder: "Your available model",
+      },
+      {
+        key: "api_key",
+        label: "API key",
+        secret: true,
+        required: true,
+        placeholder: "Provider key",
+      },
+    ],
+    readiness: {
+      state: "configured",
+      detail: "Model access requires a real run",
+      checked_at: null,
+    },
+  };
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/configuration")) {
+      saved = route.request().postDataJSON();
+      await route.fulfill({ json: provider });
+    } else if (path.endsWith("/test")) await route.fulfill({ json: provider });
+    else if (path.endsWith("/providers"))
+      await route.fulfill({ json: [provider] });
+    else if (path.endsWith("/repositories"))
+      await route.fulfill({
+        json: [
+          {
+            id: "repo-1",
+            name: "Inventory",
+            url: "/owned/source",
+            provider: "git",
+            default_branch: "main",
+          },
+        ],
+      });
+    else if (path.endsWith("/repositories/repo-1/policies")) {
+      if (route.request().method() === "PUT")
+        selected = route.request().postDataJSON();
+      await route.fulfill({ json: { skills: ["verification"] } });
+    } else if (path.endsWith("/policies"))
+      await route.fulfill({
+        json: {
+          revision: "policy-commit",
+          digest: "catalog-digest",
+          source: { kind: "git" },
+          skills: [
+            {
+              id: "verification",
+              name: "Behavior checks",
+              description: "Exercise valid and rejected reservations",
+              kind: "recommendation",
+              default: true,
+            },
+            {
+              id: "accessibility",
+              name: "Accessible UI",
+              description: "Keyboard navigation and labelled inputs",
+              kind: "recommendation",
+              default: false,
+            },
+          ],
+        },
+      });
+    else if (path.endsWith("/workflow"))
+      await route.fulfill({
+        json: {
+          stages: [
+            {
+              id: "validating",
+              name: "Verify",
+              description: "Run actual commands",
+              roles: ["verifier"],
+            },
+          ],
+          agents: [],
+          tools: [],
+        },
+      });
+    else await route.fulfill({ json: path.endsWith("/runs") ? [] : {} });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await page
+    .getByLabel("API token", { exact: true })
+    .fill("operator-token-at-least-24-chars");
+  await page.getByRole("button", { name: "Save connection" }).click();
+  await expect(
+    page.getByRole("button", { name: "API connected" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
+  await page.getByLabel("Model", { exact: true }).fill("openai:new-model");
+  await page
+    .getByLabel("API key", { exact: true })
+    .fill("private-provider-key");
+  await page
+    .getByRole("button", { name: "Save Firefly Agentic settings" })
+    .click();
+  expect(saved).toEqual({
+    values: { model: "openai:new-model", api_key: "private-provider-key" },
+    clear_secrets: [],
+  });
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify({
+        local: { ...localStorage },
+        session: { ...sessionStorage },
+      }),
+    ),
+  ).not.toContain("private-provider-key");
+  await page
+    .getByRole("button", { name: "Check connection", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Model access requires a real run" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Agents & skills", exact: true })
+    .click();
+  await page.getByLabel("Project repository").selectOption("repo-1");
+  await expect(page.getByLabel(/Behavior checks/)).toBeChecked();
+  await page.getByLabel(/Accessible UI/).check();
+  await page.getByRole("button", { name: "Save project policies" }).click();
+  expect(selected).toEqual({ skills: ["verification", "accessibility"] });
+  await expect(
+    page.getByText("Run actual commands", { exact: true }),
+  ).toBeVisible();
+});

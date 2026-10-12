@@ -20,6 +20,8 @@ class RepositoryInput(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
     provider: Provider = "git"
     default_branch: str = Field(default="main", min_length=1, max_length=200)
+    connection_provider: Literal["github", "gitlab", "bitbucket"] | None = None
+    remote_repository_id: str | None = Field(default=None, max_length=200)
 
     @field_validator("url")
     @classmethod
@@ -71,6 +73,15 @@ class RunInput(BaseModel):
     agent: Literal["codex", "claude", "bridge", "agentic", "api"] = "codex"
     commands: list[Command] = Field(default_factory=list, max_length=20)
     publish: bool = False
+    operation: Literal["build", "maintain", "test"] = "build"
+    skills: list[str] = Field(default_factory=lambda: ["implementation", "verification", "security"], max_length=100)
+
+    @field_validator("skills")
+    @classmethod
+    def known_skills(cls, value: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", identifier) for identifier in value):
+            raise ValueError("Invalid policy skill identifier")
+        return value
 
     @field_validator("brief")
     @classmethod

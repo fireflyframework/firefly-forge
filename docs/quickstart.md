@@ -11,7 +11,7 @@ In **Repositories**, select **Add repository**. Enter its name, Git clone URL,
 provider and actual default branch. For a local exercise, use an absolute path
 to a repository with at least one committed file. Use provider **Generic Git**.
 
-Forge's server must be able to clone the repository. Existing uncommitted work
+forge's server must be able to clone the repository. Existing uncommitted work
 in your source checkout is not copied into the run. Configure authentication
 through the server's Git credential helper or SSH agent; never embed credentials
 in the URL.

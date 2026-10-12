@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Know what the factory establishes
 
-Forge implements an end-to-end development loop: register a Git source, queue a
+forge implements an end-to-end development loop: register a Git source, queue a
 brief with stack and provider, generate in an isolated workspace, run
 verification, retain change evidence and optionally publish a pull request.
 
@@ -18,8 +18,12 @@ verification, retain change evidence and optionally publish a pull request.
 | Automatic repair | Failed checks returned to the provider with bounded retries | Earlier failures remain recorded; final passing checks are separate |
 | Source integrity | Verified source-tree snapshot checked before publication | Changed source requires fresh verification |
 | SCM publication | GitHub, GitLab, Bitbucket, Azure DevOps and Gitea adapters | Each live host/account requires separate acceptance |
-| Run persistence | Local durable records and startup reconciliation | Single-node service; no distributed execution guarantees |
-| Service ownership | Exclusive active owner per data directory | Separate services require separate data directories |
+| Run persistence | Native PostgreSQL plans, task states and hash-chain journal | Ambiguous remote effects require reconciliation |
+| Maintenance and tests | Existing-source maintenance and model-free test mode | Checks establish only their asserted behavior |
+| Policies | Versioned, data-only central catalog and project defaults | Recommendations guide workers; optional gates execute commands |
+| Flycanon | Cited project/framework retrieval and searchable verified memory | Requires authorized scopes and a separately operated service |
+| Deployment | Explicit repository-bound targets, command receipts and rollback verification | External targets require their own live acceptance |
+| Service ownership | Local lock plus PostgreSQL schema advisory lease | Independent installations need separate directories and schemas |
 
 ## Read a successful run precisely
 
@@ -29,11 +33,11 @@ at the stated viewports and exercised its controls. Live integration means the
 real external service returned the expected outcome. Publication means a remote
 branch or pull request was actually created. These facts are independent.
 
-This first version is intended for trusted development environments. It does not
+This release is intended for trusted development environments. It does not
 claim tenant isolation, regulated decision authority, production availability,
-an SLA, automatic deployment, a universal migration path or correctness for an
+an SLA, unconfigured deployment, a universal migration path or correctness for an
 arbitrary brief. The operator remains responsible for reviewing generated
 changes and the resulting product's own tests and release process.
 
-See the [0.1.0 release notes](release-notes.md) for the specific preparation
+See the [release notes](release-notes.md) for the specific preparation
 checks and remaining live-acceptance boundaries.

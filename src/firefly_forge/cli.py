@@ -79,6 +79,7 @@ def list_repositories() -> None:
 @click.option("--backend", default="pyfly", type=click.Choice(["pyfly", "larafly", "java", "rust", "dotnet"]))
 @click.option("--frontend", default="react", type=click.Choice(["react", "angular", "nextjs", "vue", "none"]))
 @click.option("--agent", default="codex", type=click.Choice(["codex", "claude", "bridge", "agentic"]))
+@click.option("--operation", default="build", type=click.Choice(["build", "maintain", "test"]))
 @click.option("--check", "checks", multiple=True, help="Verification command; may be repeated.")
 @click.option("--wait", is_flag=True, help="Wait for a terminal result (up to one hour).")
 @click.option("--publish", is_flag=True, help="Create a pull request after passing checks.")
@@ -88,6 +89,7 @@ def run(
     backend: Any,
     frontend: Any,
     agent: Any,
+    operation: Any,
     checks: tuple[str, ...],
     wait: bool,
     publish: bool,
@@ -98,6 +100,7 @@ def run(
         backend=backend,
         frontend=frontend,
         agent=agent,
+        operation=operation,
         commands=[Command(argv=shlex.split(check)) for check in checks],
         publish=publish,
     )
@@ -105,13 +108,20 @@ def run(
         result = connection.create_run(request)
         if wait:
             deadline = time.monotonic() + 3600
-            while result["status"] not in {"succeeded", "failed", "cancelled", "interrupted"}:
+            while result["status"] not in {
+                "succeeded",
+                "failed",
+                "cancelled",
+                "interrupted",
+                "paused",
+                "needs_reconciliation",
+            }:
                 if time.monotonic() >= deadline:
                     raise click.ClickException(f"Run {result['id']} is still active; use forge status to reconnect")
                 time.sleep(0.5)
                 result = connection.get_run(result["id"])
         display(result)
-        if result["status"] in {"failed", "cancelled", "interrupted"}:
+        if result["status"] in {"failed", "cancelled", "interrupted", "paused", "needs_reconciliation"}:
             raise click.ClickException(f"Run {result['status']}: {result.get('error') or 'inspect run evidence'}")
 
 
@@ -130,8 +140,50 @@ def register_action(name: str) -> None:
             display(connection.action(identifier, name))
 
 
-for _action in ["cancel", "retry", "publish"]:
+for _action in ["cancel", "retry", "publish", "resume"]:
     register_action(_action)
+
+
+@main.command()
+@click.argument("identifier")
+@click.option("--agent", required=True, type=click.Choice(["codex", "claude", "bridge", "agentic"]))
+def handoff(identifier: str, agent: str) -> None:
+    """Continue paused work with a configured coding provider."""
+    with client() as connection:
+        display(connection.handoff(identifier, agent))
+
+
+@main.command()
+@click.argument("identifier")
+def plan(identifier: str) -> None:
+    """Inspect the recorded development plan and current task states."""
+    with client() as connection:
+        display(connection.plan(identifier))
+
+
+@main.command()
+@click.argument("identifier")
+def journal(identifier: str) -> None:
+    """Inspect the durable execution journal and chain validation."""
+    with client() as connection:
+        display(connection.journal(identifier))
+
+
+@main.command()
+@click.argument("identifier")
+@click.option("--target", required=True)
+def deploy(identifier: str, target: str) -> None:
+    """Deploy unchanged verified source to an explicit project target."""
+    with client() as connection:
+        display(connection.deploy(identifier, target))
+
+
+@main.command()
+@click.argument("identifier")
+def rollback(identifier: str) -> None:
+    """Execute a deployment's configured rollback and health checks."""
+    with client() as connection:
+        display(connection.rollback(identifier))
 
 
 @main.command()

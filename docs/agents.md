@@ -1,50 +1,65 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Choose and configure a coding agent
+# Choose a coding provider
 
-Forge separates the coding provider from the run lifecycle. Each provider
-receives the brief, stack instructions and isolated workspace. The factory
-records progress and independently executes verification after generation.
+Use Codex or Claude Code when the development host already has an official CLI login. Use native Firefly Agentic for API credentials and a service environment. An authorized internal bridge connects the same native workspace tools to a separately operated endpoint. Start with PyFly or LaraFly and a small brief with observable acceptance criteria.
 
-| Provider | Authentication | Configuration |
-| --- | --- | --- |
-| Codex | Official CLI's existing login | `FORGE_CODEX_EXECUTABLE`, optional `FORGE_CODEX_MODEL` |
-| Claude Code | Official CLI's existing login | `FORGE_CLAUDE_EXECUTABLE`, optional `FORGE_CLAUDE_MODEL` |
-| Firefly Agentic | API provider environment | `FORGE_AGENTIC_MODEL` and the matching provider key |
-| Internal agent bridge | Authorized endpoint token | [Bridge connection](bridge.md) |
+Each run uses one coding worker. The factory supplies framework instructions and selected policies, then independently runs verification. The worker receives failed checks for bounded repairs. [Workflow roles](workflows.md) describe which steps use a model.
 
-## Signed-in CLI providers
+| Provider | Authentication | Model selection | Workspace tools |
+| --- | --- | --- | --- |
+| Codex | Official CLI login on the server | CLI default or explicit available model | Official Codex tools in `workspace-write` mode |
+| Claude Code | Official CLI login on the server | CLI default or explicit available model | Read, Write, Edit, Glob, Grep and specified command permissions |
+| Firefly Agentic | Provider API key | Provider-qualified model ID | Confined `list_files`, `read_file`, `write_file` |
+| Agent bridge | Endpoint bearer token | Authorized alias such as `bridge/default` | The same native Firefly Agentic file tools |
 
-Install and authenticate the official CLI on the server, using its documented
-login flow. The Codex provider launches `codex exec` in the isolated workspace
-and consumes structured events. Claude Code runs its noninteractive print flow
-with explicit tool permissions. A failed process or a missing final result is
-a provider failure.
+## Set up a signed-in CLI
 
-Forge does not reuse browser cookies or desktop private storage, replace an
-official login flow, or guarantee account-specific subscription access. An
-existing CLI login and actual model access are separate from API-key providers.
+Install the [official Codex CLI](https://developers.openai.com/codex/cli/) or [Claude Code](https://code.claude.com/docs/en/setup) on the factory host. Complete its official login:
 
-## Native Firefly Agentic
+```sh
+codex login
+codex login status
+# Or:
+claude auth login
+claude auth status
+```
 
-Configure the model and the key required by that provider. For an OpenAI model:
+In Studio, open the provider connection, leave the model blank to use the CLI default, and test the login. Set an executable path only when the CLI is outside the server's `PATH`. The server account must have access to its own CLI login. A container does not inherit a host account's login.
+
+Codex ignores unrelated user configuration while retaining the official login. It runs noninteractive execution with the workspace write sandbox and no approval prompts. Claude Code uses its print mode with explicit tool permissions. Both paths require a successful process and a final implementation report. Neither path guarantees that a particular account can use a model.
+
+## Configure native Firefly Agentic
+
+Choose an available provider-qualified model, for example `openai-responses:MODEL_ID`, `anthropic:MODEL_ID` or `google-gla:MODEL_ID`. Enter its API key in the write-only configuration form. This key is independent of CLI subscription login.
+
+For an OpenAI-compatible service, supply its HTTPS endpoint, key and model. The compatible endpoint uses Chat Completions. HTTP is accepted only for `localhost`, `127.0.0.1` and `::1`. URLs containing credentials, query strings or fragments are rejected.
+
+Environment configuration remains available:
 
 ```sh
 export FORGE_AGENTIC_MODEL="openai-responses:your-available-model"
 export OPENAI_API_KEY="your-provider-key"
+# Compatible service, when needed:
+export FORGE_AGENTIC_BASE_URL="https://your-service.example/v1"
+export FORGE_AGENTIC_API_KEY="your-service-key"
 ```
 
-Use your real available model and a securely supplied key. Provider keys stay
-on the server. For an explicitly configured compatible API, set
-`FORGE_AGENTIC_BASE_URL` and `FORGE_AGENTIC_API_KEY`; this path does not establish
-access to a hosted model by itself.
+Environment keys can also be `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` or `GEMINI_API_KEY` for their matching model family. Saved settings override the corresponding environment values. See [configuration](configuration.md) for secret retention and run snapshots.
 
-## Interpret readiness correctly
+Native Agentic writes actual project files through confined tools. It cannot run a shell during generation; the factory executes product checks afterwards. A summary without any source writes is a failed generation. Tool access rejects path traversal, symlinks, hardlinks and private credential paths.
 
-**Connections** reads `GET /providers`. CLI readiness checks executable discovery
-and the official login status. API and bridge readiness checks configuration;
-their connectivity and model access are tested by a real run. A green
-configuration status must not be reported as a successful model execution.
+## Test access and interpret the result
 
-`FORGE_PROVIDER_TIMEOUT` bounds generation duration. Failures appear in the run
-timeline and error field. Inspect those before retrying, and retain the first
-attempt as evidence.
+| State | What was established | Next step |
+| --- | --- | --- |
+| `missing` | Required configuration or official login is absent | Configure or sign in |
+| `configured` | Connection fields are present | Verify access with a test or real run |
+| `authenticated` | The official CLI login command succeeded | Run a small generation with the selected model |
+| `connected` | Authenticated model listing includes the selected model | Verify a real source-editing run |
+| `failed` | The explicit connection check failed | Correct the address, key, login or model and retest |
+
+Compatible API and bridge tests request `/models`. A hosted provider without an explicit compatible endpoint receives a configuration check; model and tool access are established by a real run. A successful listing does not prove generation. The provider catalog reports the evidence and its timestamp rather than a universal readiness guarantee.
+
+Generation defaults to a 1,800-second wall timeout. Native Agentic also bounds requests and tool calls; its optional output-token limit is available for direct APIs. Subscription bridge execution omits that cap because the bridge cannot implement it. Verification has its own per-command timeouts.
+
+A useful first acceptance brief is a small inventory service: list stock, create an item, reserve a positive quantity, and reject overselling. Require meaningful service/API tests and an executable `make check`. For browser products, exercise the actual cookies, forms, validation and conflict feedback. [PyFly](pyfly.md) and [LaraFly](larafly.md) cover the primary framework paths.

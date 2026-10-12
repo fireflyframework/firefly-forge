@@ -7,6 +7,20 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env:
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
+          POSTGRES_DB: forge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge_test -d forge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate release version

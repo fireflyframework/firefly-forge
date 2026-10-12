@@ -1,26 +1,11 @@
 Firefly Forge visual assets
 
-The Firefly name, compact wordmark, spark, chevron and icon are proprietary
-artwork and trademarks of Firefly Software Solutions Inc. Copyright 2026
-Firefly Software Solutions Inc. All rights reserved. They are used by the
-Firefly Software Foundation with permission. They are not licensed under
-Apache-2.0. This notice grants no right to use, modify or redistribute those
-marks apart from unmodified copies of this product.
+Firefly parent marks and the website factory graphic systems are proprietary to Firefly Software Solutions Inc. Copyright 2026. All rights reserved. Used with permission by the Firefly Software Foundation; not Apache-2.0. They may accompany unmodified copies of this product; no general mark or graphic-system rights are granted.
 
-The Forge name and outlined Forge wordmark are trademarks of the Firefly
-Software Foundation. The standalone wordmark's first-party copyright artwork
-is Apache-2.0; the licence grants no trademark rights (Apache-2.0 section 6).
-Combined Firefly Forge lockups and banners include the proprietary parent
-artwork and carry its separate rights restriction.
+The original Forged F emblem, Forge wordmark and name are Firefly Software Foundation trademarks. First-party F artwork is Apache-2.0 as a copyright work, with no trademark rights granted. Combined lockups and banners include proprietary Firefly artwork.
 
-The parent source is Firefly Brand Kit 2.0.0, repository firefly-oss/brand-kit,
-commit 3fc4834068fc531dad6fcff4719af2bb5b6d5c9e. Private source is imported at
-generation time and is not distributed in this project. inventory.json lists
-generated files, ownership, rights and SHA-256 values.
+Parent source: firefly-oss/brand-kit 2.0.0 commit3fc4834068fc531dad6fcff4719af2bb5b6d5c9e. Factory source: firefly-oss/firefly-software-website commit6a2d519ab917fb183e607bcc5b4ab13f3819748f, onboarding scenario, src/scripts/factory-drawing.ts with original conveyors, machines and backbone geometry. Only generated assets are distributed; private source/schema modules stay external. Light versions remap material colors; the original geometry is preserved. Conceptual illustration, not a runtime graph. inventory.json records source hashes and generated asset integrity.
 
-Manrope is Copyright 2019 The Manrope Project Authors
-(https://github.com/sharanda/manrope), SIL Open Font License 1.1. Retain the
-OFL.txt supplied with redistributed font files.
+Operational factory: generated geometry, materials and mechanical keyframes from the pinned website factory-machines.ts builders. The application supplies recorded stage states; mechanical cycles do not estimate completion. Generated 3D assets retain proprietary Firefly graphic-system rights. Three.js Copyright 2010–2026 three.js authors, MIT License; retain public/licenses/three-LICENSE.txt.
 
-Studio uses Lucide icons, ISC-licensed with MIT for Feather-derived portions.
-Retain the bundled licences in Studio's public/licenses directory.
+Manrope: Copyright 2019 The Manrope Project Authors, SIL Open Font License1.1. Keep OFL.txt with fonts. Lucide icons retain the ISC/MIT notices bundled in public/licenses.

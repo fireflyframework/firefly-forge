@@ -15,6 +15,8 @@ export type ForgeRun = {
   backend?: string;
   frontend?: string;
   agent?: string;
+  operation?: "build" | "maintain" | "test";
+  skills?: string[];
   created_at?: string;
   events?: Array<Record<string, unknown>>;
   verification?: Array<Record<string, unknown>> | Record<string, unknown>;
@@ -23,6 +25,14 @@ export type ForgeRun = {
   artifacts?: unknown[];
   error?: string | null;
   pr_url?: string | null;
+  source_tree?: string;
+  checkpoint_revision?: string;
+  pause?: {
+    message: string;
+    kind: string;
+    automatic: boolean;
+    retry_at?: number;
+  };
 };
 export type NewRun = {
   repository_id: string;

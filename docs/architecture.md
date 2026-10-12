@@ -1,52 +1,45 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Understand the factory
 
-Forge is a PyFly HTTP application with a background run engine, SQLite state,
-isolated Git workspaces and interchangeable coding providers. Studio uses the
-same authenticated HTTP API as other clients.
+![Native PyFly control plane, PostgreSQL execution ledger and isolated project workers](diagrams/architecture.svg)
 
-![Studio and API clients enter the authenticated Forge API, which stores runs and dispatches isolated Git generation, verification and optional publication](diagrams/architecture.svg)
 
-**How to read this diagram:** Studio and automation share one API boundary.
-The run engine manages local workspaces and provider execution. Git credentials,
-CLI logins and API keys belong to the server environment.
+firefly forge uses native PyFly dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. A local run engine executes isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
 
-[Open the diagram at full size](diagrams/architecture.svg)
+## Native application layers
 
-## One run, one workspace
+| Layer | Implementation | Responsibility |
+| --- | --- | --- |
+| HTTP | `@rest_controller`, method mappings, typed body/path binding and native OpenAPI generation | Validate requests and expose the real application contract |
+| Operator access | Native PyFly `OncePerRequestFilter` | Protect API routes and retain safe response headers |
+| Services | Constructor-injected run, provider, policy, source-control, knowledge, journal and deployment services | Coordinate actual operations |
+| Data | Native PyFly typed `@repository` beans, ORM entities and `SessionProvider.unit()` | PostgreSQL transactions, claims and durable evidence |
+| Lifecycle | PyFly service phases | Initialize persistence before pollers and stop consumers before releasing resources |
 
-Forge clones the repository's configured default branch into a dedicated run
-workspace and creates a run branch. The source checkout is not the editing
-workspace. Clone isolation preserves local source edits, but it is not an
-operating-system sandbox for generated code.
+Private credentials use owner-protected files outside source workspaces. Public records contain configuration revision IDs and secret-presence flags. Queued runs freeze provider and policy inputs; retrieved knowledge is retained with citation IDs and a context digest for continuation.
 
-The engine records the starting revision, brief and requested profiles, invokes
-the selected provider, then examines actual file changes and executes
-verification. It retains a diff, changed paths and artifacts. Command failure,
-provider failure and cancellation are visible outcomes.
+## One project, one active coding run
 
-Failed verification feeds complete failed-check evidence back to the provider
-for a bounded repair loop. The default is two additional repair attempts. Forge
-keeps earlier check results and records the final passing verification against
-the exact source-tree snapshot; publication rejects subsequent source changes.
+The engine clones the registered branch into a run-owned workspace and records its original revision. It limits active work globally and permits one active coding run per repository. Round-robin project selection prevents one project's backlog from filling the local worker slots.
 
-## Durable records, local execution
+The selected worker receives the brief, mandatory framework contract, selected policy instructions and available cited knowledge. The verifier runs real commands independently. Failed checks return to the same worker within a bounded repair budget. Source changes caused by verification invalidate that attempt.
 
-The state store persists repository and run records. A stopped process can leave
-an interrupted run; startup recovery handles the recorded state. This is a
-single-node local execution service, not a distributed scheduler with remote
-leases or a multi-tenant control plane.
+A successful build or maintenance run records the passing tree and creates a local factory checkpoint commit. The consumer checkout remains untouched. The diff and changed-source archive use the original baseline, while publication and deployment require the recorded checkpoint and verified tree to match the retained workspace.
 
-An exclusive file lock gives one active service ownership of each data
-directory. Multiple local runs share that service's configured concurrency.
-Separate services require separate data directories.
+## Plans and write-ahead evidence
 
-## Publication is separate
+A durable plan contains prepare, implement, verify and checkpoint tasks. Test-only plans omit implementation. Intents are recorded before effects; completion receipts record observed outcomes. The journal forms a hash chain and preserves earlier attempts and explicit handoffs.
 
-The default request has `publish: false`. Explicit publication uses the source
-control adapter after verification, and can push a branch and create a pull
-request on a supported provider. Review the publication request and server's
-credentials carefully; publication changes a remote repository.
+An interruption leaves an unacknowledged effect requiring reconciliation. Resume inspects the retained Git root, authorized origin, HEAD and source tree. Publication, deployment and memory writes with unknown remote outcomes are not silently repeated. [Recovery](recovery.md) describes the controls and their limits.
 
-See [operations](operations.md), [Git adapters](scm.md) and [security](security.md)
-for practical boundaries.
+## Knowledge and source control
+
+[flycanon](knowledge.md) supplies project-scoped retrieval and optional framework context. Explicit indexing sends selected verified source files. Verified project memory is opt-in and is stored with actual provenance; retrieval remains distinct from model generation.
+
+Provider-owned [SCM applications](scm.md) manage repository grants externally. GitHub App installation tokens are narrowed to the selected repository. OAuth credentials and token refresh stay server-side. Git operations receive ephemeral credentials through a scoped environment, and publication rechecks repository authorization.
+
+## Read the Studio floor
+
+The factory floor groups actual plans and jobs by project and stage. Its active animation follows running work; reduced-motion preferences suppress animation. Completed work has durable receipts and verified outcomes. Neither timestamps nor decorative machine motion estimate completion percentages.
+
+The service is a local execution control plane for trusted operators. Its workspaces protect consumer checkouts, while commands and generated code still run with the server identity. [Security](security.md) describes that boundary.

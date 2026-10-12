@@ -1,12 +1,39 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Firefly Forge 0.1.0
+# firefly forge 0.2.0
+
+This version connects the software factory's interface to durable development plans and real execution records. The production floor uses the Firefly website's 3D machine geometry; machines run only when recorded tasks are active. Paused work stops the scene, and the stage controls remain usable without WebGL or animation.
+
+## What changed
+
+- Native PyFly dependency injection, REST controllers, repositories and transaction management with PostgreSQL persistence.
+- Immutable plan revisions, append-only intents and receipts, source checkpoints, bounded rate-limit retries and explicit provider handoffs.
+- Separate project workspaces and fair dispatch, with one active run per project and a configurable global concurrency limit.
+- Wizard flows for product work, coding providers, repository applications, knowledge and deployment targets.
+- GitHub Apps, GitLab OAuth with PKCE and Bitbucket OAuth consumers, with repository grants checked before transport.
+- A versioned central policy catalog, project defaults and frozen run selections. Recommendations guide coding; quality gates run commands.
+- Real flycanon SDK indexing, cited retrieval and verified project memory in separate project scopes.
+- Explicit deployment and rollback commands, mandatory health checks, frozen target settings and durable external-effect records.
+- Shared brand-kit typography, grid and light/dark/system themes, with a distinct lowercase forge mark.
+- CLI, Python client and MCP access to plans, journals, handoffs, knowledge and delivery.
+
+## Storage upgrade
+
+PostgreSQL is required. Configure `FORGE_DATABASE_URL` and retain the private data directory for credentials, policy revisions and run workspaces. This version does not silently import a previous SQLite database. Existing 0.1.0 deployments should back up their state and follow [installation](installation.md) before starting the new runtime.
+
+## Acceptance boundaries
+
+The local runtime has exercised both released PyFly and LaraFly example products with their actual test commands. A local deployment used a real command and an independent verification command. Flycanon acceptance includes real 768-dimensional Ollama embeddings, source and memory retrieval, separate-project isolation and a verified execution journal. This local proof uses the [documented server scanner correction](knowledge.md#flycanon-server-compatibility), with strict PII rejection retained.
+
+Application adapter tests do not prove that an external organization has registered or granted a GitHub, GitLab or Bitbucket application. Live model execution still depends on the server account's subscription, login, credits and selected model. Java, Rust and .NET remain additional profiles without claimed end-to-end product acceptance.
+
+## 0.1.0 — Earlier release
 
 Firefly Forge introduces Firefly's software factory: a product brief becomes an
 isolated Git implementation with real verification, retained source evidence
 and explicit pull-request publication. PyFly and LaraFly are the primary backend
 profiles. Angular, React, Next.js and Vue are selectable frontend contracts.
 
-## Included in this version
+### Included in this version
 
 - A PyFly API, local durable run store, CLI, Python client and MCP tools.
 - Studio for repository registration, product briefs, provider connections,
@@ -24,7 +51,7 @@ profiles. Angular, React, Next.js and Vue are selectable frontend contracts.
 - Firefly branding, self-hosted typography, accessible SVG diagrams and
   task-based installation, product, integration and operations guides.
 
-## Verification recorded during preparation
+### Verification recorded during preparation
 
 The configured factory gate covers Python tests, lint, formatting and types;
 Studio types, lint, formatting, unit tests, browser journeys and production
@@ -64,7 +91,7 @@ full-product acceptance here. Frontend profile availability does not establish
 acceptance of every generated framework combination. Pull-request adapter tests
 do not establish successful publication on every provider account.
 
-## Operating boundaries
+### Operating boundaries
 
 This version serves trusted development operators on a dedicated macOS or Linux
 host. Git workspace isolation is not host sandboxing or tenant isolation.

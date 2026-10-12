@@ -6,6 +6,8 @@ services:
     environment:
       FORGE_API_TOKEN: ${FORGE_API_TOKEN:?Set an operator token of at least 24 characters}
       FORGE_DATA_DIR: /data
+      FORGE_DATABASE_URL: ${FORGE_DATABASE_URL:?Set the PostgreSQL connection URL}
+      FORGE_DATABASE_SCHEMA: ${FORGE_DATABASE_SCHEMA:-forge}
       FORGE_BRIDGE_URL: ${FORGE_BRIDGE_URL:-}
       FORGE_BRIDGE_TOKEN: ${FORGE_BRIDGE_TOKEN:-}
       FORGE_AGENTIC_MODEL: ${FORGE_AGENTIC_MODEL:-openai-responses:gpt-6-luna}
@@ -13,5 +15,23 @@ services:
     volumes:
       - factory-data:/data
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: ${FORGE_POSTGRES_PASSWORD:?Set a strong database password}
+      POSTGRES_DB: forge
+    volumes:
+      - factory-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 volumes:
   factory-data:
+  factory-postgres:

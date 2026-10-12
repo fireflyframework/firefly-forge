@@ -208,10 +208,16 @@ test("connect, register a generic repository, create a local run, cancel and ret
   await page
     .getByLabel("Source repository", { exact: true })
     .selectOption("repo-1");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Frontend", { exact: true }).selectOption("none");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page
     .getByLabel("Commands to run", { exact: true })
     .fill('[["make","check"]]');
+  await page.getByRole("button", { name: "Review run", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review your run" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Start building" }).click();
   await expect(page.getByRole("heading", { name: run.brief })).toBeVisible();
   expect(submitted).toMatchObject({
@@ -244,7 +250,7 @@ test("phone navigation, empty form and connection error remain usable", async ({
     .first()
     .click();
   await expect(
-    page.getByRole("button", { name: "Start building" }),
+    page.getByRole("button", { name: "Continue", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Connections", exact: true }).click();
   await page.route("**/api/v1/**", (route) =>

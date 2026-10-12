@@ -1,51 +1,34 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Give Forge trusted development access
+# Protect trusted development access
 
-Forge is a software execution service for trusted operators. An authenticated
-operator can register Git sources, ask an agent to change code and run
-verification commands on the server. An isolated Git clone protects the source
-checkout from direct edits; it does not isolate the process from the host.
+firefly forge executes code for authenticated operators. A run uses an isolated Git clone, and generated code and verification commands execute with the development host's identity. Use a dedicated host or identity with limited access to repositories and external services.
 
-## Protect the control plane
+## Control the API
 
-Set a strong `FORGE_API_TOKEN`. The API expects `Authorization: Bearer <token>`.
-Do not expose an unauthenticated API or share an operator token with untrusted
-users. Use loopback binding for local work and HTTPS plus access controls for
-remote operation.
+Set a unique `FORGE_API_TOKEN` of at least 24 characters. Native PyFly filters protect `/api/v1`, including health and OpenAPI. Management, admin and actuator surfaces are disabled, with no separate management listener.
 
-The packaged PyFly configuration disables the native management, admin and
-actuator surfaces. Its management server port is `-1`, so it does not open a
-separate management listener. Forge's own `/api/v1` routes, including health
-and OpenAPI, pass through the shared operator-token boundary.
+Source-control OAuth callbacks are the narrow exception: their exact GET paths accept a single-use server-side state and an HttpOnly browser nonce cookie. Authorization starts through the authenticated operator API. A callback cannot carry or recover the operator token.
 
-Studio keeps the entered token in page memory. It is cleared on reload, never
-put in a URL, and sent to the API address the operator enters. Provider tokens,
-Git credentials and CLI logins remain server-side.
+Studio holds its token in page memory, never in a URL or browser local storage. Prefer loopback for local use and one HTTPS origin behind restricted access for remote use. Host-header validation remains enabled.
 
-## Scope the execution identity
+## Protect credentials
 
-Use a dedicated user or isolated development host with limited permissions.
-Give its Git credentials access only to intended repositories. Avoid production
-databases, shared services and unrelated workspaces. Explicit command argument
-arrays prevent accidental shell interpretation, but the commands and generated
-code still execute with the server user's authority.
+Saved credentials and immutable run revisions are plaintext files with mode `0600` inside a mode `0700` configuration directory. Secret GET responses report presence only. Empty secret fields preserve saved values; explicit clearing removes them. This is owner-level filesystem protection, not encryption at rest.
 
-Repository instructions and product briefs are part of the coding agent's input.
-Review unfamiliar sources and treat generated output as untrusted until you
-inspect it and run appropriate checks. A coding provider's own workspace
-permissions do not create multi-tenant isolation for the complete factory.
+Configured credentials, URI passwords and private keys are redacted from evidence. Source containing a configured credential is rejected before delivery. Worker and verification processes receive filtered environments excluding the database URL and unrelated server secrets. Git credentials are supplied only to authorized Git operations, through ephemeral askpass configuration, never credential-bearing repository URLs or global Git settings.
 
-## Review publication
+Provider-native grants remain authoritative. Repository discovery is restricted to those grants, and clone/publication authentication rechecks the stored repository identity. GitHub tokens use a selected repository scope. Origin checks and disabled credential redirects prevent an agent's changed Git remote from receiving an application token.
 
-`publish: false` is the default. An explicit publishing run can write a remote
-branch and create a pull request using server credentials. Verification passing
-is a prerequisite, not approval of every possible generated change. Restrict
-publishing credentials and use the receiving project's ordinary reviews.
+## Keep core gates enabled
 
-Publication requires the final passing verification and the same source-tree
-snapshot that those commands checked. A changed workspace is rejected before a
-remote write. This integrity check does not establish correctness beyond the
-actual checks performed.
+Optional policy recommendations and quality gates can be selected per project. Core path confinement, credential checks, real verification, source integrity and explicit publication/deployment boundaries remain mandatory.
 
-For private security reporting, follow the repository's security policy.
-Never include tokens, private logs or sensitive source in a public issue.
+Native Agentic file tools reject traversal, symlink and hardlink access, Git metadata and private credential files. Official CLI providers have their own workspace tool permissions. Neither mechanism establishes operating-system isolation for the complete factory.
+
+Knowledge references are untrusted data with retained citations. They cannot authorize a new action or override core guards. Explicit knowledge indexing accepts selected verified tracked text files; it does not upload an operator's home, whole checkout or private configuration directory.
+
+## Inspect uncertain effects
+
+The write-ahead journal records intent before an effect and a receipt after its observed completion. A network failure after a remote write can leave its outcome unknown. Inspect the remote branch, deployment or flycanon source/version before continuing. Generic resume cannot replay an ambiguous remote effect.
+
+Passing checks establish only their tested behavior. Use the receiving project's normal source review and release controls. Report private security issues through the repository's security policy without attaching tokens, private logs or sensitive source.

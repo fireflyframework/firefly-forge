@@ -193,9 +193,93 @@ async def test_bridge_native_tool_flow_omits_unimplemented_openai_token_cap(tmp_
         monkeypatch.setattr(
             "pydantic_ai.providers.openai.OpenAIProvider", lambda **kwargs: OriginalProvider(openai_client=client)
         )
-        monkeypatch.setenv("FORGE_BRIDGE_URL", "http://test")
+        monkeypatch.setenv("FORGE_BRIDGE_URL", "http://127.0.0.1")
         monkeypatch.setenv("FORGE_BRIDGE_TOKEN", "test")
         result = await BridgeProvider().execute(tmp_path, "Create alert service", "pyfly", "none", discard)
     assert result.summary == "Generated service"
     assert result.usage["requests"] == 2
     assert (tmp_path / "src/service.py").is_file()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"data": [{"id": "bridge/default"}]}, {"models": [{"name": "bridge/default"}]}])
+async def test_connection_test_checks_actual_authenticated_models_not_generation(tmp_path, payload):
+    import httpx
+
+    from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
+    from firefly_forge.providers import test_provider_connection as check_connection
+
+    configuration = ConfigurationStore(tmp_path)
+    configuration.update(
+        "bridge", ProviderConfiguration(values={"endpoint": "http://127.0.0.1:8766", "token": "private-secret-token"})
+    )
+
+    def handler(request):
+        assert str(request.url) == "http://127.0.0.1:8766/v1/models"
+        assert request.headers["Authorization"] == "Bearer private-secret-token"
+        return httpx.Response(200, json=payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await check_connection("bridge", configuration, client)
+    assert result["readiness"]["state"] == "connected"
+    assert "real run" in result["detail"]
+    assert "private-secret-token" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_never_retains_provider_response_credentials(tmp_path):
+    import httpx
+
+    from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
+    from firefly_forge.providers import test_provider_connection as check_connection
+
+    configuration = ConfigurationStore(tmp_path)
+    configuration.update(
+        "bridge", ProviderConfiguration(values={"endpoint": "https://api.example.com", "token": "private-secret-token"})
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(401, text="private-secret-token"))
+    ) as client:
+        result = await check_connection("bridge", configuration, client)
+    assert result["readiness"]["state"] == "failed"
+    assert not result["ready"]
+    assert "private-secret-token" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_provider_uses_frozen_model_configuration_without_global_environment(tmp_path, monkeypatch):
+    executable = tmp_path / "fake-codex"
+    executable.write_text(
+        "#!"
+        + sys.executable
+        + (
+            '\nimport json,sys,pathlib\npathlib.Path("args.json").write_text(json.dumps(sys.a'
+            'rgv))\nprint(json.dumps({"type":"item.completed","item":{"type":"agent_message"'
+            ',"text":"Complete"}}))\n'
+        )
+    )
+    executable.chmod(0o755)
+    provider = CodexProvider({"FORGE_CODEX_EXECUTABLE": str(executable), "FORGE_CODEX_MODEL": "queued-model"})
+    monkeypatch.setenv("FORGE_CODEX_MODEL", "later-model")
+    await provider.execute(tmp_path, "Make product", "pyfly", "none", discard)
+    assert "queued-model" in json.loads((tmp_path / "args.json").read_text())
+    assert os.environ["FORGE_CODEX_MODEL"] == "later-model"
+
+
+@pytest.mark.asyncio
+async def test_native_api_never_infers_new_credentials_or_wrong_provider_family(tmp_path, monkeypatch):
+    from firefly_forge.providers import APIProvider, ProviderLimitError
+
+    async def unexpected(*args, **kwargs):
+        raise AssertionError("Generation must not infer a different provider or current process credentials")
+
+    monkeypatch.setattr("firefly_forge.agentic_runtime.execute_agentic", unexpected)
+    monkeypatch.setenv("OPENAI_API_KEY", "added-after-queue")
+    with pytest.raises(ProviderLimitError, match="key"):
+        await APIProvider({"FORGE_AGENTIC_MODEL": "openai-responses:model", "FORGE_AGENTIC_API_KEY": ""}).execute(
+            tmp_path, "Build", "pyfly", "none", discard
+        )
+    with pytest.raises(ProviderError, match="model family"):
+        await APIProvider({"FORGE_AGENTIC_MODEL": "unknown:model", "FORGE_AGENTIC_API_KEY": "private-api-key"}).execute(
+            tmp_path, "Build", "pyfly", "none", discard
+        )

@@ -145,6 +145,7 @@ async def execute_agentic(
     *,
     model: Any = None,
     allow_output_token_cap: bool = True,
+    settings: dict[str, str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     from fireflyframework_agentic.agents import FireflyAgent
     from fireflyframework_agentic.config import FireflyAgenticConfig
@@ -167,7 +168,8 @@ async def execute_agentic(
         await emit("file", result)
         return result
 
-    selected_model = model or os.environ.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
+    settings = settings if settings is not None else dict(os.environ)
+    selected_model = model or settings.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
@@ -181,7 +183,7 @@ async def execute_agentic(
         auto_register=False,
         config=FireflyAgenticConfig(default_temperature=None),
         model_options=(
-            ModelOptions(max_tokens=int(os.environ.get("FORGE_AGENTIC_MAX_TOKENS", "16384")))
+            ModelOptions(max_tokens=int(settings.get("FORGE_AGENTIC_MAX_TOKENS", "16384")))
             if allow_output_token_cap
             else None
         ),
@@ -194,7 +196,7 @@ async def execute_agentic(
     await emit("provider", "Firefly Agentic is generating source with confined workspace tools")
     result = await agent.run(
         brief,
-        timeout=float(os.environ.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+        timeout=float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
         usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
     )
     if not tools.files_written:
