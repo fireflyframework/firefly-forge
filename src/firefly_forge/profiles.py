@@ -28,6 +28,8 @@ _BACKENDS = [
             "Do not pin incompatible older dependencies."
             " PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), "
             "not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan."
+            " For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. "
+            "Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses."
         ),
     },
     {
@@ -48,7 +50,7 @@ _BACKENDS = [
     {
         "id": "larafly",
         "name": "LaraFly · PHP",
-        "version": "PHP 8.3+ · Laravel 13",
+        "version": "26.10.1 · PHP 8.3+ · Laravel 13",
         "detail": "Laravel-native Firefly attributes, services, repositories, CQRS and typed contracts.",
         "source": "https://github.com/fireflyframework/fireflyframework-php/blob/main/composer.json",
         "instruction": (
@@ -167,11 +169,17 @@ def profile_catalog() -> dict[str, list[dict[str, Any]]]:
     ordered = sorted(_BACKENDS, key=lambda p: ["pyfly", "larafly", "java", "rust", "dotnet"].index(p["id"]))
 
     def public(profile: dict[str, str]) -> dict[str, Any]:
+        live = profile["id"] in {"pyfly", "larafly", "react"}
+        validation = (
+            "Independent live PyFly/LaraFly service, API and React inventory fixture plus browser flow verified; "
+            "every generated product still requires its own checks"
+            if live
+            else "Upstream contract inspected; live product verification pending"
+        )
         return {
             **{k: v for k, v in profile.items() if k != "instruction"},
-            "validation": "Upstream contract inspected; live product verification pending"
-            if profile["id"] != "none"
-            else "Not applicable",
+            "validation_state": "live_fixture_verified" if live else "contract_inspected",
+            "validation": validation if profile["id"] != "none" else "Not applicable",
         }
 
     return {"backends": [public(p) for p in ordered], "frontends": [public(p) for p in _FRONTENDS]}

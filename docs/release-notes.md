@@ -31,8 +31,9 @@ Studio types, lint, formatting, unit tests, browser journeys and production
 build; and strict MkDocs compilation.
 
 Studio was also exercised against the real authenticated Forge API: connection,
-run diff and verification evidence, an actual ZIP download and the product
-form. Direct browser review covered 1440, 640, 390 and 360 pixel widths without
+repository and run creation, cancellation, run diff and verification evidence,
+an actual ZIP download and the product form. Direct browser review covered 1440,
+640, 390 and 360 pixel widths without
 browser console errors.
 
 Specific live product checks recorded so far:
@@ -41,9 +42,23 @@ Specific live product checks recorded so far:
 | --- | --- | --- |
 | Native Firefly Agentic through an authorized bridge, PyFly service | Nine behavior tests, lint, types and package build | Bounded service fixture, not every PyFly capability |
 | Native Firefly Agentic through an authorized bridge, LaraFly service | Fourteen actual PHP checks and a fresh Composer install using official LaraFly 26.10.1 | Bounded service fixture, not the complete LaraFly plus frontend journey |
-| Codex full factory run, PyFly plus React | 39 backend tests, 12 frontend tests, lint, types and production builds; automatic repair reached a passing second implementation attempt | Generated-product browser acceptance is separate |
+| Codex full factory run, PyFly plus React | 40 backend tests, 17 frontend tests, lint, types and production builds; automatic repair corrected startup and browser CSRF integration | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
+| Codex full factory run, LaraFly plus React | 32 backend tests with 94 assertions, 23 frontend tests, PHPStan, Pint, lint, types and production builds | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
 
-The full LaraFly plus React factory journey remains pending. Java, Rust and .NET
+Both primary browser products created eight units of stock, reserved three,
+showed five remaining, and rejected an over-reservation without changing stock.
+Their 390 pixel layouts had no horizontal overflow and their browsers reported
+no application exceptions.
+
+The GitHub publication connector was exercised against the real repository:
+isolated clone, source snapshot, passing check, branch push and draft pull-request
+creation. The temporary pull request was closed without merging. The MCP stdio
+transport completed a real handshake and an authenticated repository tool call.
+Release archives passed the private-file boundary check, and a fresh wheel
+installation served Studio and the authenticated API with its packaged runtime
+configuration.
+
+Java, Rust and .NET
 profiles have upstream source contracts inspected; they have no claimed live
 full-product acceptance here. Frontend profile availability does not establish
 acceptance of every generated framework combination. Pull-request adapter tests

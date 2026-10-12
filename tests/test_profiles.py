@@ -15,6 +15,17 @@ def test_profile_catalog_describes_real_supported_frameworks():
     assert "ng-hub-ui" in angular["detail"]
 
 
+def test_profile_catalog_separates_live_acceptance_from_inspected_contracts():
+    catalog = profile_catalog()
+    backends = {profile["id"]: profile for profile in catalog["backends"]}
+    frontends = {profile["id"]: profile for profile in catalog["frontends"]}
+    assert backends["pyfly"]["validation_state"] == "live_fixture_verified"
+    assert backends["larafly"]["validation_state"] == "live_fixture_verified"
+    assert frontends["react"]["validation_state"] == "live_fixture_verified"
+    assert all(backends[name]["validation_state"] == "contract_inspected" for name in ["java", "rust", "dotnet"])
+    assert frontends["angular"]["validation_state"] == "contract_inspected"
+
+
 def test_instructions_preserve_arbitrary_brief_and_source_constraints():
     prompt = build_instruction("Build an inventory portal with barcode scanning.", "pyfly", "angular")
     assert "barcode scanning" in prompt
