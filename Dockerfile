@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./
 COPY src ./src
+COPY scripts/build_hook.py ./scripts/build_hook.py
 COPY --from=studio /build/studio/dist ./studio/dist
 RUN uv sync --locked --no-dev
 RUN useradd --create-home --uid 10001 forge && mkdir /data && chown forge:forge /data
