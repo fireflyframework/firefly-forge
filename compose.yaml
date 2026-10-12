@@ -1,0 +1,17 @@
+services:
+  forge:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      FORGE_API_TOKEN: ${FORGE_API_TOKEN:?Set an operator token of at least 24 characters}
+      FORGE_DATA_DIR: /data
+      FORGE_BRIDGE_URL: ${FORGE_BRIDGE_URL:-}
+      FORGE_BRIDGE_TOKEN: ${FORGE_BRIDGE_TOKEN:-}
+      FORGE_AGENTIC_MODEL: ${FORGE_AGENTIC_MODEL:-openai-responses:gpt-6-luna}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - factory-data:/data
+    restart: unless-stopped
+volumes:
+  factory-data:

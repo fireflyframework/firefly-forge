@@ -1,0 +1,31 @@
+name: Verify
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: uv sync --locked --group dev --group docs
+      - run: npm --prefix studio ci
+      - run: npx --prefix studio playwright install --with-deps chromium
+      - run: make check
+      - run: npm --prefix studio audit --omit=dev --audit-level=high
+      - run: make package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firefly-forge-distributions
+          path: dist/*

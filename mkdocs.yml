@@ -1,0 +1,63 @@
+site_name: Firefly Forge
+site_description: Build and verify software with Firefly's software factory.
+site_author: Firefly Software Foundation
+site_url: https://fireflyframework.github.io/firefly-forge/
+repo_url: https://github.com/fireflyframework/firefly-forge
+repo_name: fireflyframework/firefly-forge
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Firefly Software Foundation · Apache-2.0
+strict: true
+docs_dir: docs
+site_dir: build/docs-site
+theme:
+  name: material
+  font: false
+  logo: assets/forge-lockup.svg
+  favicon: assets/favicon.svg
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+extra_css:
+  - stylesheets/forge.css
+nav:
+  - Start here:
+      - Software factory: index.md
+      - Install and start: installation.md
+      - Your first product: quickstart.md
+      - Capabilities and limits: capabilities.md
+  - Build products:
+      - PyFly walkthrough: pyfly.md
+      - LaraFly walkthrough: larafly.md
+      - Choose a stack: profiles.md
+      - Connect Git repositories: scm.md
+      - Choose an agent: agents.md
+      - Internal bridge connection: bridge.md
+  - Operate:
+      - Architecture: architecture.md
+      - Operations: operations.md
+      - Security: security.md
+      - HTTP API: api.md
+  - Project:
+      - Release notes: release-notes.md
+      - Contribute: contributing.md
+      - Brand and visual assets: brand.md

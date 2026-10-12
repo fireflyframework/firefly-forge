@@ -1,0 +1,15 @@
+pyfly:
+  application:
+    name: firefly-forge
+  management:
+    enabled: false
+    server:
+      port: -1
+  admin:
+    enabled: false
+  web:
+    actuator:
+      enabled: false
+  server:
+    host: 127.0.0.1
+    port: 8787

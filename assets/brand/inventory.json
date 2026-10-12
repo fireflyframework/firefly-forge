@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "source": "firefly-oss/brand-kit",
+  "revision": "3fc4834068fc531dad6fcff4719af2bb5b6d5c9e",
+  "generator": "scripts/brand-assets.mjs",
+  "files": [
+    {
+      "path": "assets/brand/forge-lockup-dark.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "bcf9486e4a3c7d8f748f8963b96f0d9fe57d6d47c5fd64f9e6f22150bde8e0d8"
+    },
+    {
+      "path": "assets/brand/forge-lockup-light.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "fac092ba66ccdf6ff6000f773863332976e3ed19ab8a62cdd94ee0e07264cce6"
+    },
+    {
+      "path": "assets/brand/forge-lockup-small.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "e8a97313773b1cf17ff66db68a7c0be0dafd96f09352709c107249b6914498b6"
+    },
+    {
+      "path": "assets/brand/firefly-icon.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "623bcfeb21e72028b5ab23303486054a0dc53595e61ac4098d400ed390f3c1fc"
+    },
+    {
+      "path": "assets/brand/forge-wordmark.svg",
+      "owner": "Firefly Software Foundation",
+      "license": "Apache-2.0; trademark reserved",
+      "sha256": "f559d8de0438993968de2fb3fedccc64d9c2505fc42af45ee0bfc0e89e41013b"
+    },
+    {
+      "path": "assets/banner.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "4ca4df4f116306525da7d1d71a20b2587a4b64ceef1a834ecb47cadad6db0e56"
+    },
+    {
+      "path": "studio/public/assets/forge-lockup.svg",
+      "source": "assets/brand/forge-lockup-small.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "e8a97313773b1cf17ff66db68a7c0be0dafd96f09352709c107249b6914498b6"
+    },
+    {
+      "path": "studio/public/favicon.svg",
+      "source": "assets/brand/firefly-icon.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "623bcfeb21e72028b5ab23303486054a0dc53595e61ac4098d400ed390f3c1fc"
+    },
+    {
+      "path": "docs/assets/forge-lockup.svg",
+      "source": "assets/brand/forge-lockup-small.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "e8a97313773b1cf17ff66db68a7c0be0dafd96f09352709c107249b6914498b6"
+    },
+    {
+      "path": "docs/assets/favicon.svg",
+      "source": "assets/brand/firefly-icon.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "623bcfeb21e72028b5ab23303486054a0dc53595e61ac4098d400ed390f3c1fc"
+    },
+    {
+      "path": "docs/assets/banner.svg",
+      "source": "assets/banner.svg",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "4ca4df4f116306525da7d1d71a20b2587a4b64ceef1a834ecb47cadad6db0e56"
+    },
+    {
+      "path": "assets/banner.png",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "a49a90373cbfad162ccb56f126ab3a90693d1529b72f671d21cffb7170dc2564"
+    },
+    {
+      "path": "assets/brand/forge-lockup-dark.png",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Proprietary artwork; product redistribution only",
+      "sha256": "2d45bbf60137552d8ad7bc40c5e32bc4dd01c6279b977bf5a3ca9d25a215e397"
+    },
+    {
+      "path": "assets/fonts/manrope/manrope-latin-wght-normal.woff2",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972"
+    },
+    {
+      "path": "assets/fonts/manrope/OFL.txt",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
+    },
+    {
+      "path": "studio/public/fonts/manrope-latin-wght-normal.woff2",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972"
+    },
+    {
+      "path": "studio/public/fonts/OFL.txt",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
+    },
+    {
+      "path": "docs/assets/fonts/manrope-latin-wght-normal.woff2",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972"
+    },
+    {
+      "path": "docs/assets/fonts/OFL.txt",
+      "owner": "The Manrope Project Authors",
+      "license": "SIL Open Font License 1.1",
+      "source": "Fontsource Manrope 5.3.0; copied from Firefly Weave assets/fonts/manrope",
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
+    },
+    {
+      "path": "assets/brand/NOTICE",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Notice; marks reserved",
+      "sha256": "04a773e88d6432182300e3af257f064eac0e859e0b81213dab407f990c1bf42e"
+    },
+    {
+      "path": "studio/public/NOTICE.txt",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Notice; marks reserved",
+      "sha256": "04a773e88d6432182300e3af257f064eac0e859e0b81213dab407f990c1bf42e"
+    },
+    {
+      "path": "docs/assets/NOTICE.txt",
+      "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
+      "license": "Notice; marks reserved",
+      "sha256": "04a773e88d6432182300e3af257f064eac0e859e0b81213dab407f990c1bf42e"
+    },
+    {
+      "path": "studio/public/licenses/lucide-LICENSE.txt",
+      "owner": "Lucide and Feather contributors",
+      "license": "ISC and MIT",
+      "sha256": "668dcc52803480e0a026b31140a4cae668772663cd764e5991d252eef03f98db"
+    }
+  ]
+}

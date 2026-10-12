@@ -1,0 +1,29 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release version
+        run: python -c "import os,tomllib; assert os.environ['GITHUB_REF_NAME'] == 'v' + tomllib.load(open('pyproject.toml','rb'))['project']['version']"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: uv sync --locked --group dev --group docs
+      - run: npm --prefix studio ci
+      - run: npx --prefix studio playwright install --with-deps chromium
+      - run: make check
+      - run: make package
+      - run: tar -czf dist/firefly-forge-studio.tar.gz -C studio/dist .
+      - run: python scripts/release_checksums.py dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "Firefly Forge $GITHUB_REF_NAME" --notes-file docs/release-notes.md
