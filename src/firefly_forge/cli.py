@@ -850,3 +850,57 @@ def mcp_server() -> None:
     from firefly_forge.mcp_server import serve
 
     serve()
+
+
+@main.group()
+def knowledge() -> None:
+    """Install and verify the managed knowledge service."""
+
+
+@knowledge.command("bootstrap")
+@click.option("--data-dir", type=click.Path(path_type=Path), required=True)
+@click.option("--service-dir", type=click.Path(path_type=Path), required=True)
+def knowledge_bootstrap(data_dir: Path, service_dir: Path) -> None:
+    """Create one-time private service credentials without resetting existing settings."""
+    from firefly_forge.configuration import ConfigurationStore
+    from firefly_forge.managed_knowledge import bootstrap_knowledge
+
+    try:
+        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir)
+        if result["state"] == "external":
+            raise ValueError(
+                "Existing knowledge settings retained; use the existing service instead of the managed stack"
+            )
+        display(result)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@knowledge.command("initialize")
+@click.option("--data-dir", type=click.Path(path_type=Path), required=True)
+def knowledge_initialize(data_dir: Path) -> None:
+    """Initialize authenticated framework knowledge and require real cited retrieval."""
+    import asyncio
+
+    from pyfly.container import Container
+
+    from firefly_forge.configuration import ConfigurationStore
+    from firefly_forge.knowledge import KnowledgeConnection
+    from firefly_forge.managed_knowledge import ManagedKnowledgeProvisioner
+
+    container = Container()
+    container.register_instance(ConfigurationStore, ConfigurationStore(data_dir))
+    container.register(KnowledgeConnection)
+    container.register(ManagedKnowledgeProvisioner)
+    manager = container.resolve(ManagedKnowledgeProvisioner)
+    try:
+        result = asyncio.run(manager.initialize())
+        display(
+            {
+                "readiness": result["readiness"],
+                "tenant_id": result["tenant_id"],
+                "framework_workspace": result["framework_workspace"],
+            }
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc

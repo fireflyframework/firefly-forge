@@ -88,6 +88,7 @@ from firefly_forge.identity_persistence import (
 from firefly_forge.journal import Journal
 from firefly_forge.knowledge import (
     KnowledgeConfiguration,
+    KnowledgeConnection,
     KnowledgeIndex,
     KnowledgeManager,
     KnowledgeSearch,
@@ -586,8 +587,14 @@ class FactoryConfiguration:
         return manager
 
     @bean
-    def knowledge_manager(self, store: Store, engine: Engine, journal: Journal) -> KnowledgeManager:
-        manager = KnowledgeManager(store, engine)
+    def knowledge_connection(self, private: ConfigurationStore) -> KnowledgeConnection:
+        return KnowledgeConnection(private)
+
+    @bean
+    def knowledge_manager(
+        self, store: Store, engine: Engine, journal: Journal, connection: KnowledgeConnection
+    ) -> KnowledgeManager:
+        manager = KnowledgeManager(store, engine, connection=connection)
         manager.journal = journal
         engine.knowledge = manager
         return manager

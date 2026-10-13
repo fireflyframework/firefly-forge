@@ -10,3 +10,9 @@ studio/public/licenses/markdown-LICENSES.txt and the packaged licenses directory
 
 This distribution does not contain internal Firefly Agent Bridge source,
 private brand-kit implementation, developer credentials or process artifacts.
+
+The bundled pyfly and larafly knowledge manuals are unchanged sources from
+Firefly Software Foundation releases 26.10.1, licensed under Apache-2.0.
+Their exact revisions, document paths and checksums are recorded in the
+packaged resources/knowledge/manifest.json. The original framework licenses
+are retained alongside those sources.

@@ -27,6 +27,8 @@ def settings(**changes):
             "endpoint": "http://127.0.0.1:18500",
             "tenant_id": "firefly",
             "api_key": "private-canon-key",
+            "auto_memory": False,
+            "required": False,
             **changes,
         }
     )

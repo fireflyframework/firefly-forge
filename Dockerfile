@@ -20,7 +20,7 @@ COPY scripts/build_hook.py ./scripts/build_hook.py
 COPY --from=studio /build/studio/dist ./studio/dist
 RUN uv sync --locked --no-dev
 COPY assets/fonts ./assets/fonts
-RUN useradd --create-home --uid 10001 forge && mkdir /data && chown forge:forge /data
+RUN useradd --create-home --uid 10001 forge && mkdir /data /knowledge && chown forge:forge /data /knowledge
 USER forge
 ENV FORGE_DATA_DIR=/data
 EXPOSE 8787

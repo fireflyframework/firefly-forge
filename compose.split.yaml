@@ -1,3 +1,4 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 # Split topology: worker replicas share one execution leader and the same private volume.
 services:
   api:
@@ -33,6 +34,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      knowledge-initialize:
+        condition: service_completed_successfully
   worker:
     build: .
     command: ["/app/.venv/bin/forge", "worker"]
@@ -42,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      knowledge-initialize:
+        condition: service_completed_successfully
   postgres:
     image: postgres:17
     environment:
@@ -56,6 +61,46 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+  knowledge-bootstrap:
+    extends:
+      file: compose.yaml
+      service: knowledge-bootstrap
+  knowledge-postgres:
+    extends:
+      file: compose.yaml
+      service: knowledge-postgres
+  embeddings:
+    extends:
+      file: compose.yaml
+      service: embeddings
+  embeddings-initialize:
+    extends:
+      file: compose.yaml
+      service: embeddings-initialize
+  knowledge-migrate:
+    extends:
+      file: compose.yaml
+      service: knowledge-migrate
+  knowledge:
+    extends:
+      file: compose.yaml
+      service: knowledge
+  knowledge-worker:
+    extends:
+      file: compose.yaml
+      service: knowledge-worker
+  knowledge-initialize:
+    extends:
+      file: compose.yaml
+      service: knowledge-initialize
+networks:
+  knowledge:
+    internal: true
+  model-download:
 volumes:
+  knowledge-secrets:
+  knowledge-postgres:
+  knowledge-models:
+  knowledge-objects:
   factory-data:
   factory-postgres:

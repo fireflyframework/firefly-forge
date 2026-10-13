@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import re
+import ssl
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 import httpx
+from cryptography import x509
 from flycanon_sdk import (  # type: ignore[import-untyped]
     CanonAPIError,
     CanonClient,
@@ -49,11 +51,12 @@ class KnowledgeSettings(BaseModel):
     api_key: str = Field(default="", max_length=16000)
     agent_token: str = Field(default="", max_length=16000)
     top_k: int = Field(default=5, ge=1, le=8)
+    ca_certificate: str = Field(default="", max_length=32000)
 
 
 class KnowledgeConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    values: dict[str, Any] = Field(default_factory=dict, max_length=10)
+    values: dict[str, Any] = Field(default_factory=dict, max_length=12)
     clear_secrets: list[str] = Field(default_factory=list, max_length=2)
 
 
@@ -90,7 +93,8 @@ def _public(settings: dict[str, Any], revision: str) -> dict[str, Any]:
 
 def _current(private: ConfigurationStore) -> tuple[dict[str, Any], str]:
     saved = private._read(private.directory / "knowledge.json")
-    return KnowledgeSettings.model_validate(saved.get("settings", {})).model_dump(), str(
+    defaults = {"enabled": True, "required": True, "auto_memory": True} if not saved else {}
+    return KnowledgeSettings.model_validate(saved.get("settings", defaults)).model_dump(), str(
         saved.get("revision", "disabled")
     )
 
@@ -102,21 +106,99 @@ def snapshot_knowledge(private: ConfigurationStore) -> dict[str, Any]:
     return _public(settings, revision)
 
 
+def knowledge_tls(certificate: str) -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    if certificate:
+        try:
+            ca = x509.load_pem_x509_certificate(certificate.encode())
+            if not ca.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
+                raise ValueError("Certificate is not a CA")
+            context.load_verify_locations(cadata=certificate)
+        except (ValueError, x509.ExtensionNotFound, ssl.SSLError) as exc:
+            raise ValueError("Knowledge TLS requires a valid CA certificate") from exc
+    return context
+
+
+@service
+class KnowledgeConnection:
+    def __init__(self, private: ConfigurationStore) -> None:
+        self.private = private
+
+    @asynccontextmanager
+    async def client(
+        self,
+        settings: dict[str, Any],
+        workspace: str,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+        timeout: float = 20,
+    ) -> AsyncIterator[CanonClient]:
+        headers = {"X-Tenant-Id": settings["tenant_id"], "X-Workspace-Id": workspace}
+        if settings["api_key"]:
+            headers["X-API-Key"] = settings["api_key"]
+        if settings["agent_token"]:
+            headers["X-Agent-Token"] = settings["agent_token"]
+
+        async def discard_browser_cookies(response: httpx.Response) -> None:
+            # API-key callers do not carry browser sessions or double-submit CSRF cookies.
+            http.cookies.clear()
+
+        async with (
+            httpx.AsyncClient(
+                base_url=settings["endpoint"],
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=False,
+                transport=transport,
+                trust_env=False,
+                verify=knowledge_tls(settings.get("ca_certificate", "")),
+                event_hooks={"response": [discard_browser_cookies]},
+            ) as http,
+            CanonClient(
+                base_url=settings["endpoint"],
+                client=http,
+                tenant_id=settings["tenant_id"],
+                workspace_id=workspace,
+                agent_token=settings["agent_token"] or None,
+            ) as client,
+        ):
+            yield client
+
+
 @service
 class KnowledgeManager:
     def __init__(
-        self, store: Store, engine: Engine | None = None, *, transport: httpx.AsyncBaseTransport | None = None
+        self,
+        store: Store,
+        engine: Engine | None = None,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+        connection: KnowledgeConnection | None = None,
     ) -> None:
         self.store = store
         self.engine = engine
         self.private = store.configuration
         self.transport = transport
+        self.connection = connection or KnowledgeConnection(self.private)
         self.journal: Any = None
         self.readiness: dict[str, Any] = {
             "state": "missing",
             "checked_at": None,
-            "detail": "Configure flycanon to retrieve project knowledge",
+            "detail": "Required flycanon knowledge is missing; initialize the managed stack before product work",
         }
+        settings, _ = _current(self.private)
+        if settings["enabled"] and settings["endpoint"] and (settings["api_key"] or settings["agent_token"]):
+            self.readiness = {
+                "state": "configured",
+                "checked_at": None,
+                "detail": "Knowledge is configured; test the running service and cited retrieval",
+            }
+        elif not settings["enabled"]:
+            self.readiness = {
+                "state": "disabled",
+                "checked_at": None,
+                "detail": "Existing operator configuration disables knowledge",
+            }
 
     def public(self) -> dict[str, Any]:
         settings, revision = _current(self.private)
@@ -138,6 +220,8 @@ class KnowledgeManager:
         for key in request.clear_secrets:
             settings[key] = ""
         settings = KnowledgeSettings.model_validate(settings).model_dump()
+        if settings["ca_certificate"]:
+            knowledge_tls(settings["ca_certificate"])
         if settings["endpoint"]:
             settings["endpoint"] = validate_endpoint(settings["endpoint"])
         if settings["enabled"] and (
@@ -195,28 +279,17 @@ class KnowledgeManager:
 
     @asynccontextmanager
     async def client(self, settings: dict[str, Any], workspace: str) -> AsyncIterator[CanonClient]:
-        headers = {"X-Tenant-Id": settings["tenant_id"], "X-Workspace-Id": workspace}
-        if settings["api_key"]:
-            headers["X-API-Key"] = settings["api_key"]
-        if settings["agent_token"]:
-            headers["X-Agent-Token"] = settings["agent_token"]
-        async with (
-            httpx.AsyncClient(
-                base_url=settings["endpoint"],
-                headers=headers,
-                timeout=20,
-                follow_redirects=False,
-                transport=self.transport,
-            ) as http,
-            CanonClient(
-                base_url=settings["endpoint"],
-                client=http,
-                tenant_id=settings["tenant_id"],
-                workspace_id=workspace,
-                agent_token=settings["agent_token"] or None,
-            ) as client,
-        ):
+        async with self.connection.client(settings, workspace, transport=self.transport) as client:
             yield client
+
+    async def initialize_managed(self) -> dict[str, Any]:
+        from firefly_forge.managed_knowledge import ManagedKnowledgeProvisioner
+
+        provisioner = ManagedKnowledgeProvisioner(self.connection, transport=self.transport)
+        try:
+            return await provisioner.initialize()
+        finally:
+            self.readiness = provisioner.readiness
 
     async def test(self, request: KnowledgeTest) -> dict[str, Any]:
         settings = self.settings()
@@ -260,9 +333,17 @@ class KnowledgeManager:
         settings = self.settings(run)
         if not settings["enabled"]:
             return {"hits": [], "warnings": [], "context": "", "citations": []}
+        if not settings["endpoint"] or not (settings["api_key"] or settings["agent_token"]):
+            raise ValueError("Initialize required flycanon knowledge before starting product work")
         workspaces = [project_workspace(repository_id)]
         if settings["framework_workspace"] and settings["framework_workspace"] not in workspaces:
             workspaces.append(settings["framework_workspace"])
+        if self.private._read(self.private.directory / "managed-knowledge.json") and settings["api_key"]:
+            try:
+                async with self.client(settings, project_workspace(repository_id)) as client:
+                    await self.ensure_workspace(client, repository_id)
+            except (CanonError, httpx.HTTPError, ValidationError):
+                raise ValueError("Required project knowledge workspace initialization failed") from None
         hits: list[dict[str, Any]] = []
         warnings = []
         for workspace in workspaces:
