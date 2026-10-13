@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import errno
 import hashlib
 import io
 import json
 import os
 import re
-import shutil
 import signal
+import stat
+import sys
 import tarfile
-import tempfile
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
@@ -34,65 +36,138 @@ from firefly_forge.sandbox_models import (
 )
 from firefly_forge.secrets import contains_known_credential, redact_environment, runtime_environment
 from firefly_forge.store import Store
+from firefly_forge.workspace_tools import _private_name
 
 
 class SandboxReconciliationRequired(RuntimeError):
     pass
 
 
+class SandboxPublicationReconciliationRequired(SandboxReconciliationRequired):
+    def __init__(self, backup_path: Path) -> None:
+        super().__init__("Source publication rollback is uncertain; the original tree was retained for reconciliation")
+        self.backup_path = backup_path
+
+
 def _private_path(parts: tuple[str, ...]) -> bool:
     return any(
-        part in {".git", ".ssh", ".aws", ".azure", ".docker"} or part == ".env" or part.startswith(".env.")
+        _private_name(part)
+        or part in {".git", ".ssh", ".aws", ".azure", ".docker", ".forge-sandbox-results"}
+        or part == ".env"
+        or part.startswith(".env.")
         for part in parts
     )
 
 
+def _directory_fd(name: str | Path, *, parent: int | None = None) -> int:
+    try:
+        return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    except OSError as exc:
+        raise ValueError("Workspace contains a link or changed directory") from exc
+
+
+def _regular_data(parent: int, name: str, limit: int, *, private: bool = False) -> tuple[bytes, os.stat_result]:
+    try:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    except OSError as exc:
+        raise ValueError("Workspace contains a link or changed file") from exc
+    with os.fdopen(descriptor, "rb") as source:
+        before = os.fstat(source.fileno())
+        if not stat.S_ISREG(before.st_mode) or (not private and before.st_nlink != 1):
+            raise ValueError("Archive workspace permits only regular files without links")
+        data = source.read(limit + 1)
+        after = os.fstat(source.fileno())
+        if len(data) > limit:
+            raise ValueError("Workspace exceeds the archive byte limit")
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValueError("Workspace changed while reading a regular file")
+        return data, after
+
+
+def _parent_fd(root: int, parts: tuple[str, ...], *, create: bool = False) -> int:
+    directory = os.dup(root)
+    try:
+        for part in parts[:-1]:
+            if create:
+                with suppress(FileExistsError):
+                    os.mkdir(part, 0o755, dir_fd=directory)
+            child = _directory_fd(part, parent=directory)
+            os.close(directory)
+            directory = child
+        return directory
+    except BaseException:
+        os.close(directory)
+        raise
+
+
 def pack_workspace(
-    workspace: Path, limit: int, *, metadata: bool = False, registry: dict[str, str] | None = None
+    workspace: Path,
+    limit: int,
+    *,
+    metadata: bool = False,
+    registry: dict[str, str] | None = None,
+    _root_fd: int | None = None,
 ) -> tuple[bytes, str]:
     output = io.BytesIO()
     total = 0
-    with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as stream:
-        root = tarfile.TarInfo(".")
-        root.type, root.mode, root.uid, root.gid = tarfile.DIRTYPE, 0o755, os.getuid(), os.getgid()
-        stream.addfile(root)
-        for path in sorted(workspace.rglob("*")):
-            relative = path.relative_to(workspace)
-            if not metadata and _private_path(relative.parts):
-                continue
-            if contains_known_credential(relative.as_posix(), registry):
-                raise ValueError("Workspace archive cannot contain configured credentials")
-            stat = path.lstat()
-            if path.is_symlink() or not (path.is_file() or path.is_dir()) or (path.is_file() and stat.st_nlink != 1):
-                raise ValueError("Archive workspace permits only regular files and directories without links")
-            item = tarfile.TarInfo(relative.as_posix())
-            item.uid, item.gid = os.getuid(), os.getgid()
-            item.mode = 0o755 if path.is_dir() or stat.st_mode & 0o111 else 0o644
-            if path.is_dir():
-                item.type = tarfile.DIRTYPE
-                stream.addfile(item)
-            else:
-                total += stat.st_size
-                if total > limit:
-                    raise ValueError("Workspace exceeds the archive byte limit")
-                with path.open("rb") as source:
-                    data = source.read(limit - total + stat.st_size + 1)
-                if len(data) != stat.st_size:
-                    raise ValueError("Workspace changed while creating the archive")
-                if contains_known_credential(data.decode("utf-8", errors="ignore"), registry):
-                    raise ValueError("Workspace archive cannot contain configured credentials")
-                item.size = len(data)
-                stream.addfile(item, io.BytesIO(data))
-            if output.tell() > limit + 1_048_576:
-                raise ValueError("Workspace exceeds the archive byte limit")
+    root_fd = os.dup(_root_fd) if _root_fd is not None else _directory_fd(workspace)
+    try:
+        with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as stream:
+            root = tarfile.TarInfo(".")
+            root.type, root.mode, root.uid, root.gid = tarfile.DIRTYPE, 0o755, os.getuid(), os.getgid()
+            stream.addfile(root)
+
+            def visit(directory: int, parts: tuple[str, ...]) -> None:
+                nonlocal total
+                for name in sorted(os.listdir(directory)):
+                    path = (*parts, name)
+                    if not metadata and _private_path(path):
+                        continue
+                    relative = "/".join(path)
+                    if contains_known_credential(relative, registry):
+                        raise ValueError("Workspace archive cannot contain configured credentials")
+                    observed = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    item = tarfile.TarInfo(relative)
+                    item.uid, item.gid = os.getuid(), os.getgid()
+                    item.mode = 0o755 if stat.S_ISDIR(observed.st_mode) or observed.st_mode & 0o111 else 0o644
+                    if stat.S_ISDIR(observed.st_mode):
+                        child = _directory_fd(name, parent=directory)
+                        try:
+                            item.type = tarfile.DIRTYPE
+                            stream.addfile(item)
+                            visit(child, path)
+                        finally:
+                            os.close(child)
+                    elif stat.S_ISREG(observed.st_mode):
+                        data, actual = _regular_data(directory, name, limit - total)
+                        if (observed.st_dev, observed.st_ino) != (actual.st_dev, actual.st_ino):
+                            raise ValueError("Workspace changed before reading a regular file")
+                        total += len(data)
+                        if contains_known_credential(data.decode("utf-8", errors="ignore"), registry):
+                            raise ValueError("Workspace archive cannot contain configured credentials")
+                        item.size = len(data)
+                        stream.addfile(item, io.BytesIO(data))
+                    else:
+                        raise ValueError("Archive workspace permits only regular files and directories without links")
+                    if output.tell() > limit + 1_048_576:
+                        raise ValueError("Workspace exceeds the archive byte limit")
+
+            visit(root_fd, ())
+    finally:
+        os.close(root_fd)
     data = output.getvalue()
     return data, hashlib.sha256(data).hexdigest()
 
 
-def unpack_workspace(data: bytes, destination: Path, limit: int, *, registry: dict[str, str] | None = None) -> None:
+def unpack_workspace(
+    data: bytes, destination: Path, limit: int, *, registry: dict[str, str] | None = None, _root_fd: int | None = None
+) -> None:
     if destination.is_symlink():
         raise ValueError("Workspace archive destination contains a link")
-    destination = destination.resolve()
     if len(data) > limit + 1_048_576:
         raise ValueError("Workspace exceeds the archive byte limit")
     if contains_known_credential(data.decode("utf-8", errors="ignore"), registry):
@@ -124,38 +199,229 @@ def unpack_workspace(data: bytes, destination: Path, limit: int, *, registry: di
             if any(parent.is_symlink() for parent in [target, *target.parents]):
                 raise ValueError("Workspace archive destination contains a link")
         destination.mkdir(parents=True, exist_ok=True)
-        for path, item in validated:
-            target = destination.joinpath(*path.parts)
-            if any(parent.is_symlink() for parent in [target, *target.parents]):
-                raise ValueError("Workspace archive destination contains a link")
-            if item.isdir():
-                target.mkdir(parents=True, exist_ok=True)
+        root = os.dup(_root_fd) if _root_fd is not None else _directory_fd(destination)
+        try:
+            for path, item in validated:
+                directory = _parent_fd(root, path.parts, create=True)
+                try:
+                    if item.isdir():
+                        with suppress(FileExistsError):
+                            os.mkdir(path.name, 0o755, dir_fd=directory)
+                        child = _directory_fd(path.name, parent=directory)
+                        os.close(child)
+                    else:
+                        descriptor = os.open(
+                            path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory
+                        )
+                        with os.fdopen(descriptor, "wb") as output:
+                            source = stream.extractfile(item)
+                            assert source is not None
+                            output.write(source.read())
+                            output.flush()
+                            os.fchmod(output.fileno(), 0o755 if item.mode & 0o111 else 0o644)
+                            os.fsync(output.fileno())
+                finally:
+                    os.close(directory)
+            os.fsync(root)
+        finally:
+            os.close(root)
+
+
+def _exchange_trees(parent: int, first: str, second: str) -> None:
+    library = ctypes.CDLL(None, use_errno=True)
+    function = getattr(library, "renameatx_np" if sys.platform == "darwin" else "renameat2", None)
+    if function is None:
+        raise OSError(errno.ENOTSUP, "Atomic directory exchange is unavailable")
+    function.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    function.restype = ctypes.c_int
+    if function(parent, os.fsencode(first), parent, os.fsencode(second), 2) != 0:
+        failure = ctypes.get_errno()
+        raise OSError(failure, "Atomic directory exchange failed")
+
+
+def _clear_staging(directory: int) -> None:
+    for name in os.listdir(directory):
+        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if stat.S_ISDIR(info.st_mode):
+            child = _directory_fd(name, parent=directory)
+            try:
+                _clear_staging(child)
+                current = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                identity = os.fstat(child)
+                if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):
+                    raise ValueError("Owned staging directory changed during cleanup")
+                os.rmdir(name, dir_fd=directory)
+            finally:
+                os.close(child)
+        else:
+            os.unlink(name, dir_fd=directory)
+
+
+def _private_copy(source: int, destination: int | None, limit: int) -> str:
+    records: list[tuple[Any, ...]] = []
+    total = 0
+
+    def has_private(directory: int, parts: tuple[str, ...]) -> bool:
+        for name in os.listdir(directory):
+            path = (*parts, name)
+            if _private_path(path):
+                return True
+            info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode):
+                child = _directory_fd(name, parent=directory)
+                try:
+                    if has_private(child, path):
+                        return True
+                finally:
+                    os.close(child)
+        return False
+
+    def visit(directory: int, target: int | None, parts: tuple[str, ...], preserving: bool = False) -> None:
+        nonlocal total
+        for name in sorted(os.listdir(directory)):
+            path = (*parts, name)
+            info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            keep = preserving or _private_path(path)
+            if stat.S_ISDIR(info.st_mode):
+                child = _directory_fd(name, parent=directory)
+                target_child = None
+                try:
+                    if not keep and not has_private(child, path):
+                        continue
+                    if target is not None:
+                        with suppress(FileExistsError):
+                            os.mkdir(name, 0o700, dir_fd=target)
+                        target_child = _directory_fd(name, parent=target)
+                    visit(child, target_child, path, keep)
+                    if keep:
+                        records.append((path, info.st_mode, info.st_uid, info.st_gid, info.st_mtime_ns))
+                        if target_child is not None:
+                            os.fchown(target_child, info.st_uid, info.st_gid)
+                            os.fchmod(target_child, stat.S_IMODE(info.st_mode))
+                            os.utime(target_child, ns=(info.st_atime_ns, info.st_mtime_ns))
+                            os.fsync(target_child)
+                finally:
+                    os.close(child)
+                    if target_child is not None:
+                        os.close(target_child)
+                continue
+            if not keep:
+                continue
+            if stat.S_ISLNK(info.st_mode):
+                value = os.readlink(name, dir_fd=directory)
+                records.append((path, info.st_mode, value))
+                if target is not None:
+                    os.symlink(value, name, dir_fd=target)
+            elif stat.S_ISREG(info.st_mode):
+                data, actual = _regular_data(directory, name, limit - total, private=True)
+                if (info.st_dev, info.st_ino) != (actual.st_dev, actual.st_ino):
+                    raise ValueError("Private workspace metadata changed")
+                total += len(data)
+                records.append(
+                    (
+                        path,
+                        actual.st_mode,
+                        actual.st_uid,
+                        actual.st_gid,
+                        actual.st_mtime_ns,
+                        hashlib.sha256(data).hexdigest(),
+                    )
+                )
+                if target is not None:
+                    descriptor = os.open(
+                        name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=target
+                    )
+                    with os.fdopen(descriptor, "wb") as output:
+                        output.write(data)
+                        output.flush()
+                        os.fchown(output.fileno(), actual.st_uid, actual.st_gid)
+                        os.fchmod(output.fileno(), stat.S_IMODE(actual.st_mode))
+                        os.utime(output.fileno(), ns=(actual.st_atime_ns, actual.st_mtime_ns))
+                        os.fsync(output.fileno())
             else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                source = stream.extractfile(item)
-                assert source is not None
-                target.write_bytes(source.read())
-                target.chmod(0o755 if item.mode & 0o111 else 0o644)
+                raise ValueError("Private workspace metadata contains a special file")
+
+    visit(source, destination, ())
+    return hashlib.sha256(repr(records).encode()).hexdigest()
 
 
 def collect_workspace(
     data: bytes, workspace: Path, limit: int, original_digest: str, *, registry: dict[str, str] | None = None
-) -> None:
-    with tempfile.TemporaryDirectory(prefix="forge-archive-") as temporary:
-        staged = Path(temporary)
-        unpack_workspace(data, staged, limit, registry=registry)
-        current_digest = pack_workspace(workspace, limit, registry=registry)[1]
-        if current_digest not in {original_digest, pack_workspace(staged, limit, registry=registry)[1]}:
+) -> dict[str, Any]:
+    parent = _directory_fd(workspace.parent)
+    try:
+        original = _directory_fd(workspace.name, parent=parent)
+    except BaseException:
+        os.close(parent)
+        raise
+    name = ".forge-archive-" + uuid.uuid4().hex
+    staged_fd = None
+    published = False
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent)
+        staged = workspace.parent / name
+        staged_fd = _directory_fd(name, parent=parent)
+        unpack_workspace(data, staged, limit, registry=registry, _root_fd=staged_fd)
+        result_digest = pack_workspace(staged, limit, registry=registry, _root_fd=staged_fd)[1]
+        current_digest = pack_workspace(workspace, limit, registry=registry, _root_fd=original)[1]
+        if current_digest == result_digest:
+            return {}
+        if current_digest != original_digest:
             raise ValueError("Host workspace changed during archive execution; results require reconciliation")
-        for path in sorted(workspace.rglob("*"), reverse=True):
-            relative = path.relative_to(workspace)
-            if _private_path(relative.parts) or (staged / relative).exists():
-                continue
-            if path.is_file():
-                path.unlink()
-            elif path.is_dir() and not any(path.iterdir()):
-                path.rmdir()
-        shutil.copytree(staged, workspace, dirs_exist_ok=True)
+        private_digest = _private_copy(original, staged_fd, limit)
+        original_mode = os.fstat(original)
+        os.fchown(staged_fd, original_mode.st_uid, original_mode.st_gid)
+        os.fchmod(staged_fd, stat.S_IMODE(original_mode.st_mode))
+        os.fsync(staged_fd)
+        observed = os.stat(workspace.name, dir_fd=parent, follow_symlinks=False)
+        actual = os.fstat(original)
+        if (observed.st_dev, observed.st_ino) != (actual.st_dev, actual.st_ino):
+            raise ValueError("Host workspace root changed before publication")
+        if pack_workspace(workspace, limit, registry=registry, _root_fd=original)[1] != original_digest:
+            raise ValueError("Host workspace changed before publication")
+        _exchange_trees(parent, workspace.name, name)
+        published = True
+        try:
+            backup_entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            active_entry = os.stat(workspace.name, dir_fd=parent, follow_symlinks=False)
+            stage_identity = os.fstat(staged_fd)
+            if (
+                active_entry.st_dev,
+                active_entry.st_ino,
+            ) != (stage_identity.st_dev, stage_identity.st_ino):
+                raise SandboxPublicationReconciliationRequired(workspace.parent / name)
+            if (backup_entry.st_dev, backup_entry.st_ino) != (actual.st_dev, actual.st_ino):
+                raise ValueError("Host workspace root changed during publication")
+            if (
+                pack_workspace(workspace, limit, registry=registry, _root_fd=original)[1] != original_digest
+                or _private_copy(original, None, limit) != private_digest
+            ):
+                raise ValueError("Host workspace changed during publication")
+            os.fsync(parent)
+            return {"workspace_backup_path": str(staged), "workspace_backup_sha256": original_digest}
+        except SandboxPublicationReconciliationRequired:
+            raise
+        except BaseException as failure:
+            try:
+                _exchange_trees(parent, workspace.name, name)
+            except BaseException:
+                raise SandboxPublicationReconciliationRequired(workspace.parent / name) from failure
+            published = False
+            os.fsync(parent)
+            raise
+    finally:
+        try:
+            if staged_fd is not None and not published:
+                _clear_staging(staged_fd)
+                current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                identity = os.fstat(staged_fd)
+                if (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino):
+                    os.rmdir(name, dir_fd=parent)
+        finally:
+            os.close(original)
+            if staged_fd is not None:
+                os.close(staged_fd)
+            os.close(parent)
 
 
 async def _bounded_process(
@@ -329,18 +595,74 @@ class SandboxExecutor:
             raise SandboxReconciliationRequired("Archive transfer volumes are not daemon-owned anonymous volumes")
         return volumes
 
-    async def _archive_collect(self, config: SandboxInput, name: str, workspace: Path, original_digest: str) -> None:
-        code, data = await _bounded_process(
-            ["docker", "--context", str(config.context), "cp", name + ":/workspace/.", "-"],
-            self.store.path.parent,
-            30,
-            config.workspace_max_bytes + 1_048_576,
-        )
-        if code:
-            raise SandboxReconciliationRequired("Completed runner workspace archive could not be recovered")
-        collect_workspace(
-            data, workspace, config.workspace_max_bytes, original_digest, registry=self.credential_registry()
-        )
+    def _retain_archive(self, name: str, data: bytes) -> dict[str, Any]:
+        root = _directory_fd(self.store.path.parent)
+        folder = ".forge-sandbox-results"
+        filename = name + ".tar"
+        directory = None
+        try:
+            with suppress(FileExistsError):
+                os.mkdir(folder, 0o700, dir_fd=root)
+            directory = _directory_fd(folder, parent=root)
+            if os.fstat(directory).st_uid != os.getuid() or stat.S_IMODE(os.fstat(directory).st_mode) != 0o700:
+                raise ValueError("Retained runner archive directory must be private and owner-controlled")
+            try:
+                descriptor = os.open(
+                    filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory
+                )
+            except FileExistsError:
+                previous, _ = _regular_data(directory, filename, len(data), private=True)
+                if previous != data:
+                    raise SandboxReconciliationRequired(
+                        "Retained runner archive differs from the exited command"
+                    ) from None
+            else:
+                with os.fdopen(descriptor, "wb") as output:
+                    output.write(data)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.fsync(directory)
+            return {
+                "archive_path": str(self.store.path.parent / folder / filename),
+                "archive_sha256": hashlib.sha256(data).hexdigest(),
+                "archive_bytes": len(data),
+            }
+        finally:
+            if directory is not None:
+                os.close(directory)
+            os.close(root)
+
+    async def _archive_collect(
+        self, config: SandboxInput, name: str, workspace: Path, original_digest: str
+    ) -> tuple[dict[str, Any], BaseException | None]:
+        evidence: dict[str, Any] = {"workspace_import": "requires_reconciliation", "archive_container_retained": True}
+        try:
+            code, data = await _bounded_process(
+                ["docker", "--context", str(config.context), "cp", name + ":/workspace/.", "-"],
+                self.store.path.parent,
+                30,
+                config.workspace_max_bytes + 1_048_576,
+            )
+            if code:
+                raise SandboxReconciliationRequired("Completed runner workspace archive could not be recovered")
+            if contains_known_credential(data.decode("utf-8", errors="ignore"), self.credential_registry()):
+                evidence["archive_container_retained"] = False
+                raise ValueError("Workspace archive cannot contain configured credentials")
+            evidence.update(self._retain_archive(name, data))
+            evidence["archive_container_retained"] = False
+            await self.store.assert_ownership()
+            evidence.update(
+                collect_workspace(
+                    data, workspace, config.workspace_max_bytes, original_digest, registry=self.credential_registry()
+                )
+            )
+            evidence["workspace_import"] = "complete"
+            return evidence, None
+        except BaseException as failure:
+            evidence["import_failure"] = self._safe_result(ProcessResult([], 0, str(failure))).output
+            if isinstance(failure, SandboxPublicationReconciliationRequired):
+                evidence["workspace_backup_path"] = str(failure.backup_path)
+            return evidence, failure
 
     def _create_argv(
         self,
@@ -586,6 +908,10 @@ class SandboxExecutor:
                 finished = existing["effects"].get("start", {})
                 if finished.get("status") == "done":
                     evidence = finished["evidence"]
+                    if evidence.get("workspace_import") == "requires_reconciliation":
+                        raise SandboxReconciliationRequired(
+                            "Retained runner result requires source publication reconciliation"
+                        )
                     if "exit_code" not in evidence:
                         raise SandboxReconciliationRequired(
                             "Interrupted runner command requires explicit stage recovery"
@@ -694,6 +1020,7 @@ class SandboxExecutor:
             started = await self.journal.sandbox_effect_intent(
                 run_id, task_id, execution_id, effect="start", payload=payload
             )
+            retain_container = False
             try:
                 if started["disposition"] == "needs_reconciliation":
                     observed = observed or await self._inspect(config, payload["container_name"], labels)
@@ -713,18 +1040,28 @@ class SandboxExecutor:
                     result = self._safe_result(
                         ProcessResult(argv, observed["State"]["ExitCode"], logs.output), browser=_browser
                     )
+                    archive_evidence: dict[str, Any] = {}
+                    import_failure = None
                     if config.workspace_transport == "archive":
-                        await self._archive_collect(
+                        archive_evidence, import_failure = await self._archive_collect(
                             config, payload["container_name"], workspace, request["workspace_digest"]
                         )
+                        retain_container = archive_evidence.get("archive_container_retained", False)
                     await self.journal.sandbox_effect_reconcile(
                         run_id,
                         task_id,
                         execution_id,
                         effect="start",
-                        evidence={"exit_code": result.exit_code, "output": result.output, "observed_state": "exited"},
+                        evidence={
+                            "exit_code": result.exit_code,
+                            "output": result.output,
+                            "observed_state": "exited",
+                            **archive_evidence,
+                        },
                         outcome="completed",
                     )
+                    if import_failure is not None:
+                        raise import_failure
                 elif started["disposition"] == "execute":
                     await self.store.assert_ownership()
                     start_argv = ["start", "--attach", payload["container_name"]]
@@ -744,22 +1081,28 @@ class SandboxExecutor:
                         raise SandboxReconciliationRequired("Docker command completion could not be confirmed")
                     result = ProcessResult(argv, state["State"]["ExitCode"], result.output)
                     result = self._safe_result(result, browser=_browser)
+                    archive_evidence = {}
+                    import_failure = None
                     if config.workspace_transport == "archive":
-                        await self._archive_collect(
+                        archive_evidence, import_failure = await self._archive_collect(
                             config, payload["container_name"], workspace, request["workspace_digest"]
                         )
+                        retain_container = archive_evidence.get("archive_container_retained", False)
                     await self.journal.sandbox_effect_receipt(
                         run_id,
                         task_id,
                         execution_id,
                         effect="start",
-                        evidence={"exit_code": result.exit_code, "output": result.output},
+                        evidence={"exit_code": result.exit_code, "output": result.output, **archive_evidence},
                     )
+                    if import_failure is not None:
+                        raise import_failure
                 else:
                     evidence = started["execution"]["effects"]["start"]["evidence"]
                     result = ProcessResult(argv, evidence["exit_code"], evidence["output"])
             finally:
-                await asyncio.shield(self._cleanup(config, run_id, task_id, execution_id, payload, labels))
+                if not retain_container:
+                    await asyncio.shield(self._cleanup(config, run_id, task_id, execution_id, payload, labels))
             return ProcessResult(argv, result.exit_code, result.output)
 
     async def recover(self) -> dict[str, int]:
@@ -792,6 +1135,10 @@ class SandboxExecutor:
                     outcome="completed" if observed else "interrupted",
                 )
             started = row["effects"].get("start", {})
+            if started.get("evidence", {}).get("workspace_import") == "requires_reconciliation":
+                counts["interrupted"] += 1
+                continue
+            retain_container = False
             if started.get("status") == "intent":
                 if observed and observed["State"]["Status"] == "exited":
                     output_limit = row["request"]["request"].get("output_limit", config.max_output_bytes)
@@ -801,13 +1148,16 @@ class SandboxExecutor:
                     private_rejected = bool(payload["request"].get("browser")) and contains_known_credential(
                         logs.output, self.credential_registry()
                     )
+                    archive_evidence: dict[str, Any] = {}
+                    import_failure = None
                     if config.workspace_transport == "archive" and not private_rejected:
-                        await self._archive_collect(
+                        archive_evidence, import_failure = await self._archive_collect(
                             config,
                             row["container_name"],
                             Path(payload["request"]["workspace"]),
                             payload["request"]["workspace_digest"],
                         )
+                        retain_container = archive_evidence.get("archive_container_retained", False)
                     await self.journal.sandbox_effect_reconcile(
                         run_id,
                         task_id,
@@ -819,10 +1169,11 @@ class SandboxExecutor:
                             "exit_code": observed["State"]["ExitCode"],
                             "output": self._safe_result(ProcessResult([], 0, logs.output)).output,
                             "observed_state": "exited",
+                            **archive_evidence,
                         },
-                        outcome="interrupted" if private_rejected else "completed",
+                        outcome="interrupted" if private_rejected or import_failure else "completed",
                     )
-                    counts["interrupted" if private_rejected else "recovered_receipts"] += 1
+                    counts["interrupted" if private_rejected or import_failure else "recovered_receipts"] += 1
                 else:
                     await self.journal.sandbox_effect_reconcile(
                         run_id,
@@ -834,8 +1185,9 @@ class SandboxExecutor:
                     )
                     counts["interrupted"] += 1
             if config.mode == "docker":
-                await self._cleanup(config, run_id, task_id, execution_id, payload, labels)
-                counts["removed"] += 1
+                if not retain_container:
+                    await self._cleanup(config, run_id, task_id, execution_id, payload, labels)
+                    counts["removed"] += 1
             else:
                 await self._cleanup_host(run_id, task_id, execution_id, payload)
         return counts
