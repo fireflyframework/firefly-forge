@@ -11,7 +11,7 @@ Keycloak identifies production users and project memberships authorize their act
 4. Choose an official CLI login or configure a native API provider.
 5. Test that connection, connect the intended repository, and run a small PyFly or LaraFly acceptance brief.
 
-Use a provider's default model first when using its signed-in CLI. If you set a model explicitly, verify that the account can use it in a real run. Native API models require their matching provider key. There is no fixed model menu claiming account-specific availability.
+Use a provider's default model first when using its signed-in CLI. If you set a model explicitly, verify that the account can use it in a real run. Native API models require their matching provider key. The account's available models must be checked separately; the factory has no fixed menu that establishes that access.
 
 ## Save provider configuration
 
@@ -64,8 +64,8 @@ Credential values are redacted from run events, errors, summaries, usage and ver
 | `FORGE_REPAIR_ATTEMPTS` | Additional repair attempts, default `2`, bounded `0..3` |
 | `FORGE_POLICY_CATALOG` | Optional trusted JSON policy catalog file |
 
-Environment-only changes require restarting the server to make its host setup predictable. The configuration API does not mutate process-global environment variables.
+Restart the server after changing environment-only settings. The configuration API does not mutate process-global environment variables.
 
 ## Assign models by task
 
-[Named model profiles](model-profiles.md) keep several models and their credentials separate. Explicit task bindings select the intended profile; an unsupported capability fails instead of silently choosing another model. Product dialogue records its actual task/profile selection in the immutable conversation receipt. New implementation/review/visual task wiring must be accepted separately from a saved configuration.
+[Named model profiles](model-profiles.md) keep several models and their credentials separate. Explicit task bindings select the intended profile; an unsupported capability fails instead of silently choosing another model. Product dialogue records its actual task/profile selection in the immutable conversation receipt. Verify implementation, review and visual task behavior separately from saving their configuration.

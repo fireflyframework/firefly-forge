@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Observe and maintain a deployed application
 
-Application operations links a project and deployment target to actual health observations, metric thresholds and incidents. The factory records what it checked; a configured URL or a successful deployment job is not a current health observation.
+Use application operations to link a project and deployment target to health observations, metric thresholds and incidents. The factory records each check. A configured URL or a successful deployment job does not establish current application health.
 
 Configure the application after choosing a target belonging to the same repository. Use PyFly or LaraFly for the primary supported maintenance path, and retain the frontend actually used by that product. The application’s repository identity cannot later change.
 
@@ -74,7 +74,7 @@ To request a fix, send `POST /api/v1/incidents/INCIDENT_ID/maintenance`:
 
 Maintenance requires an open incident and at least one explicit check. The new run uses the application’s project, configured backend/frontend and incident context, with `operation: maintain` and publication disabled. It captures the normal provider, policy, customer and brand inputs and retains its own verification history. The incident stores that maintenance run ID.
 
-A queued maintenance run is not a repaired application. Review its source diff, regressions and final verification. Explicitly publish or deploy the accepted result through the normal controls, then run another application check. Provider quota or authentication pauses use the same [recovery and handoff](recovery.md) controls as other runs.
+Review the maintenance run's source diff, regressions and final verification. Queueing the run does not establish a repair. Explicitly publish or deploy the accepted result through the normal controls, then run another application check. Provider quota or authentication pauses use the same [recovery and handoff](recovery.md) controls as other runs.
 
 ## Resolve only after fresh recovery evidence
 

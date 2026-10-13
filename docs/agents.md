@@ -58,7 +58,7 @@ Native Agentic writes actual project files through confined tools. It cannot run
 | `connected` | Authenticated model listing includes the selected model | Verify a real source-editing run |
 | `failed` | The explicit connection check failed | Correct the address, key, login or model and retest |
 
-Compatible API and bridge tests request `/models`. A hosted provider without an explicit compatible endpoint receives a configuration check; model and tool access are established by a real run. A successful listing does not prove generation. The provider catalog reports the evidence and its timestamp rather than a universal readiness guarantee.
+Compatible API and bridge tests request `/models`. A hosted provider without an explicit compatible endpoint receives a configuration check; model and tool access are established by a real run. A successful listing does not prove generation. The provider catalog records the check's evidence and timestamp.
 
 Generation defaults to a 1,800-second wall timeout. Native Agentic also bounds requests and tool calls; its optional output-token limit is available for direct APIs. Subscription bridge execution omits that cap because the bridge cannot implement it. Verification has its own per-command timeouts.
 

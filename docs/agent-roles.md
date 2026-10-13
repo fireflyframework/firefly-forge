@@ -18,7 +18,7 @@ A role assigns responsibility to an actual factory stage. It does not create a s
 
 ## Version and project selection
 
-Authenticated operators read or replace the registry at `GET /api/v1/agent-roles` and `PUT /api/v1/agent-roles`. The replacement is a `RoleDocument` with a version, maximum request budget of 1–3, and all seven supported roles. It is stored in private factory configuration.
+Authenticated operators read or replace the registry at `GET /api/v1/agent-roles` and `PUT /api/v1/agent-roles`. The replacement is a `RoleDocument` with a version, maximum request budget of 1 to 3, and all seven supported roles. It is stored in private factory configuration.
 
 Project/run role overrides use this shape:
 
@@ -46,7 +46,7 @@ Official Codex and Claude workers use their own native tools and host permission
 
 ## Worker feedback and manager requests
 
-Feedback is typed data with a stable ID, role, planned task, attempt 1–4, disposition, summary and bounded public workspace evidence paths. Dispositions are `completed`, `failed`, `blocked` or `clarification`. A blocker or clarification must carry exactly one request with an ID, kind, question, context and optional choices.
+Feedback is typed data with a stable ID, role, planned task, attempt 1 to 4, disposition, summary and bounded public workspace evidence paths. Dispositions are `completed`, `failed`, `blocked` or `clarification`. A blocker or clarification must carry exactly one request with an ID, kind, question, context and optional choices.
 
 The manager journals feedback before pausing. Questions survive restarts and do not trigger automatic retries. Replaying the same feedback is idempotent; reusing its ID with different content fails. The frozen request budget limits new questions. A response is evidence of an answer, not deployment or publication approval.
 

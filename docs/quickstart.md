@@ -51,7 +51,7 @@ progress, while **Changes** shows the changed paths and diff. **Verification**
 contains the commands and their real results. **Artifacts** lists retained
 outputs reported by the server.
 
-Expected: a successful run contains a generated change and passing verification.
+A successful run contains a generated change and passing verification.
 A failed command or provider error leaves a failed run with evidence; it must
 not be treated as a passing build. If a run is still active, **Cancel run**
 requests cancellation. **Retry run** creates another attempt; inspect both.

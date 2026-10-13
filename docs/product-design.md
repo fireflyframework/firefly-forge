@@ -21,7 +21,7 @@ Send authenticated `PUT /api/v1/repositories/REPOSITORY_ID/brand`:
 }
 ```
 
-The result includes a revision, content digest, tokens and files: `tokens.json`, `logo.svg`, `theme.css` and `brand-guide.md`. Read the latest kit with `GET /api/v1/repositories/{id}/brand`. The generated spacing scale uses four-pixel increments and a control radius; tune the reviewed token set to the customer’s actual interface rather than adopting defaults without inspection.
+The result includes a revision, content digest, tokens and files: `tokens.json`, `logo.svg`, `theme.css` and `brand-guide.md`. Read the latest kit with `GET /api/v1/repositories/{id}/brand`. The generated spacing scale uses four-pixel increments and a control radius. Review and tune the tokens for the customer's interface before adopting them.
 
 Generated Manrope wordmarks use outlined glyphs, and the kit embeds the licensed Manrope font in `theme.css`. Other selected families produce text-based SVG wordmarks and require licensed local font assets in the product. Naming a family does not install it or establish its license. Check those SVGs with the intended font loaded and review logo contrast on the actual surfaces. An imported or generated mark still needs review for each placement.
 

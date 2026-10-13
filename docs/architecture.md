@@ -42,6 +42,6 @@ Provider-owned [SCM applications](scm.md) manage repository grants externally. G
 
 ## Read the Studio floor
 
-The factory floor groups actual plans and jobs by project and stage. Its active animation follows running work; reduced-motion preferences suppress animation. Completed work has durable receipts and verified outcomes. Neither timestamps nor decorative machine motion estimate completion percentages.
+The factory floor groups actual plans and jobs by project and stage. Its active animation follows running work; reduced-motion preferences suppress animation. Use durable receipts and verification results to assess completed work. Timestamps and machine animation do not estimate completion percentages.
 
 Workspaces protect consumer checkouts. Host-mode commands and generated code still run with the worker identity; configured isolated runners provide the separate execution boundary. [Security](security.md) describes the identity and runner requirements.

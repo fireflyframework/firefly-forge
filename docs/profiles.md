@@ -3,8 +3,8 @@
 
 Profiles provide concrete framework instructions to each coding provider.
 `GET /api/v1/profiles` is the runtime catalog: it reports names, versions,
-upstream sources and validation boundaries. Read that catalog for the running
-version rather than assuming this page's descriptions are release guarantees.
+upstream sources and validation boundaries. Read the catalog for the running
+version. The descriptions on this page do not establish release acceptance.
 
 | Backend | Role | Start here |
 | --- | --- | --- |
@@ -41,5 +41,5 @@ one project-owned gate. Command arguments are passed directly to the process,
 not interpreted as a shell expression.
 
 Leave commands empty only when the generated project declares a supported check
-that forge can discover. A project without a verification command must fail
-verification rather than receiving an assumed passing result.
+that forge can discover. A project without a verification command fails
+verification; the factory cannot assume a passing result.

@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review and deploy a cloud recipe
 
-Cloud recipes turn an independently verified product into a reviewable VM and application target. The catalog includes AWS EC2, Azure Linux VM, Google Compute Engine, DigitalOcean Droplet, an existing VPS and a dedicated on-premises host. These are VM recipes, not managed Kubernetes or managed database installations.
+Cloud recipes turn an independently verified product into a reviewable VM and application target. The catalog includes AWS EC2, Azure Linux VM, Google Compute Engine, DigitalOcean Droplet, an existing VPS and a dedicated on-premises host. The recipes provision VMs. Managed Kubernetes and managed database installation are outside their scope.
 
 Rendering returns files, a target preview, requirements and a content digest. It neither authenticates a cloud account nor applies infrastructure. Install OpenTofu 1.11+ (or review a compatible Terraform configuration), Ansible Core 2.16+, Python 3 and curl on the deployment host. The generated commands use `tofu` and `ansible-playbook` from its `PATH`. Save or export the recipe to review it. Enabling a deployment target remains separate from explicitly deploying a verified run.
 
@@ -55,7 +55,7 @@ The playbook refuses absent secrets or certificates. It installs distro Docker/n
 
 These defaults suit a stateless service. They do not provision a product database, durable upload volume, backups, certificate renewal service or application-specific migrations. Configure those separately and test them. Replacing the named container can briefly interrupt service; this recipe does not implement a zero-downtime rollout.
 
-A newly provisioned VM will not yet have the external application secrets and TLS certificate. The playbook stops at those prerequisites. Complete them through the approved host-management process, verify its SSH identity, then explicitly deploy again against the retained remote state. It does not manufacture secrets or bypass certificate verification to make the first run look successful.
+A newly provisioned VM will not yet have the external application secrets and TLS certificate. The playbook stops at those prerequisites. Complete them through the approved host-management process, verify its SSH identity, then explicitly deploy again against the retained remote state. It does not create secrets or bypass certificate verification.
 
 ## Inspect the actual effects
 

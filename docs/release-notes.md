@@ -42,7 +42,7 @@ Application adapter tests do not prove that an external organization has registe
 
 The private Firefly Agent Bridge is distributed separately. Local subscription execution requires the official CLI's account login and an authorized connection; a hosted factory does not automatically tunnel to a developer's machine. Distributed execution worker pools and automatic external identity-provider federation are outside this release.
 
-## 0.1.0 — Earlier release
+## 0.1.0: Earlier release
 
 Firefly Forge introduces Firefly's software factory: a product brief becomes an
 isolated Git implementation with real verification, retained source evidence

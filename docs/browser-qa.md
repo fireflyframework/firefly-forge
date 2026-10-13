@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review user journeys in an isolated browser
 
-A screenshot of a landing page does not establish that a product works. Declare the user's goal, exercise its controls, and record the states that actually occurred. The native `browser_journey` tool runs Playwright inside the repository's configured Docker browser image. It shares the component workspace with the application server and starts a fresh browser context for each call.
+Declare the user's goal, exercise the product's controls and record the observed states. A landing-page screenshot alone does not establish that the product works. The native `browser_journey` tool runs Playwright inside the repository's configured Docker browser image. It shares the component workspace with the application server and starts a fresh browser context for each call.
 
 Grant `browser_journey` to the implementing role and configure the [browser runner](agent-tools.md#configure-real-browser-checks) before creating a run. Native Firefly Agentic and bridge workers receive only configured, granted tools. Official Codex and Claude Code CLI tools retain their separate permissions.
 
@@ -55,4 +55,4 @@ High or critical findings in a worker's QA report block delivery. The report rem
 
 Native workers can request references by the frozen descriptor's `artifact_id`, such as `journey-01-desktop-light`. The plan must use its journey ID, default-state ID, exact viewport, theme and 100% zoom. The factory validates the saved review and source digest, then renders the approved SVG into PNG inside the isolated runner. The first render consumes a browser and command call; the checked per-run cache avoids repeating it on a repair or handoff. Source and raster hashes remain separate. Other states, changed fonts, custom font families without loaded assets, and mismatched viewports remain unreviewed.
 
-Authenticated operators can download saved screenshots through `GET /api/v1/runner-evidence/{id}/screenshot`. Keep artifact hashes with the QA report when reviewing a product. No browser or model result warrants a blanket claim of pixel perfection.
+Authenticated operators can download saved screenshots through `GET /api/v1/runner-evidence/{id}/screenshot`. Keep artifact hashes with the QA report when reviewing a product. Assess visual fidelity against the specific references and states reviewed; a browser or model result alone cannot establish pixel perfection.
