@@ -20,9 +20,7 @@ def test_release_checksums_match_upload_glob_and_ignore_packaging_bookkeeping(tm
 
     subprocess.run([sys.executable, str(script), str(tmp_path)], check=True)
 
-    expected = "".join(
-        f"{hashlib.sha256(body).hexdigest()}  {name}\n" for name, body in sorted(artifacts.items())
-    )
+    expected = "".join(f"{hashlib.sha256(body).hexdigest()}  {name}\n" for name, body in sorted(artifacts.items()))
     assert (tmp_path / "SHA256SUMS").read_text() == expected
     subprocess.run([sys.executable, str(script), str(tmp_path)], check=True)
     assert (tmp_path / "SHA256SUMS").read_text() == expected
