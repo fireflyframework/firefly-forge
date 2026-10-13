@@ -393,3 +393,61 @@ def test_modified_framework_manual_is_rejected_before_admission(tmp_path, monkey
         target.write("Modified source")
     with pytest.raises(ValueError, match="integrity"):
         module.framework_documents()
+
+
+async def test_campaign_default_and_managed_knowledge_vector_matches_child_revision(store, tmp_path):
+    from firefly_forge.engine import Engine
+    from firefly_forge.journal import Journal
+    from firefly_forge.managed_knowledge import bootstrap_knowledge
+    from firefly_forge.models import RepositoryInput, RunInput
+    from firefly_forge.project_campaigns import ProjectCampaigns
+
+    repo = await store.add_repository(RepositoryInput(name="Campaign source", url=str(tmp_path)))
+    engine = Engine(store, tmp_path / "jobs")
+    campaigns = ProjectCampaigns(store, engine, Journal(store))
+    for managed in (False, True):
+        if managed:
+            bootstrap_knowledge(store.configuration, tmp_path / "service")
+        vector = campaigns._configuration_vector(repo["id"], {"codex"})
+        run = await store.create_run(RunInput(repository_id=repo["id"], brief="Bounded managed campaign"))
+        campaigns._validate_admission_snapshots(run, vector)
+        manager = KnowledgeManager(store)
+        frozen = manager.settings(run)
+        assert frozen["enabled"] and frozen["required"] and frozen["auto_memory"]
+        if managed:
+            assert frozen["endpoint"] == "https://knowledge:8500" and frozen["api_key"]
+        else:
+            with pytest.raises(ValueError, match="Initialize required flycanon"):
+                await manager.retrieve(run)
+
+
+def test_old_campaign_admission_keeps_original_pre_ca_knowledge_digest(tmp_path):
+    from firefly_forge.knowledge import KnowledgeSettings
+    from firefly_forge.project_campaigns import ProjectCampaigns, digest
+
+    private = ConfigurationStore(tmp_path)
+    # A previously frozen disabled revision predates the new optional TLS-CA field.
+    legacy = KnowledgeSettings(enabled=False).model_dump(exclude={"ca_certificate"})
+    revision = "a" * 32
+    private._write(private.revisions / f"knowledge-{revision}.json", legacy)
+    provider = private.snapshot("codex")
+    roles = {"digest": "role-digest", "revision": "role-revision"}
+    configuration = {
+        "policy": "policy",
+        "role_revision": "role-revision",
+        "brand": digest({}),
+        "credentials": {"codex": digest(private.load_snapshot(provider["config_revision"]))},
+        "knowledge_settings": digest(legacy),
+    }
+    run = {
+        "policy_snapshot": {"digest": "policy"},
+        "role_snapshot": roles,
+        "branding_snapshot": {},
+        "config_revision": provider["config_revision"],
+        "agent": "codex",
+        "knowledge_snapshot": {"revision": revision},
+    }
+    campaigns = ProjectCampaigns(SimpleNamespace(configuration=private), None, None)
+    before = (private.revisions / f"knowledge-{revision}.json").read_bytes()
+    campaigns._validate_admission_snapshots(run, configuration)
+    assert (private.revisions / f"knowledge-{revision}.json").read_bytes() == before
