@@ -30,11 +30,11 @@ Choose the path that matches the work in front of you. You can join an existing 
 
 ## Operate the factory and its products
 
-**Prepare:** a dedicated database, private retained storage, an identity provider and the deployment boundaries for the installation.
+**Prepare:** dedicated forge and Flycanon databases, private retained storage, an identity provider and the deployment boundaries for the installation.
 
-1. [Install the factory](installation.md), then [configure sign-in](identity.md) and [manage users](user-administration.md).
+1. Prepare [sign-in](identity.md), [install the factory](installation.md), then [manage users](user-administration.md).
 2. Choose the [API and worker topology](runtime-roles.md). Verify shared storage and ownership before adding replicas.
-3. Configure source-control applications, provider access and optional [knowledge](knowledge.md) with explicit scopes.
+3. Verify the included [Flycanon knowledge service](knowledge.md) and its project scopes. Configure source-control applications and provider access.
 4. [Deploy the product](deployment.md), then inspect [health and maintenance](application-operations.md).
 5. Keep [backups and operational records](operations.md). Use [recovery](recovery.md) for interrupted work or uncertain external effects.
 

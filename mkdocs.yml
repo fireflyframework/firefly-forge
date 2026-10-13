@@ -99,6 +99,7 @@ nav:
       - DevSecOps pipelines: devsecops.md
   - Operations:
       - Operations: operations.md
+      - Factory infrastructure and clusters: factory-infrastructure.md
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
       - Deploy and roll back: deployment.md

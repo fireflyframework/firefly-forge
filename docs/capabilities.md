@@ -21,7 +21,7 @@ verification, retain change evidence and optionally publish a pull request.
 | Run persistence | Native PostgreSQL plans, task states and hash-chain journal | Ambiguous remote effects require reconciliation |
 | Maintenance and tests | Existing-source maintenance and model-free test mode | Checks establish only their asserted behavior |
 | Policies | Versioned, data-only central catalog and project defaults | Recommendations guide workers; optional gates execute commands |
-| Flycanon | Cited project/framework retrieval and searchable verified memory | Requires authorized scopes and a separately operated service |
+| Flycanon | Included managed service, required cited project/framework retrieval and automatic verified memory on fresh setup | Actual embedding, scope grants and memory receipts establish readiness; existing configurations are preserved |
 | Deployment | Explicit repository-bound targets, command receipts and rollback verification | External targets require their own live acceptance |
 | Service ownership | Local lock plus PostgreSQL schema advisory lease | Independent installations need separate directories and schemas |
 

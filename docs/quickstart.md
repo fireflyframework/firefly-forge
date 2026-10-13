@@ -3,7 +3,7 @@
 
 This walkthrough produces a local change and verification evidence. It does not
 push a branch or create a pull request. Complete [installation](installation.md)
-and connect Studio to the API first.
+and connect Studio to the API first. Verify the included [Flycanon service](knowledge.md#initialize-the-managed-service) before starting: required retrieval needs an authenticated scope and actual citations.
 
 ## 1. Register a repository
 

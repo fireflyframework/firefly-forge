@@ -68,9 +68,15 @@ Cancellation stops queued or active work and terminates worker process groups. I
 
 Resume continues the same authorized workspace and snapshots. Handoff creates a new provider configuration and plan revision while retaining the source, policies and evidence. Retry creates a fresh run and clone. Use [recovery](recovery.md) to choose the correct action.
 
+## Keep knowledge ready
+
+The managed installation includes Flycanon with required retrieval and automatic verified memory on fresh setup. Check authentication, source admission, embedding-backed search and memory receipts separately. **Knowledge** shows the selected scope and retained provenance; an unavailable required workspace blocks new generation. Preserve the admitted source and journal when investigating a delayed or uncertain write. See [knowledge operations](knowledge.md#review-failures-and-retained-data).
+
+Monitor embedding errors, disk/object capacity and the selected model alongside factory process health. Retain each project's knowledge policy and review source access before ingestion. A shared framework workspace contains references approved for sharing; project sources stay in their exact project workspace.
+
 ## Back up the ledger and source together
 
-Stop the service for a straightforward consistent backup. Back up the dedicated PostgreSQL database with its ordinary PostgreSQL tools, and preserve the private data directory containing configuration revisions, workspaces and artifacts. Protect both backups as sensitive development data.
+Stop the service for a straightforward consistent backup. Back up the dedicated PostgreSQL database with its ordinary PostgreSQL tools, and preserve the private data directory containing configuration revisions, workspaces and artifacts. Also back up Flycanon PostgreSQL and the original knowledge objects at the same consistency boundary. Keep service credentials, CA trust and model settings with the protected installation records. Protect these backups as sensitive development data. [Factory infrastructure](factory-infrastructure.md#7-test-recovery-before-serving-projects) describes full-stack recovery.
 
 Restoring only PostgreSQL can leave a run referring to missing source or credential revisions. Restoring only workspaces loses its durable task and verification history. Missing or changed retained workspaces require reconciliation; they must not be reported as accepted source.
 

@@ -63,7 +63,7 @@ Instruction adaptations retain their source revision, license and adaptation has
 
 Scoped runner defaults may expose a configured command, browser or search grant as `worker_unverified`. The execution worker must validate its runtime before using it. Browser and search tools require their configured capability and frozen grants. Official CLI workers follow their native permission controls; Python tool selections do not restrict the CLI's native tools.
 
-Coding and product dialogue retrieval use the selected repository and configured framework workspace. The lifecycle view reports knowledge as configured but unverified, or not configured. It returns no keys, secret references or raw provider settings. Invocation citations and retained receipts establish what was retrieved; configuration alone does not prove access. Deterministic gates use frozen contracts, source and receipts rather than pretending to retrieve framework knowledge.
+Coding and product dialogue retrieval use the selected repository and configured framework workspace. Fresh managed installations include required Flycanon and automatic verified memory; existing connection choices remain preserved. The lifecycle view reports knowledge as configured but unverified, or not configured. It returns no keys, secret references or raw provider settings. Invocation citations and retained receipts establish what was retrieved; configuration alone does not prove access. Deterministic gates use frozen contracts, source and receipts rather than pretending to retrieve framework knowledge.
 
 ## Editing and historical evidence
 
