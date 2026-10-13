@@ -5,9 +5,9 @@ import type {
   Object3D,
   WebGLRenderer,
   MeshStandardMaterial,
-  Vector3,
 } from "three";
 import "./FactoryScene.css";
+import { FactoryMotion, syncStationClips } from "./FactoryMotion";
 
 export type FactoryStation = {
   id: string;
@@ -191,7 +191,8 @@ export function FactoryScene(props: FactorySceneProps) {
         indicators.set(item.id, lamp);
       }
       const treadTextures: Array<{
-        id: string;
+        from: number;
+        to: number;
         texture: import("three").CanvasTexture;
       }> = [];
       for (let index = 0; index < model.layout.length - 1; index++) {
@@ -217,7 +218,11 @@ export function FactoryScene(props: FactorySceneProps) {
           0,
         );
         scene.add(belt);
-        treadTextures.push({ id: model.layout[index + 1].id, texture });
+        treadTextures.push({
+          from: model.layout[index].x,
+          to: model.layout[index + 1].x,
+          texture,
+        });
       }
       const carrier = new THREE.Group();
       carrier.name = "receipted_output";
@@ -233,16 +238,15 @@ export function FactoryScene(props: FactorySceneProps) {
       carrier.add(tray, paper);
       carrier.position.set(model.layout[0].x, 0.76, 0);
       scene.add(carrier);
-      let transition: { from: Vector3; to: Vector3; elapsed: number } | null =
-        null;
-      let initialized = false;
-      let previous = new Map<string, FactoryStation["state"]>(),
-        lastTheme = "";
+      const motion = new FactoryMotion(model.layout);
+      let lastTheme = "";
       let frame: number | undefined,
         lastTime = performance.now(),
-        lost = false;
+        lost = false,
+        offscreen = false;
       const motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
-      const isVisible = () => !window.document.hidden && !lost && !disposed;
+      const isVisible = () =>
+        !window.document.hidden && !offscreen && !lost && !disposed;
       const sourceMaterials = new Map<MeshStandardMaterial, string>();
       world.traverse((node) => {
         if (node instanceof THREE.Mesh) {
@@ -295,42 +299,25 @@ export function FactoryScene(props: FactorySceneProps) {
         camera.bottom = -camera.top;
         camera.updateProjectionMatrix();
       }
-      function needsMotion() {
-        return (
-          !current.current.suspended &&
-          !motionQuery.matches &&
-          !current.current.stations.some(
-            (station) => station.state === "paused",
-          ) &&
-          (current.current.stations.some(
-            (station) => station.state === "active",
-          ) ||
-            transition !== null)
-        );
-      }
       function paint(time: number) {
         frame = undefined;
         if (!renderer || !isVisible()) return;
         const delta = Math.min((time - lastTime) / 1000, 0.05);
         lastTime = time;
-        if (needsMotion()) {
-          mixer.update(delta);
+        const from = motion.x;
+        motion.advance(delta);
+        carrier.position.x = motion.x;
+        syncStationClips(actions, motion.workingStation);
+        if (motion.workingStation) mixer.update(delta);
+        if (motion.x !== from)
           for (const belt of treadTextures)
             if (
-              current.current.stations.find((station) => station.id === belt.id)
-                ?.state === "active"
+              Math.max(from, motion.x) >= belt.from &&
+              Math.min(from, motion.x) <= belt.to
             )
-              belt.texture.offset.x -= delta * 0.6;
-          if (transition) {
-            transition.elapsed += delta;
-            const share = Math.min(transition.elapsed / 0.9, 1),
-              eased = share * share * (3 - 2 * share);
-            carrier.position.lerpVectors(transition.from, transition.to, eased);
-            if (share === 1) transition = null;
-          }
-        }
+              belt.texture.offset.x -= Math.sign(motion.x - from) * delta * 0.6;
         renderer.render(scene, camera);
-        if (needsMotion()) frame = requestAnimationFrame(paint);
+        if (motion.needsMotion) frame = requestAnimationFrame(paint);
       }
       function schedule() {
         if (!isVisible()) return;
@@ -363,25 +350,8 @@ export function FactoryScene(props: FactorySceneProps) {
         const styles = getComputedStyle(container!);
         for (const item of model.layout) {
           const state =
-              stations.find((station) => station.id === item.id)?.state ??
-              "waiting",
-            action = actions.get(item.id);
-          if (action) {
-            if (
-              state === "active" &&
-              !motionQuery.matches &&
-              !current.current.suspended
-            ) {
-              if (!action.isScheduled()) action.play();
-              action.paused = false;
-            } else if (
-              state === "paused" ||
-              motionQuery.matches ||
-              current.current.suspended
-            ) {
-              action.paused = true;
-            } else action.stop();
-          }
+            stations.find((station) => station.id === item.id)?.state ??
+            "waiting";
           const lamp = indicators.get(item.id)!;
           lamp.color.set(
             state === "active" || current.current.selectedId === item.id
@@ -396,37 +366,15 @@ export function FactoryScene(props: FactorySceneProps) {
           lamp.emissiveIntensity = state === "active" ? 0.35 : 0.04;
         }
 
-        const active = stations.find((station) => station.state === "active");
-        const completed = [...stations]
-          .reverse()
-          .find((station) => station.state === "done");
-        const receipt = active ?? completed;
-        carrier.visible = Boolean(receipt);
-        const position = receipt
-          ? model.layout.find((item) => item.id === receipt.id)
-          : model.layout[0];
-        if (!initialized) {
-          if (position) carrier.position.x = position.x;
-          initialized = true;
-        } else if (
-          receipt &&
-          previous.get(receipt.id) !== receipt.state &&
-          position
-        ) {
-          const target = new THREE.Vector3(position.x, 0.76, 0);
-          if (motionQuery.matches) {
-            carrier.position.copy(target);
-            transition = null;
-          } else if (carrier.position.distanceTo(target) > 0.01)
-            transition = {
-              from: carrier.position.clone(),
-              to: target,
-              elapsed: 0,
-            };
-        }
-        previous = new Map(
-          stations.map((station) => [station.id, station.state]),
-        );
+        motion.update(stations, {
+          hidden: window.document.hidden,
+          offscreen,
+          suspended: current.current.suspended,
+          reduced: motionQuery.matches,
+        });
+        carrier.visible = motion.targetStation !== null;
+        carrier.position.x = motion.x;
+        syncStationClips(actions, motion.workingStation);
         fit();
         schedule();
       }
@@ -435,14 +383,17 @@ export function FactoryScene(props: FactorySceneProps) {
         schedule();
       });
       resize.observe(container);
+      const intersection = new IntersectionObserver((entries) => {
+        offscreen = !entries[0].isIntersecting;
+        visibility();
+      });
+      intersection.observe(container);
       function visibility() {
-        if (window.document.hidden) {
+        if (!isVisible()) {
           if (frame !== undefined) cancelAnimationFrame(frame);
           frame = undefined;
-        } else {
-          fit();
-          schedule();
         }
+        update();
       }
       function contextLost(event: Event) {
         event.preventDefault();
@@ -483,6 +434,7 @@ export function FactoryScene(props: FactorySceneProps) {
       container.appendChild(canvas);
       release = () => {
         resize.disconnect();
+        intersection.disconnect();
         canvas.removeEventListener("pointerup", select);
         canvas.removeEventListener("webglcontextlost", contextLost);
         window.document.removeEventListener("visibilitychange", visibility);
