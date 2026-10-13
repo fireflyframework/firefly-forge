@@ -553,8 +553,8 @@ class FactoryConfiguration:
         return SearchTools(self.data_dir / "tools" / "search")
 
     @bean
-    def external_mcp_registry(self) -> ExternalMCPRegistry:
-        return ExternalMCPRegistry(self.data_dir)
+    def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
+        return ExternalMCPRegistry(private)
 
     @bean
     def tool_invocation_broker(

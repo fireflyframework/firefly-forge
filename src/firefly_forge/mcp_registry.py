@@ -269,8 +269,8 @@ def mcp_snapshot(directory: Path | ConfigurationStore, project_id: str | None, r
 
 @service
 class ExternalMCPRegistry:
-    def __init__(self, directory: Path) -> None:
-        self.private = ConfigurationStore(directory)
+    def __init__(self, directory: Path | ConfigurationStore) -> None:
+        self.private = directory if isinstance(directory, ConfigurationStore) else ConfigurationStore(directory)
         self.path = self.private.directory / "external-mcp.json"
         self.revisions = self.private.directory / "mcp-revisions"
         self.revisions.mkdir(exist_ok=True, mode=0o700)

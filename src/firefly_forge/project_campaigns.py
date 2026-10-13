@@ -149,7 +149,9 @@ class ProjectCampaigns:
             raise ValueError("The knowledge snapshot differs from the campaign's frozen settings")
         if run.get("search_snapshot") and digest(run["search_snapshot"]) != configuration["search"]:
             raise ValueError("The search snapshot differs from the campaign's frozen settings")
-        if run.get("tool_policy_snapshot", {}).get("digest") != configuration["tool_policy"]:
+        if ("tool_policy" in configuration or "tool_policy_snapshot" in run) and run.get(
+            "tool_policy_snapshot", {}
+        ).get("digest") != configuration.get("tool_policy"):
             raise ValueError("The tool policy differs from the campaign's frozen settings")
 
     @staticmethod

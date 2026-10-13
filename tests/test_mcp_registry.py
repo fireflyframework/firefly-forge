@@ -370,3 +370,22 @@ async def test_native_agentic_tool_invokes_only_explicit_external_proxy(tmp_path
     )
     assert calls == [("github", "get_file_contents", {"owner": "team", "repo": "product"})]
     assert (tmp_path / "owned.py").read_text() == "VALUE=1\n"
+
+
+def test_model_profile_and_mcp_registry_share_native_configuration_lock(tmp_path):
+    from firefly_forge.configuration import ConfigurationStore
+    from firefly_forge.mcp_registry import ExternalMCPRegistry, MCPConnectionInput
+    from firefly_forge.model_profiles import ModelProfileInput, ModelProfiles
+
+    private = ConfigurationStore(tmp_path)
+    registry = ExternalMCPRegistry(private)
+    registry.configure("github", MCPConnectionInput(enabled=True, api_key=KEY))
+    profiles = ModelProfiles(private, credential_registry=registry.credentials)
+    saved = profiles.save(
+        "builder",
+        ModelProfileInput(name="Builder", provider="agentic", values={"api_key": "separate-owned-model-key"}),
+    )
+    assert saved["config"]["api_key_configured"] is True
+    assert KEY not in json.dumps(saved)
+    with pytest.raises(ValueError, match="Remove configured credentials"):
+        profiles.save("builder", ModelProfileInput(name=KEY, provider="agentic"))
