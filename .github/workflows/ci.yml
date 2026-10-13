@@ -36,9 +36,8 @@ jobs:
       - run: uv sync --locked --group dev --group docs
       - run: npm --prefix studio ci
       - run: npx --prefix studio playwright install --with-deps chromium
-      - run: make check
+      - run: make check package
       - run: npm --prefix studio audit --omit=dev --audit-level=high
-      - run: make package
       - name: Install the wheel outside the source checkout
         run: |
           uv venv "$RUNNER_TEMP/forge-installed"
