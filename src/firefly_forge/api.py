@@ -136,6 +136,7 @@ from firefly_forge.projects import Projects
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
+from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
 from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyRepository
 from firefly_forge.runtime_roles import Role, RuntimeRoleConfig, RuntimeRoles
@@ -529,8 +530,12 @@ class FactoryConfiguration:
         return Journal(store, plans=plans, tasks=tasks, records=records, sandboxes=sandboxes)
 
     @bean
-    def sandbox_executor(self, store: Store, journal: Journal) -> SandboxExecutor:
-        return SandboxExecutor(store, journal)
+    def runner_backends(self) -> RunnerBackends:
+        return RunnerBackends()
+
+    @bean
+    def sandbox_executor(self, store: Store, journal: Journal, backends: RunnerBackends) -> SandboxExecutor:
+        return SandboxExecutor(store, journal, backends)
 
     @bean
     def search_tools(self) -> SearchTools:

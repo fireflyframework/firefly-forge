@@ -11,7 +11,6 @@ import io
 import json
 import os
 import re
-import signal
 import stat
 import sys
 import tarfile
@@ -27,6 +26,8 @@ from pyfly.container import service
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.journal import Journal, digest
 from firefly_forge.process import ProcessResult
+from firefly_forge.runner_backends import RunnerBackends
+from firefly_forge.runner_backends import bounded_process as bounded_process
 from firefly_forge.sandbox_models import (
     SandboxInput,
     bounded_argv,
@@ -34,7 +35,7 @@ from firefly_forge.sandbox_models import (
     pinned_image,
     validate_sandbox_snapshot,
 )
-from firefly_forge.secrets import contains_known_credential, redact_environment, runtime_environment
+from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.store import Store
 from firefly_forge.workspace_tools import _private_name
 
@@ -424,58 +425,11 @@ def collect_workspace(
             os.close(parent)
 
 
-async def _bounded_process(
-    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
-) -> tuple[int, bytes]:
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        stdin=asyncio.subprocess.PIPE if input_data is not None else asyncio.subprocess.DEVNULL,
-        start_new_session=True,
-        env=runtime_environment(),
-    )
-    output = bytearray()
-
-    async def consume() -> None:
-        if input_data is not None:
-            assert process.stdin is not None
-            process.stdin.write(input_data)
-            await process.stdin.drain()
-            process.stdin.close()
-        assert process.stdout is not None
-        while data := await process.stdout.read(65536):
-            if len(output) + len(data) > max_output_bytes:
-                raise RuntimeError("Runner output exceeded the frozen output limit")
-            output.extend(data)
-        await process.wait()
-
-    try:
-        await asyncio.wait_for(consume(), timeout)
-    except BaseException:
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGTERM)
-        with suppress(TimeoutError):
-            await asyncio.wait_for(process.wait(), 2)
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()
-        raise
-    return process.returncode or 0, bytes(output)
-
-
-async def bounded_process(
-    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
-) -> ProcessResult:
-    code, output = await _bounded_process(argv, cwd, timeout, max_output_bytes, input_data=input_data)
-    return ProcessResult(argv, code, output.decode("utf-8", errors="replace"))
-
-
 @service
 class SandboxExecutor:
-    def __init__(self, store: Store, journal: Journal) -> None:
+    def __init__(self, store: Store, journal: Journal, backends: RunnerBackends | None = None) -> None:
         self.store, self.journal = store, journal
+        self.backends = backends if backends is not None else RunnerBackends()
         self.owner = hashlib.sha256((str(store.path.parent.resolve()) + store.schema).encode()).hexdigest()[:24]
         self.credential_registry: Callable[[], dict[str, str]] = dict
         transfer_image = os.environ.get("FORGE_SANDBOX_TRANSFER_IMAGE")
@@ -500,17 +454,21 @@ class SandboxExecutor:
         *,
         input_data: bytes | None = None,
     ) -> ProcessResult:
-        assert config.context is not None
-        return await bounded_process(
-            ["docker", "--context", config.context, *argv],
-            self.store.path.parent,
-            timeout,
-            limit,
-            input_data=input_data,
+        if config.mode != "docker":
+            raise ValueError("Docker control requires Docker mode")
+        return await self.backends.select(config).run(
+            config, argv, self.store.path.parent, timeout, limit, input_data=input_data
         )
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         config = validate_sandbox_snapshot(snapshot)
+        if config.pool_binding is not None:
+            return {
+                "available": False,
+                "mode": config.mode,
+                "status": "not_implemented",
+                "reason": "Runner pool execution is not enabled",
+            }
         if config.mode == "host":
             return {"available": True, "mode": "host", "reason": snapshot["reason"]}
         try:
@@ -637,8 +595,9 @@ class SandboxExecutor:
     ) -> tuple[dict[str, Any], BaseException | None]:
         evidence: dict[str, Any] = {"workspace_import": "requires_reconciliation", "archive_container_retained": True}
         try:
-            code, data = await _bounded_process(
-                ["docker", "--context", str(config.context), "cp", name + ":/workspace/.", "-"],
+            code, data = await self.backends.select(config).run_bytes(
+                config,
+                ["cp", name + ":/workspace/.", "-"],
                 self.store.path.parent,
                 30,
                 config.workspace_max_bytes + 1_048_576,
@@ -842,6 +801,7 @@ class SandboxExecutor:
             run = await self.store.get_run(run_id)
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
             config = validate_sandbox_snapshot(snapshot)
+            backend = self.backends.select(config)
             if _browser:
                 if config.mode != "docker" or config.browser is None:
                     raise ValueError("Browser execution requires an explicit pinned browser image")
@@ -878,7 +838,7 @@ class SandboxExecutor:
                 "argv": argv,
                 "cwd": directory.relative_to(workspace).as_posix(),
                 "workspace": str(workspace),
-                "configuration": config.model_dump(mode="json"),
+                "configuration": capture_sandbox(config)["configuration"],
                 "timeout": min(timeout, config.timeout),
                 "git_root": str(git_root) if git_root else None,
             }
@@ -945,8 +905,8 @@ class SandboxExecutor:
                     raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                 await self.store.assert_ownership()
                 try:
-                    result = await bounded_process(
-                        argv, directory, min(timeout, config.timeout), config.max_output_bytes
+                    result = await backend.run(
+                        config, argv, directory, min(timeout, config.timeout), config.max_output_bytes
                     )
                     result = self._safe_result(result)
                     await self.journal.sandbox_effect_receipt(

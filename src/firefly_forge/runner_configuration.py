@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.runner_backends import require_available_runner
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.search_tools import SearchTools
@@ -58,13 +59,14 @@ class RunnerConfiguration:
             "repository_id": repository_id,
             "source": "repository" if saved else "platform_default",
             "revision": saved["revision"] if saved else None,
-            "sandbox": saved["sandbox"] if saved else SandboxInput().model_dump(mode="json"),
+            "sandbox": saved["sandbox"] if saved else capture_sandbox(None)["configuration"],
         }
 
     async def configure_repository(self, repository_id: str, request: RunnerDefaults) -> dict[str, Any]:
         repository_id = identifier(repository_id).hex
         await self.store.repository(repository_id)
-        configuration = request.sandbox.model_dump(mode="json")
+        require_available_runner(request.sandbox)
+        configuration = capture_sandbox(request.sandbox)["configuration"]
         if contains_known_credential(configuration, self.search.credential_registry()):
             raise ValueError("Runner defaults cannot contain configured credentials")
         with self.private.lock:
@@ -78,6 +80,7 @@ class RunnerConfiguration:
     async def capture_run(self, repository_id: str, selected: SandboxInput | None = None) -> dict[str, Any]:
         settings = await self.configuration(repository_id)
         config = selected if selected is not None else SandboxInput.model_validate(settings["sandbox"])
+        require_available_runner(config)
         sandbox = capture_sandbox(config)
         if contains_known_credential(sandbox, self.search.credential_registry()):
             raise ValueError("Runner configuration cannot contain configured credentials")
