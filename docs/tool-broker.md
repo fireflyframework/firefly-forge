@@ -1,3 +1,7 @@
+---
+description: Inspect durable tool intents, bounded outcomes, frozen budgets and explicit reconciliation for agent search and approved external MCP calls.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review mediated tool execution
 

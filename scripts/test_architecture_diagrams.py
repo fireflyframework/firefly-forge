@@ -59,7 +59,7 @@ class ArchitectureDiagramTests(unittest.TestCase):
                 for decorator in node.decorator_list
             )
         ]
-        self.assertEqual(len(tools), 78, "Update the documented factory MCP surface when registrations change")
+        self.assertEqual(len(tools), 89, "Update the documented factory MCP surface when registrations change")
 
 
 if __name__ == "__main__":

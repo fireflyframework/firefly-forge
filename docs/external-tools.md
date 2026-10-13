@@ -1,3 +1,7 @@
+---
+description: Configure reviewed external MCP connections, approve tool schemas and grant exact project repositories while keeping credentials in the control plane.
+---
+
 # External tools
 
 forge can expose reviewed external tools to a native agentic or Bridge worker. A factory administrator controls the connection, schema review and project grant. Credentials remain in the control plane; the project image and worker arguments receive no API key.

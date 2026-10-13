@@ -93,6 +93,8 @@ nav:
       - Lifecycle phases: agent-lifecycle.md
       - Agent tools: agent-tools.md
       - Configure internet search: search-providers.md
+      - Tool invocation evidence: tool-broker.md
+      - Reviewed external tools: external-tools.md
       - CLI, SDK and MCP clients: agent-integrations.md
       - Files in AI conversations: assistant-files.md
       - Configure provider access: configuration.md
