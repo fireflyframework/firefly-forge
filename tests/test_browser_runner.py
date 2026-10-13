@@ -75,7 +75,8 @@ button{position:fixed;bottom:10px;left:30px;width:100px;height:40px}
     ]
     config = SandboxInput(
         mode="docker",
-        context="colima-forge-tests",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
         image=os.environ["FORGE_TEST_BROWSER_IMAGE"],
         browser=BrowserInput(
             image=os.environ["FORGE_TEST_BROWSER_IMAGE"], start_argv=start, origin="http://127.0.0.1:18080"
@@ -180,7 +181,8 @@ document.querySelector('#status').textContent='Reserved '+document.querySelector
     ]
     config = SandboxInput(
         mode="docker",
-        context="colima-forge-tests",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
         image=os.environ["FORGE_TEST_BROWSER_IMAGE"],
         browser=BrowserInput(
             image=os.environ["FORGE_TEST_BROWSER_IMAGE"], start_argv=start, origin="http://127.0.0.1:18080"
@@ -267,7 +269,8 @@ async def test_actual_reference_raster_uses_embedded_font_and_reuses_private_has
             brief="Reference",
             sandbox=SandboxInput(
                 mode="docker",
-                context="colima-forge-tests",
+                context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+                workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
                 image=image,
                 browser=BrowserInput(
                     image=image,

@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import os
+import re
+import shutil
 import signal
+import tarfile
+import tempfile
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from pyfly.container import service
@@ -20,7 +25,13 @@ from pyfly.container import service
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.journal import Journal, digest
 from firefly_forge.process import ProcessResult
-from firefly_forge.sandbox_models import SandboxInput, bounded_argv, capture_sandbox, validate_sandbox_snapshot
+from firefly_forge.sandbox_models import (
+    SandboxInput,
+    bounded_argv,
+    capture_sandbox,
+    pinned_image,
+    validate_sandbox_snapshot,
+)
 from firefly_forge.secrets import contains_known_credential, redact_environment, runtime_environment
 from firefly_forge.store import Store
 
@@ -29,9 +40,127 @@ class SandboxReconciliationRequired(RuntimeError):
     pass
 
 
-async def bounded_process(
+def _private_path(parts: tuple[str, ...]) -> bool:
+    return any(
+        part in {".git", ".ssh", ".aws", ".azure", ".docker"} or part == ".env" or part.startswith(".env.")
+        for part in parts
+    )
+
+
+def pack_workspace(
+    workspace: Path, limit: int, *, metadata: bool = False, registry: dict[str, str] | None = None
+) -> tuple[bytes, str]:
+    output = io.BytesIO()
+    total = 0
+    with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as stream:
+        root = tarfile.TarInfo(".")
+        root.type, root.mode, root.uid, root.gid = tarfile.DIRTYPE, 0o755, os.getuid(), os.getgid()
+        stream.addfile(root)
+        for path in sorted(workspace.rglob("*")):
+            relative = path.relative_to(workspace)
+            if not metadata and _private_path(relative.parts):
+                continue
+            if contains_known_credential(relative.as_posix(), registry):
+                raise ValueError("Workspace archive cannot contain configured credentials")
+            stat = path.lstat()
+            if path.is_symlink() or not (path.is_file() or path.is_dir()) or (path.is_file() and stat.st_nlink != 1):
+                raise ValueError("Archive workspace permits only regular files and directories without links")
+            item = tarfile.TarInfo(relative.as_posix())
+            item.uid, item.gid = os.getuid(), os.getgid()
+            item.mode = 0o755 if path.is_dir() or stat.st_mode & 0o111 else 0o644
+            if path.is_dir():
+                item.type = tarfile.DIRTYPE
+                stream.addfile(item)
+            else:
+                total += stat.st_size
+                if total > limit:
+                    raise ValueError("Workspace exceeds the archive byte limit")
+                with path.open("rb") as source:
+                    data = source.read(limit - total + stat.st_size + 1)
+                if len(data) != stat.st_size:
+                    raise ValueError("Workspace changed while creating the archive")
+                if contains_known_credential(data.decode("utf-8", errors="ignore"), registry):
+                    raise ValueError("Workspace archive cannot contain configured credentials")
+                item.size = len(data)
+                stream.addfile(item, io.BytesIO(data))
+            if output.tell() > limit + 1_048_576:
+                raise ValueError("Workspace exceeds the archive byte limit")
+    data = output.getvalue()
+    return data, hashlib.sha256(data).hexdigest()
+
+
+def unpack_workspace(data: bytes, destination: Path, limit: int, *, registry: dict[str, str] | None = None) -> None:
+    if destination.is_symlink():
+        raise ValueError("Workspace archive destination contains a link")
+    destination = destination.resolve()
+    if len(data) > limit + 1_048_576:
+        raise ValueError("Workspace exceeds the archive byte limit")
+    if contains_known_credential(data.decode("utf-8", errors="ignore"), registry):
+        raise ValueError("Workspace archive cannot contain configured credentials")
+    validated: list[tuple[PurePosixPath, tarfile.TarInfo]] = []
+    total = 0
+    seen: set[str] = set()
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as stream:
+        for item in stream:
+            path = PurePosixPath(item.name)
+            if path.is_absolute() or ".." in path.parts or "\\" in item.name or "\x00" in item.name:
+                raise ValueError("Workspace archive path is not confined")
+            if not (item.isfile() or item.isdir()) or getattr(item, "sparse", None):
+                raise ValueError("Workspace archive permits only regular files and directories")
+            if _private_path(path.parts) or path.as_posix() == ".":
+                continue
+            if path.as_posix() in seen:
+                raise ValueError("Workspace archive contains duplicate paths")
+            seen.add(path.as_posix())
+            total += item.size
+            if total > limit:
+                raise ValueError("Workspace exceeds the archive byte limit")
+            validated.append((path, item))
+        file_paths = {path for path, item in validated if item.isfile()}
+        if any(parent in file_paths for path, _ in validated for parent in path.parents):
+            raise ValueError("Workspace archive path conflicts with a file")
+        for path, _ in validated:
+            target = destination.joinpath(*path.parts)
+            if any(parent.is_symlink() for parent in [target, *target.parents]):
+                raise ValueError("Workspace archive destination contains a link")
+        destination.mkdir(parents=True, exist_ok=True)
+        for path, item in validated:
+            target = destination.joinpath(*path.parts)
+            if any(parent.is_symlink() for parent in [target, *target.parents]):
+                raise ValueError("Workspace archive destination contains a link")
+            if item.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = stream.extractfile(item)
+                assert source is not None
+                target.write_bytes(source.read())
+                target.chmod(0o755 if item.mode & 0o111 else 0o644)
+
+
+def collect_workspace(
+    data: bytes, workspace: Path, limit: int, original_digest: str, *, registry: dict[str, str] | None = None
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="forge-archive-") as temporary:
+        staged = Path(temporary)
+        unpack_workspace(data, staged, limit, registry=registry)
+        current_digest = pack_workspace(workspace, limit, registry=registry)[1]
+        if current_digest not in {original_digest, pack_workspace(staged, limit, registry=registry)[1]}:
+            raise ValueError("Host workspace changed during archive execution; results require reconciliation")
+        for path in sorted(workspace.rglob("*"), reverse=True):
+            relative = path.relative_to(workspace)
+            if _private_path(relative.parts) or (staged / relative).exists():
+                continue
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+        shutil.copytree(staged, workspace, dirs_exist_ok=True)
+
+
+async def _bounded_process(
     argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
-) -> ProcessResult:
+) -> tuple[int, bytes]:
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=cwd,
@@ -67,7 +196,14 @@ async def bounded_process(
             os.killpg(process.pid, signal.SIGKILL)
         await process.wait()
         raise
-    return ProcessResult(argv, process.returncode or 0, output.decode("utf-8", errors="replace"))
+    return process.returncode or 0, bytes(output)
+
+
+async def bounded_process(
+    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
+) -> ProcessResult:
+    code, output = await _bounded_process(argv, cwd, timeout, max_output_bytes, input_data=input_data)
+    return ProcessResult(argv, code, output.decode("utf-8", errors="replace"))
 
 
 @service
@@ -76,6 +212,8 @@ class SandboxExecutor:
         self.store, self.journal = store, journal
         self.owner = hashlib.sha256((str(store.path.parent.resolve()) + store.schema).encode()).hexdigest()[:24]
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        transfer_image = os.environ.get("FORGE_SANDBOX_TRANSFER_IMAGE")
+        self.transfer_image = pinned_image(transfer_image) if transfer_image else None
         self._capacity = asyncio.Semaphore(2)
         self._run_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._ordinals: dict[tuple[str, str, int], int] = defaultdict(int)
@@ -119,6 +257,91 @@ class SandboxExecutor:
         except (OSError, RuntimeError, TimeoutError):
             return {"available": False, "mode": "docker", "reason": "Selected Docker context is unavailable"}
 
+    async def _archive_prepare(
+        self, config: SandboxInput, workspace: Path, git_root: Path | None, name: str, labels: dict[str, str]
+    ) -> dict[str, str]:
+        helper = name + "-transfer"
+        if not self.transfer_image:
+            raise ValueError("Archive execution requires an administrator-configured pinned transfer image")
+        args = [
+            "create",
+            "--pull=never",
+            "--name",
+            helper,
+            "--read-only",
+            "--network=none",
+            "--cap-drop=ALL",
+            "--cap-add=CHOWN",
+            "--user=0:0",
+            "--cpus",
+            str(config.cpus),
+            "--memory",
+            f"{config.memory_mb}m",
+            "--memory-swap",
+            f"{config.memory_mb}m",
+            "--pids-limit",
+            str(config.pids_limit),
+            "--security-opt=no-new-privileges:true",
+            "--mount",
+            "type=volume,dst=/workspace,volume-nocopy",
+            "--mount",
+            "type=volume,dst=/forge-git,volume-nocopy",
+        ]
+        for key, value in labels.items():
+            args += ["--label", f"{key}={value}"]
+        script = (
+            "import os\n"
+            "for root in ('/workspace','/forge-git'):\n"
+            f" os.chown(root,{os.getuid()},{os.getgid()},follow_symlinks=False)\n"
+            " for base,dirs,files in os.walk(root,followlinks=False):\n"
+            "  for name in dirs+files:\n"
+            f"   os.chown(os.path.join(base,name),{os.getuid()},{os.getgid()},follow_symlinks=False)\n"
+        )
+        args += ["--entrypoint", "/app/.venv/bin/python", self.transfer_image, "-I", "-S", "-c", script]
+        result = await self._docker(config, args)
+        if result.exit_code:
+            raise RuntimeError("Selected Docker runner could not create the archive transfer container")
+        archive, _ = pack_workspace(workspace, config.workspace_max_bytes, registry=self.credential_registry())
+        copied = await self._docker(config, ["cp", "--archive", "-", helper + ":/workspace"], input_data=archive)
+        if copied.exit_code:
+            raise RuntimeError("Selected Docker runner could not receive the workspace archive")
+        if git_root is not None:
+            metadata = git_root / ".git"
+            if metadata.is_symlink() or not metadata.is_dir():
+                raise ValueError("Verification requires a real Git metadata directory")
+            archive, _ = pack_workspace(
+                metadata, config.workspace_max_bytes, metadata=True, registry=self.credential_registry()
+            )
+            copied = await self._docker(config, ["cp", "--archive", "-", helper + ":/forge-git"], input_data=archive)
+            if copied.exit_code:
+                raise RuntimeError("Selected Docker runner could not receive the Git metadata archive")
+        initialized = await self._docker(config, ["start", "--attach", helper])
+        if initialized.exit_code:
+            raise RuntimeError("Selected Docker runner could not initialize archive ownership")
+        observed = await self._inspect(config, helper, labels)
+        assert observed is not None
+        if observed["State"]["Status"] != "exited" or observed["State"]["ExitCode"] != 0:
+            raise SandboxReconciliationRequired("Archive ownership initialization did not complete")
+        volumes = {mount["Destination"]: mount["Name"] for mount in observed["Mounts"]}
+        if set(volumes) != {"/workspace", "/forge-git"}:
+            raise SandboxReconciliationRequired("Archive transfer mount roots differ from the owned policy")
+        if any(not re.fullmatch(r"[a-f0-9]{64}", value) for value in volumes.values()):
+            raise SandboxReconciliationRequired("Archive transfer volumes are not daemon-owned anonymous volumes")
+        return volumes
+
+    async def _archive_collect(self, config: SandboxInput, name: str, workspace: Path, original_digest: str) -> None:
+        code, data = await _bounded_process(
+            ["docker", "--context", str(config.context), "cp", name + ":/workspace/.", "-"],
+            self.store.path.parent,
+            30,
+            config.workspace_max_bytes + 1_048_576,
+        )
+        if code:
+            raise SandboxReconciliationRequired("Completed runner workspace archive could not be recovered")
+        collect_workspace(
+            data, workspace, config.workspace_max_bytes, original_digest, registry=self.credential_registry()
+        )
+
     def _create_argv(
         self,
         config: SandboxInput,
@@ -129,6 +352,7 @@ class SandboxExecutor:
         labels: dict[str, str],
         *,
         git_root: Path | None,
+        volumes: dict[str, str] | None = None,
     ) -> list[str]:
         if any("," in str(path) for path in (workspace, cwd)):
             raise ValueError("Docker workspace paths cannot contain mount delimiters")
@@ -168,7 +392,9 @@ class SandboxExecutor:
             "--env",
             "XDG_CACHE_HOME=/tmp/forge-cache",
             "--mount",
-            f"type=bind,src={workspace},dst=/workspace",
+            f"type=volume,src={volumes['/workspace']},dst=/workspace,volume-nocopy"
+            if volumes
+            else f"type=bind,src={workspace},dst=/workspace",
             "--workdir",
             "/workspace" + ("/" + relative if relative != "." else ""),
         ]
@@ -176,7 +402,12 @@ class SandboxExecutor:
             metadata = git_root / ".git"
             if metadata.is_symlink() or not metadata.is_dir() or "," in str(metadata):
                 raise ValueError("Verification requires a real Git metadata directory")
-            command += ["--mount", f"type=bind,src={metadata},dst=/workspace/.git,readonly"]
+            command += [
+                "--mount",
+                f"type=volume,src={volumes['/forge-git']},dst=/workspace/.git,readonly,volume-nocopy"
+                if volumes
+                else f"type=bind,src={metadata},dst=/workspace/.git,readonly",
+            ]
         elif (workspace / ".git").exists():
             # Hide repository metadata from implementation commands while mounting source only.
             command += ["--tmpfs", "/workspace/.git:ro,nosuid,nodev,size=1024,mode=000"]
@@ -210,11 +441,15 @@ class SandboxExecutor:
         )
         if intent["disposition"] == "completed":
             return
-        observed = await self._inspect(config, payload["container_name"], labels)
-        if observed is not None:
-            result = await self._docker(config, ["container", "rm", "--force", payload["container_name"]])
-            if result.exit_code:
-                raise SandboxReconciliationRequired("Owned container cleanup could not be confirmed")
+        names = [payload["container_name"]]
+        if config.workspace_transport == "archive":
+            names.append(payload["container_name"] + "-transfer")
+        for name in names:
+            observed = await self._inspect(config, name, labels)
+            if observed is not None:
+                result = await self._docker(config, ["container", "rm", "--force", "--volumes", name])
+                if result.exit_code:
+                    raise SandboxReconciliationRequired("Owned container cleanup could not be confirmed")
         if intent["disposition"] == "needs_reconciliation":
             await self.journal.sandbox_effect_reconcile(
                 run_id,
@@ -314,7 +549,7 @@ class SandboxExecutor:
                 "org.firefly.forge.run": run_id,
                 "org.firefly.forge.snapshot": snapshot["digest"],
             }
-            request = {
+            request: dict[str, Any] = {
                 "browser": _browser,
                 "output_limit": output_limit,
                 "input_sha256": hashlib.sha256(_browser_input).hexdigest() if _browser_input is not None else None,
@@ -325,6 +560,15 @@ class SandboxExecutor:
                 "timeout": min(timeout, config.timeout),
                 "git_root": str(git_root) if git_root else None,
             }
+            if config.workspace_transport == "archive":
+                if not self.transfer_image:
+                    raise ValueError("Archive execution requires an administrator-configured pinned transfer image")
+                request["transfer_image"] = self.transfer_image
+                request["workspace_digest"] = (
+                    existing["request"]["request"]["workspace_digest"]
+                    if existing
+                    else pack_workspace(workspace, config.workspace_max_bytes, registry=self.credential_registry())[1]
+                )
             payload = {
                 "parent_attempt": attempt,
                 "ordinal": ordinal,
@@ -333,6 +577,9 @@ class SandboxExecutor:
                 "request_digest": digest(request),
                 "request": request,
             }
+            if existing and SandboxInput.model_validate(existing["request"]["request"]["configuration"]) == config:
+                request["configuration"] = existing["request"]["request"]["configuration"]
+                payload["request_digest"] = digest(request)
             if existing is not None:
                 if existing["request"] != payload:
                     raise SandboxReconciliationRequired("Durable runner invocation differs from the requested command")
@@ -401,20 +648,49 @@ class SandboxExecutor:
                 )
             elif created["disposition"] == "execute":
                 await self.store.assert_ownership()
-                create_argv = self._create_argv(
-                    config, workspace, directory, argv, payload["container_name"], labels, git_root=git_root
-                )
-                if _browser_input is not None:
-                    create_argv.insert(1, "--interactive")
-                result = await self._docker(
-                    config,
-                    create_argv,
-                )
-                if result.exit_code:
-                    raise RuntimeError("Selected Docker runner could not create the configured container")
-                await self.journal.sandbox_effect_receipt(
-                    run_id, task_id, execution_id, effect="create", evidence={"container_id": result.output.strip()}
-                )
+                try:
+                    volumes = (
+                        await self._archive_prepare(config, workspace, git_root, payload["container_name"], labels)
+                        if config.workspace_transport == "archive"
+                        else None
+                    )
+                    create_argv = self._create_argv(
+                        config,
+                        workspace,
+                        directory,
+                        argv,
+                        payload["container_name"],
+                        labels,
+                        git_root=git_root,
+                        volumes=volumes,
+                    )
+                    if _browser_input is not None:
+                        create_argv.insert(1, "--interactive")
+                    result = await self._docker(config, create_argv)
+                    if result.exit_code:
+                        raise RuntimeError("Selected Docker runner could not create the configured container")
+                    await self.journal.sandbox_effect_receipt(
+                        run_id,
+                        task_id,
+                        execution_id,
+                        effect="create",
+                        evidence={
+                            "container_id": result.output.strip(),
+                            **(
+                                {
+                                    "transfer_container_name": payload["container_name"] + "-transfer",
+                                    "transfer_image": self.transfer_image,
+                                    "transfer_initialization_exit_code": 0,
+                                    "workspace_digest": request["workspace_digest"],
+                                }
+                                if volumes
+                                else {}
+                            ),
+                        },
+                    )
+                except BaseException:
+                    await asyncio.shield(self._cleanup(config, run_id, task_id, execution_id, payload, labels))
+                    raise
             started = await self.journal.sandbox_effect_intent(
                 run_id, task_id, execution_id, effect="start", payload=payload
             )
@@ -437,6 +713,10 @@ class SandboxExecutor:
                     result = self._safe_result(
                         ProcessResult(argv, observed["State"]["ExitCode"], logs.output), browser=_browser
                     )
+                    if config.workspace_transport == "archive":
+                        await self._archive_collect(
+                            config, payload["container_name"], workspace, request["workspace_digest"]
+                        )
                     await self.journal.sandbox_effect_reconcile(
                         run_id,
                         task_id,
@@ -464,6 +744,10 @@ class SandboxExecutor:
                         raise SandboxReconciliationRequired("Docker command completion could not be confirmed")
                     result = ProcessResult(argv, state["State"]["ExitCode"], result.output)
                     result = self._safe_result(result, browser=_browser)
+                    if config.workspace_transport == "archive":
+                        await self._archive_collect(
+                            config, payload["container_name"], workspace, request["workspace_digest"]
+                        )
                     await self.journal.sandbox_effect_receipt(
                         run_id,
                         task_id,
@@ -517,6 +801,13 @@ class SandboxExecutor:
                     private_rejected = bool(payload["request"].get("browser")) and contains_known_credential(
                         logs.output, self.credential_registry()
                     )
+                    if config.workspace_transport == "archive" and not private_rejected:
+                        await self._archive_collect(
+                            config,
+                            row["container_name"],
+                            Path(payload["request"]["workspace"]),
+                            payload["request"]["workspace_digest"],
+                        )
                     await self.journal.sandbox_effect_reconcile(
                         run_id,
                         task_id,
