@@ -109,6 +109,10 @@ class RunService:
 class OperatorErrors:
     @exception_handler(Exception)
     def handle(self, exc: Exception) -> Response:
+        from firefly_forge.search_tools import SearchProviderError
+
+        if isinstance(exc, SearchProviderError):
+            return JSONResponse({"detail": str(exc), "search_error": exc.metadata()}, status_code=409)
         if isinstance(exc, AccessDenied):
             return JSONResponse({"detail": "Your current access does not allow this action"}, status_code=403)
         if isinstance(exc, ValidationError):

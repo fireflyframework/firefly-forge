@@ -563,21 +563,39 @@ class ForgeClient:
 
     @staticmethod
     def _search_metadata(record: dict[str, Any]) -> dict[str, Any]:
-        fields = {"provider", "endpoint", "revision", "configured", "max_results", "live_search_verified"}
+        fields = {
+            "provider",
+            "endpoint",
+            "revision",
+            "configured",
+            "max_results",
+            "live_search_verified",
+            "include_domains",
+        }
         return {key: value for key, value in record.items() if key in fields}
 
     def search_configuration(self) -> dict[str, Any]:
         return self._search_metadata(dict(self.request("GET", "search/configuration")))
 
-    def configure_search(self, *, api_key: str | None = None, clear_secret: bool = False) -> dict[str, Any]:
-        if api_key is not None and (not isinstance(api_key, str) or not 1 <= len(api_key) <= 4096):
-            raise ValueError("Search API key must contain 1..4096 characters")
-        if type(clear_secret) is not bool or api_key is None and not clear_secret:
-            raise ValueError("Supply a search API key or explicitly clear the configured key")
+    def configure_search(
+        self,
+        *,
+        api_key: str | None = None,
+        clear_secret: bool = False,
+        provider: str | None = None,
+        include_domains: list[str] | None = None,
+    ) -> dict[str, Any]:
+        from firefly_forge.runner_configuration import SearchConfiguration
+
+        if api_key is None and not clear_secret and provider is None and include_domains is None:
+            raise ValueError("Supply a private key or a search configuration change")
+        model = SearchConfiguration.model_validate(
+            {"api_key": api_key, "clear_secret": clear_secret, "provider": provider, "include_domains": include_domains}
+        )
         result = self.request(
             "PUT",
             "search/configuration",
-            json={**({"api_key": api_key} if api_key is not None else {}), "clear_secret": clear_secret},
+            json=model.model_dump(exclude_none=True),
         )
         return self._search_metadata(dict(result))
 

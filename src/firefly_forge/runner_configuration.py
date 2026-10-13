@@ -7,9 +7,9 @@ import copy
 import os
 import stat
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pyfly.container import rest_controller, service
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 from starlette.responses import Response
@@ -19,7 +19,7 @@ from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.runner_backends import require_available_runner
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
-from firefly_forge.search_tools import SearchTools
+from firefly_forge.search_tools import SearchTools, search_domains
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier
 from firefly_forge.workspace_tools import tool_catalog
@@ -33,7 +33,14 @@ class RunnerDefaults(BaseModel):
 class SearchConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key: str | None = Field(default=None, min_length=1, max_length=4096, json_schema_extra={"writeOnly": True})
-    clear_secret: bool = False
+    clear_secret: bool = Field(default=False, strict=True)
+    provider: Literal["brave", "tavily"] | None = None
+    include_domains: list[str] | None = Field(default=None, max_length=10)
+
+    @field_validator("include_domains")
+    @classmethod
+    def validate_domains(cls, value: list[str] | None) -> list[str] | None:
+        return search_domains(value) if value is not None else None
 
 
 class SearchQuery(BaseModel):

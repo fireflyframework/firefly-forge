@@ -814,12 +814,26 @@ def search_configuration() -> None:
 @search.command("configure")
 @click.option("--key-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--clear-secret", is_flag=True)
-def configure_search(key_file: Path | None, clear_secret: bool) -> None:
-    if bool(key_file) == clear_secret:
-        raise click.ClickException("Choose a private key file or --clear-secret")
+@click.option("--provider", type=click.Choice(["brave", "tavily"]))
+@click.option(
+    "--domain", multiple=True, help="Restrict admitted citations to this public hostname; repeat up to 10 times."
+)
+@click.option("--clear-domains", is_flag=True, help="Remove the saved hostname restriction.")
+def configure_search(
+    key_file: Path | None, clear_secret: bool, provider: str | None, domain: tuple[str, ...], clear_domains: bool
+) -> None:
+    if key_file and clear_secret or domain and clear_domains:
+        raise click.ClickException("Choose either a key file or --clear-secret, and either domains or --clear-domains")
+    if not (key_file or clear_secret or provider or domain or clear_domains):
+        raise click.ClickException("Supply a private key file or a search configuration change")
     key = private_secret_file(key_file) if key_file else None
+    selection: dict[str, Any] = {}
+    if provider is not None:
+        selection["provider"] = provider
+    if domain or clear_domains:
+        selection["include_domains"] = list(domain)
     with client() as connection:
-        display(connection.configure_search(api_key=key, clear_secret=clear_secret))
+        display(connection.configure_search(api_key=key, clear_secret=clear_secret, **selection))
 
 
 @search.command("test")
