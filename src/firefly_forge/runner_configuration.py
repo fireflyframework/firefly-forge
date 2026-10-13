@@ -113,6 +113,7 @@ class RunnerConfiguration:
                     "browser_check": bool(configuration.get("browser")),
                     "browser_journey": bool(configuration.get("browser")),
                     "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
+                    "external_mcp": bool((snapshot.get("mcp_snapshot") or {}).get("grants")),
                 },
                 provider,
             )
@@ -135,6 +136,7 @@ class RunnerConfiguration:
                 "browser_check": browser_available,
                 "browser_journey": browser_available,
                 "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
+                "external_mcp": bool((snapshot.get("mcp_snapshot") or {}).get("grants")),
             },
             provider,
         )

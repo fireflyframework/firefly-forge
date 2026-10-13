@@ -810,6 +810,72 @@ def tools() -> None:
     """Manage mediated tool budgets and inspect recorded execution outcomes."""
 
 
+@tools.group("mcp")
+def external_mcp() -> None:
+    """Review external tool connections and project grants as a factory administrator."""
+
+
+@external_mcp.command("catalog")
+def external_mcp_catalog() -> None:
+    with client() as connection:
+        display(connection.external_mcp_catalog())
+
+
+@external_mcp.command("configure")
+@click.argument("connector", type=click.Choice(["github", "sentry", "figma", "playwright", "grafana"]))
+@click.option("--enable/--disable", default=False)
+@click.option("--key-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--clear-secret", is_flag=True)
+def configure_external_mcp(connector: str, enable: bool, key_file: Path | None, clear_secret: bool) -> None:
+    key = private_secret_file(key_file) if key_file else None
+    with client() as connection:
+        display(
+            connection.configure_external_mcp(
+                connector, {"enabled": enable, "api_key": key, "clear_secret": clear_secret}
+            )
+        )
+
+
+@external_mcp.command("discover")
+@click.argument("connector")
+def discover_external_mcp(connector: str) -> None:
+    """Make an explicit remote schema request; this does not grant a tool."""
+    with client() as connection:
+        display(connection.discover_external_mcp(connector))
+
+
+@external_mcp.command("review")
+@click.argument("connector")
+@click.option("--file", "file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+def review_external_mcp(connector: str, file_path: Path) -> None:
+    with client() as connection:
+        display(connection.review_external_mcp(connector, json_document(file_path)))
+
+
+@external_mcp.command("grants")
+@click.argument("project_id")
+def external_mcp_grants(project_id: str) -> None:
+    with client() as connection:
+        display(connection.external_mcp_grants(project_id))
+
+
+@external_mcp.command("grant")
+@click.argument("project_id")
+@click.argument("connector")
+@click.option("--file", "file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+def grant_external_mcp(project_id: str, connector: str, file_path: Path) -> None:
+    with client() as connection:
+        display(connection.grant_external_mcp(project_id, connector, json_document(file_path)))
+
+
+@external_mcp.command("revoke")
+@click.argument("project_id")
+@click.argument("grant_id")
+def revoke_external_mcp(project_id: str, grant_id: str) -> None:
+    with client() as connection:
+        display(connection.revoke_external_mcp(project_id, grant_id))
+
+
 @tools.command("policy")
 def tool_policy() -> None:
     with client() as connection:

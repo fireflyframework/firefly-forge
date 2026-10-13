@@ -96,6 +96,8 @@ from firefly_forge.knowledge import (
 )
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
+from firefly_forge.mcp_controllers import ExternalMCPController
+from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
 from firefly_forge.model_profiles import ModelProfiles
 from firefly_forge.models import RepositoryInput, RunInput
@@ -449,6 +451,7 @@ class FactoryConfiguration:
         browser: BrowserRunner,
         search: SearchTools,
         tool_broker: ToolInvocationBroker,
+        external_mcp: ExternalMCPRegistry,
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
@@ -464,6 +467,8 @@ class FactoryConfiguration:
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
+        engine.external_mcp = tool_broker.external_mcp = external_mcp
+        external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
         tool_broker.credential_registry = lambda: engine.credential_registry()
@@ -548,6 +553,10 @@ class FactoryConfiguration:
         return SearchTools(self.data_dir / "tools" / "search")
 
     @bean
+    def external_mcp_registry(self) -> ExternalMCPRegistry:
+        return ExternalMCPRegistry(self.data_dir)
+
+    @bean
     def tool_invocation_broker(
         self, store: Store, journal: Journal, records: ForgeToolInvocationRepository
     ) -> ToolInvocationBroker:
@@ -594,12 +603,13 @@ class FactoryConfiguration:
         engine: Engine,
         journal: Journal,
         search: SearchTools,
+        external_mcp: ExternalMCPRegistry,
         auth: OperatorAuth,
         profiles: ModelProfiles,
         users: UserAdministration,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
-        manager.secret_registries.append(search)
+        manager.secret_registries.extend([search, external_mcp])
         manager.secret_registries.extend([auth, profiles, users])
         return manager
 
@@ -775,6 +785,7 @@ def create_runtime(
         ForgeToolInvocationRepository,
         RunnerController,
         ToolController,
+        ExternalMCPController,
         ForgeCampaignRepository,
         ForgeCampaignChildRepository,
         ForgeCampaignEventRepository,

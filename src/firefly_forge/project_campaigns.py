@@ -121,6 +121,7 @@ class ProjectCampaigns:
             "runners": digest(private._read(private.directory / "runners.json")),
             "search": digest(self.engine.search.snapshot()) if self.engine.search is not None else None,
             "tool_policy": tool_policy_snapshot(private)["digest"],
+            "external_mcp": digest(private._read(private.directory / "external-mcp.json")),
             "credentials": {agent: digest(private.resolve(agent)) for agent in sorted(agents)},
         }
 

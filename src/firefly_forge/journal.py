@@ -211,6 +211,7 @@ class Journal:
                     "role_snapshot": data.get("role_snapshot"),
                     "sandbox_snapshot": data.get("sandbox_snapshot"),
                     "tool_policy_snapshot": data.get("tool_policy_snapshot"),
+                    "mcp_snapshot": data.get("mcp_snapshot"),
                     "product_definition": data.get("product_definition"),
                     "branding_snapshot": data.get("branding_snapshot"),
                     "design_reference": design_reference,

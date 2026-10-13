@@ -74,6 +74,7 @@ class ToolInvocationBroker:
         self.private = ConfigurationStore(directory)
         self.records = records or ForgeToolInvocationRepository()
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        self.external_mcp: Any = None
 
     def snapshot(self) -> Data:
         return tool_policy_snapshot(self.private)
@@ -111,7 +112,8 @@ class ToolInvocationBroker:
     ) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", correlation_id):
             raise ValueError("Tool correlation ID requires 32 lowercase hexadecimal characters")
-        if tool != "internet_search":
+        external = re.fullmatch(r"external_mcp:([a-z][a-z0-9-]{0,30}):([a-z][a-z0-9_]{0,80})", tool)
+        if tool != "internet_search" and external is None:
             raise ValueError("Select a registered broker tool")
         if any(
             not isinstance(source.get(key), str) or not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", source[key])
@@ -124,19 +126,42 @@ class ToolInvocationBroker:
             raise ValueError("Tool invocations cannot contain configured credentials")
         from firefly_forge.runner_configuration import SearchQuery
 
-        arguments = SearchQuery.model_validate(arguments).model_dump()
-        if not arguments["query"].strip() or len(arguments["query"].split()) > 75:
-            raise ValueError("Search query must contain nonempty text and at most 75 words")
+        if external is None:
+            arguments = SearchQuery.model_validate(arguments).model_dump()
+            if not arguments["query"].strip() or len(arguments["query"].split()) > 75:
+                raise ValueError("Search query must contain nonempty text and at most 75 words")
         async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
             policy = frozen_policy(run.data.get("tool_policy_snapshot"))
-            if configuration != run.data.get("search_snapshot"):
+            if configuration != run.data.get("mcp_snapshot" if external else "search_snapshot"):
                 raise ValueError("Tool configuration differs from the frozen run")
             roles = roles_for_stage(run.data.get("role_snapshot") or {}, task_id)
             provider = "agentic" if run.data["agent"] == "api" else run.data["agent"]
-            if tool not in (stage_allowed_tools(run.data["role_snapshot"], task_id, provider) or set()):
+            if ("external_mcp" if external else tool) not in (
+                stage_allowed_tools(run.data["role_snapshot"], task_id, provider) or set()
+            ):
                 raise ValueError("The frozen execution role does not grant this tool")
+            if external:
+                if (
+                    self.external_mcp is None
+                    or set(arguments) != {"connector", "tool", "arguments"}
+                    or (arguments["connector"], arguments["tool"]) != external.groups()
+                ):
+                    raise ValueError("Select an exact registered external MCP invocation")
+                if (
+                    configuration.get("project_id") != run.data.get("project_id")
+                    or configuration.get("repository_id") != run.repository_id.hex
+                ):
+                    raise ValueError("MCP configuration differs from the run project and repository")
+                self.external_mcp.authorize(
+                    configuration,
+                    arguments["connector"],
+                    arguments["tool"],
+                    arguments["arguments"],
+                    roles=[role["id"] for role in roles],
+                    stage=task_id,
+                )
             request = {
                 "run_id": run.id.hex,
                 "task_id": task_id,

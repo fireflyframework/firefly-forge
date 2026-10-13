@@ -577,6 +577,50 @@ class ForgeClient:
     def search_configuration(self) -> dict[str, Any]:
         return self._search_metadata(dict(self.request("GET", "search/configuration")))
 
+    def external_mcp_catalog(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "tools/mcp"))
+
+    def configure_external_mcp(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import MCPConnectionInput, _connector
+
+        _connector(connector)
+        model = MCPConnectionInput.model_validate(request)
+        return dict(self.request("PUT", f"tools/mcp/{connector}", json=model.model_dump()))
+
+    def discover_external_mcp(self, connector: str) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import _connector
+
+        _connector(connector)
+        return dict(self.request("POST", f"tools/mcp/{connector}/discover"))
+
+    def review_external_mcp(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import MCPReviewInput, _connector
+
+        _connector(connector)
+        model = MCPReviewInput.model_validate(request)
+        return dict(self.request("POST", f"tools/mcp/{connector}/review", json=model.model_dump()))
+
+    def external_mcp_grants(self, project_id: str) -> list[dict[str, Any]]:
+        return list(self.request("GET", f"tools/mcp/projects/{self._id(project_id)}/grants"))
+
+    def grant_external_mcp(self, project_id: str, connector: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import MCPGrantInput, _connector
+
+        _connector(connector)
+        model = MCPGrantInput.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"tools/mcp/projects/{self._id(project_id)}/connectors/{connector}/grants",
+                json=model.model_dump(),
+            )
+        )
+
+    def revoke_external_mcp(self, project_id: str, grant_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("POST", f"tools/mcp/projects/{self._id(project_id)}/grants/{self._id(grant_id)}/revoke")
+        )
+
     def tool_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "tools/policy"))
 

@@ -252,6 +252,7 @@ class Store:
     ) -> Data:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
+        from firefly_forge.mcp_registry import mcp_snapshot
         from firefly_forge.product_design import ProductDesign
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
         from firefly_forge.projects import Projects
@@ -323,6 +324,7 @@ class Store:
                 raise ValueError(
                     "Direct host coding CLIs require a factory administrator; choose a configured API agent"
                 )
+        runner = {**runner, "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id)}
         tools = (
             prepared_tools
             if prepared_tools is not None
