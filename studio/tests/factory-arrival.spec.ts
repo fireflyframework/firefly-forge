@@ -14,6 +14,7 @@ async function fixture(page: Page) {
       body: source.replace(
         "renderer.setPixelRatio(Math.min(devicePixelRatio, 2));",
         `
+window.factoryPaint = paint;
 const renderFactoryOriginal = renderer.render;
 renderer.render = function(scene, camera) {
  const carrier = scene.getObjectByName('receipted_output');
@@ -36,7 +37,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
       scenePath = "/src/FactoryScene.tsx";
     const [
       {
-        default: { createElement },
+        default: { createElement, Fragment, useLayoutEffect },
       },
       {
         default: { createRoot },
@@ -55,35 +56,64 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
     let state = "waiting",
       suspended = false,
       target = "implement";
+    function CommitProbe({ suspended }: { suspended: boolean }) {
+      useLayoutEffect(() => {
+        if (!suspended) return;
+        const state = window as unknown as {
+          factoryCarrier: { position: { x: number } };
+          factoryPaint: (time: number) => void;
+          factoryCommitFrame?: {
+            before: number;
+            after: number;
+            caption: string;
+          };
+        };
+        // Exercise a renderer frame after DOM commit, before passive effects can synchronize state.
+        const before = state.factoryCarrier.position.x;
+        state.factoryPaint(performance.now() + 50);
+        state.factoryCommitFrame = {
+          before,
+          after: state.factoryCarrier.position.x,
+          caption: document.querySelector(".factory-live-caption")!
+            .textContent!,
+        };
+      }, [suspended]);
+      return null;
+    }
     const render = () =>
       root.render(
-        createElement(FactoryScene, {
-          theme: "dark",
-          selectedId: null,
-          suspended,
-          onSelect: () => {},
-          stations: [
-            "prepare",
-            "implement",
-            "verify",
-            "checkpoint",
-            "publish",
-            "deploy",
-            "health",
-          ].map((id) => ({
-            id,
-            label: id,
-            state:
-              state === "reset"
-                ? "waiting"
-                : id === "prepare"
-                  ? "done"
-                  : id === target
-                    ? state
-                    : "waiting",
-            detail: "Local renderer fixture; no factory execution",
-          })),
-        }),
+        createElement(
+          Fragment,
+          null,
+          createElement(FactoryScene, {
+            theme: "dark",
+            selectedId: null,
+            suspended,
+            onSelect: () => {},
+            stations: [
+              "prepare",
+              "implement",
+              "verify",
+              "checkpoint",
+              "publish",
+              "deploy",
+              "health",
+            ].map((id) => ({
+              id,
+              label: id,
+              state:
+                state === "reset"
+                  ? "waiting"
+                  : id === "prepare"
+                    ? "done"
+                    : id === target
+                      ? state
+                      : "waiting",
+              detail: "Local renderer fixture; no factory execution",
+            })),
+          }),
+          createElement(CommitProbe, { suspended }),
+        ),
       );
     document.addEventListener("arrival-fixture-state", (event) => {
       state = (event as CustomEvent<string>).detail;
@@ -138,7 +168,23 @@ test("a real machinery clip begins only after the carrier arrives, and blocked w
       new CustomEvent("arrival-fixture-suspended", { detail: true }),
     ),
   );
-  await page.waitForTimeout(150);
+  await expect(scene.locator(".factory-live-caption")).toContainText(
+    "Updates unavailable",
+  );
+  const commitFrame = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          factoryCommitFrame: {
+            before: number;
+            after: number;
+            caption: string;
+          };
+        }
+      ).factoryCommitFrame,
+  );
+  expect(commitFrame.caption).toContain("Updates unavailable");
+  expect(commitFrame.after).toBe(commitFrame.before);
   let held = await position();
   await page.waitForTimeout(200);
   expect(await position()).toBe(held);
@@ -149,7 +195,7 @@ test("a real machinery clip begins only after the carrier arrives, and blocked w
     ),
   );
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.waitForTimeout(150);
+  await expect.poll(position).toBe(-8.2);
   held = await position();
   await page.waitForTimeout(200);
   expect(await position()).toBe(held);

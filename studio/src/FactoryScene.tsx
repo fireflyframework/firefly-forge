@@ -1,5 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   AnimationAction,
   Object3D,
@@ -50,7 +50,6 @@ async function loadModel(signal: AbortSignal): Promise<Model> {
 export function FactoryScene(props: FactorySceneProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const current = useRef(props);
-  current.current = props;
   const controller = useRef<Controller | null>(null);
   const [rendererType, setRendererType] = useState<"loading" | "webgl" | "svg">(
     "loading",
@@ -470,9 +469,10 @@ export function FactoryScene(props: FactorySceneProps) {
       controller.current = null;
     };
   }, [generation]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    current.current = props;
     controller.current?.update();
-  }, [props.stations, props.theme, props.selectedId, props.suspended]);
+  }, [props]);
   return (
     <figure
       className="factory-live"
