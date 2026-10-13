@@ -56,7 +56,7 @@ Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/
 
 These flows are tested with isolated PostgreSQL schemas and provider HTTP transports. They do not claim a live customer repository has granted access or accepted a webhook. Validate those grants and one signed delivery on your deployment before enabling automatic work.
 
-The loopback HTTP lifecycle test also starts the authenticated PyFly API and
+The loopback HTTP lifecycle test also starts the authenticated [pyfly](https://fireflyframework.org/frameworks/python/) API and
 provider fixture servers. For each managed provider, a trusted project comment
 reaches the inbox and receives one remote reply. A fixture disconnect after
 accepting a second reply leaves the receipt uncertain; repeated processing and

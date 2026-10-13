@@ -18,18 +18,18 @@ in the URL.
 
 ## 2. Write the brief
 
-Open **New product** and select the repository. Use a specific, bounded brief:
+Open **Start a run** and select the repository. Use a specific, bounded brief:
 
 ```text
-Build a PyFly API for a small task list. Users can create a task, list tasks,
+Build a pyfly API for a small task list. Users can create a task, list tasks,
 mark one complete and receive a 404 for an unknown task. Use typed request and
 response contracts, a service for task behavior and meaningful pytest tests.
 Keep this first version in memory. Include exact launch instructions, declared
 dependencies, lint/type checks and a make check target. Do not add a frontend.
 ```
 
-Choose **PyFly**, **API only**, and a ready coding provider. For a PHP product,
-use the [LaraFly walkthrough](larafly.md).
+Choose **[pyfly](https://fireflyframework.org/frameworks/python/)**, **API only**, and a ready coding provider. For a PHP product,
+choose [larafly](https://fireflyframework.org/frameworks/php/) and follow the [larafly walkthrough](larafly.md).
 
 ## 3. Choose verification
 
@@ -41,7 +41,7 @@ If your brief requires a `make check` target, enter:
 
 Each Studio command has a 120-second timeout. The [HTTP API](api.md) allows an
 explicit timeout up to the server's accepted limit. For a generated project
-whose command is not known in advance, leave this field empty and let Forge
+whose command is not known in advance, leave this field empty and let forge
 select a supported verification command from the actual project files.
 
 ## 4. Follow the run

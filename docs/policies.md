@@ -3,7 +3,7 @@
 
 Policies add versioned instructions and optional executable quality gates to a run. Set project defaults once, then inherit or override them when building, maintaining or testing that repository.
 
-Framework integration is part of the mandatory stack profile. Turning off an optional policy never replaces real PyFly or LaraFly imports, removes workspace confinement, disables credential checks or bypasses passing verification before publication and deployment.
+Framework integration is part of the mandatory stack profile. Turning off an optional policy never replaces real [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) imports, removes workspace confinement, disables credential checks or bypasses passing verification before publication and deployment.
 
 ## Choose defaults for a project
 

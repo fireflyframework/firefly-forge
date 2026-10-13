@@ -9,7 +9,7 @@ Keycloak identifies production users and project memberships authorize their act
 2. Configure [identity](identity.md) and a private `FORGE_DATA_DIR`; select explicit local bootstrap only for a trusted loopback development host.
 3. Sign in through Studio. Its opaque HttpOnly session survives reload; credentials remain on the server.
 4. Choose an official CLI login or configure a native API provider.
-5. Test that connection, connect the intended repository, and run a small PyFly or LaraFly acceptance brief.
+5. Test that connection, connect the intended repository, and run a small [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) acceptance brief.
 
 Use a provider's default model first when using its signed-in CLI. If you set a model explicitly, verify that the account can use it in a real run. Native API models require their matching provider key. The account's available models must be checked separately; the factory has no fixed menu that establishes that access.
 
@@ -59,7 +59,7 @@ Credential values are redacted from run events, errors, summaries, usage and ver
 | `FORGE_AUTH_MODE` | `oidc` by default; explicit `local_bootstrap` for trusted loopback development |
 | `FORGE_API_TOKEN` | Local bootstrap credential, at least 24 characters; not production authentication |
 | `FORGE_ALLOWED_HOSTS` | Allowed host headers for the API |
-| `FORGE_CONCURRENCY` | Active local runs per service, default `2` |
+| `FORGE_CONCURRENCY` | Parallel runs per active execution leader, from `1` to `64`; default `2` |
 | `FORGE_PROVIDER_TIMEOUT` | Environment fallback for generation timeout |
 | `FORGE_REPAIR_ATTEMPTS` | Additional repair attempts, default `2`, bounded `0..3` |
 | `FORGE_POLICY_CATALOG` | Optional trusted JSON policy catalog file |

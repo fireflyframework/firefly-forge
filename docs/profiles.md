@@ -8,8 +8,8 @@ version. The descriptions on this page do not establish release acceptance.
 
 | Backend | Role | Start here |
 | --- | --- | --- |
-| PyFly | Primary Python service profile | [PyFly walkthrough](pyfly.md) |
-| LaraFly | Primary Laravel/PHP profile | [LaraFly walkthrough](larafly.md) |
+| [pyfly](https://fireflyframework.org/frameworks/python/) | Primary Python service profile | [pyfly walkthrough](pyfly.md) |
+| [larafly](https://fireflyframework.org/frameworks/php/) | Primary Laravel/PHP profile | [larafly walkthrough](larafly.md) |
 | Firefly Java | Additional reactive Java/Spring profile | Inspect runtime catalog and upstream contracts |
 | Firefly Rust | Additional Rust profile | Inspect runtime catalog and upstream contracts |
 | Firefly .NET | Additional .NET profile | Inspect runtime catalog and upstream contracts |

@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-firefly forge connects the official [flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.9.0) to project-scoped knowledge. Use it for framework references, selected codebase context and verified run memory. Knowledge is optional by default.
+firefly forge connects the official [flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.10.0) to project-scoped knowledge. Use it for framework references, selected codebase context and verified run memory. Knowledge is optional by default.
 
 ## Configure the service
 
@@ -64,10 +64,10 @@ Memory includes the run ID, verified source tree, changed filenames and check id
 
 The response identifies `source_id`, `item_id`, `version` and `workspace_id`. A platform API key is required for canonical memory creation. Source admission and canonical creation have separate journal intents and receipts. Unknown outcomes block another write; an earlier source receipt can be reused after delayed retrieval without admitting it again.
 
-Local acceptance has exercised real PostgreSQL, Ollama embeddings, scoped source retrieval and future memory retrieval. This evidence covers those service paths. Coding-model generation, browser behavior and external SCM installation each require their own acceptance.
+Verify the connection with a scoped search, then index a selected source and check its returned citations. Save one verified memory and retrieve it from the same project workspace. Admission, embedding and canonical memory creation have separate outcomes; inspect each before marking the connection ready.
 
 ## flycanon server compatibility
 
-The 26.9.0 server's regex phone detector can mistake numeric fragments inside hexadecimal run IDs and Git hashes for phone numbers. Under `pii_policy=reject`, this can reject verified memory before source admission. [flycanon pull request 76](https://github.com/firefly-operationOS/flycanon/pull/76) corrects those identifier boundaries and tests that genuine phone numbers and email addresses are still rejected.
+Use flycanon server 26.10.0 or a build containing [the identifier-scanning fix](https://github.com/firefly-operationOS/flycanon/pull/76). Earlier servers can mistake numeric fragments inside run IDs and Git hashes for phone numbers, causing `pii_policy=reject` to reject verified memory before admission. The fix preserves rejection of genuine phone numbers and email addresses.
 
-Local factory acceptance used that isolated server correction while retaining strict PII rejection. Use a server build containing the fix for the same memory workflow; the public SDK version alone does not include server-side scanner changes. Keep an uncertain memory intent in the journal and inspect the source admission outcome before another write.
+The Python SDK and flycanon server are installed separately. Updating the SDK does not apply a server-side scanner change. Keep an uncertain memory intent in the journal and inspect the source admission outcome before another write.

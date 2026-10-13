@@ -97,9 +97,7 @@ remote branches and pull requests remain.
 
 ## Connection API
 
-All routes below use `/api/v1` and require the operator token, except the two
-OAuth callback routes. Callbacks require the saved one-use state and browser
-cookie; the operator token never appears in a redirect URL.
+All routes below use `/api/v1` and require current factory-administrator authority, except the two OAuth callback routes. Hosted clients authenticate through the configured OIDC identity; explicit local bootstrap uses its loopback operator credential. Callbacks require the saved one-use state and browser cookie. Factory credentials never appear in a redirect URL. See [identity and project access](identity.md).
 
 | Method | Path | Result |
 | --- | --- | --- |

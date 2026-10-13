@@ -47,7 +47,7 @@ forge assistant ask REPOSITORY_ID CONVERSATION_ID \
 forge assistant get REPOSITORY_ID CONVERSATION_ID
 ```
 
-Use the project's canonical product repository when starting a project conversation. `bridge` uses the configured internal bridge; `agentic` uses its configured model. Starting a conversation freezes settings without invoking a model. Asking a question makes a bounded model request and retains its response as an unapproved proposal. It does not edit the saved product or source, queue a run, resume a worker or approve a review.
+Use the project's canonical product repository when starting a project conversation. `bridge` uses the configured bridge connection; `agentic` uses its configured model. Starting a conversation freezes settings without invoking a model. Asking a question makes a bounded model request and retains its response as an unapproved proposal. It does not edit the saved product or source, queue a run, resume a worker or approve a review.
 
 Choose a dialogue purpose and, when needed, a named profile. The supported purposes are `product`, `functions`, `design` and `architecture`. A reviewed AS-IS selection requires its project, analysis ID and exact digest together:
 

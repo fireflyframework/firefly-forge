@@ -66,7 +66,7 @@ Use the frozen kit as an implementation contract:
 | Templates | Shared page shell and list/detail layout | Consistent spacing, headers and content boundaries |
 | Pages | Create item, reserve stock, inspect conflict | The complete customer journey with actual service behavior |
 
-Keep business rules in typed domain/application services. Frontend components should display and invoke those contracts; controllers should validate and delegate. Use native PyFly or LaraFly dependency injection and data/web modules for the chosen backend. A neat component tree cannot substitute for authorization, transaction integrity or meaningful API tests.
+Keep business rules in typed domain/application services. Frontend components should display and invoke those contracts; controllers should validate and delegate. Use native [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) dependency injection and data/web modules for the chosen backend. A neat component tree cannot substitute for authorization, transaction integrity or meaningful API tests.
 
 ## Freeze and inspect the coding inputs
 

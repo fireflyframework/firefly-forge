@@ -41,7 +41,7 @@ Choose the next task and a configured provider or model profile, then start a co
 
 Use **Ask AI** within a step to prepare a message containing its current, unsaved draft. Review and edit this message before sending. If you already have a message in progress, choose whether to append the step context or replace it. Preparing this context does not invoke a model or save the definition. The assistant's ordinary retained context uses the saved product revision; it cannot see unsaved form edits unless you include them in a message.
 
-For example, ask: “Warehouse operators need to reserve available stock without overselling. Use PyFly and PostgreSQL; this product exposes an API and has no frontend. Map the reservation and rejection paths to acceptance criteria.” The assistant can ask for missing decisions and propose a definition. Its proposal remains unreviewed.
+For example, ask: “Warehouse operators need to reserve available stock without overselling. Use pyfly and PostgreSQL; this product exposes an API and has no frontend. Map the reservation and rejection paths to acceptance criteria.” The assistant can ask for missing decisions and propose a definition. Its proposal remains unreviewed.
 
 Review the proposal comparison before applying it to the document. If the draft already has edits, replacement requires an explicit acknowledgement; **Keep draft** returns without replacing them. Applying a proposal does not save it or approve its architecture. The source badge records the provider, recorded model, generation time and conversation receipt. **View AI source** opens that conversation. When an applied definition is saved, the server verifies the source receipt and records whether the proposal was edited.
 
@@ -63,7 +63,7 @@ The agent receives the frozen definition alongside its brief and execution polic
 
 ## Review an architecture proposal
 
-`POST /api/v1/architecture/propose` accepts `product_definition` plus optional `backend` and `frontend` preferences. The proposal uses supported factory profiles and explicit rules; `method: rule_based` distinguishes it from an AI assessment. PyFly/React is the default. A LaraFly preference uses Laravel/PHP guidance. Alternatives retain their upstream profile references and verification limits.
+`POST /api/v1/architecture/propose` accepts `product_definition` plus optional `backend` and `frontend` preferences. The proposal uses supported factory profiles and explicit rules; `method: rule_based` distinguishes it from an AI assessment. [pyfly](https://fireflyframework.org/frameworks/python/)/React is the default. A [larafly](https://fireflyframework.org/frameworks/php/) preference uses Laravel/PHP guidance. Alternatives retain their upstream profile references and verification limits.
 
 Review the rationale and proposed domain, application, data, HTTP, operations, and frontend components. Edit responsibilities, decisions, and nonfunctional requirements to fit the customer journey. Set `architecture.reviewed: true` after review, then save that architecture inside the product definition. Saving an unreviewed supplied architecture is rejected. Existing brief-only work can still omit architecture.
 

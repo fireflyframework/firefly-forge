@@ -3,7 +3,7 @@
 
 Use application operations to link a project and deployment target to health observations, metric thresholds and incidents. The factory records each check. A configured URL or a successful deployment job does not establish current application health.
 
-Configure the application after choosing a target belonging to the same repository. Use PyFly or LaraFly for the primary supported maintenance path, and retain the frontend actually used by that product. The application’s repository identity cannot later change.
+Configure the application after choosing a target belonging to the same repository. Use [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) for the primary supported maintenance path, and retain the frontend actually used by that product. The application’s repository identity cannot later change.
 
 ## Configure the observation contract
 

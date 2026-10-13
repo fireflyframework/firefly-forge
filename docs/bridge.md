@@ -1,10 +1,9 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Connect an authorized internal agent bridge
+# Connect a local agent bridge
 
-Firefly Agent Bridge is an internal service for authorized Firefly developers.
-Its source and installation instructions live in the private
+Firefly Agent Bridge runs on the machine with your official Codex or Claude Code subscription login. Get its source and installation instructions from the
 [Firefly Agent Bridge repository](https://github.com/fireflyframework/firefly-agent-bridge).
-Access to this public forge repository does not grant access to that service.
+Install and operate it separately from Forge, then issue a scoped bridge token for the factory's application connection. Bridge execution is intended for local development and testing; provider account terms and subscription limits still apply.
 
 forge includes a client connection to an OpenAI-compatible bridge endpoint.
 The bridge runs separately and authenticates its own clients. Configure the
@@ -29,8 +28,7 @@ The catalog distinguishes configured access from a successful connection test. T
 endpoint rejects a request, inspect the run error and ask the bridge operator
 to verify the authorized configuration.
 
-Public installations can use [Codex, Claude Code or native Firefly Agentic](agents.md)
-without an internal bridge.
+Forge also supports direct [Codex, Claude Code and native Firefly Agentic](agents.md) connections. Choose the provider and execution boundary that meet the project's requirements.
 
 ## Verify image input for the selected configuration
 

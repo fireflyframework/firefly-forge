@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install executable DevSecOps checks
 
-The CI renderer produces reviewable source files for GitHub Actions, GitLab CI and Bitbucket Pipelines. PyFly and LaraFly profiles can include the supported browser frontends. The files contain checks and publication rules. Generating or exporting them does not install a workflow or establish that a remote pipeline has passed.
+The CI renderer produces reviewable source files for GitHub Actions, GitLab CI and Bitbucket Pipelines. [pyfly](https://fireflyframework.org/frameworks/python/) and [larafly](https://fireflyframework.org/frameworks/php/) profiles can include the supported browser frontends. The files contain checks and publication rules. Generating or exporting them does not install a workflow or establish that a remote pipeline has passed.
 
 Copy the files into a reviewed branch of the product repository. Protect the default/main branch, restrict runner access, and configure registry permissions in the CI platform. Keep its real `make check` gate and root Dockerfile. Missing checks or tooling fail the pipeline.
 

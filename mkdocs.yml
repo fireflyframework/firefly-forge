@@ -1,11 +1,10 @@
 site_name: firefly forge
 site_description: Build and verify software with Firefly's software factory.
 site_author: Firefly Software Foundation
-site_url: https://fireflyframework.github.io/firefly-forge/
 repo_url: https://github.com/fireflyframework/firefly-forge
-repo_name: fireflyframework/firefly-forge
+repo_name: Source code
 edit_uri: edit/main/docs/
-copyright: Copyright &copy; 2026 Firefly Software Foundation · Apache-2.0
+copyright: Copyright &copy; 2026 Firefly Software Foundation
 strict: true
 docs_dir: docs
 site_dir: build/docs-site
@@ -31,9 +30,12 @@ theme:
         name: Switch to light appearance
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.top
     - navigation.footer
+    - navigation.tracking
+    - toc.follow
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -42,49 +44,60 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+extra:
+  generator: false
 extra_css:
   - stylesheets/forge.css
 nav:
-  - Start here:
-      - Software factory: index.md
+  - Start:
+      - Documentation home: index.md
+      - Find your next step: guide.md
       - Install and start: installation.md
       - Your first product: quickstart.md
       - Capabilities and limits: capabilities.md
-  - Build products:
+  - Products:
       - Define a product: product-definition.md
       - Change features and integrations: product-lifecycle.md
       - Review existing-project knowledge: as-is-handoff.md
       - Architecture and brand: product-design.md
       - Review wireframes: design-review.md
-      - PyFly walkthrough: pyfly.md
-      - LaraFly walkthrough: larafly.md
+      - pyfly walkthrough: pyfly.md
+      - larafly walkthrough: larafly.md
       - Choose a stack: profiles.md
-      - Connect Git repositories: scm.md
+      - Build, maintain and test: workflows.md
+      - Coordinate project campaigns: project-campaigns.md
+      - Delivery assurance: assurance.md
+  - Agents:
       - Choose an agent: agents.md
       - Assign models by task: model-profiles.md
       - Agent roles and feedback: agent-roles.md
+      - Lifecycle phases: agent-lifecycle.md
       - Agent tools: agent-tools.md
       - CLI, SDK and MCP clients: agent-integrations.md
       - Files in AI conversations: assistant-files.md
       - Configure provider access: configuration.md
-      - Build, maintain and test: workflows.md
-      - Coordinate project campaigns: project-campaigns.md
       - Configure execution runners: sandbox.md
       - Review browser journeys: browser-qa.md
       - Project and central policies: policies.md
+      - Agent bridge connection: bridge.md
+  - Integrations:
+      - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
-      - Delivery assurance: assurance.md
-      - DevSecOps pipelines: devsecops.md
       - Cited knowledge and memory: knowledge.md
-      - Internal bridge connection: bridge.md
-  - Operate:
-      - Architecture: architecture.md
+      - DevSecOps pipelines: devsecops.md
+  - Operations:
       - Operations: operations.md
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
@@ -94,8 +107,12 @@ nav:
       - Security: security.md
       - Sign in and manage project access: identity.md
       - Add and manage users: user-administration.md
+  - Reference:
+      - Architecture: architecture.md
       - HTTP API: api.md
-  - Project:
       - Release notes: release-notes.md
       - Contribute: contributing.md
       - Brand and visual assets: brand.md
+
+hooks:
+  - scripts/docs_scene_hook.py

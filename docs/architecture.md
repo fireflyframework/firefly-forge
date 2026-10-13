@@ -6,7 +6,7 @@
 
 firefly forge uses native [pyfly](https://fireflyframework.org/frameworks/python/) dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. One execution worker runs isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
 
-The API and worker can share one process or run separately. A split installation admits work through API replicas and dispatches it through one headless worker, using the same retained configuration and source storage. PostgreSQL records the installation topology and rejects incompatible execution owners. Read [API and worker roles](runtime-roles.md) before choosing a deployment layout.
+The API and worker can share one process or run separately. A split installation admits work through API replicas and dispatches it through one headless execution leader, with additional workers waiting as standbys. They use the same retained configuration and source storage. PostgreSQL records the installation topology and rejects incompatible execution owners. Read [API and worker roles](runtime-roles.md) before choosing a deployment layout.
 
 ## Native application layers
 

@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install and start firefly forge
 
-You need Python 3.13+, [uv](https://docs.astral.sh/uv/), Git, a dedicated PostgreSQL database, and Node.js 22.12+ to build Studio. Use macOS or Linux; worker cancellation uses POSIX process groups. Install the product toolchains you intend to use: Python for PyFly, PHP 8.3+ and Composer for LaraFly, and Node.js for browser products.
+You need Python 3.13+, [uv](https://docs.astral.sh/uv/), Git, a dedicated PostgreSQL database, and Node.js 22.12+ to build Studio. Use macOS or Linux; worker cancellation uses POSIX process groups. Install the product toolchains you intend to use: Python for [pyfly](https://fireflyframework.org/frameworks/python/), PHP 8.3+ and Composer for [larafly](https://fireflyframework.org/frameworks/php/), and Node.js for browser products.
 
 ## Build the application
 
@@ -59,7 +59,7 @@ Native Firefly Agentic uses a provider API key and an available provider-qualifi
 uv run forge serve --host 127.0.0.1 --port 8787 --data-dir .forge
 ```
 
-Open [Studio](http://127.0.0.1:8787/). For this explicit local setup, enter the operator token once; the server exchanges it for a durable HttpOnly session. Production installations use [Keycloak sign-in](identity.md). Configure a provider and test its access. Connect an authorized repository, choose PyFly or LaraFly, and create a small run with observable acceptance checks.
+Open [Studio](http://127.0.0.1:8787/). For this explicit local setup, enter the operator token once; the server exchanges it for a durable HttpOnly session. Production installations use [Keycloak sign-in](identity.md). Configure a provider and test its access. Connect an authorized repository, choose pyfly or larafly, and create a small run with observable acceptance checks.
 
 A database connection or migration failure prevents startup. A rejected operator token requires matching Studio and server credentials. Missing Studio files require rebuilding its production bundle. Provider authentication and actual model execution have separate checks.
 
