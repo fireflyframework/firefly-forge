@@ -1,3 +1,7 @@
+---
+description: Operate factory services, inspect execution state and retain operational evidence for recovery, maintenance and support.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Operate the factory
 

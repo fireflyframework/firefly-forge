@@ -26,6 +26,7 @@ class ToolRuntimeContext:
     command_executor: Callable[[list[str], int], Awaitable[ProcessResult]] | None = None
     browser_runner: Callable[[str, int, int, str], Awaitable[dict[str, Any]]] | None = None
     internet_search: Callable[[str, int], Awaitable[dict[str, Any]]] | None = None
+    external_mcp: Callable[[str, str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
     credential_registry: Callable[[], dict[str, str]] = dict
     browser_journey: Callable[[BrowserJourney], Awaitable[JourneyEvidence]] | None = None
     image_capability: dict[str, Any] = field(default_factory=dict)
@@ -277,6 +278,7 @@ _TOOL_DESCRIPTIONS = {
     "browser_check": "Capture declared viewports and inspect the isolated project browser",
     "browser_journey": "Exercise bounded user journeys and return DOM and screenshot evidence",
     "internet_search": "Search the configured server-mediated search provider",
+    "external_mcp": "Read an exact reviewed external tool within a project and repository grant",
 }
 
 
@@ -284,7 +286,13 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
     snapshot = runtime_snapshot or {}
     result = []
     for identifier, description in _TOOL_DESCRIPTIONS.items():
-        optional = identifier in {"execute_command", "browser_check", "browser_journey", "internet_search"}
+        optional = identifier in {
+            "execute_command",
+            "browser_check",
+            "browser_journey",
+            "internet_search",
+            "external_mcp",
+        }
         available = not optional or bool(snapshot.get(identifier, False))
         supported = provider in {"agentic", "bridge", "api"}
         result.append(

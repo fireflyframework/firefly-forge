@@ -1,3 +1,7 @@
+---
+description: Use repository conversations to define products, request changes and inspect factory results through source-control integrations.
+---
+
 # Work from your repository
 
 Forge accepts trusted commands from GitHub issue and pull request comments, GitLab issue and merge request notes, and Bitbucket Cloud pull request comments. A command queues the same verified factory run used by Studio. Each run has its own workspace and branch, and retains the initiating receipt and issue identity.

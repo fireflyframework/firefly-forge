@@ -1,3 +1,7 @@
+---
+description: Apply central and project policies, reusable skills and executable checks with frozen configuration and explicit enforcement.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Apply project policies and reusable skills
 

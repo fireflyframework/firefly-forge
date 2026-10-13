@@ -19,6 +19,7 @@ from sqlalchemy import text
 from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal, digest
 from firefly_forge.knowledge import _current
+from firefly_forge.mcp_registry import mcp_snapshot
 from firefly_forge.models import AssuranceInput, RunInput
 from firefly_forge.persistence import ForgeRunEntity
 from firefly_forge.project_campaign_persistence import (
@@ -33,6 +34,7 @@ from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.projects import Projects
 from firefly_forge.store import Store, identifier, now
+from firefly_forge.tool_broker import tool_policy_snapshot
 
 Data = dict[str, Any]
 SourceResolver = Callable[[Data], Awaitable[str]]
@@ -119,6 +121,8 @@ class ProjectCampaigns:
             "knowledge": digest(private._read(private.directory / "knowledge.json")),
             "runners": digest(private._read(private.directory / "runners.json")),
             "search": digest(self.engine.search.snapshot()) if self.engine.search is not None else None,
+            "tool_policy": tool_policy_snapshot(private)["digest"],
+            "external_mcp": digest(private._read(private.directory / "external-mcp.json")),
             "credentials": {agent: digest(private.resolve(agent)) for agent in sorted(agents)},
         }
 
@@ -145,6 +149,10 @@ class ProjectCampaigns:
             raise ValueError("The knowledge snapshot differs from the campaign's frozen settings")
         if run.get("search_snapshot") and digest(run["search_snapshot"]) != configuration["search"]:
             raise ValueError("The search snapshot differs from the campaign's frozen settings")
+        if ("tool_policy" in configuration or "tool_policy_snapshot" in run) and run.get(
+            "tool_policy_snapshot", {}
+        ).get("digest") != configuration.get("tool_policy"):
+            raise ValueError("The tool policy differs from the campaign's frozen settings")
 
     @staticmethod
     def _scope(definition: ProjectDefinition, requested: list[str] | None) -> list[str]:
@@ -227,6 +235,7 @@ class ProjectCampaigns:
         if self.store.runners is not None:
             for repo_id in sorted(repositories):
                 runner = await self.store.runners.capture_run(repo_id)
+                runner = {**runner, "mcp_snapshot": mcp_snapshot(self.store.configuration, project_id, repo_id)}
                 tools = await self.store.runners.capabilities(runner)
                 prepared[repo_id] = (runner, tools)
         source_bases = {

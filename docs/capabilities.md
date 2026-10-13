@@ -1,3 +1,7 @@
+---
+description: Understand what factory receipts establish for generated source, product contracts, verification, integrations and delivery.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Know what the factory establishes
 

@@ -1,3 +1,7 @@
+---
+description: Separate factory API admission from the execution leader while preserving storage fences, PostgreSQL ownership and recovery rules.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Separate API admission from execution
 

@@ -451,3 +451,7 @@ def test_old_campaign_admission_keeps_original_pre_ca_knowledge_digest(tmp_path)
     before = (private.revisions / f"knowledge-{revision}.json").read_bytes()
     campaigns._validate_admission_snapshots(run, configuration)
     assert (private.revisions / f"knowledge-{revision}.json").read_bytes() == before
+    with pytest.raises(ValueError, match="tool policy"):
+        campaigns._validate_admission_snapshots({**run, "tool_policy_snapshot": {"digest": "current"}}, configuration)
+    with pytest.raises(ValueError, match="tool policy"):
+        campaigns._validate_admission_snapshots(run, {**configuration, "tool_policy": "current"})

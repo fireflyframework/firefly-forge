@@ -1,3 +1,7 @@
+---
+description: Configure required flycanon retrieval, inspect citations and retain verified project memory with repository scope and source provenance.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
@@ -132,3 +136,7 @@ Back up Flycanon PostgreSQL and original object storage with forge's ledger and 
 Use flycanon server 26.10.0 or a build containing [the identifier-scanning fix](https://github.com/firefly-operationOS/flycanon/pull/76). Earlier servers can mistake numeric fragments inside run IDs and Git hashes for phone numbers, causing `pii_policy=reject` to reject verified memory before admission. The fix preserves rejection of genuine phone numbers and email addresses.
 
 The Python SDK and flycanon server are installed separately. Updating the SDK does not apply a server-side scanner change. Keep an uncertain memory intent in the journal and inspect the source admission outcome before another write.
+
+## Learning and reuse decisions
+
+Verified project memory preserves observed source and check outcomes. The [learning architecture](learning.md) adds explicit question-to-evidence associations, freshness and version eligibility, scoped failure observations and the required communication contracts. Its implementation boundary is stated separately from the current retrieval and memory APIs.

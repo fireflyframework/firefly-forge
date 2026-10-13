@@ -1,3 +1,7 @@
+---
+description: Follow a product definition and execution through the forge console with current desktop and mobile screenshots and explained fixtures.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
 # Follow a change through Studio
@@ -85,6 +89,8 @@ Open Administration, then Connections. Connect to your factory API; server sign-
 Complete the [managed knowledge initialization](knowledge.md#initialize-the-managed-service) and verify a cited search before starting work with required retrieval. A fresh managed installation enables required knowledge and automatic verified memory. The connection capture remains unverified and cannot establish successful retrieval.
 
 Knowledge and memory currently use a separate workspace for each repository: `forge-<repository_id>`. A shared framework workspace can supply common references. A logical ProductProject does not automatically create an aggregated memory scope across its components. See [project scopes](knowledge.md#keep-project-scope-explicit).
+
+Internet search is a separate optional connection under Administration. Follow the [search setup walkthrough](search-providers.md#connect-through-studio) to choose a provider, store its key and restrict public sources. Saving settings does not run a provider test.
 
 ## 2. Define the reservation contract
 

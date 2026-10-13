@@ -1,3 +1,7 @@
+---
+description: Prepare identity, PostgreSQL, flycanon, storage and execution services for a local factory or an operator-managed cluster.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install the factory on your infrastructure
 

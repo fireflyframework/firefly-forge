@@ -1,3 +1,7 @@
+---
+description: Install executable repository checks for development and delivery, and inspect the evidence retained by factory quality gates.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install executable DevSecOps checks
 

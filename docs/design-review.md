@@ -1,3 +1,7 @@
+---
+description: Review wireframes by customer journey and retain approved design references, states and acceptance criteria for implementation.
+---
+
 # Review customer journey wireframes
 
 Generate references before implementation so customers and developers can check each journey, its acceptance criteria, and the shared layout. Forge renders a deterministic wireframe from the current product definition and project brand kit. The result is a review template, not an AI-generated finished product or proof of final visual acceptance.

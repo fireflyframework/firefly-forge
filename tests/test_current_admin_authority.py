@@ -178,7 +178,7 @@ async def test_schema18_upgrade_does_not_infer_privileges_from_legacy_administra
         await ForgeIdentityUserRepository().save(
             ForgeIdentityUserEntity(id=legacy.id, issuer=legacy.issuer, subject=legacy.subject, enabled=True)
         )
-        await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision=18"))
+        await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision>=18"))
         await session.execute(text("INSERT INTO forge_schema_migrations(revision) VALUES(17) ON CONFLICT DO NOTHING"))
         for column in ("api_roles", "api_roles_audience", "api_roles_issued_at", "api_roles_expires_at"):
             await session.execute(text("ALTER TABLE forge_identity_users DROP COLUMN " + column))

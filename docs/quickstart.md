@@ -1,3 +1,7 @@
+---
+description: Take a product brief through repository setup, a bounded coding run, executable verification and source checkpoint review.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Build your first product
 

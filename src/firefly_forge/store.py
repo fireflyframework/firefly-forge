@@ -252,9 +252,11 @@ class Store:
     ) -> Data:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
+        from firefly_forge.mcp_registry import mcp_snapshot
         from firefly_forge.product_design import ProductDesign
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
         from firefly_forge.projects import Projects
+        from firefly_forge.tool_broker import tool_policy_snapshot
 
         if request.operation == "test" and (request.model_profile_id or request.assurance.review_model_profile_id):
             raise ValueError("Test operations check existing source without a coding model")
@@ -322,6 +324,7 @@ class Store:
                 raise ValueError(
                     "Direct host coding CLIs require a factory administrator; choose a configured API agent"
                 )
+        runner = {**runner, "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id)}
         tools = (
             prepared_tools
             if prepared_tools is not None
@@ -423,6 +426,9 @@ class Store:
                 "role_snapshot": role_snapshot,
                 "role_selection_source": role_source,
                 **runner,
+                "tool_policy_snapshot": copy.deepcopy(
+                    runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
+                ),
                 **frozen_configuration,
                 "knowledge_snapshot": snapshot_knowledge(self.configuration),
                 "id": uuid.uuid4().hex,

@@ -1,3 +1,7 @@
+---
+description: Review infrastructure recipes for AWS, Azure, Google Cloud, DigitalOcean and private servers, with explicit local qualification limits.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review and deploy a cloud recipe
 

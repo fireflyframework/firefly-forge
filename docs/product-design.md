@@ -1,3 +1,7 @@
+---
+description: Give each product its own brand, design tokens, layout rules and frontend component structure tied to reviewed functional behavior.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Give each product an owned design system
 

@@ -1,3 +1,7 @@
+---
+description: Record application health checks and maintenance work after deployment, with retained observations and explicit operational boundaries.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Observe and maintain a deployed application
 

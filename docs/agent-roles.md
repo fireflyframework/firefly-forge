@@ -1,3 +1,7 @@
+---
+description: Configure factory roles and community skill instructions, with explicit execution bindings, tool grants and bounded worker feedback.
+---
+
 # Factory roles and community skills
 
 A role assigns responsibility to an actual factory stage. It does not create a separate model session. The default implementation uses one selected coding provider, deterministic planning and source checks, real repository verification, and an optional explicitly configured assurance reviewer.

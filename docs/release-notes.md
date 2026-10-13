@@ -1,5 +1,19 @@
+---
+description: Review firefly forge release changes, runtime requirements and the verification boundaries of each published version.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# firefly forge 0.2.1
+# firefly forge release notes
+
+## 0.2.2
+
+Administrators can configure internet search through a three-step Studio wizard. Existing provider settings remain selected; changing providers requires a new write-only key. Saving and making a potentially billable connection test are separate actions. Desktop and mobile screenshots are tied to the current frontend source and package version.
+
+Agent search and approved external MCP calls now retain a PostgreSQL intent before dispatch and a bounded receipt afterwards. Project, repository, role, source and configuration snapshots define the invocation. Unknown outcomes block source consolidation and require explicit reconciliation. The first external adapter supports reviewed GitHub repository-read tools; other connector templates state their unmet prerequisites.
+
+Campaigns freeze their tool catalog after capturing the repository's MCP grants and reject settings changed during admission. Native FireflyAgent tool errors retain quota, authentication and rate-limit pauses or the need for reconciliation. Internal whole-run retries are disabled so the journaled supervisor controls continuation.
+
+## 0.2.1
 
 Standalone packages now retain the Flycanon SDK release URL in their dependency metadata. The package check rejects wheels that would require an unavailable registry package. The v0.2.0 tag records the initial qualification; its publication was stopped when a clean installation exposed this issue.
 
@@ -116,6 +130,5 @@ Publication is explicit and does not merge, release or deploy a generated
 product. Read [capabilities](capabilities.md) and [security](security.md) before
 operating the service remotely.
 
-Firefly Agent Bridge remains a separate private internal developer service.
-This public release contains its client integration; authorized installation
-instructions are available only through the [private repository guide](bridge.md).
+Firefly Agent Bridge is now a separate public Apache-2.0 project for local development and testing.
+The factory's [bridge guide](bridge.md) explains its client integration and the production-use limitations.

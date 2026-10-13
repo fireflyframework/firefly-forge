@@ -1,3 +1,7 @@
+---
+description: Use native file, Git, command, search and browser tools within configured workspace, execution and credential boundaries.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Use native workspace and browser tools
 

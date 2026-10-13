@@ -108,6 +108,17 @@ async def test_mcp_tools_have_real_input_contracts():
         "test_model_profile",
         "get_task_routing",
         "save_task_routing",
+        "get_tool_policy",
+        "configure_tool_policy",
+        "get_run_tool_invocations",
+        "abandon_tool_invocation",
+        "get_external_mcp_catalog",
+        "configure_external_mcp",
+        "discover_external_mcp",
+        "review_external_mcp",
+        "get_external_mcp_grants",
+        "grant_external_mcp",
+        "revoke_external_mcp",
     }
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]

@@ -10,12 +10,14 @@ from mcp.server.mcpserver.utilities.types import Image
 from pydantic import WithJsonSchema
 
 from firefly_forge.assistant_attachments import AttachmentInput
+from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
 from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.task_routing import TaskRoutingInput
+from firefly_forge.tool_broker import ToolPolicyInput
 
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
@@ -804,6 +806,107 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return Image(data=connection.browser_screenshot(evidence_id), format="png")
+
+    @server.tool()
+    def get_external_mcp_catalog() -> list[dict[str, Any]]:
+        """Read disabled connector templates, exact schema reviews and unmet prerequisites."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.external_mcp_catalog()
+
+    @server.tool()
+    def configure_external_mcp(
+        connector: str, enabled: bool = False, api_key_file: str | None = None, clear_secret: bool = False
+    ) -> dict[str, Any]:
+        """Configure a fixed connector as factory admin using an owner-private key file.
+
+        No arbitrary endpoint or stdio launcher is admitted. Enabling is not a schema review or grant.
+        """
+        from pathlib import Path
+
+        from firefly_forge.cli import client, private_secret_file
+
+        key = private_secret_file(Path(api_key_file)) if api_key_file else None
+        with client() as connection:
+            return connection.configure_external_mcp(
+                connector, {"enabled": enabled, "api_key": key, "clear_secret": clear_secret}
+            )
+
+    @server.tool()
+    def discover_external_mcp(connector: str) -> dict[str, Any]:
+        """Make an explicit bounded remote schema discovery; do not claim tool execution from discovery."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.discover_external_mcp(connector)
+
+    @server.tool()
+    def review_external_mcp(connector: str, request: MCPReviewInput) -> dict[str, Any]:
+        """Pin the exact discovery digest and known readonly tool allowlist as factory administrator."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.review_external_mcp(connector, request.model_dump())
+
+    @server.tool()
+    def get_external_mcp_grants(project_id: str) -> list[dict[str, Any]]:
+        """Read project-bound grants without exposing control-plane credentials."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.external_mcp_grants(project_id)
+
+    @server.tool()
+    def grant_external_mcp(project_id: str, connector: str, request: MCPGrantInput) -> dict[str, Any]:
+        """Grant exact reviewed tools to a registered project repository and implementation role."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.grant_external_mcp(project_id, connector, request.model_dump())
+
+    @server.tool()
+    def revoke_external_mcp(project_id: str, grant_id: str) -> dict[str, Any]:
+        """Revoke a project's external tool grant, including future calls by already queued runs."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.revoke_external_mcp(project_id, grant_id)
+
+    @server.tool()
+    def get_tool_policy() -> dict[str, Any]:
+        """Read factory-admin tool-call limits. Existing runs retain their frozen policy."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.tool_policy()
+
+    @server.tool()
+    def configure_tool_policy(request: ToolPolicyInput) -> dict[str, Any]:
+        """Replace factory-admin mediated tool limits for new runs; this does not grant a tool."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_tool_policy(request.model_dump())
+
+    @server.tool()
+    def get_run_tool_invocations(run_id: str) -> list[dict[str, Any]]:
+        """Read source-associated intent and outcome evidence for an authorized run."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.tool_invocations(run_id)
+
+    @server.tool()
+    def abandon_tool_invocation(run_id: str, correlation_id: str, request_id: str) -> dict[str, Any]:
+        """Record an explicit operator decision to abandon an unknown outcome without replay.
+
+        This cannot claim successful execution. An active call must finish or its lease expire.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.abandon_tool_invocation(run_id, correlation_id, request_id)
 
     return server
 

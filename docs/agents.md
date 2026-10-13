@@ -1,3 +1,7 @@
+---
+description: Choose the coding provider for a factory run and understand native agentic execution, local subscriptions and provider limitations.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Choose a coding provider
 

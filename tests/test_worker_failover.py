@@ -292,7 +292,12 @@ async def test_real_headless_standby_stops_without_taking_leadership(tmp_path, s
     async with headless_process(tmp_path, "leader") as leader:
         original = await wait_for_owner(store)
         async with headless_process(tmp_path, "standby") as standby:
-            await asyncio.sleep(1.5)
+
+            async def signal_handlers_installed():
+                # run_worker installs shutdown handlers before the native startup event.
+                return "starting_application" in (tmp_path / "standby.log").read_text()
+
+            await wait_for(signal_handlers_installed, 15)
             assert standby.returncode is None, "Standby exited while another worker owned execution"
             assert await owner_pids(store) == original
             standby.terminate()

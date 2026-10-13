@@ -90,6 +90,12 @@ async function capture(
   device: string,
 ) {
   await page.evaluate(() => document.fonts.ready);
+  const currentVersion = JSON.parse(
+    readFileSync(resolve(root, "studio/package.json"), "utf8"),
+  ).version;
+  await expect(page.locator(".workspace-main > footer")).toContainText(
+    "v" + currentVersion,
+  );
   if (
     !stage.startsWith("evidence-") &&
     ![
@@ -120,12 +126,17 @@ async function capture(
     "run-review-provider": "Checks",
     "run-policies": "Checks",
     "run-review": "Review",
+    "search-provider": "Provider",
+    "search-access": "Access",
+    "search-review": "Review",
   };
   if (expectedStep[stage])
     await expect(
       page.locator('.wizard-steps [aria-current="step"]'),
     ).toContainText(expectedStep[stage]);
-  const action = page.locator(".wizard-actions button.primary").last();
+  const action = page
+    .locator(".wizard-actions button.primary, .search-actions button.secondary")
+    .last();
   let control = null;
   if (await action.isVisible()) {
     await action.scrollIntoViewIfNeeded();
@@ -204,15 +215,7 @@ async function capture(
   if (capturedAction?.in_frame) expect(capturedAction.hit).toBe(true);
   const manifestPath = resolve(assets, "walkthrough-manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  manifest.studio_version = JSON.parse(
-    readFileSync(resolve(root, "studio/package.json"), "utf8"),
-  ).version;
-  const currentVersion = JSON.parse(
-    readFileSync(resolve(root, "studio/package.json"), "utf8"),
-  ).version;
-  await expect(page.locator(".workspace-main > footer")).toContainText(
-    "v" + currentVersion,
-  );
+  manifest.studio_version = currentVersion;
   const currentSource = {
     ...sources(resolve(root, "studio/src")),
     ...sources(resolve(root, "studio/public")),
@@ -272,12 +275,45 @@ for (const device of ["desktop", "mobile"])
       );
       let product: unknown = null;
       let admitted = false;
+      let searchSettings: Record<string, unknown> = {
+        provider: "brave",
+        endpoint: "https://api.search.brave.com/res/v1/web/search",
+        revision: null,
+        configured: false,
+        max_results: 10,
+        live_search_verified: false,
+      };
+      let searchTests = 0;
       await page.route("**/api/v1/**", async (route) => {
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
         let json: unknown = {};
-        if (path.endsWith("/repositories")) json = [repository];
+        if (path.endsWith("/search/configuration")) {
+          if (request.method() === "PUT") {
+            const values = request.postDataJSON();
+            searchSettings = {
+              provider: values.provider ?? searchSettings.provider,
+              endpoint:
+                values.provider === "tavily"
+                  ? "https://api.tavily.com/search"
+                  : "https://api.search.brave.com/res/v1/web/search",
+              revision: "d".repeat(32),
+              configured: true,
+              max_results: 10,
+              live_search_verified: false,
+              include_domains: values.include_domains ?? [],
+            };
+          }
+          json = searchSettings;
+        } else if (path.endsWith("/search/test")) {
+          searchTests++;
+          json = {
+            provider: searchSettings.provider,
+            live_search_verified: false,
+            result_count: 0,
+          };
+        } else if (path.endsWith("/repositories")) json = [repository];
         else if (path.endsWith("/providers"))
           json = [
             {
@@ -564,5 +600,39 @@ for (const device of ["desktop", "mobile"])
             .evaluate((element) => element.scrollIntoView({ block: "start" }));
         await capture(page, `evidence-${tab.toLowerCase()}`, theme, device);
       }
+      await expect(
+        page.getByText("Your run has been queued.", { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Dismiss notification", exact: true })
+        .click();
+      await navigate(page, "Administration");
+      await page
+        .locator("main")
+        .getByRole("button", { name: "Internet search", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Set up internet search", exact: true })
+        .click();
+      await expect(
+        page.getByLabel("Search provider", { exact: true }),
+      ).toHaveValue("tavily");
+      await capture(page, "search-provider", theme, device);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page
+        .getByLabel("Provider key", { exact: true })
+        .fill("fixture-search-key-not-an-account");
+      await page
+        .getByLabel("Allowed websites", { exact: true })
+        .fill("fireflyframework.org\ngithub.com");
+      await capture(page, "search-access", theme, device);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await capture(page, "search-review", theme, device);
+      await page
+        .getByRole("button", { name: "Save search settings", exact: true })
+        .click();
+      await expect(page.getByText("Not tested", { exact: true })).toBeVisible();
+      await capture(page, "search-saved", theme, device);
+      expect(searchTests).toBe(0);
     });
   }

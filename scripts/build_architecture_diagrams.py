@@ -29,7 +29,7 @@ DIAGRAMS = {
         "title": "Native services behind the factory",
         "subtitle": "Clients submit contracts; the execution leader owns effects.",
         "cards": [
-            ("Operator surfaces", "Studio, CLI, ForgeClient and 78 factory MCP tools use authenticated contracts."),
+            ("Operator surfaces", "Studio, CLI, ForgeClient and 89 factory MCP tools use authenticated contracts."),
             (
                 "Identity and project access",
                 "OperatorAuth validates identity. AccessRoutes checks the requested resource and operation.",
@@ -301,6 +301,87 @@ DIAGRAMS = {
             ),
         ],
         "footer": "Shared storage requires its own multi-host verification; standbys add no execution capacity.",
+    },
+    "learning-lookup": {
+        "icon": "database",
+        "title": "Check what can be reused before searching",
+        "subtitle": "Learning contract under implementation; every admitted reuse requires scoped evidence.",
+        "cards": [
+            (
+                "Bind the question",
+                "Retain task, role, repository, source and dependency versions before choosing a reference.",
+            ),
+            (
+                "Retrieve authorized knowledge",
+                "Required flycanon retrieval must succeed. Similarity supplies candidates; it cannot approve reuse.",
+            ),
+            (
+                "Evaluate exact evidence",
+                "The ledger checks scope, status, context, source, version and database-time freshness.",
+            ),
+            (
+                "Choose reuse or search",
+                (
+                    "A verified exact match returns its evidence. Missing or stale knowledge "
+                    "records a bounded search reason."
+                ),
+            ),
+            (
+                "Retain the observation",
+                "A tool receipt keeps citations and outcome. Web snippets remain reference candidates.",
+            ),
+            (
+                "Verify before learning",
+                (
+                    "Actual task checks and source custody support a local procedure outcome. "
+                    "Unknown effects require reconciliation."
+                ),
+            ),
+        ],
+        "footer": "Credentials stay in private configuration. A model cannot declare a lesson verified.",
+    },
+    "learning-feedback": {
+        "icon": "components",
+        "title": "Retain outcomes with their limits",
+        "subtitle": (
+            "Learning contract under implementation; local outcomes and failed checks retain distinct evidence."
+        ),
+        "cards": [
+            ("Reference candidate", "Question, citations and tool receipt identify a hypothesis or source for review."),
+            (
+                "Verified local outcome",
+                "Matching task, source, executable checks and configured review support one bounded procedure.",
+            ),
+            (
+                "Observed failed check",
+                "Retain actual command evidence and exact context. A failure does not establish a generalized defect.",
+            ),
+            (
+                "Repair repeat control",
+                (
+                    "An unchanged repair attempt can be held. Independent verification, "
+                    "diagnostics and intentional RED checks still run."
+                ),
+            ),
+            (
+                "Invalidate or supersede",
+                (
+                    "New source, versions, expiry or a reviewed contradiction change reuse "
+                    "eligibility while preserving prior evidence."
+                ),
+            ),
+            (
+                "Review shared learning",
+                (
+                    "Cross-project promotion needs a separately reviewed safe framework record. "
+                    "Private origins remain private."
+                ),
+            ),
+        ],
+        "footer": (
+            "Quota, authentication, rate limits, transport errors and unknown outcomes remain operational records."
+        ),
+        "connect": False,
     },
 }
 

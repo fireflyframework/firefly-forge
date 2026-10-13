@@ -1,3 +1,7 @@
+---
+description: Coordinate product components through a dependency graph, immutable run admissions and evidence-based delivery gates.
+---
+
 # Deliver a product across components
 
 A delivery campaign coordinates the configured components of one product project. It admits every child run together, then releases components as their dependencies finish. Different repositories can run in parallel; the factory keeps one active run per repository.

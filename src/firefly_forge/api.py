@@ -96,6 +96,8 @@ from firefly_forge.knowledge import (
 )
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
+from firefly_forge.mcp_controllers import ExternalMCPController
+from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
 from firefly_forge.model_profiles import ModelProfiles
 from firefly_forge.models import RepositoryInput, RunInput
@@ -147,6 +149,9 @@ from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
+from firefly_forge.tool_broker import ToolInvocationBroker
+from firefly_forge.tool_controllers import ToolController
+from firefly_forge.tool_persistence import ForgeToolInvocationRepository
 from firefly_forge.user_administration import UserAdministration
 from firefly_forge.user_administration_controllers import UserAdministrationController
 from firefly_forge.user_administration_persistence import (
@@ -445,6 +450,8 @@ class FactoryConfiguration:
         sandbox: SandboxExecutor,
         browser: BrowserRunner,
         search: SearchTools,
+        tool_broker: ToolInvocationBroker,
+        external_mcp: ExternalMCPRegistry,
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
@@ -459,8 +466,12 @@ class FactoryConfiguration:
         engine.assurance = assurance
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
+        engine.tool_broker = tool_broker
+        engine.external_mcp = tool_broker.external_mcp = external_mcp
+        external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
+        tool_broker.credential_registry = lambda: engine.credential_registry()
         journal.credential_registry = lambda: engine.credential_registry()
         store.credential_registry = lambda: engine.credential_registry()
         return engine
@@ -542,6 +553,16 @@ class FactoryConfiguration:
         return SearchTools(self.data_dir / "tools" / "search")
 
     @bean
+    def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
+        return ExternalMCPRegistry(private)
+
+    @bean
+    def tool_invocation_broker(
+        self, store: Store, journal: Journal, records: ForgeToolInvocationRepository
+    ) -> ToolInvocationBroker:
+        return ToolInvocationBroker(store, journal, self.data_dir, records)
+
+    @bean
     def browser_runner(self, sandbox: SandboxExecutor) -> BrowserRunner:
         return BrowserRunner(sandbox, self.data_dir)
 
@@ -582,12 +603,13 @@ class FactoryConfiguration:
         engine: Engine,
         journal: Journal,
         search: SearchTools,
+        external_mcp: ExternalMCPRegistry,
         auth: OperatorAuth,
         profiles: ModelProfiles,
         users: UserAdministration,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
-        manager.secret_registries.append(search)
+        manager.secret_registries.extend([search, external_mcp])
         manager.secret_registries.extend([auth, profiles, users])
         return manager
 
@@ -760,7 +782,10 @@ def create_runtime(
         AgentRoleController,
         RepositoryRoleController,
         ForgeSandboxRepository,
+        ForgeToolInvocationRepository,
         RunnerController,
+        ToolController,
+        ExternalMCPController,
         ForgeCampaignRepository,
         ForgeCampaignChildRepository,
         ForgeCampaignEventRepository,

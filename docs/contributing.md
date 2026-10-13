@@ -1,3 +1,7 @@
+---
+description: Prepare a focused forge change with repository conventions, executable checks, documentation and evidence for review.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Contribute a working change
 

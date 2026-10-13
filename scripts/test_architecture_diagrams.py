@@ -38,6 +38,12 @@ class ArchitectureDiagramTests(unittest.TestCase):
             (diagrams.OUTPUT / "architecture-components.svg").read_bytes(),
         )
 
+    def test_standalone_learning_assets_identify_pending_contracts(self):
+        for name in ("learning-lookup", "learning-feedback"):
+            for suffix in ("", "-narrow"):
+                asset = ElementTree.fromstring((diagrams.OUTPUT / (name + suffix + ".svg")).read_text())
+                self.assertIn("under implementation", asset.find("svg:desc", NS).text)
+
     def test_documented_operator_tool_count_matches_actual_registrations(self):
         source = ast.parse((diagrams.ROOT / "src/firefly_forge/mcp_server.py").read_text())
         tools = [
@@ -53,7 +59,7 @@ class ArchitectureDiagramTests(unittest.TestCase):
                 for decorator in node.decorator_list
             )
         ]
-        self.assertEqual(len(tools), 78, "Update the documented factory MCP surface when registrations change")
+        self.assertEqual(len(tools), 89, "Update the documented factory MCP surface when registrations change")
 
 
 if __name__ == "__main__":
