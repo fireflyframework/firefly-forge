@@ -1,13 +1,13 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Configure the development host
 
-The factory operator token protects the API. Provider credentials authenticate the selected coding worker. Source-control credentials authorize repository access. PostgreSQL stores the run ledger. Keep these responsibilities separate when setting up the host.
+Keycloak identifies production users and project memberships authorize their actions. A loopback operator token is available only in explicit local bootstrap mode. Provider credentials authenticate the selected coding worker. Source-control credentials authorize repository access. PostgreSQL stores the run ledger. Keep these responsibilities separate when setting up the host.
 
 ## Start with a working baseline
 
 1. Configure a dedicated PostgreSQL database and `FORGE_DATABASE_URL`.
-2. Start the API with a unique `FORGE_API_TOKEN` and private `FORGE_DATA_DIR`.
-3. Connect Studio using the operator token, held in page memory.
+2. Configure [identity](identity.md) and a private `FORGE_DATA_DIR`; select explicit local bootstrap only for a trusted loopback development host.
+3. Sign in through Studio. Its opaque HttpOnly session survives reload; credentials remain on the server.
 4. Choose an official CLI login or configure a native API provider.
 5. Test that connection, connect the intended repository, and run a small PyFly or LaraFly acceptance brief.
 
@@ -56,7 +56,8 @@ Credential values are redacted from run events, errors, summaries, usage and ver
 | `FORGE_DATABASE_URL` | PostgreSQL async connection URL, using `postgresql+asyncpg://` |
 | `FORGE_DATABASE_SCHEMA` | Ledger schema, default `forge` |
 | `FORGE_DATA_DIR` | Private configuration, ownership lock and workspaces |
-| `FORGE_API_TOKEN` | Trusted operator authentication, at least 24 characters |
+| `FORGE_AUTH_MODE` | `oidc` by default; explicit `local_bootstrap` for trusted loopback development |
+| `FORGE_API_TOKEN` | Local bootstrap credential, at least 24 characters; not production authentication |
 | `FORGE_ALLOWED_HOSTS` | Allowed host headers for the API |
 | `FORGE_CONCURRENCY` | Active local runs per service, default `2` |
 | `FORGE_PROVIDER_TIMEOUT` | Environment fallback for generation timeout |
@@ -64,3 +65,7 @@ Credential values are redacted from run events, errors, summaries, usage and ver
 | `FORGE_POLICY_CATALOG` | Optional trusted JSON policy catalog file |
 
 Environment-only changes require restarting the server to make its host setup predictable. The configuration API does not mutate process-global environment variables.
+
+## Assign models by task
+
+[Named model profiles](model-profiles.md) keep several models and their credentials separate. Explicit task bindings select the intended profile; an unsupported capability fails instead of silently choosing another model. Product dialogue records its actual task/profile selection in the immutable conversation receipt. New implementation/review/visual task wiring must be accepted separately from a saved configuration.

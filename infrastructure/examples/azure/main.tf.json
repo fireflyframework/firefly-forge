@@ -1,0 +1,152 @@
+{
+  "terraform": {
+    "required_version": ">= 1.11.0, < 2.0.0",
+    "required_providers": {
+      "azurerm": {
+        "source": "hashicorp/azurerm",
+        "version": "~> 5.9.0"
+      }
+    },
+    "backend": {
+      "azurerm": {
+        "resource_group_name": "tfstate",
+        "storage_account_name": "forgestate",
+        "container_name": "tfstate",
+        "key": "forge/project/inventory-244210e4.tfstate",
+        "use_azuread_auth": true
+      }
+    }
+  },
+  "provider": {
+    "azurerm": {
+      "features": {},
+      "subscription_id": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  "resource": {
+    "azurerm_resource_group": {
+      "app": {
+        "name": "inventory-244210e4-forge",
+        "location": "eastus"
+      }
+    },
+    "azurerm_virtual_network": {
+      "app": {
+        "location": "eastus",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4",
+        "address_space": [
+          "10.42.0.0/16"
+        ]
+      }
+    },
+    "azurerm_subnet": {
+      "app": {
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4",
+        "virtual_network_name": "${azurerm_virtual_network.app.name}",
+        "address_prefixes": [
+          "10.42.1.0/24"
+        ]
+      }
+    },
+    "azurerm_network_security_group": {
+      "app": {
+        "location": "eastus",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4"
+      }
+    },
+    "azurerm_public_ip": {
+      "app": {
+        "location": "eastus",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4",
+        "allocation_method": "Static",
+        "sku": "Standard"
+      }
+    },
+    "azurerm_network_interface": {
+      "app": {
+        "location": "eastus",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4",
+        "ip_configuration": {
+          "name": "app",
+          "subnet_id": "${azurerm_subnet.app.id}",
+          "private_ip_address_allocation": "Dynamic",
+          "public_ip_address_id": "${azurerm_public_ip.app.id}"
+        }
+      }
+    },
+    "azurerm_network_interface_security_group_association": {
+      "app": {
+        "network_interface_id": "${azurerm_network_interface.app.id}",
+        "network_security_group_id": "${azurerm_network_security_group.app.id}"
+      }
+    },
+    "azurerm_linux_virtual_machine": {
+      "app": {
+        "location": "eastus",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "name": "inventory-244210e4",
+        "size": "Standard_B2s",
+        "admin_username": "ubuntu",
+        "disable_password_authentication": true,
+        "network_interface_ids": [
+          "${azurerm_network_interface.app.id}"
+        ],
+        "admin_ssh_key": {
+          "username": "ubuntu",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29c"
+        },
+        "os_disk": {
+          "caching": "ReadWrite",
+          "storage_account_type": "Standard_LRS"
+        },
+        "source_image_reference": {
+          "publisher": "Canonical",
+          "offer": "ubuntu-24_04-lts",
+          "sku": "server",
+          "version": "latest"
+        }
+      }
+    },
+    "azurerm_network_security_rule": {
+      "ssh": {
+        "name": "ssh",
+        "priority": 100,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "source_port_range": "*",
+        "destination_port_range": "22",
+        "source_address_prefix": "203.0.113.8/32",
+        "destination_address_prefix": "*",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "network_security_group_name": "${azurerm_network_security_group.app.name}"
+      },
+      "web": {
+        "name": "web",
+        "priority": 110,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "source_port_range": "*",
+        "destination_port_ranges": [
+          "80",
+          "443"
+        ],
+        "source_address_prefix": "*",
+        "destination_address_prefix": "*",
+        "resource_group_name": "${azurerm_resource_group.app.name}",
+        "network_security_group_name": "${azurerm_network_security_group.app.name}"
+      }
+    }
+  },
+  "output": {
+    "host": {
+      "value": "${azurerm_public_ip.app.ip_address}"
+    }
+  }
+}

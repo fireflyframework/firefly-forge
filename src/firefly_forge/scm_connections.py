@@ -88,6 +88,23 @@ class SCMConnections:
         values = self._values(provider)
         return all(values.get(key) for key in self._definition(provider)["required"])
 
+    def snapshot(self, repository: Data) -> Data:
+        provider = repository.get("connection_provider") or repository["provider"]
+        application = bool(repository.get("connection_provider")) or self.configured(provider)
+        return {
+            "mode": "application" if application else "unmanaged_git",
+            "provider": provider,
+            "application_revision": self._record(provider).get("revision") if application else None,
+            "repository_id": repository["id"],
+            "remote_repository_id": repository.get("remote_repository_id"),
+            "url": repository["url"],
+            "default_branch": repository["default_branch"],
+        }
+
+    def assert_snapshot(self, repository: Data, snapshot: Data | None) -> None:
+        if snapshot is not None and self.snapshot(repository) != snapshot:
+            raise ValueError("Source-control application or repository authorization changed after admission")
+
     def _host(self, provider: str) -> str:
         return self._values(provider).get("host", "https://bitbucket.org")
 
@@ -231,23 +248,56 @@ class SCMConnections:
         return self._summary(provider)
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        allowed_statuses = kwargs.pop("allowed_statuses", (200, 201))
+        response_limit = kwargs.pop("response_limit", None)
+
+        async def perform(client: httpx.AsyncClient) -> httpx.Response:
+            if response_limit is None:
+                return await client.request(method, url, timeout=20, follow_redirects=False, **kwargs)
+            async with client.stream(method, url, timeout=20, follow_redirects=False, **kwargs) as streamed:
+                content = bytearray()
+                async for chunk in streamed.aiter_bytes():
+                    if len(content) + len(chunk) > response_limit:
+                        raise ValueError("Provider reference response exceeds its size limit")
+                    content.extend(chunk)
+                headers = {
+                    key: value
+                    for key, value in streamed.headers.items()
+                    if key not in {"content-encoding", "content-length"}
+                }
+                return httpx.Response(
+                    streamed.status_code, content=bytes(content), headers=headers, request=streamed.request
+                )
+
         try:
             if self._client is not None:
-                response = await self._client.request(method, url, timeout=20, follow_redirects=False, **kwargs)
+                response = await perform(self._client)
             else:
                 async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-                    response = await client.request(method, url, **kwargs)
+                    response = await perform(client)
         except httpx.HTTPError:
             raise ValueError("Provider connection could not be completed") from None
-        if response.status_code not in (200, 201):
+        if response.status_code not in allowed_statuses:
             raise ValueError(f"Provider rejected the application request (HTTP {response.status_code})")
         return response
 
-    async def _github_token(self, repository_id: str | None = None) -> str:
+    async def _github_token(
+        self,
+        repository_id: str | None = None,
+        *,
+        issues: bool = False,
+        pull_request: bool = False,
+        references: bool = False,
+    ) -> str:
         record, values = self._record("github"), self._values("github")
         if not self.configured("github"):
             raise ValueError("Configure the GitHub App before connecting repositories")
-        cache_key = str(record["revision"]) + ":" + str(repository_id)
+        cache_key = (
+            str(record["revision"])
+            + ":"
+            + str(repository_id)
+            + (":references" if references else ((":pr" if pull_request else ":issues") if issues else ""))
+        )
         cached = self._tokens.get(cache_key)
         if cached and cached[1] > time.time() + 90:
             return cached[0]
@@ -258,6 +308,10 @@ class SCMConnections:
             algorithm="RS256",
         )
         permissions = {"contents": "write", "pull_requests": "write"} if repository_id else {"metadata": "read"}
+        if issues and repository_id:
+            permissions = {"pull_requests" if pull_request else "issues": "write"}
+        if references and repository_id:
+            permissions = {"contents": "write"}
         payload: Data = {"permissions": permissions}
         if repository_id:
             if not repository_id.isdecimal():
@@ -572,6 +626,41 @@ class SCMConnections:
             raise ValueError("Repository URL and identity do not match the application's current grants")
         token = (
             await self._github_token(str(found["id"])) if provider == "github" else await self._oauth_token(provider)
+        )
+        return token, self._api(provider)
+
+    async def issue_authentication(self, repository: Data, *, pull_request: bool = False) -> tuple[str, str]:
+        """Revalidate the connected remote before obtaining an operation-scoped issue grant."""
+        provider = str(repository.get("connection_provider"))
+        grants = await self.repositories(provider)
+        if not any(
+            grant["url"] == repository["url"]
+            and grant["id"] == repository.get("remote_repository_id")
+            and grant["name"] == repository["name"]
+            for grant in grants
+        ):
+            raise ValueError("Repository URL and identity do not match the application's current grants")
+        token = (
+            await self._github_token(str(repository["remote_repository_id"]), issues=True, pull_request=pull_request)
+            if provider == "github"
+            else await self._oauth_token(provider)
+        )
+        return token, self._api(provider)
+
+    async def reference_authentication(self, repository: Data) -> tuple[str, str]:
+        provider = str(repository.get("connection_provider"))
+        grants = await self.repositories(provider)
+        if not any(
+            grant["url"] == repository["url"]
+            and grant["id"] == repository.get("remote_repository_id")
+            and grant["name"] == repository["name"]
+            for grant in grants
+        ):
+            raise ValueError("Repository URL and identity do not match the application's current grants")
+        token = (
+            await self._github_token(str(repository["remote_repository_id"]), references=True)
+            if provider == "github"
+            else await self._oauth_token(provider)
         )
         return token, self._api(provider)
 

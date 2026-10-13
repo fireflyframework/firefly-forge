@@ -25,6 +25,7 @@ Set an async PostgreSQL connection URL through your local secret manager or a pr
 export FORGE_DATABASE_URL="postgresql+asyncpg://forge:YOUR_DATABASE_PASSWORD@127.0.0.1:5432/forge"
 export FORGE_DATABASE_SCHEMA="forge"
 export FORGE_DATA_DIR="$PWD/.forge"
+export FORGE_AUTH_MODE="local_bootstrap"
 export FORGE_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 ```
 
@@ -34,7 +35,7 @@ PostgreSQL stores repositories, runs, events, plans, task states and the write-a
 
 ## Run with Compose
 
-The supplied Compose file includes PostgreSQL 17 and separate database and factory-data volumes. Set `FORGE_POSTGRES_PASSWORD` and `FORGE_API_TOKEN` through your private deployment environment. Set `FORGE_DATABASE_URL` to `postgresql+asyncpg://forge:YOUR_URL_ENCODED_PASSWORD@postgres:5432/forge`; the host is the Compose service name `postgres`. The URL password must match the configured database password and reserved URI characters must be percent-encoded.
+The supplied Compose file includes PostgreSQL 17 and separate database and factory-data volumes. Set `FORGE_POSTGRES_PASSWORD` and the OIDC settings from the [identity guide](identity.md) through your private deployment environment. Compose uses OIDC by default; its network boundary does not turn a container gateway into a trusted loopback bootstrap caller. Set `FORGE_DATABASE_URL` to `postgresql+asyncpg://forge:YOUR_URL_ENCODED_PASSWORD@postgres:5432/forge`; the host is the Compose service name `postgres`. The URL password must match the configured database password and reserved URI characters must be percent-encoded.
 
 Start with `docker compose up --build`. The API binds to the host loopback address on port 8787. Back up both volumes and the database before upgrading. Local CLI subscription logins are host credentials; the container needs its own selected provider setup.
 
@@ -58,7 +59,7 @@ Native Firefly Agentic uses a provider API key and an available provider-qualifi
 uv run forge serve --host 127.0.0.1 --port 8787 --data-dir .forge
 ```
 
-Open [Studio](http://127.0.0.1:8787/), connect to `/api/v1` using the operator token, configure a provider, and test its access. Connect an authorized repository, choose PyFly or LaraFly, and create a small run with observable acceptance checks.
+Open [Studio](http://127.0.0.1:8787/). For this explicit local setup, enter the operator token once; the server exchanges it for a durable HttpOnly session. Production installations use [Keycloak sign-in](identity.md). Configure a provider and test its access. Connect an authorized repository, choose PyFly or LaraFly, and create a small run with observable acceptance checks.
 
 A database connection or migration failure prevents startup. A rejected operator token requires matching Studio and server credentials. Missing Studio files require rebuilding its production bundle. Provider authentication and actual model execution have separate checks.
 
@@ -70,9 +71,9 @@ Keep the API running on port 8787 and run:
 npm --prefix studio run dev
 ```
 
-The development server on port 5173 proxies `/api` to the API. Use `/api/v1` as the browser API address. The operator token stays in page memory and is cleared on reload.
+The development server on port 5173 proxies `/api` to the API. Use `/api/v1` as the browser API address. The Studio restores its server session after reload. For this separate development origin, set `FORGE_BROWSER_ORIGIN=http://127.0.0.1:5173` and `FORGE_OIDC_ALLOW_LOOPBACK_HTTP=true` before starting the API. The browser never stores the operator token.
 
-For remote operation, serve Studio and the API through one HTTPS origin, restrict allowed hosts, and register exact source-control OAuth callback URLs. [SCM connections](scm.md) describes provider-owned setup and grants.
+For remote operation, configure Keycloak OIDC, serve Studio and the API through one HTTPS origin, restrict allowed hosts, and register exact identity and source-control callback URLs. Separate API replicas from execution workers before treating an installation as cluster-ready. [SCM connections](scm.md) describes provider-owned setup and grants.
 
 ## Run the development gate
 

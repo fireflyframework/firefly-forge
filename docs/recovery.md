@@ -46,8 +46,44 @@ Publication, deployment, rollback and knowledge writes have separate remote task
 
 Retry uses a fresh run and clone; it is separate from resume. It preserves the failed run's history. A new run does not roll back any external effect from the earlier run.
 
+### Reconcile worker delivery requests
+
+Read `GET /api/v1/runs/{id}/execution-requests` before repeating publication or cancellation. Each request retains its admitted source, actor, status and hash-chain events. A worker records dispatch before the effect and its observed result afterward. An interruption between those records leaves `needs_reconciliation`.
+
+An authorized operator can ask the server to reconcile the exact request:
+
+```sh
+forge execution-requests RUN_ID
+forge reconcile-execution-request RUN_ID REQUEST_ID \
+  --reconciliation-id 0123456789abcdef0123456789abcdef
+```
+
+The HTTP body contains only `{"reconciliation_id":"0123456789abcdef0123456789abcdef"}`. The caller cannot assert success or absence of an effect. The server rechecks current project authority and matches retained evidence to the admitted and current source. Publication requires a terminal worker receipt or the matching immutable publication intent and receipt, including its branch, checked source and pull-request URL. Mutable task status or run metadata alone cannot establish publication.
+
+If no matching proof exists, the request stays unknown and the server returns HTTP409. Reconciliation makes no provider call and never repeats the effect. Reusing the same reconciliation ID returns its retained result; a different ID for an already reconciled request is rejected. Cancellation also requires a terminal worker receipt proving that work drained.
+
+A retained rejection before dispatch can settle a request as failed. Publication then permits an explicit bounded retry, up to three admitted attempts, provided no earlier publication intent remains unresolved. Any failure after dispatch retains uncertainty until its terminal receipt is established, even if the provider's error sounds like validation or authorization.
+
 ## Understand automatic limits
 
 Eligible rate-limit and transient pauses use their recorded delay and a budget of at most three automatic retries. Other pauses require an operator decision. Local concurrency is bounded globally and per project; work is selected across projects rather than filling both worker slots with one backlog.
 
 The journal's hash chain detects a changed record sequence or payload. It is an integrity check within the operator's PostgreSQL ledger, not an external signature or protection against a database administrator replacing the entire history.
+
+## Recover a product conversation
+
+Product-design turns have their own persisted ownership records. A turn's `ownership` includes its process owner, `claim_epoch`, lease expiry and last heartbeat. The active process renews its lease against PostgreSQL's clock. Only that owner and epoch can retain a response while the lease remains valid. A different API instance can read the conversation without interrupting it.
+
+An expired turn stays `processing` until an editor explicitly recovers it. Inspect the current turn and use its `recovery.expected_epoch`:
+
+```sh
+forge assistant get REPOSITORY_ID CONVERSATION_ID
+forge assistant recover REPOSITORY_ID CONVERSATION_ID TURN_ID \
+  --request-id 0123456789abcdef0123456789abcdef --expected-epoch 1
+```
+
+The server locks the conversation and turn, verifies expiry using database time, increments the epoch and records an immutable recovery receipt. The turn becomes `needs_reconciliation`. A late reply from the former owner cannot replace this result. Repeating the same recovery ID and body returns the original receipt; a changed body is rejected. No model retry occurs.
+
+Processing turns created before ownership tracking have epoch zero and no owner. They require `--legacy-confirmed-stopped` as an explicit assertion that their original process has stopped. This assertion is recorded separately from an expiry proof. Do not use it while the original request may still be running.
+
+Graceful factory shutdown stops new dialogue admissions, cancels and drains owned requests, then closes the data layer. An abrupt process loss leaves the durable claim for inspection and explicit recovery. An unknown provider outcome remains unknown even when local ownership has been fenced.

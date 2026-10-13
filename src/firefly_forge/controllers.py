@@ -27,6 +27,7 @@ from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Re
 from firefly_forge import __version__
 from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration, normalize_provider
 from firefly_forge.engine import Engine
+from firefly_forge.execution_requests import ExecutionRequestReconciliation
 from firefly_forge.journal import Journal
 from firefly_forge.knowledge import (
     KnowledgeConfiguration,
@@ -39,10 +40,12 @@ from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
 from firefly_forge.policies import PolicyCatalog, PolicySync, ProjectPolicies
 from firefly_forge.profiles import profile_catalog
+from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.providers import provider_catalog, test_provider_connection
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.skills import workflow_catalog
 from firefly_forge.store import Store
+from firefly_forge.worker_runtime import WorkerSupervision
 
 
 class SCMConfiguration(BaseModel):
@@ -59,6 +62,7 @@ class SCMRepositorySelection(BaseModel):
 class ResumeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent: Literal["codex", "claude", "bridge", "agentic"] | None = None
+    model_profile_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
 
 
 @service
@@ -86,6 +90,8 @@ class RunService:
 
     async def retry(self, identifier: str) -> dict[str, Any]:
         run = await self.store.get_run(identifier)
+        if run.get("campaign_context", {}).get("campaign_id"):
+            raise ValueError("Retry this component through its project campaign to preserve frozen admission")
         if run["status"] not in {"failed", "cancelled", "interrupted"}:
             raise ValueError("Only failed, cancelled or interrupted runs can be retried")
         request = RunInput.model_validate({key: run[key] for key in RunInput.model_fields if key in run})
@@ -103,6 +109,8 @@ class RunService:
 class OperatorErrors:
     @exception_handler(Exception)
     def handle(self, exc: Exception) -> Response:
+        if isinstance(exc, AccessDenied):
+            return JSONResponse({"detail": "Your current access does not allow this action"}, status_code=403)
         if isinstance(exc, ValidationError):
             return JSONResponse({"detail": exc.errors(include_input=False, include_context=False)}, status_code=422)
         if isinstance(exc, (json.JSONDecodeError, InvalidRequestException, ValidationException)):
@@ -120,16 +128,30 @@ class OperatorErrors:
 @rest_controller
 @request_mapping("/api/v1")
 class CatalogController:
-    def __init__(self, providers: ProviderService, policies: PolicyCatalog, engine: Engine) -> None:
+    def __init__(
+        self, providers: ProviderService, policies: PolicyCatalog, engine: Engine, supervision: WorkerSupervision
+    ) -> None:
         self.providers = providers
         self.policies = policies
         self.engine = engine
+        self.supervision = supervision
 
     @get_mapping("/health")
     def health(self) -> dict[str, Any]:
         detail = self.engine.ownership_failure
         if not detail and self.engine.poller and self.engine.poller.done() and not self.engine.stopping:
             detail = "Execution scheduler stopped; inspect interrupted work before restarting"
+        requests = self.engine.store.execution_requests
+        if not detail and requests and requests.poller and requests.poller.done():
+            detail = "Delivery request scheduler stopped; inspect retained execution requests before restarting"
+        detail = detail or self.supervision.detail()
+        role_health = (
+            self.engine.store.runtime_roles.health(
+                execution_state="degraded" if detail else "ready", max_parallel_jobs=self.engine.concurrency
+            )
+            if self.engine.store.runtime_roles
+            else {}
+        )
         return {
             "status": "degraded" if detail else "ok",
             "version": __version__,
@@ -137,6 +159,7 @@ class CatalogController:
             "storage": "PostgreSQL",
             "detail": detail,
             "execution_ready": not bool(detail),
+            **role_health,
         }
 
     @get_mapping("/openapi.json")
@@ -181,12 +204,12 @@ class CatalogController:
 @rest_controller
 @request_mapping("/api/v1/repositories")
 class RepositoryController:
-    def __init__(self, store: Store) -> None:
-        self.store = store
+    def __init__(self, store: Store, access: ProjectAccess) -> None:
+        self.store, self.access = store, access
 
     @get_mapping("")
     async def list_repositories(self) -> list[dict[str, Any]]:
-        return await self.store.repositories()
+        return await self.access.filter_repositories(await self.store.repositories())
 
     @post_mapping("", status_code=201)
     async def connect(self, body: Body[RepositoryInput]) -> dict[str, Any]:
@@ -204,14 +227,15 @@ class RepositoryController:
 @rest_controller
 @request_mapping("/api/v1/runs")
 class RunController:
-    def __init__(self, runs: RunService, store: Store, engine: Engine) -> None:
+    def __init__(self, runs: RunService, store: Store, engine: Engine, access: ProjectAccess) -> None:
         self.runs = runs
+        self.access = access
         self.store = store
         self.engine = engine
 
     @get_mapping("")
     async def list_runs(self) -> list[dict[str, Any]]:
-        return await self.store.runs()
+        return await self.access.filter_runs(await self.store.runs())
 
     @post_mapping("", status_code=201)
     async def create(self, body: Body[RunInput]) -> dict[str, Any]:
@@ -234,6 +258,20 @@ class RunController:
     async def publish(self, id: PathVar[str]) -> dict[str, Any]:
         await self.engine.publish(id)
         return await self.store.get_run(id)
+
+    @get_mapping("/{id}/execution-requests")
+    async def execution_requests(self, id: PathVar[str]) -> list[dict[str, Any]]:
+        if self.store.execution_requests is None:
+            return []
+        result: list[dict[str, Any]] = await self.store.execution_requests.for_run(id)
+        return result
+
+    @post_mapping("/{id}/execution-requests/{request_id}/reconcile")
+    async def reconcile_execution_request(
+        self, id: PathVar[str], request_id: PathVar[str], body: Body[ExecutionRequestReconciliation]
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = await self.store.execution_requests.reconcile(id, request_id, body)
+        return result
 
     @get_mapping("/{id}/artifacts/changes.zip")
     async def export(self, id: PathVar[str]) -> FileResponse:
@@ -346,6 +384,15 @@ class KnowledgeController:
     async def search(self, body: Body[KnowledgeSearch]) -> dict[str, Any]:
         return await self.knowledge.search(body.repository_id, body.query)
 
+    @get_mapping("/knowledge/explore")
+    async def explore(
+        self,
+        repository_id: QueryParam[str],
+        scope: QueryParam[str] = "project",
+        offset: QueryParam[int] = 0,
+    ) -> dict[str, Any]:
+        return await self.knowledge.explore(repository_id, scope, offset)
+
     @post_mapping("/runs/{id}/knowledge/index")
     async def index(self, id: PathVar[str], body: Body[KnowledgeIndex]) -> dict[str, Any]:
         return await self.knowledge.index(id, body.paths)
@@ -372,10 +419,10 @@ class JournalController:
 
     @post_mapping("/{id}/resume")
     async def resume(self, id: PathVar[str], body: Body[ResumeRequest]) -> dict[str, Any]:
-        return await self.journal.resume(id, body.agent)
+        return await self.journal.resume(id, body.agent, model_profile_id=body.model_profile_id)
 
     @post_mapping("/{id}/handoff")
     async def handoff(self, id: PathVar[str], body: Body[ResumeRequest]) -> dict[str, Any]:
-        if body.agent is None:
-            raise ValueError("Choose a coding provider for the explicit handoff")
-        return await self.journal.resume(id, body.agent)
+        if body.agent is None and body.model_profile_id is None:
+            raise ValueError("Choose a coding provider or named model profile for the explicit handoff")
+        return await self.journal.resume(id, body.agent, model_profile_id=body.model_profile_id)

@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import {
@@ -10,6 +11,7 @@ import {
   type Repository,
 } from "./api";
 import { Wizard } from "./Wizard";
+import { CloudRecipe } from "./CloudRecipe";
 import type { DeploymentJob } from "./factory";
 
 type Target = {
@@ -33,6 +35,8 @@ export function DeliverySetup({
   connected: boolean;
   repositories: Repository[];
 }) {
+  const projectLabels = repositoryLabels(repositories);
+  const [mode, setMode] = useState("commands");
   const [step, setStep] = useState(0);
   const [targets, setTargets] = useState<Target[]>([]);
   const [name, setName] = useState("");
@@ -136,11 +140,43 @@ export function DeliverySetup({
           </p>
         </div>
       </div>
+      {connected && (
+        <div
+          className="feature-tabs"
+          role="group"
+          aria-label="Deployment setup"
+        >
+          <button
+            className="quiet"
+            aria-pressed={mode === "commands"}
+            onClick={() => setMode("commands")}
+          >
+            Command target
+          </button>
+          <button
+            className="quiet"
+            aria-pressed={mode === "cloud"}
+            onClick={() => setMode("cloud")}
+          >
+            Cloud or host recipe
+          </button>
+        </div>
+      )}
       {!connected ? (
         <div className="empty">
           <h3>Connect your factory first</h3>
           <p>Target settings are saved on the factory server.</p>
         </div>
+      ) : mode === "cloud" ? (
+        <CloudRecipe
+          connection={connection}
+          repositories={repositories}
+          onConfigured={() =>
+            void request<Target[]>(connection, "/deployment-targets")
+              .then(setTargets)
+              .catch((cause) => setError(message(cause)))
+          }
+        />
       ) : (
         <Wizard
           steps={["Target", "Commands", "Health checks", "Review"]}
@@ -203,7 +239,7 @@ export function DeliverySetup({
                     <option value="">Choose a repository</option>
                     {repositories.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.name}
+                        {projectLabels.get(item.id)}
                       </option>
                     ))}
                   </select>

@@ -32,6 +32,61 @@ def settings(**changes):
     )
 
 
+async def test_explorer_lists_actual_sdk_records_in_selected_workspace_only(tmp_path):
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers["X-Workspace-Id"])
+        if request.url.path == "/api/v1/sources":
+            items = [
+                {
+                    "id": "source1",
+                    "kind": "text",
+                    "status": "ingested",
+                    "filename": "stock.py",
+                    "content_sha256": "a" * 64,
+                    "content_bytes": 30,
+                    "n_chunks": 1,
+                    "created_at": "2026-10-12T00:00:00Z",
+                    "updated_at": "2026-10-12T00:00:00Z",
+                }
+            ]
+        else:
+            items = [
+                {
+                    "id": "knowledge1",
+                    "status": "published",
+                    "current_version": 2,
+                    "title": "Stock behavior",
+                    "domain": "software",
+                    "created_at": "2026-10-12T00:00:00Z",
+                    "updated_at": "2026-10-12T00:00:00Z",
+                }
+            ]
+        return httpx.Response(200, json={"items": items, "total": 1, "limit": 50, "offset": 0})
+
+    knowledge = manager(tmp_path, handler)
+    knowledge.configure(settings(framework_workspace="frameworks"))
+    result = await knowledge.explore("a" * 32, "project")
+    assert result["sources"][0]["filename"] == "stock.py"
+    assert result["knowledge"][0]["current_version"] == 2
+    assert set(seen) == {"forge-" + "a" * 32}
+    seen.clear()
+    await knowledge.explore("a" * 32, "framework")
+    assert set(seen) == {"frameworks"}
+    assert "private-canon-key" not in json.dumps(result)
+
+
+async def test_agent_token_only_explorer_does_not_borrow_platform_list_permissions(tmp_path):
+    def unexpected(request):
+        raise AssertionError("Agent-only mode must not call platform list endpoints")
+
+    knowledge = manager(tmp_path, unexpected)
+    knowledge.configure(settings(api_key="", agent_token="private-agent-token"))
+    result = await knowledge.explore("a" * 32, "project")
+    assert result["browsing_available"] is False and result["warnings"]
+
+
 async def test_actual_sdk_retrieval_is_project_scoped_cited_and_frozen(tmp_path):
     seen = []
 

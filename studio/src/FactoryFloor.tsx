@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState } from "react";
 import { ArrowRight, Hammer, RefreshCw } from "lucide-react";
 import {
@@ -7,6 +8,7 @@ import {
   type ForgeRun,
   type Repository,
 } from "./api";
+import { FlowBoard } from "./FlowBoard";
 import { FactoryScene } from "./FactoryScene";
 import {
   manufacturingStations,
@@ -22,6 +24,7 @@ export function FactoryFloor({
   theme,
   onOpen,
   onCreate,
+  onProjectChange,
 }: {
   connection: Connection;
   connected: boolean;
@@ -30,8 +33,22 @@ export function FactoryFloor({
   theme: "light" | "dark";
   onOpen: (run: ForgeRun) => void;
   onCreate: () => void;
+  onProjectChange: (id: string) => void;
 }) {
+  const projectLabels = repositoryLabels(repositories);
   const [project, setProject] = useState("");
+  const [view, setView] = useState("floor");
+  const activeProject =
+    repositories.find((item) => item.id === project)?.id ??
+    repositories.find((item) => item.id === runs[0]?.repository_id)?.id ??
+    repositories[0]?.id ??
+    "";
+  useEffect(() => {
+    if (activeProject) {
+      if (project !== activeProject) setProject(activeProject);
+      onProjectChange(activeProject);
+    }
+  }, [activeProject, project, onProjectChange]);
   const [chosenRun, setChosenRun] = useState("");
   const [selectedStation, setStation] = useState("prepare");
   const [planRun, setPlanRun] = useState("");
@@ -40,7 +57,7 @@ export function FactoryFloor({
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const projectRuns = runs.filter(
-    (run) => !project || run.repository_id === project,
+    (run) => Boolean(activeProject) && run.repository_id === activeProject,
   );
   const run =
     projectRuns.find((item) => item.id === chosenRun) ??
@@ -120,7 +137,8 @@ export function FactoryFloor({
         <label>
           Project
           <select
-            value={project}
+            aria-label="Project"
+            value={activeProject}
             onChange={(event) => {
               setProject(event.target.value);
               setChosenRun("");
@@ -128,10 +146,12 @@ export function FactoryFloor({
               setDeployments([]);
             }}
           >
-            <option value="">All projects</option>
+            {!repositories.length && (
+              <option value="">No connected projects</option>
+            )}
             {repositories.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name}
+                {projectLabels.get(item.id)}
               </option>
             ))}
           </select>
@@ -139,6 +159,8 @@ export function FactoryFloor({
         <label>
           Manufacturing run
           <select
+            aria-label="Manufacturing run"
+            title={run?.brief ?? "No recorded run"}
             value={run?.id ?? ""}
             disabled={!projectRuns.length}
             onChange={(event) => {
@@ -152,7 +174,13 @@ export function FactoryFloor({
             </option>
             {projectRuns.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.brief.split("\n")[0]}
+                {item.id.slice(0, 8)} ·{" "}
+                {item.brief.split("\n")[0].length > 52
+                  ? `${item.brief
+                      .split("\n")[0]
+                      .slice(0, 48)
+                      .replace(/\s+\S*$/, "")}…`
+                  : item.brief.split("\n")[0]}
               </option>
             ))}
           </select>
@@ -165,38 +193,76 @@ export function FactoryFloor({
               : "Connect your factory to see live work"}
         </p>
       </div>
-      <FactoryScene
-        key={runId ?? "empty"}
-        theme={theme}
-        stations={stations}
-        selectedId={selected.id}
-        onSelect={setStation}
-        suspended={Boolean(error) || !connected}
-      />
-      <div className="production-inspector">
-        <div>
-          <strong>{selected.label}</strong>
-          <span className={`station-state ${selected.state}`}>
-            {selected.state}
-          </span>
-          <p>
-            {run
-              ? selected.detail
-              : "Stations become active when the factory records work. No production is running in this view."}
-          </p>
-        </div>
-        {run ? (
-          <button className="secondary" onClick={() => onOpen(run)}>
-            Inspect run
-            <ArrowRight size={15} />
-          </button>
-        ) : (
-          <button className="secondary" onClick={onCreate}>
-            Start a run
-            <ArrowRight size={15} />
-          </button>
-        )}
+      <p className="production-explanation">
+        Choose a project, then a recorded run. Prepare inspects source, Develop
+        uses the coding provider, Test records executable checks, and Checkpoint
+        freezes verified source. Publish, Deploy and Health checks require
+        separate recorded actions.
+      </p>
+      <div
+        className="production-view-switch feature-tabs"
+        role="group"
+        aria-label="Production view"
+      >
+        <button
+          className="quiet"
+          aria-pressed={view === "floor"}
+          onClick={() => setView("floor")}
+        >
+          Floor
+        </button>
+        <button
+          className="quiet"
+          aria-pressed={view === "board"}
+          onClick={() => setView("board")}
+        >
+          Board
+        </button>
       </div>
+      {view === "board" ? (
+        <FlowBoard
+          runs={projectRuns}
+          selected={run}
+          plan={currentPlan}
+          onOpen={onOpen}
+          onSelect={setChosenRun}
+        />
+      ) : (
+        <>
+          <FactoryScene
+            key={runId ?? "empty"}
+            theme={theme}
+            stations={stations}
+            selectedId={selected.id}
+            onSelect={setStation}
+            suspended={Boolean(error) || !connected}
+          />
+          <div className="production-inspector">
+            <div>
+              <strong>{selected.label}</strong>
+              <span className={`station-state ${selected.state}`}>
+                {selected.state}
+              </span>
+              <p>
+                {run
+                  ? selected.detail
+                  : "Stations become active when the factory records work. No production is running in this view."}
+              </p>
+            </div>
+            {run ? (
+              <button className="secondary" onClick={() => onOpen(run)}>
+                Inspect run
+                <ArrowRight size={15} />
+              </button>
+            ) : (
+              <button className="secondary" onClick={onCreate}>
+                Start a run
+                <ArrowRight size={15} />
+              </button>
+            )}
+          </div>
+        </>
+      )}
       {error && (
         <div className="alert" role="alert">
           {error}

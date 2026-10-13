@@ -1,9 +1,15 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Use the HTTP API
 
-The API prefix is `/api/v1`. Send `Authorization: Bearer <FORGE_API_TOKEN>` for
-operator requests. Request and response bodies use JSON. The actual running
-application's OpenAPI document is the authoritative schema where available.
+The API prefix is `/api/v1`. Hosted installations use an OIDC access token with
+the configured API audience. Browser sessions use the server's secure session
+cookie and CSRF protection. The explicitly enabled local bootstrap also accepts
+`Authorization: Bearer <FORGE_API_TOKEN>` from loopback clients. See
+[Sign in and manage project access](identity.md) for each mode.
+
+Request and response bodies use JSON unless a route downloads an artifact or
+file. Project permissions apply to the authenticated identity. The actual
+running application's OpenAPI document is the authoritative schema.
 
 | Method | Path | Operation |
 | --- | --- | --- |
@@ -22,6 +28,8 @@ application's OpenAPI document is the authoritative schema where available.
 | POST | `/runs` | Queue generation and verification |
 | GET | `/runs/{id}` | Read a run's events and evidence |
 | GET | `/runs/{id}/plan`, `/runs/{id}/journal` | Inspect durable tasks and receipts |
+| GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
+| POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
 | POST | `/runs/{id}/resume`, `/runs/{id}/handoff` | Continue retained source; optionally select a new worker |
 | GET | `/deployment-targets` | List delivery targets |
 | PUT | `/deployment-targets/{id}` | Configure a delivery target |
@@ -35,8 +43,13 @@ application's OpenAPI document is the authoritative schema where available.
 | POST | `/runs/{id}/knowledge/index`, `/runs/{id}/knowledge/remember` | Explicit verified-source admission or memory |
 | POST | `/runs/{id}/cancel` | Request cancellation |
 | POST | `/runs/{id}/retry` | Create another attempt after failure, cancellation or interruption |
-| POST | `/runs/{id}/publish` | Publish an already verified local change |
+| POST | `/runs/{id}/publish` | Queue publication of an already verified local change |
 | GET | `/runs/{id}/artifacts/changes.zip` | Download retained changed files |
+| GET/POST | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments` | List metadata or upload a conversation file |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}` | Read scoped file metadata |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}/content` | Download the original conversation file |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/capabilities` | Inspect the frozen model's image-input capability without inference |
+| POST | `/repositories/{id}/assistant/conversations/{conversation_id}/turns/{turn_id}/recover` | Fence an expired ownership epoch for explicit reconciliation |
 
 ## Register a repository
 
@@ -142,10 +155,9 @@ verification before accepting the result.
 `forge mcp` runs the standard MCP stdio transport. Configure your MCP client to
 launch that executable with `FORGE_URL` and `FORGE_API_TOKEN` in its environment.
 The tools list repositories, register a source, create a local run, inspect
-evidence, cancel work and explicitly publish a verified run. The token grants
-the same trusted operator authority as the CLI; an MCP connection does not add
-a separate user authorization model. Keep publishing tool use within the
-operator's explicit intent.
+evidence, cancel work and explicitly publish a verified run. MCP uses the same
+authenticated API and its identity and project permission checks. Keep
+publication within the authorized user's explicit intent.
 
 ## Configure connections and project defaults
 

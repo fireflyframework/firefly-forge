@@ -1,5 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
+import { navigate } from "./navigation";
+import { mockIdentity } from "./auth-fixture";
 test("verified run exposes diff, checks, artifact download and explicit publication", async ({
   page,
 }) => {
@@ -24,6 +26,7 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     pr_url: "",
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/artifacts/changes.zip")) {
       await route.fulfill({
@@ -56,7 +59,7 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     await route.fulfill({ json: body });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
@@ -116,9 +119,8 @@ test("connect, register a generic repository, create a local run, cancel and ret
   };
   let submitted: Record<string, unknown> | null = null;
   await page.route("**/api/v1/**", async (route) => {
-    expect(route.request().headers().authorization).toBe(
-      "Bearer entered-operator-token-for-test",
-    );
+    if (await mockIdentity(route)) return;
+    expect(route.request().headers().authorization).toBeUndefined();
     const path = new URL(route.request().url()).pathname;
     let body: unknown;
     if (path.endsWith("/repositories")) {
@@ -163,7 +165,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
     await route.fulfill({ json: body });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
@@ -203,7 +205,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
   await expect(
     page.getByRole("heading", { name: "Meeting rooms" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "New product", exact: true }).click();
+  await navigate(page, "Start a run");
   await page.getByLabel("What should this change accomplish?").fill(run.brief);
   await page
     .getByLabel("Source repository", { exact: true })
@@ -239,23 +241,23 @@ test("phone navigation, empty form and connection error remain usable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/v1/**", async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/auth/login"))
+      return route.fulfill({ status: 401, json: { detail: "Token rejected" } });
+    if (await mockIdentity(route)) return;
+    await route.fulfill({ status: 401, json: { detail: "Sign in required" } });
+  });
   await page.goto("/");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await page
-    .getByRole("button", { name: "New product", exact: true })
-    .first()
-    .click();
+  await navigate(page, "Start a run");
   await expect(
     page.getByRole("button", { name: "Continue", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({ status: 401, json: { detail: "Token rejected" } }),
-  );
+  await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
     .fill("invalid-operator-token-for-test");

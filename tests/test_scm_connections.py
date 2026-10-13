@@ -56,6 +56,34 @@ async def test_connection_configuration_is_write_only_owner_private_and_invalida
         await connections.configure("github", {"values": {"access_token": "manual-secret"}})
 
 
+async def test_run_pins_application_revision_and_rejects_a_changed_connection_without_freezing_tokens(
+    store, app_key, tmp_path
+):
+    from firefly_forge.models import RepositoryInput, RunInput
+    from firefly_forge.scm_connections import SCMConnections
+
+    connections = SCMConnections(store)
+    store.connections = connections
+    await connections.configure("github", {"values": {"app_id": "12", "installation_id": "34", "private_key": app_key}})
+    repo = await store.add_repository(
+        RepositoryInput(
+            name="Product",
+            url="https://github.com/team/product.git",
+            provider="github",
+            connection_provider="github",
+            remote_repository_id="42",
+        )
+    )
+    run = await store.create_run(RunInput(repository_id=repo["id"], brief="Maintain product"))
+    snapshot = run["scm_snapshot"]
+    assert snapshot["mode"] == "application" and snapshot["remote_repository_id"] == "42"
+    assert "PRIVATE KEY" not in json.dumps(snapshot) and "access_token" not in json.dumps(snapshot)
+    connections.assert_snapshot(repo, snapshot)
+    await connections.configure("github", {"values": {"installation_id": "35"}})
+    with pytest.raises(ValueError, match="application|authorization"):
+        connections.assert_snapshot(repo, snapshot)
+
+
 async def test_redaction_registry_includes_only_known_connection_secret_fields_and_grants(store, app_key):
     from firefly_forge.configuration import redact_secrets
     from firefly_forge.scm_connections import SCMConnections

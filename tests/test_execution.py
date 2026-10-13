@@ -43,6 +43,45 @@ class FixtureProvider:
         return AgentResult(summary="Implemented product", provider="fixture")
 
 
+async def test_customer_definition_is_frozen_and_reaches_actual_coding_prompt(tmp_path, store_factory):
+    from firefly_forge.collaboration import Collaboration, ProductDefinition
+
+    source = await seed_repository(tmp_path / "source")
+    store = await store_factory(tmp_path / "state.db")
+    repository = await store.add_repository(RepositoryInput(name="Inventory", url=str(source)))
+    collaboration = Collaboration(store)
+    original = await collaboration.save_product(
+        repository["id"],
+        ProductDefinition(
+            customer="Warehouse operator",
+            problem="Avoid overselling limited inventory",
+            journey=["Find item", "Reserve available stock"],
+            user_stories=["Reserve three items safely"],
+            acceptance=["Reject a reservation above remaining stock with HTTP 409"],
+            owners=["Operations team"],
+        ),
+    )
+    run = await store.create_run(
+        RunInput(
+            repository_id=repository["id"],
+            brief="Implement the reservation behavior",
+            commands=[Command(argv=[sys.executable, "test_product.py"])],
+        )
+    )
+    assert run["product_definition"]["digest"] == original["digest"]
+    updated = dict(original["definition"], customer="Changed customer")
+    await collaboration.save_product(repository["id"], ProductDefinition.model_validate(updated))
+
+    class CustomerProvider(FixtureProvider):
+        async def execute(self, workspace, brief, backend, frontend, emit):
+            assert "Warehouse operator" in brief and "HTTP 409" in brief
+            assert "Changed customer" not in brief
+            return await super().execute(workspace, brief, backend, frontend, emit)
+
+    await Engine(store, tmp_path / "jobs", lambda _: CustomerProvider()).execute_run(run["id"])
+    assert (await store.get_run(run["id"]))["status"] == "succeeded"
+
+
 async def test_real_clone_checks_and_diff_preserve_source(tmp_path: Path, store_factory):
     source = await seed_repository(tmp_path / "source")
     store = await store_factory(tmp_path / "state.db")

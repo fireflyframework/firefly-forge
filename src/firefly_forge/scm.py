@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,7 +16,12 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from firefly_forge.configuration import redact_secrets
-from firefly_forge.process import checked
+from firefly_forge.git_workspace import git_environment, trusted_git
+from firefly_forge.process import checked as process_checked
+
+
+async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
+    return await process_checked(trusted_git(argv), cwd, timeout, env=git_environment(env))
 
 
 @asynccontextmanager
@@ -48,8 +54,15 @@ async def git_credentials(credentials: dict[str, str] | None) -> AsyncIterator[d
 
 
 async def clone(
-    repository: dict[str, Any], destination: Path, branch: str, *, env: dict[str, str] | None = None
+    repository: dict[str, Any],
+    destination: Path,
+    branch: str,
+    *,
+    env: dict[str, str] | None = None,
+    revision: str | None = None,
 ) -> str:
+    if revision is not None and not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", revision):
+        raise ValueError("The frozen source base must be a Git commit")
     destination.parent.mkdir(parents=True, exist_ok=True)
     async with git_credentials(env) as credential_environment:
         try:
@@ -58,6 +71,7 @@ async def clone(
                     "git",
                     "clone",
                     "--no-hardlinks",
+                    "--no-checkout",
                     "--single-branch",
                     "--branch",
                     repository["default_branch"],
@@ -68,10 +82,41 @@ async def clone(
                 destination.parent,
                 env=credential_environment,
             )
+            if revision:
+                try:
+                    await checked(["git", "cat-file", "-e", revision + "^{commit}"], destination)
+                except RuntimeError:
+                    await checked(
+                        ["git", "fetch", "--no-tags", "--", "origin", revision],
+                        destination,
+                        env=credential_environment,
+                    )
         except RuntimeError as exc:
             raise RuntimeError(redact_secrets(str(exc), env or {})) from None
-    await checked(["git", "checkout", "-b", branch], destination)
+    await checked(["git", "checkout", "--force", "-b", branch, revision or "HEAD"], destination)
     return await checked(["git", "rev-parse", "HEAD"], destination)
+
+
+async def source_revision(repository: dict[str, Any], *, env: dict[str, str] | None = None) -> str:
+    reference = "refs/heads/" + repository["default_branch"]
+    with tempfile.TemporaryDirectory(prefix="forge-source-ref-") as directory:
+        async with git_credentials(env) as credential_environment:
+            try:
+                result = await checked(
+                    ["git", "ls-remote", "--exit-code", "--", repository["url"], reference],
+                    Path(directory),
+                    30,
+                    env=credential_environment,
+                )
+            except RuntimeError as exc:
+                raise RuntimeError(redact_secrets(str(exc), env or {})) from None
+    lines = [line.split("\t") for line in result.splitlines()]
+    if len(lines) != 1 or len(lines[0]) != 2 or lines[0][1] != reference:
+        raise ValueError("The authorized source branch did not resolve to one commit")
+    revision = lines[0][0]
+    if not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", revision):
+        raise ValueError("Source resolution returned an invalid commit")
+    return revision
 
 
 async def push(

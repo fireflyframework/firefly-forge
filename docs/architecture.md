@@ -4,7 +4,9 @@
 ![Native PyFly control plane, PostgreSQL execution ledger and isolated project workers](diagrams/architecture.svg)
 
 
-firefly forge uses native PyFly dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. A local run engine executes isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
+firefly forge uses native PyFly dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. One execution worker runs isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
+
+The API and worker can share one process or run separately. A split installation admits work through API replicas and dispatches it through one headless worker, using the same retained configuration and source storage. PostgreSQL records the installation topology and rejects incompatible execution owners. Read [API and worker roles](runtime-roles.md) before choosing a deployment layout.
 
 ## Native application layers
 
@@ -42,4 +44,4 @@ Provider-owned [SCM applications](scm.md) manage repository grants externally. G
 
 The factory floor groups actual plans and jobs by project and stage. Its active animation follows running work; reduced-motion preferences suppress animation. Completed work has durable receipts and verified outcomes. Neither timestamps nor decorative machine motion estimate completion percentages.
 
-The service is a local execution control plane for trusted operators. Its workspaces protect consumer checkouts, while commands and generated code still run with the server identity. [Security](security.md) describes that boundary.
+Workspaces protect consumer checkouts. Host-mode commands and generated code still run with the worker identity; configured isolated runners provide the separate execution boundary. [Security](security.md) describes the identity and runner requirements.

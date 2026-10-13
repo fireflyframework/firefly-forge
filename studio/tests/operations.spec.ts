@@ -1,5 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
+import { navigate } from "./navigation";
+import { mockIdentity } from "./auth-fixture";
+import { expectProgressFits } from "./wizard-progress";
 
 const repository = {
   id: "project-1",
@@ -10,7 +13,7 @@ const repository = {
 };
 async function connect(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
     .fill("operator-token-for-ui-verification");
@@ -66,6 +69,7 @@ test("application grant discovery and optional knowledge setup use real API cont
     readiness: { state: "configured", detail: "Knowledge settings saved" },
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
     if (path.endsWith("/scm/connections/github/repositories/connect")) {
@@ -148,6 +152,7 @@ test("deployment wizard requires health checks and saves reviewed project-bound 
 }) => {
   let saved: unknown;
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     let body: unknown = path.endsWith("/repositories")
       ? [repository]
@@ -163,10 +168,7 @@ test("deployment wizard requires health checks and saves reviewed project-bound 
     await route.fulfill({ json: body });
   });
   await connect(page);
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name: "Deployment", exact: true })
-    .click();
+  await navigate(page, "Deployment");
   await page.getByLabel("Target name").fill("Staging");
   await page.getByLabel("Target ID").fill("staging");
   await page.getByLabel("Target project").selectOption(repository.id);
@@ -176,6 +178,12 @@ test("deployment wizard requires health checks and saves reviewed project-bound 
     .fill('[["make","deploy"]]');
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByLabel("Deployment health checks")).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expectProgressFits(
+    page.getByRole("list", { name: "Setup progress" }),
+    "Health checks",
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByLabel("Deployment health checks").fill('[["make","health"]]');
   await page.getByRole("button", { name: "Review target" }).click();
   await expect(
@@ -206,6 +214,7 @@ test("paused production stops and explicit handoff retains the run identifier an
   };
   let handoff: unknown;
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     let body: unknown = run;
     if (path.endsWith("/repositories")) body = [repository];

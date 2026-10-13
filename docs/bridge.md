@@ -31,3 +31,17 @@ to verify the authorized configuration.
 
 Public installations can use [Codex, Claude Code or native Firefly Agentic](agents.md)
 without an internal bridge.
+
+## Verify image input for the selected configuration
+
+Image input requires a successful bounded verification for the bridge adapter's
+current configuration and software version. A model listing exposes that
+receipt; forge reads it for the conversation's frozen provider. Listing models
+does not itself run the verification or invoke a model.
+
+An adapter update can change its configuration revision. Keep historical
+receipts with the conversations that used them, and verify the updated adapter
+before selecting it for new image requests. A saved image or an earlier
+successful answer does not establish current capability. If the bridge is
+unavailable, forge reports capability as unverified until it can read the
+current receipt again. Restore the connection before repeating a model request.

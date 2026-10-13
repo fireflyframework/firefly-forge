@@ -1,0 +1,99 @@
+{
+  "terraform": {
+    "required_version": ">= 1.11.0, < 2.0.0",
+    "required_providers": {
+      "digitalocean": {
+        "source": "digitalocean/digitalocean",
+        "version": "~> 2.106.0"
+      }
+    },
+    "backend": {
+      "s3": {
+        "bucket": "forge-state",
+        "key": "forge/project/inventory-244210e4.tfstate",
+        "region": "us-east-1",
+        "endpoints": {
+          "s3": "https://nyc3.digitaloceanspaces.com"
+        },
+        "skip_credentials_validation": true,
+        "skip_metadata_api_check": true,
+        "skip_s3_checksum": true,
+        "skip_region_validation": true,
+        "skip_requesting_account_id": true,
+        "use_path_style": true,
+        "use_lockfile": true
+      }
+    }
+  },
+  "provider": {
+    "digitalocean": {}
+  },
+  "resource": {
+    "digitalocean_droplet": {
+      "app": {
+        "name": "inventory-244210e4",
+        "region": "nyc3",
+        "size": "s-1vcpu-2gb",
+        "image": "ubuntu-24-04-x64",
+        "ssh_keys": [
+          "123456"
+        ],
+        "monitoring": true,
+        "backups": true,
+        "user_data": "#cloud-config\n{\"users\": [\"default\", {\"name\": \"ubuntu\", \"sudo\": \"ALL=(ALL) NOPASSWD:ALL\", \"shell\": \"/bin/bash\", \"ssh_authorized_keys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29c\"]}]}"
+      }
+    },
+    "digitalocean_firewall": {
+      "app": {
+        "name": "inventory-244210e4",
+        "droplet_ids": [
+          "${digitalocean_droplet.app.id}"
+        ],
+        "inbound_rule": [
+          {
+            "protocol": "tcp",
+            "port_range": "22",
+            "source_addresses": [
+              "203.0.113.8/32"
+            ]
+          },
+          {
+            "protocol": "tcp",
+            "port_range": "80",
+            "source_addresses": [
+              "0.0.0.0/0"
+            ]
+          },
+          {
+            "protocol": "tcp",
+            "port_range": "443",
+            "source_addresses": [
+              "0.0.0.0/0"
+            ]
+          }
+        ],
+        "outbound_rule": [
+          {
+            "protocol": "tcp",
+            "port_range": "1-65535",
+            "destination_addresses": [
+              "0.0.0.0/0"
+            ]
+          },
+          {
+            "protocol": "udp",
+            "port_range": "1-65535",
+            "destination_addresses": [
+              "0.0.0.0/0"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "output": {
+    "host": {
+      "value": "${digitalocean_droplet.app.ipv4_address}"
+    }
+  }
+}

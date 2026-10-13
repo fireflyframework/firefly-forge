@@ -93,7 +93,16 @@ class ForgeRunRepository(Repository[ForgeRunEntity, UUID]):
             select(ForgeRunEntity)
             .where(
                 ForgeRunEntity.status.not_in(
-                    ["queued", "paused", "needs_reconciliation", "succeeded", "failed", "cancelled", "interrupted"]
+                    [
+                        "queued",
+                        "campaign_blocked",
+                        "paused",
+                        "needs_reconciliation",
+                        "succeeded",
+                        "failed",
+                        "cancelled",
+                        "interrupted",
+                    ]
                 )
             )
             .order_by(ForgeRunEntity.sequence)

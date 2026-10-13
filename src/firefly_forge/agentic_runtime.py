@@ -3,137 +3,29 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
-import stat
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from firefly_forge.agent_roles import WorkerFeedback
+from firefly_forge.configuration import redact_secrets
 from firefly_forge.profiles import build_instruction
+from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
+from firefly_forge.secrets import contains_known_credential, redact_environment
+from firefly_forge.workspace_tools import ToolRuntimeContext
+from firefly_forge.workspace_tools import WorkspaceTools as WorkspaceTools
 
 
 class RuntimeReport(BaseModel):
     summary: str
-
-
-def _private_name(name: str) -> bool:
-    return (
-        name
-        in {
-            ".git",
-            ".npmrc",
-            ".pypirc",
-            ".ssh",
-            ".forge",
-            ".codex",
-            ".claude",
-            "credentials.json",
-            "id_rsa",
-            "id_ed25519",
-        }
-        or (name.startswith(".env") and not name.endswith((".example", ".sample", ".template")))
-        or name.endswith((".pem", ".key"))
-    )
-
-
-class WorkspaceTools:
-    def __init__(self, workspace: Path, *, max_file_bytes: int = 1_000_000) -> None:
-        if workspace.is_symlink() or not workspace.is_dir():
-            raise ValueError("Workspace must be a real directory")
-        self.root = workspace.resolve()
-        self.max_file_bytes = max_file_bytes
-        self.files_written: set[str] = set()
-
-    def _parts(self, path: str) -> tuple[str, ...]:
-        value = Path(path)
-        if value.is_absolute() or not value.parts or ".." in value.parts:
-            raise ValueError("Path must be relative and confined to the workspace")
-        if any(_private_name(part) for part in value.parts):
-            raise ValueError("Credential files and git metadata are unavailable")
-        return value.parts
-
-    def _parent_fd(self, parts: tuple[str, ...], *, create: bool) -> int:
-        fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            for part in parts[:-1]:
-                if create:
-                    with suppress(FileExistsError):
-                        os.mkdir(part, dir_fd=fd)
-                try:
-                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                except OSError as exc:
-                    raise ValueError("Path contains a symlink or invalid directory") from exc
-                os.close(fd)
-                fd = child
-            return fd
-        except BaseException:
-            os.close(fd)
-            raise
-
-    async def read_file(self, path: str) -> str:
-        """Read a UTF-8 source file relative to the workspace; no credentials or symlinks."""
-        parts = self._parts(path)
-        parent = self._parent_fd(parts, create=False)
-        try:
-            try:
-                fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-            except OSError as exc:
-                raise ValueError("Cannot read file; symlinks are unavailable") from exc
-            with os.fdopen(fd, "rb") as source:
-                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
-                    raise ValueError("Only regular files are readable")
-                if os.fstat(source.fileno()).st_nlink != 1:
-                    raise ValueError("Hardlinked files are unavailable")
-                data = source.read(self.max_file_bytes + 1)
-                if len(data) > self.max_file_bytes:
-                    raise ValueError("File exceeds the workspace read limit")
-                return data.decode("utf-8")
-        finally:
-            os.close(parent)
-
-    async def write_file(self, path: str, content: str) -> str:
-        """Write complete UTF-8 source to a confined relative path, creating parent folders."""
-        parts = self._parts(path)
-        data = content.encode("utf-8")
-        if len(data) > self.max_file_bytes:
-            raise ValueError("File exceeds the workspace write limit")
-        parent = self._parent_fd(parts, create=True)
-        try:
-            try:
-                fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o644, dir_fd=parent)
-            except OSError as exc:
-                raise ValueError("Cannot write file; symlinks are unavailable") from exc
-            with os.fdopen(fd, "wb") as target:
-                if not stat.S_ISREG(os.fstat(target.fileno()).st_mode):
-                    raise ValueError("Only regular files are writable")
-                if os.fstat(target.fileno()).st_nlink != 1:
-                    raise ValueError("Hardlinked files are unavailable")
-                target.truncate(0)
-                target.write(data)
-            self.files_written.add(path)
-            return f"Wrote {path} ({len(data)} bytes)"
-        finally:
-            os.close(parent)
-
-    async def list_files(self) -> list[str]:
-        """List at most 2000 project source paths; exclude dependencies, credentials and symlinks."""
-        output: list[str] = []
-        skipped = {".git", ".env", ".npmrc", ".ssh", ".venv", "node_modules", "vendor", "__pycache__", "dist", "build"}
-        for directory, folders, files in os.walk(self.root, followlinks=False):
-            base = Path(directory)
-            folders[:] = sorted(
-                p for p in folders if p not in skipped and not _private_name(p) and not (base / p).is_symlink()
-            )
-            for name in sorted(files):
-                path = base / name
-                if name not in skipped and not _private_name(name) and not path.is_symlink():
-                    output.append(str(path.relative_to(self.root)))
-                    if len(output) >= 2000:
-                        return output
-        return output
+    worker_feedback: WorkerFeedback | None = None
+    qa_report: QAReport | None = None
 
 
 async def execute_agentic(
@@ -146,19 +38,191 @@ async def execute_agentic(
     model: Any = None,
     allow_output_token_cap: bool = True,
     settings: dict[str, str] | None = None,
+    runtime_context: ToolRuntimeContext | None = None,
 ) -> tuple[str, dict[str, Any]]:
     from fireflyframework_agentic.agents import FireflyAgent
     from fireflyframework_agentic.config import FireflyAgenticConfig
     from fireflyframework_agentic.models import ModelOptions
     from fireflyframework_agentic.tools import firefly_tool
+    from pydantic_ai import PromptedOutput
+    from pydantic_ai.capabilities import ProcessHistory
+    from pydantic_ai.messages import BinaryContent, ToolReturn, UserPromptPart
     from pydantic_ai.usage import UsageLimits
 
-    tools = WorkspaceTools(workspace)
+    context = runtime_context or ToolRuntimeContext(workspace, workspace)
+    tools = WorkspaceTools(context.scope_root, repository_root=context.repository_root)
+    evidence_records: dict[str, dict[str, Any]] = {}
+    observed_states: set[str] = set()
+    expected_states: set[str] = set()
+    actual_image_ids: set[str] = set()
+    attached_ids: set[str] = set()
+    approved_hashes: set[str] = set()
+    approved_reference_ids: dict[str, str] = {}
+
+    def safe_data(value: Any) -> Any:
+        if isinstance(value, ToolReturn):
+            return ToolReturn(safe_data(value.return_value), content=safe_data(value.content))
+        if isinstance(value, str):
+            return redact_secrets(redact_environment(value), context.credential_registry())
+        if isinstance(value, dict):
+            return {safe_data(key): safe_data(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [safe_data(item) for item in value]
+        return value
+
+    def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(handler)
+        async def invoke(*args: Any, **kwargs: Any) -> Any:
+            arguments = [
+                [arg.model_dump(mode="json") if isinstance(arg, BaseModel) else arg for arg in args],
+                {
+                    key: value.model_dump(mode="json") if isinstance(value, BaseModel) else value
+                    for key, value in kwargs.items()
+                },
+            ]
+            if contains_known_credential(arguments, context.credential_registry()):
+                raise ValueError("Native tool arguments cannot contain configured credentials")
+            try:
+                return safe_data(await handler(*args, **kwargs))
+            except (ValueError, OSError) as exc:
+                raise ValueError(safe_data(str(exc))) from None
+
+        return invoke
+
+    async def source_manifest() -> dict[str, str]:
+        manifest = {}
+        total = 0
+        for path in await tools.list_files():
+            try:
+                content = await tools.read_file(path)
+            except (ValueError, OSError, UnicodeDecodeError):
+                continue
+            total += len(content.encode("utf-8"))
+            if total > 16_000_000:
+                raise ValueError("Command source manifest exceeds 16 MB")
+            manifest[path] = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        return manifest
+
+    async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
+        """Execute argv through the configured bounded runner; no implicit host execution."""
+        from firefly_forge.sandbox_models import bounded_argv
+
+        if context.command_executor is None:
+            raise ValueError("Command execution is not configured")
+        if not 1 <= len(argv) <= 64 or type(timeout) is not int or not 1 <= timeout <= 3600:
+            raise ValueError("Command arguments or timeout exceed the tool bounds")
+        bounded_argv(argv)
+        before = await source_manifest()
+        result = await context.command_executor(argv, timeout)
+        after = await source_manifest()
+        tools.files_written.update(path for path, digest in after.items() if before.get(path) != digest)
+        return {"exit_code": result.exit_code, "output": result.output}
+
+    async def browser_check(
+        path: str = "/", width: int = 1440, height: int = 900, theme: str = "light"
+    ) -> dict[str, Any]:
+        """Inspect the configured isolated project origin at an explicit viewport and theme."""
+        if context.browser_runner is None:
+            raise ValueError("Browser execution is not configured")
+        return await context.browser_runner(path, width, height, theme)
+
+    async def browser_journey(plan: BrowserJourney) -> Any:
+        """Perform a declared isolated user journey with bounded DOM and optional image evidence."""
+        if context.browser_journey is None:
+            raise ValueError("Browser journey execution is not configured")
+        resolved_reference = (
+            await context.reference_resolver(plan)
+            if plan.reference_id and context.reference_resolver is not None
+            else None
+        )
+        evidence = await context.browser_journey(plan)
+        expected_states.update(state.id for state in plan.expected_states)
+        report = safe_data(evidence.report)
+        images = list(evidence.images)
+        actual_image_ids.update(image.metadata["evidence_id"] for image in images)
+        observed_states.update(state["state_id"] for state in report.get("states", []) if state.get("success"))
+        reference_status = "reference_not_reviewed"
+        if resolved_reference is not None:
+            reference, image = resolved_reference
+            if reference.artifact_id != plan.reference_id:
+                raise ValueError("Reference resolver returned a different approved artifact")
+            if (reference.width, reference.height, reference.theme, reference.zoom) != (
+                plan.width,
+                plan.height,
+                plan.theme,
+                plan.zoom,
+            ) or reference.state_id not in {image.metadata["state_id"] for image in images}:
+                raise ValueError("Reference does not match the journey state, viewport, theme and zoom")
+            if hashlib.sha256(image.data).hexdigest() != reference.sha256:
+                raise ValueError("Resolved approved reference bytes differ from their frozen raster SHA256")
+            images.append(image)
+            approved_hashes.add(reference.sha256)
+            approved_reference_ids[reference.sha256] = image.metadata["evidence_id"]
+            reference_status = "matched_reference_attached"
+        elif plan.reference_id and context.reference_loader is not None:
+            candidate = next((item for item in context.qa_references if item["artifact_id"] == plan.reference_id), None)
+            if candidate is not None:
+                reference = QAReference.model_validate(candidate)
+                if (reference.width, reference.height, reference.theme, reference.zoom) == (
+                    plan.width,
+                    plan.height,
+                    plan.theme,
+                    plan.zoom,
+                ) and reference.state_id in {image.metadata["state_id"] for image in images}:
+                    image = await context.reference_loader(reference.artifact_id)
+                    if hashlib.sha256(image.data).hexdigest() != reference.sha256:
+                        raise ValueError("Approved reference image bytes do not match the frozen SHA256")
+                    images.append(image)
+                    approved_hashes.add(reference.sha256)
+                    approved_reference_ids[reference.sha256] = image.metadata["evidence_id"]
+                    reference_status = "matched_reference_attached"
+        if len(images) > 5 or sum(len(image.data) for image in images) > 6_000_000:
+            raise ValueError("Browser image attachments exceeded the five-image or 6 MB request limit")
+        vision = context.image_capability.get("status") == "verified"
+        content: list[Any] = []
+        for image in images:
+            metadata = safe_data(image.metadata)
+            if not image.data.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise ValueError("Browser evidence must contain actual PNG image bytes")
+            if hashlib.sha256(image.data).hexdigest() != metadata.get("screenshot_sha256"):
+                raise ValueError("Browser screenshot does not match its evidence SHA256")
+            identifier = metadata["evidence_id"]
+            evidence_records[identifier] = metadata
+            content.append("Actual image evidence: " + json.dumps(metadata, separators=(",", ":")))
+            if vision:
+                content.append(
+                    BinaryContent(
+                        image.data, media_type="image/png", identifier=identifier, vendor_metadata={"detail": "auto"}
+                    )
+                )
+            else:
+                content.append("Image bytes are not attached: provider image input has not been verified.")
+        report.update(
+            image_mode="vision" if vision else "dom_only",
+            reference_status=reference_status if vision else "reference_not_reviewed",
+        )
+        return ToolReturn(report, content=content)
+
+    def image_history(messages: list[Any]) -> list[Any]:
+        bounded = bounded_image_history(messages)
+        attached_ids.clear()
+        for message in bounded:
+            for part in message.parts:
+                if isinstance(part, UserPromptPart) and not isinstance(part.content, str):
+                    attached_ids.update(item.identifier for item in part.content if isinstance(item, BinaryContent))
+        return bounded
+
+    async def internet_search(query: str, max_results: int = 5) -> dict[str, Any]:
+        """Search the configured server-mediated provider and return bounded cited results."""
+        if context.internet_search is None:
+            raise ValueError("Internet search is not configured")
+        return await context.internet_search(query, max_results)
 
     async def read_source(path: str) -> str:
         """Read a confined project source file; unavailable paths return actionable error feedback."""
         try:
-            return await tools.read_file(path)
+            content = await tools.read_file(path)
+            return "SHA256: " + hashlib.sha256(content.encode("utf-8")).hexdigest() + "\n" + content
         except (ValueError, FileNotFoundError, UnicodeDecodeError) as exc:
             return f"Unavailable file {path}: {exc}. Use list_files to find existing source paths."
 
@@ -168,18 +232,70 @@ async def execute_agentic(
         await emit("file", result)
         return result
 
-    settings = settings if settings is not None else dict(os.environ)
+    handlers: dict[str, Callable[..., Any]] = {
+        "list_files": tools.list_files,
+        "read_file": read_source,
+        "write_file": write_source,
+        "search_text": tools.search_text,
+        "edit_lines": tools.edit_lines,
+        "git_diff": tools.git_diff,
+    }
+    if context.command_executor is not None:
+        handlers["execute_command"] = execute_command
+    if context.browser_runner is not None:
+        handlers["browser_check"] = browser_check
+    if context.browser_journey is not None:
+        handlers["browser_journey"] = browser_journey
+    if context.internet_search is not None:
+        handlers["internet_search"] = internet_search
+    unknown = (context.allowed_tools or frozenset()) - {
+        "list_files",
+        "read_file",
+        "write_file",
+        "search_text",
+        "edit_lines",
+        "git_diff",
+        "execute_command",
+        "browser_check",
+        "browser_journey",
+        "internet_search",
+    }
+    if unknown:
+        raise ValueError("Native tool grant contains an unknown tool")
+    if context.allowed_tools is not None:
+        handlers = {name: handler for name, handler in handlers.items() if name in context.allowed_tools}
+
+    settings = (
+        settings
+        if settings is not None
+        else {
+            name: os.environ[name]
+            for name in ("FORGE_AGENTIC_MODEL", "FORGE_AGENTIC_MAX_TOKENS", "FORGE_PROVIDER_TIMEOUT")
+            if name in os.environ
+        }
+    )
     selected_model = model or settings.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
+    # FireflyAgent's annotation predates the supported Pydantic AI output wrappers.
+    output_spec: Any = RuntimeReport if allow_output_token_cap else PromptedOutput(RuntimeReport)
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
         instructions=build_instruction(brief, backend, frontend)
+        + ("\n" + qa_instructions() if "browser_journey" in handlers else "")
         + (
-            "\nUse list_files/read_file/write_file to implement the product. "
+            "\nApproved reference descriptors (source hashes are not raster hashes): "
+            + json.dumps(safe_data(context.qa_references), separators=(",", ":"))
+            if context.qa_references
+            else ""
+        )
+        + (
+            "\nUse only the available granted tools to implement the product. "
             "Write actual source and tests before returning the summary; the factory runs ind"
-            "ependent verification afterwards."
+            "ependent verification afterwards. If blocked or requiring a product decision, return "
+            "typed worker_feedback with disposition blocked or clarification and an explicit request; "
+            "do not claim that implementation is complete."
         ),
-        output_type=RuntimeReport,
+        output_type=output_spec,
         auto_register=False,
         config=FireflyAgenticConfig(default_temperature=None),
         model_options=(
@@ -187,11 +303,8 @@ async def execute_agentic(
             if allow_output_token_cap
             else None
         ),
-        tools=[
-            firefly_tool("list_files", auto_register=False)(tools.list_files),
-            firefly_tool("read_file", auto_register=False)(read_source),
-            firefly_tool("write_file", auto_register=False)(write_source),
-        ],
+        tools=[firefly_tool(name, auto_register=False)(guarded(handler)) for name, handler in handlers.items()],
+        capabilities=[ProcessHistory(image_history)],
     )
     await emit("provider", "Firefly Agentic is generating source with confined workspace tools")
     result = await agent.run(
@@ -199,12 +312,45 @@ async def execute_agentic(
         timeout=float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
         usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
     )
-    if not tools.files_written:
+    feedback = result.output.worker_feedback
+    if not tools.files_written and (feedback is None or feedback.disposition not in {"blocked", "clarification"}):
         raise RuntimeError("Firefly Agentic returned without writing any project source")
     usage = result.usage
-    return result.output.summary, {
+    recorded_usage = {
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
         "requests": usage.requests,
         "files_written": sorted(tools.files_written),
     }
+    if feedback is not None:
+        recorded_usage["worker_feedback"] = feedback.model_dump(mode="json")
+    if result.output.qa_report is not None:
+        qa = result.output.qa_report
+        if not set(qa.reviewed_states) <= observed_states:
+            raise ValueError("QA report claims states without successful actual browser evidence")
+        if not expected_states - observed_states <= set(qa.not_reviewed):
+            raise ValueError("QA report omits declared states not reached by the actual browser journey")
+        if qa.mode == "vision" and not attached_ids:
+            raise ValueError("QA report claims image inspection without verified attached images")
+        if qa.mode == "vision" and not set(qa.reviewed_states) <= {
+            evidence_records[identifier]["state_id"] for identifier in attached_ids & actual_image_ids
+        }:
+            raise ValueError("QA report claims visual inspection of a state without its attached actual screenshot")
+        if not set(qa.reference_sha256) <= approved_hashes or (qa.reference_sha256 and qa.mode != "vision"):
+            raise ValueError("QA report claims an unmatched approved reference")
+        if any(approved_reference_ids[sha] not in attached_ids for sha in qa.reference_sha256):
+            raise ValueError("QA report claims current inspection of a reference no longer attached")
+        for finding in qa.findings:
+            if not set(finding.evidence_ids) <= evidence_records.keys():
+                raise ValueError("QA finding refers to unknown evidence")
+            if qa.mode == "vision" and not set(finding.evidence_ids) <= attached_ids:
+                raise ValueError("QA finding claims current visual inspection of images no longer attached")
+            if any(
+                evidence_records[identifier].get("state_id") != finding.state_id
+                or evidence_records[identifier].get("journey_id") != finding.journey_id
+                for identifier in finding.evidence_ids
+            ):
+                raise ValueError("QA finding does not match its actual journey and state evidence")
+        recorded_usage["qa_report"] = qa.model_dump(mode="json")
+        recorded_usage["browser_evidence"] = list(evidence_records.values())
+    return result.output.summary, recorded_usage

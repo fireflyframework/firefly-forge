@@ -1,0 +1,129 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.factory-welcome-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 32px;
+  align-items: start;
+}
+.factory-welcome-start {
+  min-width: 0;
+}
+.factory-welcome-start h2 {
+  font-size: 22px;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+.factory-welcome-start > p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--muted);
+  max-width: 70ch;
+}
+.factory-welcome-start .feature-actions {
+  justify-content: flex-start;
+  gap: 12px;
+  margin: 20px 0 12px;
+}
+.factory-welcome-start > small {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.factory-onboarding-steps {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  gap: 20px;
+}
+.factory-onboarding-steps li {
+  display: grid;
+  grid-template-columns: 28px 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.welcome-step-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 13px;
+  color: var(--muted);
+}
+.factory-onboarding-steps svg {
+  margin-top: 4px;
+  color: var(--accent-ink);
+}
+.factory-onboarding-steps strong {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.factory-onboarding-steps p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 4px 0 0;
+  color: var(--muted);
+  max-width: 65ch;
+}
+.factory-welcome-preview {
+  margin: 0;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.factory-welcome-preview img {
+  display: block;
+  width: 100%;
+  height: 260px;
+  object-fit: contain;
+}
+.factory-welcome-preview figcaption {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .factory-welcome-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .factory-welcome-preview img {
+    height: 180px;
+  }
+  .factory-onboarding-steps {
+    gap: 16px;
+    margin-top: 24px;
+  }
+}
+
+.connection-welcome .connection-story h2 {
+  font-size: 24px;
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+  margin: 16px 0 12px;
+  max-width: none;
+}
+@media (max-width: 900px) {
+  .connection-welcome .settings-form {
+    order: 0;
+  }
+  .connection-welcome .connection-story {
+    order: 1;
+  }
+  .connection-welcome .connection-story img {
+    height: 100px;
+  }
+  .connection-welcome .settings-form {
+    gap: 16px;
+  }
+}
+.app .connection-welcome .settings-form {
+  padding: 28px 32px;
+  gap: 16px;
+}

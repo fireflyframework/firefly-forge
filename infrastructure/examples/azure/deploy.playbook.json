@@ -1,0 +1,206 @@
+[
+  {
+    "name": "Deploy reviewed immutable application",
+    "hosts": "all",
+    "become": true,
+    "gather_facts": false,
+    "vars": {
+      "desired_image": "ghcr.io/example/inventory@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "tasks": [
+      {
+        "name": "Wait for authenticated SSH",
+        "ansible.builtin.wait_for_connection": {
+          "timeout": 300
+        }
+      },
+      {
+        "name": "Require externally managed application secrets",
+        "ansible.builtin.stat": {
+          "path": "/etc/forge/inventory.env"
+        },
+        "register": "application_secrets",
+        "no_log": true
+      },
+      {
+        "name": "Validate private secrets file",
+        "ansible.builtin.assert": {
+          "that": [
+            "application_secrets.stat.exists",
+            "application_secrets.stat.isreg",
+            "application_secrets.stat.mode == '0600'",
+            "application_secrets.stat.pw_name == 'root'"
+          ]
+        },
+        "no_log": true
+      },
+      {
+        "name": "Require externally managed TLS certificate",
+        "ansible.builtin.stat": {
+          "path": "/etc/letsencrypt/live/inventory.example.com/fullchain.pem",
+          "follow": true
+        },
+        "register": "tls_certificate"
+      },
+      {
+        "name": "Validate TLS setup",
+        "ansible.builtin.assert": {
+          "that": [
+            "tls_certificate.stat.exists",
+            "tls_certificate.stat.isreg"
+          ]
+        }
+      },
+      {
+        "name": "Install distro runtime packages",
+        "ansible.builtin.apt": {
+          "name": [
+            "docker.io",
+            "nginx"
+          ],
+          "state": "present",
+          "update_cache": true
+        }
+      },
+      {
+        "name": "Start Docker",
+        "ansible.builtin.service": {
+          "name": "docker",
+          "state": "started",
+          "enabled": true
+        }
+      },
+      {
+        "name": "Pull the reviewed immutable image",
+        "ansible.builtin.command": {
+          "argv": [
+            "docker",
+            "pull",
+            "{{ desired_image }}"
+          ],
+          "expand_argument_vars": false
+        },
+        "no_log": true
+      },
+      {
+        "name": "Inspect image runtime user",
+        "ansible.builtin.command": {
+          "argv": [
+            "docker",
+            "image",
+            "inspect",
+            "{{ desired_image }}"
+          ]
+        },
+        "register": "image_metadata",
+        "changed_when": false,
+        "no_log": true
+      },
+      {
+        "name": "Require a nonroot container image",
+        "ansible.builtin.assert": {
+          "that": [
+            "(image_metadata.stdout | from_json)[0].Config.User not in ['', '0', 'root', '0:0', 'root:root']"
+          ]
+        },
+        "no_log": true
+      },
+      {
+        "name": "Inspect the current container",
+        "ansible.builtin.command": {
+          "argv": [
+            "docker",
+            "container",
+            "inspect",
+            "inventory"
+          ]
+        },
+        "register": "current_container",
+        "failed_when": false,
+        "changed_when": false,
+        "no_log": true
+      },
+      {
+        "name": "Replace the named application container",
+        "ansible.builtin.command": {
+          "argv": [
+            "docker",
+            "rm",
+            "--force",
+            "inventory"
+          ]
+        },
+        "when": "current_container.rc == 0"
+      },
+      {
+        "name": "Start confined application container",
+        "ansible.builtin.command": {
+          "argv": [
+            "docker",
+            "run",
+            "--detach",
+            "--name",
+            "inventory",
+            "--restart",
+            "unless-stopped",
+            "--security-opt",
+            "no-new-privileges",
+            "--cap-drop",
+            "ALL",
+            "--read-only",
+            "--tmpfs",
+            "/tmp",
+            "--pids-limit",
+            "256",
+            "--memory",
+            "512m",
+            "--env-file",
+            "/etc/forge/inventory.env",
+            "--publish",
+            "127.0.0.1:8080:8080",
+            "{{ desired_image }}"
+          ],
+          "expand_argument_vars": false
+        },
+        "no_log": true
+      },
+      {
+        "name": "Verify local application behavior",
+        "ansible.builtin.uri": {
+          "url": "http://127.0.0.1:8080/health",
+          "status_code": 200
+        },
+        "register": "local_health",
+        "until": "local_health.status == 200",
+        "retries": 12,
+        "delay": 5
+      },
+      {
+        "name": "Configure the TLS reverse proxy",
+        "ansible.builtin.copy": {
+          "dest": "/etc/nginx/conf.d/forge-inventory.conf",
+          "mode": "0644",
+          "content": "server { listen 80; server_name inventory.example.com; return 308 https://$host$request_uri; }\nserver { listen 443 ssl; server_name inventory.example.com; ssl_certificate /etc/letsencrypt/live/inventory.example.com/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/inventory.example.com/privkey.pem; ssl_protocols TLSv1.2 TLSv1.3; location / { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; } }\n"
+        }
+      },
+      {
+        "name": "Validate nginx configuration",
+        "ansible.builtin.command": {
+          "argv": [
+            "nginx",
+            "-t"
+          ]
+        },
+        "changed_when": false
+      },
+      {
+        "name": "Enable and reload TLS",
+        "ansible.builtin.service": {
+          "name": "nginx",
+          "enabled": true,
+          "state": "restarted"
+        }
+      }
+    ]
+  }
+]

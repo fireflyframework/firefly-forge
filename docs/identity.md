@@ -1,0 +1,67 @@
+# Sign-in and server identity
+
+firefly forge authenticates people through Keycloak using an authorization code and PKCE. The browser receives an opaque session cookie. ID tokens, access tokens and refresh tokens stay on the server, encrypted in PostgreSQL.
+
+Authentication identifies the caller. Project memberships determine which products that caller can access. A new identity receives no project memberships automatically; a matching email address does not grant access.
+
+## Configure a Keycloak realm
+
+Create a confidential OpenID Connect client for the Studio. Enable the standard authorization-code flow, require PKCE S256 and register the exact callback URL, such as `https://forge.example/api/v1/auth/callback`. Disable direct password grants and implicit login.
+
+Configure a separate API audience, for example `forge-api`. Include that audience in access tokens issued to Studio and authorized API clients. Client roles `forge-admin` and `forge-worker` must appear under `resource_access["forge-api"].roles`. forge ignores realm roles and email when deciding these server roles.
+
+Enable refresh-token revocation with a maximum reuse count of zero. The application also claims each refresh operation in PostgreSQL before contacting Keycloak. An uncertain response requires a new sign-in; it cannot silently repeat a possibly consumed refresh token.
+
+Set these server variables through your deployment's secret manager:
+
+| Variable | Purpose |
+| --- | --- |
+| `FORGE_AUTH_MODE=oidc` | Production authentication mode; this is the default. |
+| `FORGE_OIDC_ISSUER` | Exact realm issuer, without a trailing slash. |
+| `FORGE_OIDC_CLIENT_ID` | Studio's confidential client. |
+| `FORGE_OIDC_CLIENT_SECRET` | Server-side client credential. |
+| `FORGE_OIDC_API_AUDIENCE` | Required access-token audience and client-role namespace. |
+| `FORGE_OIDC_REDIRECT_URI` | Exact externally reachable callback URL. |
+| `FORGE_BROWSER_ORIGIN` | Optional exact browser origin when a proxy serves Studio at a separate origin. |
+| `FORGE_IDENTITY_ENCRYPTION_KEY` | Shared Fernet key for all replicas; required in OIDC mode. |
+
+Both issuer and callback require HTTPS. `FORGE_OIDC_ALLOW_LOOPBACK_HTTP=true` permits HTTP only for an explicitly configured loopback development issuer and callback. It does not permit arbitrary HTTP hosts.
+
+Store the encryption key separately from database backups. Restoring encrypted session rows without their key cannot restore those sessions. Changing the key invalidates existing sessions and pending login attempts. The service does not generate a temporary production key or provide a token-reading API.
+
+Keycloak documents its [OIDC endpoints and grant types](https://www.keycloak.org/securing-apps/oidc-layers). The signed ID-token checks follow [OpenID Connect Core's validation requirements](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation).
+
+## Browser login
+
+1. The Studio posts an empty object to `/api/v1/auth/login` with its application origin.
+2. forge creates a single-use, ten-minute PostgreSQL attempt and returns `authorization_url` and `expires_in`, setting its HttpOnly attempt cookie. The Studio navigates the browser to that URL. The attempt's state and browser-binding cookie are hashed; the nonce and PKCE verifier are encrypted.
+3. Keycloak returns to `/api/v1/auth/callback`. forge atomically consumes the attempt before exchanging the code, checks the signed ID token's issuer, client audience and nonce, and validates the access token's API audience and subject.
+4. forge rotates the session identifier and sets `forge_session`, with `HttpOnly`, `SameSite=Lax` and `Secure` on HTTPS. The cookie has a bounded lifetime; PostgreSQL retains only its hash.
+
+PyFly's native CSRF filter remains enabled. A safe initial request sets a readable `XSRF-TOKEN` cookie. The Studio copies that value into `X-XSRF-TOKEN` on every unsafe cookie-authenticated request, including login and logout. This CSRF cookie is separate from the HttpOnly identity cookie and is not an authentication token. Cookie-backed clients must satisfy both this check and the exact browser-origin check.
+
+The configured issuer supplies signing keys through PyFly's bounded asynchronous JWKS validator. Tokens require an allowed asymmetric algorithm, key identifier and expiration. A token's own header cannot redirect key retrieval to another URL.
+
+Cookie-authenticated mutations must carry the configured application's `Origin`. It defaults to the callback's origin in OIDC mode. Set `FORGE_BROWSER_ORIGIN` when a development proxy or separate Studio origin needs a different exact origin. Paths, credentials, query strings and wildcard origins are rejected; HTTP requires the explicit loopback development option. API and MCP clients instead use signed API access tokens with the same issuer and audience checks. They do not receive browser tokens from the session endpoint.
+
+`POST /api/v1/auth/logout` revokes the local session before attempting refresh-token revocation at Keycloak. Local logout succeeds even if the provider is unavailable. It does not sign the user out of every application in the Keycloak realm. Independently issued API JWTs remain subject to their expiration and the provider's revocation policy; offline JWT validation is not continuous token introspection.
+
+## Local bootstrap
+
+`local_bootstrap` is an explicit loopback-only development mode. Submit the configured operator credential once to the login endpoint; the server issues the same opaque, durable cookie. Do not persist that credential in browser storage. An explicitly configured loopback API bearer credential remains available for development tooling.
+
+This mode stores an owner-only encryption key beside the factory's private configuration. It does not replace production OIDC and is not suitable for a shared cluster. When starting the application through Python, an explicitly supplied bootstrap credential selects local mode only when no authentication mode has been configured.
+
+## Federation and operating limits
+
+Microsoft Entra ID and Google Workspace can be brokered through a configured Keycloak realm. forge currently trusts one configured Keycloak issuer; it does not independently implement or automatically configure those external identity providers. See Keycloak's [identity brokering guide](https://www.keycloak.org/docs/latest/server_admin/#_identity_broker).
+
+Disabling a local identity blocks its browser and API authentication. forge retains the configured API-client roles from validated access tokens, with their signed issuance time (`iat`), expiry (`exp`) and audience. A newer token replaces that state. Tokens with the same issuance time can only remove roles; an older token cannot restore a removed grant. Role expansion requires a newly issued token. ID-token roles do not establish API or background execution authority.
+
+Queued work checks those current grants before protected effects. Administrator authority must still be unexpired and match the audience recorded at admission. Without it, current project membership may permit isolated project work, but host coding providers and host verification require current administrator authority. Old OIDC administrator snapshots do not establish a verified grant after upgrading; admit a new authorized run when the old snapshot lacks its audience binding. Explicit local bootstrap keeps its separate development contract.
+
+Administrative routes, project lists, host-run admission and user provisioning use the same current-grant check. User administration checks again after obtaining its provider token and before creating an account or submitting an invitation. A principal captured earlier in a request does not retain a removed administrator role.
+
+Removing a role only at Keycloak becomes observable when forge validates a new token or the retained grant expires; this is not continuous provider introspection. Suspend the identity in forge when immediate interruption is required. Login and refresh failures return generic responses without token bodies or provider exceptions. Database sessions and attempt rows are durable across replicas; consumed or uncertain attempts require a fresh login.
+
+Continue with [security boundaries](security.md), [installation](installation.md) and [operations](operations.md).

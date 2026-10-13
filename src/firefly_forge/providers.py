@@ -18,6 +18,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+import httpx
+
 from firefly_forge.configuration import (
     DEFAULTS,
     FIELDS,
@@ -205,6 +207,17 @@ def _events(stdout: str) -> list[dict[str, Any]]:
 class ConfiguredProvider:
     def __init__(self, settings: dict[str, str] | None = None) -> None:
         self.settings = settings if settings is not None else dict(os.environ)
+        self.runtime_context: Any = None
+
+    def configure_runtime(self, **kwargs: Any) -> None:
+        from firefly_forge.workspace_tools import ToolRuntimeContext
+
+        if kwargs.get("allowed_tools") is not None:
+            kwargs["allowed_tools"] = frozenset(kwargs["allowed_tools"])
+        self.runtime_context = ToolRuntimeContext(**kwargs)
+
+    async def image_input_capability(self, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+        return {"status": "unverified"}
 
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         raise NotImplementedError
@@ -294,9 +307,7 @@ class ClaudeProvider(ConfiguredProvider):
 
 
 class APIProvider(ConfiguredProvider):
-    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
-        from firefly_forge.agentic_runtime import execute_agentic
-
+    def model(self) -> Any:
         model: Any = None
         base_url = self.settings.get("FORGE_AGENTIC_BASE_URL")
         if base_url:
@@ -340,19 +351,74 @@ class APIProvider(ConfiguredProvider):
                 model = OpenAIResponsesModel(name, provider=OpenAIProvider(api_key=key))
             else:
                 model = OpenAIChatModel(name, provider=OpenAIProvider(base_url=base_url, api_key=key))
+        return model
+
+    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+        from firefly_forge.agentic_runtime import execute_agentic
+
         summary, usage = await execute_agentic(
-            workspace, brief, backend, frontend, emit, model=model, settings=self.settings
+            workspace,
+            brief,
+            backend,
+            frontend,
+            emit,
+            model=self.model(),
+            settings=self.settings,
+            runtime_context=self.runtime_context,
         )
         return AgentResult(summary, "agentic", usage)
 
 
 class BridgeProvider(ConfiguredProvider):
-    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+    async def image_input_capability(self, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+        if client is None:
+            async with httpx.AsyncClient(timeout=5, follow_redirects=False, trust_env=False) as http:
+                return await self.image_input_capability(client=http)
+        token = self.settings.get("FORGE_BRIDGE_TOKEN")
+        endpoint = self.settings.get("FORGE_BRIDGE_URL")
+        if not token or not endpoint:
+            return {"status": "unverified"}
+        try:
+            endpoint = validate_endpoint(endpoint)
+            if not endpoint.endswith("/v1"):
+                endpoint += "/v1"
+            async with asyncio.timeout(5):
+                async with client.stream(
+                    "GET", endpoint + "/models", headers={"Authorization": "Bearer " + token}
+                ) as response:
+                    response.raise_for_status()
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > 100_000:
+                            return {"status": "unverified"}
+            payload = json.loads(body)
+            model = self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default")
+            for item in payload.get("data", []):
+                if not isinstance(item, dict) or item.get("id") != model:
+                    continue
+                capability = item.get("image_input")
+                if not isinstance(capability, dict):
+                    break
+                revision = capability.get("config_revision")
+                if (
+                    capability.get("status") == "verified"
+                    and isinstance(revision, str)
+                    and 1 <= len(revision) <= 128
+                    and capability.get("max_images", 0) >= 5
+                    and capability.get("max_decoded_bytes", 0) >= 6_000_000
+                ):
+                    return {"status": "verified", "provider": "bridge", "model": model, "config_revision": revision}
+                break
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError, TimeoutError):
+            pass
+        return {"status": "unverified"}
+
+    def model(self, *, image_capability: dict[str, Any] | None = None) -> Any:
+        from openai import AsyncOpenAI
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.profiles.openai import OpenAIModelProfile
         from pydantic_ai.providers.openai import OpenAIProvider
-
-        from firefly_forge.agentic_runtime import execute_agentic
 
         base_url = self.settings.get("FORGE_BRIDGE_URL")
         token = self.settings.get("FORGE_BRIDGE_TOKEN")
@@ -361,15 +427,47 @@ class BridgeProvider(ConfiguredProvider):
         endpoint = validate_endpoint(base_url)
         if not endpoint.endswith("/v1"):
             endpoint += "/v1"
-        model = OpenAIChatModel(
-            self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default"),
-            provider=OpenAIProvider(base_url=endpoint, api_key=token),
+        name = self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default")
+        capability = (
+            image_capability
+            if image_capability is not None
+            else self.runtime_context.image_capability
+            if self.runtime_context
+            else {}
+        )
+        revision = capability.get("config_revision")
+        headers = {}
+        if (
+            capability.get("status") == "verified"
+            and capability.get("model") == name
+            and isinstance(revision, str)
+            and len(revision) == 64
+            and all(character in "0123456789abcdef" for character in revision)
+        ):
+            headers["X-Bridge-Image-Revision"] = revision
+        return OpenAIChatModel(
+            name,
+            provider=OpenAIProvider(
+                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers)
+            ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
         )
+
+    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+        from firefly_forge.agentic_runtime import execute_agentic
+
         await emit("provider", "Connecting Firefly Agentic to the configured OpenAI-compatible bridge")
         summary, usage = await execute_agentic(
-            workspace, brief, backend, frontend, emit, model=model, allow_output_token_cap=False, settings=self.settings
+            workspace,
+            brief,
+            backend,
+            frontend,
+            emit,
+            model=self.model(),
+            allow_output_token_cap=False,
+            settings=self.settings,
+            runtime_context=self.runtime_context,
         )
         return AgentResult(summary, "bridge", usage)
 

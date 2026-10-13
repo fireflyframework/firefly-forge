@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from firefly_forge.community_skills import community_catalog
+
 SKILLS = [
     {
         "id": "implementation",
@@ -63,6 +65,14 @@ SKILLS = [
         ),
     },
 ]
+SKILLS.extend(
+    {
+        **item,
+        "description": "Pinned community instruction adaptation for " + item["name"].lower() + ".",
+        "default": item["id"] in {"thinking", "test-driven-development", "systematic-debugging", "evidence-first"},
+    }
+    for item in community_catalog()
+)
 DEFAULT_SKILLS = [str(item["id"]) for item in SKILLS if item["default"]]
 
 

@@ -24,6 +24,29 @@ class PolicyCommand(Command):
     backends: list[Literal["pyfly", "larafly", "java", "rust", "dotnet"]] = Field(min_length=1, max_length=5)
 
 
+class SkillProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    revision: str = Field(pattern=r"^[a-f0-9]{40}$")
+    path: str = Field(min_length=1, max_length=300)
+    source_url: str = Field(min_length=1, max_length=2048)
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    license: Literal["MIT", "Apache-2.0"]
+    license_path: str = Field(min_length=1, max_length=300)
+    license_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    license_text: str = Field(min_length=1, max_length=20000)
+
+    @model_validator(mode="after")
+    def pinned_source(self) -> SkillProvenance:
+        if self.source_url != f"https://github.com/{self.repository}/blob/{self.revision}/{self.path}":
+            raise ValueError("Community source URL must identify its exact pinned file")
+        if any(Path(path).is_absolute() or ".." in Path(path).parts for path in (self.path, self.license_path)):
+            raise ValueError("Community source paths must be relative")
+        if hashlib.sha256(self.license_text.encode()).hexdigest() != self.license_sha256:
+            raise ValueError("Community license hash mismatch")
+        return self
+
+
 class SkillPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
@@ -34,9 +57,18 @@ class SkillPolicy(BaseModel):
     default: bool = False
     instructions: str = Field(min_length=1, max_length=16000)
     commands: list[PolicyCommand] = Field(default_factory=list, max_length=10)
+    adaptation: Literal["instruction-only"] | None = None
+    adaptation_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    provenance: SkillProvenance | None = None
 
     @model_validator(mode="after")
     def meaningful_gate(self) -> SkillPolicy:
+        metadata = [self.adaptation, self.adaptation_sha256, self.provenance]
+        if any(value is not None for value in metadata):
+            if any(value is None for value in metadata):
+                raise ValueError("Community adaptation requires complete pinned provenance")
+            if hashlib.sha256(self.instructions.encode()).hexdigest() != self.adaptation_sha256:
+                raise ValueError("Community adaptation hash mismatch")
         if self.kind == "quality_gate" and not self.commands:
             raise ValueError("Quality gates require executable commands")
         if self.kind == "recommendation" and self.commands:
@@ -133,12 +165,12 @@ class PolicyCatalog:
                 raise ValueError("Configured policy catalog could not be loaded") from exc
         document = self.validate(
             {
-                "version": "1.0",
+                "version": "1.1.0",
                 "skills": [{**item, "category": "sdlc", "kind": "recommendation", "commands": []} for item in SKILLS],
             }
         )
         return {
-            "revision": "builtin-1",
+            "revision": "builtin-2",
             "source": {"kind": "builtin"},
             "digest": self._digest(document),
             "version": document["version"],

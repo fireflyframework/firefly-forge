@@ -43,4 +43,16 @@ Publication uses the existing local checkpoint commit, pushes a branch and creat
 
 Deployment requires an explicit target tied to the repository, configured commands and post-deployment verification. Rollback uses its retained command snapshot and verification. [Deployment](deployment.md) covers these operations and their remote-effect boundaries.
 
-For remote use, serve one HTTPS origin, restrict host headers and manage operator access securely. The service does not provide per-user roles or tenant isolation.
+For remote use, serve one HTTPS origin, restrict host headers and configure
+[OIDC sign-in and project roles](identity.md). Hosted users receive access through
+their project memberships; the local bootstrap is an explicitly enabled,
+loopback-only administrator mode. Project authorization does not establish
+isolation from arbitrary host code execution: non-admin coding requires the
+configured isolated runner and provider controls.
+
+The service has one execution owner per PostgreSQL schema. Choose a combined
+service or API replicas with one headless worker before the installation's first
+startup. The recorded topology, private storage binding and execution lease
+reject incompatible owners. Read [API and worker roles](runtime-roles.md) for
+startup, health and operation-routing details. Distributed worker pools remain
+outside this topology.

@@ -325,6 +325,77 @@ class KnowledgeManager:
     async def retrieve(self, run: dict[str, Any]) -> dict[str, Any]:
         return await self.search(run["repository_id"], run["brief"], run=run)
 
+    async def explore(self, repository_id: str, scope: str = "project", offset: int = 0) -> dict[str, Any]:
+        await self.store.repository(repository_id)
+        if scope not in {"project", "framework"} or not 0 <= offset <= 10000:
+            raise ValueError("Choose project/framework scope and an offset between 0 and 10000")
+        settings = self.settings()
+        workspace = project_workspace(repository_id) if scope == "project" else settings["framework_workspace"]
+        result: dict[str, Any] = {
+            "workspace_id": workspace,
+            "scope": scope,
+            "sources": [],
+            "knowledge": [],
+            "offset": offset,
+            "limit": 50,
+            "totals": {},
+            "browsing_available": False,
+            "warnings": [],
+        }
+        if not settings["enabled"] or not workspace:
+            result["warnings"] = ["Configure the requested flycanon workspace before browsing"]
+            return result
+        if not settings["api_key"]:
+            result["warnings"] = [
+                "Agent-token access supports cited search; corpus browsing requires a platform API key"
+            ]
+            return result
+        try:
+            async with self.client(settings, workspace) as client:
+                sources = await client.list_sources(limit=50, offset=offset)
+                knowledge = await client.list_knowledge_items(limit=50, offset=offset)
+            for record in sources.items:
+                data = record.model_dump(mode="json")
+                result["sources"].append(
+                    {
+                        key: self.safe(str(data[key]), settings) if isinstance(data[key], str) else data[key]
+                        for key in (
+                            "id",
+                            "kind",
+                            "status",
+                            "filename",
+                            "content_sha256",
+                            "content_bytes",
+                            "n_chunks",
+                            "created_at",
+                            "updated_at",
+                        )
+                    }
+                )
+            for record in knowledge.items:
+                data = record.model_dump(mode="json")
+                result["knowledge"].append(
+                    {
+                        key: self.safe(str(data[key])[:8000], settings) if isinstance(data[key], str) else data[key]
+                        for key in (
+                            "id",
+                            "status",
+                            "title",
+                            "summary",
+                            "domain",
+                            "current_version",
+                            "created_at",
+                            "updated_at",
+                        )
+                    }
+                )
+            result.update(browsing_available=True, totals={"sources": sources.total, "knowledge": knowledge.total})
+        except (CanonError, httpx.HTTPError, ValidationError, ValueError):
+            result["warnings"] = [
+                "Scoped knowledge browsing failed; check platform-key access and workspace configuration"
+            ]
+        return result
+
     async def ensure_workspace(self, client: CanonClient, repository_id: str) -> None:
         workspace = project_workspace(repository_id)
         try:

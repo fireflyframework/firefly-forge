@@ -14,11 +14,12 @@ Requirements: a dedicated PostgreSQL database, Python 3.13+, Git, Node.js 22.12+
 uv sync --group dev --group docs
 cd studio && npm ci && npm run build && cd ..
 export FORGE_DATABASE_URL="postgresql+asyncpg://forge:YOUR_DATABASE_PASSWORD@127.0.0.1:5432/forge"
+export FORGE_AUTH_MODE="local_bootstrap"
 export FORGE_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 uv run forge serve
 ```
 
-Open http://127.0.0.1:8787, connect using your token, add a repository and create a run. Workers execute code on the trusted machine running forge. Use an isolated development host for repositories you do not trust.
+Open http://127.0.0.1:8787, exchange your local token for a server session, add a repository and create a run. Workers execute code on the trusted machine running forge. Production uses [Keycloak and project roles](docs/identity.md). Project users require isolated execution; direct host coding CLIs remain an administrator capability.
 
 [Documentation](https://fireflyframework.github.io/firefly-forge/) · [Installation](docs/installation.md) · [Architecture](docs/architecture.md) · [Capabilities](docs/capabilities.md)
 

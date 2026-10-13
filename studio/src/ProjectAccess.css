@@ -1,0 +1,251 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.access-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 420px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 28px;
+}
+.access-toolbar p,
+.access-role-guide p {
+  line-height: 1.7;
+  color: var(--muted);
+  font-size: 14px;
+}
+.access-notice {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  line-height: 1.7;
+}
+.access-notice svg {
+  flex: none;
+  margin-top: 3px;
+}
+.access-members {
+  display: grid;
+  gap: 12px;
+}
+.access-member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
+  align-items: center;
+  gap: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--surface);
+}
+.access-member h2 {
+  font-size: 18px;
+  line-height: 1.5;
+}
+.access-member p,
+.access-member small {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.access-member details {
+  font-size: 12px;
+  margin-top: 8px;
+}
+.access-member code {
+  overflow-wrap: anywhere;
+}
+.access-change-review,
+.access-member > .alert {
+  grid-column: 1/-1;
+}
+.access-change-review {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.access-change-review p {
+  flex-basis: 100%;
+  color: var(--text);
+  font-size: 14px;
+}
+.access-role-guide {
+  margin-top: 36px;
+}
+.access-role-guide h2 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.access-role-guide > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.access-role-guide article {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.access-role-guide h3 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.access-member-dialog {
+  position: fixed;
+  inset: 24px;
+  margin: auto;
+  width: min(760px, calc(100vw - 40px));
+  height: min(760px, calc(100dvh - 48px));
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.access-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.access-dialog-heading h2 {
+  font-size: 24px;
+  line-height: 1.4;
+}
+.access-member-dialog .wizard {
+  min-height: 0;
+  flex: 1;
+  height: auto;
+}
+.access-membership-review dl > div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.access-membership-review dd {
+  overflow-wrap: anywhere;
+}
+.access-membership-review .check-choice {
+  margin-top: 24px;
+}
+@media (max-width: 1100px) {
+  .access-role-guide > div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .access-toolbar,
+  .access-member {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .access-role-guide > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .access-member-dialog {
+    inset: 12px;
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+    padding: 16px;
+  }
+  .access-dialog-heading h2 {
+    font-size: 20px;
+  }
+  .access-membership-review dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+
+.access-review-user-id {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.access-person-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.access-person {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.access-operation-result {
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+.access-operation-result h2 {
+  font-size: 21px;
+  margin-bottom: 12px;
+}
+.access-operation-result p {
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+.access-operation-result details {
+  margin-top: 16px;
+}
+.access-administration-details {
+  margin-top: 28px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.access-administration-details summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.access-administration-details details,
+.access-administration-details article {
+  margin-top: 20px;
+}
+.access-administration-details article {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.access-administration-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  margin-top: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+.access-administration-details p {
+  font-size: 14px;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  .access-person {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .access-person-actions {
+    justify-content: flex-start;
+  }
+}

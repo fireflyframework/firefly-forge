@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   BookOpen,
@@ -265,6 +266,7 @@ export function Workshop({
   connected: boolean;
   repositories: Repository[];
 }) {
+  const projectLabels = repositoryLabels(repositories);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [repository, setRepository] = useState("");
@@ -396,7 +398,7 @@ export function Workshop({
               <option value="">Select a project to edit its defaults</option>
               {repositories.map((repo) => (
                 <option value={repo.id} key={repo.id}>
-                  {repo.name}
+                  {projectLabels.get(repo.id)}
                 </option>
               ))}
             </select>

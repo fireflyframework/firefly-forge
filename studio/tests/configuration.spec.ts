@@ -1,4 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { mockIdentity } from "./auth-fixture";
+import { navigate } from "./navigation";
 import { expect, test } from "@playwright/test";
 
 test("operator configures an AI without reading back its key and selects versioned project policies", async ({
@@ -37,6 +39,7 @@ test("operator configures an AI without reading back its key and selects version
     },
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/configuration")) {
       saved = route.request().postDataJSON();
@@ -102,7 +105,7 @@ test("operator configures an AI without reading back its key and selects version
     else await route.fulfill({ json: path.endsWith("/runs") ? [] : {} });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
+  await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
     .fill("operator-token-at-least-24-chars");
@@ -111,6 +114,15 @@ test("operator configures an AI without reading back its key and selects version
     page.getByRole("button", { name: "API connected" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Configure", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const formWidth = await page
+    .locator(".provider-config-form")
+    .evaluate((element) => ({
+      visible: element.clientWidth,
+      scroll: element.scrollWidth,
+    }));
+  expect(formWidth.scroll).toBeLessThanOrEqual(formWidth.visible);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.getByLabel("Model", { exact: true }).fill("openai:new-model");
   await page
@@ -139,9 +151,7 @@ test("operator configures an AI without reading back its key and selects version
       .getByRole("status")
       .filter({ hasText: "Model access requires a real run" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Agents & skills", exact: true })
-    .click();
+  await navigate(page, "Agents & skills");
   await page.getByLabel("Project repository").selectOption("repo-1");
   await expect(page.getByLabel(/Behavior checks/)).toBeChecked();
   await page.getByLabel(/Accessible UI/).check();

@@ -11,6 +11,192 @@ async def seed(store, brief="Build stock alerts"):
     return await store.create_run(RunInput(repository_id=repo["id"], brief=brief, backend="pyfly", frontend="none"))
 
 
+async def profiled_pause(store):
+    from firefly_forge.journal import Journal
+    from firefly_forge.model_profiles import ModelProfileInput, ModelProfiles
+    from firefly_forge.task_routing import TaskRouting
+
+    profiles = ModelProfiles(store.configuration)
+    for name, provider, values in (
+        ("builder", "agentic", {"model": "openai:gpt-builder", "api_key": "private-builder-key"}),
+        ("next-builder", "agentic", {"model": "openai:gpt-next", "api_key": "private-next-key"}),
+        ("reviewer", "agentic", {"model": "openai:gpt-reviewer", "api_key": "private-review-key"}),
+        (
+            "bridge-builder",
+            "bridge",
+            {"model": "bridge/default", "endpoint": "https://bridge.example", "token": "private-bridge-key"},
+        ),
+        ("host-cli", "codex", {}),
+    ):
+        profiles.save(name, ModelProfileInput(name=name, provider=provider, values=values))
+    store.task_router = TaskRouting(profiles)
+    repo = await store.add_repository(RepositoryInput(name="Profiled", url="https://github.com/team/profiled.git"))
+    run = await store.create_run(
+        RunInput(
+            repository_id=repo["id"],
+            brief="Build with distinct model configurations",
+            model_profile_id="builder",
+            assurance={"review_model_profile_id": "reviewer"},
+        )
+    )
+    journal = Journal(store)
+    await journal.ensure_plan(run["id"])
+    effect = await journal.intent(run["id"], "implement")
+    await journal.fail(run["id"], effect["idempotency_key"], "quota", "Explicit provider quota pause")
+    return journal, await store.get_run(run["id"]), profiles
+
+
+async def test_normal_resume_preserves_frozen_profiles_despite_changed_routing(store):
+    from firefly_forge.model_profiles import ModelProfileInput
+    from firefly_forge.task_routing import TaskRoutingInput
+
+    journal, paused, profiles = await profiled_pause(store)
+    profiles.save(
+        "builder",
+        ModelProfileInput(name="Changed builder", provider="agentic", values={"model": "openai:gpt-changed"}),
+    )
+    await store.task_router.save(TaskRoutingInput(bindings={"implementation": "next-builder"}))
+    result = await journal.resume(paused["id"])
+    for field in ("model_selection", "review_model_selection", "config_revision", "review_config_revision"):
+        assert result[field] == paused[field]
+    assert (await journal.plan(paused["id"]))["model_selection"] == paused["model_selection"]
+    assert profiles.validate_snapshot(result["model_selection"])["FORGE_AGENTIC_MODEL"] == "openai:gpt-builder"
+    assert (await journal.entries(paused["id"]))[-1]["kind"] == "resume"
+
+
+@pytest.mark.parametrize(
+    "name,provider,credential_field,credential",
+    [
+        ("next-builder", "agentic", "FORGE_AGENTIC_API_KEY", "private-next-key"),
+        ("bridge-builder", "bridge", "FORGE_BRIDGE_TOKEN", "private-bridge-key"),
+    ],
+)
+async def test_explicit_profile_handoff_freezes_new_config_and_archives_old_selection(
+    store, name, provider, credential_field, credential
+):
+    from sqlalchemy import select
+
+    from firefly_forge.persistence import ForgePlanEntity
+
+    journal, paused, profiles = await profiled_pause(store)
+    result = await journal.resume(paused["id"], provider, model_profile_id=name)
+    assert result["agent"] == provider
+    assert result["model_profile_id"] == name
+    assert result["model_selection"]["profile_id"] == name
+    assert result["config_revision"] == result["model_selection"]["config_revision"]
+    assert result["config_revision"] != paused["config_revision"]
+    assert result["execution_config"] == result["model_selection"]["execution_config"]
+    assert profiles.validate_snapshot(result["model_selection"])[credential_field] == credential
+    for field in ("review_model_selection", "review_config_revision", "policy_snapshot", "repair_budget"):
+        assert result[field] == paused[field]
+    async with store._unit() as session:
+        plans = list(await session.scalars(select(ForgePlanEntity).order_by(ForgePlanEntity.revision)))
+        assert len(plans) == 2
+        assert plans[0].data["model_selection"] == paused["model_selection"]
+        assert plans[1].data["model_selection"] == result["model_selection"]
+    event = (await journal.entries(paused["id"]))[-1]
+    assert event["kind"] == "handoff"
+    assert event["payload"]["previous_model_selection"] == paused["model_selection"]
+    assert event["payload"]["model_selection"] == result["model_selection"]
+    assert credential not in str(event)
+    assert journal.verify_chain(await journal.entries(paused["id"]))
+
+
+async def test_conflicting_profile_provider_handoff_changes_nothing(store):
+    journal, paused, _ = await profiled_pause(store)
+    entries = await journal.entries(paused["id"])
+    with pytest.raises(ValueError, match="conflict"):
+        await journal.resume(paused["id"], "claude", model_profile_id="next-builder")
+    assert await store.get_run(paused["id"]) == paused
+    assert await journal.entries(paused["id"]) == entries
+
+
+async def test_explicit_legacy_handoff_clears_named_descriptor_with_auditable_transition(store):
+    journal, paused, _ = await profiled_pause(store)
+    result = await journal.resume(paused["id"], "claude")
+    assert result["agent"] == "claude"
+    assert result["model_selection"] is None
+    assert result["model_profile_id"] is None
+    assert result["review_model_selection"] == paused["review_model_selection"]
+    assert (await journal.plan(paused["id"]))["model_selection"] is None
+    event = (await journal.entries(paused["id"]))[-1]
+    assert event["payload"]["previous_model_selection"] == paused["model_selection"]
+    assert event["payload"]["model_selection"] is None
+    assert event["payload"]["selection_mode"] == "legacy_provider"
+
+
+async def test_named_handoff_checks_resolved_provider_isolation_before_state_change(store):
+    from uuid import uuid4
+
+    from firefly_forge.identity import Principal
+    from firefly_forge.project_access import ProjectAccess
+    from firefly_forge.project_models import ProjectDefinition
+    from firefly_forge.projects import Projects
+
+    journal, paused, _ = await profiled_pause(store)
+    project = await Projects(store).configure(
+        ProjectDefinition(
+            name="Scoped build",
+            description="A developer-scoped model handoff",
+            topology="monorepo",
+            owners=["Platform"],
+            components=[
+                dict(id="service", name="Service", repository_id=paused["repository_id"], responsibility="API")
+            ],
+        )
+    )
+    user = Principal(uuid4(), "https://identity.example/realms/forge", uuid4().hex)
+    access = ProjectAccess(store)
+    await access.set_membership(project["id"], user, "developer")
+    await store.update(paused["id"], project_id=project["id"], execution_actor=access.actor_snapshot(user))
+    before = await store.get_run(paused["id"])
+    with pytest.raises(ValueError, match="administrator"):
+        await journal.resume(paused["id"], model_profile_id="host-cli")
+    assert await store.get_run(paused["id"]) == before
+
+
+async def test_automatic_retry_cannot_change_named_profile(store):
+    journal, paused, _ = await profiled_pause(store)
+    with pytest.raises(ValueError, match="automatic"):
+        await journal.resume(paused["id"], model_profile_id="next-builder", auto=True)
+    assert await store.get_run(paused["id"]) == paused
+
+
+async def test_concurrent_named_handoffs_commit_one_immutable_transition(store):
+    journal, paused, _ = await profiled_pause(store)
+    results = await asyncio.gather(
+        journal.resume(paused["id"], model_profile_id="next-builder"),
+        journal.resume(paused["id"], model_profile_id="bridge-builder"),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(result, dict) for result in results) == 1
+    assert sum(isinstance(result, ValueError) for result in results) == 1
+    resumed = await store.get_run(paused["id"])
+    assert resumed["agent"] == resumed["model_selection"]["provider"]
+    assert resumed["config_revision"] == resumed["model_selection"]["config_revision"]
+    assert (await journal.plan(paused["id"]))["revision"] == 2
+    assert len([entry for entry in await journal.entries(paused["id"]) if entry["kind"] == "handoff"]) == 1
+
+
+async def test_named_handoff_without_router_fails_without_legacy_fallback(store):
+    journal, paused, _ = await profiled_pause(store)
+    store.task_router = None
+    with pytest.raises(ValueError, match="configured"):
+        await journal.resume(paused["id"], model_profile_id="next-builder")
+    assert await store.get_run(paused["id"]) == paused
+
+
+async def test_controller_accepts_named_handoff_and_rejects_empty_selection(store):
+    from firefly_forge.controllers import JournalController, ResumeRequest
+
+    journal, paused, _ = await profiled_pause(store)
+    controller = JournalController(journal)
+    with pytest.raises(ValueError, match="Choose"):
+        await controller.handoff(paused["id"], ResumeRequest())
+    result = await controller.handoff(paused["id"], ResumeRequest(model_profile_id="next-builder"))
+    assert result["model_selection"]["profile_id"] == "next-builder"
+
+
 async def test_plan_is_immutable_and_concurrent_intent_executes_once(store):
     from firefly_forge.journal import Journal
 

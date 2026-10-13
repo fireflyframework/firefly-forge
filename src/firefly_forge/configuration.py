@@ -94,9 +94,12 @@ def public_settings(provider: str, settings: dict[str, str]) -> dict[str, str | 
 
 
 def redact_secrets(value: str, settings: dict[str, str]) -> str:
+    from firefly_forge.secrets import credential_representations, sensitive_name
+
     for name, secret in settings.items():
-        if secret and any(part in name for part in ("TOKEN", "API_KEY", "SECRET", "PASSWORD")):
-            value = value.replace(secret, "[redacted]")
+        if secret and sensitive_name(name):
+            for representation in sorted(credential_representations(secret), key=len, reverse=True):
+                value = value.replace(representation, "[redacted]")
     return value
 
 

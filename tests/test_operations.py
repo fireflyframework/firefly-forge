@@ -3,6 +3,7 @@
 
 import asyncio
 import sys
+from uuid import uuid4
 
 import pytest
 
@@ -49,6 +50,225 @@ async def wait_for(manager, identifier):
             if job["status"] not in {"queued", "running"}:
                 return job
             await asyncio.sleep(0.05)
+
+
+async def release_fixture(store, tmp_path):
+    from firefly_forge.identity import Principal
+    from firefly_forge.operations import DeploymentManager, DeploymentTarget
+    from firefly_forge.project_access import ProjectAccess
+    from firefly_forge.project_models import ProjectDefinition
+    from firefly_forge.projects import Projects
+
+    coordinator, run, repository = await verified_run(store, tmp_path)
+    project = await Projects(store).configure(
+        ProjectDefinition(
+            name="Release project",
+            description="An independently released service",
+            topology="monorepo",
+            owners=["Platform"],
+            components=[dict(id="service", name="Service", repository_id=repository["id"], responsibility="Service")],
+        )
+    )
+    owner = Principal(uuid4(), "https://identity.example/realms/forge", uuid4().hex)
+    builder = Principal(uuid4(), owner.issuer, uuid4().hex)
+    access = ProjectAccess(store)
+    await access.set_membership(project["id"], owner, "owner")
+    await access.set_membership(project["id"], builder, "developer")
+    await store.update(run["id"], project_id=project["id"], execution_actor=access.actor_snapshot(builder))
+    marker = tmp_path / "release-marker.txt"
+    manager = DeploymentManager(store, coordinator)
+    await manager.configure_target(
+        "local",
+        DeploymentTarget(
+            name="Release acceptance",
+            repository_id=repository["id"],
+            commands=[
+                {
+                    "argv": [
+                        sys.executable,
+                        "-c",
+                        f"from pathlib import Path; Path({str(marker)!r}).write_text('deployed')",
+                    ]
+                }
+            ],
+            verification=[
+                {"argv": [sys.executable, "-c", f"from pathlib import Path; assert Path({str(marker)!r}).exists()"]}
+            ],
+            rollback_commands=[
+                {
+                    "argv": [
+                        sys.executable,
+                        "-c",
+                        f"from pathlib import Path; Path({str(marker)!r}).write_text('rolled back')",
+                    ]
+                }
+            ],
+            rollback_verification=[
+                {
+                    "argv": [
+                        sys.executable,
+                        "-c",
+                        f"from pathlib import Path; assert Path({str(marker)!r}).read_text() == 'rolled back'",
+                    ]
+                }
+            ],
+        ),
+    )
+    return manager, run, project, owner, builder, marker
+
+
+async def suspend_identity(store, user):
+    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+
+    async with store._unit():
+        users = ForgeIdentityUserRepository()
+        row = await users.find_by_id(user.id)
+        row.enabled = False
+        await users.save(row)
+
+
+async def test_release_uses_owner_instead_of_developer_builder_and_records_actor(store, tmp_path):
+    from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
+
+    manager, run, project, owner, builder, marker = await release_fixture(store, tmp_path)
+    context = CURRENT_PRINCIPAL.set(builder)
+    try:
+        with pytest.raises(AccessDenied):
+            await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    assert await store.deployments() == []
+    context = CURRENT_PRINCIPAL.set(owner)
+    try:
+        job = await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    assert job["execution_actor"]["user_id"] == owner.id.hex
+    assert job["project_id"] == project["id"]
+    await manager.execute_deployment(job["id"])
+    assert (await store.get_deployment(job["id"]))["status"] == "succeeded"
+    assert marker.read_text() == "deployed"
+    assert (await store.get_run(run["id"]))["execution_actor"]["user_id"] == builder.id.hex
+    entries = await manager.journal.entries(run["id"])
+    intents = [entry for entry in entries if entry["kind"] == "intent"]
+    assert len(intents) == 2
+    assert all(entry["payload"]["actor_id"] == owner.id.hex for entry in intents)
+
+
+async def test_suspended_queued_release_never_exports_or_executes_source(store, tmp_path):
+    from firefly_forge.project_access import CURRENT_PRINCIPAL
+
+    manager, run, _, owner, _, marker = await release_fixture(store, tmp_path)
+    context = CURRENT_PRINCIPAL.set(owner)
+    try:
+        job = await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    await suspend_identity(store, owner)
+    await manager.execute_deployment(job["id"])
+    assert (await store.get_deployment(job["id"]))["status"] == "failed"
+    assert not marker.exists()
+    assert not (manager.workspaces / job["id"]).exists()
+    assert await manager.journal.entries(run["id"]) == []
+
+
+@pytest.mark.parametrize("revocation", ["suspension", "project_role"])
+async def test_release_revocation_between_commands_stops_next_effect(store, tmp_path, monkeypatch, revocation):
+    import firefly_forge.operations as operations
+    from firefly_forge.identity import Principal
+    from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
+
+    manager, run, project, owner, _, marker = await release_fixture(store, tmp_path)
+    access = ProjectAccess(store)
+    backup_owner = Principal(uuid4(), owner.issuer, uuid4().hex)
+    await access.set_membership(project["id"], backup_owner, "owner")
+    context = CURRENT_PRINCIPAL.set(owner)
+    try:
+        job = await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    original = operations.execute
+    calls = 0
+
+    async def revoke_after_command(*args, **kwargs):
+        nonlocal calls
+        result = await original(*args, **kwargs)
+        calls += 1
+        if revocation == "suspension":
+            await suspend_identity(store, owner)
+        else:
+            await access.set_membership(project["id"], owner, "developer")
+        return result
+
+    monkeypatch.setattr(operations, "execute", revoke_after_command)
+    await manager.execute_deployment(job["id"])
+    result = await store.get_deployment(job["id"])
+    assert result["status"] == "failed"
+    assert calls == 1
+    assert marker.read_text() == "deployed"
+    assert len(result["evidence"]) == 1
+    entries = await manager.journal.entries(run["id"])
+    assert [entry["kind"] for entry in entries if entry["task_id"].startswith("deploy-")] == ["intent", "receipt"]
+
+
+async def test_release_revoked_after_intent_records_known_nonexecution(store, tmp_path, monkeypatch):
+    from firefly_forge.project_access import CURRENT_PRINCIPAL
+
+    manager, run, _, owner, _, marker = await release_fixture(store, tmp_path)
+    context = CURRENT_PRINCIPAL.set(owner)
+    try:
+        job = await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    original = manager.journal.intent
+
+    async def revoke_after_intent(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        await suspend_identity(store, owner)
+        return result
+
+    monkeypatch.setattr(manager.journal, "intent", revoke_after_intent)
+    await manager.execute_deployment(job["id"])
+    result = await store.get_deployment(job["id"])
+    assert result["status"] == "failed"
+    assert result["evidence"] == []
+    assert not marker.exists()
+    entries = [entry for entry in await manager.journal.entries(run["id"]) if entry["task_id"].startswith("deploy-")]
+    assert entries[0]["kind"] == "intent"
+    assert len(entries) == 2
+    assert entries[-1]["kind"] != "receipt"
+    assert manager.journal.verify_chain(await manager.journal.entries(run["id"]))
+
+
+async def test_rollback_captures_current_releaser_and_rechecks_suspension(store, tmp_path):
+    from firefly_forge.identity import Principal
+    from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+    manager, run, project, owner, builder, marker = await release_fixture(store, tmp_path)
+    context = CURRENT_PRINCIPAL.set(owner)
+    try:
+        job = await manager.create(run["id"], "local")
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    await manager.execute_deployment(job["id"])
+    context = CURRENT_PRINCIPAL.set(builder)
+    try:
+        with pytest.raises(AccessDenied):
+            await manager.rollback(job["id"])
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    releaser = Principal(uuid4(), owner.issuer, uuid4().hex)
+    await ProjectAccess(store).set_membership(project["id"], releaser, "maintainer")
+    context = CURRENT_PRINCIPAL.set(releaser)
+    try:
+        rollback = await manager.rollback(job["id"])
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+    assert rollback["execution_actor"]["user_id"] == releaser.id.hex
+    await suspend_identity(store, releaser)
+    await manager.execute_deployment(rollback["id"])
+    assert (await store.get_deployment(rollback["id"]))["status"] == "failed"
+    assert marker.read_text() == "deployed"
 
 
 async def test_deploys_isolated_verified_source_and_rolls_back_with_retained_evidence(store, tmp_path):
@@ -193,3 +413,54 @@ async def test_target_rejects_ui_saved_coding_and_knowledge_credentials(store, t
                 ),
             )
     assert manager.targets() == []
+
+
+async def test_cloud_recipe_and_credentials_are_frozen_and_outputs_redacted(store, tmp_path):
+    from firefly_forge.deployment_credentials import CredentialInput, DeploymentCredentials
+    from firefly_forge.operations import DeploymentManager, DeploymentTarget
+
+    coordinator, run, repository = await verified_run(store, tmp_path)
+    credentials = DeploymentCredentials(store.configuration)
+    credentials.configure("aws", CredentialInput(values={"AWS_SECRET_ACCESS_KEY": "frozen-deployment-secret"}))
+    manager = DeploymentManager(store, coordinator, credentials=credentials)
+    import hashlib
+
+    expected = hashlib.sha256(b"frozen-deployment-secret").hexdigest()
+    argv = [
+        sys.executable,
+        "-c",
+        "import os,hashlib; from pathlib import Path; "
+        "assert Path('.forge-deployment/recipe.txt').read_text() == 'verified recipe'; "
+        f"assert hashlib.sha256(os.environ['AWS_SECRET_ACCESS_KEY'].encode()).hexdigest() == {expected!r}; "
+        "print(os.environ['AWS_SECRET_ACCESS_KEY'])",
+    ]
+    target = DeploymentTarget(
+        name="Cloud",
+        repository_id=repository["id"],
+        commands=[{"argv": argv}],
+        verification=[{"argv": [sys.executable, "-c", "assert True"]}],
+        recipe_files={"recipe.txt": "verified recipe"},
+        credential_profile="aws",
+    )
+    await manager.configure_target("cloud", target)
+    job = await manager.create(run["id"], "cloud")
+    credentials.configure("aws", CredentialInput(values={"AWS_SECRET_ACCESS_KEY": "changed-deployment-secret"}))
+    await manager.execute_deployment(job["id"])
+    result = await store.get_deployment(job["id"])
+    assert result["status"] == "succeeded", result
+    assert "frozen-deployment-secret" not in str(result)
+    assert "[redacted]" in result["evidence"][0]["output"]
+
+
+def test_cloud_recipe_files_cannot_escape_or_exceed_limits():
+    from firefly_forge.operations import DeploymentTarget
+
+    for files in ({"../../unsafe": "x"}, {"/absolute": "x"}, {".git/config": "x"}, {"file": "x" * 1_000_001}):
+        with pytest.raises(ValueError):
+            DeploymentTarget(
+                name="Invalid",
+                repository_id="project",
+                commands=[{"argv": ["true"]}],
+                verification=[{"argv": ["true"]}],
+                recipe_files=files,
+            )

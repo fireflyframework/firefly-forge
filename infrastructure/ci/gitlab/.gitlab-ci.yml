@@ -1,0 +1,44 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+stages:
+- check
+- release
+.forge:
+  image: ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+  services:
+  - name: docker:29-dind@sha256:0b6d18a4a222e71c88be6034926b4f6cde2fc33c2218643d03ccfddc65995470
+    alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ''
+    GIT_DEPTH: '0'
+    CI_REVISION: $CI_COMMIT_SHA
+  before_script:
+  - bash .forge-ci/bootstrap.sh
+  script:
+  - bash .forge-ci/check.sh
+  artifacts:
+    when: always
+    paths:
+    - security/*.json
+    - security/image-reference.txt
+    expire_in: 30 days
+check:
+  extends: .forge
+  stage: check
+  variables:
+    CI_PUBLISH: 'false'
+release:
+  extends: .forge
+  stage: release
+  variables:
+    CI_PUBLISH: 'true'
+    REGISTRY_USERNAME: $REGISTRY_USERNAME
+    REGISTRY_PASSWORD: $REGISTRY_PASSWORD
+  rules:
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  script:
+  - test "$CI_SERVER_URL" = https://gitlab.com
+  - bash .forge-ci/check.sh

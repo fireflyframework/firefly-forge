@@ -1611,6 +1611,12 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   background: var(--surface-subtle);
   border-radius: 6px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.provider-config-form > button {
+  min-width: 0;
+  white-space: normal;
 }
 .provider-config-form > small {
   color: var(--muted);
@@ -2058,8 +2064,12 @@ body {
   outline: none;
 }
 .workspace-main > main > * {
-  max-width: 1280px;
+  max-width: none;
   margin-inline: auto;
+}
+.page-heading p,
+.wizard-heading p {
+  max-width: 80ch;
 }
 .workspace-main > footer {
   position: static;
@@ -2592,4 +2602,64 @@ body {
   .workspace-main > footer {
     line-height: 18px;
   }
+}
+
+.wizard-frame[data-layout="flow"] {
+  height: auto;
+}
+.wizard-frame[data-layout="flow"] .wizard-body,
+.wizard-frame[data-layout="flow"] .wizard-form,
+.wizard-frame[data-layout="flow"] .wizard-field-scroll {
+  overflow: visible;
+}
+.wizard-frame[data-layout="flow"] .wizard-content,
+.wizard-frame[data-layout="flow"] .wizard-form {
+  height: auto;
+  display: block;
+}
+.wizard-frame[data-layout="flow"] .wizard-field-scroll {
+  display: flex;
+  max-height: none;
+}
+.wizard-frame[data-layout="flow"] .wizard-actions {
+  position: static;
+}
+.feature-dialog:has(.wizard-frame) {
+  height: min(760px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.feature-dialog:not([open]) {
+  display: none;
+}
+.feature-dialog:has(.wizard-frame) > header,
+.feature-dialog:has(.wizard-frame) > button {
+  flex: 0 0 auto;
+}
+.feature-dialog:has(.wizard-frame) > button {
+  align-self: flex-end;
+}
+.feature-dialog .wizard-frame {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+  margin-bottom: 0;
+}
+.feature-dialog .wizard-frame .wizard-body,
+.feature-dialog .wizard-frame .wizard-form {
+  overflow: hidden;
+}
+.feature-dialog .wizard-frame .wizard-content {
+  height: 100%;
+  display: flex;
+}
+.feature-dialog .wizard-frame .wizard-form {
+  display: grid;
+}
+.feature-dialog .wizard-frame .wizard-field-scroll {
+  overflow: auto;
+}
+.feature-dialog .wizard-frame .wizard-actions {
+  position: relative;
 }

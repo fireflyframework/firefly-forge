@@ -1,0 +1,31 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+image: ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+clone:
+  depth: full
+pipelines:
+  pull-requests:
+    '**':
+    - step:
+        name: Verify product and image
+        services:
+        - docker
+        script:
+        - export CI_REVISION="$BITBUCKET_COMMIT" CI_PUBLISH=false
+        - bash .forge-ci/bootstrap.sh
+        - bash .forge-ci/check.sh
+        artifacts:
+        - security/*.json
+        - security/image-reference.txt
+  branches:
+    main:
+    - step:
+        name: Verify and publish
+        services:
+        - docker
+        script:
+        - export CI_REVISION="$BITBUCKET_COMMIT" CI_PUBLISH=true
+        - bash .forge-ci/bootstrap.sh
+        - bash .forge-ci/check.sh
+        artifacts:
+        - security/*.json
+        - security/image-reference.txt

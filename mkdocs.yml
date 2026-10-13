@@ -57,22 +57,43 @@ nav:
       - Your first product: quickstart.md
       - Capabilities and limits: capabilities.md
   - Build products:
+      - Define a product: product-definition.md
+      - Change features and integrations: product-lifecycle.md
+      - Review existing-project knowledge: as-is-handoff.md
+      - Architecture and brand: product-design.md
+      - Review wireframes: design-review.md
       - PyFly walkthrough: pyfly.md
       - LaraFly walkthrough: larafly.md
       - Choose a stack: profiles.md
       - Connect Git repositories: scm.md
       - Choose an agent: agents.md
+      - Assign models by task: model-profiles.md
+      - Agent roles and feedback: agent-roles.md
+      - Agent tools: agent-tools.md
+      - CLI, SDK and MCP clients: agent-integrations.md
+      - Files in AI conversations: assistant-files.md
       - Configure provider access: configuration.md
       - Build, maintain and test: workflows.md
+      - Coordinate project campaigns: project-campaigns.md
+      - Configure execution runners: sandbox.md
+      - Review browser journeys: browser-qa.md
       - Project and central policies: policies.md
+      - Repository conversations: repository-workflow.md
+      - Delivery assurance: assurance.md
+      - DevSecOps pipelines: devsecops.md
       - Cited knowledge and memory: knowledge.md
       - Internal bridge connection: bridge.md
   - Operate:
       - Architecture: architecture.md
       - Operations: operations.md
+      - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
       - Deploy and roll back: deployment.md
+      - Cloud and infrastructure recipes: cloud-deployment.md
+      - Application health and maintenance: application-operations.md
       - Security: security.md
+      - Sign in and manage project access: identity.md
+      - Add and manage users: user-administration.md
       - HTTP API: api.md
   - Project:
       - Release notes: release-notes.md

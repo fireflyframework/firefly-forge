@@ -3,18 +3,23 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shlex
+import stat
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
 from firefly_forge import __version__
 from firefly_forge.client import ForgeClient
 from firefly_forge.models import Command, RepositoryInput, RunInput
+
+if TYPE_CHECKING:
+    from firefly_forge.model_profiles import ModelProfileInput
 
 
 def client() -> ForgeClient:
@@ -35,17 +40,33 @@ def main() -> None:
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8787, type=click.IntRange(1, 65535), show_default=True)
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
-def serve(host: str, port: int, data_dir: Path | None) -> None:
+@click.option("--role", type=click.Choice(["combined", "api"]), default=None)
+def serve(host: str, port: int, data_dir: Path | None, role: str | None) -> None:
     """Start the authenticated factory API and Studio."""
     import uvicorn
 
     from firefly_forge.api import create_application
+    from firefly_forge.runtime_roles import RuntimeRoleConfig
 
     try:
-        app = create_application(data_dir)
+        app = create_application(data_dir, role=RuntimeRoleConfig.model_validate({"role": role}).role if role else None)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     uvicorn.run(app, host=host, port=port)
+
+
+@main.command()
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+def worker(data_dir: Path | None) -> None:
+    """Run the single execution worker without opening an HTTP listener."""
+    import asyncio
+
+    from firefly_forge.worker_runtime import run_worker
+
+    try:
+        asyncio.run(run_worker(data_dir))
+    except (ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @main.group()
@@ -76,9 +97,14 @@ def list_repositories() -> None:
 @main.command("run")
 @click.option("--repository", "repository_id", required=True)
 @click.option("--brief", required=True)
-@click.option("--backend", default="pyfly", type=click.Choice(["pyfly", "larafly", "java", "rust", "dotnet"]))
-@click.option("--frontend", default="react", type=click.Choice(["react", "angular", "nextjs", "vue", "none"]))
-@click.option("--agent", default="codex", type=click.Choice(["codex", "claude", "bridge", "agentic"]))
+@click.option("--project", "project_id", default=None, help="Logical project identifier.")
+@click.option("--component", "component_id", default=None, help="Configured component identifier.")
+@click.option("--roles-file", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--backend", default=None, type=click.Choice(["pyfly", "larafly", "java", "rust", "dotnet", "none"]))
+@click.option("--frontend", default=None, type=click.Choice(["react", "angular", "nextjs", "vue", "none"]))
+@click.option("--agent", default=None, type=click.Choice(["codex", "claude", "bridge", "agentic"]))
+@click.option("--model-profile", "model_profile_id", default=None)
+@click.option("--review-model-profile", "review_model_profile_id", default=None)
 @click.option("--operation", default="build", type=click.Choice(["build", "maintain", "test"]))
 @click.option("--check", "checks", multiple=True, help="Verification command; may be repeated.")
 @click.option("--wait", is_flag=True, help="Wait for a terminal result (up to one hour).")
@@ -86,24 +112,46 @@ def list_repositories() -> None:
 def run(
     repository_id: str,
     brief: str,
+    project_id: str | None,
+    component_id: str | None,
+    roles_file: Path | None,
     backend: Any,
     frontend: Any,
     agent: Any,
+    model_profile_id: str | None,
+    review_model_profile_id: str | None,
     operation: Any,
     checks: tuple[str, ...],
     wait: bool,
     publish: bool,
 ) -> None:
-    request = RunInput(
-        repository_id=repository_id,
-        brief=brief,
-        backend=backend,
-        frontend=frontend,
-        agent=agent,
-        operation=operation,
-        commands=[Command(argv=shlex.split(check)) for check in checks],
-        publish=publish,
+    values: dict[str, Any] = {
+        "repository_id": repository_id,
+        "brief": brief,
+        "operation": operation,
+        "publish": publish,
+    }
+    values.update(
+        {
+            key: value
+            for key, value in {
+                "project_id": project_id,
+                "component_id": component_id,
+                "backend": backend,
+                "frontend": frontend,
+                "agent": agent,
+                "model_profile_id": model_profile_id,
+            }.items()
+            if value is not None
+        }
     )
+    if checks:
+        values["commands"] = [Command(argv=shlex.split(check)).model_dump() for check in checks]
+    if roles_file:
+        values["roles"] = json_document(roles_file)
+    if review_model_profile_id is not None:
+        values["assurance"] = {"review_model_profile_id": review_model_profile_id}
+    request = RunInput.model_validate(values)
     with client() as connection:
         result = connection.create_run(request)
         if wait:
@@ -146,11 +194,14 @@ for _action in ["cancel", "retry", "publish", "resume"]:
 
 @main.command()
 @click.argument("identifier")
-@click.option("--agent", required=True, type=click.Choice(["codex", "claude", "bridge", "agentic"]))
-def handoff(identifier: str, agent: str) -> None:
+@click.option("--agent", default=None, type=click.Choice(["codex", "claude", "bridge", "agentic"]))
+@click.option("--model-profile", "model_profile_id", default=None)
+def handoff(identifier: str, agent: str | None, model_profile_id: str | None) -> None:
     """Continue paused work with a configured coding provider."""
+    if agent is None and model_profile_id is None:
+        raise click.ClickException("Choose --agent or --model-profile for an explicit handoff")
     with client() as connection:
-        display(connection.handoff(identifier, agent))
+        display(connection.handoff(identifier, agent, model_profile_id=model_profile_id))
 
 
 @main.command()
@@ -167,6 +218,24 @@ def journal(identifier: str) -> None:
     """Inspect the durable execution journal and chain validation."""
     with client() as connection:
         display(connection.journal(identifier))
+
+
+@main.command("execution-requests")
+@click.argument("identifier")
+def execution_requests(identifier: str) -> None:
+    """Inspect worker-mediated delivery and cancellation receipts."""
+    with client() as connection:
+        display(connection.execution_requests(identifier))
+
+
+@main.command("reconcile-execution-request")
+@click.argument("identifier")
+@click.argument("request_id")
+@click.option("--reconciliation-id", required=True)
+def reconcile_execution_request(identifier: str, request_id: str, reconciliation_id: str) -> None:
+    """Reconcile a request from recorded server receipts without repeating delivery."""
+    with client() as connection:
+        display(connection.reconcile_execution_request(identifier, request_id, reconciliation_id))
 
 
 @main.command()
@@ -206,6 +275,573 @@ def export_run(identifier: str, output: Path) -> None:
         contents = connection.export(identifier)
     output.write_bytes(contents)
     click.echo(str(output))
+
+
+def json_document(path: Path) -> dict[str, Any]:
+    if path.stat().st_size > 1_000_000:
+        raise click.ClickException("JSON document exceeds 1 MB")
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise click.ClickException("Use a JSON object document")
+    return value
+
+
+@main.group()
+def project() -> None:
+    """Manage logical products and inspect their existing source."""
+
+
+@project.command("list")
+def list_projects() -> None:
+    with client() as connection:
+        display(connection.projects())
+
+
+@project.command("save")
+@click.argument("definition", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--id", "project_id", default=None)
+def save_project(definition: Path, project_id: str | None) -> None:
+    with client() as connection:
+        display(connection.configure_project(json_document(definition), project_id))
+
+
+@project.command("get")
+@click.argument("identifier")
+@click.option("--revision", type=click.IntRange(1), default=None)
+def get_project(identifier: str, revision: int | None) -> None:
+    with client() as connection:
+        display(connection.project_revision(identifier, revision) if revision else connection.project(identifier))
+
+
+@project.command("analyze")
+@click.argument("identifier")
+@click.option("--component", "components", multiple=True)
+def analyze_project(identifier: str, components: tuple[str, ...]) -> None:
+    with client() as connection:
+        display(connection.analyze_project(identifier, list(components)))
+
+
+@project.command("analyses")
+@click.argument("identifier")
+def list_analyses(identifier: str) -> None:
+    with client() as connection:
+        display(connection.project_analyses(identifier))
+
+
+@project.command("analysis")
+@click.argument("identifier")
+@click.argument("analysis_id")
+def get_analysis(identifier: str, analysis_id: str) -> None:
+    with client() as connection:
+        display(connection.project_analysis(identifier, analysis_id))
+
+
+@project.command("review")
+@click.argument("identifier")
+@click.argument("analysis_id")
+@click.option("--digest", required=True)
+def review_analysis(identifier: str, analysis_id: str, digest: str) -> None:
+    with client() as connection:
+        display(connection.review_project_analysis(identifier, analysis_id, {"digest": digest, "reviewed": True}))
+
+
+@main.group()
+def assistant() -> None:
+    """Keep a product-design conversation and inspect reviewable proposals."""
+
+
+@assistant.command("list")
+@click.argument("repository_id")
+def list_conversations(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.assistant_conversations(repository_id))
+
+
+@assistant.command("start")
+@click.argument("repository_id")
+@click.option("--agent", default=None, type=click.Choice(["bridge", "agentic"]))
+@click.option("--project", "project_id", default=None)
+@click.option("--task", default="product", type=click.Choice(["product", "functions", "design", "architecture"]))
+@click.option("--model-profile", "model_profile_id", default=None)
+@click.option("--analysis", "analysis_id", default=None)
+@click.option("--analysis-digest", default=None)
+@click.option("--analysis-component", "analysis_component_ids", multiple=True)
+def start_conversation(
+    repository_id: str,
+    agent: str | None,
+    project_id: str | None,
+    task: Any,
+    model_profile_id: str | None,
+    analysis_id: str | None,
+    analysis_digest: str | None,
+    analysis_component_ids: tuple[str, ...],
+) -> None:
+    with client() as connection:
+        display(
+            connection.create_assistant_conversation(
+                repository_id,
+                agent=agent,
+                project_id=project_id,
+                task=task,
+                model_profile_id=model_profile_id,
+                analysis_id=analysis_id,
+                analysis_digest=analysis_digest,
+                analysis_component_ids=list(analysis_component_ids) if analysis_component_ids else None,
+            )
+        )
+
+
+@assistant.command("get")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+def get_conversation(repository_id: str, conversation_id: str) -> None:
+    with client() as connection:
+        display(connection.assistant_conversation(repository_id, conversation_id))
+
+
+@assistant.command("ask")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+@click.option("--request-id", required=True, help="Stable 32-character delivery ID; reuse only for this exact message.")
+@click.option("--message", required=True)
+@click.option("--attachment", "attachment_ids", multiple=True, help="Select a saved conversation file; up to eight.")
+@click.option("--detach-attachments", is_flag=True, help="Do not inherit files selected in the preceding turn.")
+def ask_product(
+    repository_id: str,
+    conversation_id: str,
+    request_id: str,
+    message: str,
+    attachment_ids: tuple[str, ...],
+    detach_attachments: bool,
+) -> None:
+    if attachment_ids and detach_attachments:
+        raise click.ClickException("Choose saved files or detach them, not both")
+    with client() as connection:
+        display(
+            connection.assistant_turn(
+                repository_id,
+                conversation_id,
+                {
+                    "request_id": request_id,
+                    "message": message,
+                    "attachment_ids": list(attachment_ids) if attachment_ids else [] if detach_attachments else None,
+                },
+            )
+        )
+
+
+@assistant.command("capabilities")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+def conversation_capabilities(repository_id: str, conversation_id: str) -> None:
+    """Read capabilities of the conversation's frozen provider without invoking AI."""
+    with client() as connection:
+        display(connection.assistant_capabilities(repository_id, conversation_id))
+
+
+@assistant.command("recover")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+@click.argument("turn_id")
+@click.option("--request-id", required=True, help="Stable 32-character recovery ID; reuse for this exact request.")
+@click.option("--expected-epoch", required=True, type=click.IntRange(0, 2**63 - 2))
+@click.option("--legacy-confirmed-stopped", is_flag=True, help="Confirm a legacy turn's original process has stopped.")
+def recover_conversation_turn(
+    repository_id: str,
+    conversation_id: str,
+    turn_id: str,
+    request_id: str,
+    expected_epoch: int,
+    legacy_confirmed_stopped: bool,
+) -> None:
+    """Fence an expired turn for reconciliation; never retry a model automatically."""
+    with client() as connection:
+        display(
+            connection.recover_assistant_turn(
+                repository_id,
+                conversation_id,
+                turn_id,
+                {
+                    "request_id": request_id,
+                    "expected_epoch": expected_epoch,
+                    "legacy_confirmed_stopped": legacy_confirmed_stopped,
+                },
+            )
+        )
+
+
+@assistant.command("files")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+def list_conversation_files(repository_id: str, conversation_id: str) -> None:
+    with client() as connection:
+        display(connection.assistant_attachments(repository_id, conversation_id))
+
+
+@assistant.command("file")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+@click.argument("attachment_id")
+def get_conversation_file(repository_id: str, conversation_id: str, attachment_id: str) -> None:
+    with client() as connection:
+        display(connection.assistant_attachment(repository_id, conversation_id, attachment_id))
+
+
+@assistant.command("upload")
+@click.argument("repository_id")
+@click.argument("conversation_id")
+@click.option("--file", "file_path", type=click.Path(path_type=Path), required=True)
+@click.option("--request-id", required=True, help="Stable 32-character upload ID; reuse only for this exact file.")
+def upload_conversation_file(repository_id: str, conversation_id: str, file_path: Path, request_id: str) -> None:
+    try:
+        selected = file_path.lstat()
+        if not stat.S_ISREG(selected.st_mode) or not 0 < selected.st_size <= 1_000_000:
+            raise ValueError("Invalid selected file")
+        descriptor = os.open(file_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as source:
+            info = os.fstat(source.fileno())
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or not 0 < info.st_size <= 1_000_000
+                or (selected.st_dev, selected.st_ino) != (info.st_dev, info.st_ino)
+            ):
+                raise ValueError("Invalid selected file")
+            content = source.read(1_000_001)
+        if not content or len(content) > 1_000_000:
+            raise ValueError("Invalid selected file")
+        with client() as connection:
+            display(
+                connection.upload_assistant_attachment(
+                    repository_id,
+                    conversation_id,
+                    {
+                        "request_id": request_id,
+                        "filename": file_path.name,
+                        "content_base64": base64.b64encode(content).decode("ascii"),
+                    },
+                )
+            )
+    except (OSError, ValueError):
+        raise click.ClickException(
+            "Upload failed. Select a regular file without links, at most 1 MB, and a stable request ID. "
+            "Inspect conversation files before retrying an uncertain response."
+        ) from None
+
+
+@main.group()
+def roles() -> None:
+    """Read or edit versioned factory role instructions."""
+
+
+@roles.command("get")
+def get_roles() -> None:
+    with client() as connection:
+        display(connection.agent_roles())
+
+
+@roles.command("save")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def save_roles(document: Path) -> None:
+    with client() as connection:
+        display(connection.save_agent_roles(json_document(document)))
+
+
+@roles.command("repository-get")
+@click.argument("repository_id")
+def get_repository_roles(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.repository_roles(repository_id))
+
+
+@roles.command("repository-save")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def save_repository_roles(repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.save_repository_roles(repository_id, json_document(document)))
+
+
+@main.group()
+def feedback() -> None:
+    """Read worker questions and record explicit owner answers."""
+
+
+@feedback.command("list")
+@click.argument("run_id")
+def get_feedback(run_id: str) -> None:
+    with client() as connection:
+        display(connection.worker_messages(run_id))
+
+
+@feedback.command("answer")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.option("--response-id", required=True)
+@click.option("--actor", default="operator")
+@click.option("--answer", required=True)
+def answer_worker(run_id: str, request_id: str, response_id: str, actor: str, answer: str) -> None:
+    with client() as connection:
+        display(connection.respond_worker(run_id, request_id, {"id": response_id, "actor": actor, "answer": answer}))
+
+
+def private_secret_file(path: Path) -> str:
+    import stat
+
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_mode & 0o077
+                or info.st_uid != os.getuid()
+            ):
+                raise click.ClickException("Use an owned regular secret file with mode 0600; links are unavailable")
+            data = source.read(4097)
+    except OSError as exc:
+        raise click.ClickException("Cannot read the private secret file") from exc
+    if len(data) > 4096:
+        raise click.ClickException("Secret file exceeds 4096 bytes")
+    try:
+        value = data.decode("utf-8").rstrip("\r\n")
+    except UnicodeDecodeError as exc:
+        raise click.ClickException("Secret file must contain UTF-8 text") from exc
+    if not value or "\x00" in value:
+        raise click.ClickException("Secret file must contain a nonempty key")
+    return value
+
+
+def model_profile_request(document: Any, credential_file: Path | None = None) -> ModelProfileInput:
+    from firefly_forge.configuration import SECRETS
+    from firefly_forge.model_profiles import ModelProfileInput
+
+    try:
+        request = ModelProfileInput.model_validate(document)
+    except ValueError:
+        raise click.ClickException("Use a valid model profile metadata document") from None
+    if SECRETS.intersection(request.values):
+        raise click.ClickException("Supply credentials through a private credential file, not document values")
+    if credential_file:
+        field = {"agentic": "api_key", "bridge": "token"}.get(request.provider)
+        if field is None:
+            raise click.ClickException("Official CLI profiles use their own login and do not accept a credential file")
+        request = request.model_copy(update={"values": {**request.values, field: private_secret_file(credential_file)}})
+    return request
+
+
+@main.group()
+def models() -> None:
+    """Manage named provider profiles with write-only credentials."""
+
+
+@models.command("list")
+def list_model_profiles() -> None:
+    with client() as connection:
+        display(connection.model_profiles())
+
+
+@models.command("save")
+@click.argument("profile_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--credential-file", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+def save_model_profile(profile_id: str, document: Path, credential_file: Path | None) -> None:
+    request = model_profile_request(json_document(document), credential_file)
+    with client() as connection:
+        display(connection.save_model_profile(profile_id, request))
+
+
+@models.command("test")
+@click.argument("profile_id")
+def test_model_profile(profile_id: str) -> None:
+    with client() as connection:
+        display(connection.test_model_profile(profile_id))
+
+
+@main.group()
+def routing() -> None:
+    """Read or explicitly change future task-to-profile bindings."""
+
+
+@routing.command("get")
+def get_task_routing() -> None:
+    with client() as connection:
+        display(connection.task_routing())
+
+
+@routing.command("save")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def save_task_routing(document: Path) -> None:
+    with client() as connection:
+        display(connection.save_task_routing(json_document(document)))
+
+
+@main.group()
+def product() -> None:
+    """Preview and save versioned product-contract changes."""
+
+
+@product.command("preview-change")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def preview_product_change(repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.preview_product_change(repository_id, json_document(document)))
+
+
+@product.command("apply-change")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def apply_product_change(repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.apply_product_change(repository_id, json_document(document)))
+
+
+@main.group()
+def campaign() -> None:
+    """Admit product component campaigns and inspect explicit recovery outcomes."""
+
+
+@campaign.command("list")
+@click.argument("project_id")
+def list_campaigns(project_id: str) -> None:
+    with client() as connection:
+        display(connection.project_campaigns(project_id))
+
+
+@campaign.command("launch")
+@click.argument("project_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def launch_campaign(project_id: str, document: Path) -> None:
+    """Admit a validated launch JSON containing its stable request_id."""
+    with client() as connection:
+        display(connection.launch_campaign(project_id, json_document(document)))
+
+
+@campaign.command("get")
+@click.argument("project_id")
+@click.argument("campaign_id")
+def get_campaign(project_id: str, campaign_id: str) -> None:
+    with client() as connection:
+        display(connection.project_campaign(project_id, campaign_id))
+
+
+@campaign.command("cancel")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.option("--request-id", required=True)
+def cancel_campaign(project_id: str, campaign_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.cancel_campaign(project_id, campaign_id, {"request_id": request_id}))
+
+
+@campaign.command("resume")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.option("--request-id", required=True)
+def resume_campaign(project_id: str, campaign_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.resume_campaign(project_id, campaign_id, {"request_id": request_id}))
+
+
+@campaign.command("retry")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.option("--request-id", required=True)
+@click.option("--component", multiple=True, required=True)
+def retry_campaign(project_id: str, campaign_id: str, request_id: str, component: tuple[str, ...]) -> None:
+    with client() as connection:
+        display(
+            connection.retry_campaign(
+                project_id, campaign_id, {"request_id": request_id, "component_ids": list(component)}
+            )
+        )
+
+
+@main.group()
+def runner() -> None:
+    """Configure repository execution profiles and download private browser evidence."""
+
+
+@runner.command("get")
+@click.argument("repository_id")
+def get_runner(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.repository_runner(repository_id))
+
+
+@runner.command("save")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def save_runner(repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.save_repository_runner(repository_id, json_document(document)))
+
+
+@runner.command("readiness")
+@click.argument("repository_id")
+def runner_readiness(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.runner_readiness(repository_id))
+
+
+@runner.command("probe")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def probe_runner(document: Path) -> None:
+    with client() as connection:
+        display(connection.probe_runner(json_document(document)))
+
+
+@runner.command("screenshot")
+@click.argument("evidence_id")
+@click.option("--output", required=True, type=click.Path(path_type=Path))
+def download_screenshot(evidence_id: str, output: Path) -> None:
+    with client() as connection:
+        display(connection.download_browser_screenshot(evidence_id, output))
+
+
+@main.group()
+def search() -> None:
+    """Configure mediated internet search and inspect cached source citations."""
+
+
+@search.command("get")
+def search_configuration() -> None:
+    with client() as connection:
+        display(connection.search_configuration())
+
+
+@search.command("configure")
+@click.option("--key-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--clear-secret", is_flag=True)
+def configure_search(key_file: Path | None, clear_secret: bool) -> None:
+    if bool(key_file) == clear_secret:
+        raise click.ClickException("Choose a private key file or --clear-secret")
+    key = private_secret_file(key_file) if key_file else None
+    with client() as connection:
+        display(connection.configure_search(api_key=key, clear_secret=clear_secret))
+
+
+@search.command("test")
+def test_search() -> None:
+    """Make one real bounded provider request with the configured server key."""
+    with client() as connection:
+        display(connection.test_search())
+
+
+@search.command("query")
+@click.argument("query")
+@click.option("--count", default=5, type=click.IntRange(1, 10))
+def internet_search(query: str, count: int) -> None:
+    with client() as connection:
+        display(connection.internet_search(query, count))
+
+
+@search.command("citation")
+@click.argument("citation_id")
+def get_citation(citation_id: str) -> None:
+    with client() as connection:
+        display(connection.search_citation(citation_id))
 
 
 @main.command("mcp")

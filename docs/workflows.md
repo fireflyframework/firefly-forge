@@ -21,6 +21,8 @@ A useful maintenance brief states the triggering input, current failure, expecte
 
 Choose `operation: "test"`. This workflow clones existing source and runs supplied or detected checks directly. It never invokes a coding provider and never repairs a failing check automatically. A passing run may contain no source changes.
 
+Test operations retain the exact immutable product revision as historical context without validating, approving, or materializing its saved design. An outdated design review therefore does not prevent checks of existing source; a passing test does not approve that review or authorize publication. Build and maintenance still require any saved design review to match the product definition and current brand.
+
 ```json
 {
   "repository_id": "your-repository-id",
