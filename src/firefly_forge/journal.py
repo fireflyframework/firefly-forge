@@ -210,6 +210,7 @@ class Journal:
                     "policy_snapshot": data.get("policy_snapshot", {}),
                     "role_snapshot": data.get("role_snapshot"),
                     "sandbox_snapshot": data.get("sandbox_snapshot"),
+                    "tool_policy_snapshot": data.get("tool_policy_snapshot"),
                     "product_definition": data.get("product_definition"),
                     "branding_snapshot": data.get("branding_snapshot"),
                     "design_reference": design_reference,

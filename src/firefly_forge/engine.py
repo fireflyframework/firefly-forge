@@ -10,6 +10,7 @@ import os
 import re
 import stat
 import tempfile
+import uuid
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
@@ -139,6 +140,7 @@ class Engine:
         self.sandbox: Any = None
         self.browser: Any = None
         self.search: Any = None
+        self.tool_broker: Any = None
         self.git_metadata: dict[Path, str] = {}
 
     async def start(self) -> None:
@@ -481,7 +483,28 @@ class Engine:
                     return await self._resolve_qa_reference(run, scope, plan)
 
                 async def internet_search(query: str, count: int) -> dict[str, Any]:
-                    return cast(dict[str, Any], await self.search.search(query, count, snapshot=run["search_snapshot"]))
+                    if self.tool_broker is None:
+                        raise ValueError("A durable tool broker is required for agent internet search")
+                    source = await self._inspect_workspace(identifier, workspace, settings)
+
+                    async def request() -> dict[str, Any]:
+                        return cast(
+                            dict[str, Any], await self.search.search(query, count, snapshot=run["search_snapshot"])
+                        )
+
+                    return cast(
+                        dict[str, Any],
+                        await self.tool_broker.invoke(
+                            identifier,
+                            "implement",
+                            "internet_search",
+                            uuid.uuid4().hex,
+                            {"query": query, "max_results": count},
+                            request,
+                            source=source,
+                            configuration=run["search_snapshot"],
+                        ),
+                    )
 
                 provider.configure_runtime(
                     scope_root=scope,
@@ -647,6 +670,10 @@ class Engine:
                     if current.get("cancel_request", {}).get("status") == "requested":
                         raise asyncio.CancelledError()
                     await ProjectAccess(self.store).authorize_execution(current)
+                    if self.tool_broker and await self.tool_broker.unresolved(identifier):
+                        raise ReconciliationRequired(
+                            "A prior tool invocation needs reconciliation before implementation"
+                        )
                     result = await provider.execute(
                         workspace,
                         brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
@@ -654,6 +681,8 @@ class Engine:
                         run["frontend"],
                         emit,
                     )
+                    if self.tool_broker and await self.tool_broker.unresolved(identifier):
+                        raise ReconciliationRequired("Tool execution has an unresolved outcome; delivery is blocked")
                     completed_rounds += 1
                     await self.store.update(
                         identifier, implementation_rounds=completed_rounds, implementation_pending=False
@@ -1157,8 +1186,9 @@ class Engine:
     @staticmethod
     def _sandbox_reconciliation(exc: Exception) -> bool:
         from firefly_forge.sandbox import SandboxReconciliationRequired
+        from firefly_forge.tool_broker import ToolReconciliationRequired
 
-        return isinstance(exc, SandboxReconciliationRequired)
+        return isinstance(exc, (SandboxReconciliationRequired, ToolReconciliationRequired))
 
     async def _project_command(
         self,

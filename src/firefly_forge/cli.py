@@ -805,6 +805,40 @@ def search() -> None:
     """Configure mediated internet search and inspect cached source citations."""
 
 
+@main.group()
+def tools() -> None:
+    """Manage mediated tool budgets and inspect recorded execution outcomes."""
+
+
+@tools.command("policy")
+def tool_policy() -> None:
+    with client() as connection:
+        display(connection.tool_policy())
+
+
+@tools.command("configure-policy")
+@click.option("--file", "file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+def configure_tool_policy(file_path: Path) -> None:
+    with client() as connection:
+        display(connection.configure_tool_policy(json_document(file_path)))
+
+
+@tools.command("invocations")
+@click.argument("run_id")
+def tool_invocations(run_id: str) -> None:
+    with client() as connection:
+        display(connection.tool_invocations(run_id))
+
+
+@tools.command("abandon")
+@click.argument("run_id")
+@click.argument("correlation_id")
+@click.option("--request-id", required=True, help="Stable ID for this explicit reconciliation decision.")
+def abandon_tool_invocation(run_id: str, correlation_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.abandon_tool_invocation(run_id, correlation_id, request_id))
+
+
 @search.command("get")
 def search_configuration() -> None:
     with client() as connection:

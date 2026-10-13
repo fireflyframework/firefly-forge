@@ -22,6 +22,7 @@ from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.search_tools import SearchTools, search_domains
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier
+from firefly_forge.tool_broker import tool_policy_snapshot
 from firefly_forge.workspace_tools import tool_catalog
 
 
@@ -98,6 +99,7 @@ class RunnerConfiguration:
             "sandbox_snapshot": sandbox,
             "runner_config_revision": settings["revision"] if selected is None else None,
             "search_snapshot": search,
+            "tool_policy_snapshot": tool_policy_snapshot(self.store.path.parent),
         }
         return copy.deepcopy(snapshot)
 

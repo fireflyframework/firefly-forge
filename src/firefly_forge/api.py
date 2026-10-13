@@ -147,6 +147,9 @@ from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
+from firefly_forge.tool_broker import ToolInvocationBroker
+from firefly_forge.tool_controllers import ToolController
+from firefly_forge.tool_persistence import ForgeToolInvocationRepository
 from firefly_forge.user_administration import UserAdministration
 from firefly_forge.user_administration_controllers import UserAdministrationController
 from firefly_forge.user_administration_persistence import (
@@ -445,6 +448,7 @@ class FactoryConfiguration:
         sandbox: SandboxExecutor,
         browser: BrowserRunner,
         search: SearchTools,
+        tool_broker: ToolInvocationBroker,
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
@@ -459,8 +463,10 @@ class FactoryConfiguration:
         engine.assurance = assurance
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
+        engine.tool_broker = tool_broker
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
+        tool_broker.credential_registry = lambda: engine.credential_registry()
         journal.credential_registry = lambda: engine.credential_registry()
         store.credential_registry = lambda: engine.credential_registry()
         return engine
@@ -540,6 +546,12 @@ class FactoryConfiguration:
     @bean
     def search_tools(self) -> SearchTools:
         return SearchTools(self.data_dir / "tools" / "search")
+
+    @bean
+    def tool_invocation_broker(
+        self, store: Store, journal: Journal, records: ForgeToolInvocationRepository
+    ) -> ToolInvocationBroker:
+        return ToolInvocationBroker(store, journal, self.data_dir, records)
 
     @bean
     def browser_runner(self, sandbox: SandboxExecutor) -> BrowserRunner:
@@ -760,7 +772,9 @@ def create_runtime(
         AgentRoleController,
         RepositoryRoleController,
         ForgeSandboxRepository,
+        ForgeToolInvocationRepository,
         RunnerController,
+        ToolController,
         ForgeCampaignRepository,
         ForgeCampaignChildRepository,
         ForgeCampaignEventRepository,

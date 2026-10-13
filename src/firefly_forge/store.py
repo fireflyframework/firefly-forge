@@ -255,6 +255,7 @@ class Store:
         from firefly_forge.product_design import ProductDesign
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
         from firefly_forge.projects import Projects
+        from firefly_forge.tool_broker import tool_policy_snapshot
 
         if request.operation == "test" and (request.model_profile_id or request.assurance.review_model_profile_id):
             raise ValueError("Test operations check existing source without a coding model")
@@ -423,6 +424,9 @@ class Store:
                 "role_snapshot": role_snapshot,
                 "role_selection_source": role_source,
                 **runner,
+                "tool_policy_snapshot": copy.deepcopy(
+                    runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
+                ),
                 **frozen_configuration,
                 "knowledge_snapshot": snapshot_knowledge(self.configuration),
                 "id": uuid.uuid4().hex,

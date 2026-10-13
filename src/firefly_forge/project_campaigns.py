@@ -33,6 +33,7 @@ from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.projects import Projects
 from firefly_forge.store import Store, identifier, now
+from firefly_forge.tool_broker import tool_policy_snapshot
 
 Data = dict[str, Any]
 SourceResolver = Callable[[Data], Awaitable[str]]
@@ -119,6 +120,7 @@ class ProjectCampaigns:
             "knowledge": digest(private._read(private.directory / "knowledge.json")),
             "runners": digest(private._read(private.directory / "runners.json")),
             "search": digest(self.engine.search.snapshot()) if self.engine.search is not None else None,
+            "tool_policy": tool_policy_snapshot(private)["digest"],
             "credentials": {agent: digest(private.resolve(agent)) for agent in sorted(agents)},
         }
 
@@ -145,6 +147,8 @@ class ProjectCampaigns:
             raise ValueError("The knowledge snapshot differs from the campaign's frozen settings")
         if run.get("search_snapshot") and digest(run["search_snapshot"]) != configuration["search"]:
             raise ValueError("The search snapshot differs from the campaign's frozen settings")
+        if run.get("tool_policy_snapshot", {}).get("digest") != configuration["tool_policy"]:
+            raise ValueError("The tool policy differs from the campaign's frozen settings")
 
     @staticmethod
     def _scope(definition: ProjectDefinition, requested: list[str] | None) -> list[str]:

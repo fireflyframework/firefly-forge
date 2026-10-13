@@ -46,12 +46,13 @@ from firefly_forge.project_campaign_persistence import (
 from firefly_forge.project_persistence import ForgeAnalysisEntity, ForgeProjectEntity, ForgeProjectRevisionEntity
 from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyEntity
 from firefly_forge.sandbox_persistence import ForgeSandboxEntity
+from firefly_forge.tool_persistence import ForgeToolInvocationEntity
 from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminEventEntity,
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 18
+SCHEMA_REVISION = 19
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -109,6 +110,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeAccessEventEntity,
                 ForgeIdentityAdminOperationEntity,
                 ForgeIdentityAdminEventEntity,
+                ForgeToolInvocationEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
@@ -210,4 +212,32 @@ async def migrate(session: AsyncSession, schema: str) -> None:
         )
         await session.execute(
             text("INSERT INTO forge_schema_migrations(revision) VALUES (:revision)"), {"revision": SCHEMA_REVISION}
+        )
+        await session.execute(
+            text("""
+            CREATE OR REPLACE FUNCTION forge_guard_tool_invocation() RETURNS trigger AS $$
+            BEGIN
+              IF OLD.run_id IS DISTINCT FROM NEW.run_id OR OLD.task_id IS DISTINCT FROM NEW.task_id
+                OR OLD.tool IS DISTINCT FROM NEW.tool OR OLD.correlation_id IS DISTINCT FROM NEW.correlation_id
+                OR OLD.data->'admission' IS DISTINCT FROM NEW.data->'admission'
+                OR OLD.data->'request_digest' IS DISTINCT FROM NEW.data->'request_digest'
+                OR (OLD.status IN ('succeeded','rejected','abandoned')
+                  AND (OLD.status IS DISTINCT FROM NEW.status OR OLD.data IS DISTINCT FROM NEW.data)) THEN
+                RAISE EXCEPTION 'Tool invocation admission and completed outcome are immutable';
+              END IF;
+              RETURN NEW;
+            END; $$ LANGUAGE plpgsql
+        """)
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_tool_invocation_admission "
+                "BEFORE UPDATE ON forge_tool_invocations FOR EACH ROW EXECUTE FUNCTION forge_guard_tool_invocation()"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_tool_invocation_delete "
+                "BEFORE DELETE ON forge_tool_invocations FOR EACH ROW EXECUTE FUNCTION forge_refuse_immutable_change()"
+            )
         )

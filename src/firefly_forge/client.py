@@ -577,6 +577,30 @@ class ForgeClient:
     def search_configuration(self) -> dict[str, Any]:
         return self._search_metadata(dict(self.request("GET", "search/configuration")))
 
+    def tool_policy(self) -> dict[str, Any]:
+        return dict(self.request("GET", "tools/policy"))
+
+    def configure_tool_policy(self, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.tool_broker import ToolPolicyInput
+
+        model = ToolPolicyInput.model_validate(request)
+        return dict(self.request("PUT", "tools/policy", json=model.model_dump()))
+
+    def tool_invocations(self, run_id: str) -> list[dict[str, Any]]:
+        return list(self.request("GET", f"runs/{self._id(run_id)}/tool-invocations"))
+
+    def abandon_tool_invocation(self, run_id: str, correlation_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.tool_controllers import ToolReconciliationInput
+
+        body = ToolReconciliationInput(request_id=request_id)
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._id(run_id)}/tool-invocations/{self._id(correlation_id)}/reconcile",
+                json=body.model_dump(),
+            )
+        )
+
     def configure_search(
         self,
         *,

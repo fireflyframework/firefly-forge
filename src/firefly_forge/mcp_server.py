@@ -16,6 +16,7 @@ from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.task_routing import TaskRoutingInput
+from firefly_forge.tool_broker import ToolPolicyInput
 
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
@@ -804,6 +805,41 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return Image(data=connection.browser_screenshot(evidence_id), format="png")
+
+    @server.tool()
+    def get_tool_policy() -> dict[str, Any]:
+        """Read factory-admin tool-call limits. Existing runs retain their frozen policy."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.tool_policy()
+
+    @server.tool()
+    def configure_tool_policy(request: ToolPolicyInput) -> dict[str, Any]:
+        """Replace factory-admin mediated tool limits for new runs; this does not grant a tool."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_tool_policy(request.model_dump())
+
+    @server.tool()
+    def get_run_tool_invocations(run_id: str) -> list[dict[str, Any]]:
+        """Read source-associated intent and outcome evidence for an authorized run."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.tool_invocations(run_id)
+
+    @server.tool()
+    def abandon_tool_invocation(run_id: str, correlation_id: str, request_id: str) -> dict[str, Any]:
+        """Record an explicit operator decision to abandon an unknown outcome without replay.
+
+        This cannot claim successful execution. An active call must finish or its lease expire.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.abandon_tool_invocation(run_id, correlation_id, request_id)
 
     return server
 
