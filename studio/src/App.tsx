@@ -1164,7 +1164,7 @@ export default function App() {
               Documentation
             </a>
           </span>
-          <span>v0.2.0</span>
+          <span>v0.2.1</span>
         </footer>
       </div>
       {dialog && (

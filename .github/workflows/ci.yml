@@ -39,6 +39,12 @@ jobs:
       - run: make check
       - run: npm --prefix studio audit --omit=dev --audit-level=high
       - run: make package
+      - name: Install the wheel outside the source checkout
+        run: |
+          uv venv "$RUNNER_TEMP/forge-installed"
+          uv pip install --python "$RUNNER_TEMP/forge-installed/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-installed/bin/python" "$GITHUB_WORKSPACE/scripts/installed_smoke.py"
       - uses: actions/upload-artifact@v4
         with:
           name: firefly-forge-distributions
