@@ -1,0 +1,61 @@
+# Split topology: worker replicas share one execution leader and the same private volume.
+services:
+  api:
+    build: .
+    command: ["forge", "serve", "--role", "api", "--host", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment: &forge-environment
+      FORGE_AUTH_MODE: ${FORGE_AUTH_MODE:-oidc}
+      FORGE_API_TOKEN: ${FORGE_API_TOKEN:-}
+      FORGE_OIDC_ISSUER: ${FORGE_OIDC_ISSUER:-}
+      FORGE_OIDC_CLIENT_ID: ${FORGE_OIDC_CLIENT_ID:-}
+      FORGE_OIDC_CLIENT_SECRET: ${FORGE_OIDC_CLIENT_SECRET:-}
+      FORGE_OIDC_API_AUDIENCE: ${FORGE_OIDC_API_AUDIENCE:-}
+      FORGE_OIDC_REDIRECT_URI: ${FORGE_OIDC_REDIRECT_URI:-}
+      FORGE_IDENTITY_ENCRYPTION_KEY: ${FORGE_IDENTITY_ENCRYPTION_KEY:-}
+      FORGE_BROWSER_ORIGIN: ${FORGE_BROWSER_ORIGIN:-}
+      FORGE_ALLOWED_HOSTS: ${FORGE_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      FORGE_KEYCLOAK_ADMIN_CLIENT_ID: ${FORGE_KEYCLOAK_ADMIN_CLIENT_ID:-}
+      FORGE_KEYCLOAK_ADMIN_CLIENT_SECRET: ${FORGE_KEYCLOAK_ADMIN_CLIENT_SECRET:-}
+      FORGE_DATA_DIR: /data
+      FORGE_CONCURRENCY: ${FORGE_CONCURRENCY:-2}
+      FORGE_DATABASE_URL: ${FORGE_DATABASE_URL:?Set the PostgreSQL connection URL}
+      FORGE_DATABASE_SCHEMA: ${FORGE_DATABASE_SCHEMA:-forge}
+      FORGE_BRIDGE_URL: ${FORGE_BRIDGE_URL:-}
+      FORGE_BRIDGE_TOKEN: ${FORGE_BRIDGE_TOKEN:-}
+      FORGE_AGENTIC_MODEL: ${FORGE_AGENTIC_MODEL:-openai-responses:gpt-6-luna}
+      FORGE_AGENTIC_API_KEY: ${FORGE_AGENTIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes: &forge-storage
+      - factory-data:/data
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+  worker:
+    build: .
+    command: ["forge", "worker"]
+    environment: *forge-environment
+    volumes: *forge-storage
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: ${FORGE_POSTGRES_PASSWORD:?Set a strong database password}
+      POSTGRES_DB: forge
+    volumes:
+      - factory-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  factory-data:
+  factory-postgres:

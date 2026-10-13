@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Headless native PyFly lifecycle for the single execution owner."""
+"""Headless native PyFly lifecycle with fenced worker promotion."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ class WorkerSupervision:
         roles = self.engine.store.runtime_roles
         if roles and not roles.executes_jobs:
             return None
+        if self.engine.execution_state in {"standby", "recovering"}:
+            return None
         for name, task in self.tasks().items():
             if task is None or task.done():
                 return f"Required worker consumer {name} stopped; inspect retained work before restarting"
@@ -29,8 +31,10 @@ class WorkerSupervision:
 async def run_worker(data_dir: Path | None = None, *, stop: asyncio.Event | None = None) -> None:
     from firefly_forge.api import create_runtime
 
-    runtime = create_runtime(data_dir, role="worker")
     stopped = stop or asyncio.Event()
+    if stopped.is_set():
+        return
+    runtime = create_runtime(data_dir, role="worker")
     loop = asyncio.get_running_loop()
     registered = []
     if stop is None:
@@ -42,7 +46,18 @@ async def run_worker(data_dir: Path | None = None, *, stop: asyncio.Event | None
                 pass
     try:
         try:
-            await runtime.startup()
+            starting = asyncio.create_task(runtime.startup())
+            stopping = asyncio.create_task(stopped.wait())
+            try:
+                await asyncio.wait([starting, stopping], return_when=asyncio.FIRST_COMPLETED)
+                if stopped.is_set():
+                    return
+                await starting
+            finally:
+                if not starting.done():
+                    starting.cancel()
+                stopping.cancel()
+                await asyncio.gather(starting, stopping, return_exceptions=True)
             supervision = runtime.context.get_bean(WorkerSupervision)
             if detail := supervision.detail():
                 raise RuntimeError(detail)

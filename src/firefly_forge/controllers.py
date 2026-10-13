@@ -147,7 +147,8 @@ class CatalogController:
         detail = detail or self.supervision.detail()
         role_health = (
             self.engine.store.runtime_roles.health(
-                execution_state="degraded" if detail else "ready", max_parallel_jobs=self.engine.concurrency
+                execution_state="degraded" if detail else self.engine.execution_state,
+                max_parallel_jobs=self.engine.concurrency,
             )
             if self.engine.store.runtime_roles
             else {}

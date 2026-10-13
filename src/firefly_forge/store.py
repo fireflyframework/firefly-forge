@@ -56,6 +56,10 @@ def identifier(value: str) -> uuid.UUID:
         raise KeyError("Record not found") from exc
 
 
+class ExecutionOwnerBusy(RuntimeError):
+    """Another live database session holds the schema execution fence."""
+
+
 @service
 class Store:
     phase = 0
@@ -152,7 +156,7 @@ class Store:
                 {"key": "forge:execution:" + self.schema},
             )
             if not acquired:
-                raise RuntimeError("Another factory server already owns this PostgreSQL schema")
+                raise ExecutionOwnerBusy("Another factory server already owns this PostgreSQL schema")
             pid = await connection.scalar(text("SELECT pg_backend_pid()"))
             await connection.commit()
             self._ownership_connection, self._ownership_pid = connection, pid
