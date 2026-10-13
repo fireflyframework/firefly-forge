@@ -257,7 +257,9 @@ test("paused production stops and explicit handoff retains the run identifier an
   ).toBeVisible();
   await page.getByRole("button", { name: "Inspect run" }).click();
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
-  await expect(page.getByText("Chain verified", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Chain verified by server", { exact: true }),
+  ).toBeVisible();
   await page
     .getByLabel("Continue with another provider")
     .selectOption("claude");
