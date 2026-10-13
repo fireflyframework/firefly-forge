@@ -5,6 +5,8 @@ This walkthrough produces a local change and verification evidence. It does not
 push a branch or create a pull request. Complete [installation](installation.md)
 and connect Studio to the API first. Verify the included [Flycanon service](knowledge.md#initialize-the-managed-service) before starting: required retrieval needs an authenticated scope and actual citations.
 
+See the [Studio console tour](console-tour.md) for the wizard steps and evidence views. Its screenshots use controlled fixtures.
+
 ## 1. Register a repository
 
 In **Repositories**, select **Add repository**. Enter its name, Git clone URL,

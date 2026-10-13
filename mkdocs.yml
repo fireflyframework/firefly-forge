@@ -32,7 +32,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.top
     - navigation.footer
     - navigation.tracking
     - toc.follow
@@ -44,6 +43,7 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - footnotes
   - md_in_html
   - tables
   - toc:
@@ -66,6 +66,7 @@ nav:
       - Find your next step: guide.md
       - Install and start: installation.md
       - Your first product: quickstart.md
+      - Studio console tour: console-tour.md
       - Capabilities and limits: capabilities.md
   - Products:
       - Define a product: product-definition.md

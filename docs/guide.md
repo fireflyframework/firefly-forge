@@ -2,6 +2,8 @@
 
 # Find your next step
 
+For an illustrated case from connection through run evidence and recovery, follow the [Studio console tour](console-tour.md).
+
 Choose the path that matches the work in front of you. You can join an existing product at any stage; a new feature does not require recreating its original definition.
 
 ## Define or change a product

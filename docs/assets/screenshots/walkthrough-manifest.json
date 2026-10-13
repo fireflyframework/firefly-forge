@@ -1,0 +1,1932 @@
+{
+  "schema_version": 1,
+  "fixture_only": true,
+  "source_base": "75456dbc74a98be0e10793692753c993fab46814",
+  "captures": {
+    "connect-workspace-desktop-light.png": {
+      "path": "assets/screenshots/connect-workspace-desktop-light.png",
+      "stage": "connect-workspace",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "44f7a2c2eece905a19f9f376e5fe85a4ed39a9c690bc7827dee8b24acc1929e9",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-coding-ai-desktop-light.png": {
+      "path": "assets/screenshots/connect-coding-ai-desktop-light.png",
+      "stage": "connect-coding-ai",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "42b00ddbb080a56e42ace93455a26890152711fed3ab14a77c4bc25f6b33569e",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-repositories-desktop-light.png": {
+      "path": "assets/screenshots/connect-repositories-desktop-light.png",
+      "stage": "connect-repositories",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "2396a477b27c7795be759410d755ab445b7dbecab239e120091fa3c3a3ffcde6",
+      "action": {
+        "label": "Continue to knowledge",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-knowledge-desktop-light.png": {
+      "path": "assets/screenshots/connect-knowledge-desktop-light.png",
+      "stage": "connect-knowledge",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "a9479bec6fdf164d749647cf58d077f82ecaf44b20391ad7f90cdc7d9c98034c",
+      "action": {
+        "label": "Open production floor",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-context-desktop-light.png": {
+      "path": "assets/screenshots/product-context-desktop-light.png",
+      "stage": "product-context",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "9fe39d2581a49cd7e31b2e72a3dfe00fbb8d2eb8552becb105c77254f75c571b",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-journeys-desktop-light.png": {
+      "path": "assets/screenshots/product-journeys-desktop-light.png",
+      "stage": "product-journeys",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e1f457c086688466164bb199d2b4e5f2a63d88c31b0b613e7fa3270e6b28a66a",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-features-desktop-light.png": {
+      "path": "assets/screenshots/product-features-desktop-light.png",
+      "stage": "product-features",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "88e165ed30ce2d7d277189a4a2135ad4a4af455280a4c3963e6fd1a486266b61",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-integrations-desktop-light.png": {
+      "path": "assets/screenshots/product-integrations-desktop-light.png",
+      "stage": "product-integrations",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e929697918311d7292ca2ecc56a29539161f8b321c7239149e144dd7bd485e14",
+      "action": {
+        "label": "Review definition",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-review-desktop-light.png": {
+      "path": "assets/screenshots/product-review-desktop-light.png",
+      "stage": "product-review",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "ac87975233d3bcd51bee169ffbb6a1607662cc09fc3347e358635ebe1e6c1afc",
+      "action": {
+        "label": "Save draft definition",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-brief-desktop-light.png": {
+      "path": "assets/screenshots/run-brief-desktop-light.png",
+      "stage": "run-brief",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "2e556129c3424e7c28695838c87dbc9c77706f9eb830cd4787f0918fbbaf3ba4",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-foundation-desktop-light.png": {
+      "path": "assets/screenshots/run-foundation-desktop-light.png",
+      "stage": "run-foundation",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "4b802ac9d47dfb5b39e917ce7215dc7cb920e3aa61013509d18cdc0dc68e3d42",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-checks-desktop-light.png": {
+      "path": "assets/screenshots/run-checks-desktop-light.png",
+      "stage": "run-checks",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "03ad1da98f73d89fc08f1a5f46f309e370a4d7c97b0a395216c6a736d071e3e6",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-review-desktop-light.png": {
+      "path": "assets/screenshots/run-review-desktop-light.png",
+      "stage": "run-review",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "222b1146917cc60ce84e7f48c4aa2e8ca578e1b1e07c6e7db53cf5676139379a",
+      "action": {
+        "label": "Start building",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "factory-overview-desktop-light.png": {
+      "path": "assets/screenshots/factory-overview-desktop-light.png",
+      "stage": "factory-overview",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "12cd7dcdc27995df7e9e5503fc1057ca5bcea5fe35503aae00545eec222ba590",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-changes-desktop-light.png": {
+      "path": "assets/screenshots/evidence-changes-desktop-light.png",
+      "stage": "evidence-changes",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "f6574aa59e10ba1f1726f25077fe4cbe1dd041fb150c64d5b25ecfd750bd5c85",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-verification-desktop-light.png": {
+      "path": "assets/screenshots/evidence-verification-desktop-light.png",
+      "stage": "evidence-verification",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "c8783ac5d0b9ffb0c3d75db1b60829183de2afabc85e054f02afbabe4c680900",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-plan-desktop-light.png": {
+      "path": "assets/screenshots/evidence-plan-desktop-light.png",
+      "stage": "evidence-plan",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e270842bd74f2035c13c006bdbe48de9aa7201743cb700b3a90f7ba803de1e77",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-artifacts-desktop-light.png": {
+      "path": "assets/screenshots/evidence-artifacts-desktop-light.png",
+      "stage": "evidence-artifacts",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "a32db6719c9d99fdd7023dbf4e680d819f52cde7d133d2c0d5257b4e49a0d665",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-workspace-desktop-dark.png": {
+      "path": "assets/screenshots/connect-workspace-desktop-dark.png",
+      "stage": "connect-workspace",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "4ed3506aafc3febcc91665e5d0f4f20203ee4ed2971b3ddd871ca3227ad8454f",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-coding-ai-desktop-dark.png": {
+      "path": "assets/screenshots/connect-coding-ai-desktop-dark.png",
+      "stage": "connect-coding-ai",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "79f9199dc786170b3fdb8209855aa4e261e314a8e8f9ce23c3b4d1d197d3db5d",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-repositories-desktop-dark.png": {
+      "path": "assets/screenshots/connect-repositories-desktop-dark.png",
+      "stage": "connect-repositories",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "66a0258d51f0efa7592f2a9753759130b661f841cfb9342934349964a3880bd5",
+      "action": {
+        "label": "Continue to knowledge",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-knowledge-desktop-dark.png": {
+      "path": "assets/screenshots/connect-knowledge-desktop-dark.png",
+      "stage": "connect-knowledge",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e32764c7ed68e9b932f491ca3d9563c97c23a5d4dd8bafdf09dd94d738b2a9ae",
+      "action": {
+        "label": "Open production floor",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-context-desktop-dark.png": {
+      "path": "assets/screenshots/product-context-desktop-dark.png",
+      "stage": "product-context",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "08c81b88c3f29ebe991e1652d7e781fbbd2bebd0a951673844ced60c9e98ef6b",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-journeys-desktop-dark.png": {
+      "path": "assets/screenshots/product-journeys-desktop-dark.png",
+      "stage": "product-journeys",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "07d5d5e7727acb31851e4c557f7b79c415f5b76116547250c7bb7d849431f8ee",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-features-desktop-dark.png": {
+      "path": "assets/screenshots/product-features-desktop-dark.png",
+      "stage": "product-features",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "6619cbbf8c75705e3abc194317aef5ab64bf3feab2fdc1f7624379e8f91023cf",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-integrations-desktop-dark.png": {
+      "path": "assets/screenshots/product-integrations-desktop-dark.png",
+      "stage": "product-integrations",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "bd019fdf05372cf8b98cb763dde5b7eadda1e287e237e7bf97f106d93da4784e",
+      "action": {
+        "label": "Review definition",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-review-desktop-dark.png": {
+      "path": "assets/screenshots/product-review-desktop-dark.png",
+      "stage": "product-review",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "a3d22b0ede5a7cbef59cec23ffdca35fec14b81c53a871a1a7dc2547b4cd8db8",
+      "action": {
+        "label": "Save draft definition",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-brief-desktop-dark.png": {
+      "path": "assets/screenshots/run-brief-desktop-dark.png",
+      "stage": "run-brief",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "c97ebad1741faf4021355ac68fe7e5661fc6f15c22fceacda84f7a8d30fa34e5",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-foundation-desktop-dark.png": {
+      "path": "assets/screenshots/run-foundation-desktop-dark.png",
+      "stage": "run-foundation",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "da590687676947da76532b2754f45f99bbb301bee9a69ae257a5cc0dab6dba8e",
+      "action": {
+        "label": "Continue",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-checks-desktop-dark.png": {
+      "path": "assets/screenshots/run-checks-desktop-dark.png",
+      "stage": "run-checks",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "76d8496ba59bcd9c9380f6b4c9e48e9358a0abc1a8aeeb857c2eb8d36e50809a",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-review-desktop-dark.png": {
+      "path": "assets/screenshots/run-review-desktop-dark.png",
+      "stage": "run-review",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "2c48f90218953d46131ac105235e71c5e77deca7e69528d1f3cf3813fbc312b9",
+      "action": {
+        "label": "Start building",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "factory-overview-desktop-dark.png": {
+      "path": "assets/screenshots/factory-overview-desktop-dark.png",
+      "stage": "factory-overview",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "07230a1fe06d594ae3c62ca6e0443b03490f25ecbcccd3a6b88c8a02681343c6",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-changes-desktop-dark.png": {
+      "path": "assets/screenshots/evidence-changes-desktop-dark.png",
+      "stage": "evidence-changes",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e30166dfd0fb573ac46f815417129d8033c789020187c54138168aa90fa77024",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-verification-desktop-dark.png": {
+      "path": "assets/screenshots/evidence-verification-desktop-dark.png",
+      "stage": "evidence-verification",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "fffa3991b8d88eb89aa6a1aadb3ad62298d89271707cd34ec270ae4dc18f5ffd",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-plan-desktop-dark.png": {
+      "path": "assets/screenshots/evidence-plan-desktop-dark.png",
+      "stage": "evidence-plan",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e1d72f4a4d3d4d70005971f1038767b1065f33e5294cf49e872a26ba63cd8574",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-artifacts-desktop-dark.png": {
+      "path": "assets/screenshots/evidence-artifacts-desktop-dark.png",
+      "stage": "evidence-artifacts",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "7b453980684994234de402faa26250d664a21e95a6c14351ced82f72ac3b4eee",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-workspace-mobile-light.png": {
+      "path": "assets/screenshots/connect-workspace-mobile-light.png",
+      "stage": "connect-workspace",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "e8bdabb597f466fdda796a749a8e3006799835cff8a033d1dad4d9d13cacd0af",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-coding-ai-mobile-light.png": {
+      "path": "assets/screenshots/connect-coding-ai-mobile-light.png",
+      "stage": "connect-coding-ai",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "5a3448f0eae9a9396ef08c9f47ca9a1783aeeb1485e9cef089ee3bc48b56ab74",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-repositories-mobile-light.png": {
+      "path": "assets/screenshots/connect-repositories-mobile-light.png",
+      "stage": "connect-repositories",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "be0a9e2d4a8420fcf30bec854d26f898250a88d48f08d81bba1596f989031ab2",
+      "action": {
+        "label": "Continue to knowledge",
+        "top": 585.921875,
+        "bottom": 626.765625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-knowledge-mobile-light.png": {
+      "path": "assets/screenshots/connect-knowledge-mobile-light.png",
+      "stage": "connect-knowledge",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "ecd09f4f805a137a8e9a24024dc3a0d38b8557a98f0bfad299f542f75c7f4f9f",
+      "action": {
+        "label": "Open production floor",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-context-mobile-light.png": {
+      "path": "assets/screenshots/product-context-mobile-light.png",
+      "stage": "product-context",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "79e3d0e2b5ec90ec32633f3fa85acc4d5e4f36a8970c1d28d313044246090cbe",
+      "action": {
+        "label": "Continue",
+        "top": 714.09375,
+        "bottom": 754.9375,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-journeys-mobile-light.png": {
+      "path": "assets/screenshots/product-journeys-mobile-light.png",
+      "stage": "product-journeys",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "0c03c05e65158e179c6820e63e96c703a83612cfb8eaeab71172ae8c79927c84",
+      "action": {
+        "label": "Continue",
+        "top": 729.6875,
+        "bottom": 770.53125,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-features-mobile-light.png": {
+      "path": "assets/screenshots/product-features-mobile-light.png",
+      "stage": "product-features",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "36f20ac9e5319cde7ade75f59bdeb82ee6ccbf819571a0fe3e411be10a9cc443",
+      "action": {
+        "label": "Continue",
+        "top": 713.71875,
+        "bottom": 754.5625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-integrations-mobile-light.png": {
+      "path": "assets/screenshots/product-integrations-mobile-light.png",
+      "stage": "product-integrations",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "6cbc5daa8609d5fc0e17fd3777dfb87db5aa3503920955ddc419901e79aa42f3",
+      "action": {
+        "label": "Review definition",
+        "top": 617.828125,
+        "bottom": 658.671875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-review-mobile-light.png": {
+      "path": "assets/screenshots/product-review-mobile-light.png",
+      "stage": "product-review",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "74aa43c2e014c086435fc157e7cd5cc2633c5cff577d1f4924f1c16effb2fbd1",
+      "action": {
+        "label": "Save draft definition",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-brief-mobile-light.png": {
+      "path": "assets/screenshots/run-brief-mobile-light.png",
+      "stage": "run-brief",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "12f1fb99efd511fa2cf3e75d945bdf149467061650839df4011ba2ccd743e635",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-foundation-mobile-light.png": {
+      "path": "assets/screenshots/run-foundation-mobile-light.png",
+      "stage": "run-foundation",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9324e88710a75db73d3f92f30af2457d3227972aa2d920f1bade33c1bb6ad0b2",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-checks-mobile-light.png": {
+      "path": "assets/screenshots/run-checks-mobile-light.png",
+      "stage": "run-checks",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "8d0dff01e1cfef726cc3eb4360986691b5f4667ff99e17b69d5da6071a7ac18d",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-review-mobile-light.png": {
+      "path": "assets/screenshots/run-review-mobile-light.png",
+      "stage": "run-review",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "943724eccd88bf79a5cdb390553e3eb1f9ff21e768032a698001f6f68c09cfcd",
+      "action": {
+        "label": "Start building",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "factory-overview-mobile-light.png": {
+      "path": "assets/screenshots/factory-overview-mobile-light.png",
+      "stage": "factory-overview",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "96d26bd39bf91d6dbfcca0f2abbbe7c9744d46ae7243c458972f0c8e00b5ff5c",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-changes-mobile-light.png": {
+      "path": "assets/screenshots/evidence-changes-mobile-light.png",
+      "stage": "evidence-changes",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "1a6338ff46f521d05a01a21f90f4c60feaad825e2b85c7cca1655ade49f42a17",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-verification-mobile-light.png": {
+      "path": "assets/screenshots/evidence-verification-mobile-light.png",
+      "stage": "evidence-verification",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3fa00bd50f8fac2437554ac2c385da9656fc47e31bc4bc89983f7c8c43147ce5",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-plan-mobile-light.png": {
+      "path": "assets/screenshots/evidence-plan-mobile-light.png",
+      "stage": "evidence-plan",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "8e162116680bdc9c20e6ec863397fc2215535222b6f2ba6a4262430f0be5b5a4",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-artifacts-mobile-light.png": {
+      "path": "assets/screenshots/evidence-artifacts-mobile-light.png",
+      "stage": "evidence-artifacts",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "99da39d95065b7c5f172934e13c8f4db0e40363fd23cb9d3338eb561f20eab5b",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-workspace-mobile-dark.png": {
+      "path": "assets/screenshots/connect-workspace-mobile-dark.png",
+      "stage": "connect-workspace",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "c80aedd317f3f5fceab8c9355da6a25d94346057260083c10747d632e0ae50b4",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-coding-ai-mobile-dark.png": {
+      "path": "assets/screenshots/connect-coding-ai-mobile-dark.png",
+      "stage": "connect-coding-ai",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9ed62dafc7bcbfca2b5d5ac4fab4bd5a919554857c4690fca9b668e2327c2717",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-repositories-mobile-dark.png": {
+      "path": "assets/screenshots/connect-repositories-mobile-dark.png",
+      "stage": "connect-repositories",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "82b33d7d9f6ab01b578ab5f7b3419674b05eaf142d5046eb330cddc9e17c1b20",
+      "action": {
+        "label": "Continue to knowledge",
+        "top": 585.921875,
+        "bottom": 626.765625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "connect-knowledge-mobile-dark.png": {
+      "path": "assets/screenshots/connect-knowledge-mobile-dark.png",
+      "stage": "connect-knowledge",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "6c26fe960b89608243332119ddfc3249e7f4c02baf97a74e147ff2999d39c83b",
+      "action": {
+        "label": "Open production floor",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-context-mobile-dark.png": {
+      "path": "assets/screenshots/product-context-mobile-dark.png",
+      "stage": "product-context",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "b7a96d88760dd1141a6cefeeb318cdff6e988de216828c722148ee48b7bf1fc0",
+      "action": {
+        "label": "Continue",
+        "top": 714.09375,
+        "bottom": 754.9375,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-journeys-mobile-dark.png": {
+      "path": "assets/screenshots/product-journeys-mobile-dark.png",
+      "stage": "product-journeys",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "96475aa1cd8aa8c50111f8876fc494efeaa97e51af0c91662a17b17711d24db5",
+      "action": {
+        "label": "Continue",
+        "top": 729.6875,
+        "bottom": 770.53125,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-features-mobile-dark.png": {
+      "path": "assets/screenshots/product-features-mobile-dark.png",
+      "stage": "product-features",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "33d0e628b97fc5337d42f0c20d331a95a3e02a46a28e9de0987e85dd410945ec",
+      "action": {
+        "label": "Continue",
+        "top": 713.71875,
+        "bottom": 754.5625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-integrations-mobile-dark.png": {
+      "path": "assets/screenshots/product-integrations-mobile-dark.png",
+      "stage": "product-integrations",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3aac81a5aceb9169207d0cd015c7bff65fa89ecd28326b1dc1b109c25a345742",
+      "action": {
+        "label": "Review definition",
+        "top": 617.828125,
+        "bottom": 658.671875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-review-mobile-dark.png": {
+      "path": "assets/screenshots/product-review-mobile-dark.png",
+      "stage": "product-review",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "f0c6849447373a9b42870c38b4dcb8c7f66b97cab6300989259781c88a606270",
+      "action": {
+        "label": "Save draft definition",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-brief-mobile-dark.png": {
+      "path": "assets/screenshots/run-brief-mobile-dark.png",
+      "stage": "run-brief",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "5326fcf3c89d262f57950eb9f37d1a2f70ad293dc99e72e13b72c5df0dd12a3a",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-foundation-mobile-dark.png": {
+      "path": "assets/screenshots/run-foundation-mobile-dark.png",
+      "stage": "run-foundation",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "86922d02a62c42a9aab80b97cdf3df4939bf6f654b6e8e39de8b97c5acf32673",
+      "action": {
+        "label": "Continue",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-checks-mobile-dark.png": {
+      "path": "assets/screenshots/run-checks-mobile-dark.png",
+      "stage": "run-checks",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "07bb98a6491c606f10a839a16bc07a210f203ccaea673a68180b1c791e8c6539",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-review-mobile-dark.png": {
+      "path": "assets/screenshots/run-review-mobile-dark.png",
+      "stage": "run-review",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "4b45a6907e5f8d594c701343cd03c97122e2832add24d316050a4fb0afe9040a",
+      "action": {
+        "label": "Start building",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "factory-overview-mobile-dark.png": {
+      "path": "assets/screenshots/factory-overview-mobile-dark.png",
+      "stage": "factory-overview",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "6bcf0db869ebc47c9809cf3f1c185f2a49b4942ec25961566a8d1e4f3098b4bc",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-changes-mobile-dark.png": {
+      "path": "assets/screenshots/evidence-changes-mobile-dark.png",
+      "stage": "evidence-changes",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "0d2f51002980651a87211d0b1e2b5cf755fe73e1512d1f5ffdc40fcd782387af",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-verification-mobile-dark.png": {
+      "path": "assets/screenshots/evidence-verification-mobile-dark.png",
+      "stage": "evidence-verification",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "12f0e60ab619acc081a13cb6d023d65eda6a8163084480789f57d8ae8b0a4f98",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-plan-mobile-dark.png": {
+      "path": "assets/screenshots/evidence-plan-mobile-dark.png",
+      "stage": "evidence-plan",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "d9896a49e3579c9aed64d829244d137b732e535f0ee513dde07faac0fe58b49a",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "evidence-artifacts-mobile-dark.png": {
+      "path": "assets/screenshots/evidence-artifacts-mobile-dark.png",
+      "stage": "evidence-artifacts",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3a822fe9dc036e4c6587fd45b4eaaf6212ed20f7474cbd82fc865391aed10c78",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-context-desktop-light.png": {
+      "path": "assets/screenshots/run-context-desktop-light.png",
+      "stage": "run-context",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "6ad7a75f707972fb7e964fdb6f9108cfa98358770b608035c60df6927f2e7372",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-context-desktop-dark.png": {
+      "path": "assets/screenshots/run-context-desktop-dark.png",
+      "stage": "run-context",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "c1d14b09a12ec431844961dadf747b7eb4525ff046969624185046b4884a6e81",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-context-mobile-light.png": {
+      "path": "assets/screenshots/run-context-mobile-light.png",
+      "stage": "run-context",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "57c92391c3831096775cd6bb3e03ebced860725d16a30ac2b734513144e59c7b",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "run-context-mobile-dark.png": {
+      "path": "assets/screenshots/run-context-mobile-dark.png",
+      "stage": "run-context",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "5e8c5d20d08a6c67762621e5ba637fd0d7190dddadfe189730e1ed0e1a3c0f56",
+      "action": null,
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-behavior-desktop-light.png": {
+      "path": "assets/screenshots/product-behavior-desktop-light.png",
+      "stage": "product-behavior",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "23705d08c201170c3c2ee0429e825b8a32ca8ebbf0a5ae3c843fd72f73ce9efd",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-behavior-desktop-dark.png": {
+      "path": "assets/screenshots/product-behavior-desktop-dark.png",
+      "stage": "product-behavior",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "9f79652711a8c300cd2572632c9f06b79cca506a2b77ab0b61324e3cef91a6aa",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-behavior-mobile-light.png": {
+      "path": "assets/screenshots/product-behavior-mobile-light.png",
+      "stage": "product-behavior",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "716d1ceb2b961f40632d32ccd7bd2ae3f98a839705705a3effb111c2143983fe",
+      "action": {
+        "label": "Continue",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-behavior-mobile-dark.png": {
+      "path": "assets/screenshots/product-behavior-mobile-dark.png",
+      "stage": "product-behavior",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "86601f982c658910011f1ed93611b61f9901a0a060c5544ed3a121abfb3d5660",
+      "action": {
+        "label": "Continue",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "capture_test_sha256": "44827927e592ea86065a0df89a37b2b6d5ad2373cefe8979ef6a248553cf5fd1",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153"
+    },
+    "product-feature-mapping-desktop-light.png": {
+      "capture_test_sha256": "ee8810cd76d8344d93f1452c0f60d000cda1ce97b5d005a61a68d19c042e2b4d",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/product-feature-mapping-desktop-light.png",
+      "stage": "product-feature-mapping",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "1d1c4285765bc2ab66c2f8b54a365435e9ef820d2cb3bde9fdb9859a95ac75bd",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "captured_action": {
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "in_frame": true,
+        "hit": true
+      }
+    },
+    "run-review-provider-desktop-light.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-review-provider-desktop-light.png",
+      "stage": "run-review-provider",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "06c97c88d95b793578391224a7f7cb6d231845aa9cb7c8cefd0949ea4efe6570",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      }
+    },
+    "product-feature-mapping-desktop-dark.png": {
+      "capture_test_sha256": "ee8810cd76d8344d93f1452c0f60d000cda1ce97b5d005a61a68d19c042e2b4d",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/product-feature-mapping-desktop-dark.png",
+      "stage": "product-feature-mapping",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "98525b3aee7dd5f353526aaa45ba557027327de315d54a4d0fa1423d0f598e1b",
+      "action": {
+        "label": "Continue",
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "hit": true
+      },
+      "captured_action": {
+        "top": 738.15625,
+        "bottom": 779,
+        "footerTop": 836,
+        "in_frame": true,
+        "hit": true
+      }
+    },
+    "run-review-provider-desktop-dark.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-review-provider-desktop-dark.png",
+      "stage": "run-review-provider",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "bc5830833371eb20b1a1e30dda6056963d78086237ddcf03c8071b92f1e44094",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      }
+    },
+    "run-policies-desktop-light.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-policies-desktop-light.png",
+      "stage": "run-policies",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "a523749ad306bde56fd6e153e9e7b002d9eda83812971c00e3bf37c621092468",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      }
+    },
+    "run-policies-desktop-dark.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-policies-desktop-dark.png",
+      "stage": "run-policies",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "86dcbb37c4510b928edfc7d372231d58957b5feafc5b9814505870ec053aaa9b",
+      "action": {
+        "label": "Review run",
+        "top": 713.078125,
+        "bottom": 753.921875,
+        "footerTop": 836,
+        "hit": true
+      }
+    },
+    "product-feature-mapping-mobile-light.png": {
+      "capture_test_sha256": "ee8810cd76d8344d93f1452c0f60d000cda1ce97b5d005a61a68d19c042e2b4d",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/product-feature-mapping-mobile-light.png",
+      "stage": "product-feature-mapping",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "d843591bcf83a7cc3815f2b1717d9476eb8bb2ae30a31e977b9e6ec7490de044",
+      "action": {
+        "label": "Continue",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "captured_action": {
+        "top": 2432.046875,
+        "bottom": 2472.890625,
+        "footerTop": 800,
+        "in_frame": false,
+        "hit": false
+      }
+    },
+    "run-review-provider-mobile-light.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-review-provider-mobile-light.png",
+      "stage": "run-review-provider",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "d593054a8fcc2b793e6b7635c43a2cf87ce38f05ddea24266794484252b91d2a",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      }
+    },
+    "run-policies-mobile-light.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-policies-mobile-light.png",
+      "stage": "run-policies",
+      "theme": "light",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "57f09569049e3170bb9ebb60e455022265ec1bd06fafeff63d88bae3e4c0d456",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      }
+    },
+    "product-feature-mapping-mobile-dark.png": {
+      "capture_test_sha256": "ee8810cd76d8344d93f1452c0f60d000cda1ce97b5d005a61a68d19c042e2b4d",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/product-feature-mapping-mobile-dark.png",
+      "stage": "product-feature-mapping",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3254c856aa1e1e7192f95c8a1c722611c0c1b9fa7e0311b9c83734fd81a701c4",
+      "action": {
+        "label": "Continue",
+        "top": 714.046875,
+        "bottom": 754.890625,
+        "footerTop": 800,
+        "hit": true
+      },
+      "captured_action": {
+        "top": 2432.046875,
+        "bottom": 2472.890625,
+        "footerTop": 800,
+        "in_frame": false,
+        "hit": false
+      }
+    },
+    "run-review-provider-mobile-dark.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-review-provider-mobile-dark.png",
+      "stage": "run-review-provider",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "4d9afd54ee763629adcce5e482a61a26e261cb9e07a47bc423d7931e551aa69e",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      }
+    },
+    "run-policies-mobile-dark.png": {
+      "capture_test_sha256": "a6ee2fe5587403101b250d568732868e1c47b72cd80472a99a51d5db482fc4a8",
+      "studio_version": "0.2.1",
+      "frontend_digest": "f8a26d8eb7b852f208f6a47935733eda059c9118c8c960cb24ef920094035153",
+      "path": "assets/screenshots/run-policies-mobile-dark.png",
+      "stage": "run-policies",
+      "theme": "dark",
+      "fixture": true,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "4264c37e868f128f1cd63255915640f7d47459f8cf5b9fa78ec0adb38277f41e",
+      "action": {
+        "label": "Review run",
+        "top": 693.078125,
+        "bottom": 733.921875,
+        "footerTop": 800,
+        "hit": true
+      }
+    }
+  },
+  "frontend": {
+    "studio/src/Administration.css": "30984c9d04d6f9dc0b1e149f170f55f1e4583a6a938310031ad33d163f596545",
+    "studio/src/Administration.tsx": "f34496128e2bffc6b3bd2920b3b32fc3e08bf5e74591d6d20cab47621b2ccf52",
+    "studio/src/AgentLifecycle.css": "74ce7234104212c2b3b8dc7134835fee9d254731b946e8345201e7bc1f158523",
+    "studio/src/AgentLifecycle.tsx": "a1ac71a1a575cfad4376ba8b0ab53615014aefe72cfb1b0c8809500e1ebab8bc",
+    "studio/src/App.tsx": "f9534df68c3583a69a34b042c4873930d29f1afd4531588f3ba6642ca5d9d7d1",
+    "studio/src/AssistantRecovery.tsx": "43281aeabf7bf695b4a853ef9bb4ec7411ddfb3bc8b6f9fcc6d51d40d9d1883f",
+    "studio/src/AssistantSources.test.tsx": "cc30b5f3773c3dee98be14439c407e69cd63467e152a4e69ea983383b36315ef",
+    "studio/src/AssistantSources.tsx": "b3113072e9c50df3998475daad907648a0b1ec4ce69d767c94e884b64cbd9ab9",
+    "studio/src/ChannelBootstrap.tsx": "689daf8773a18b2aa14b5503697b046bcddd85e3bbb0a3cd0502bfa5f307ee52",
+    "studio/src/CloudRecipe.tsx": "c479e8882fda28821507b9723f6c83c3cef0b2ffeb816665e5cb9fbd114d048a",
+    "studio/src/Collaboration.tsx": "482dd5464d5b7a038ac7caf15478c7b0ca976fe72f1cf66be0f7007a5d575c80",
+    "studio/src/Configuration.tsx": "efd330687f3eeb5c2ee4abe7f523e8f79827b6986e8921e4c26a0a8b716d0506",
+    "studio/src/ConversationFiles.css": "0e06359ab1f89bbcc13c18ed8c44837110e1317f69248b2195ec0a25f7e794ec",
+    "studio/src/ConversationFiles.test.ts": "8affe38c4b494002505b467baf30e78481ece4a0250a44088b73854e80384d4c",
+    "studio/src/ConversationFiles.tsx": "d824ea07abc371548d60fd4555c1f8f35caf7c51dbed7167a3cee752eec9e8f5",
+    "studio/src/CredentialProfile.tsx": "637be780b961a5a97c83d6bfb55692d105e3e42db65579c08ea870e1eab30042",
+    "studio/src/Delivery.tsx": "2fa65aec55d770940fb7132f577cff07a60b55794064cf4973e631e0b6188556",
+    "studio/src/DesignReview.tsx": "a979c68350882cbe50acd6fdab67b374bc357ecd5e111240227a744a6013ea9a",
+    "studio/src/ExecutionFormat.ts": "8d20cfe6e5dc93c4d0ece64c0cd69c20a4be9dcfb5bedabecc68f88d3c31c874",
+    "studio/src/ExecutionPresentation.css": "f288d0da83c9de7df6f955355c1b21fed0856014e1535fb29a8ff56e3b26ec54",
+    "studio/src/ExecutionPresentation.test.tsx": "9d30e87e00c99cfba09ff0a1625131071edfc70453e5b5f4aaa1235d5c387293",
+    "studio/src/ExecutionPresentation.tsx": "d0910743a8a57907607f169c36e176ae49b1eced6d066f0b2173e8e8d356b011",
+    "studio/src/ExecutionRecord.tsx": "52cb5a103bae20c0bda7ac3acc9f4a378671d6eba50d26100dea8481128195b9",
+    "studio/src/FactoryFloor.tsx": "cf16e011e39ddbfdc52d6efde92994e8f0ae485724bd22bd9cf01cc71fad88fb",
+    "studio/src/FactoryMotion.test.ts": "1319b21fe11444c23f6f10d79a07591aed8be9c09dd87cb11c9bc77db07b32ab",
+    "studio/src/FactoryMotion.ts": "18353ecae0081d0cde0b981ef649025e17a31b4db2e6d0afcb22cfd61489492e",
+    "studio/src/FactoryScene.css": "50f5b694c3b245bd460c531a5898d01ce20d98a15d6905098efc963089977d5e",
+    "studio/src/FactoryScene.tsx": "3a590de2bb97823298fb67cd2e379b85b821df9898fd8160cacd4cc8be60b4eb",
+    "studio/src/FactoryWelcome.css": "0c8eeafd244c5e77e7f54168db9a620cb5941d94c604e68724ffb8283a299781",
+    "studio/src/FactoryWelcome.tsx": "d9ee2efa2162bdf987cbc2e83a842e37be324a4c350df25a1e9e38129a388531",
+    "studio/src/FeatureLinks.test.ts": "cf42ca4fb4bf4ddbd17ed0079744484678da2f2a0c16843540f25f85a61b202d",
+    "studio/src/FeatureLinks.ts": "db62ddfbd4f845054f02f6a364bf5e7c21094eb9a21cab88fcf4f5b3674ee540",
+    "studio/src/FlowBoard.css": "2c3109d5305ad2b3c8e7d4cd505b111b01db9202a4b7532acc77b05c4dfc4b68",
+    "studio/src/FlowBoard.tsx": "6ae81ac1f097e344fc06505b2b241fd2c910d5389c75b6a2378cb4a92b943acf",
+    "studio/src/FunctionalFeatures.tsx": "9a8b6738e6536debd4cf047254c1623d99fae0ab640891397fd4109530d7f5d4",
+    "studio/src/Identity.css": "7bf5c18921e10bfc57c29bded9e627fd5bdb74568f88ecbe036180a7fbf20a61",
+    "studio/src/Identity.tsx": "119429ccb756fb9f5854b888a066db2346cbb57f8f972d47819294644f2ca1b8",
+    "studio/src/Integrations.css": "bf08a63d0ef70b09a0fe8d56d2a28b23d771fe9bd2f350dec7ff12c65346f133",
+    "studio/src/Knowledge.tsx": "6bae7b39ae194ee69d604e6bd5c5b0daa71302aa10d2d50f1896068bdc32825b",
+    "studio/src/KnowledgeUploads.tsx": "e6af6a4c271e24bd12a89c96c2dfba43ac9e673c9e3826cc3b1f865274c80594",
+    "studio/src/MobileNavigation.css": "937434cce3813b5b4cab50d2e39f2fc526226b7f65a9b45457607b52d93784db",
+    "studio/src/MobileNavigation.tsx": "3ade52eecbdd037b74f6f4daf9c640662c5820f116b36dc324a0523ce8eb5e1c",
+    "studio/src/Operations.tsx": "797b3d71345a6a30e93be64c162204af2c66c6f615203932d6011448dbf6dced",
+    "studio/src/ProcessEditor.tsx": "de0fa743caaeb6b2395aede624e5f9ecd03bfbcf4918c3dc66bc01b7f1b67e8c",
+    "studio/src/ProductAssistant.tsx": "b64aec0fd15ace8b91d2f2ad33edfd21b72219ea894a40ebe71ae0bdd92bdb93",
+    "studio/src/ProductDefinition.tsx": "f104bba95c464dc2be698a6b8569f32c5c19b20e69267e176c8332a636cf11b0",
+    "studio/src/ProductDesignSystem.tsx": "0b948fe91c1fb9d909cccc6fec1b3d2ce234cbe467496b4bff7ff052f241eaec",
+    "studio/src/ProductFields.test.tsx": "297158454076968ee9d00b80eed3702ddce367d40d40abc6db8e8edc2707fe13",
+    "studio/src/ProductFields.tsx": "1df7794d6c0e7a806c6fa6129a20c61147bc2f616d00fcd095017cb0d37ef52c",
+    "studio/src/ProductIntegrations.css": "637df2032de31b6e130eb92363333cd401ad4a615f03a31f7bbf2fd2a0634cff",
+    "studio/src/ProductIntegrations.tsx": "805c5ea156ec0a36c7d02b7a596a28193eb61c1774ccb2808505fd74eccf7a2f",
+    "studio/src/ProductProposal.tsx": "075fe93f9ad07afd424845f7d9e194b924fa958a4219796e8305dbf9bdaac61f",
+    "studio/src/ProductStepContext.test.ts": "1cc457815420ff03df4e014401c59f41d00d9204a64af4058998aa90a66886b5",
+    "studio/src/ProductStepContext.ts": "0516bfe1eb429aac2339d554cc05803f4e25b07036833552414174c358e2facb",
+    "studio/src/ProductWorkspace.css": "7dacd9ffdfbb00fbd9e816f91b029d747585b94b80ddf6c39143372cd5728eda",
+    "studio/src/ProductWorkspace.tsx": "9e90ccbed8fcb79186fcfe80075daf6f3264e0d158cf7d9add03a99a9d4ef111",
+    "studio/src/ProjectAccess.css": "1cd6ce170681e0dccb60f174b676cdca2c023f8daa2529ed0e6e8e452d61dc88",
+    "studio/src/ProjectAccess.tsx": "21231344360b3bad2dff5004f638980d033561b58194c882322dba4cc283a2dd",
+    "studio/src/Projects.tsx": "1e49dc4f965d612c9c9784e41e05a70c9b0bf33512fe7fabb58169140240550a",
+    "studio/src/RepositoryLabels.test.ts": "df14fda84664309b39283fb927fb239ba07b353ed44888515d1b8a675ce772b0",
+    "studio/src/RepositoryLabels.ts": "67c16d898032127b7c977c66ffd6e9337e96942d18ceeb3fac928bb0324ac2b1",
+    "studio/src/RichMarkdown.test.tsx": "d918797b3ebf5a09a40b4d775189f4b44cb509815c93efd8c6db80d7259b4853",
+    "studio/src/RichMarkdown.tsx": "33a17c68ced16c72ed071587b780296bc7627d7a3231d0cfabce65a23f15da83",
+    "studio/src/SetupIllustration.tsx": "a31668b4b2ed6092bbc6c253a511d013c8c558e02fe42fb4fcdabe85cbffdf3e",
+    "studio/src/SourceAnalysis.tsx": "88706faff5bfbb511a14ce5ada185f8e7185ce2b1546f8da09634e77a7284dcd",
+    "studio/src/SourceControl.tsx": "233f28aa7e27cab5e6f69e6c777dcfe5ec68c1b9f6b36f491d3e49fedb62c5f3",
+    "studio/src/StepContextReview.tsx": "0fbddd6ae9e7bb2fc3cabba23f00329a4457e901c8f3fdcd215b98315e0d5967",
+    "studio/src/StudioFeatures.css": "bac4141a22172313602ea302d31d318005323bca66a2976f1da6a80f9db036a0",
+    "studio/src/TextFileInput.tsx": "19d4b09cf54f7d696f4508a5dbb70618fed9b75595a04663ff6717e62daddeca",
+    "studio/src/UsabilityRefinements.css": "9150cd384d75e3b6f669a9c732357e2ceb79653ff4ae7f3094ea762629696094",
+    "studio/src/UserAdministration.tsx": "c910d4a067f16910b62a7c169fc23153b7d97e43267ad1c9567b1773aea0aede",
+    "studio/src/Wizard.tsx": "c8db104d57d6d2af7531d391a8cbe4f1589b7364f1823968b620768aa8ca4730",
+    "studio/src/api.test.ts": "d0f6e3a1babe88862a37fca1b617896f1ef1bcdf9f8a08fff0c23f0f98e690b9",
+    "studio/src/api.ts": "2905ee6f120d83a38a1c41a8bd1cebe015ec4b1f78006aa77c2946fa9d1bc2f2",
+    "studio/src/appearance.ts": "e19e7a779906a2372bf105a3c1b3ab856bd8f841b7d0f7db8ba2b682b0fd1bbb",
+    "studio/src/factory.test.ts": "05a9f09e60fa26c97281e155f3992b516a5e8d05b4da3bdaf217b2b3e672e8af",
+    "studio/src/factory.ts": "4c38f3ff278192af033ca09510c1740cf52d0c2535715986e532ba1ba5cb8476",
+    "studio/src/main.tsx": "69295c3750ced299e7b55a9ce82fb1d6c8ba0becdf171cb1b17ed166787c288d",
+    "studio/src/styles.css": "291c210281a317b6d18b1bb5154d79fd95ff93f0e271c17fa2e638c44df7f694",
+    "studio/public/NOTICE.txt": "72b9799bb8d9a804096397adb749f0efa97d6be633696888275526ba75696f51",
+    "studio/public/appearance.js": "0eafdc0b8d10edf89a6f990ea1606cf156f288783ee15715f91adfdc7dba1391",
+    "studio/public/assets/banner-dark.svg": "e25f61255be8308bf69df5d8fd7b71faeeedc6e5b3e263c0c36438d02e1f1f0e",
+    "studio/public/assets/banner-light.svg": "307ff09e7bd9dd8c7536c611968e10b8e5b7d4564bfc62fd31ff689167e31b42",
+    "studio/public/assets/forge-factory-dark.svg": "427adf088dbc236bf0f5c3ade61fa74e62ee6fd0cd01de6bfdbc73dac1f97522",
+    "studio/public/assets/forge-factory-light.svg": "f4fedfce370cf75d732f0a76f4e5246f61e164b726082450cb341a698c395802",
+    "studio/public/assets/forge-favicon-dark.svg": "bb7bcac326446df9850d468af7c25c5ac0bfba90922caaf6621de870b882c8e5",
+    "studio/public/assets/forge-favicon-light.svg": "bf644f020d4bbe9d6316ac1630fcff63184ebf185f21be4a2469e0b6504e240b",
+    "studio/public/assets/forge-lockup-dark.svg": "e0cd0523e3ce20873493403cf9aeb97b76a5a97fa35dda747604a41307f6f256",
+    "studio/public/assets/forge-lockup-light.svg": "059dd7b86afcb14755cc8a204e299007a0043e8471d717bfec6f333ebfd91645",
+    "studio/public/assets/forge-lockup.svg": "cdcc3c51d22d301ca8ebb0babc2b50f36acd4da159c0b774a0a9fb2d408dec8f",
+    "studio/public/assets/forge-mark-dark.svg": "235d8a4309d8e1cf4c0eee80619395b232284307ef9f46f72894f4e39e3ca1c7",
+    "studio/public/assets/forge-mark-light.svg": "5520908460bc126ffe86da7dcf499100276737b2adc467726dfd29e3e1a57c77",
+    "studio/public/assets/forge-mark-mono-dark.svg": "de95fee5c625bdb72ddda324130c49d06afc2573add3a7ccf998cb722317a270",
+    "studio/public/assets/forge-mark-mono-light.svg": "1b061c0db6d6d1c40b2c7b73a5506eaff22b9844ced6c97043f21c4a1c2a299e",
+    "studio/public/assets/forge-operational-model.json": "85e55a1e6c8736c2fc844539c1904f9da967ee687d0e33bf37726a39da0d2112",
+    "studio/public/assets/forge-operational-model.json.gz": "b4d8f58137f5e35780255e433159dabc1797b10235b96f738d7902ffd514e64b",
+    "studio/public/assets/operational-model-provenance.json": "d920233bb9dd72ecb422c31f5cd4e5d14720500b1e23d4a490259a441285abd7",
+    "studio/public/favicon.svg": "bb7bcac326446df9850d468af7c25c5ac0bfba90922caaf6621de870b882c8e5",
+    "studio/public/fonts/OFL.txt": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30",
+    "studio/public/fonts/manrope-latin-wght-normal.woff2": "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972",
+    "studio/public/licenses/lucide-LICENSE.txt": "668dcc52803480e0a026b31140a4cae668772663cd764e5991d252eef03f98db",
+    "studio/public/licenses/markdown-LICENSES.txt": "c963152bef753cf47cc4c18ef25c26c45c0c0b351e538bf2e7bc5b63d81fce2f",
+    "studio/public/licenses/three-LICENSE.txt": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc",
+    "studio/index.html": "9cb93a750f86ad497d1e1d9b9fa249d6dac6ee979890ec9b90897081546ba2f6",
+    "studio/package.json": "03a248fa024244cde0839968399e77f639bdaf37a7fd6483ec08cc9e4fa1df44"
+  },
+  "capture_test_sha256": "ee8810cd76d8344d93f1452c0f60d000cda1ce97b5d005a61a68d19c042e2b4d",
+  "studio_version": "0.2.1"
+}
