@@ -1,4 +1,5 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 # Use firefly forge visual assets
 
 The product name is **firefly forge**, in lowercase. Its identity combines the
@@ -22,15 +23,15 @@ Small versions use one color, so the letter's shape stays clear at 16 and 24
 pixels. Do not type an ordinary f in its place, reshape the billets, add a dot,
 rotate the mark or alter the parent wordmark.
 
-| Placement | Asset |
-| --- | --- |
-| Dark header and navigation | `forge-lockup-dark.svg` |
-| Light header and navigation | `forge-lockup-light.svg` |
-| Compact dark slot | `forge-mark-mono-dark.svg` |
-| Compact light slot | `forge-mark-mono-light.svg` |
-| Standalone symbol at larger sizes | `forge-mark-dark.svg` or `forge-mark-light.svg` |
-| Browser/application icon | `forge-favicon-dark.svg` or `forge-favicon-light.svg` |
-| Dark/light introduction | `banner-dark.svg` or `banner-light.svg` |
+| Placement                         | Asset                                                 |
+| --------------------------------- | ----------------------------------------------------- |
+| Dark header and navigation        | `forge-lockup-dark.svg`                               |
+| Light header and navigation       | `forge-lockup-light.svg`                              |
+| Compact dark slot                 | `forge-mark-mono-dark.svg`                            |
+| Compact light slot                | `forge-mark-mono-light.svg`                           |
+| Standalone symbol at larger sizes | `forge-mark-dark.svg` or `forge-mark-light.svg`       |
+| Browser/application icon          | `forge-favicon-dark.svg` or `forge-favicon-light.svg` |
+| Dark/light introduction           | `banner-dark.svg` or `banner-light.svg`               |
 
 The source assets live in `assets/brand/`; application-ready copies live in
 `studio/public/assets/` and documentation-ready copies in `docs/assets/`.
@@ -90,14 +91,14 @@ copies and notices. Keep the Three.js MIT notice with the application bundle.
 
 ## Light and dark colors
 
-| Role | Dark | Light |
-| --- | --- | --- |
-| Page ground | Charcoal `#10110F` | Paper `#F3F1EB` |
-| Surface | `#1A1B17` | White `#FFFFFF` |
-| Main text | Paper `#F3F1EB` | Ink `#272820` |
-| Secondary text | Stone `#BFB8AB` | Muted `#62645B` |
-| Rules/dividers | Graphite `#474A42` | Line `#D8D4CA` |
-| Accent text/focus | Amber `#FFB34A` | Gold `#855414` |
+| Role                  | Dark                           | Light                          |
+| --------------------- | ------------------------------ | ------------------------------ |
+| Page ground           | Charcoal `#10110F`             | Paper `#F3F1EB`                |
+| Surface               | `#1A1B17`                      | White `#FFFFFF`                |
+| Main text             | Paper `#F3F1EB`                | Ink `#272820`                  |
+| Secondary text        | Stone `#BFB8AB`                | Muted `#62645B`                |
+| Rules/dividers        | Graphite `#474A42`             | Line `#D8D4CA`                 |
+| Accent text/focus     | Amber `#FFB34A`                | Gold `#855414`                 |
 | Filled primary action | Amber `#FFB34A`, charcoal text | Amber `#FFB34A`, charcoal text |
 
 Serve Manrope from the application's own files. Gold supplies readable accent
@@ -107,20 +108,20 @@ than flattening to a single color. Communicate status in text as well as color.
 
 ## Ownership and provenance
 
-| Asset | Owner and licence |
-| --- | --- |
-| Firefly parent marks | Firefly Software Solutions Inc., proprietary artwork and trademarks; used with permission, not Apache-2.0 |
-| Factory geometry and graphic system | Firefly Software Solutions Inc., proprietary; generated authorized product assets only |
-| Original forged f and standalone Forge wordmark | Firefly Software Foundation; first-party copyright artwork Apache-2.0, trademark rights reserved |
-| Combined logos and banners | Include proprietary parent artwork; retain its separate notice |
-| Manrope | The Manrope Project Authors; SIL Open Font License 1.1 |
-| Studio Lucide icons | ISC, with MIT for Feather-derived portions |
-| Three.js renderer library | three.js authors; MIT |
+| Asset                                           | Owner and licence                                                                                         |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Firefly parent marks                            | Firefly Software Solutions Inc., proprietary artwork and trademarks; used with permission, not Apache-2.0 |
+| Factory geometry and graphic system             | Firefly Software Solutions Inc., proprietary; generated authorized product assets only                    |
+| Original forged f and standalone Forge wordmark | Firefly Software Foundation; first-party copyright artwork Apache-2.0, trademark rights reserved          |
+| Combined logos and banners                      | Include proprietary parent artwork; retain its separate notice                                            |
+| Manrope                                         | The Manrope Project Authors; SIL Open Font License 1.1                                                    |
+| Studio Lucide icons                             | ISC, with MIT for Feather-derived portions                                                                |
+| Three.js renderer library                       | three.js authors; MIT                                                                                     |
 
 `assets/brand/inventory.json` records owners, rights, source hashes, pinned
 revisions and SHA-256 values for generated assets and application copies. Keep
 `NOTICE` with the marks, `OFL.txt` with fonts and the icon notices with their
-bundles. The separate internal Agent Bridge uses its own connected-span
+bundles. The separate Agent Bridge uses its own connected-span
 identity; its assets are not part of the public Forge inventory.
 
 ## Regenerate and review
@@ -141,3 +142,11 @@ before composing the artwork. Review the regenerated source and inventory.
 Render both themes at native size, inspect marks at 16, 24, 32 and 64 pixels,
 and check header/compact placements at their real size. A valid SVG or matching
 hash does not establish visual quality or correct alignment in the application.
+
+## Documentation illustration
+
+The documentation home loads the same authorized station snapshot through a separate first-party Three.js adapter. One 14-second demonstration clock moves the document between stations, holds it while that station's clip works, and fades the reset before starting again. No machinery works during transit or reset. Two first-party operators share coffee in a bay joined to the factory floor and alternate short console visits; the terminals show the same demonstration sequence. Their walking joints, aisle routes and cup clearance are checked against the actual mesh geometry. The illustration never reads run data or estimates progress. The live Studio renderer continues to use recorded station states.
+
+Install Studio dependencies with `npm --prefix studio ci`, then run `make docs`. The strict MkDocs hook bundles `scripts/docs-scene/` into ignored `build/docs-scene`, copies the pinned factory snapshot and provenance, and includes the Three.js MIT and artwork notices. Local CSS and scene script URLs include a content hash so rebuilt styles and scenes are distinguishable in browser caches. Rendering uses local assets and needs no CDN or private source checkout.
+
+`make docs-check` adds motion-gate, bundle, cache-version and real Playwright checks. The home illustration supports play/pause, static reduced motion, light and dark appearance, phone resizing, viewport and background-tab suspension, and a static SVG if WebGL fails. Motion is capped at 30 frames per second, with a bounded pixel ratio and GPU cleanup when the page closes or loses its context. Review the actual page in both themes and at phone widths before publishing; passing tests alone does not establish visual quality.

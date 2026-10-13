@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 
+from firefly_forge.agent_lifecycle import assistant_instruction_snapshot, inject_assistant_instructions
 from firefly_forge.analysis_context import AnalysisContextInput, ReviewedAnalysisContext
 from firefly_forge.assistant_persistence import (
     ForgeAssistantEventEntity,
@@ -566,6 +567,9 @@ class ProductAssistant:
                 self.store.configuration.directory / f"product-brand-{repository_id}.json"
             )
             context: Data = {
+                "instruction_snapshot": assistant_instruction_snapshot(
+                    self.store.roles, session.get("task", "product"), self.store.policies.current()
+                ),
                 "model_selection": session.get("model_selection"),
                 "task": session.get("task", "product"),
                 "product_snapshot": copy.deepcopy(product.data) if product else None,
@@ -662,6 +666,7 @@ class ProductAssistant:
                 + "\nSource observations identify declarations at pinned commits. Ask product owners to confirm "
                 "business journeys, expected behavior and live operation; source review does not confirm them."
             )
+            prompt = inject_assistant_instructions(prompt, context["instruction_snapshot"])
             if len(prompt.encode()) > 100000:
                 raise ValueError("Product dialogue context exceeds 100 KB; start a focused conversation")
             from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess

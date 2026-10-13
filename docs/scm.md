@@ -79,6 +79,11 @@ has `0700` permissions. API summaries return configured flags for secrets;
 secret values cannot be read back. Blank secret fields preserve saved values.
 Use the explicit clear action to remove them. Changing application settings
 invalidates saved grants, cached tokens and pending authorization state.
+Token issuance and repository discovery also check that the application revision
+did not change while a provider request was in flight. An obsolete response cannot
+cache credentials or register a repository. Repeat the operation after saving the
+current application configuration. Malformed credential or repository responses
+fail closed; they do not mark an application as connected.
 
 Git credentials are passed only to the clone or push process. They are not
 written into repository URLs, `.git/config`, global Git configuration or generated
@@ -92,9 +97,7 @@ remote branches and pull requests remain.
 
 ## Connection API
 
-All routes below use `/api/v1` and require the operator token, except the two
-OAuth callback routes. Callbacks require the saved one-use state and browser
-cookie; the operator token never appears in a redirect URL.
+All routes below use `/api/v1` and require current factory-administrator authority, except the two OAuth callback routes. Hosted clients authenticate through the configured OIDC identity; explicit local bootstrap uses its loopback operator credential. Callbacks require the saved one-use state and browser cookie. Factory credentials never appear in a redirect URL. See [identity and project access](identity.md).
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -131,5 +134,13 @@ remain available; GitHub, GitLab and Bitbucket application connections provide
 the managed grant flow described above.
 
 Contract tests check request construction, state handling and failure boundaries.
+Loopback HTTP acceptance runs a real Forge API server and a provider fixture
+server for GitHub Enterprise `/api/v3`, self-managed GitLab `/api/v4`, and
+Bitbucket Cloud. It verifies operator authentication, GitHub JWT signatures,
+GitLab PKCE and refresh rotation, bearer-authorized repository discovery, signed
+or secret-token ingress, outbound conversation feedback, revocation, and receipt
+reconciliation without duplicate comments. Test-only routing sends the configured
+provider paths and Host headers to the local fixture; it does not test provider
+DNS, TLS, organizational installation, or consent on a real provider account.
 Live acceptance requires the real application registration, provider consent,
 repository grant and successful remote operation for each account.

@@ -3,13 +3,13 @@
 
 Profiles provide concrete framework instructions to each coding provider.
 `GET /api/v1/profiles` is the runtime catalog: it reports names, versions,
-upstream sources and validation boundaries. Read that catalog for the running
-version rather than assuming this page's descriptions are release guarantees.
+upstream sources and validation boundaries. Read the catalog for the running
+version. The descriptions on this page do not establish release acceptance.
 
 | Backend | Role | Start here |
 | --- | --- | --- |
-| PyFly | Primary Python service profile | [PyFly walkthrough](pyfly.md) |
-| LaraFly | Primary Laravel/PHP profile | [LaraFly walkthrough](larafly.md) |
+| [pyfly](https://fireflyframework.org/frameworks/python/) | Primary Python service profile | [pyfly walkthrough](pyfly.md) |
+| [larafly](https://fireflyframework.org/frameworks/php/) | Primary Laravel/PHP profile | [larafly walkthrough](larafly.md) |
 | Firefly Java | Additional reactive Java/Spring profile | Inspect runtime catalog and upstream contracts |
 | Firefly Rust | Additional Rust profile | Inspect runtime catalog and upstream contracts |
 | Firefly .NET | Additional .NET profile | Inspect runtime catalog and upstream contracts |
@@ -41,5 +41,5 @@ one project-owned gate. Command arguments are passed directly to the process,
 not interpreted as a shell expression.
 
 Leave commands empty only when the generated project declares a supported check
-that forge can discover. A project without a verification command must fail
-verification rather than receiving an assumed passing result.
+that forge can discover. A project without a verification command fails
+verification; the factory cannot assume a passing result.

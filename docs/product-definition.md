@@ -31,19 +31,23 @@ Open **Product definition** and select the product project. Work through five st
 | Integrations | The owned or third-party systems involved and their exchange and failure contracts. |
 | Review | Check the complete definition, architecture and any product-specific design evidence before saving. |
 
-Each step states its required inputs. Back preserves the working draft. Saving creates a product revision; it does not start a coding run. The optional architecture and design settings retain the backend/frontend choice, product brand, tokens, grid and review references. A service-only product can describe API processes without inventing a frontend journey.
+Each step states its required inputs. Back preserves the working draft. Saving creates a product revision; it does not start a coding run.
 
-The AI assistant occupies a collapsible panel beside the editor on a wide screen. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft. Choose the next task and a configured provider or model profile, then start a conversation. Follow-up messages and replies remain in that product's recorded conversation.
+Optional architecture and design settings retain the backend/frontend choice, product brand, tokens, grid and review references. A service-only product can describe API processes without adding a frontend journey.
+
+On a wide screen, the AI assistant opens beside the editor in a collapsible panel. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft.
+
+Choose the next task and a configured provider or model profile, then start a conversation. Follow-up messages and replies stay in that product's recorded conversation.
 
 Use **Ask AI** within a step to prepare a message containing its current, unsaved draft. Review and edit this message before sending. If you already have a message in progress, choose whether to append the step context or replace it. Preparing this context does not invoke a model or save the definition. The assistant's ordinary retained context uses the saved product revision; it cannot see unsaved form edits unless you include them in a message.
 
-For example, ask: “Warehouse operators need to reserve available stock without overselling. Use PyFly and PostgreSQL; this product exposes an API and has no frontend. Map the reservation and rejection paths to acceptance criteria.” The assistant can ask for missing decisions and propose a definition. Its proposal remains unreviewed.
+For example, ask: “Warehouse operators need to reserve available stock without overselling. Use pyfly and PostgreSQL; this product exposes an API and has no frontend. Map the reservation and rejection paths to acceptance criteria.” The assistant can ask for missing decisions and propose a definition. Its proposal remains unreviewed.
 
 Review the proposal comparison before applying it to the document. If the draft already has edits, replacement requires an explicit acknowledgement; **Keep draft** returns without replacing them. Applying a proposal does not save it or approve its architecture. The source badge records the provider, recorded model, generation time and conversation receipt. **View AI source** opens that conversation. When an applied definition is saved, the server verifies the source receipt and records whether the proposal was edited.
 
 Use Markdown formatting for longer text and switch to **Preview** when checking its rendering. Journeys, owners and acceptance criteria have separate entries. Map each feature to its journeys and expected behavior, including failures. Attach notes, contracts or wireframes through **Files** when needed; [Conversation files](assistant-files.md) explains their scope and model-input limits. Review the functional contract, architecture and attached design references before saving.
 
-API clients create a conversation at `POST /api/v1/repositories/{id}/assistant/conversations` with `{"agent":"bridge"}` or `{"agent":"agentic"}`. Send a turn at `POST .../conversations/{conversation_id}/turns` with a 32-character hexadecimal `request_id` and `message`. Replaying that ID with the same message returns the existing turn; changing the message under that ID is rejected. A quota pause or interrupted turn requires inspection and a new explicit request rather than a silent repeat.
+API clients create a conversation at `POST /api/v1/repositories/{id}/assistant/conversations` with `{"agent":"bridge"}` or `{"agent":"agentic"}`. Send a turn at `POST .../conversations/{conversation_id}/turns` with a 32-character hexadecimal `request_id` and `message`. Replaying that ID with the same message returns the existing turn; changing the message under that ID is rejected. Inspect a quota-paused or interrupted turn before making a new explicit request. The factory does not repeat it automatically.
 
 ## Freeze the run's contract
 
@@ -59,7 +63,7 @@ The agent receives the frozen definition alongside its brief and execution polic
 
 ## Review an architecture proposal
 
-`POST /api/v1/architecture/propose` accepts `product_definition` plus optional `backend` and `frontend` preferences. The proposal uses supported factory profiles and explicit rules; `method: rule_based` distinguishes it from an AI assessment. PyFly/React is the default. A LaraFly preference uses Laravel/PHP guidance. Alternatives retain their upstream profile references and verification limits.
+`POST /api/v1/architecture/propose` accepts `product_definition` plus optional `backend` and `frontend` preferences. The proposal uses supported factory profiles and explicit rules; `method: rule_based` distinguishes it from an AI assessment. [pyfly](https://fireflyframework.org/frameworks/python/)/React is the default. A [larafly](https://fireflyframework.org/frameworks/php/) preference uses Laravel/PHP guidance. Alternatives retain their upstream profile references and verification limits.
 
 Review the rationale and proposed domain, application, data, HTTP, operations, and frontend components. Edit responsibilities, decisions, and nonfunctional requirements to fit the customer journey. Set `architecture.reviewed: true` after review, then save that architecture inside the product definition. Saving an unreviewed supplied architecture is rejected. Existing brief-only work can still omit architecture.
 

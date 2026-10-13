@@ -214,7 +214,12 @@ async def test_actual_docker_isolation_readonly_git_exit_and_cleanup(store, tmp_
     (workspace / ".git" / "config").write_text("preserved")
     monkeypatch.setenv("FORGE_SECRET_SENTINEL", "must-never-enter-container")
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
-    config = SandboxInput(mode="docker", context="colima-forge-tests", image=os.environ["FORGE_TEST_DOCKER_IMAGE"])
+    config = SandboxInput(
+        mode="docker",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        image=os.environ["FORGE_TEST_DOCKER_IMAGE"],
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
+    )
     run = await store.create_run(RunInput(repository_id=repo["id"], brief="Verify", sandbox=config))
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
@@ -273,7 +278,12 @@ async def test_actual_docker_unknown_command_receipt_does_not_run_twice(store, t
 
     await store.acquire_ownership()
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
-    config = SandboxInput(mode="docker", context="colima-forge-tests", image=os.environ["FORGE_TEST_DOCKER_IMAGE"])
+    config = SandboxInput(
+        mode="docker",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        image=os.environ["FORGE_TEST_DOCKER_IMAGE"],
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
+    )
     run = await store.create_run(RunInput(repository_id=repo["id"], brief="Verify", sandbox=config))
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
@@ -315,7 +325,11 @@ async def test_actual_docker_timeout_and_output_limits_remove_owned_container(st
     await store.acquire_ownership()
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
     config = SandboxInput(
-        mode="docker", context="colima-forge-tests", image=os.environ["FORGE_TEST_DOCKER_IMAGE"], max_output_bytes=1024
+        mode="docker",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        image=os.environ["FORGE_TEST_DOCKER_IMAGE"],
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
+        max_output_bytes=1024,
     )
     run = await store.create_run(RunInput(repository_id=repo["id"], brief="Verify", sandbox=config))
     journal = Journal(store)
@@ -373,7 +387,12 @@ async def test_actual_recovery_recovers_exited_receipt_and_returns_cached_result
 
     await store.acquire_ownership()
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
-    config = SandboxInput(mode="docker", context="colima-forge-tests", image=os.environ["FORGE_TEST_DOCKER_IMAGE"])
+    config = SandboxInput(
+        mode="docker",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        image=os.environ["FORGE_TEST_DOCKER_IMAGE"],
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
+    )
     run = await store.create_run(RunInput(repository_id=repo["id"], brief="Verify", sandbox=config))
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
@@ -424,7 +443,12 @@ async def test_actual_docker_execution_capacity_is_two_independent_runs(store, t
 
     await store.acquire_ownership()
     journal = Journal(store)
-    config = SandboxInput(mode="docker", context="colima-forge-tests", image=os.environ["FORGE_TEST_DOCKER_IMAGE"])
+    config = SandboxInput(
+        mode="docker",
+        context=os.environ.get("FORGE_TEST_DOCKER_CONTEXT", "colima-forge-tests"),
+        image=os.environ["FORGE_TEST_DOCKER_IMAGE"],
+        workspace_transport=os.environ.get("FORGE_TEST_WORKSPACE_TRANSPORT", "bind"),
+    )
     runs = []
     for index in range(3):
         repo = await store.add_repository(

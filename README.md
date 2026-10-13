@@ -2,9 +2,9 @@
 
 ![firefly forge: from brief to verified software](assets/banner.svg)
 
-The Firefly software factory. Describe a product, connect a repository, choose your Firefly stack and coding worker, and inspect a verified implementation before publishing a pull request.
+firefly forge is the Firefly software factory. Describe a product, connect a repository and choose your Firefly stack and coding worker. Inspect the verified implementation and its evidence before publishing a pull request.
 
-forge combines native PyFly services and controllers, PostgreSQL persistence, Firefly Agentic, a web Studio and official local coding agents. Build, maintain or test projects with retained plans, verification and recovery records. Connect GitHub, GitLab, Bitbucket Cloud, Azure DevOps, Gitea or a generic Git remote. Internal teams can also connect the private Firefly Agent Bridge.
+forge combines native [pyfly](https://fireflyframework.org/frameworks/python/) services and controllers, PostgreSQL persistence, Firefly Agentic, a web Studio and official local coding agents. Build, maintain or test projects with retained plans, verification and recovery records. Connect GitHub, GitLab, Bitbucket Cloud, Azure DevOps, Gitea or a generic Git remote. Internal teams can also connect the private Firefly Agent Bridge.
 
 ## Start locally
 

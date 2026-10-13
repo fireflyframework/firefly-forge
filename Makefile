@@ -1,6 +1,6 @@
-.PHONY: check python-check studio-check docs package serve
+.PHONY: check python-check studio-check docs docs-check package serve
 
-check: python-check studio-check docs
+check: python-check studio-check docs-check
 
 python-check:
 	uv run python -m compileall -q src
@@ -20,7 +20,14 @@ studio-check:
 docs:
 	uv run --group docs mkdocs build --strict
 
-package: studio-check
+docs-check: docs
+	node studio/node_modules/eslint/bin/eslint.js -c scripts/docs-eslint.config.mjs scripts/docs-scene scripts/docs-browser scripts/*docs*.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
+	node studio/node_modules/prettier/bin/prettier.cjs --check scripts/docs-scene scripts/docs-browser scripts/*docs*.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
+	node --test scripts/test_docs_scene.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
+	uv run --group docs python -m unittest scripts.test_docs_scene_hook
+	node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-playwright.config.mjs
+
+package: studio-check docs
 	uv build
 	uv run python scripts/check_distribution.py dist
 

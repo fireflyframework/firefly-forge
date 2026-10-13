@@ -1,43 +1,114 @@
+---
+hide:
+  - navigation
+  - toc
+  - footer
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Turn a brief into verified software
 
-![firefly forge: from brief to verified software](assets/banner.svg)
+<div class="forge-docs-home" markdown="1">
 
-firefly forge is the Firefly software factory. Give it a product brief, a Git
-repository and a stack. A coding agent implements the change in an isolated
-workspace. forge runs verification, records the evidence and presents the diff
-for your review.
+<div class="forge-docs-hero" markdown="1">
 
-Start with **PyFly** or **LaraFly**. Choose a browser frontend or deliver an API
-alone. Use your signed-in Codex or Claude Code CLI, a native Firefly Agentic
-provider, or an authorized internal bridge connection.
+<div markdown="1">
 
-| Your goal | Start here |
-| --- | --- |
-| Run the factory on your computer | [Install and start](installation.md) |
-| Build your first product | [Quickstart](quickstart.md) |
-| Create a Python service | [PyFly walkthrough](pyfly.md) |
-| Create a Laravel service | [LaraFly walkthrough](larafly.md) |
-| Add an existing repository | [Git repositories](scm.md) |
-| Configure a coding provider | [Agents](agents.md) |
-| Maintain or test an existing product | [Workflows](workflows.md) |
-| Select project policies | [Policies](policies.md) |
-| Add cited context and project memory | [Knowledge](knowledge.md) |
-| Continue interrupted work | [Recovery](recovery.md) |
-| Deliver a verified change | [Deployment](deployment.md) |
-| Understand verification and publication | [Capabilities and limits](capabilities.md) |
+# <span>Build a product.</span> <span>Keep the evidence.</span>
 
-## Follow the production line
+Define the customer journey, give an agent a bounded task, and review what it actually built. firefly forge brings product decisions, source changes, verification and delivery into one recorded workflow.
 
-![A brief enters an isolated Git workspace, a coding provider builds the change, verification checks it, and evidence is retained before publication](diagrams/factory.svg)
+[Set up forge](installation.md){ .md-button .md-button--primary }
+[Build your first product](quickstart.md){ .md-button }
 
-**How to read this diagram:** Follow the five stages from left to right. Generation
-and verification are separate steps. A finished agent response is not evidence
-that a product works. Publication is an explicit run option, disabled by default.
+Start with [**pyfly**](https://fireflyframework.org/frameworks/python/) or [**larafly**](https://fireflyframework.org/frameworks/php/). Add a browser frontend when the product needs one; API and service projects follow the same delivery process.
 
-[Open the diagram at full size](diagrams/factory.svg)
+</div>
 
-forge is an early product for trusted development operators. Read its
-[security model](security.md) before exposing the API or giving it access to a
-repository. Each run retains the original brief, provider, selected profiles,
-progress events, verification results and change evidence.
+<div class="forge-docs-hero-art docs-scene" data-docs-scene data-renderer="fallback" aria-describedby="scene-demo-note" markdown="1">
+
+<div class="docs-scene__viewport" data-scene-viewport markdown="1">
+<div class="docs-scene__fallback" markdown="1">
+
+![Firefly's factory stations and connected production lanes](assets/forge-factory-light.svg){ .forge-docs-art-light }
+
+![Firefly's factory stations and connected production lanes in dark appearance](assets/forge-factory-dark.svg){ .forge-docs-art-dark }
+
+</div>
+</div>
+
+<div class="docs-scene__controls">
+<span class="docs-scene__status" data-scene-status aria-live="polite">Illustration · no live activity</span>
+<button type="button" data-scene-toggle aria-pressed="false" disabled>Loading…</button>
+</div>
+
+</div>
+
+</div>
+
+## What do you want to do?
+
+<div class="forge-docs-routes" markdown="1">
+
+<div markdown="1">
+
+### :material-map-outline: Define the product
+
+Capture journeys, features, integration contracts and acceptance criteria before implementation.
+
+- [Work through the product wizard](product-definition.md)
+- [Bring in an existing project](as-is-handoff.md)
+- [Review an architecture proposal](product-definition.md#review-an-architecture-proposal)
+- [Review wireframes](design-review.md)
+- [Deliver an incremental feature](product-lifecycle.md)
+
+</div>
+
+<div markdown="1">
+
+### :material-source-branch: Build and review
+
+Choose the coding provider and its tools, run checks, and inspect the source changes and evidence.
+
+- [Choose an agent and model](agents.md)
+- [Configure the execution environment](sandbox.md)
+- [Review browser journeys](browser-qa.md)
+- [Work from repository conversations](repository-workflow.md)
+
+</div>
+
+<div markdown="1">
+
+### :material-server-outline: Run the factory
+
+Prepare identity, storage and delivery access. Keep execution, recovery and application health observable.
+
+- [Sign in and manage project access](identity.md)
+- [Separate API and worker processes](runtime-roles.md)
+- [Deploy a verified product](deployment.md)
+- [Continue interrupted work](recovery.md)
+
+</div>
+
+</div>
+
+## Follow one change through the factory
+
+<div class="forge-docs-process" markdown="1">
+
+1. **Define the expected behavior.** Save the customer journey and measurable acceptance criteria. [Product definition](product-definition.md)
+2. **Prepare the task.** Choose the repository, stack, provider, policies and execution limits. [Build, maintain and test](workflows.md)
+3. **Implement and verify.** Review the diff and the actual results of commands and browser checks. [Agent tools](agent-tools.md)
+4. **Review and deliver.** Check the verified source, publish explicitly, then deploy to an authorized target. [Delivery assurance](assurance.md)
+5. **Observe and maintain.** Inspect application health and link follow-up work to its evidence. [Application operations](application-operations.md)
+
+</div>
+
+## Check what each result establishes
+
+A completed agent response, a passing test, a visual review and a successful deployment establish different things. Use the [capabilities guide](capabilities.md) to understand those boundaries and the [API reference](api.md) to automate supported actions.
+
+New to the factory? [Find your next step](guide.md) connects the guides by role and shows where to check each result.
+
+</div>
+
+<p id="scene-demo-note" class="docs-scene-note">The home-page animation is a demonstration. It reads no run data and makes no model calls. <a href="assets/docs-scene/THIRD_PARTY_NOTICES.txt">Illustration licenses and notices</a>.</p>

@@ -1,0 +1,143 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0 */
+.docs-scene {
+  --scene-line: #d8d4ca;
+  --scene-ink: #62645b;
+  position: relative;
+}
+[data-md-color-scheme="slate"] .docs-scene {
+  --scene-line: #474a42;
+  --scene-ink: #bfb8ab;
+}
+.docs-scene__viewport {
+  position: relative;
+  width: 100%;
+  height: clamp(320px, 32vw, 480px);
+  overflow: hidden;
+}
+.docs-scene canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.docs-scene__fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.docs-scene__fallback img,
+.docs-scene__fallback svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.docs-scene[data-renderer="webgl"] .docs-scene__fallback {
+  visibility: hidden;
+}
+.docs-scene__controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.docs-scene__controls button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  border: 1px solid var(--scene-line);
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.docs-scene__controls button:focus-visible {
+  outline: 2px solid #ffb34a;
+  outline-offset: 3px;
+}
+.docs-scene__controls button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.docs-scene__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.docs-scene__labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--scene-ink);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+.forge-docs-hero-art.docs-scene,
+.bridge-home__flow.docs-scene {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+.forge-docs-hero-art.docs-scene .docs-scene__fallback p {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+.forge-docs-home .forge-docs-hero {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+  gap: 32px;
+}
+.bridge-home .bridge-home__hero {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+  gap: 40px;
+  align-items: center;
+}
+.md-typeset .docs-scene-note {
+  font-size: 12px;
+  color: var(--md-default-fg-color--light);
+  margin-top: 40px;
+}
+@media (max-width: 800px) {
+  .bridge-home .bridge-home__hero,
+  .forge-docs-home .forge-docs-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .docs-scene__viewport {
+    height: 300px;
+  }
+  .docs-scene__labels {
+    font-size: 13px;
+  }
+}
+
+.md-typeset .bridge-home__flow.docs-scene,
+.md-typeset .forge-docs-hero-art.docs-scene {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.forge-docs-hero-art.docs-scene .docs-scene__viewport {
+  height: clamp(300px, 31vw, 460px);
+}
+@media (max-width: 800px) {
+  .forge-docs-hero-art.docs-scene .docs-scene__viewport {
+    height: clamp(210px, 56vw, 300px);
+  }
+}

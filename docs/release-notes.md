@@ -3,13 +3,13 @@
 
 Standalone packages now retain the Flycanon SDK release URL in their dependency metadata. The package check rejects wheels that would require an unavailable registry package. The v0.2.0 tag records the initial qualification; its publication was stopped when a clean installation exposed this issue.
 
-This release brings product definition, coding, verification and delivery into one PyFly application with a PostgreSQL execution ledger. Teams can start with a new product or analyze an existing project, work across one or several repositories, and follow the same retained task history through interruptions and provider handoffs.
+This release brings product definition, coding, verification and delivery into one [pyfly](https://fireflyframework.org/frameworks/python/) application with a PostgreSQL execution ledger. Teams can start with a new product or analyze an existing project, work across one or several repositories, and follow the same retained task history through interruptions and provider handoffs.
 
 Studio presents that work through guided forms, a project flow board and an operational production floor. Its machines animate recorded active tasks. Paused work stops the scene; stage controls remain available without WebGL or animation.
 
 ## What changed
 
-- Native PyFly dependency injection, REST controllers, repositories and transaction management with PostgreSQL persistence.
+- Native pyfly dependency injection, REST controllers, repositories and transaction management with PostgreSQL persistence.
 - Immutable plan revisions, append-only intents and receipts, source checkpoints, bounded rate-limit retries and explicit provider handoffs.
 - Separate project workspaces and fair dispatch, with one active run per project and a configurable global concurrency limit.
 - Wizard flows for product work, coding providers, repository applications, knowledge and deployment targets.
@@ -32,7 +32,7 @@ PostgreSQL is required. Configure `FORGE_DATABASE_URL` and retain the private da
 
 ## Acceptance boundaries
 
-The local runtime has exercised both released PyFly and LaraFly example products with their actual test commands. Current source-only factory runs passed 40 PyFly tests and 32 LaraFly tests with 94 assertions. Those runs retained valid write-ahead journals and left the saved product definition unchanged. They verify existing source without calling a coding model.
+The local runtime has exercised both released pyfly and [larafly](https://fireflyframework.org/frameworks/php/) example products with their actual test commands. Current source-only factory runs passed 40 pyfly tests and 32 larafly tests with 94 assertions. Those runs retained valid write-ahead journals and left the saved product definition unchanged. They verify existing source without calling a coding model.
 
 Separate live Codex acceptance covers a retained design conversation with a document and an image. Its response identified facts from both original files; completed replies survive service restart and cannot be recovered as unfinished work. Native Docker and browser acceptance exercised resource limits, cancellation, command output, JavaScript/DOM interactions and screenshots against pinned local images.
 
@@ -42,16 +42,16 @@ Application adapter tests do not prove that an external organization has registe
 
 The private Firefly Agent Bridge is distributed separately. Local subscription execution requires the official CLI's account login and an authorized connection; a hosted factory does not automatically tunnel to a developer's machine. Distributed execution worker pools and automatic external identity-provider federation are outside this release.
 
-## 0.1.0 — Earlier release
+## 0.1.0: Earlier release
 
-Firefly Forge introduces Firefly's software factory: a product brief becomes an
+firefly forge introduces Firefly's software factory: a product brief becomes an
 isolated Git implementation with real verification, retained source evidence
-and explicit pull-request publication. PyFly and LaraFly are the primary backend
+and explicit pull-request publication. pyfly and larafly are the primary backend
 profiles. Angular, React, Next.js and Vue are selectable frontend contracts.
 
 ### Included in this version
 
-- A PyFly API, local durable run store, CLI, Python client and MCP tools.
+- A pyfly API, local durable run store, CLI, Python client and MCP tools.
 - Studio for repository registration, product briefs, provider connections,
   progress, diffs, check results, artifact downloads and explicit publication.
 - Official signed-in Codex and Claude Code execution, native Firefly Agentic,
@@ -63,7 +63,7 @@ profiles. Angular, React, Next.js and Vue are selectable frontend contracts.
 - Final passing verification tied to a source-tree snapshot, checked again
   before publication, plus exclusive service ownership of each data directory.
 - Token protection across the Forge API, with native management/admin/actuator
-  surfaces disabled in the packaged PyFly configuration.
+  surfaces disabled in the packaged pyfly configuration.
 - Firefly branding, self-hosted typography, accessible SVG diagrams and
   task-based installation, product, integration and operations guides.
 
@@ -83,10 +83,10 @@ Specific live product checks recorded so far:
 
 | Journey | Evidence | Remaining boundary |
 | --- | --- | --- |
-| Native Firefly Agentic through an authorized bridge, PyFly service | Nine behavior tests, lint, types and package build | Bounded service fixture, not every PyFly capability |
-| Native Firefly Agentic through an authorized bridge, LaraFly service | Fourteen actual PHP checks and a fresh Composer install using official LaraFly 26.10.1 | Bounded service fixture, not the complete LaraFly plus frontend journey |
-| Codex full factory run, PyFly plus React | 40 backend tests, 17 frontend tests, lint, types and production builds; automatic repair corrected startup and browser CSRF integration | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
-| Codex full factory run, LaraFly plus React | 32 backend tests with 94 assertions, 23 frontend tests, PHPStan, Pint, lint, types and production builds | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
+| Native Firefly Agentic through an authorized bridge, pyfly service | Nine behavior tests, lint, types and package build | Bounded service fixture, not every pyfly capability |
+| Native Firefly Agentic through an authorized bridge, larafly service | Fourteen actual PHP checks and a fresh Composer install using official larafly 26.10.1 | Bounded service fixture, not the complete larafly plus frontend journey |
+| Codex full factory run, pyfly plus React | 40 backend tests, 17 frontend tests, lint, types and production builds; automatic repair corrected startup and browser CSRF integration | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
+| Codex full factory run, larafly plus React | 32 backend tests with 94 assertions, 23 frontend tests, PHPStan, Pint, lint, types and production builds | Actual browser create/reserve/conflict flows, mobile layout and keyboard focus verified |
 
 Both primary browser products created eight units of stock, reserved three,
 showed five remaining, and rejected an over-reservation without changing stock.

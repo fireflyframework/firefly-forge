@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Headless native PyFly lifecycle for the single execution owner."""
+"""Headless native PyFly lifecycle with fenced worker promotion."""
 
 from __future__ import annotations
 
@@ -8,10 +8,27 @@ import signal
 from pathlib import Path
 from typing import Any
 
+from pyfly.kernel.lifecycle import CONSUMER_PHASE
+
 
 class WorkerSupervision:
+    phase = CONSUMER_PHASE + 100
+
     def __init__(self, engine: Any, consumers: dict[str, Any]) -> None:
         self.engine, self.consumers = engine, consumers
+        self.engine.consumer_tasks = self.effect_tasks
+
+    def effect_tasks(self) -> list[asyncio.Task[None]]:
+        tasks = {task for task in self.tasks().values() if task is not None}
+        for consumer in self.consumers.values():
+            tasks.update(getattr(consumer, "active", {}).values())
+        return list(tasks)
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        self.engine.prepare_shutdown()
 
     def tasks(self) -> dict[str, asyncio.Task[None] | None]:
         return {name: consumer.poller for name, consumer in self.consumers.items()}
@@ -19,6 +36,8 @@ class WorkerSupervision:
     def detail(self) -> str | None:
         roles = self.engine.store.runtime_roles
         if roles and not roles.executes_jobs:
+            return None
+        if self.engine.execution_state in {"standby", "recovering"}:
             return None
         for name, task in self.tasks().items():
             if task is None or task.done():
@@ -29,8 +48,10 @@ class WorkerSupervision:
 async def run_worker(data_dir: Path | None = None, *, stop: asyncio.Event | None = None) -> None:
     from firefly_forge.api import create_runtime
 
-    runtime = create_runtime(data_dir, role="worker")
     stopped = stop or asyncio.Event()
+    if stopped.is_set():
+        return
+    runtime = create_runtime(data_dir, role="worker")
     loop = asyncio.get_running_loop()
     registered = []
     if stop is None:
@@ -42,7 +63,18 @@ async def run_worker(data_dir: Path | None = None, *, stop: asyncio.Event | None
                 pass
     try:
         try:
-            await runtime.startup()
+            starting = asyncio.create_task(runtime.startup())
+            stopping = asyncio.create_task(stopped.wait())
+            try:
+                await asyncio.wait([starting, stopping], return_when=asyncio.FIRST_COMPLETED)
+                if stopped.is_set():
+                    return
+                await starting
+            finally:
+                if not starting.done():
+                    starting.cancel()
+                stopping.cancel()
+                await asyncio.gather(starting, stopping, return_exceptions=True)
             supervision = runtime.context.get_bean(WorkerSupervision)
             if detail := supervision.detail():
                 raise RuntimeError(detail)

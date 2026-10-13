@@ -1,6 +1,6 @@
 # Operate products from Python, the CLI or MCP
 
-The Python client, CLI and MCP tools call the same authenticated factory API. Projects, existing-source inspections, product conversations and worker questions retain the native service's permissions, revisions and durable receipts. They do not start a second factory or bypass its execution lease.
+The Python client, CLI and MCP tools call the same authenticated factory API. Project operations, source inspections, product conversations and worker questions use the factory's permissions, revisions and durable receipts. The clients use the running factory and its execution lease.
 
 Set `FORGE_URL` to the running factory and provide `FORGE_API_TOKEN` through your operator environment. Source-control credentials remain in the factory's application or OAuth configuration; do not put the operator token in an issue comment or product brief.
 
@@ -47,7 +47,7 @@ forge assistant ask REPOSITORY_ID CONVERSATION_ID \
 forge assistant get REPOSITORY_ID CONVERSATION_ID
 ```
 
-Use the project's canonical product repository when starting a project conversation. `bridge` uses the configured internal bridge; `agentic` uses its configured model. Starting a conversation freezes settings without invoking a model. Asking a question makes a bounded model request and retains its response as an unapproved proposal. It does not edit the saved product or source, queue a run, resume a worker or approve a review.
+Use the project's canonical product repository when starting a project conversation. `bridge` uses the configured bridge connection; `agentic` uses its configured model. Starting a conversation freezes settings without invoking a model. Asking a question makes a bounded model request and retains its response as an unapproved proposal. It does not edit the saved product or source, queue a run, resume a worker or approve a review.
 
 Choose a dialogue purpose and, when needed, a named profile. The supported purposes are `product`, `functions`, `design` and `architecture`. A reviewed AS-IS selection requires its project, analysis ID and exact digest together:
 
@@ -60,7 +60,7 @@ forge run --repository REPOSITORY_ID --brief "Implement the accepted change" \
 forge handoff RUN_ID --model-profile alternate-builder
 ```
 
-Omit `--agent` when using a task binding or named profile. An explicit agent must match that profile's provider. `forge resume RUN_ID` retains the original frozen selection. An explicit profile handoff records the previous and new selections without resetting repair or browser budgets. The legacy `forge handoff RUN_ID --agent agentic` remains available and intentionally returns to the provider's configuration. Server-side project permissions and runner requirements still apply.
+Omit `--agent` when using a task binding or named profile. An explicit agent must match that profile's provider. `forge resume RUN_ID` retains the original frozen selection. An explicit profile handoff records the previous and new selections without resetting repair or browser budgets. The legacy `forge handoff RUN_ID --agent agentic` remains available and returns to the provider's configuration. Server-side project permissions and runner requirements still apply.
 
 The SDK accepts the same fields through `create_assistant_conversation(..., task=..., model_profile_id=..., analysis_id=..., analysis_digest=..., analysis_component_ids=[...])` and `handoff(run_id, model_profile_id=...)`. Its run request remains the native `RunInput`, including `model_profile_id` and `assurance.review_model_profile_id`.
 
@@ -190,7 +190,7 @@ forge campaign resume PROJECT_ID CAMPAIGN_ID --request-id RESUME_REQUEST_ID
 forge campaign retry PROJECT_ID CAMPAIGN_ID --request-id RETRY_REQUEST_ID --component api
 ```
 
-Use a distinct 32-character hexadecimal request ID for each intentional control action. Reuse an ID only to inspect or replay the exact same request. Inspect the campaign after a timeout: its action may have completed. The clients do not automatically retry writes. Unknown effects, pending worker questions and active dependent work retain the server's recovery guards. Explicit component retries use the frozen admission and its bounded retry budget; they do not quietly adopt new project settings. The response retains all attempts and marks the current ones with `current: true`.
+Use a distinct 32-character hexadecimal request ID for each intentional control action. Reuse an ID only to inspect or replay the exact same request. Inspect the campaign after a timeout: its action may have completed. The clients do not automatically retry writes. Unknown effects, pending worker questions and active dependent work retain the server's recovery guards. Explicit component retries retain the frozen admission and its bounded retry budget, including the original project settings. The response retains all attempts and marks the current ones with `current: true`.
 
 Python exposes `project_campaigns`, `launch_campaign`, `project_campaign`, `cancel_campaign`, `resume_campaign` and `retry_campaign`. The request arguments accept the native campaign DTO or its JSON dictionary. Listing and reading campaigns invoke no model. Launch admits and queues work; it does not prove that the product has been built.
 

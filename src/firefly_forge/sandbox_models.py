@@ -62,6 +62,8 @@ class SandboxInput(BaseModel):
     mode: Literal["host", "docker"] = "host"
     image: str | None = Field(default=None, max_length=512)
     context: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$")
+    workspace_transport: Literal["bind", "archive"] = "bind"
+    workspace_max_bytes: int = Field(default=67_108_864, ge=1_048_576, le=268_435_456, strict=True)
     cpus: float = Field(default=1, ge=0.1, le=4, allow_inf_nan=False)
     memory_mb: int = Field(default=1024, ge=128, le=8192, strict=True)
     pids_limit: int = Field(default=128, ge=32, le=512, strict=True)
@@ -78,7 +80,7 @@ class SandboxInput(BaseModel):
             if not self.image or not self.context:
                 raise ValueError("Docker mode requires a pinned image and an explicit Docker context")
             pinned_image(self.image)
-        elif self.image or self.context or self.browser or self.network != "none":
+        elif self.image or self.context or self.browser or self.network != "none" or self.workspace_transport != "bind":
             raise ValueError("Image, context, browser and network policy require Docker mode")
         return self
 
@@ -93,7 +95,7 @@ def capture_sandbox(value: SandboxInput | dict[str, Any] | None) -> dict[str, An
     controls = ["timeout", "output"]
     if config.mode == "docker":
         controls += [
-            "workspace_mount",
+            "workspace_archive" if config.workspace_transport == "archive" else "workspace_mount",
             "read_only_root",
             "capability_drop",
             "no_new_privileges",
@@ -119,6 +121,10 @@ def capture_sandbox(value: SandboxInput | dict[str, Any] | None) -> dict[str, An
 def validate_sandbox_snapshot(snapshot: dict[str, Any]) -> SandboxInput:
     config = SandboxInput.model_validate(snapshot.get("configuration"))
     expected = capture_sandbox(config)
+    for key in ("workspace_transport", "workspace_max_bytes"):
+        if key not in snapshot.get("configuration", {}):
+            expected["configuration"].pop(key)
+    expected["digest"] = _digest(expected["configuration"])
     original_browser = snapshot.get("configuration", {}).get("browser")
     if isinstance(original_browser, dict) and "max_calls" not in original_browser:
         expected["configuration"]["browser"].pop("max_calls")

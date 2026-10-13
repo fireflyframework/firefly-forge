@@ -56,6 +56,15 @@ Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/
 
 These flows are tested with isolated PostgreSQL schemas and provider HTTP transports. They do not claim a live customer repository has granted access or accepted a webhook. Validate those grants and one signed delivery on your deployment before enabling automatic work.
 
+The loopback HTTP lifecycle test also starts the authenticated [pyfly](https://fireflyframework.org/frameworks/python/) API and
+provider fixture servers. For each managed provider, a trusted project comment
+reaches the inbox and receives one remote reply. A fixture disconnect after
+accepting a second reply leaves the receipt uncertain; repeated processing and
+operator reconciliation do not repost it. Revoking the fixture's repository
+grant prevents the next outbound comment. This demonstrates the local request
+and durable-receipt lifecycle, without claiming live provider installation or
+permission acceptance.
+
 ## Register projects from a shared provider channel
 
 Configure the connected GitHub App or OAuth application once, then save operator-authenticated `PUT /api/v1/collaboration/bootstrap/PROVIDER`. The setup fields are `enabled`, `auto_register`, `trusted_actors`, `configuration_actors`, `defaults`, and the write-only `webhook_secret`. `configuration_actors` must be a subset of trusted actors. Defaults use the repository collaboration schema; verification commands, stack, agent, publication and deployment settings remain operator-owned.
@@ -93,7 +102,9 @@ Read-only search and status still require a trusted actor and an allowed command
 
 The operator can enable `remote_artifacts` for a repository or its onboarding defaults. The flag is false by default. A permitted configuration actor's brand or design preview command can then publish the generated review files to `forge/references/DIGEST`, a separate deterministic branch. The originating conversation receives that branch link. A design status request only checks an existing reference; it does not create one.
 
-Brand and design files live under `docs/forge-references/DIGEST/brand` or `design`, with a SHA-256 manifest. An assistant turn can publish its complete unreviewed proposal to `docs/product/proposals/TURN_ID.json` and `.md` on the same separate reference branch when `remote_artifacts` is enabled. The files state that the proposal has not approved functional, architecture or design review. Publication accepts only generated kit and design reference names, at most 210 source files, 500 KB per file and 10 MB total. Provider reads are streamed with a 1 MB response cap. Existing branches are read and checked against every expected file hash; a mismatch stops publication rather than replacing them. The factory does not merge reference branches or alter the default branch. Repository collaborators can still edit branches unless the repository's own protection policy prevents it; subsequent hash checks detect changed reference files.
+Brand and design files live under `docs/forge-references/DIGEST/brand` or `design`, with a SHA-256 manifest. An assistant turn can publish its complete unreviewed proposal to `docs/product/proposals/TURN_ID.json` and `.md` on the same separate reference branch when `remote_artifacts` is enabled. The files mark the proposal as unreviewed for functional, architecture and design decisions. Publication accepts only generated kit and design reference names, at most 210 source files, 500 KB per file and 10 MB total. Provider reads are streamed with a 1 MB response cap.
+
+The factory checks every expected file hash on an existing branch. A mismatch stops publication; it does not replace those files. The factory does not merge reference branches or alter the default branch. Repository collaborators can still edit branches unless the repository's own protection policy prevents it; subsequent hash checks detect changed reference files.
 
 GitHub uses a repository-scoped **Contents: write** grant, separate from its issue-comment grant, and the [Git tree/reference APIs](https://docs.github.com/en/rest/git/trees). GitLab uses its authorized API grant and [create-only commit actions on a new branch](https://docs.gitlab.com/api/commits/#create-a-commit-with-multiple-files-and-actions). Bitbucket uses its OAuth **repository:write** scope and [branch/source upload APIs](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-source/). Provider-specific contracts are covered by HTTP transport tests; this does not claim your installation has accepted a live reference publication.
 

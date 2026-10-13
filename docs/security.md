@@ -5,7 +5,7 @@ firefly forge executes code for authorized operators. A run uses an isolated Git
 
 ## Control the API
 
-Production uses Keycloak OIDC with a verified issuer and API audience. A `FORGE_API_TOKEN` is available only in explicitly selected loopback bootstrap mode. Native PyFly filters protect `/api/v1`, including health and OpenAPI. The sign-in endpoints and state-bound callbacks have their explicit authentication contracts. Management, admin and actuator surfaces are disabled, with no separate management listener.
+Production uses Keycloak OIDC with a verified issuer and API audience. A `FORGE_API_TOKEN` is available only in explicitly selected loopback bootstrap mode. Native [pyfly](https://fireflyframework.org/frameworks/python/) filters protect `/api/v1`, including health and OpenAPI. The sign-in endpoints and state-bound callbacks have their explicit authentication contracts. Management, admin and actuator surfaces are disabled, with no separate management listener.
 
 Source-control OAuth callbacks are the narrow exception: their exact GET paths accept a single-use server-side state and an HttpOnly browser nonce cookie. Authorization starts through the authenticated operator API. A callback cannot carry or recover the operator token.
 

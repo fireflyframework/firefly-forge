@@ -165,4 +165,4 @@ Provider configuration accepts `{"values":{"model":"MODEL","api_key":"PRIVATE_KE
 
 Project policies accept `{"skills":["implementation","verification","security"]}`. Omitting `skills` when creating a run uses project defaults; an explicit empty array selects no optional policies. Core framework integration, source safety and verification cannot be disabled.
 
-Native SCM discovery, OAuth redirects and grants are detailed in [SCM](scm.md). Knowledge source selection and per-project scopes are detailed in [knowledge](knowledge.md). Target commands, source gates and rollback bodies are detailed in [deployment](deployment.md).
+See [SCM](scm.md) for repository discovery, OAuth redirects and grants; [knowledge](knowledge.md) for source selection and project scopes; and [deployment](deployment.md) for target commands, source checks and rollback requests.

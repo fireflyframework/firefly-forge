@@ -8,12 +8,12 @@ verification, retain change evidence and optionally publish a pull request.
 | Surface | What is implemented | Evidence boundary |
 | --- | --- | --- |
 | Git workspace | Clone a configured source and create a run branch | Does not isolate the host operating system |
-| Primary backends | PyFly and LaraFly instruction profiles | Specific products require their own live checks |
+| Primary backends | [pyfly](https://fireflyframework.org/frameworks/python/) and [larafly](https://fireflyframework.org/frameworks/php/) instruction profiles | Specific products require their own live checks |
 | Additional backends | Java, Rust and .NET profiles | Source inspection is separate from product runtime validation |
 | Browser products | Angular, React, Next.js and Vue profiles | Build success is separate from visual and interaction acceptance |
 | Codex / Claude Code | Official signed-in CLI execution paths | Installed and authenticated readiness is separate from live generation |
 | Firefly Agentic | Native API-driven workspace tool execution | API configuration is separate from actual model access |
-| Internal bridge | Compatible endpoint client | Authorized internal service is installed separately |
+| Agent bridge | Compatible endpoint client | Local bridge service and subscription login are configured separately |
 | Verification | Explicit or discovered project commands with retained results | Commands establish only what they test |
 | Automatic repair | Failed checks returned to the provider with bounded retries | Earlier failures remain recorded; final passing checks are separate |
 | Source integrity | Verified source-tree snapshot checked before publication | Changed source requires fresh verification |

@@ -30,7 +30,9 @@ from firefly_forge.qa import BrowserJourney, EvidenceImage, QAReference
 from firefly_forge.scm import PullRequests, clone, push, source_revision
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
-from firefly_forge.store import TERMINAL, Store, now
+from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
+
+RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
@@ -104,6 +106,8 @@ class Engine:
         connections: Any = None,
         journal: Any = None,
     ) -> None:
+        if not 1 <= concurrency <= 64:
+            raise ValueError("Execution concurrency must be between 1 and 64")
         self.store = store
         self.connections = connections
         self.journal = journal
@@ -125,6 +129,9 @@ class Engine:
         self.stopping = False
         self.enforce_ownership = False
         self.ownership_failure: str | None = None
+        self.execution_state = "stopped"
+        self.consumer_tasks: Callable[[], list[asyncio.Task[None]]] = list
+        self.shutdown_tasks: set[asyncio.Task[None]] = set()
         self.publication_lock = asyncio.Lock()
         self.owner_lock = FileLock(str(store.path.with_suffix(".lock")))
         self.credential_registry: Callable[[], dict[str, str]] = dict
@@ -141,26 +148,75 @@ class Engine:
             self.store.runtime_roles.require_execution()
         if self.poller is not None and not self.poller.done():
             return
-        try:
-            self.owner_lock.acquire(timeout=0)
-        except Timeout as exc:
-            raise RuntimeError("A factory server is already running against this data directory") from exc
-        self.enforce_ownership = True
-        try:
-            await self.store.acquire_ownership()
-        except BaseException:
-            self.owner_lock.release()
-            raise
-        if self.journal:
-            await self.journal.recover()
-        if self.sandbox:
-            await self.sandbox.recover()
-        (await self.store.recover())
+        if any(not task.done() for task in self.shutdown_tasks | set(self.consumer_tasks())):
+            raise RuntimeError("Execution consumers must finish draining before restarting this owner")
+        standby = bool(self.store.runtime_roles and self.store.runtime_roles.role == "worker")
         self.stopping = False
-        self.poller = asyncio.create_task(self._poll())
+        self.enforce_ownership = True
+        self.execution_state = "standby" if standby else "stopped"
+        try:
+            while not self.stopping:
+                try:
+                    self.owner_lock.acquire(timeout=0)
+                except Timeout as exc:
+                    if not standby:
+                        raise RuntimeError("A factory server is already running against this data directory") from exc
+                    await asyncio.sleep(0.5)
+                    continue
+                try:
+                    await self.store.acquire_ownership()
+                except ExecutionOwnerBusy:
+                    self.owner_lock.release()
+                    if not standby:
+                        raise
+                    await asyncio.sleep(0.5)
+                    continue
+                except BaseException:
+                    self.owner_lock.release()
+                    raise
+                if self.stopping:
+                    try:
+                        await self.store.release_ownership()
+                    finally:
+                        self.owner_lock.release()
+                        self.execution_state = "stopped"
+                    return
+                self.execution_state = "recovering"
+                self.store.execution_stopping = False
+                if self.journal:
+                    await self.assert_ownership()
+                    await self.journal.recover()
+                if self.sandbox:
+                    await self.assert_ownership()
+                    await self.sandbox.recover()
+                await self.assert_ownership()
+                await self.store.recover()
+                await self.assert_ownership()
+                self.poller = asyncio.create_task(self._poll())
+                self.execution_state = "ready"
+                return
+        except BaseException:
+            self.execution_state = "stopped"
+            if self.enforce_ownership:
+                try:
+                    await self.store.release_ownership()
+                finally:
+                    self.owner_lock.release()
+            raise
+
+    def prepare_shutdown(self) -> None:
+        self.stopping = True
+        self.store.execution_stopping = True
+        self.execution_state = "stopped"
+        self.shutdown_tasks.update(self.consumer_tasks())
+        self.shutdown_tasks.update(self.active.values())
+        if self.poller:
+            self.shutdown_tasks.add(self.poller)
+        if self.owner_lock.is_locked:
+            RETAINED_EXECUTION_FENCES.add(self.owner_lock)
 
     async def stop(self) -> None:
-        self.stopping = True
+        self.prepare_shutdown()
         if self.poller:
             self.poller.cancel()
             await asyncio.gather(self.poller, return_exceptions=True)
@@ -168,9 +224,17 @@ class Engine:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        self.shutdown_tasks.update(self.consumer_tasks())
+        if any(not task.done() for task in self.shutdown_tasks):
+            self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
+            self.execution_state = "degraded"
+            return
         if self.enforce_ownership:
-            await self.store.release_ownership()
-            self.owner_lock.release()
+            try:
+                await self.store.release_ownership()
+            finally:
+                self.owner_lock.release()
+                RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
 
     async def assert_ownership(self) -> None:
         if self.store.runtime_roles:
@@ -194,12 +258,13 @@ class Engine:
                 await self.assert_ownership()
             except RuntimeError:
                 self.ownership_failure = "Execution ownership was lost; restart after inspecting interrupted work"
+                self.execution_state = "degraded"
                 self.stopping = True
+                self.store.execution_stopping = True
                 for task in self.active.values():
                     task.cancel()
                 await asyncio.gather(*self.active.values(), return_exceptions=True)
-                await self.store.release_ownership()
-                self.owner_lock.release()
+                # Native shutdown drains every higher-phase effect consumer before Engine.stop releases storage.
                 return
             self.active = {identifier: task for identifier, task in self.active.items() if not task.done()}
             if self.journal:
@@ -213,6 +278,7 @@ class Engine:
             await asyncio.sleep(0.2)
 
     async def dispatch_queued(self) -> None:
+        await self.assert_ownership()
         self.active = {identifier: task for identifier, task in self.active.items() if not task.done()}
         self.active_projects = {
             identifier: project for identifier, project in self.active_projects.items() if identifier in self.active

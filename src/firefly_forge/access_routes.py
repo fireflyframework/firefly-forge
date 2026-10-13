@@ -18,6 +18,7 @@ PUBLIC_CATALOGS = {
     "skills",
     "policies",
     "agent-roles",
+    "agent-roles/lifecycle",
     "devsecops/providers",
 }
 

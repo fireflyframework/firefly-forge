@@ -18,7 +18,7 @@ A role assigns responsibility to an actual factory stage. It does not create a s
 
 ## Version and project selection
 
-Authenticated operators read or replace the registry at `GET /api/v1/agent-roles` and `PUT /api/v1/agent-roles`. The replacement is a `RoleDocument` with a version, maximum request budget of 1–3, and all seven supported roles. It is stored in private factory configuration.
+Authenticated operators read or replace the registry at `GET /api/v1/agent-roles` and `PUT /api/v1/agent-roles`. The replacement is a `RoleDocument` with a version, maximum request budget of 1 to 3, and all seven supported roles. It is stored in private factory configuration.
 
 Project/run role overrides use this shape:
 
@@ -46,7 +46,7 @@ Official Codex and Claude workers use their own native tools and host permission
 
 ## Worker feedback and manager requests
 
-Feedback is typed data with a stable ID, role, planned task, attempt 1–4, disposition, summary and bounded public workspace evidence paths. Dispositions are `completed`, `failed`, `blocked` or `clarification`. A blocker or clarification must carry exactly one request with an ID, kind, question, context and optional choices.
+Feedback is typed data with a stable ID, role, planned task, attempt 1 to 4, disposition, summary and bounded public workspace evidence paths. Dispositions are `completed`, `failed`, `blocked` or `clarification`. A blocker or clarification must carry exactly one request with an ID, kind, question, context and optional choices.
 
 The manager journals feedback before pausing. Questions survive restarts and do not trigger automatic retries. Replaying the same feedback is idempotent; reusing its ID with different content fails. The frozen request budget limits new questions. A response is evidence of an answer, not deployment or publication approval.
 
@@ -77,3 +77,13 @@ The catalog contains instruction adaptations, not downloaded executable plugins.
 | Human-readable prose | [Humanizer 225a6f39](https://github.com/blader/humanizer/tree/225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8) | MIT; Siqi Chen |
 
 The adaptations preserve authorized product decisions, factory request/repair budgets and actual tooling. They exclude upstream helper execution, installation commands and automatic commits or publication. Humanizer applies to prose while preserving commands, contracts, code and links; pattern checks do not prove editorial quality. First-party security instructions supplement these sources without claiming a community security certification.
+
+## Lifecycle explorer
+
+The **Agents & skills** workspace starts with the lifecycle explorer. Select factory defaults or a repository, then choose a phase to inspect its participants, execution binding, applied skills, tool availability, knowledge scope and next handoff. Project policies remain below the explorer.
+
+The explorer uses `GET /api/v1/agent-roles/lifecycle` and `GET /api/v1/repositories/{id}/agent-roles/lifecycle`. These read projections describe current configuration. They do not start a conversation, retrieve knowledge, probe a runner, create a run or publish source. The scoped view requires current repository read authority. Global registry edits require a factory administrator; repository role overrides require the existing repository membership-management permission.
+
+Choose **Edit** on an instruction role to change its factory instructions or its project skill and native-tool selections. The execution binding and stages stay fixed. Only documentation guidance can be disabled. A draft survives phase navigation and failed saves; close or save it before changing the project. Saving affects later admitted work and leaves retained run snapshots intact.
+
+Product dialogue participants are separate from these seven instruction roles. Their task skills are selected from the current validated catalog and frozen in each admitted turn. They do not reuse the deterministic architect role as a model agent. See the [agent lifecycle guide](agent-lifecycle.md) for the phase, skill and knowledge contracts.

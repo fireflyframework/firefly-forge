@@ -9,7 +9,6 @@ import json
 import math
 import os
 import secrets
-import stat
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -35,6 +34,7 @@ from firefly_forge.identity_persistence import (
     ForgeIdentityUserEntity,
     ForgeIdentityUserRepository,
 )
+from firefly_forge.private_identity import private_identity
 from firefly_forge.store import Store
 
 SESSION_COOKIE = "forge_session"
@@ -178,21 +178,7 @@ class IdentityService:
         if not key and self.config.mode == "local_bootstrap":
             path = self.store.path.parent / "identity-bootstrap.key"
             path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-            except FileExistsError:
-                pass
-            else:
-                with os.fdopen(fd, "wb") as stream:
-                    stream.write(Fernet.generate_key())
-                    stream.flush()
-                    os.fsync(stream.fileno())
-            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-            with os.fdopen(fd, "rb") as stream:
-                info = os.fstat(stream.fileno())
-                if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
-                    raise ValueError("Bootstrap identity key must be an owner-only regular file")
-                key = stream.read(45)
+            key = private_identity(path, Fernet.generate_key, size=44)
         self.cipher = Fernet(key)
         self.encryption_key = key.decode()
         self.registration = (

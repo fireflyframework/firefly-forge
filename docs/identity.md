@@ -42,13 +42,34 @@ Keycloak documents its [OIDC endpoints and grant types](https://www.keycloak.org
 3. Keycloak returns to `/api/v1/auth/callback`. forge atomically consumes the attempt before exchanging the code, checks the signed ID token's issuer, client audience and nonce, and validates the access token's API audience and subject.
 4. forge rotates the session identifier and sets `forge_session`, with `HttpOnly`, `SameSite=Lax` and `Secure` on HTTPS. The cookie has a bounded lifetime; PostgreSQL retains only its hash.
 
-PyFly's native CSRF filter remains enabled. A safe initial request sets a readable `XSRF-TOKEN` cookie. The Studio copies that value into `X-XSRF-TOKEN` on every unsafe cookie-authenticated request, including login and logout. This CSRF cookie is separate from the HttpOnly identity cookie and is not an authentication token. Cookie-backed clients must satisfy both this check and the exact browser-origin check.
+[pyfly](https://fireflyframework.org/frameworks/python/)'s native CSRF filter remains enabled. A safe initial request sets a readable `XSRF-TOKEN` cookie. The Studio copies that value into `X-XSRF-TOKEN` on every unsafe cookie-authenticated request, including login and logout. This CSRF cookie is separate from the HttpOnly identity cookie and is not an authentication token. Cookie-backed clients must satisfy both this check and the exact browser-origin check.
 
-The configured issuer supplies signing keys through PyFly's bounded asynchronous JWKS validator. Tokens require an allowed asymmetric algorithm, key identifier and expiration. A token's own header cannot redirect key retrieval to another URL.
+The configured issuer supplies signing keys through pyfly's bounded asynchronous JWKS validator. Tokens require an allowed asymmetric algorithm, key identifier and expiration. A token's own header cannot redirect key retrieval to another URL.
 
 Cookie-authenticated mutations must carry the configured application's `Origin`. It defaults to the callback's origin in OIDC mode. Set `FORGE_BROWSER_ORIGIN` when a development proxy or separate Studio origin needs a different exact origin. Paths, credentials, query strings and wildcard origins are rejected; HTTP requires the explicit loopback development option. API and MCP clients instead use signed API access tokens with the same issuer and audience checks. They do not receive browser tokens from the session endpoint.
 
 `POST /api/v1/auth/logout` revokes the local session before attempting refresh-token revocation at Keycloak. Local logout succeeds even if the provider is unavailable. It does not sign the user out of every application in the Keycloak realm. Independently issued API JWTs remain subject to their expiration and the provider's revocation policy; offline JWT validation is not continuous token introspection.
+
+## Grant project access
+
+After sign-in or account provisioning, assign a membership to the intended product project. A factory administrator or that project's owner can manage its members. Use the stable local user ID from the authenticated identity APIs; email alone is not an authorization identity.
+
+| Project role | Permissions |
+| --- | --- |
+| `owner` | Read, edit, execute, review, release and manage memberships |
+| `maintainer` | Read, edit, execute, review and release |
+| `developer` | Read, edit and execute |
+| `reviewer` | Read and review |
+| `viewer` | Read |
+
+These project roles differ from the [factory's agent instruction roles](agent-roles.md). A project membership does not grant factory-administrator authority, host CLI access or a configured execution environment. Run, review and delivery controls still apply.
+
+1. Inspect `GET /api/v1/auth/session` for the current identity, administrator state, memberships and role permissions.
+2. Read `GET /api/v1/projects/{project_id}/members`. Find an existing local identity through `GET /api/v1/projects/{project_id}/eligible-users?query=NAME`, using a search term between 3 and 120 characters. For a new account, complete [user provisioning](user-administration.md) or ask the person to sign in first.
+3. Send `PUT /api/v1/projects/{project_id}/members/{user_id}` with `{"role":"developer"}` or the reviewed role appropriate to that person's work. An explicit `{"role":null}` removes the membership.
+4. Read the members list again, then have the user inspect their own session and project list. A successful login with an empty project list can mean that no project membership has been granted.
+
+A denied request needs current administrator or project membership-management authority. A missing user needs local registration or provisioning. Assign another owner before removing the project's last active owner. After access changes, verify the affected user's actual permitted action; queued work also rechecks its authority before protected effects. Repository operations spanning several projects require permission in every project sharing that repository.
 
 ## Local bootstrap
 

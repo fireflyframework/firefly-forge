@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Choose a coding provider
 
-Use Codex or Claude Code when the development host already has an official CLI login. Use native Firefly Agentic for API credentials and a service environment. An authorized internal bridge connects the same native workspace tools to a separately operated endpoint. Start with PyFly or LaraFly and a small brief with observable acceptance criteria.
+Use Codex or Claude Code when the development host already has an official CLI login. Use native Firefly Agentic for API credentials and a service environment. A separately operated agent bridge connects the same native workspace tools to the machine with its coding-agent login. Start with [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) and a small brief with observable acceptance criteria.
 
 Each run uses one coding worker. The factory supplies framework instructions and selected policies, then independently runs verification. The worker receives failed checks for bounded repairs. [Workflow roles](workflows.md) describe which steps use a model.
 
@@ -9,8 +9,8 @@ Each run uses one coding worker. The factory supplies framework instructions and
 | --- | --- | --- | --- |
 | Codex | Official CLI login on the server | CLI default or explicit available model | Official Codex tools in `workspace-write` mode |
 | Claude Code | Official CLI login on the server | CLI default or explicit available model | Read, Write, Edit, Glob, Grep and specified command permissions |
-| Firefly Agentic | Provider API key | Provider-qualified model ID | Confined `list_files`, `read_file`, `write_file` |
-| Agent bridge | Endpoint bearer token | Authorized alias such as `bridge/default` | The same native Firefly Agentic file tools |
+| Firefly Agentic | Provider API key | Provider-qualified model ID | Confined source tools and explicitly granted command, browser and search tools |
+| Agent bridge | Endpoint bearer token | Authorized alias such as `bridge/default` | The same native workspace tools, subject to the execution profile |
 
 ## Set up a signed-in CLI
 
@@ -46,7 +46,7 @@ export FORGE_AGENTIC_API_KEY="your-service-key"
 
 Environment keys can also be `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` or `GEMINI_API_KEY` for their matching model family. Saved settings override the corresponding environment values. See [configuration](configuration.md) for secret retention and run snapshots.
 
-Native Agentic writes actual project files through confined tools. It cannot run a shell during generation; the factory executes product checks afterwards. A summary without any source writes is a failed generation. Tool access rejects path traversal, symlinks, hardlinks and private credential paths.
+Native Agentic edits project files through confined source tools. When the execution profile grants command, browser or search access, the worker can use those bounded tools during generation. The factory runs verification independently afterwards. A summary without source writes is a failed generation. File tools reject path traversal, symlinks, hardlinks and private credential paths; commands follow the selected runner's isolation boundaries. See [agent tools](agent-tools.md) for grants and runtime availability.
 
 ## Test access and interpret the result
 
@@ -58,8 +58,8 @@ Native Agentic writes actual project files through confined tools. It cannot run
 | `connected` | Authenticated model listing includes the selected model | Verify a real source-editing run |
 | `failed` | The explicit connection check failed | Correct the address, key, login or model and retest |
 
-Compatible API and bridge tests request `/models`. A hosted provider without an explicit compatible endpoint receives a configuration check; model and tool access are established by a real run. A successful listing does not prove generation. The provider catalog reports the evidence and its timestamp rather than a universal readiness guarantee.
+Compatible API and bridge tests request `/models`. A hosted provider without an explicit compatible endpoint receives a configuration check; model and tool access are established by a real run. A successful listing does not prove generation. The provider catalog records the check's evidence and timestamp.
 
 Generation defaults to a 1,800-second wall timeout. Native Agentic also bounds requests and tool calls; its optional output-token limit is available for direct APIs. Subscription bridge execution omits that cap because the bridge cannot implement it. Verification has its own per-command timeouts.
 
-A useful first acceptance brief is a small inventory service: list stock, create an item, reserve a positive quantity, and reject overselling. Require meaningful service/API tests and an executable `make check`. For browser products, exercise the actual cookies, forms, validation and conflict feedback. [PyFly](pyfly.md) and [LaraFly](larafly.md) cover the primary framework paths.
+A useful first acceptance brief is a small inventory service: list stock, create an item, reserve a positive quantity, and reject overselling. Require meaningful service/API tests and an executable `make check`. For browser products, exercise the actual cookies, forms, validation and conflict feedback. [pyfly](pyfly.md) and [larafly](larafly.md) cover the primary framework paths.
