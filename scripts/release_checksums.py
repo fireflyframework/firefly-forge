@@ -9,5 +9,5 @@ directory = Path(sys.argv[1])
 target = directory / "SHA256SUMS"
 target.write_text("".join(
     f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
-    for path in sorted(directory.iterdir()) if path.is_file() and path != target
+    for path in sorted(directory.iterdir()) if path.is_file() and path != target and not path.name.startswith(".")
 ))

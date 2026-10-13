@@ -8,9 +8,13 @@ Authentication identifies the caller. Project memberships determine which produc
 
 Create a confidential OpenID Connect client for the Studio. Enable the standard authorization-code flow, require PKCE S256 and register the exact callback URL, such as `https://forge.example/api/v1/auth/callback`. Disable direct password grants and implicit login.
 
+For Keycloak 25 and later, open the Studio client's **Client scopes** and assign the existing `basic` scope as **Default**. Its `Subject (sub)` mapper supplies the signed access-token subject that forge validates alongside the ID token. Retain `profile`, `email` and `roles`, or equivalent explicit claim mappers, when configuring client scopes. Check that an actual signed access token contains `sub`, the API audience and the required client roles; a valid ID token can still accompany an access token missing `sub`. See the [Keycloak client-scope and subject-mapper guide](https://www.keycloak.org/docs/26.5.7/server_admin/index.html) and [Keycloak 25 upgrade changes](https://github.com/keycloak/keycloak/blob/main/docs/documentation/upgrading/topics/changes/changes-25_0_0.adoc).
+
 Configure a separate API audience, for example `forge-api`. Include that audience in access tokens issued to Studio and authorized API clients. Client roles `forge-admin` and `forge-worker` must appear under `resource_access["forge-api"].roles`. forge ignores realm roles and email when deciding these server roles.
 
 Enable refresh-token revocation with a maximum reuse count of zero. The application also claims each refresh operation in PostgreSQL before contacting Keycloak. An uncertain response requires a new sign-in; it cannot silently repeat a possibly consumed refresh token.
+
+In **Realm settings → User profile**, make first name, last name or email optional when the installation does not require those attributes. Keep the username requirement, attribute validators and profile read/write permissions. Use real user information when an attribute remains required. Keycloak documents these controls under [user-profile attribute requirements](https://www.keycloak.org/docs/26.5.7/server_admin/index.html).
 
 Set these server variables through your deployment's secret manager:
 
