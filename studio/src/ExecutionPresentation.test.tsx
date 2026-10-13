@@ -132,6 +132,22 @@ describe("execution evidence presentation", () => {
     expect(html).toContain("Fixture event");
     expect(html).toContain("Stage");
   });
+  it("bounds long command headings, status values, and field labels while retaining original records", () => {
+    const long = "x".repeat(200000);
+    const records = [
+      { command: long, status: long },
+      { status: long, outcome: long, disposition: long },
+      { [long]: "Recorded value" },
+    ];
+    for (const value of records) {
+      const html = renderToStaticMarkup(<EvidenceView value={value} />);
+      expect(html.length).toBeLessThan(25000);
+      expect(html).toContain("more characters");
+      expect(html).toContain("Advanced record");
+      expect(html).toContain("Copy full");
+    }
+    expect(records[0].command).toHaveLength(200000);
+  });
 });
 
 describe("unified code changes", () => {
@@ -179,5 +195,17 @@ describe("unified code changes", () => {
         (line) => line.oldLine === undefined && line.newLine === undefined,
       ),
     ).toBe(true);
+  });
+  it("uses the old path for deleted files with spaces and the new path for renamed files", () => {
+    const deleted = parseDiff(
+      "diff --git a/old file.txt b/old file.txt\ndeleted file mode 100644\n--- a/old file.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-old",
+    );
+    expect(deleted[0].path).toBe("old file.txt");
+    expect(deleted[0].lines.at(-1)?.oldLine).toBe(1);
+    expect(deleted[0].lines.at(-1)?.newLine).toBeUndefined();
+    const renamed = parseDiff(
+      "diff --git a/old file.txt b/new file.txt\n--- a/old file.txt\n+++ b/new file.txt\n@@ -1 +1 @@\n-old\n+new",
+    );
+    expect(renamed[0].path).toBe("new file.txt");
   });
 });

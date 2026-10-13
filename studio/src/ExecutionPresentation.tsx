@@ -37,6 +37,31 @@ function CopyButton({ value, label }: { value: string; label: string }) {
     </span>
   );
 }
+function BoundedLabel({
+  value,
+  limit = 350,
+  original = value,
+}: {
+  value: string;
+  limit?: number;
+  original?: string;
+}) {
+  const preview = boundedText(value, limit, 4);
+  return (
+    <span className="record-bounded-label">
+      {preview.text}
+      {preview.omitted > 0 && (
+        <>
+          <span className="record-label-limit">
+            … ({preview.omitted.toLocaleString()} more characters)
+          </span>
+          <CopyButton value={original} label="Copy full text" />
+        </>
+      )}
+    </span>
+  );
+}
+
 export function OutputView({
   value,
   label = "Output",
@@ -169,7 +194,11 @@ export function EvidenceView({
   if (!record)
     return (
       <div className="record-evidence">
-        {title && <h4>{title}</h4>}
+        {title && (
+          <h4>
+            <BoundedLabel value={title} />
+          </h4>
+        )}
         <ValueView value={value} depth={depth} />
         {advanced && typeof value === "object" && (
           <AdvancedRecord value={value} />
@@ -221,16 +250,28 @@ export function EvidenceView({
   );
   return (
     <article className={`record-evidence ${command ? "record-command" : ""}`}>
-      {title && <h4>{title}</h4>}
+      {title && (
+        <h4>
+          <BoundedLabel value={title} />
+        </h4>
+      )}
       {command && (
         <>
           <div className="record-command-heading">
             <Terminal size={17} />
-            <code>{command}</code>
+            <code>
+              <BoundedLabel value={command} limit={1000} />
+            </code>
             <span
               className={`record-outcome ${exit !== undefined ? (exit === 0 ? "passed" : "failed") : ""}`}
             >
-              {status}
+              <BoundedLabel
+                value={status}
+                limit={180}
+                original={
+                  typeof record.status === "string" ? record.status : status
+                }
+              />
             </span>
           </div>
           <div className="record-command-meta">
@@ -263,13 +304,23 @@ export function EvidenceView({
         <dl className="record-fields">
           {fields.slice(0, 40).map(([key, item]) => (
             <div key={key}>
-              <dt>{fieldLabel(key)}</dt>
+              <dt>
+                <BoundedLabel
+                  value={fieldLabel(key)}
+                  limit={120}
+                  original={key}
+                />
+              </dt>
               <dd>
                 {key === "duration_ms" && typeof item === "number" ? (
                   `${(item / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} s`
                 ) : ["status", "outcome", "disposition"].includes(key) &&
                   typeof item === "string" ? (
-                  item.replaceAll("_", " ")
+                  <BoundedLabel
+                    value={item.replaceAll("_", " ")}
+                    limit={180}
+                    original={item}
+                  />
                 ) : ["code", "content"].includes(key) &&
                   typeof item === "string" ? (
                   <OutputView
@@ -348,11 +399,13 @@ export function UnifiedDiff({ value }: { value: string }) {
         <section
           key={index}
           className="record-diff-file"
-          aria-label={`Changes in ${file.path}`}
+          aria-label={`Changes in ${boundedText(file.path, 256, 1).text}`}
         >
           <header>
             <FileCode2 size={17} />
-            <strong>{file.path}</strong>
+            <strong>
+              <BoundedLabel value={file.path} limit={256} />
+            </strong>
             <span className="record-diff-count added">+{file.additions}</span>
             <span className="record-diff-count removed">−{file.deletions}</span>
           </header>
@@ -360,7 +413,7 @@ export function UnifiedDiff({ value }: { value: string }) {
             className="record-diff-scroll"
             tabIndex={0}
             role="region"
-            aria-label={`Code changes for ${file.path}`}
+            aria-label={`Code changes for ${boundedText(file.path, 256, 1).text}`}
           >
             <table>
               <caption className="sr-only">

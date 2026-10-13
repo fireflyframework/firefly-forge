@@ -395,3 +395,19 @@
 .evidence-content > .record-evidence + .record-evidence {
   margin-top: 16px;
 }
+
+.record-bounded-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.record-label-limit {
+  font:
+    11px/1.7 Manrope,
+    Arial,
+    sans-serif;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.record-bounded-label .record-copy {
+  margin-left: 6px;
+}

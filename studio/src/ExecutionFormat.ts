@@ -46,6 +46,7 @@ export function parseDiff(value: string): DiffFile[] {
   let oldLine: number | undefined;
   let newLine: number | undefined;
   let inHunk = false;
+  let hasNewPath = false;
   for (const text of value.split("\n")) {
     if (text.startsWith("diff --git ")) {
       const match = text.match(
@@ -59,17 +60,20 @@ export function parseDiff(value: string): DiffFile[] {
       };
       files.push(current);
       inHunk = false;
+      hasNewPath = false;
     }
     if (!current) {
       current = { path: "Changes", lines: [], additions: 0, deletions: 0 };
       files.push(current);
     }
-    if (text.startsWith("+++ ") && !inHunk && text.slice(4) !== "/dev/null")
+    if (text.startsWith("+++ ") && !inHunk && text.slice(4) !== "/dev/null") {
       current.path = gitPath(text.slice(4));
+      hasNewPath = true;
+    }
     if (
       text.startsWith("--- ") &&
       !inHunk &&
-      current.path === "Changes" &&
+      !hasNewPath &&
       text.slice(4) !== "/dev/null"
     )
       current.path = gitPath(text.slice(4));
