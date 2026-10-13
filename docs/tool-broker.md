@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review mediated tool execution
 
-Agent internet searches pass through a run-scoped broker. Before sending a request, forge records its intent and reserves a call from the run's frozen budget in PostgreSQL. The same transaction appends the intent to the run's hash-chain journal.
+Agent internet searches and approved external MCP calls pass through a run-scoped broker. Before sending a request, forge records its intent and reserves a call from the run's frozen budget in PostgreSQL. The same transaction appends the intent to the run's hash-chain journal.
 
 An invocation retains its correlation ID, execution stage, repository and project association, active role grants, actual source commit and tree, provider revision, hostname restrictions and policy. A successful result includes its `invocation_id`. Citations and provider usage receipts remain part of the recorded result.
 
@@ -57,6 +57,8 @@ forge tools abandon RUN_ID INVOCATION_ID --request-id RECONCILIATION_ID
 
 The reconciliation ID must contain 32 lowercase hexadecimal characters and identify this decision. Repeating that same decision is idempotent. Using it for another invocation is rejected. The API route is `POST /api/v1/runs/{id}/tool-invocations/{correlation}/reconcile` with `{"request_id": "RECONCILIATION_ID"}`.
 
+A known quota, authentication or rate-limit rejection pauses the execution stage with its typed classification. A lost or unadmitted response moves the run to `needs_reconciliation`. Native FireflyAgent execution disables its internal whole-run rate-limit retry so the durable supervisor controls continuation; the coding model cannot turn a failed tool call into an automatic replay.
+
 An invocation that may still be running cannot be abandoned until its bounded lease expires. Abandonment does not claim successful execution, restore consumed budget or send another provider request. A later request needs a new correlation ID. Inspect the run's overall recovery state before [resuming implementation](recovery.md); the implementation intent has its own recovery contract.
 
 ## API, Python and MCP access
@@ -65,4 +67,4 @@ Factory policy routes require a factory administrator. Run activity follows the 
 
 The Python SDK provides `tool_policy()`, `configure_tool_policy()`, `tool_invocations()` and `abandon_tool_invocation()`. Forge's MCP server provides `get_tool_policy`, `configure_tool_policy`, `get_run_tool_invocations` and `abandon_tool_invocation` through those same API routes.
 
-The broker currently mediates agent internet search. Workspace operations, commands and browser checks retain their existing execution guards and evidence mechanisms; this does not move every native or official CLI tool into the broker. External MCP connectors require a separate approved registry and grants. See [agent tools](agent-tools.md), [search providers](search-providers.md) and [capability limits](capabilities.md).
+The broker currently mediates agent internet search and approved external MCP calls. Workspace operations, commands and browser checks retain their existing execution guards and evidence mechanisms; this does not move every native or official CLI tool into the broker. External MCP calls require the [approved registry and project grants](external-tools.md). See [agent tools](agent-tools.md), [search providers](search-providers.md) and [capability limits](capabilities.md).

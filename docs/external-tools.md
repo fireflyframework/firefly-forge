@@ -62,6 +62,8 @@ The project grant binds that review to a repository:
 
 The API derives the GitHub owner and repository from the registered HTTPS source URL. Worker arguments must match that binding. Credential paths, parent-directory traversal and fields outside the reviewed schema are rejected.
 
+Campaigns capture each repository's authorized MCP grants before freezing its tool catalog. They recheck the factory configuration after preflight and during admission. A grant changed during launch requires a new launch request; a revoked grant or a grant for another project does not expose the capability.
+
 ## Execution and retained evidence
 
 The native worker calls `external_mcp(connector, tool, arguments)`. The engine inspects the actual Git base, HEAD and source tree before admitting the invocation. The PostgreSQL broker reserves the frozen call budget and writes an intent under the run lock before sending a remote request.

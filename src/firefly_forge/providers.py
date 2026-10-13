@@ -29,6 +29,7 @@ from firefly_forge.configuration import (
     validate_endpoint,
 )
 from firefly_forge.profiles import build_instruction
+from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import redact_environment, runtime_environment
 from firefly_forge.store import now
 
@@ -62,6 +63,8 @@ class ProviderLimitError(ProviderError):
 def classify_provider_failure(exc: Exception) -> tuple[str, float | None] | None:
     if isinstance(exc, ProviderLimitError):
         return exc.kind, exc.retry_after
+    if isinstance(exc, SearchProviderError) and exc.kind in {"rate_limit", "quota", "authentication"}:
+        return exc.kind, None
     status = getattr(exc, "status_code", None)
     response = getattr(exc, "response", None)
     body = str(getattr(exc, "body", "")).lower()

@@ -19,6 +19,7 @@ from sqlalchemy import text
 from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal, digest
 from firefly_forge.knowledge import _current
+from firefly_forge.mcp_registry import mcp_snapshot
 from firefly_forge.models import AssuranceInput, RunInput
 from firefly_forge.persistence import ForgeRunEntity
 from firefly_forge.project_campaign_persistence import (
@@ -232,6 +233,7 @@ class ProjectCampaigns:
         if self.store.runners is not None:
             for repo_id in sorted(repositories):
                 runner = await self.store.runners.capture_run(repo_id)
+                runner = {**runner, "mcp_snapshot": mcp_snapshot(self.store.configuration, project_id, repo_id)}
                 tools = await self.store.runners.capabilities(runner)
                 prepared[repo_id] = (runner, tools)
         source_bases = {
