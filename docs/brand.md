@@ -1,3 +1,7 @@
+---
+description: Use firefly forge logos, Manrope typography and licensed brand assets consistently across interfaces and documentation.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
 # Use firefly forge visual assets

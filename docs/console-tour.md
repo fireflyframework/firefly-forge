@@ -1,3 +1,7 @@
+---
+description: Follow a product definition and execution through the forge console with current desktop and mobile screenshots and explained fixtures.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
 # Follow a change through Studio

@@ -1,3 +1,7 @@
+---
+description: Manage factory users, project roles and invitations through readable administration flows and current server authorization.
+---
+
 # Manage users and invitations
 
 Factory administrators can suspend registered identities and, when a dedicated Keycloak service client is configured, provision new accounts. Project membership remains a separate action. Creating an account or matching an email address grants no project access.

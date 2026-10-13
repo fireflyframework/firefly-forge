@@ -1,8 +1,10 @@
 ---
+title: firefly forge software factory
 hide:
   - navigation
   - toc
   - footer
+description: Define products, orchestrate coding agents and inspect verified changes with firefly forge, a software factory for pyfly and larafly.
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->

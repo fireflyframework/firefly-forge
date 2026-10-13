@@ -1,3 +1,7 @@
+---
+description: Connect GitHub, GitLab or Bitbucket applications and retain project scope, private repository access and publication authority.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Connect source-control applications
 

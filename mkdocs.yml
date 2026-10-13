@@ -59,6 +59,11 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 extra:
   generator: false
+  discovery:
+    font: assets/fonts/manrope-latin-wght-normal.woff2
+    logo: assets/forge-lockup-light.svg
+    notice: assets/NOTICE.txt
+    font_notice: assets/fonts/OFL.txt
 extra_css:
   - stylesheets/forge.css
 nav:
@@ -99,6 +104,7 @@ nav:
       - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
+      - Learning and knowledge reuse: learning.md
       - DevSecOps pipelines: devsecops.md
   - Operations:
       - Operations: operations.md
@@ -117,6 +123,8 @@ nav:
       - Release notes: release-notes.md
       - Contribute: contributing.md
       - Brand and visual assets: brand.md
+      - Publish documentation: documentation-publishing.md
 
 hooks:
   - scripts/docs_scene_hook.py
+  - scripts/docs_discovery_hook.py

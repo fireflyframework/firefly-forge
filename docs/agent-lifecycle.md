@@ -1,3 +1,7 @@
+---
+description: Inspect participants, skills, knowledge access and handoffs throughout factory admission, implementation, verification and delivery.
+---
+
 # Agent lifecycle
 
 Use **Agents & skills** to follow work from a product decision through source delivery and application operation. The lifecycle catalog distinguishes AI dialogue, a run-selected coding provider, and deterministic services. A participant describes an implemented service or instruction binding; it is not evidence that a model session or external action has occurred.
@@ -70,3 +74,7 @@ Coding and product dialogue retrieval use the selected repository and configured
 The seven editable instruction roles retain their existing IDs, execution bindings and snapshot digests. Physical participants extend the read projection without expanding the frozen `RoleDocument` contract. Factory role edits and repository skill/tool overrides affect later admitted runs. Assistant task instruction selection is fixed by the implemented task; changing validated catalog instructions affects later turns, never retained turns or a model call already admitted.
 
 Use the lifecycle explorer to inspect current configuration, the run journal for frozen execution evidence, and conversation receipts for assistant history. None of these views substitutes for a live provider response, verified runner receipt, or recorded application observation.
+
+## Knowledge questions and learning feedback
+
+The [learning contracts](learning.md#structure-agent-and-tool-communication) associate each question with its run, task, effective role, actual source, tool result and later verification. A worker can propose a lesson or report a missing reference; trusted eligibility and state changes belong to native factory services. The additional learning ledger is under implementation, while the lifecycle projection continues to report the current execution bindings and knowledge availability.

@@ -1,3 +1,7 @@
+---
+description: Recover paused and interrupted runs with persisted task state, explicit reconciliation and preserved source evidence.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Recover paused and interrupted work
 

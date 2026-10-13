@@ -1,3 +1,7 @@
+---
+description: Connect forge to a local Firefly Agent Bridge for development testing with explicit provider, access and execution boundaries.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Connect a local agent bridge
 

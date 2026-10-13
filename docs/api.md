@@ -1,3 +1,7 @@
+---
+description: Use authenticated forge HTTP endpoints to manage products, repositories, execution, source evidence and project operations.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Use the HTTP API
 

@@ -1,3 +1,7 @@
+---
+description: Create and verify a larafly application through forge using declared product behavior, repository checks and retained source evidence.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Create a larafly application
 

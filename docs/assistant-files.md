@@ -1,3 +1,7 @@
+---
+description: Attach documents and images to product conversations and retain source receipts, limits and explicit provider image capabilities.
+---
+
 # Use files in an AI conversation
 
 Attach customer notes, integration contracts or a wireframe when discussing a product with the assistant. Files belong to the conversation where you upload them. Each model turn records the exact selected files and their hashes alongside its response.

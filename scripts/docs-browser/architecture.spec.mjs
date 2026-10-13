@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
  * https://www.apache.org/licenses/LICENSE-2.0 */
 import { createRequire } from "node:module";
+import { readyPictureImage } from "./image-readiness.mjs";
 const { test, expect } = createRequire(
   new URL("../../studio/package.json", import.meta.url),
 )("@playwright/test");
@@ -29,10 +30,7 @@ for (const width of [1440, 375])
       for (const figure of await figures.all()) {
         await figure.scrollIntoViewIfNeeded();
         const image = figure.locator("img");
-        await image.evaluate(async (element) => {
-          element.loading = "eager";
-          await element.decode();
-        });
+        await readyPictureImage(image);
         const bounds = await image.evaluate((element) => ({
           width: element.getBoundingClientRect().width,
           figureWidth: element.closest("figure").getBoundingClientRect().width,

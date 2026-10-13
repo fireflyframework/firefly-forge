@@ -1,3 +1,7 @@
+---
+description: Run declared browser journeys with DOM checks, screenshots and approved visual references in an isolated execution environment.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review user journeys in an isolated browser
 

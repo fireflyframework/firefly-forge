@@ -1,3 +1,7 @@
+---
+description: Review firefly forge release changes, runtime requirements and the verification boundaries of each published version.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 

@@ -1,3 +1,7 @@
+---
+description: Choose build, maintenance or test work and follow the retained execution plan, verification results and delivery checkpoint.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Follow build, maintenance and test workflows
 

@@ -1,3 +1,7 @@
+---
+description: Define customers, journeys, features and integration contracts, then review architecture and functional acceptance before implementation.
+---
+
 # Define the product and customer
 
 A brief describes a change. A product definition gives the agent a durable customer contract: who needs it, what problem it solves, how the journey works, and which acceptance and security checks determine success.

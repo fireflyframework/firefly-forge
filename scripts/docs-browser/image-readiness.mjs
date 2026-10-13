@@ -31,3 +31,28 @@ export async function readyImages(images) {
     Promise.all(nodes.map((image) => image.decode())),
   );
 }
+
+export async function readyPictureImage(image) {
+  const expectedSource = await image.evaluate((element) => {
+    const sources = [...element.closest("picture").querySelectorAll("source")];
+    const selected = sources.find(
+      (source) => !source.media || matchMedia(source.media).matches,
+    );
+    return new URL(
+      selected?.getAttribute("srcset") || element.getAttribute("src"),
+      document.baseURI,
+    ).href;
+  });
+  await expect
+    .poll(() =>
+      image.evaluate((element) => ({
+        source: element.currentSrc,
+        ready:
+          element.complete &&
+          element.naturalWidth > 0 &&
+          element.naturalHeight > 0,
+      })),
+    )
+    .toEqual({ source: expectedSource, ready: true });
+  await image.evaluate((element) => element.decode());
+}

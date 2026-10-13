@@ -1,3 +1,7 @@
+---
+description: Create and verify a pyfly service through forge using native framework patterns, declared product behavior and repository checks.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Create a pyfly service
 

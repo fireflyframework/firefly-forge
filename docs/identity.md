@@ -1,3 +1,7 @@
+---
+description: Configure OIDC sign-in and durable server sessions, then enforce current identity and project access on factory operations.
+---
+
 # Sign-in and server identity
 
 firefly forge authenticates people through Keycloak using an authorization code and PKCE. The browser receives an opaque session cookie. ID tokens, access tokens and refresh tokens stay on the server, encrypted in PostgreSQL.

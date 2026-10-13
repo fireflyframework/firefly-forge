@@ -1,3 +1,7 @@
+---
+description: Protect factory identity, credentials, repository authority and execution boundaries throughout admission and publication.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Protect trusted development access
 

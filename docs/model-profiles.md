@@ -1,3 +1,7 @@
+---
+description: Assign configured models to product dialogue, implementation and review, with retained revisions and capability checks.
+---
+
 # Choose models for specific tasks
 
 Use named model profiles when planning, coding and reviewing should use different models or credentials. A profile belongs to one real provider: direct Firefly Agentic API, an optional compatible bridge, Codex CLI or Claude Code CLI. Direct API profiles do not require a bridge.

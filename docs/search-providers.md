@@ -1,3 +1,7 @@
+---
+description: Configure Brave or Tavily internet search with private key revisions, bounded results, domain restrictions and explicit connection tests.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Configure internet search
 

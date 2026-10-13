@@ -1,3 +1,7 @@
+---
+description: Configure executable checks, repair budgets and independent source reviews before accepting a factory delivery checkpoint.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Bound repairs and review source before delivery
 

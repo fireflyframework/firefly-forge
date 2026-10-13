@@ -1,3 +1,7 @@
+---
+description: Find the setup, product design, execution, knowledge and operations guides for your next task in firefly forge.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
 # Find your next step

@@ -1,3 +1,7 @@
+---
+description: Select pyfly or larafly and an appropriate frontend foundation, with explicit framework scope and development expectations.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Choose a product foundation
 

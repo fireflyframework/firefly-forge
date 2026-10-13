@@ -21,10 +21,11 @@ docs:
 	uv run --group docs mkdocs build --strict
 
 docs-check: docs
+	uv run --group docs python scripts/check_docs_discovery.py build/docs-site https://fireflyframework.github.io/firefly-forge/
 	node studio/node_modules/eslint/bin/eslint.js -c scripts/docs-eslint.config.mjs scripts/docs-scene scripts/docs-browser scripts/*docs*.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
 	node studio/node_modules/prettier/bin/prettier.cjs --check scripts/docs-scene scripts/docs-browser scripts/*docs*.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
 	node --test scripts/test_docs_scene.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
-	uv run --group docs python -m unittest scripts.test_docs_scene_hook scripts.test_architecture_diagrams
+	uv run --group docs python -m unittest scripts.test_docs_scene_hook scripts.test_architecture_diagrams scripts.test_docs_discovery
 	node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-playwright.config.mjs
 
 docs-pages-check:

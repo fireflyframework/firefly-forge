@@ -1,3 +1,7 @@
+---
+description: Evolve product features and integration contracts while preserving definition revisions, journey traceability and owner review.
+---
+
 # Evolve a product without replacing its definition
 
 A product can contain several customer journeys, features and integrations. Each feature has a stable ID, expected behavior, failure paths and references to the product's acceptance criteria. An integration connects those features to a named owned service or a third-party system.

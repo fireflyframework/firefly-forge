@@ -1,3 +1,7 @@
+---
+description: Configure factory providers, execution access, identity and private settings without placing credentials in product source.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Configure the development host
 

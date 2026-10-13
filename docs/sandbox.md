@@ -1,3 +1,7 @@
+---
+description: Configure bounded host or Docker execution, command policies, source transfer and honest runner capability checks.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Configure isolated execution
 

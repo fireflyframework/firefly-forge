@@ -1,3 +1,7 @@
+---
+description: Review source facts from an existing codebase and build an AS-IS product definition with traceable evidence and owner decisions.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Use reviewed source facts to define an existing product
 

@@ -1,3 +1,7 @@
+---
+description: Deploy a verified source checkpoint through a configured target and retain delivery, rollback and uncertain-outcome evidence.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Deploy and roll back a verified product
 

@@ -1,3 +1,7 @@
+---
+description: Install firefly forge and initialize its managed local knowledge stack, identity prerequisites and development execution configuration.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install and start firefly forge
 
