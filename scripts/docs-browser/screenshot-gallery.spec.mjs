@@ -52,10 +52,15 @@ for (const width of [1440, 390, 375]) {
           await expect(summary.locator("..")).toHaveAttribute("open", "");
         }
         await article
-          .locator(".forge-shot__link img")
-          .evaluateAll((images) =>
-            images.forEach((image) => (image.loading = "eager")),
-          );
+          .locator(".forge-shot__link:visible img")
+          .evaluateAll(async (images) => {
+            await Promise.all(
+              images.map(async (image) => {
+                image.loading = "eager";
+                await image.decode();
+              }),
+            );
+          });
         await expect
           .poll(() =>
             article

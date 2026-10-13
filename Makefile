@@ -1,4 +1,4 @@
-.PHONY: check python-check studio-check docs docs-check package serve
+.PHONY: check python-check studio-check docs docs-check docs-pages-check package serve
 
 check: python-check studio-check docs-check
 
@@ -26,6 +26,12 @@ docs-check: docs
 	node --test scripts/test_docs_scene.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
 	uv run --group docs python -m unittest scripts.test_docs_scene_hook
 	node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-playwright.config.mjs
+
+docs-pages-check:
+	uv run --group docs mkdocs build --strict --site-dir build/docs-pages/firefly-forge
+	uv run --group docs python -m unittest scripts.test_docs_site
+	uv run --group docs python scripts/check_docs_site.py
+	node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-pages-playwright.config.mjs
 
 package: studio-check docs
 	uv build

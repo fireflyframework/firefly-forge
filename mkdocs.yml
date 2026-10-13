@@ -1,4 +1,5 @@
 site_name: firefly forge
+site_url: https://fireflyframework.github.io/firefly-forge/
 site_description: Build and verify software with Firefly's software factory.
 site_author: Firefly Software Foundation
 repo_url: https://github.com/fireflyframework/firefly-forge
