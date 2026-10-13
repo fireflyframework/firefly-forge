@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal, digest
-from firefly_forge.knowledge import KnowledgeSettings
+from firefly_forge.knowledge import _current
 from firefly_forge.models import AssuranceInput, RunInput
 from firefly_forge.persistence import ForgeRunEntity
 from firefly_forge.project_campaign_persistence import (
@@ -103,7 +103,6 @@ class ProjectCampaigns:
     def _configuration_vector(self, product_repository_id: str, agents: set[str]) -> Data:
         private = self.store.configuration
         role = self.store.roles.current()
-        knowledge = private._read(private.directory / "knowledge.json")
         connections = self.engine.connections
         return {
             "policy": self.store.policies.current()["digest"],
@@ -115,7 +114,7 @@ class ProjectCampaigns:
             }
             if connections
             else {},
-            "knowledge_settings": digest(KnowledgeSettings.model_validate(knowledge.get("settings", {})).model_dump()),
+            "knowledge_settings": digest(_current(private)[0]),
             "brand": digest(private._read(private.directory / f"product-brand-{product_repository_id}.json")),
             "knowledge": digest(private._read(private.directory / "knowledge.json")),
             "runners": digest(private._read(private.directory / "runners.json")),

@@ -1,4 +1,5 @@
 site_name: firefly forge
+site_url: https://fireflyframework.github.io/firefly-forge/
 site_description: Build and verify software with Firefly's software factory.
 site_author: Firefly Software Foundation
 repo_url: https://github.com/fireflyframework/firefly-forge
@@ -32,7 +33,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.top
     - navigation.footer
     - navigation.tracking
     - toc.follow
@@ -44,6 +44,7 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - footnotes
   - md_in_html
   - tables
   - toc:
@@ -66,6 +67,7 @@ nav:
       - Find your next step: guide.md
       - Install and start: installation.md
       - Your first product: quickstart.md
+      - Studio console tour: console-tour.md
       - Capabilities and limits: capabilities.md
   - Products:
       - Define a product: product-definition.md
@@ -85,6 +87,7 @@ nav:
       - Agent roles and feedback: agent-roles.md
       - Lifecycle phases: agent-lifecycle.md
       - Agent tools: agent-tools.md
+      - Configure internet search: search-providers.md
       - CLI, SDK and MCP clients: agent-integrations.md
       - Files in AI conversations: assistant-files.md
       - Configure provider access: configuration.md
@@ -99,6 +102,7 @@ nav:
       - DevSecOps pipelines: devsecops.md
   - Operations:
       - Operations: operations.md
+      - Factory infrastructure and clusters: factory-infrastructure.md
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
       - Deploy and roll back: deployment.md

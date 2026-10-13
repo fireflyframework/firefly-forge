@@ -36,7 +36,7 @@ An interruption leaves an unacknowledged effect requiring reconciliation. Resume
 
 ## Knowledge and source control
 
-[flycanon](knowledge.md) supplies project-scoped retrieval and optional framework context. Explicit indexing sends selected verified source files. Verified project memory is opt-in and is stored with actual provenance; retrieval remains distinct from model generation.
+[Flycanon](knowledge.md) is part of the managed installation. Its authenticated service supplies required project-scoped retrieval and shared framework references. Fresh installations enable automatic verified project memory with source and version provenance. Explicit indexing sends selected verified files; it does not upload an entire repository. [Factory infrastructure](factory-infrastructure.md) covers its separate database, object store, local embedding service and backups.
 
 Provider-owned [SCM applications](scm.md) manage repository grants externally. GitHub App installation tokens are narrowed to the selected repository. OAuth credentials and token refresh stay server-side. Git operations receive ephemeral credentials through a scoped environment, and publication rechecks repository authorization.
 

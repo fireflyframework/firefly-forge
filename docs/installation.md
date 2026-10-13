@@ -1,9 +1,65 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install and start firefly forge
 
-You need Python 3.13+, [uv](https://docs.astral.sh/uv/), Git, a dedicated PostgreSQL database, and Node.js 22.12+ to build Studio. Use macOS or Linux; worker cancellation uses POSIX process groups. Install the product toolchains you intend to use: Python for [pyfly](https://fireflyframework.org/frameworks/python/), PHP 8.3+ and Composer for [larafly](https://fireflyframework.org/frameworks/php/), and Node.js for browser products.
+For a fresh managed installation, use Docker Compose, Git and a configured Keycloak identity provider. The stack includes the factory database and Flycanon dependencies. Source development on the host also needs Python 3.13+, [uv](https://docs.astral.sh/uv/), a dedicated PostgreSQL database and Node.js 22.12+ for Studio. Use macOS or Linux; worker cancellation uses POSIX process groups.
 
-## Build the application
+Choose the managed stack below or the [source-development path](#source-development). Install the product toolchains in the selected execution environment: Python for [pyfly](https://fireflyframework.org/frameworks/python/), PHP 8.3+ and Composer for [larafly](https://fireflyframework.org/frameworks/php/), and Node.js for browser products.
+
+## Run the complete local stack
+
+```sh
+git clone https://github.com/fireflyframework/firefly-forge.git
+cd firefly-forge
+```
+
+<picture>
+  <source media="(max-width: 640px)" srcset="../diagrams/local-stack-narrow.svg">
+  <img src="../diagrams/local-stack.svg" alt="Compose creates private credentials, prepares pgvector and the local embedding model, starts authenticated knowledge, requires cited framework search, then starts forge.">
+</picture>
+
+[Open the local startup diagram](diagrams/local-stack.svg) · [Portrait layout](diagrams/local-stack-narrow.svg)
+
+The supplied Compose file includes forge PostgreSQL, private factory state, Flycanon with its own pgvector database and original-object storage, and a local embedding service. Fresh managed setup enables required retrieval and automatic verified memory, with generated private credentials and authenticated internal TLS.
+
+Configure a Keycloak OIDC issuer and client before starting; Compose does not install Keycloak. Complete the [identity setup](identity.md#configure-a-keycloak-realm). The issuer must be reachable by both the browser and forge, with exact callback, audience and role settings.
+
+Set `FORGE_POSTGRES_PASSWORD` and the OIDC settings from the [identity guide](identity.md) through your private deployment environment. Set `FORGE_AUTH_MODE=oidc` for this stack. Its network boundary does not turn a container gateway into a trusted loopback bootstrap caller. Set `FORGE_DATABASE_URL` to `postgresql+asyncpg://forge:YOUR_URL_ENCODED_PASSWORD@postgres:5432/forge`; the host is the Compose service name `postgres`. The URL password must match the configured database password and reserved URI characters must be percent-encoded.
+
+Start the complete stack:
+
+```sh
+docker compose up --build -d
+docker compose ps --all
+docker compose logs knowledge-initialize embeddings-initialize
+```
+
+Only the forge API publishes a host port, bound to `127.0.0.1:8787`. Flycanon uses `https://knowledge:8500` on the private service network. Bootstrap initializes its owner-private credentials once; service initialization admits the catalog and 14 pinned core pyfly/larafly manuals, then requires actual embedding-backed source citations before new work. Local embedding uses `nomic-embed-text`, without a paid provider API key. Model download and first initialization can take time; a running container is distinct from completed knowledge retrieval.
+
+Open Studio, sign in through the configured identity provider and inspect **Knowledge**. Test the selected tenant's authentication, then perform a scoped search and inspect the source citations. [Knowledge initialization](knowledge.md#initialize-the-managed-service) explains bootstrap, external-service configuration and failed dependencies. Keep required knowledge enabled for the factory.
+
+Back up all durable factory and knowledge stores before upgrading. Existing knowledge settings and queued snapshots remain intact; an older disabled or external connection needs an explicit administrator review. Local CLI subscription logins are host credentials; the container needs its own selected provider setup.
+
+For API and headless-worker processes sharing one execution leader, choose the [split topology](runtime-roles.md) on a fresh installation. For a shared server or Kubernetes cluster, use the [factory infrastructure guide](factory-infrastructure.md).
+
+## Connect a coding provider
+
+An official CLI login is a useful first setup on a development host:
+
+```sh
+codex login
+codex login status
+# Or:
+claude auth login
+claude auth status
+```
+
+Native Firefly Agentic uses a provider API key and an available provider-qualified model. The internal bridge requires its authorized endpoint and token. [Agents](agents.md) explains their tools and readiness evidence; [configuration](configuration.md) covers saved settings.
+
+## Source development
+
+Use the following host setup for developing forge itself. Its explicit local bootstrap settings apply to the loopback host process; use a separate private environment for the OIDC Compose installation above.
+
+### Build the application
 
 ```sh
 git clone https://github.com/fireflyframework/firefly-forge.git
@@ -15,7 +71,7 @@ npm --prefix studio run build
 
 Studio's production files are written to `studio/dist/`. The API serves that build. The installed distribution also includes Studio; a source checkout needs the build above.
 
-## Prepare PostgreSQL
+### Prepare PostgreSQL
 
 Use a database created for this factory. Give its development identity permission to create and manage the selected ledger schema. The application applies its versioned migrations to that schema; it does not require an application SQLite file or initialize unrelated databases.
 
@@ -33,27 +89,9 @@ The values above are examples. Use the actual dedicated database and a strong pa
 
 PostgreSQL stores repositories, runs, events, plans, task states and the write-ahead journal. The private data directory stores connection settings, immutable credential revisions, workspaces and delivery artifacts. Back up both parts together. See [operations](operations.md).
 
-## Run with Compose
+### Start a source-development process
 
-The supplied Compose file includes PostgreSQL 17 and separate database and factory-data volumes. Set `FORGE_POSTGRES_PASSWORD` and the OIDC settings from the [identity guide](identity.md) through your private deployment environment. Compose uses OIDC by default; its network boundary does not turn a container gateway into a trusted loopback bootstrap caller. Set `FORGE_DATABASE_URL` to `postgresql+asyncpg://forge:YOUR_URL_ENCODED_PASSWORD@postgres:5432/forge`; the host is the Compose service name `postgres`. The URL password must match the configured database password and reserved URI characters must be percent-encoded.
-
-Start with `docker compose up --build`. The API binds to the host loopback address on port 8787. Back up both volumes and the database before upgrading. Local CLI subscription logins are host credentials; the container needs its own selected provider setup.
-
-## Connect a coding provider
-
-An official CLI login is a useful first setup on a development host:
-
-```sh
-codex login
-codex login status
-# Or:
-claude auth login
-claude auth status
-```
-
-Native Firefly Agentic uses a provider API key and an available provider-qualified model. The internal bridge requires its authorized endpoint and token. [Agents](agents.md) explains their tools and readiness evidence; [configuration](configuration.md) covers saved settings.
-
-## Start the service
+A host API still needs the required Flycanon connection. The managed service's internal `knowledge` hostname is available to containers on its network. Configure a separately reachable authenticated HTTPS service and its CA when running forge directly on the host; do not disable knowledge or publish an unprotected service to work around that boundary.
 
 ```sh
 uv run forge serve --host 127.0.0.1 --port 8787 --data-dir .forge
@@ -63,7 +101,7 @@ Open [Studio](http://127.0.0.1:8787/). For this explicit local setup, enter the 
 
 A database connection or migration failure prevents startup. A rejected operator token requires matching Studio and server credentials. Missing Studio files require rebuilding its production bundle. Provider authentication and actual model execution have separate checks.
 
-## Develop Studio
+### Develop Studio
 
 Keep the API running on port 8787 and run:
 
@@ -74,6 +112,16 @@ npm --prefix studio run dev
 The development server on port 5173 proxies `/api` to the API. Use `/api/v1` as the browser API address. The Studio restores its server session after reload. For this separate development origin, set `FORGE_BROWSER_ORIGIN=http://127.0.0.1:5173` and `FORGE_OIDC_ALLOW_LOOPBACK_HTTP=true` before starting the API. The browser never stores the operator token.
 
 For remote operation, configure Keycloak OIDC, serve Studio and the API through one HTTPS origin, restrict allowed hosts, and register exact identity and source-control callback URLs. Separate API replicas from execution workers before treating an installation as cluster-ready. [SCM connections](scm.md) describes provider-owned setup and grants.
+
+## Check local readiness
+
+Use the installed CLI to inspect coding-provider availability and stack profiles:
+
+```sh
+uv run forge doctor
+```
+
+This command checks the environment where it runs. A host CLI check does not establish that the container has the same tools or subscription login. It does not probe Flycanon. Use the managed knowledge initialization result, the Knowledge authentication test and a scoped search with real citations to check that dependency. A provider login, an available embedding model and an actual coding response have separate readiness evidence.
 
 ## Run the development gate
 

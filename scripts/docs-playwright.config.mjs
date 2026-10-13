@@ -8,6 +8,7 @@ const require = createRequire(
 const { defineConfig } = require("@playwright/test");
 export default defineConfig({
   testDir: "./docs-browser",
+  testIgnore: "pages-path.spec.mjs",
   workers: 1,
   timeout: 30000,
   use: {

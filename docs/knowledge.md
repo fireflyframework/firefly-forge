@@ -1,11 +1,46 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-firefly forge connects the official [flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.10.0) to project-scoped knowledge. Use it for framework references, selected codebase context and verified run memory. Knowledge is optional by default.
+Flycanon is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
 
-## Configure the service
+<picture>
+  <source media="(max-width: 640px)" srcset="../diagrams/knowledge-lifecycle-narrow.svg">
+  <img src="../diagrams/knowledge-lifecycle.svg" alt="Initialize authenticated knowledge, retrieve exact project and framework citations, implement and verify source, then index selected files and save bounded memory with write-ahead receipts.">
+</picture>
 
-Open the knowledge connection and set its HTTPS endpoint, tenant ID and platform API key. HTTP is accepted only on loopback. Keys are write-only and stored with the other private configuration. An optional scoped agent token uses flycanon's agent routes and idempotency keys for supported search and source-ingest operations.
+[Open the knowledge lifecycle](diagrams/knowledge-lifecycle.svg) · [Portrait layout](diagrams/knowledge-lifecycle-narrow.svg)
+
+## Initialize the managed service
+
+The [complete local stack](installation.md#run-the-complete-local-stack) includes Flycanon server 26.10.0, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
+
+The bootstrap operation is also available as a CLI command:
+
+```sh
+uv run forge knowledge bootstrap --data-dir .forge --service-dir .forge-knowledge
+```
+
+This command writes configuration and the service bundle; it does not start Flycanon or make its internal DNS name reachable from a host process. Run service initialization from a process on the managed stack's network, using its mounted private data directory:
+
+```sh
+forge knowledge initialize --data-dir /data
+```
+
+Initialization creates the authenticated framework workspace and admits the starter catalog plus 14 licensed core manuals: seven for [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.1 and seven for [larafly](https://fireflyframework.org/frameworks/php/) 26.10.1. Each framework bundle covers getting started, architecture, dependency injection, web, relational data, transactions and testing. The bundled Markdown retains its original source URI, pinned revision, SHA-256 and Apache-2.0 license.
+
+Initialization checks embedding-backed retrieval against the admitted sources. It fails while the configured local `nomic-embed-text` model is unavailable or retrieval cannot return the expected source citations. The core bundle is bounded; additional framework modules and another product's framework version need their reviewed manuals imported into the appropriate scope. Framework initialization retains per-document admission and source receipts in private installation state. Run-level source indexing and memory use the execution journal described below; keep both records with the installation backup.
+
+Compose runs bootstrap and initialization for the managed setup. Keep the original service bundle with the installation: repeated bootstrap preserves its credentials and validates the files. Repeated initialization reuses recorded source IDs and checks matching server receipts. A source admission with an unknown outcome and no matching server evidence blocks repetition. A missing or changed managed bundle requires restoration of its original files. Bootstrap refuses an existing externally configured knowledge connection and keeps its settings intact. Continue operating that service through its existing deployment, or plan an explicit migration after backing up the retained configuration and data. The managed Compose bootstrap cannot invent credentials for an external service. Keep private keys, passwords and connection revisions outside Git and product workspaces.
+
+## Upgrade or use an existing Flycanon service
+
+Before upgrading, back up factory state and Flycanon data together. An existing connection keeps its endpoint, keys, framework workspace and previous `required` / `auto_memory` settings. Review those settings in **Knowledge**; a restart does not silently replace an external service or rewrite an admitted run's snapshots.
+
+For an existing disabled connection, configure and verify a service, then enable required retrieval and automatic verified memory for new work. Use an administrator's explicit configuration change. Preserve uncertain old memory intents and frozen connection revisions until their outcomes have been inspected.
+
+## Configure an external service
+
+Open **Knowledge** and set the authorized HTTPS endpoint, tenant ID and platform API key. HTTP is accepted only on loopback. A private HTTPS endpoint can provide its CA PEM through `ca_certificate`; hostname verification stays enabled. Keys are write-only and stored with the other private configuration. An optional scoped agent token uses flycanon's agent routes and idempotency keys for supported search and source-ingest operations.
 
 ```json
 {
@@ -15,8 +50,8 @@ Open the knowledge connection and set its HTTPS endpoint, tenant ID and platform
     "tenant_id": "your-tenant",
     "api_key": "your-platform-key",
     "framework_workspace": "firefly-frameworks",
-    "required": false,
-    "auto_memory": false,
+    "required": true,
+    "auto_memory": true,
     "top_k": 5
   }
 }
@@ -28,9 +63,17 @@ Send this to `PUT /api/v1/knowledge/configuration`. GET configuration and status
 
 A registered project's workspace is `forge-` followed by its repository ID. Retrieval searches that project's scope. If configured, it also searches the named framework workspace for shared references. It never falls back to another project's corpus.
 
-`required: true` makes an unavailable configured knowledge scope fail the run before generation. Optional knowledge records a visible warning and continues without context from the failed scope. Empty search results are distinct from a connection failure.
+`required: true` makes an unavailable configured knowledge scope fail the run before generation. Keep it enabled for the managed factory. An existing installation can retain a previous optional setting; that mode records a visible warning when retrieval fails and continues without that context. Empty search results are distinct from a connection failure.
 
 A run freezes its connection configuration. Its first retrieval retains source/chunk IDs, filenames, sections, source URIs and available knowledge-version IDs. The retrieved context and digest are kept for repairs and continuation. These references are untrusted input; they cannot override the brief or core security rules.
+
+## Add framework manuals and project references
+
+The default bundle contains the 14 core manuals described above, plus framework links and factory conventions. Import additional reviewed, versioned framework manuals into the configured shared framework workspace through Flycanon's authorized ingestion interface. Give each source its framework version, original URI and document identity; confirm embedding and a cited search before using it for detailed API work.
+
+Place project journeys, architecture decisions, integration contracts and selected codebase references in that project's exact workspace. Review sharing permissions before moving a project source into the common framework scope. Product-assistant file attachments are conversation inputs; attaching a file does not implicitly admit it into Flycanon or establish its embedding status.
+
+Use the Knowledge explorer to inspect scoped sources and canonical knowledge when the platform key permits browsing. A returned citation identifies its source; it does not approve an outdated framework API or a proposed architecture. Freeze the product and framework versions that implementers should follow with the run's references.
 
 ## Index selected verified source
 
@@ -58,7 +101,7 @@ The response contains bounded hits, citation metadata and warnings. Retrieval us
 
 ## Save verified memory
 
-`auto_memory` is disabled by default. Enable it to save a bounded summary after final verification, or explicitly call `POST /api/v1/runs/{id}/knowledge/remember`.
+`auto_memory` is enabled on a fresh managed installation. It saves a bounded summary after final verification. An existing installation retains its previous choice; enable it through the knowledge configuration when adopting automatic verified memory. An authorized operator can also call `POST /api/v1/runs/{id}/knowledge/remember`.
 
 Memory includes the run ID, verified source tree, changed filenames and check identities with exit statuses. It excludes raw command logs and private credentials. The integration indexes that body as a real source, retrieves its actual chunk citations, and creates a canonical knowledge version referring to them. Future project-scoped searches can return the memory's source and version provenance.
 
@@ -66,7 +109,25 @@ The response identifies `source_id`, `item_id`, `version` and `workspace_id`. A 
 
 Verify the connection with a scoped search, then index a selected source and check its returned citations. Save one verified memory and retrieve it from the same project workspace. Admission, embedding and canonical memory creation have separate outcomes; inspect each before marking the connection ready.
 
-## flycanon server compatibility
+## Review failures and retained data
+
+A saved configuration proves which service was selected. `POST /api/v1/knowledge/test` with `{}` checks platform authentication and `/stats`; a scoped search establishes retrieval. Inspect both before starting a project. Source admission, embedding and canonical memory creation require their own receipts.
+
+| Observed failure | Operator action |
+| --- | --- |
+| Missing private service bundle | Restore its original files and configuration; do not create a new identity over retained state |
+| TLS or hostname validation failed | Check the endpoint name, certificate validity and retained CA; keep verification enabled |
+| Authentication rejected | Check the selected tenant and platform-key grants without printing the key |
+| Embedding model unavailable | Make the selected local model available and repeat initialization after the service is ready |
+| No expected framework citation | Inspect ingestion and embedding status; preserve the admitted source before retrying a write |
+| Required project retrieval failed | Check that exact workspace and grants; avoid broadening the query to another project |
+| Memory write has no receipt | Inspect Flycanon for the recorded source or knowledge version; reconcile before another write |
+
+Automatic memory retains source identifiers, run/check evidence and provenance until the operator applies the service's retention process. forge does not impose an automatic deletion period. Document the project's retention and deletion policy before admitting sensitive material. Keep original objects, vector metadata and canonical versions consistent when deleting or restoring data. Raw command logs stay in the factory's execution evidence and are excluded from the bounded memory body.
+
+Back up Flycanon PostgreSQL and original object storage with forge's ledger and private state. Preserve CA trust, service keys, model settings and queued connection revisions. [Factory infrastructure](factory-infrastructure.md) covers the complete storage and production network layout.
+
+## Flycanon server compatibility
 
 Use flycanon server 26.10.0 or a build containing [the identifier-scanning fix](https://github.com/firefly-operationOS/flycanon/pull/76). Earlier servers can mistake numeric fragments inside run IDs and Git hashes for phone numbers, causing `pii_policy=reject` to reject verified memory before admission. The fix preserves rejection of genuine phone numbers and email addresses.
 

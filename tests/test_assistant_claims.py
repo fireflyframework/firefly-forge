@@ -456,6 +456,11 @@ async def test_native_pyfly_lifecycle_drains_owned_model_before_store_shutdown(t
     monkeypatch.setattr(Store, "stop", check_store_stop)
     async with app.router.lifespan_context(app):
         manager = app.state.runtime.context.get_bean(ProductAssistant)
+        from firefly_forge.knowledge import KnowledgeConfiguration, KnowledgeManager
+
+        app.state.runtime.context.get_bean(KnowledgeManager).configure(
+            KnowledgeConfiguration(values={"enabled": False})
+        )
 
         async def designer(prompt, settings):
             entered.set()
@@ -471,5 +476,5 @@ async def test_native_pyfly_lifecycle_drains_owned_model_before_store_shutdown(t
                 AssistantTurnInput(request_id="4" * 32, message="Own this bounded request"),
             )
         )
-        await entered.wait()
+        await asyncio.wait_for(entered.wait(), timeout=5)
     assert checked == ["needs_reconciliation"]

@@ -293,6 +293,11 @@ def test_native_projects_analysis_assistant_roles_sdk_cli_and_mcp_parity(tmp_pat
             requests.append(prompt)
             return AssistantReply(message="Which account owners need the stock report?")
 
+        from firefly_forge.knowledge import KnowledgeConfiguration, KnowledgeManager
+
+        app.state.runtime.context.get_bean(KnowledgeManager).configure(
+            KnowledgeConfiguration(values={"enabled": False, "required": False, "auto_memory": False})
+        )
         app.state.runtime.context.get_bean(ProductAssistant).designer = designer
         conversation = connection.create_assistant_conversation(repo["id"], project_id=project["id"])
         turn = connection.assistant_turn(

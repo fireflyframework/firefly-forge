@@ -743,21 +743,29 @@ def create_server() -> MCPServer:
             return connection.search_configuration()
 
     @server.tool()
-    def configure_internet_search(api_key_file: str | None = None, clear_secret: bool = False) -> dict[str, Any]:
+    def configure_internet_search(
+        api_key_file: str | None = None,
+        clear_secret: bool = False,
+        provider: Literal["brave", "tavily"] | None = None,
+        include_domains: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Configure the server search key from an explicitly supplied private file on this MCP host.
 
         The regular mode0600 file must belong to this process owner. The model receives no key.
-        Choose the file or explicit clear_secret; this does not verify live provider acceptance.
+        Select Tavily explicitly with its own key. Switching providers requires a new key.
+        Domains restrict citation hosts. This does not verify live provider acceptance.
         """
         from pathlib import Path
 
         from firefly_forge.cli import client, private_secret_file
 
-        if bool(api_key_file) == clear_secret:
+        if api_key_file and clear_secret:
             raise ValueError("Choose an owned private key file or explicit clear_secret")
         key = private_secret_file(Path(api_key_file)) if api_key_file else None
         with client() as connection:
-            return connection.configure_search(api_key=key, clear_secret=clear_secret)
+            return connection.configure_search(
+                api_key=key, clear_secret=clear_secret, provider=provider, include_domains=include_domains
+            )
 
     @server.tool()
     def test_internet_search() -> dict[str, Any]:

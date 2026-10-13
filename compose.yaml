@@ -31,6 +31,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      knowledge-initialize:
+        condition: service_completed_successfully
   postgres:
     image: postgres:17
     environment:
@@ -45,6 +47,115 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+  knowledge-bootstrap:
+    build: .
+    command: ["/app/.venv/bin/forge", "knowledge", "bootstrap", "--data-dir", "/data", "--service-dir", "/knowledge"]
+    volumes:
+      - factory-data:/data
+      - knowledge-secrets:/knowledge
+    restart: "no"
+  knowledge-postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: canon
+      POSTGRES_DB: flycanon
+      POSTGRES_PASSWORD_FILE: /run/knowledge/postgres-password
+    volumes:
+      - knowledge-postgres:/var/lib/postgresql/data
+      - knowledge-secrets:/run/knowledge:ro
+    networks: [knowledge]
+    depends_on:
+      knowledge-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canon -d flycanon"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  embeddings:
+    image: ollama/ollama:0.6.8
+    volumes:
+      - knowledge-models:/root/.ollama
+    networks: [knowledge, model-download]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  embeddings-initialize:
+    image: ollama/ollama:0.6.8
+    environment:
+      OLLAMA_HOST: http://embeddings:11434
+    command: ["pull", "nomic-embed-text"]
+    networks: [knowledge]
+    depends_on:
+      embeddings:
+        condition: service_healthy
+    restart: "no"
+  knowledge-migrate:
+    build:
+      context: .
+      dockerfile: deploy/flycanon/Dockerfile
+    command: ["migrate"]
+    volumes:
+      - knowledge-secrets:/run/knowledge:ro
+    networks: [knowledge]
+    depends_on:
+      knowledge-postgres:
+        condition: service_healthy
+    restart: "no"
+  knowledge:
+    build:
+      context: .
+      dockerfile: deploy/flycanon/Dockerfile
+    command: ["serve"]
+    volumes:
+      - knowledge-secrets:/run/knowledge:ro
+      - knowledge-objects:/app/canon-data
+    networks: [default, knowledge]
+    depends_on:
+      knowledge-migrate:
+        condition: service_completed_successfully
+      embeddings-initialize:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,urllib.request; urllib.request.urlopen('https://knowledge:8500/api/v1/version',context=ssl.create_default_context(cafile='/run/knowledge/ca.crt'),timeout=5)"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+  knowledge-worker:
+    build:
+      context: .
+      dockerfile: deploy/flycanon/Dockerfile
+    command: ["worker"]
+    volumes:
+      - knowledge-secrets:/run/knowledge:ro
+      - knowledge-objects:/app/canon-data
+    networks: [knowledge]
+    depends_on:
+      knowledge:
+        condition: service_healthy
+    restart: unless-stopped
+  knowledge-initialize:
+    build: .
+    command: ["/app/.venv/bin/forge", "knowledge", "initialize", "--data-dir", "/data"]
+    volumes:
+      - factory-data:/data
+    depends_on:
+      knowledge:
+        condition: service_healthy
+    restart: "no"
+networks:
+  knowledge:
+    internal: true
+  model-download:
 volumes:
+  knowledge-secrets:
+  knowledge-postgres:
+  knowledge-models:
+  knowledge-objects:
   factory-data:
   factory-postgres:

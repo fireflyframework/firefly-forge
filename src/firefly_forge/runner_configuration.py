@@ -7,18 +7,19 @@ import copy
 import os
 import stat
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pyfly.container import rest_controller, service
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 from starlette.responses import Response
 
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.runner_backends import require_available_runner
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
-from firefly_forge.search_tools import SearchTools
+from firefly_forge.search_tools import SearchTools, search_domains
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier
 from firefly_forge.workspace_tools import tool_catalog
@@ -32,7 +33,14 @@ class RunnerDefaults(BaseModel):
 class SearchConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key: str | None = Field(default=None, min_length=1, max_length=4096, json_schema_extra={"writeOnly": True})
-    clear_secret: bool = False
+    clear_secret: bool = Field(default=False, strict=True)
+    provider: Literal["brave", "tavily"] | None = None
+    include_domains: list[str] | None = Field(default=None, max_length=10)
+
+    @field_validator("include_domains")
+    @classmethod
+    def validate_domains(cls, value: list[str] | None) -> list[str] | None:
+        return search_domains(value) if value is not None else None
 
 
 class SearchQuery(BaseModel):
@@ -58,13 +66,14 @@ class RunnerConfiguration:
             "repository_id": repository_id,
             "source": "repository" if saved else "platform_default",
             "revision": saved["revision"] if saved else None,
-            "sandbox": saved["sandbox"] if saved else SandboxInput().model_dump(mode="json"),
+            "sandbox": saved["sandbox"] if saved else capture_sandbox(None)["configuration"],
         }
 
     async def configure_repository(self, repository_id: str, request: RunnerDefaults) -> dict[str, Any]:
         repository_id = identifier(repository_id).hex
         await self.store.repository(repository_id)
-        configuration = request.sandbox.model_dump(mode="json")
+        require_available_runner(request.sandbox)
+        configuration = capture_sandbox(request.sandbox)["configuration"]
         if contains_known_credential(configuration, self.search.credential_registry()):
             raise ValueError("Runner defaults cannot contain configured credentials")
         with self.private.lock:
@@ -78,6 +87,7 @@ class RunnerConfiguration:
     async def capture_run(self, repository_id: str, selected: SandboxInput | None = None) -> dict[str, Any]:
         settings = await self.configuration(repository_id)
         config = selected if selected is not None else SandboxInput.model_validate(settings["sandbox"])
+        require_available_runner(config)
         sandbox = capture_sandbox(config)
         if contains_known_credential(sandbox, self.search.credential_registry()):
             raise ValueError("Runner configuration cannot contain configured credentials")

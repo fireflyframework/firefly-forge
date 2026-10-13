@@ -51,15 +51,15 @@ Screenshots are private files. `browser_check` returns an artifact ID and SHA256
 
 ## Enable internet search deliberately
 
-Save a Brave Search API credential through `PUT /api/v1/search/configuration`:
+Select a search provider and save its credential through `PUT /api/v1/search/configuration`. For a new configuration, the [Tavily setup guide](search-providers.md) explains domain restrictions and provider usage receipts:
 
 ```json
-{"api_key": "YOUR_AUTHORIZED_SEARCH_KEY", "clear_secret": false}
+{"provider": "tavily", "api_key": "YOUR_AUTHORIZED_SEARCH_KEY", "clear_secret": false}
 ```
 
 The key is write-only in the API and stored in an owner-private `0600` file. `GET /api/v1/search/configuration` reports configuration presence and actual connection-test evidence. `POST /api/v1/search/test` makes a real provider request. It consumes the provider's normal API allowance.
 
-Set `sandbox.internet_search` to `true` and grant the role `internet_search` before queueing a run. The run freezes the private credential revision; later rotation affects new runs. A missing search configuration prevents enabling that capability. Search requests use the fixed [Brave Search endpoint](https://api-dashboard.search.brave.com/api-reference/web/search/get) and its [server-side authentication header](https://api-dashboard.search.brave.com/documentation/guides/authentication).
+Set `sandbox.internet_search` to `true` and grant the role `internet_search` before queueing a run. The run freezes the provider, private credential revision and domain restrictions; later rotation affects new runs. A missing search configuration prevents enabling that capability. Existing Brave configurations and queued snapshots retain their provider. Changing providers requires a new key and never changes the provider of an admitted run. Requests use the selected provider's fixed HTTPS endpoint. See [search providers](search-providers.md) for the request limits, authentication, and quota failures.
 
 Queries have a 600-character and 75-word limit. Results are capped at ten, with bounded titles and excerpts. The server rejects known factory credentials before sending a query and excludes them from admitted results. It does not give the search key to the model or container. Search excerpts remain untrusted evidence and cannot change the task or tool permissions.
 

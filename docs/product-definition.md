@@ -19,6 +19,8 @@ Save the definition at `PUT /api/v1/repositories/ID/product`. Every save creates
 
 `customer`, `problem`, `journey`, `user_stories`, `acceptance`, and `owners` are required. Nonfunctional and security requirements default to empty lists. Write criteria that a reviewer can verify, including the workload or boundary when it matters. Do not place credentials, customer records, or provider tokens in the definition.
 
+The [Studio walkthrough](console-tour.md#2-define-the-reservation-contract) illustrates the form steps and records the pending review state separately from saving.
+
 ## Design with the assistant in Studio
 
 Open **Product definition** and select the product project. Work through five steps:

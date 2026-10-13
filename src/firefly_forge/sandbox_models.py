@@ -57,6 +57,15 @@ class BrowserInput(BaseModel):
         return value.rstrip("/")
 
 
+class RunnerPoolBinding(BaseModel):
+    """An immutable future profile reference; capture does not grant execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    profile_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    backend: Literal["docker"] = "docker"
+
+
 class SandboxInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["host", "docker"] = "host"
@@ -73,9 +82,14 @@ class SandboxInput(BaseModel):
     command_limit: int = Field(default=50, ge=1, le=100, strict=True)
     browser: BrowserInput | None = None
     internet_search: bool = False
+    pool_binding: RunnerPoolBinding | None = None
 
     @model_validator(mode="after")
     def mode_controls(self) -> SandboxInput:
+        if self.pool_binding is not None and (
+            self.mode != "docker" or self.workspace_transport != "archive" or self.network != "none"
+        ):
+            raise ValueError("Future pool binding requires Docker archive mode with network none")
         if self.mode == "docker":
             if not self.image or not self.context:
                 raise ValueError("Docker mode requires a pinned image and an explicit Docker context")
@@ -92,6 +106,8 @@ def _digest(configuration: dict[str, Any]) -> str:
 def capture_sandbox(value: SandboxInput | dict[str, Any] | None) -> dict[str, Any]:
     config = SandboxInput.model_validate(value.model_dump() if isinstance(value, SandboxInput) else value or {})
     configuration = config.model_dump(mode="json")
+    if config.pool_binding is None:
+        configuration.pop("pool_binding")
     controls = ["timeout", "output"]
     if config.mode == "docker":
         controls += [
@@ -108,10 +124,16 @@ def capture_sandbox(value: SandboxInput | dict[str, Any] | None) -> dict[str, An
         "mode": config.mode,
         "configuration": configuration,
         "digest": _digest(configuration),
-        "effective_network": config.network if config.mode == "docker" else "host",
-        "enforced_controls": controls,
+        "effective_network": "unavailable"
+        if config.pool_binding is not None
+        else config.network
+        if config.mode == "docker"
+        else "host",
+        "enforced_controls": [] if config.pool_binding is not None else controls,
         "reason": (
-            "Docker commands use the selected immutable image and bounded container controls"
+            "Runner pool execution is not enabled; a captured binding does not enforce isolation"
+            if config.pool_binding is not None
+            else "Docker commands use the selected immutable image and bounded container controls"
             if config.mode == "docker"
             else "Trusted host execution uses the service account; CPU, memory and network isolation are not provided"
         ),

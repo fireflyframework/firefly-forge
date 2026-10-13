@@ -814,12 +814,26 @@ def search_configuration() -> None:
 @search.command("configure")
 @click.option("--key-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--clear-secret", is_flag=True)
-def configure_search(key_file: Path | None, clear_secret: bool) -> None:
-    if bool(key_file) == clear_secret:
-        raise click.ClickException("Choose a private key file or --clear-secret")
+@click.option("--provider", type=click.Choice(["brave", "tavily"]))
+@click.option(
+    "--domain", multiple=True, help="Restrict admitted citations to this public hostname; repeat up to 10 times."
+)
+@click.option("--clear-domains", is_flag=True, help="Remove the saved hostname restriction.")
+def configure_search(
+    key_file: Path | None, clear_secret: bool, provider: str | None, domain: tuple[str, ...], clear_domains: bool
+) -> None:
+    if key_file and clear_secret or domain and clear_domains:
+        raise click.ClickException("Choose either a key file or --clear-secret, and either domains or --clear-domains")
+    if not (key_file or clear_secret or provider or domain or clear_domains):
+        raise click.ClickException("Supply a private key file or a search configuration change")
     key = private_secret_file(key_file) if key_file else None
+    selection: dict[str, Any] = {}
+    if provider is not None:
+        selection["provider"] = provider
+    if domain or clear_domains:
+        selection["include_domains"] = list(domain)
     with client() as connection:
-        display(connection.configure_search(api_key=key, clear_secret=clear_secret))
+        display(connection.configure_search(api_key=key, clear_secret=clear_secret, **selection))
 
 
 @search.command("test")
@@ -850,3 +864,57 @@ def mcp_server() -> None:
     from firefly_forge.mcp_server import serve
 
     serve()
+
+
+@main.group()
+def knowledge() -> None:
+    """Install and verify the managed knowledge service."""
+
+
+@knowledge.command("bootstrap")
+@click.option("--data-dir", type=click.Path(path_type=Path), required=True)
+@click.option("--service-dir", type=click.Path(path_type=Path), required=True)
+def knowledge_bootstrap(data_dir: Path, service_dir: Path) -> None:
+    """Create one-time private service credentials without resetting existing settings."""
+    from firefly_forge.configuration import ConfigurationStore
+    from firefly_forge.managed_knowledge import bootstrap_knowledge
+
+    try:
+        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir)
+        if result["state"] == "external":
+            raise ValueError(
+                "Existing knowledge settings retained; use the existing service instead of the managed stack"
+            )
+        display(result)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@knowledge.command("initialize")
+@click.option("--data-dir", type=click.Path(path_type=Path), required=True)
+def knowledge_initialize(data_dir: Path) -> None:
+    """Initialize authenticated framework knowledge and require real cited retrieval."""
+    import asyncio
+
+    from pyfly.container import Container
+
+    from firefly_forge.configuration import ConfigurationStore
+    from firefly_forge.knowledge import KnowledgeConnection
+    from firefly_forge.managed_knowledge import ManagedKnowledgeProvisioner
+
+    container = Container()
+    container.register_instance(ConfigurationStore, ConfigurationStore(data_dir))
+    container.register(KnowledgeConnection)
+    container.register(ManagedKnowledgeProvisioner)
+    manager = container.resolve(ManagedKnowledgeProvisioner)
+    try:
+        result = asyncio.run(manager.initialize())
+        display(
+            {
+                "readiness": result["readiness"],
+                "tenant_id": result["tenant_id"],
+                "framework_workspace": result["framework_workspace"],
+            }
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
