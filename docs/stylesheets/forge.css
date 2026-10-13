@@ -208,6 +208,16 @@
   font-style: normal;
   text-align: left;
 }
+.md-typeset .forge-architecture-diagram {
+  display: block;
+  width: 100%;
+}
+.md-typeset .forge-architecture-diagram picture,
+.md-typeset .forge-architecture-diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .md-typeset .forge-gallery {
   font-size: 15px;
   margin: 24px 0 32px;
