@@ -1,10 +1,10 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Understand the factory
 
-![Native PyFly control plane, PostgreSQL execution ledger and isolated project workers](diagrams/architecture.svg)
+![Native pyfly control plane, PostgreSQL execution ledger and isolated project workers](diagrams/architecture.svg)
 
 
-firefly forge uses native PyFly dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. One execution worker runs isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
+firefly forge uses native [pyfly](https://fireflyframework.org/frameworks/python/) dependency injection, REST controllers and relational data repositories. PostgreSQL owns the durable ledger. One execution worker runs isolated Git workspaces; official coding providers and Firefly Agentic implement source changes. Studio, the CLI and MCP operate the same authenticated API.
 
 The API and worker can share one process or run separately. A split installation admits work through API replicas and dispatches it through one headless worker, using the same retained configuration and source storage. PostgreSQL records the installation topology and rejects incompatible execution owners. Read [API and worker roles](runtime-roles.md) before choosing a deployment layout.
 
@@ -13,10 +13,10 @@ The API and worker can share one process or run separately. A split installation
 | Layer | Implementation | Responsibility |
 | --- | --- | --- |
 | HTTP | `@rest_controller`, method mappings, typed body/path binding and native OpenAPI generation | Validate requests and expose the real application contract |
-| Operator access | Native PyFly `OncePerRequestFilter` | Protect API routes and retain safe response headers |
+| Operator access | Native pyfly `OncePerRequestFilter` | Protect API routes and retain safe response headers |
 | Services | Constructor-injected run, provider, policy, source-control, knowledge, journal and deployment services | Coordinate actual operations |
-| Data | Native PyFly typed `@repository` beans, ORM entities and `SessionProvider.unit()` | PostgreSQL transactions, claims and durable evidence |
-| Lifecycle | PyFly service phases | Initialize persistence before pollers and stop consumers before releasing resources |
+| Data | Native pyfly typed `@repository` beans, ORM entities and `SessionProvider.unit()` | PostgreSQL transactions, claims and durable evidence |
+| Lifecycle | pyfly service phases | Initialize persistence before pollers and stop consumers before releasing resources |
 
 Private credentials use owner-protected files outside source workspaces. Public records contain configuration revision IDs and secret-presence flags. Queued runs freeze provider and policy inputs; retrieved knowledge is retained with citation IDs and a context digest for continuation.
 
