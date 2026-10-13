@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Bot,
   GitBranch,
+  Globe,
   Settings2,
   ShieldCheck,
   Users,
@@ -11,7 +12,7 @@ import type { IdentitySession } from "./Identity";
 import "./Administration.css";
 
 export type AdministrationPage =
-  "access" | "users" | "settings" | "workflow" | "collaboration";
+  "access" | "users" | "settings" | "workflow" | "collaboration" | "search";
 export function Administration({
   session,
   onNavigate,
@@ -46,6 +47,14 @@ export function Administration({
       title: "Connections",
       body: "Connect coding providers, repositories, and project knowledge.",
       allowed: administrator || !session,
+      scope: "Factory administrator",
+    },
+    {
+      page: "search" as const,
+      icon: Globe,
+      title: "Internet search",
+      body: "Choose a search provider, store its key privately, and restrict public sources.",
+      allowed: administrator,
       scope: "Factory administrator",
     },
     {

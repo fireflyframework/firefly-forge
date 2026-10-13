@@ -5,7 +5,89 @@ Use Tavily for a new search connection, or keep an existing Brave connection. Ch
 
 Search is optional. It requires an authorized provider account and may consume that account's paid allowance. Installing forge does not create an account or verify its quota.
 
-## Connect a provider
+## Connect through Studio
+
+Open Administration, then Internet search. A factory administrator can edit this connection. Existing setups keep their saved provider, including Brave; only a setup without a saved revision starts with Tavily recommended.
+
+These screenshots use controlled API fixtures. They show the form and saved state without contacting a provider or verifying an account. [Capture inventory and maintenance](console-tour.md#keep-captures-current) records their source and viewport.
+
+<figure class="forge-shot" markdown="1">
+
+![Choose the internet search provider](assets/screenshots/search-provider-desktop-light.png)
+
+<figcaption>Provider: this new fixture setup recommends Tavily. Choose the provider account you intend to use, then continue to Access. Changing a saved provider requires a new key.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow access, review and the saved connection</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Private provider key and allowed websites](assets/screenshots/search-access-desktop-light.png)
+
+<figcaption>Access: enter the selected provider's key and optional public hostnames. The fixture key is masked. On an existing connection, leave the key blank to keep it; the saved key is never returned to the page.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Review search settings before saving](assets/screenshots/search-review-desktop-light.png)
+
+<figcaption>Review: check the provider, key action and website restriction. Save search settings stores this configuration without making a search request. Cancel leaves the saved connection unchanged.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Saved search connection with unverified readiness](assets/screenshots/search-saved-desktop-light.png)
+
+<figcaption>Saved connection: the fixture reports a stored key and Not tested for this revision. Test saved connection sends a real request on your factory and may use paid quota. This tour does not press it.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Configure search on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Choose an internet search provider on a phone](assets/screenshots/search-provider-mobile-light.png)
+
+<figcaption>Provider: select Tavily or Brave. Existing saved setups retain their provider; this fixture is a new connection. Continue opens the key and website fields.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Enter the provider key and website restriction on a phone](assets/screenshots/search-access-mobile-light.png)
+
+<figcaption>Access: enter a new key and optional hostnames, one per line. The phone uses its actual viewport and a masked fixture key. Continue validates the entries before opening Review.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Review the search connection on a phone](assets/screenshots/search-review-mobile-light.png)
+
+<figcaption>Review: inspect Tavily, the new key action and the two allowed websites. Save stores these settings; testing remains a separate action.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Saved untested search settings on a phone](assets/screenshots/search-saved-mobile-light.png)
+
+<figcaption>Saved state: the fixture key is configured and its revision remains untested. Edit search settings changes the connection. Testing may consume quota and is never automatic.</figcaption>
+</figure>
+
+</div>
+</details>
+
+If Studio cannot confirm the save outcome, reload saved settings before repeating it. A rejected key is cleared from the form so you can enter a replacement. After an unsuccessful connection test, review provider usage before trying another request.
+
+Removing the active key is an explicit choice under Access. It disables new searches and leaves historical keys available to already queued runs. Search still requires both the repository runner setting and the applicable role grant; saving this connection grants neither.
+
+## Connect through the CLI
 
 A factory administrator configures the connection. Project membership alone does not grant access to the search configuration, operator queries, connection tests or citation cache.
 

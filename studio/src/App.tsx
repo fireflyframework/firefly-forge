@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { version as studioVersion } from "../package.json";
 import { repositoryLabels } from "./RepositoryLabels";
 import {
   cloneElement,
@@ -71,6 +72,7 @@ import { IdentityMenu, SignIn, useIdentity } from "./Identity";
 import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
+import { SearchConfiguration } from "./SearchConfiguration";
 import { Collaboration } from "./Collaboration";
 import "./Integrations.css";
 import "./UsabilityRefinements.css";
@@ -96,7 +98,8 @@ type Page =
   | "collaboration"
   | "access"
   | "admin"
-  | "users";
+  | "users"
+  | "search";
 const working = (status: string) =>
   [
     "queued",
@@ -461,6 +464,7 @@ export default function App() {
     collaboration: "Repository workflow",
     access: "Project access",
     users: "People",
+    search: "Internet search",
   };
   const navigationPage = administrationLabels[page]
     ? "admin"
@@ -979,6 +983,12 @@ export default function App() {
               }}
             />
           )}
+          {page === "search" && (
+            <SearchConfiguration
+              connection={connection}
+              session={identity.session}
+            />
+          )}
           {page === "access" && (
             <ProjectAccess
               connection={connection}
@@ -1164,7 +1174,7 @@ export default function App() {
               Documentation
             </a>
           </span>
-          <span>v0.2.1</span>
+          <span>v{studioVersion}</span>
         </footer>
       </div>
       {dialog && (

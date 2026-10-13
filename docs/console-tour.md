@@ -86,6 +86,8 @@ Complete the [managed knowledge initialization](knowledge.md#initialize-the-mana
 
 Knowledge and memory currently use a separate workspace for each repository: `forge-<repository_id>`. A shared framework workspace can supply common references. A logical ProductProject does not automatically create an aggregated memory scope across its components. See [project scopes](knowledge.md#keep-project-scope-explicit).
 
+Internet search is a separate optional connection under Administration. Follow the [search setup walkthrough](search-providers.md#connect-through-studio) to choose a provider, store its key and restrict public sources. Saving settings does not run a provider test.
+
 ## 2. Define the reservation contract
 
 Select Product definition and Inventory API. Describe who reserves stock, what happens when stock is insufficient, and which check proves the rejection. An API-only product still needs a customer or system process, feature behavior and failure paths.

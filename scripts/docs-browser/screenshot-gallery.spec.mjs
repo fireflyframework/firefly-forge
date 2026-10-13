@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
  * https://www.apache.org/licenses/LICENSE-2.0 */
 import { createRequire } from "node:module";
+import { readyImages } from "./image-readiness.mjs";
 const { test, expect } = createRequire(
   new URL("../../studio/package.json", import.meta.url),
 )("@playwright/test");
@@ -28,7 +29,12 @@ for (const width of [1440, 390, 375]) {
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 });
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
       let phoneCaptures = 0;
-      for (const guide of ["console-tour", "quickstart", "guide"]) {
+      for (const guide of [
+        "console-tour",
+        "search-providers",
+        "quickstart",
+        "guide",
+      ]) {
         await page.goto(`/${guide}/`);
         await expect(page.locator("body")).toHaveAttribute(
           "data-md-color-scheme",
@@ -51,16 +57,7 @@ for (const width of [1440, 390, 375]) {
           await page.keyboard.press("Enter");
           await expect(summary.locator("..")).toHaveAttribute("open", "");
         }
-        await article
-          .locator(".forge-shot__link:visible img")
-          .evaluateAll(async (images) => {
-            await Promise.all(
-              images.map(async (image) => {
-                image.loading = "eager";
-                await image.decode();
-              }),
-            );
-          });
+        await readyImages(article.locator(".forge-shot__link:visible img"));
         await expect
           .poll(() =>
             article
@@ -73,7 +70,7 @@ for (const width of [1440, 390, 375]) {
                   ),
               ),
           )
-          .toBe(guide === "console-tour");
+          .toBe(["console-tour", "search-providers"].includes(guide));
         const links = article.locator(".forge-shot__link:visible");
         for (const link of await links.all()) {
           const image = link.locator("img");
@@ -128,26 +125,27 @@ for (const width of [1440, 390, 375]) {
   }
 }
 
-test("the gallery remains readable with text enlarged to 200 percent", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 720, height: 900 });
-  await page.goto("/console-tour/");
-  await page.addStyleTag({
-    content:
-      ".md-typeset { font-size: 32px; } .forge-shot figcaption, .md-typeset details, .forge-gallery > summary { font-size: 28px; }",
+for (const guide of ["console-tour", "search-providers"])
+  test(`${guide} gallery remains readable with text enlarged to 200 percent`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 900 });
+    await page.goto(`/${guide}/`);
+    await page.addStyleTag({
+      content:
+        ".md-typeset { font-size: 32px; } .forge-shot figcaption, .md-typeset details, .forge-gallery > summary { font-size: 28px; }",
+    });
+    const summary = page.locator(".forge-gallery > summary").first();
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(summary.locator("..")).toHaveAttribute("open", "");
+    await expect(summary).toHaveCSS("font-size", "28px");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    const grid = summary.locator("..").locator(".forge-shot-grid");
+    const box = await grid.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(720);
   });
-  const summary = page.locator(".forge-gallery > summary").first();
-  await summary.focus();
-  await page.keyboard.press("Enter");
-  await expect(summary.locator("..")).toHaveAttribute("open", "");
-  await expect(summary).toHaveCSS("font-size", "28px");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  const grid = summary.locator("..").locator(".forge-shot-grid");
-  const box = await grid.boundingBox();
-  expect(box.x + box.width).toBeLessThanOrEqual(720);
-});
