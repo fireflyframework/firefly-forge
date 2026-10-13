@@ -1,6 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
  * https://www.apache.org/licenses/LICENSE-2.0 */
 import * as THREE from "three";
+import { factoryFrame, applyFactoryFrame } from "./factory-sequence.mjs";
+import { addCafeteria } from "./operators.mjs";
 import { mountScene } from "./lifecycle.mjs";
 const assetRoot = new URL(".", document.currentScript.src);
 
@@ -50,12 +52,13 @@ function setup(viewport) {
   fill.position.set(10, 9, -9);
   scene.add(fill);
   viewport.append(canvas);
+  let envelope;
   function resize(width, height) {
     if (!width || !height) return;
     renderer.setSize(width, height, false);
-    const bounds = new THREE.Box3().setFromObject(world),
+    const bounds = envelope ?? new THREE.Box3().setFromObject(world),
       center = bounds.getCenter(new THREE.Vector3());
-    camera.position.copy(center).add(new THREE.Vector3(10, 14, 27));
+    camera.position.copy(center).add(new THREE.Vector3(24, 17, 20));
     camera.lookAt(center);
     camera.updateMatrixWorld(true);
     const corners = [];
@@ -71,7 +74,7 @@ function setup(viewport) {
     const vertical =
       Math.max(...corners.map((p) => p.y)) -
       Math.min(...corners.map((p) => p.y));
-    const span = Math.max(vertical, horizontal / (width / height)) * 1.15;
+    const span = Math.max(vertical, horizontal / (width / height)) * 1.05;
     camera.left = (-span * width) / height / 2;
     camera.right = -camera.left;
     camera.top = span / 2;
@@ -86,6 +89,9 @@ function setup(viewport) {
     hemi,
     camera,
     resize,
+    setBounds(bounds) {
+      envelope = bounds;
+    },
     dispose() {
       disposeObjects(scene);
       renderer.dispose();
@@ -123,171 +129,44 @@ async function build(viewport, signal) {
   }
   view.world.add(object);
   const mixer = new THREE.AnimationMixer(object);
-  for (const clip of object.animations)
-    mixer.clipAction(clip).setLoop(THREE.LoopRepeat, Infinity).play();
+  const actions = new Map(
+    object.animations.map((clip) => [
+      clip.name,
+      {
+        action: mixer.clipAction(clip).setLoop(THREE.LoopOnce, 1),
+        duration: clip.duration,
+      },
+    ]),
+  );
   const amber = new THREE.MeshStandardMaterial({
     color: 0xffb34a,
     roughness: 0.55,
+    transparent: true,
   });
   const paper = new THREE.MeshStandardMaterial({
     color: 0xf3f1eb,
     roughness: 0.8,
+    transparent: true,
   });
   const carrier = new THREE.Group();
   view.world.add(carrier);
   mesh(carrier, new THREE.BoxGeometry(0.78, 0.09, 0.56), amber, 0, 0);
   mesh(carrier, new THREE.BoxGeometry(0.68, 0.025, 0.49), paper, 0, 0.065);
   carrier.position.set(model.layout[0].x, 0.76, 0);
-  // First-party adjacent break area; the authorized model remains unchanged.
-  const furniture = new THREE.MeshStandardMaterial({
-    color: 0x62645b,
-    roughness: 0.9,
-  });
-  const skin = new THREE.MeshStandardMaterial({
-    color: 0xbcae9b,
-    roughness: 0.9,
-  });
-  const tableX = -2.5,
-    tableZ = 3.7;
-  mesh(
-    view.world,
-    new THREE.BoxGeometry(2.3, 0.09, 1.05),
-    paper,
-    tableX,
-    0.76,
-    tableZ,
-  );
-  for (const x of [-0.9, 0.9])
-    for (const z of [-0.35, 0.35])
-      mesh(
-        view.world,
-        new THREE.CylinderGeometry(0.045, 0.045, 0.72, 8),
-        furniture,
-        tableX + x,
-        0.36,
-        tableZ + z,
+  const people = addCafeteria(view.world, model.layout);
+  // Include mechanical keyframe extents, not only the initial rest pose.
+  const envelope = new THREE.Box3();
+  for (const [id] of actions)
+    for (let fraction = 0; fraction <= 1; fraction += 0.125) {
+      applyFactoryFrame(
+        { activeStation: id, dwellFraction: fraction },
+        actions,
+        mixer,
       );
-  for (const x of [-0.6, 0.6]) {
-    const mug = new THREE.Group();
-    view.world.add(mug);
-    mug.position.set(tableX + x, 0.89, tableZ);
-    mesh(mug, new THREE.CylinderGeometry(0.09, 0.08, 0.16, 16), paper, 0, 0);
-    mesh(
-      mug,
-      new THREE.CircleGeometry(0.073, 16),
-      furniture,
-      0,
-      0.081,
-    ).rotation.x = -Math.PI / 2;
-    mesh(mug, new THREE.TorusGeometry(0.06, 0.013, 8, 16), paper, 0.095, 0);
-  }
-  const humans = [];
-  for (let index = 0; index < 2; index++) {
-    const start = new THREE.Vector3(
-      tableX + (index === 0 ? -1.55 : 1.55),
-      0,
-      tableZ,
-    );
-    const destination = new THREE.Vector3(
-      model.layout[index === 0 ? 2 : 3].x,
-      0,
-      1.45,
-    );
-    const clothes = new THREE.MeshStandardMaterial({
-      color: index === 0 ? 0x474a42 : 0x7a8460,
-      roughness: 0.95,
-    });
-    const person = new THREE.Group();
-    view.world.add(person);
-    person.position.copy(start);
-    person.rotation.y = index === 0 ? -Math.PI / 2 : Math.PI / 2;
-    const upper = new THREE.Group();
-    person.add(upper);
-    mesh(upper, new THREE.CapsuleGeometry(0.14, 0.24, 4, 12), clothes, 0, 0.88);
-    mesh(upper, new THREE.SphereGeometry(0.14, 16, 12), skin, 0, 1.22);
-    mesh(
-      upper,
-      new THREE.SphereGeometry(0.145, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-      furniture,
-      0,
-      1.23,
-    );
-    for (const x of [-0.19, 0.19])
-      mesh(
-        upper,
-        new THREE.CapsuleGeometry(0.045, 0.24, 4, 8),
-        clothes,
-        x,
-        0.84,
-        -0.08,
-      ).rotation.x = -0.6;
-    const legs = [];
-    for (const x of [-0.085, 0.085]) {
-      const thigh = mesh(
-        person,
-        new THREE.CylinderGeometry(0.065, 0.055, 0.36, 8),
-        clothes,
-        x,
-        0.58,
-        -0.13,
-      );
-      const shin = mesh(
-        person,
-        new THREE.CylinderGeometry(0.045, 0.045, 0.38, 8),
-        clothes,
-        x,
-        0.2,
-        -0.29,
-      );
-      legs.push({ thigh, shin });
+      envelope.union(new THREE.Box3().setFromObject(view.world));
     }
-    const chair = new THREE.Group();
-    view.world.add(chair);
-    chair.position.copy(start);
-    chair.rotation.copy(person.rotation);
-    mesh(chair, new THREE.BoxGeometry(0.46, 0.08, 0.44), furniture, 0, 0.56);
-    mesh(
-      chair,
-      new THREE.BoxGeometry(0.46, 0.42, 0.06),
-      furniture,
-      0,
-      0.81,
-      0.22,
-    );
-    for (const x of [-0.18, 0.18])
-      for (const z of [-0.16, 0.16])
-        mesh(
-          chair,
-          new THREE.BoxGeometry(0.035, 0.52, 0.035),
-          furniture,
-          x,
-          0.26,
-          z,
-        );
-    humans.push({ person, upper, legs, start, destination, index });
-  }
-  function people(time) {
-    for (const human of humans) {
-      const phase = (time % 48) - human.index * 24;
-      const standing =
-        phase >= 12 && phase < 24 ? Math.min(1, phase - 12, 24 - phase) : 0;
-      let journey = 0;
-      if (phase >= 13 && phase < 16) journey = (phase - 13) / 3;
-      else if (phase >= 16 && phase < 20) journey = 1;
-      else if (phase >= 20 && phase < 23) journey = 1 - (phase - 20) / 3;
-      const eased = journey * journey * (3 - 2 * journey);
-      human.person.position.lerpVectors(human.start, human.destination, eased);
-      human.person.rotation.y =
-        (human.index === 0 ? -Math.PI / 2 : Math.PI / 2) * (1 - eased);
-      human.upper.position.y = 0.25 * standing;
-      for (const { thigh, shin } of human.legs) {
-        thigh.rotation.x = ((1 - standing) * Math.PI) / 2;
-        thigh.position.y = 0.58 + 0.1 * standing;
-        thigh.position.z = -0.13 * (1 - standing);
-        shin.position.z = -0.29 * (1 - standing);
-      }
-    }
-  }
+  applyFactoryFrame(factoryFrame(0, model.layout), actions, mixer);
+  view.setBounds(envelope.expandByScalar(0.08));
   const sources = new Map();
   object.traverse((item) => {
     if (item.isMesh)
@@ -305,17 +184,17 @@ async function build(viewport, signal) {
     charcoal: "#272820",
     trimThird: "#62645b",
   };
-  let lastTime = 0,
-    lastTheme;
+  let lastTheme;
   return {
     ...view,
     render(time, dark) {
-      mixer.update(Math.max(0, time - lastTime) * 1.45);
-      people(time);
-      lastTime = time;
-      carrier.position.x =
-        model.layout[0].x +
-        ((time / 9) % 1) * (model.layout.at(-1).x - model.layout[0].x);
+      const frame = factoryFrame(time, model.layout);
+      applyFactoryFrame(frame, actions, mixer);
+      people(time, dark, frame);
+      carrier.position.x = frame.carrierX;
+      carrier.visible = frame.opacity > 0.001;
+      amber.opacity = frame.opacity;
+      paper.opacity = frame.opacity;
       if (dark !== lastTheme) {
         lastTheme = dark;
         for (const [material, original] of sources)

@@ -182,3 +182,38 @@ test("the short phone hero has no visual filler and the header controls remain r
     expect(box.x + box.width).toBeLessThanOrEqual(375);
   }
 });
+
+test("the scene fills its allocated hero column on desktop and phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const scene = page.locator("[data-docs-scene]");
+  await expect(scene).toHaveAttribute("data-renderer", "webgl");
+  const measure = () =>
+    scene.evaluate((element) => {
+      const hero = element.parentElement;
+      const columns = getComputedStyle(hero)
+        .gridTemplateColumns.split(" ")
+        .map(parseFloat);
+      return {
+        width: element.getBoundingClientRect().width,
+        allocated: columns.at(-1),
+        canvas: element.querySelector("canvas").getBoundingClientRect().width,
+      };
+    });
+  await expect
+    .poll(async () => {
+      const size = await measure();
+      return size.width / size.allocated;
+    })
+    .toBeGreaterThan(0.95);
+  await expect.poll(async () => (await measure()).canvas).toBeGreaterThan(400);
+  await page.setViewportSize({ width: 375, height: 720 });
+  await expect
+    .poll(async () => {
+      const size = await measure();
+      return size.canvas / size.allocated;
+    })
+    .toBeGreaterThan(0.95);
+});

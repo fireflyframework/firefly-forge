@@ -156,6 +156,8 @@ export async function mountScene(host, build) {
         dispose();
         host.dataset.renderer = "fallback";
         status.textContent = "Static illustration · 3D is unavailable";
+        button.textContent = "Static view";
+        button.setAttribute("aria-label", "Static illustration");
         button.disabled = true;
       },
       { signal: abort.signal },
@@ -165,6 +167,8 @@ export async function mountScene(host, build) {
     dispose();
     host.dataset.renderer = "fallback";
     status.textContent = "Static illustration · 3D is unavailable";
+    button.textContent = "Static view";
+    button.setAttribute("aria-label", "Static illustration");
     button.disabled = true;
   }
   return dispose;

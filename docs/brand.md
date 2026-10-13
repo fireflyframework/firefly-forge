@@ -145,7 +145,7 @@ hash does not establish visual quality or correct alignment in the application.
 
 ## Documentation illustration
 
-The documentation home loads the same authorized station snapshot through a separate first-party Three.js adapter. Its machinery and amber carrier repeat a demonstration loop. Two first-party stylized operators share coffee beside the line and alternate short station visits; they never read run data or estimate progress. The live Studio renderer continues to use recorded station states.
+The documentation home loads the same authorized station snapshot through a separate first-party Three.js adapter. One 14-second demonstration clock moves the document between stations, holds it while that station's clip works, and fades the reset before starting again. No machinery works during transit or reset. Two first-party operators share coffee in a bay joined to the factory floor and alternate short console visits; the terminals show the same demonstration sequence. Their walking joints, aisle routes and cup clearance are checked against the actual mesh geometry. The illustration never reads run data or estimates progress. The live Studio renderer continues to use recorded station states.
 
 Install Studio dependencies with `npm --prefix studio ci`, then run `make docs`. The strict MkDocs hook bundles `scripts/docs-scene/` into ignored `build/docs-scene`, copies the pinned factory snapshot and provenance, and includes the Three.js MIT and artwork notices. Local CSS and scene script URLs include a content hash so rebuilt styles and scenes are distinguishable in browser caches. Rendering uses local assets and needs no CDN or private source checkout.
 
