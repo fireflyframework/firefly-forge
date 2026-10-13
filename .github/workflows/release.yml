@@ -36,6 +36,12 @@ jobs:
       - run: npx --prefix studio playwright install --with-deps chromium
       - run: make check
       - run: make package
+      - name: Install the wheel outside the source checkout
+        run: |
+          uv venv "$RUNNER_TEMP/forge-installed"
+          uv pip install --python "$RUNNER_TEMP/forge-installed/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-installed/bin/python" "$GITHUB_WORKSPACE/scripts/installed_smoke.py"
       - run: tar -czf dist/firefly-forge-studio.tar.gz -C studio/dist .
       - run: python scripts/release_checksums.py dist
       - env:

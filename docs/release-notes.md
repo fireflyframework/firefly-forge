@@ -1,5 +1,7 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# firefly forge 0.2.0
+# firefly forge 0.2.1
+
+Standalone packages now retain the Flycanon SDK release URL in their dependency metadata. The package check rejects wheels that would require an unavailable registry package. The v0.2.0 tag records the initial qualification; its publication was stopped when a clean installation exposed this issue.
 
 This release brings product definition, coding, verification and delivery into one PyFly application with a PostgreSQL execution ledger. Teams can start with a new product or analyze an existing project, work across one or several repositories, and follow the same retained task history through interruptions and provider handoffs.
 
