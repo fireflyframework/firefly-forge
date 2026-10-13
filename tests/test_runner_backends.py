@@ -133,6 +133,23 @@ async def test_host_adapter_transfers_binary_input_without_text_decoding(tmp_pat
     assert code == 0 and output == data
 
 
+async def test_host_adapter_drains_bounded_output_while_sending_large_input(tmp_path):
+    backend = adapters().RunnerBackends().select(SandboxInput())
+    script = (
+        "import sys; sys.stdout.buffer.write(b'x'*2000000); sys.stdout.buffer.flush(); "
+        "data=sys.stdin.buffer.read(); print(len(data))"
+    )
+    code, output = await backend.run_bytes(
+        SandboxInput(),
+        [sys.executable, "-c", script],
+        tmp_path,
+        5,
+        3_000_000,
+        input_data=b"a" * 4_000_000,
+    )
+    assert code == 0 and output == b"x" * 2_000_000 + b"4000000\n"
+
+
 async def test_host_adapter_enforces_output_limit(tmp_path):
     backend = adapters().RunnerBackends().select(SandboxInput())
     with pytest.raises(RuntimeError, match="output limit"):

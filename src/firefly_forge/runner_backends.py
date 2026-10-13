@@ -31,12 +31,16 @@ async def _bounded_process(
     )
     output = bytearray()
 
-    async def consume() -> None:
+    async def send_input() -> None:
         if input_data is not None:
             assert process.stdin is not None
-            process.stdin.write(input_data)
-            await process.stdin.drain()
-            process.stdin.close()
+            try:
+                process.stdin.write(input_data)
+                await process.stdin.drain()
+            finally:
+                process.stdin.close()
+
+    async def consume() -> None:
         assert process.stdout is not None
         while data := await process.stdout.read(65536):
             if len(output) + len(data) > max_output_bytes:
@@ -44,9 +48,12 @@ async def _bounded_process(
             output.extend(data)
         await process.wait()
 
+    streams = [asyncio.create_task(send_input()), asyncio.create_task(consume())]
     try:
-        await asyncio.wait_for(consume(), timeout)
+        await asyncio.wait_for(asyncio.gather(*streams), timeout)
     except BaseException:
+        for stream in streams:
+            stream.cancel()
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGTERM)
         with suppress(TimeoutError):
@@ -54,6 +61,7 @@ async def _bounded_process(
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGKILL)
         await process.wait()
+        await asyncio.gather(*streams, return_exceptions=True)
         raise
     return process.returncode or 0, bytes(output)
 
