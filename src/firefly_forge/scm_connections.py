@@ -82,6 +82,10 @@ class SCMConnections:
         definition = self._definition(provider)
         return {**definition["defaults"], **self._record(provider).get("values", {})}
 
+    def _assert_revision(self, provider: str, revision: str | None) -> None:
+        if self._record(provider).get("revision") != revision:
+            raise ValueError("Application settings changed; repeat the operation with the current grant")
+
     def configured(self, provider: str) -> bool:
         if provider not in DEFINITIONS:
             return False
@@ -329,12 +333,13 @@ class SCMConnections:
         )
         try:
             data = response.json()
-            token = str(data["token"])
+            token = data["token"]
             expires = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00")).timestamp()
-            if not token or expires <= time.time():
+            if not isinstance(token, str) or not token or expires <= time.time():
                 raise ValueError
-        except (KeyError, TypeError, ValueError):
+        except (AttributeError, KeyError, TypeError, ValueError):
             raise ValueError("GitHub returned an invalid installation grant") from None
+        self._assert_revision("github", record["revision"])
         self._tokens[cache_key] = (token, expires)
         return token
 
@@ -419,13 +424,20 @@ class SCMConnections:
         try:
             data = response.json()
             token, duration = data["access_token"], int(data["expires_in"])
-            if not isinstance(token, str) or not token or duration <= 0:
+            refresh, scope = data.get("refresh_token", ""), data.get("scope", "")
+            if (
+                not isinstance(token, str)
+                or not token
+                or duration <= 0
+                or not isinstance(refresh, str)
+                or not isinstance(scope, str)
+            ):
                 raise ValueError
             return {
                 "access_token": token,
-                "refresh_token": data.get("refresh_token", ""),
+                "refresh_token": refresh,
                 "expires_at": time.time() + duration,
-                "scope": data.get("scope", ""),
+                "scope": scope,
             }
         except (KeyError, TypeError, ValueError):
             raise ValueError("Provider returned an invalid OAuth grant") from None
@@ -518,7 +530,9 @@ class SCMConnections:
 
     async def repositories(self, provider: str) -> list[Data]:
         self._definition(provider)
+        revision = self._record(provider).get("revision")
         token = await self._github_token() if provider == "github" else await self._oauth_token(provider)
+        self._assert_revision(provider, revision)
         base = self._api(provider)
         path = (
             "/installation/repositories?per_page=100"
@@ -546,22 +560,25 @@ class SCMConnections:
                     "Accept": "application/vnd.github+json" if provider == "github" else "application/json",
                 },
             )
-            payload = response.json()
-            entries = (
-                payload.get("repositories", [])
-                if provider == "github"
-                else payload
-                if provider == "gitlab"
-                else payload.get("values", [])
-            )
             try:
+                payload = response.json()
+                entries = (
+                    payload["repositories"]
+                    if provider == "github"
+                    else payload
+                    if provider == "gitlab"
+                    else payload["values"]
+                )
+                if not isinstance(entries, list) or any(not isinstance(item, dict) for item in entries):
+                    raise ValueError("Provider returned an invalid repository grant")
                 result.extend(
                     self._repository(provider, item)
                     for item in entries
                     if not item.get("archived") and not item.get("disabled")
                 )
-            except (KeyError, TypeError, StopIteration):
+            except (AttributeError, KeyError, TypeError, StopIteration):
                 raise ValueError("Provider returned an invalid repository grant") from None
+            self._assert_revision(provider, revision)
             url = response.links.get("next", {}).get("url") if provider != "bitbucket" else payload.get("next")
             if provider == "gitlab" and not url and response.headers.get("X-Next-Page"):
                 page = response.headers["X-Next-Page"]

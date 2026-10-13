@@ -356,3 +356,104 @@ async def test_bitbucket_authorization_code_cached_grant_also_requires_write_sco
     await connection.callback("bitbucket", state, "code", browser_nonce=start["browser_nonce"])
     with pytest.raises(ValueError, match="permissions"):
         await connection.repositories("bitbucket")
+
+
+async def test_github_inflight_token_is_rejected_after_application_configuration_changes(store, app_key):
+    import asyncio
+
+    started, release = asyncio.Event(), asyncio.Event()
+    expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+
+    async def handle(request):
+        started.set()
+        await release.wait()
+        return httpx.Response(201, json={"token": "obsolete-token", "expires_at": expiry})
+
+    connections = await github_connection(store, app_key, handle)
+    pending = asyncio.create_task(connections._github_token("42"))
+    await started.wait()
+    await connections.configure("github", {"values": {"installation_id": "35"}})
+    release.set()
+    with pytest.raises(ValueError, match="settings changed"):
+        await pending
+    assert not connections._tokens
+
+
+async def test_discovery_rejects_old_grants_after_application_changes(store, app_key):
+    import asyncio
+
+    started, release = asyncio.Event(), asyncio.Event()
+    expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+
+    async def handle(request):
+        if request.method == "POST":
+            return httpx.Response(201, json={"token": "grant-token", "expires_at": expiry})
+        started.set()
+        await release.wait()
+        return httpx.Response(200, json={"repositories": [repository_data()]})
+
+    connections = await github_connection(store, app_key, handle)
+    pending = asyncio.create_task(connections.connect("github", "42"))
+    await started.wait()
+    await connections.configure("github", {"values": {"installation_id": "35"}})
+    release.set()
+    with pytest.raises(ValueError, match="settings changed"):
+        await pending
+    assert await store.repositories() == []
+
+
+@pytest.mark.parametrize("payload", [[], {"token": 12, "expires_at": "2099-01-01T00:00:00Z"}])
+async def test_malformed_installation_grants_fail_closed_without_cache(store, app_key, payload):
+    connections = await github_connection(store, app_key, lambda request: httpx.Response(201, json=payload))
+    with pytest.raises(ValueError, match="invalid installation grant"):
+        await connections._github_token()
+    assert not connections._tokens
+
+
+@pytest.mark.parametrize("provider,payload", [("github", []), ("github", {"repositories": [1]}), ("gitlab", {})])
+async def test_malformed_repository_pages_fail_with_safe_provider_error(store, app_key, provider, payload):
+    from firefly_forge.scm_connections import SCMConnections
+
+    expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+
+    def handle(request):
+        if request.method == "POST":
+            return httpx.Response(201, json={"token": "grant-token", "expires_at": expiry})
+        return httpx.Response(200, json=payload)
+
+    connection = SCMConnections(store, client=httpx.AsyncClient(transport=httpx.MockTransport(handle)))
+    if provider == "github":
+        await connection.configure(
+            provider, {"values": {"app_id": "12", "installation_id": "34", "private_key": app_key}}
+        )
+    else:
+        await connection.configure(
+            provider,
+            {
+                "values": {
+                    "client_id": "client",
+                    "redirect_uri": "http://127.0.0.1:8787/api/v1/scm/connections/gitlab/callback",
+                }
+            },
+        )
+        data = connection.private._read(connection.path)
+        data[provider]["grant"] = {"access_token": "grant-token", "expires_at": 9999999999}
+        connection.private._write(connection.path, data)
+    with pytest.raises(ValueError, match="invalid repository grant"):
+        await connection.repositories(provider)
+
+
+@pytest.mark.parametrize("payload", [[], {"access_token": "token", "expires_in": 3600, "refresh_token": ["secret"]}])
+async def test_malformed_oauth_grants_fail_closed_without_persisting(store, payload):
+    from firefly_forge.scm_connections import SCMConnections
+
+    connection = SCMConnections(
+        store,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))),
+    )
+    await connection.configure(
+        "bitbucket", {"values": {"client_id": "client", "client_secret": "secret", "workspace": "team"}}
+    )
+    with pytest.raises(ValueError, match="invalid OAuth grant"):
+        await connection._oauth_token("bitbucket")
+    assert "grant" not in connection._record("bitbucket")

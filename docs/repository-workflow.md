@@ -56,6 +56,15 @@ Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/
 
 These flows are tested with isolated PostgreSQL schemas and provider HTTP transports. They do not claim a live customer repository has granted access or accepted a webhook. Validate those grants and one signed delivery on your deployment before enabling automatic work.
 
+The loopback HTTP lifecycle test also starts the authenticated PyFly API and
+provider fixture servers. For each managed provider, a trusted project comment
+reaches the inbox and receives one remote reply. A fixture disconnect after
+accepting a second reply leaves the receipt uncertain; repeated processing and
+operator reconciliation do not repost it. Revoking the fixture's repository
+grant prevents the next outbound comment. This demonstrates the local request
+and durable-receipt lifecycle, without claiming live provider installation or
+permission acceptance.
+
 ## Register projects from a shared provider channel
 
 Configure the connected GitHub App or OAuth application once, then save operator-authenticated `PUT /api/v1/collaboration/bootstrap/PROVIDER`. The setup fields are `enabled`, `auto_register`, `trusted_actors`, `configuration_actors`, `defaults`, and the write-only `webhook_secret`. `configuration_actors` must be a subset of trusted actors. Defaults use the repository collaboration schema; verification commands, stack, agent, publication and deployment settings remain operator-owned.
