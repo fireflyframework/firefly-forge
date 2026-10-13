@@ -7,14 +7,15 @@ import asyncio
 import copy
 import json
 import re
-import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
+from sqlalchemy import func, select
 
 from firefly_forge.agent_roles import roles_for_stage, stage_allowed_tools
 from firefly_forge.configuration import ConfigurationStore
@@ -126,7 +127,7 @@ class ToolInvocationBroker:
         arguments = SearchQuery.model_validate(arguments).model_dump()
         if not arguments["query"].strip() or len(arguments["query"].split()) > 75:
             raise ValueError("Search query must contain nonempty text and at most 75 words")
-        async with self.store._unit():
+        async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
             policy = frozen_policy(run.data.get("tool_policy_snapshot"))
@@ -159,7 +160,10 @@ class ToolInvocationBroker:
                 if previous.status == "succeeded":
                     return copy.deepcopy(previous.data["result"])
                 if previous.status == "rejected":
-                    raise ValueError(previous.data["error"]["message"])
+                    error = previous.data["error"]
+                    raise SearchProviderError(
+                        error["provider"], error["kind"], error["message"], status=error.get("status")
+                    )
                 if previous.status == "abandoned":
                     raise ValueError("This invocation was explicitly abandoned; it cannot be replayed")
                 raise ToolReconciliationRequired(
@@ -175,6 +179,7 @@ class ToolInvocationBroker:
             task = await self.journal._task(run_id, task_id)
             if task.status != "running" or run.data.get("active_task") != task_id:
                 raise ValueError("A tool invocation requires its active execution stage")
+            database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
             await self.records.save(
                 ForgeToolInvocationEntity(
                     id=uuid.uuid4(),
@@ -187,7 +192,7 @@ class ToolInvocationBroker:
                         "admission": request,
                         "request_digest": request_digest,
                         "created_at": now(),
-                        "lease_expires_at": time.time() + limits["timeout_seconds"] + 10,
+                        "lease_expires_at": database_time + limits["timeout_seconds"] + 10,
                     },
                 )
             )
@@ -195,9 +200,11 @@ class ToolInvocationBroker:
         try:
             async with asyncio.timeout(limits["timeout_seconds"]):
                 result = await callback()
-            if not isinstance(result, dict) or len(json.dumps(result).encode()) > limits["max_result_bytes"]:
+            if not isinstance(result, dict):
                 raise ValueError("Tool result exceeds its frozen response bound")
             result = {**result, "invocation_id": correlation_id}
+            if len(json.dumps(result).encode()) > limits["max_result_bytes"]:
+                raise ValueError("Tool result exceeds its frozen response bound")
             if contains_known_credential(result, self.credential_registry()):
                 raise ValueError("Tool result reflected configured credentials")
             await self._complete(run_id, correlation_id, "succeeded", {"result": result})
@@ -255,7 +262,7 @@ class ToolInvocationBroker:
     async def reconcile(self, run_id: str, correlation_id: str, reconciliation_id: str) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", reconciliation_id):
             raise ValueError("Reconciliation requires a stable request ID")
-        async with self.store._unit():
+        async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             rows = await self.records.for_run(run.id)
             row = next((item for item in rows if item.correlation_id == correlation_id), None)
@@ -270,7 +277,8 @@ class ToolInvocationBroker:
                 for item in rows
             ):
                 raise ValueError("Reconciliation request ID already belongs to another invocation")
-            if row.status == "pending" and row.data["lease_expires_at"] > time.time():
+            database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
+            if row.status == "pending" and row.data["lease_expires_at"] > database_time:
                 raise ValueError("This invocation may still be running; wait for its bounded lease to expire")
             row.status = "abandoned"
             actor = CURRENT_PRINCIPAL.get()

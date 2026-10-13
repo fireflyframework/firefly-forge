@@ -1,6 +1,8 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 import asyncio
 import importlib
+import json
+import time
 
 import pytest
 
@@ -11,10 +13,10 @@ from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.workspace_tools import tool_catalog
 
 
-async def seed(store, tmp_path, *, limit=3):
+async def seed(store, tmp_path, *, limit=3, max_bytes=256_000):
     module = importlib.import_module("firefly_forge.tool_broker")
     broker = module.ToolInvocationBroker(store, Journal(store), tmp_path / "broker")
-    broker.configure(module.ToolPolicyInput(calls_limit=limit, per_tool_limit=limit))
+    broker.configure(module.ToolPolicyInput(calls_limit=limit, per_tool_limit=limit, max_result_bytes=max_bytes))
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
     await store.set_repository_roles(repo["id"], ProjectRoles(allowed_tools={"implementer": ["internet_search"]}))
     snapshot = {
@@ -221,3 +223,70 @@ async def test_known_credentials_never_enter_invocation_wal(store, tmp_path):
     with pytest.raises(RuntimeError):
         await invoke(broker, run, source, "2" * 32, callback)
     assert "never-persist-this-key" not in str(await broker.journal.entries(run["id"]))
+
+
+@pytest.mark.asyncio
+async def test_two_instances_use_database_lease_time_despite_host_clock_skew(
+    store, store_factory, tmp_path, monkeypatch
+):
+    module, worker, run, source = await seed(store, tmp_path)
+    api_store = await store_factory(store.path)
+    api = module.ToolInvocationBroker(api_store, Journal(api_store), tmp_path / "broker")
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def callback():
+        started.set()
+        await release.wait()
+        return {"results": []}
+
+    monkeypatch.setattr(time, "time", lambda: 0)
+    pending = asyncio.create_task(invoke(worker, run, source, "1" * 32, callback))
+    await asyncio.wait_for(started.wait(), 3)
+    monkeypatch.setattr(time, "time", lambda: 10_000_000_000)
+    try:
+        with pytest.raises(ValueError, match="running"):
+            await api.reconcile(run["id"], "1" * 32, "2" * 32)
+    finally:
+        release.set()
+        outcomes = await asyncio.gather(pending, return_exceptions=True)
+    assert outcomes == [{"results": [], "invocation_id": "1" * 32}]
+    assert (await api.invocations(run["id"]))[0]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("final_size", [1024, 1025])
+async def test_final_packet_size_includes_correlation_metadata(store, tmp_path, final_size):
+    module, broker, run, source = await seed(store, tmp_path, max_bytes=1024)
+    overhead = len(json.dumps({"value": "", "invocation_id": "1" * 32}).encode())
+    payload = {"value": "x" * (final_size - overhead)}
+
+    async def callback():
+        return payload
+
+    if final_size == 1024:
+        result = await invoke(broker, run, source, "1" * 32, callback)
+        assert len(json.dumps(result).encode()) == 1024
+        assert (await broker.invocations(run["id"]))[0]["result"] == result
+    else:
+        with pytest.raises(module.ToolReconciliationRequired):
+            await invoke(broker, run, source, "1" * 32, callback)
+        assert (await broker.invocations(run["id"]))[0]["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,status", [("quota", 432), ("rate_limit", 429), ("authentication", 401)])
+async def test_rejected_receipt_replay_preserves_typed_error_without_another_request(store, tmp_path, kind, status):
+    from firefly_forge.search_tools import SearchProviderError
+
+    _, broker, run, source = await seed(store, tmp_path)
+    calls = []
+
+    async def callback():
+        calls.append(1)
+        raise SearchProviderError("tavily", kind, "Safe provider rejection", status=status)
+
+    for _ in range(2):
+        with pytest.raises(SearchProviderError) as raised:
+            await invoke(broker, run, source, "1" * 32, callback)
+        assert raised.value.kind == kind and raised.value.status == status
+    assert calls == [1]
