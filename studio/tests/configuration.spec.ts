@@ -87,6 +87,37 @@ test("operator configures an AI without reading back its key and selects version
           ],
         },
       });
+    else if (path.endsWith("/agent-roles/lifecycle"))
+      await route.fulfill({
+        json: {
+          permissions: { edit_registry: true, edit_project: true },
+          document: { version: "1", max_requests: 3, roles: [] },
+          effective_roles: [],
+          overrides: {
+            enabled: [],
+            disabled: [],
+            skills: {},
+            allowed_tools: {},
+          },
+          knowledge: {
+            status: "not_configured",
+            framework_scope: "not_configured",
+            verification: "Retained citations prove retrieval.",
+          },
+          skills: [],
+          tools: [],
+          limits: "Existing runs retain frozen snapshots.",
+          phases: [
+            {
+              id: "verify",
+              name: "Verify",
+              description: "Run actual commands",
+              handoff: "Retained check outcomes",
+              participants: [],
+            },
+          ],
+        },
+      });
     else if (path.endsWith("/workflow"))
       await route.fulfill({
         json: {

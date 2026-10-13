@@ -77,3 +77,13 @@ The catalog contains instruction adaptations, not downloaded executable plugins.
 | Human-readable prose | [Humanizer 225a6f39](https://github.com/blader/humanizer/tree/225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8) | MIT; Siqi Chen |
 
 The adaptations preserve authorized product decisions, factory request/repair budgets and actual tooling. They exclude upstream helper execution, installation commands and automatic commits or publication. Humanizer applies to prose while preserving commands, contracts, code and links; pattern checks do not prove editorial quality. First-party security instructions supplement these sources without claiming a community security certification.
+
+## Lifecycle explorer
+
+The **Agents & skills** workspace starts with the lifecycle explorer. Select factory defaults or a repository, then choose a phase to inspect its participants, execution binding, applied skills, tool availability, knowledge scope and next handoff. Project policies remain below the explorer.
+
+The explorer uses `GET /api/v1/agent-roles/lifecycle` and `GET /api/v1/repositories/{id}/agent-roles/lifecycle`. These read projections describe current configuration. They do not start a conversation, retrieve knowledge, probe a runner, create a run or publish source. The scoped view requires current repository read authority. Global registry edits require a factory administrator; repository role overrides require the existing repository membership-management permission.
+
+Choose **Edit** on an instruction role to change its factory instructions or its project skill and native-tool selections. The execution binding and stages stay fixed. Only documentation guidance can be disabled. A draft survives phase navigation and failed saves; close or save it before changing the project. Saving affects later admitted work and leaves retained run snapshots intact.
+
+Product dialogue participants are separate from these seven instruction roles. Their task skills are selected from the current validated catalog and frozen in each admitted turn. They do not reuse the deterministic architect role as a model agent. See the [agent lifecycle guide](agent-lifecycle.md) for the phase, skill and knowledge contracts.

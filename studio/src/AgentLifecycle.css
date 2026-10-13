@@ -1,0 +1,150 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.agent-lifecycle {
+  min-width: 0;
+  margin-bottom: 24px;
+}
+.agent-lifecycle .section-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.agent-lifecycle .field {
+  max-width: 520px;
+}
+.lifecycle-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 24px;
+}
+.lifecycle-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: start;
+}
+.lifecycle-phases button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+}
+.lifecycle-phases button span {
+  font-size: 12px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+.lifecycle-phases button.active {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-color: var(--line);
+}
+.lifecycle-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.lifecycle-participant {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.lifecycle-participant h4 {
+  margin: 0;
+  font-size: 17px;
+}
+.lifecycle-participant details {
+  margin: 16px 0;
+}
+.lifecycle-evidence {
+  display: grid;
+  gap: 12px;
+}
+.lifecycle-evidence div {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+}
+.lifecycle-evidence dt {
+  font-weight: 600;
+}
+.lifecycle-evidence dd {
+  margin: 0;
+}
+.lifecycle-skill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin: 12px 0;
+}
+.lifecycle-handoff {
+  margin-top: 20px;
+  padding: 16px;
+  border-left: 3px solid var(--accent-ink);
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.lifecycle-handoff p {
+  margin-bottom: 0;
+}
+.lifecycle-editor {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.lifecycle-editor fieldset {
+  min-width: 0;
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.lifecycle-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.lifecycle-editor .check-choice {
+  margin: 8px 0;
+}
+.lifecycle-editor textarea {
+  min-height: 130px;
+}
+.lifecycle-knowledge {
+  margin-top: 24px;
+}
+.lifecycle-limit {
+  margin-top: 16px;
+  font-size: 13px;
+}
+@media (max-width: 720px) {
+  .lifecycle-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .lifecycle-phases {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .lifecycle-phases button {
+    padding: 10px 6px;
+  }
+  .lifecycle-evidence div,
+  .lifecycle-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lifecycle-evidence div {
+    gap: 4px;
+  }
+  .agent-lifecycle {
+    padding: 16px;
+  }
+}
+
+.lifecycle-process > summary {
+  margin-bottom: 12px;
+  font-weight: 600;
+}

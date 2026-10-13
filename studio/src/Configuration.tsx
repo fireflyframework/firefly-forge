@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { AgentLifecycle } from "./AgentLifecycle";
 import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -47,22 +48,6 @@ type Catalog = {
   revision: string;
   digest: string;
   source: { kind: string; repository_url?: string };
-};
-type Workflow = {
-  stages: {
-    id: string;
-    name: string;
-    description: string;
-    roles: string[];
-    tools: string[];
-  }[];
-  agents: {
-    id: string;
-    name: string;
-    description: string;
-    provider_independent: boolean;
-  }[];
-  tools: { id: string; name: string; description: string }[];
 };
 const message = (cause: unknown) =>
   cause instanceof Error
@@ -268,7 +253,6 @@ export function Workshop({
 }) {
   const projectLabels = repositoryLabels(repositories);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [repository, setRepository] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -279,11 +263,9 @@ export function Workshop({
     const controller = new AbortController();
     Promise.all([
       request<Catalog>(connection, "/policies", { signal: controller.signal }),
-      request<Workflow>(connection, "/workflow", { signal: controller.signal }),
     ])
-      .then(([policies, stages]) => {
+      .then(([policies]) => {
         setCatalog(policies);
-        setWorkflow(stages);
       })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(message(cause));
@@ -368,6 +350,9 @@ export function Workshop({
         <div className="notice" role="status">
           {notice}
         </div>
+      )}
+      {connected && (
+        <AgentLifecycle connection={connection} repositories={repositories} />
       )}
       {catalog && (
         <section className="panel catalog-panel">
@@ -479,49 +464,6 @@ export function Workshop({
             </form>
           </details>
         </section>
-      )}
-      {workflow && (
-        <>
-          <section className="workflow-section">
-            <h2>Execution stages</h2>
-            <ol className="workflow-stages">
-              {workflow.stages?.map((stage) => (
-                <li key={stage.id}>
-                  <strong>{stage.name}</strong>
-                  <p>{stage.description}</p>
-                  <small>{stage.roles?.join(", ")}</small>
-                </li>
-              ))}
-            </ol>
-          </section>
-          <section className="workflow-section">
-            <h2>Execution roles</h2>
-            <div className="role-grid">
-              {workflow.agents?.map((agent) => (
-                <article className="panel" key={agent.id}>
-                  <h3>{agent.name}</h3>
-                  <p>{agent.description}</p>
-                  <span className="badge">
-                    {agent.provider_independent
-                      ? "Factory service"
-                      : "Selected coding provider"}
-                  </span>
-                </article>
-              ))}
-            </div>
-          </section>
-          <section className="workflow-section">
-            <h2>Available tools</h2>
-            <dl className="tool-list">
-              {workflow.tools?.map((tool) => (
-                <div key={tool.id}>
-                  <dt>{tool.name}</dt>
-                  <dd>{tool.description}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        </>
       )}
     </>
   );
