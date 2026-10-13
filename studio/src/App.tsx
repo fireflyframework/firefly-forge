@@ -38,7 +38,6 @@ import {
   ShieldCheck,
   Square,
   Sun,
-  Terminal,
   Unplug,
   X,
 } from "lucide-react";
@@ -61,6 +60,7 @@ import { SourceControl } from "./SourceControl";
 import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
+import { EvidenceView, UnifiedDiff } from "./ExecutionPresentation";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -2272,7 +2272,17 @@ function RunDetail({
                           "Run event",
                       )}
                     </h3>
-                    <p>{String(event.detail ?? event.stage ?? "")}</p>
+                    <EvidenceView
+                      value={event}
+                      omitFields={[
+                        "message",
+                        "type",
+                        "event",
+                        "timestamp",
+                        "at",
+                        "created_at",
+                      ]}
+                    />
                     <time>
                       {date(
                         String(
@@ -2304,25 +2314,7 @@ function RunDetail({
               ))}
             </div>
             {run.diff ? (
-              <pre className="diff" aria-label="Git diff">
-                {run.diff.split("\n").map((line, index) => (
-                  <span
-                    key={index}
-                    className={
-                      line.startsWith("+")
-                        ? "addition"
-                        : line.startsWith("-")
-                          ? "deletion"
-                          : line.startsWith("@@")
-                            ? "hunk"
-                            : ""
-                    }
-                  >
-                    {line}
-                    {"\n"}
-                  </span>
-                ))}
-              </pre>
+              <UnifiedDiff value={run.diff} />
             ) : (
               <Empty
                 title="No diff reported yet"
@@ -2334,34 +2326,15 @@ function RunDetail({
         {tab === "verification" &&
           (verification.length ? (
             verification.map(([name, result]) => (
-              <article className="verification" key={name}>
-                <div>
-                  <Terminal size={18} />
-                  <strong>
-                    {Array.isArray(result.argv)
-                      ? result.argv.join(" ")
-                      : String(result.command ?? result.name ?? name)}
-                  </strong>
-                  <Badge
-                    status={
-                      result.exit_code === 0 || result.passed === true
-                        ? "passed"
-                        : String(
-                            result.status ??
-                              (result.exit_code !== undefined
-                                ? "failed"
-                                : "not run"),
-                          )
-                    }
-                  />
-                </div>
-                <pre>
-                  {String(
-                    result.stdout ?? result.output ?? result.detail ?? "",
-                  )}
-                  {result.stderr ? "\n" + String(result.stderr) : ""}
-                </pre>
-              </article>
+              <EvidenceView
+                key={name}
+                value={result}
+                title={
+                  Array.isArray(result.argv) || result.command
+                    ? undefined
+                    : name
+                }
+              />
             ))
           ) : (
             <Empty
@@ -2382,11 +2355,7 @@ function RunDetail({
                 </div>
               )}
               {run.artifacts.map((artifact, index) => (
-                <pre key={index}>
-                  {typeof artifact === "string"
-                    ? artifact
-                    : JSON.stringify(artifact, null, 2)}
-                </pre>
+                <EvidenceView key={index} value={artifact} />
               ))}
             </div>
           ) : (

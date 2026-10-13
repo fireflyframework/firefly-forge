@@ -1,0 +1,397 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.record-evidence,
+.record-output,
+.record-diff,
+.record-diff-file,
+.record-fields,
+.record-fields dd,
+.record-list {
+  min-width: 0;
+  max-width: 100%;
+}
+.record-evidence {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.record-evidence h4 {
+  margin: 12px 0;
+  font-size: 14px;
+}
+.record-fields {
+  margin: 12px 0;
+  display: grid;
+  gap: 10px;
+}
+.record-fields > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 145px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.record-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.record-fields dd {
+  margin: 0;
+  line-height: 1.7;
+}
+.record-fields dd > .record-evidence > .record-fields {
+  margin-top: 0;
+}
+.record-list {
+  display: grid;
+  gap: 12px;
+}
+.record-list > .record-evidence + .record-evidence {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+}
+.record-command {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.record-command-heading,
+.record-command-meta,
+.record-output-heading,
+.record-diff-heading,
+.record-diff-file header,
+.record-output-limit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.record-command-heading > code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.record-command-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.record-outcome {
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+}
+.record-outcome.passed {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+.record-outcome.failed {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+.record-output {
+  margin: 12px 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.record-output-heading {
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+.record-copy {
+  max-width: 100%;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.record-copy button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.record-copy-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+.record-copy-status:empty {
+  display: none;
+}
+.record-output > pre,
+.execution-record .record-output > pre {
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    12px/1.8 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+.record-output-limit {
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line-soft);
+}
+.record-output-limit > span {
+  flex: 1;
+  min-width: 120px;
+}
+.record-output-limit > button {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.record-advanced {
+  margin-top: 12px;
+}
+.record-advanced > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.record-code-line {
+  display: flex;
+  gap: 12px;
+}
+.record-code-line > span:last-child {
+  min-width: 0;
+}
+.record-code-number {
+  color: var(--muted);
+  flex: 0 0 3ch;
+  text-align: right;
+  user-select: none;
+}
+.record-diff-heading {
+  justify-content: space-between;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.record-diff-file {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.record-diff-file header {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+.record-diff-file header strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.record-diff-count {
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+.record-diff-count.added {
+  color: var(--success-ink);
+}
+.record-diff-count.removed {
+  color: var(--danger-ink);
+}
+.record-diff-scroll {
+  overflow: auto;
+  max-height: 600px;
+}
+.record-diff table {
+  border-collapse: collapse;
+  width: 100%;
+  font:
+    12px/1.8 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+.record-diff th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+.record-diff td {
+  padding: 0 8px;
+  vertical-align: top;
+}
+.record-diff td:nth-child(-n + 2) {
+  width: 5ch;
+  color: var(--muted);
+  border-right: 1px solid var(--line-soft);
+  text-align: right;
+  user-select: none;
+}
+.record-diff td:nth-child(3) {
+  width: 2ch;
+}
+.record-diff td:last-child {
+  white-space: pre;
+  width: 100%;
+}
+.record-diff-addition {
+  background: var(--success-bg);
+}
+.record-diff-deletion {
+  background: var(--danger-bg);
+}
+.record-diff-addition td:nth-child(3) {
+  color: var(--success-ink);
+}
+.record-diff-deletion td:nth-child(3) {
+  color: var(--danger-ink);
+}
+.record-diff-hunk {
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+.record-diff-metadata {
+  color: var(--muted);
+}
+.code-token-keyword {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.code-token-string {
+  color: var(--success-ink);
+}
+.code-token-number {
+  color: var(--danger-ink);
+}
+.code-token-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+.execution-record .record-ledger-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.record-sequence {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+.execution-record .record-ledger-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+.record-ledger-meta time {
+  margin-top: 0;
+}
+.execution-record .record-ledger-hash {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+.execution-record .record-ledger-hash code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.record-ledger-integrity {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.record-task-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.record-task-heading > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.record-evidence button:focus-visible,
+.record-output pre:focus-visible,
+.record-diff-scroll:focus-visible,
+.record-advanced summary:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .record-fields > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .record-command {
+    padding: 10px;
+  }
+  .record-command-heading {
+    display: grid;
+    grid-template-columns: 17px minmax(0, 1fr);
+  }
+  .record-command-heading .record-outcome {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .record-output-heading {
+    align-items: flex-start;
+  }
+  .record-diff th,
+  .record-diff td {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  .record-diff-scroll {
+    max-height: 360px;
+  }
+  .record-output > pre,
+  .execution-record .record-output > pre {
+    max-height: 220px;
+  }
+}
+@media (max-height: 650px) {
+  .record-output > pre,
+  .execution-record .record-output > pre {
+    max-height: 180px;
+  }
+  .record-diff-scroll {
+    max-height: 260px;
+  }
+}
+
+.run-detail .timeline li > div {
+  min-width: 0;
+  flex: 1;
+}
+.evidence-content > .record-evidence + .record-evidence {
+  margin-top: 16px;
+}

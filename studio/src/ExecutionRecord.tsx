@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { post, request, type Connection, type ForgeRun } from "./api";
 import type { DevelopmentPlan } from "./factory";
+import { EvidenceView, journalDisposition } from "./ExecutionPresentation";
 
 type Journal = {
   valid: boolean;
@@ -11,6 +12,8 @@ type Journal = {
     kind: string;
     created_at: string;
     digest: string;
+    previous_hash?: string;
+    idempotency_key?: string;
     payload: Record<string, unknown>;
   }[];
 };
@@ -167,7 +170,7 @@ export function ExecutionRecord({
       <ol className="execution-tasks">
         {plan?.tasks?.map((task) => (
           <li key={task.id}>
-            <div>
+            <div className="record-task-heading">
               <strong>{task.title ?? task.id}</strong>
               <span className={`station-state ${task.status}`}>
                 {task.status.replaceAll("_", " ")}
@@ -179,10 +182,7 @@ export function ExecutionRecord({
               <p className="task-error">{task.error.message}</p>
             )}
             {task.evidence && (
-              <details>
-                <summary>Recorded result</summary>
-                <pre>{JSON.stringify(task.evidence, null, 2)}</pre>
-              </details>
+              <EvidenceView value={task.evidence} title="Recorded result" />
             )}
           </li>
         ))}
@@ -206,24 +206,62 @@ export function ExecutionRecord({
           <h2>Execution journal</h2>
           {journal && (
             <span className={"badge " + (journal.valid ? "success" : "failed")}>
-              {journal.valid ? "Chain verified" : "Chain verification failed"}
+              {journal.valid
+                ? "Chain verified by server"
+                : "Chain verification failed"}
             </span>
           )}
         </div>
+        <p className="record-ledger-integrity">
+          Ordered write-ahead intents and receipts. Chain verification checks
+          record integrity; a receipt records the outcome separately.
+        </p>
+        {journal && !journal.entries.length && (
+          <p className="subtle">No journal records have been reported.</p>
+        )}
         <ol className="journal-entries">
           {journal?.entries?.map((entry) => (
             <li key={entry.sequence}>
-              <div>
-                <span>{entry.sequence}</span>
-                <strong>{entry.task_id}</strong>
-                <span>{entry.kind}</span>
+              <div className="record-ledger-heading">
+                <span
+                  className="record-sequence"
+                  aria-label={`Sequence ${entry.sequence}`}
+                >
+                  {entry.sequence}
+                </span>
+                <strong>
+                  {plan?.tasks.find((task) => task.id === entry.task_id)
+                    ?.title ?? entry.task_id}
+                </strong>
+                <span className="badge">{entry.kind.replaceAll("_", " ")}</span>
               </div>
-              <time>{new Date(entry.created_at).toLocaleString()}</time>
-              <details>
-                <summary>Evidence and record hash</summary>
-                <pre>{JSON.stringify(entry.payload, null, 2)}</pre>
-                <small>{entry.digest}</small>
-              </details>
+              <div className="record-ledger-meta">
+                <time dateTime={entry.created_at}>
+                  {new Date(entry.created_at).toLocaleString()}
+                </time>
+                {journalDisposition(entry, journal.entries) && (
+                  <span className="record-outcome">
+                    {journalDisposition(entry, journal.entries)}
+                  </span>
+                )}
+              </div>
+              <EvidenceView value={entry.payload} />
+              <div className="record-ledger-hash">
+                <span>Record hash</span>
+                <code>{entry.digest}</code>
+                {entry.previous_hash && (
+                  <>
+                    <span>Previous hash</span>
+                    <code>{entry.previous_hash}</code>
+                  </>
+                )}
+                {entry.idempotency_key && (
+                  <>
+                    <span>Intent key</span>
+                    <code>{entry.idempotency_key}</code>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ol>
