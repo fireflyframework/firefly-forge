@@ -1,10 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 test.use({ launchOptions: { args: ["--enable-unsafe-swiftshader"] } });
 
-test("a real machinery clip begins only after the carrier arrives, and blocked work stays at that station", async ({
-  page,
-}) => {
+async function fixture(page: Page) {
   await page.route("**/api/v1/**", (route) =>
     route.fulfill({ status: 401, json: { detail: "Local renderer fixture" } }),
   );
@@ -55,7 +53,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
     document.body.append(mount);
     const root = createRoot(mount);
     let state = "waiting",
-      suspended = false;
+      suspended = false,
+      target = "implement";
     const render = () =>
       root.render(
         createElement(FactoryScene, {
@@ -75,11 +74,13 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
             id,
             label: id,
             state:
-              id === "prepare"
-                ? "done"
-                : id === "implement"
-                  ? state
-                  : "waiting",
+              state === "reset"
+                ? "waiting"
+                : id === "prepare"
+                  ? "done"
+                  : id === target
+                    ? state
+                    : "waiting",
             detail: "Local renderer fixture; no factory execution",
           })),
         }),
@@ -92,11 +93,22 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
       suspended = (event as CustomEvent<boolean>).detail;
       render();
     });
+    document.addEventListener("arrival-fixture-target", (event) => {
+      target = (event as CustomEvent<string>).detail;
+      render();
+    });
     mount.id = "arrival-fixture";
     render();
   });
   const scene = page.locator(".factory-live");
   await expect(scene).toHaveAttribute("data-renderer", "webgl");
+  return scene;
+}
+
+test("a real machinery clip begins only after the carrier arrives, and blocked work stays at that station", async ({
+  page,
+}) => {
+  const scene = await fixture(page);
   await expect
     .poll(() =>
       page.evaluate(
@@ -188,4 +200,76 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));`,
       "implement",
     );
   }
+});
+
+test("reduced-motion target updates display each actual station and a new run starts at its first receipt", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await fixture(page);
+  const position = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { factoryCarrier: { position: { x: number } } })
+          .factoryCarrier.position.x,
+    );
+  await expect.poll(position).toBe(-12.3);
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent("arrival-fixture-state", { detail: "active" }),
+    ),
+  );
+  await expect.poll(position).toBe(-8.2);
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent("arrival-fixture-target", { detail: "verify" }),
+    ),
+  );
+  await expect.poll(position).toBe(-4.1);
+  await page.waitForTimeout(200);
+  expect(await position()).toBe(-4.1);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { factoryClipStarts?: unknown[] })
+          .factoryClipStarts ?? [],
+    ),
+  ).toEqual([]);
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent("arrival-fixture-state", { detail: "reset" }),
+    ),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { factoryCarrier: { visible: boolean } })
+            .factoryCarrier.visible,
+      ),
+    )
+    .toBe(false);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent("arrival-fixture-target", { detail: "implement" }),
+    ),
+  );
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent("arrival-fixture-state", { detail: "active" }),
+    ),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              factoryClipStarts?: { id: string; x: number }[];
+            }
+          ).factoryClipStarts?.find((item) => item.id === "implement")?.x,
+      ),
+    )
+    .toBe(-8.2);
 });

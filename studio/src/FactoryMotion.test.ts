@@ -79,7 +79,7 @@ describe("recorded carrier and machinery synchronization", () => {
       expect(motion.needsMotion).toBe(false);
     },
   );
-  it.each(["hidden", "offscreen", "suspended", "reduced"] as const)(
+  it.each(["hidden", "offscreen", "suspended"] as const)(
     "freezes %s without resetting travel or machinery pose",
     (gate) => {
       const motion = new FactoryMotion(layout);
@@ -98,6 +98,41 @@ describe("recorded carrier and machinery synchronization", () => {
       expect(motion.x).toBeLessThan(4);
     },
   );
+  it("places reduced-motion receipts at their actual station without travel or machinery", () => {
+    const motion = new FactoryMotion(layout);
+    motion.update(stations("prepare"), { reduced: true });
+    motion.update(stations("implement"), { reduced: true });
+    expect(motion.x).toBe(4);
+    expect(motion.workingStation).toBeNull();
+    expect(motion.needsMotion).toBe(false);
+    motion.advance(10);
+    expect(motion.x).toBe(4);
+    motion.update(stations("verify"), { reduced: true });
+    expect(motion.x).toBe(8);
+    motion.update(stations("verify"));
+    expect(motion.travelling).toBe(false);
+    expect(motion.workingStation).toBe("verify");
+  });
+  it("starts a new run at its first receipt after a waiting or empty reset", () => {
+    const motion = new FactoryMotion(layout);
+    motion.update(stations("verify"));
+    motion.update(
+      layout.map(({ id }) => ({
+        id,
+        label: id,
+        state: "waiting",
+        detail: "New run waiting",
+      })),
+    );
+    expect(motion.targetStation).toBeNull();
+    motion.update(stations("implement"));
+    expect(motion.x).toBe(4);
+    expect(motion.travelling).toBe(false);
+    motion.update([]);
+    motion.update(stations("prepare"));
+    expect(motion.x).toBe(0);
+    expect(motion.travelling).toBe(false);
+  });
   it("does not reset for same-target polls and follows only the latest receipt without overshoot", () => {
     const motion = new FactoryMotion(layout);
     motion.update(stations("prepare"));

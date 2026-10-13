@@ -53,9 +53,10 @@ export class FactoryMotion {
     if (!position) {
       this.targetStation = null;
       this.transition = null;
+      this.initialized = false;
       return;
     }
-    if (!this.initialized || !this.active) {
+    if (!this.initialized || !this.active || gates.reduced) {
       this.x = position.x;
       this.transition = null;
     } else if (target !== this.targetStation) {
