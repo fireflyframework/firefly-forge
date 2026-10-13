@@ -1,0 +1,272 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.conversation-files-dialog {
+  position: fixed;
+  inset: 16px;
+  margin: auto;
+  width: min(680px, calc(100vw - 32px));
+  height: min(760px, calc(100dvh - 32px));
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 80px rgb(0 0 0 / 0.3);
+}
+.conversation-files-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+.conversation-files-dialog > header {
+  display: flex;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.conversation-files-dialog > header > div {
+  flex: 1;
+  min-width: 0;
+}
+.conversation-files-dialog h2 {
+  font-size: 22px;
+  line-height: 1.4;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.conversation-files-dialog h2 svg {
+  flex: none;
+}
+.conversation-files-dialog header p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.conversation-files-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.conversation-file-drop {
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.conversation-file-drop.dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.conversation-file-drop p,
+.conversation-file-drop small {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+  display: block;
+  margin-top: 8px;
+}
+.conversation-file-pending {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.conversation-file-pending h3 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.conversation-file-pending p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 8px 0 12px;
+  color: var(--muted);
+}
+.conversation-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.conversation-saved-files h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.conversation-saved-files > p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.conversation-saved-files article {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.conversation-saved-files .check-choice {
+  align-items: start;
+}
+.conversation-file-download {
+  margin-top: 12px;
+  font-size: 13px;
+  max-width: 100%;
+  white-space: normal;
+}
+.conversation-saved-files strong,
+.conversation-saved-files small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.conversation-saved-files small,
+.conversation-saved-files p,
+.conversation-saved-files details {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.conversation-saved-files code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.conversation-files-note {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.conversation-files-dialog > footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.conversation-file-tray {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding-bottom: 4px;
+}
+.conversation-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+.conversation-file-chip > span {
+  min-width: 0;
+}
+.conversation-file-chip strong {
+  display: block;
+  max-width: 140px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.conversation-file-chip small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.product-assistant-panel .conversation-file-chip button {
+  width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  flex: none;
+}
+.assistant-composer-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+.product-assistant-panel .assistant-composer-actions button {
+  width: auto;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.product-assistant-panel .assistant-file-guidance {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-height: 44px;
+  overflow: auto;
+}
+@media (max-width: 600px) {
+  .conversation-files-dialog {
+    inset: 12px;
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+  }
+  .conversation-files-dialog > header,
+  .conversation-files-body {
+    padding: 16px;
+  }
+  .conversation-files-dialog h2 {
+    font-size: 19px;
+  }
+  .conversation-files-dialog > footer {
+    padding: 16px;
+  }
+  .conversation-file-drop {
+    padding: 16px;
+  }
+}
+.product-assistant-panel .assistant-composer .conversation-file-chip button {
+  width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  flex: none;
+}
+.product-assistant-panel
+  .assistant-composer
+  .assistant-composer-actions
+  button {
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+  white-space: nowrap;
+}
+.product-assistant-panel .assistant-composer .conversation-file-tray {
+  margin: 0;
+  padding-bottom: 4px;
+}
+
+.conversation-file-tray {
+  flex-wrap: wrap;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 112px;
+  align-items: center;
+}
+.conversation-file-chip {
+  flex: 1 1 170px;
+  max-width: 100%;
+}
+.conversation-file-chip > span {
+  flex: 1;
+}
+.product-assistant-panel .assistant-composer .conversation-more-files,
+.product-assistant-panel .conversation-more-files {
+  width: auto;
+  min-height: 28px;
+  padding: 6px;
+  white-space: nowrap;
+  flex: none;
+  font-size: 13px;
+}

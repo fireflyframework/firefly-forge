@@ -1,0 +1,213 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+"""Versioned, additive startup migration for Forge's own PostgreSQL tables."""
+
+from __future__ import annotations
+
+import os
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from firefly_forge.access_persistence import ForgeAccessEventEntity, ForgeMembershipEntity
+from firefly_forge.application_persistence import ForgeIncidentEntity, ForgeObservationEntity
+from firefly_forge.assistant_attachment_persistence import ForgeAssistantAttachmentEntity
+from firefly_forge.assistant_persistence import (
+    ForgeAssistantEventEntity,
+    ForgeAssistantSessionEntity,
+    ForgeAssistantTurnEntity,
+)
+from firefly_forge.collaboration_persistence import (
+    ForgeChannelInboxEntity,
+    ForgeCollaborationSettingsEntity,
+    ForgeProductDefinitionEntity,
+    ForgeWebhookInboxEntity,
+)
+from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity, ForgeExecutionRequestEventEntity
+from firefly_forge.identity_persistence import (
+    ForgeIdentityAttemptEntity,
+    ForgeIdentitySessionEntity,
+    ForgeIdentityUserEntity,
+)
+from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadEntity
+from firefly_forge.persistence import (
+    ForgeDeploymentEntity,
+    ForgeEventEntity,
+    ForgeJournalEntity,
+    ForgePlanEntity,
+    ForgeRepositoryEntity,
+    ForgeRunEntity,
+    ForgeTaskEntity,
+)
+from firefly_forge.project_campaign_persistence import (
+    ForgeCampaignChildEntity,
+    ForgeCampaignEntity,
+    ForgeCampaignEventEntity,
+)
+from firefly_forge.project_persistence import ForgeAnalysisEntity, ForgeProjectEntity, ForgeProjectRevisionEntity
+from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyEntity
+from firefly_forge.sandbox_persistence import ForgeSandboxEntity
+from firefly_forge.user_administration_persistence import (
+    ForgeIdentityAdminEventEntity,
+    ForgeIdentityAdminOperationEntity,
+)
+
+SCHEMA_REVISION = 18
+
+
+async def migrate(session: AsyncSession, schema: str) -> None:
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": "forge:migration:" + schema}
+    )
+    await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    await session.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+    await session.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS forge_schema_migrations "
+            "(revision INTEGER PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        )
+    )
+    version = await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations"))
+    if version is not None and version > SCHEMA_REVISION:
+        raise RuntimeError("The PostgreSQL schema requires a newer Forge release")
+    if version is None or version < SCHEMA_REVISION:
+        connection = await session.connection()
+        tables = [
+            ForgeRunEntity.metadata.tables[entity.__tablename__]
+            for entity in (
+                ForgeRuntimeTopologyEntity,
+                ForgeExecutionRequestEntity,
+                ForgeExecutionRequestEventEntity,
+                ForgeRepositoryEntity,
+                ForgeRunEntity,
+                ForgeEventEntity,
+                ForgeDeploymentEntity,
+                ForgePlanEntity,
+                ForgeTaskEntity,
+                ForgeJournalEntity,
+                ForgeObservationEntity,
+                ForgeIncidentEntity,
+                ForgeCollaborationSettingsEntity,
+                ForgeWebhookInboxEntity,
+                ForgeProductDefinitionEntity,
+                ForgeChannelInboxEntity,
+                ForgeKnowledgeUploadEntity,
+                ForgeProjectEntity,
+                ForgeProjectRevisionEntity,
+                ForgeAnalysisEntity,
+                ForgeAssistantSessionEntity,
+                ForgeAssistantTurnEntity,
+                ForgeAssistantEventEntity,
+                ForgeAssistantAttachmentEntity,
+                ForgeSandboxEntity,
+                ForgeCampaignEntity,
+                ForgeCampaignChildEntity,
+                ForgeCampaignEventEntity,
+                ForgeIdentityUserEntity,
+                ForgeIdentitySessionEntity,
+                ForgeIdentityAttemptEntity,
+                ForgeMembershipEntity,
+                ForgeAccessEventEntity,
+                ForgeIdentityAdminOperationEntity,
+                ForgeIdentityAdminEventEntity,
+            )
+        ]
+        await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
+        await session.execute(
+            text("ALTER TABLE forge_identity_users ADD COLUMN IF NOT EXISTS contact_email VARCHAR(320)")
+        )
+        await session.execute(
+            text(
+                "ALTER TABLE forge_identity_users "
+                "ADD COLUMN IF NOT EXISTS api_roles JSONB NOT NULL DEFAULT '[]'::jsonb, "
+                "ADD COLUMN IF NOT EXISTS api_roles_audience VARCHAR(2048), "
+                "ADD COLUMN IF NOT EXISTS api_roles_issued_at DOUBLE PRECISION, "
+                "ADD COLUMN IF NOT EXISTS api_roles_expires_at TIMESTAMPTZ"
+            )
+        )
+        await session.execute(
+            text(
+                "ALTER TABLE forge_assistant_turns "
+                "ADD COLUMN IF NOT EXISTS owner_id VARCHAR(32), "
+                "ADD COLUMN IF NOT EXISTS claim_epoch BIGINT NOT NULL DEFAULT 0, "
+                "ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ, "
+                "ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ"
+            )
+        )
+        issuer = os.environ.get("FORGE_OIDC_ISSUER")
+        if issuer:
+            await session.execute(
+                text(
+                    "UPDATE forge_identity_users AS u SET "
+                    "contact_email=p.data #>> '{request,email}', "
+                    "display_name=COALESCE(NULLIF(u.display_name,''), "
+                    "NULLIF(left(trim(concat_ws(' ',p.data #>> '{request,first_name}', "
+                    "p.data #>> '{request,last_name}')),200),''), "
+                    "left(p.data #>> '{request,username}',200)) "
+                    "FROM forge_identity_admin_operations AS p "
+                    "WHERE u.issuer=:issuer AND u.contact_email IS NULL "
+                    "AND p.kind='provision' AND p.status='completed' "
+                    "AND p.data->>'user_id'=replace(u.id::text,'-','') "
+                    "AND p.data->>'subject'=u.subject "
+                    "AND length(p.data #>> '{request,email}') BETWEEN 3 AND 320 "
+                    "AND p.data #>> '{request,email}' ~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' "
+                    "AND EXISTS (SELECT 1 FROM forge_identity_admin_events AS e "
+                    "WHERE e.operation_id=p.id AND e.data->>'kind'='remote_receipt' "
+                    "AND e.data #>> '{payload,status}'='completed' "
+                    "AND e.data #>> '{payload,user_id}'=replace(u.id::text,'-','') "
+                    "AND e.data #>> '{payload,subject}'=u.subject)"
+                ),
+                {"issuer": issuer},
+            )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION forge_refuse_immutable_change() "
+                "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                "RAISE EXCEPTION 'Forge execution history is immutable'; END; $$"
+            )
+        )
+        for table in (
+            "forge_runtime_topology",
+            "forge_execution_request_events",
+            "forge_plans",
+            "forge_journal",
+            "forge_observations",
+            "forge_product_definitions",
+            "forge_project_revisions",
+            "forge_assistant_events",
+            "forge_assistant_attachments",
+            "forge_campaign_children",
+            "forge_campaign_events",
+            "forge_access_events",
+            "forge_identity_admin_events",
+        ):
+            await session.execute(
+                text(
+                    f"CREATE OR REPLACE TRIGGER {table}_immutable "
+                    f"BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW "
+                    "EXECUTE FUNCTION forge_refuse_immutable_change()"
+                )
+            )
+        await session.execute(
+            text("""
+            CREATE OR REPLACE FUNCTION forge_guard_execution_request() RETURNS trigger AS $$
+            BEGIN
+              IF OLD.run_id IS DISTINCT FROM NEW.run_id OR OLD.kind IS DISTINCT FROM NEW.kind
+                OR OLD.request_key IS DISTINCT FROM NEW.request_key
+                OR OLD.data->'request' IS DISTINCT FROM NEW.data->'request'
+                OR OLD.data->'request_digest' IS DISTINCT FROM NEW.data->'request_digest' THEN
+                RAISE EXCEPTION 'Execution request admission is immutable';
+              END IF;
+              RETURN NEW;
+            END; $$ LANGUAGE plpgsql
+        """)
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_execution_request_admission "
+                "BEFORE UPDATE ON forge_execution_requests FOR EACH ROW "
+                "EXECUTE FUNCTION forge_guard_execution_request()"
+            )
+        )
+        await session.execute(
+            text("INSERT INTO forge_schema_migrations(revision) VALUES (:revision)"), {"revision": SCHEMA_REVISION}
+        )

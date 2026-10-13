@@ -9,6 +9,15 @@ from typing import Any
 
 _BACKENDS = [
     {
+        "id": "none",
+        "name": "Frontend only",
+        "version": "No backend",
+        "detail": "A standalone browser application connected to documented service contracts.",
+        "source": "",
+        "instruction": "Do not create a backend. Implement the selected frontend against documented API contracts. "
+        "Keep credentials server-side in the authorized service; do not embed service secrets in the browser.",
+    },
+    {
         "id": "pyfly",
         "name": "PyFly · Python",
         "version": "26.10.1 · Python 3.13+",
@@ -166,7 +175,7 @@ _FRONTENDS = [
 
 
 def profile_catalog() -> dict[str, list[dict[str, Any]]]:
-    ordered = sorted(_BACKENDS, key=lambda p: ["pyfly", "larafly", "java", "rust", "dotnet"].index(p["id"]))
+    ordered = sorted(_BACKENDS, key=lambda p: ["pyfly", "larafly", "java", "rust", "dotnet", "none"].index(p["id"]))
 
     def public(profile: dict[str, str]) -> dict[str, Any]:
         live = profile["id"] in {"pyfly", "larafly", "react"}

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -15,9 +16,21 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
+import httpx
+
+from firefly_forge.configuration import (
+    DEFAULTS,
+    FIELDS,
+    ConfigurationStore,
+    normalize_provider,
+    public_settings,
+    validate_endpoint,
+)
 from firefly_forge.profiles import build_instruction
+from firefly_forge.secrets import redact_environment, runtime_environment
+from firefly_forge.store import now
 
 Emit = Callable[[str, str], Awaitable[None]]
 
@@ -33,6 +46,58 @@ class ProviderError(RuntimeError):
     pass
 
 
+class ProviderLimitError(ProviderError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: Literal["rate_limit", "quota", "authentication", "transient"],
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.retry_after = retry_after
+
+
+def classify_provider_failure(exc: Exception) -> tuple[str, float | None] | None:
+    if isinstance(exc, ProviderLimitError):
+        return exc.kind, exc.retry_after
+    status = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    body = str(getattr(exc, "body", "")).lower()
+    if status == 429:
+        if any(code in body for code in ("insufficient_quota", "insufficient_credits", "credit_balance")):
+            return "quota", None
+        delay = 60.0
+        try:
+            headers = response.headers if response is not None else getattr(exc, "headers", {})
+            delay = float(headers.get("retry-after", "60"))
+        except (ValueError, TypeError):
+            pass
+        return "rate_limit", max(1, min(delay, 86400))
+    if status in {401, 403}:
+        return "authentication", None
+    if status in {500, 502, 503, 504}:
+        return "transient", 5.0
+    if isinstance(exc, ProviderError) and "timed out" in str(exc).lower():
+        return "transient", 5.0
+    return None
+
+
+def _raise_cli_failure(message: str) -> None:
+    lower = message.lower()
+    if any(
+        code in lower
+        for code in ("usage_limit_reached", "insufficient_quota", "insufficient_credits", "credit balance")
+    ):
+        raise ProviderLimitError(message, kind="quota")
+    if any(code in lower for code in ("rate_limit_exceeded", "too many requests", "http 429")):
+        raise ProviderLimitError(message, kind="rate_limit", retry_after=60)
+    if any(code in lower for code in ("not logged in", "authentication_error", "invalid_api_key", "unauthorized")):
+        raise ProviderLimitError(message, kind="authentication")
+    raise ProviderError(message)
+
+
 class CodingProvider(Protocol):
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult: ...
 
@@ -45,18 +110,7 @@ class ProcessResult:
 
 
 def _redact(text: str) -> str:
-    for name in [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "FORGE_AGENTIC_API_KEY",
-        "FORGE_BRIDGE_TOKEN",
-        "GITHUB_TOKEN",
-        "GH_TOKEN",
-    ]:
-        value = os.environ.get(name)
-        if value:
-            text = text.replace(value, "[redacted]")
-    return text
+    return redact_environment(text)
 
 
 async def _stop_process_group(process: asyncio.subprocess.Process) -> None:
@@ -94,7 +148,7 @@ async def run_process(
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
         limit=1_000_000,
-        env=env,
+        env=env if env is not None else runtime_environment(),
     )
     output = {"stdout": "", "stderr": ""}
     assert process.stdout is not None and process.stderr is not None
@@ -130,8 +184,8 @@ async def run_process(
     return ProcessResult(process.returncode, output["stdout"], output["stderr"])
 
 
-def _executable(name: str) -> str:
-    configured = os.environ.get(f"FORGE_{name.upper()}_EXECUTABLE")
+def _executable(name: str, settings: dict[str, str] | None = None) -> str:
+    configured = (settings if settings is not None else os.environ).get(f"FORGE_{name.upper()}_EXECUTABLE")
     result = shutil.which(configured or name)
     if not result:
         raise ProviderError(f"{name.title()} CLI is unavailable. Install the official CLI and sign in first.")
@@ -150,11 +204,30 @@ def _events(stdout: str) -> list[dict[str, Any]]:
     return output
 
 
-class CodexProvider:
+class ConfiguredProvider:
+    def __init__(self, settings: dict[str, str] | None = None) -> None:
+        self.settings = settings if settings is not None else dict(os.environ)
+        self.runtime_context: Any = None
+
+    def configure_runtime(self, **kwargs: Any) -> None:
+        from firefly_forge.workspace_tools import ToolRuntimeContext
+
+        if kwargs.get("allowed_tools") is not None:
+            kwargs["allowed_tools"] = frozenset(kwargs["allowed_tools"])
+        self.runtime_context = ToolRuntimeContext(**kwargs)
+
+    async def image_input_capability(self, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+        return {"status": "unverified"}
+
+    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+        raise NotImplementedError
+
+
+class CodexProvider(ConfiguredProvider):
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         prompt = build_instruction(brief, backend, frontend)
         command = [
-            _executable("codex"),
+            _executable("codex", self.settings),
             "exec",
             "--json",
             "--ignore-user-config",
@@ -166,19 +239,19 @@ class CodexProvider:
             str(workspace.resolve()),
             "-",
         ]
-        model = os.environ.get("FORGE_CODEX_MODEL")
+        model = self.settings.get("FORGE_CODEX_MODEL")
         if model:
             command[-1:-1] = ["--model", model]
         await emit("provider", "Using the official Codex CLI with its existing login")
         result = await run_process(
-            command, workspace, emit, timeout=float(os.environ.get("FORGE_PROVIDER_TIMEOUT", "1800")), stdin=prompt
+            command, workspace, emit, timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")), stdin=prompt
         )
         if result.returncode:
-            raise ProviderError(f"Codex exited with code {result.returncode}: {result.stderr[-2000:]}")
+            _raise_cli_failure(f"Codex exited with code {result.returncode}: {result.stderr[-2000:]}")
         summary, usage = "", {}
         for event in _events(result.stdout):
             if event.get("type") == "turn.failed":
-                raise ProviderError(f"Codex generation failed: {_redact(str(event.get('error', 'unknown error')))}")
+                _raise_cli_failure(f"Codex generation failed: {_redact(str(event.get('error', 'unknown error')))}")
             if event.get("type") == "item.completed" and event.get("item", {}).get("type") == "agent_message":
                 summary = event["item"].get("text", "")
             if event.get("type") == "turn.completed":
@@ -188,10 +261,10 @@ class CodexProvider:
         return AgentResult(summary, "codex", usage)
 
 
-class ClaudeProvider:
+class ClaudeProvider(ConfiguredProvider):
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         command = [
-            _executable("claude"),
+            _executable("claude", self.settings),
             "--print",
             "--output-format",
             "stream-json",
@@ -208,76 +281,193 @@ class ClaudeProvider:
             "--disallowedTools",
             "Bash(git commit*),Bash(git push*),Bash(git reset*),Bash(rm *)",
         ]
-        model = os.environ.get("FORGE_CLAUDE_MODEL")
+        model = self.settings.get("FORGE_CLAUDE_MODEL")
         if model:
             command.extend(["--model", model])
         await emit("provider", "Using the official Claude Code CLI with its existing login")
-        child_env = dict(os.environ)
+        child_env = runtime_environment()
         child_env.pop("CLAUDECODE", None)
         result = await run_process(
             command,
             workspace,
             emit,
-            timeout=float(os.environ.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+            timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
             stdin=build_instruction(brief, backend, frontend),
             env=child_env,
         )
         if result.returncode:
-            raise ProviderError(f"Claude Code exited with code {result.returncode}: {result.stderr[-2000:]}")
+            _raise_cli_failure(f"Claude Code exited with code {result.returncode}: {result.stderr[-2000:]}")
         for event in reversed(_events(result.stdout)):
             if event.get("type") == "result":
                 if event.get("is_error") or event.get("subtype", "").startswith("error"):
                     error = event.get("result", event.get("errors", "unknown error"))
-                    raise ProviderError(f"Claude Code generation failed: {_redact(str(error))}")
+                    _raise_cli_failure(f"Claude Code generation failed: {_redact(str(error))}")
                 return AgentResult(event.get("result", ""), "claude", event.get("usage", {}))
         raise ProviderError("Claude Code completed without a final implementation report")
 
 
-class APIProvider:
-    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
-        from firefly_forge.agentic_runtime import execute_agentic
-
-        model = None
-        base_url = os.environ.get("FORGE_AGENTIC_BASE_URL")
+class APIProvider(ConfiguredProvider):
+    def model(self) -> Any:
+        model: Any = None
+        base_url = self.settings.get("FORGE_AGENTIC_BASE_URL")
         if base_url:
+            base_url = validate_endpoint(base_url)
+        key = self.settings.get("FORGE_AGENTIC_API_KEY")
+        model_name = self.settings.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
+        if not key:
+            keys = ["OPENAI_API_KEY"]
+            if model_name.startswith("anthropic:"):
+                keys = ["ANTHROPIC_API_KEY"]
+            elif model_name.startswith("google"):
+                keys = ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
+            key = next((self.settings[k] for k in keys if self.settings.get(k)), "")
+        if not key:
+            raise ProviderLimitError("Configure the selected model API key before execution", kind="authentication")
+        supported_families = {"openai", "openai-chat", "openai-responses", "anthropic", "google", "google-gla"}
+        if not base_url and ":" in model_name and model_name.split(":", 1)[0] not in supported_families:
+            raise ProviderError(
+                "Unsupported native model family; use OpenAI, Anthropic, Google GLA or an explicit compatible endpoint"
+            )
+        if base_url or key:
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider
 
-            key = os.environ.get("FORGE_AGENTIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
             if not key:
                 raise ProviderError("Set FORGE_AGENTIC_API_KEY for the configured API endpoint")
-            model = OpenAIChatModel(
-                os.environ.get("FORGE_AGENTIC_MODEL", "gpt-6-luna").split(":")[-1],
-                provider=OpenAIProvider(base_url=base_url, api_key=key),
-            )
-        summary, usage = await execute_agentic(workspace, brief, backend, frontend, emit, model=model)
+            name = model_name.split(":")[-1]
+            if model_name.startswith("anthropic:") and not base_url:
+                from pydantic_ai.models.anthropic import AnthropicModel
+                from pydantic_ai.providers.anthropic import AnthropicProvider
+
+                model = AnthropicModel(name, provider=AnthropicProvider(api_key=key))
+            elif model_name.startswith("google") and not base_url:
+                from pydantic_ai.models.google import GoogleModel
+                from pydantic_ai.providers.google import GoogleProvider
+
+                model = GoogleModel(name, provider=GoogleProvider(api_key=key))
+            elif model_name.startswith("openai-responses:") and not base_url:
+                from pydantic_ai.models.openai import OpenAIResponsesModel
+
+                model = OpenAIResponsesModel(name, provider=OpenAIProvider(api_key=key))
+            else:
+                model = OpenAIChatModel(name, provider=OpenAIProvider(base_url=base_url, api_key=key))
+        return model
+
+    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+        from firefly_forge.agentic_runtime import execute_agentic
+
+        summary, usage = await execute_agentic(
+            workspace,
+            brief,
+            backend,
+            frontend,
+            emit,
+            model=self.model(),
+            settings=self.settings,
+            runtime_context=self.runtime_context,
+        )
         return AgentResult(summary, "agentic", usage)
 
 
-class BridgeProvider:
-    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+class BridgeProvider(ConfiguredProvider):
+    async def image_input_capability(self, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+        if client is None:
+            async with httpx.AsyncClient(timeout=5, follow_redirects=False, trust_env=False) as http:
+                return await self.image_input_capability(client=http)
+        token = self.settings.get("FORGE_BRIDGE_TOKEN")
+        endpoint = self.settings.get("FORGE_BRIDGE_URL")
+        if not token or not endpoint:
+            return {"status": "unverified"}
+        try:
+            endpoint = validate_endpoint(endpoint)
+            if not endpoint.endswith("/v1"):
+                endpoint += "/v1"
+            async with asyncio.timeout(5):
+                async with client.stream(
+                    "GET", endpoint + "/models", headers={"Authorization": "Bearer " + token}
+                ) as response:
+                    response.raise_for_status()
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > 100_000:
+                            return {"status": "unverified"}
+            payload = json.loads(body)
+            model = self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default")
+            for item in payload.get("data", []):
+                if not isinstance(item, dict) or item.get("id") != model:
+                    continue
+                capability = item.get("image_input")
+                if not isinstance(capability, dict):
+                    break
+                revision = capability.get("config_revision")
+                if (
+                    capability.get("status") == "verified"
+                    and isinstance(revision, str)
+                    and 1 <= len(revision) <= 128
+                    and capability.get("max_images", 0) >= 5
+                    and capability.get("max_decoded_bytes", 0) >= 6_000_000
+                ):
+                    return {"status": "verified", "provider": "bridge", "model": model, "config_revision": revision}
+                break
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError, TimeoutError):
+            pass
+        return {"status": "unverified"}
+
+    def model(self, *, image_capability: dict[str, Any] | None = None) -> Any:
+        from openai import AsyncOpenAI
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.profiles.openai import OpenAIModelProfile
         from pydantic_ai.providers.openai import OpenAIProvider
 
-        from firefly_forge.agentic_runtime import execute_agentic
-
-        base_url = os.environ.get("FORGE_BRIDGE_URL")
-        token = os.environ.get("FORGE_BRIDGE_TOKEN")
+        base_url = self.settings.get("FORGE_BRIDGE_URL")
+        token = self.settings.get("FORGE_BRIDGE_TOKEN")
         if not base_url or not token:
             raise ProviderError("Configure FORGE_BRIDGE_URL and FORGE_BRIDGE_TOKEN before selecting the bridge")
-        endpoint = base_url.rstrip("/")
+        endpoint = validate_endpoint(base_url)
         if not endpoint.endswith("/v1"):
             endpoint += "/v1"
-        model = OpenAIChatModel(
-            os.environ.get("FORGE_BRIDGE_MODEL", "bridge/default"),
-            provider=OpenAIProvider(base_url=endpoint, api_key=token),
+        name = self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default")
+        capability = (
+            image_capability
+            if image_capability is not None
+            else self.runtime_context.image_capability
+            if self.runtime_context
+            else {}
+        )
+        revision = capability.get("config_revision")
+        headers = {}
+        if (
+            capability.get("status") == "verified"
+            and capability.get("model") == name
+            and isinstance(revision, str)
+            and len(revision) == 64
+            and all(character in "0123456789abcdef" for character in revision)
+        ):
+            headers["X-Bridge-Image-Revision"] = revision
+        return OpenAIChatModel(
+            name,
+            provider=OpenAIProvider(
+                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers)
+            ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
         )
+
+    async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
+        from firefly_forge.agentic_runtime import execute_agentic
+
         await emit("provider", "Connecting Firefly Agentic to the configured OpenAI-compatible bridge")
         summary, usage = await execute_agentic(
-            workspace, brief, backend, frontend, emit, model=model, allow_output_token_cap=False
+            workspace,
+            brief,
+            backend,
+            frontend,
+            emit,
+            model=self.model(),
+            allow_output_token_cap=False,
+            settings=self.settings,
+            runtime_context=self.runtime_context,
         )
         return AgentResult(summary, "bridge", usage)
 
@@ -286,7 +476,9 @@ class BridgeProvider:
 def _login_ready(executable: str, name: str, _cache_bucket: int) -> bool:
     command = [executable, "login", "status"] if name == "codex" else [executable, "auth", "status"]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=5, check=False, env=runtime_environment()
+        )
         if name == "claude":
             return result.returncode == 0 and json.loads(result.stdout).get("loggedIn") is True
         return result.returncode == 0
@@ -294,54 +486,212 @@ def _login_ready(executable: str, name: str, _cache_bucket: int) -> bool:
         return False
 
 
-def provider_catalog() -> list[dict[str, Any]]:
+def _environment_settings(name: str) -> dict[str, str]:
+    result = {env: os.environ.get(env, DEFAULTS.get(env, "")) for env in FIELDS[name].values()}
+    if name == "agentic" and not result["FORGE_AGENTIC_API_KEY"]:
+        aliases = ["OPENAI_API_KEY"]
+        if result["FORGE_AGENTIC_MODEL"].startswith("anthropic:"):
+            aliases = ["ANTHROPIC_API_KEY"]
+        elif result["FORGE_AGENTIC_MODEL"].startswith("google"):
+            aliases = ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
+        result["FORGE_AGENTIC_API_KEY"] = next((os.environ[k] for k in aliases if os.environ.get(k)), "")
+    return result
+
+
+_connection_checks: dict[str, dict[str, Any]] = {}
+
+
+def _fingerprint(name: str, settings: dict[str, str]) -> str:
+    return hashlib.sha256((name + json.dumps(settings, sort_keys=True)).encode()).hexdigest()
+
+
+def provider_catalog(configuration: ConfigurationStore | None = None) -> list[dict[str, Any]]:
     items = []
-    for name, title in [("codex", "Codex · signed-in CLI"), ("claude", "Claude Code · signed-in CLI")]:
-        executable = shutil.which(os.environ.get(f"FORGE_{name.upper()}_EXECUTABLE") or name)
-        ready = bool(executable and _login_ready(executable, name, int(time.monotonic() // 30)))
+    titles = {
+        "codex": "Codex · signed-in CLI",
+        "claude": "Claude Code · signed-in CLI",
+        "bridge": "Agent bridge",
+        "agentic": "Firefly Agentic · API",
+    }
+    setup = {
+        "codex": "https://developers.openai.com/codex/cli/",
+        "claude": "https://code.claude.com/docs/en/setup",
+        "agentic": "https://github.com/fireflyframework/fireflyframework-agentic",
+        "bridge": "https://github.com/fireflyframework/firefly-forge/blob/main/docs/bridge.md",
+    }
+    for name in FIELDS:
+        settings = configuration.resolve(name) if configuration else _environment_settings(name)
+        config = public_settings(name, settings)
+        cli = name in {"codex", "claude"}
+        model = str(config["model"])
+        endpoint = str(config.get("endpoint", ""))
+        ready = (
+            bool(config.get("api_key_configured"))
+            if name == "agentic"
+            else bool(endpoint and config.get("token_configured"))
+        )
+        detail = (
+            "Configuration is present; run a connection test and then a real generation to verify access"
+            if ready
+            else "Configure the required connection fields"
+        )
+        state = "configured" if ready else "missing"
+        configured = ready
+        checked_at = None
+        if cli:
+            executable = shutil.which(str(config.get("executable")) or name)
+            ready = bool(executable and _login_ready(executable, name, int(time.monotonic() // 30)))
+            configured = bool(executable)
+            state = "authenticated" if ready else "missing"
+            checked_at = now()
+            detail = (
+                "Official CLI is signed in; model execution still requires a real run"
+                if ready
+                else f"Install {name} and sign in using its official login"
+            )
+        check = _connection_checks.get(_fingerprint(name, settings))
+        if check:
+            state, checked_at, detail = check["state"], check["checked_at"], check["detail"]
+            ready = state in {"authenticated", "connected", "configured"}
+        if config.get("endpoint_invalid"):
+            ready, state, detail = False, "failed", "Endpoint configuration is invalid; use a credential-free HTTPS URL"
+        fields = []
+        for key in FIELDS[name]:
+            placeholder = {
+                "model": "CLI default" if cli else DEFAULTS.get(FIELDS[name][key], ""),
+                "endpoint": "https://api.example.com/v1",
+                "executable": name,
+                "timeout": "1800",
+                "max_tokens": "16384",
+            }.get(key, "Saved securely; leave blank to retain")
+            fields.append(
+                {
+                    "key": key,
+                    "label": key.replace("_", " ").title(),
+                    "secret": key in {"api_key", "token"},
+                    "required": key
+                    in (
+                        {"endpoint", "token"}
+                        if name == "bridge"
+                        else {"api_key", "model"}
+                        if name == "agentic"
+                        else set()
+                    ),
+                    "placeholder": placeholder,
+                }
+            )
         items.append(
             {
                 "id": name,
-                "name": title,
+                "name": titles[name],
                 "ready": ready,
-                "detail": "Official CLI is signed in"
-                if ready
-                else f"Install {name} and sign in with its official login command",
+                "configured": configured,
+                "detail": detail,
+                "model": model or "Official CLI default",
+                "endpoint": endpoint,
+                "auth_mode": "official_cli_login"
+                if cli
+                else "endpoint_bearer"
+                if name == "bridge"
+                else "provider_api_key",
+                "capabilities": ["source_edits", "repair_from_checks", "structured_results", "isolated_workspace"]
+                + (["native_cli_tools"] if cli else ["native_firefly_agentic", "confined_file_tools"]),
+                "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash (permission bounded)"]
+                if name == "claude"
+                else ["Official Codex workspace tools"]
+                if name == "codex"
+                else ["list_files", "read_file", "write_file"],
+                "setup_url": setup[name],
+                "fields": fields,
+                "config": config,
+                "readiness": {"state": state, "checked_at": checked_at, "detail": detail},
             }
         )
-    bridge_ready = bool(os.environ.get("FORGE_BRIDGE_URL") and os.environ.get("FORGE_BRIDGE_TOKEN"))
-    items.append(
-        {
-            "id": "bridge",
-            "name": "Agent bridge",
-            "ready": bridge_ready,
-            "detail": "Endpoint and token configured; connectivity is checked when running"
-            if bridge_ready
-            else "Set FORGE_BRIDGE_URL and FORGE_BRIDGE_TOKEN",
-        }
-    )
-    model = os.environ.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
-    keys = ["FORGE_AGENTIC_API_KEY", "OPENAI_API_KEY"]
-    if model.startswith("anthropic:"):
-        keys = ["ANTHROPIC_API_KEY"]
-    elif model.startswith("google"):
-        keys = ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
-    ready = any(os.environ.get(key) for key in keys)
-    items.append(
-        {
-            "id": "agentic",
-            "name": "Firefly Agentic · API",
-            "ready": ready,
-            "detail": "API environment configured; model access is checked when running"
-            if ready
-            else "Configure a provider API key and FORGE_AGENTIC_MODEL",
-        }
-    )
     return items
 
 
-def get_provider(name: str) -> CodingProvider:
-    providers: dict[str, type[CodingProvider]] = {
+async def test_provider_connection(name: str, configuration: ConfigurationStore, client: Any = None) -> dict[str, Any]:
+    import httpx
+
+    name = normalize_provider(name)
+    settings = configuration.resolve(name)
+    state, detail = "missing", "Configure the required connection fields first"
+    if name in {"codex", "claude"}:
+        try:
+            executable = _executable(name, settings)
+            # Explicit connection tests always bypass the short catalog cache.
+            authenticated = await asyncio.to_thread(_login_ready.__wrapped__, executable, name, 0)
+            state = "authenticated" if authenticated else "failed"
+            detail = (
+                "Official CLI login verified; generation and chosen model require a real run"
+                if authenticated
+                else "Official CLI login is unavailable; sign in and test again"
+            )
+        except ProviderError:
+            state, detail = "failed", "Official CLI was not found; install it or set its executable path"
+    else:
+        endpoint = settings.get("FORGE_BRIDGE_URL" if name == "bridge" else "FORGE_AGENTIC_BASE_URL", "")
+        key = settings.get("FORGE_BRIDGE_TOKEN" if name == "bridge" else "FORGE_AGENTIC_API_KEY", "")
+        if key and not endpoint and name == "agentic":
+            state, detail = (
+                "configured",
+                (
+                    "Provider key is configured. Hosted model and tool access are verified by a rea"
+                    "l run, not this configuration check"
+                ),
+            )
+        elif endpoint and key:
+            endpoint = validate_endpoint(endpoint)
+            if name == "bridge" and not endpoint.endswith("/v1"):
+                endpoint += "/v1"
+            owned = client is None
+            if owned:
+                client = httpx.AsyncClient(follow_redirects=False, timeout=15)
+            try:
+                response = await client.get(
+                    endpoint + "/models", headers={"Authorization": f"Bearer {key}"}, timeout=15
+                )
+                if response.status_code != 200:
+                    state, detail = (
+                        "failed",
+                        f"Connection test rejected (HTTP {response.status_code}); no response body retained",
+                    )
+                else:
+                    payload = response.json()
+                    models = payload.get("data", payload.get("models", [])) if isinstance(payload, dict) else []
+                    if not isinstance(models, list):
+                        raise ValueError("Invalid model list")
+                    selected = settings.get(
+                        "FORGE_BRIDGE_MODEL" if name == "bridge" else "FORGE_AGENTIC_MODEL", ""
+                    ).split(":")[-1]
+                    ids = {item.get("id", item.get("name")) if isinstance(item, dict) else item for item in models}
+                    if selected and selected not in ids:
+                        state, detail = (
+                            "failed",
+                            "Endpoint authenticated, but the selected model is absent from its model list",
+                        )
+                    else:
+                        state, detail = (
+                            "connected",
+                            (
+                                "Authenticated model listing succeeded; source-editing tool execution still req"
+                                "uires a real run"
+                            ),
+                        )
+            except (httpx.HTTPError, ValueError, TypeError):
+                state, detail = (
+                    "failed",
+                    "Connection test could not validate the endpoint; check its address, credentials and model listing",
+                )
+            finally:
+                if owned:
+                    await client.aclose()
+    _connection_checks[_fingerprint(name, settings)] = {"state": state, "checked_at": now(), "detail": detail}
+    return next(item for item in await asyncio.to_thread(provider_catalog, configuration) if item["id"] == name)
+
+
+def get_provider(name: str, settings: dict[str, str] | None = None) -> CodingProvider:
+    providers: dict[str, type[ConfiguredProvider]] = {
         "codex": CodexProvider,
         "claude": ClaudeProvider,
         "bridge": BridgeProvider,
@@ -350,4 +700,4 @@ def get_provider(name: str) -> CodingProvider:
     }
     if name not in providers:
         raise ValueError(f"Unknown provider: {name}")
-    return providers[name]()
+    return providers[name](settings)

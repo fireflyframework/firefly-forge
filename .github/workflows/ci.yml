@@ -9,6 +9,20 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    env:
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
+          POSTGRES_DB: forge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge_test -d forge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: astral-sh/setup-uv@v7
@@ -31,8 +45,22 @@ jobs:
           path: dist/*
   container:
     runs-on: ubuntu-24.04
+    env:
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
+          POSTGRES_DB: forge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge_test -d forge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: docker build --tag firefly-forge:ci .
       - name: Exercise the non-root runtime image
-        run: docker run --rm -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" --entrypoint /app/.venv/bin/python firefly-forge:ci /tmp/container_smoke.py
+        run: docker run --rm --network host -e FORGE_DATABASE_URL -e FORGE_DATABASE_SCHEMA=forge_container_ci -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" --entrypoint /app/.venv/bin/python firefly-forge:ci /tmp/container_smoke.py

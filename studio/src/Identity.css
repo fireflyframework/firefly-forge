@@ -1,0 +1,89 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.identity-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent-ink);
+}
+.identity-signin > p {
+  max-width: 65ch;
+}
+.identity-signin-actions,
+.identity-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.identity-cookie-note {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.identity-trigger {
+  max-width: 220px;
+}
+.identity-trigger span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.identity-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  margin: auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+.identity-dialog::backdrop {
+  background: rgb(0 0 0 / 0.48);
+}
+.identity-dialog header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.identity-dialog h2 {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.identity-dialog p {
+  margin: 12px 0;
+  line-height: 1.7;
+}
+.identity-dialog strong {
+  font-size: 18px;
+}
+.identity-account-actions {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+}
+@media (max-width: 900px) {
+  .identity-trigger {
+    min-width: 40px;
+    max-width: 40px;
+    padding: 0;
+  }
+  .identity-trigger span {
+    display: none;
+  }
+  .topbar:has(.identity-menu) .connection-mobile-label {
+    display: none;
+  }
+  .topbar:has(.identity-menu) .connection-indicator {
+    min-width: 40px;
+    padding: 8px;
+  }
+  .identity-dialog {
+    padding: 24px;
+  }
+}

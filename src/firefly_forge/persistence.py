@@ -1,0 +1,231 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+"""Native PyFly entities and typed repositories for the PostgreSQL ledger."""
+
+from __future__ import annotations
+
+from typing import Any
+from uuid import UUID
+
+from pyfly.container import repository
+from pyfly.data.relational.sqlalchemy import BaseEntity, Repository
+from sqlalchemy import BigInteger, ForeignKey, Identity, Index, String, UniqueConstraint, func, select, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+
+class ForgeRepositoryEntity(BaseEntity):
+    __tablename__ = "forge_repositories"
+    sequence: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class ForgeRunEntity(BaseEntity):
+    __tablename__ = "forge_runs"
+    sequence: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    repository_id: Mapped[UUID] = mapped_column(ForeignKey("forge_repositories.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class ForgeEventEntity(BaseEntity):
+    __tablename__ = "forge_events"
+    sequence: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("forge_runs.id"), index=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class ForgeDeploymentEntity(BaseEntity):
+    __tablename__ = "forge_deployments"
+    sequence: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("forge_runs.id"), index=True)
+    target_id: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    __table_args__ = (
+        Index(
+            "uq_forge_active_deployment_target",
+            "target_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+    )
+
+
+@repository
+class ForgeRepositoryRepository(Repository[ForgeRepositoryEntity, UUID]):
+    async def find_latest(self) -> list[ForgeRepositoryEntity]:
+        result = await self._require_session().scalars(
+            select(ForgeRepositoryEntity).order_by(ForgeRepositoryEntity.sequence.desc())
+        )
+        return list(result)
+
+
+@repository
+class ForgeRunRepository(Repository[ForgeRunEntity, UUID]):
+    async def find_latest(self) -> list[ForgeRunEntity]:
+        result = await self._require_session().scalars(
+            select(ForgeRunEntity).order_by(ForgeRunEntity.sequence.desc()).limit(500)
+        )
+        return list(result)
+
+    async def find_queued(self) -> list[ForgeRunEntity]:
+        result = await self._require_session().scalars(
+            select(ForgeRunEntity).where(ForgeRunEntity.status == "queued").order_by(ForgeRunEntity.sequence)
+        )
+        return list(result)
+
+    async def find_ready_retries(self, current_time: float, limit: int = 100) -> list[ForgeRunEntity]:
+        statement = (
+            select(ForgeRunEntity)
+            .where(
+                ForgeRunEntity.status == "paused",
+                ForgeRunEntity.data["pause"]["automatic"].as_boolean().is_(True),
+                ForgeRunEntity.data["pause"]["retry_at"].as_float() <= current_time,
+                func.coalesce(ForgeRunEntity.data["retry_count"].as_integer(), 0) < 3,
+            )
+            .order_by(ForgeRunEntity.sequence)
+            .limit(limit)
+        )
+        return list(await self._require_session().scalars(statement))
+
+    async def find_inflight(self) -> list[ForgeRunEntity]:
+        result = await self._require_session().scalars(
+            select(ForgeRunEntity)
+            .where(
+                ForgeRunEntity.status.not_in(
+                    [
+                        "queued",
+                        "campaign_blocked",
+                        "paused",
+                        "needs_reconciliation",
+                        "succeeded",
+                        "failed",
+                        "cancelled",
+                        "interrupted",
+                    ]
+                )
+            )
+            .order_by(ForgeRunEntity.sequence)
+            .with_for_update()
+        )
+        return list(result)
+
+
+@repository
+class ForgeEventRepository(Repository[ForgeEventEntity, UUID]):
+    async def find_for_run(self, identifier: UUID) -> list[ForgeEventEntity]:
+        result = await self._require_session().scalars(
+            select(ForgeEventEntity).where(ForgeEventEntity.run_id == identifier).order_by(ForgeEventEntity.sequence)
+        )
+        return list(result)
+
+
+@repository
+class ForgeDeploymentRepository(Repository[ForgeDeploymentEntity, UUID]):
+    async def find_latest(self, run_id: UUID | None = None) -> list[ForgeDeploymentEntity]:
+        statement = select(ForgeDeploymentEntity).order_by(ForgeDeploymentEntity.sequence.desc()).limit(500)
+        if run_id is not None:
+            statement = statement.where(ForgeDeploymentEntity.run_id == run_id)
+        return list(await self._require_session().scalars(statement))
+
+    async def find_active_target(self, target: str) -> ForgeDeploymentEntity | None:
+        return await self._require_session().scalar(
+            select(ForgeDeploymentEntity).where(
+                ForgeDeploymentEntity.target_id == target, ForgeDeploymentEntity.status.in_(["queued", "running"])
+            )
+        )
+
+    async def find_queued(self, limit: int = 100) -> list[ForgeDeploymentEntity]:
+        statement = (
+            select(ForgeDeploymentEntity)
+            .where(ForgeDeploymentEntity.status == "queued")
+            .order_by(ForgeDeploymentEntity.sequence)
+            .limit(limit)
+        )
+        return list(await self._require_session().scalars(statement))
+
+    async def find_running(self) -> list[ForgeDeploymentEntity]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeDeploymentEntity)
+                .where(ForgeDeploymentEntity.status == "running")
+                .order_by(ForgeDeploymentEntity.sequence)
+                .with_for_update()
+            )
+        )
+
+
+class ForgePlanEntity(BaseEntity):
+    __tablename__ = "forge_plans"
+    __table_args__ = (UniqueConstraint("run_id", "revision"),)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("forge_runs.id"), index=True)
+    revision: Mapped[int] = mapped_column()
+    digest: Mapped[str] = mapped_column(String(64))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class ForgeTaskEntity(BaseEntity):
+    __tablename__ = "forge_tasks"
+    __table_args__ = (UniqueConstraint("run_id", "task_id"),)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("forge_runs.id"), index=True)
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("forge_plans.id"))
+    task_id: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(32))
+    attempt: Mapped[int] = mapped_column(default=1)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class ForgeJournalEntity(BaseEntity):
+    __tablename__ = "forge_journal"
+    __table_args__ = (UniqueConstraint("run_id", "sequence"), UniqueConstraint("run_id", "idempotency_key", "kind"))
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("forge_runs.id"), index=True)
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    task_id: Mapped[str] = mapped_column(String(100))
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))
+    digest: Mapped[str] = mapped_column(String(64))
+    previous_hash: Mapped[str] = mapped_column(String(64))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+@repository
+class ForgePlanRepository(Repository[ForgePlanEntity, UUID]):
+    async def find_current(self, run_id: UUID) -> ForgePlanEntity | None:
+        return await self._require_session().scalar(
+            select(ForgePlanEntity)
+            .where(ForgePlanEntity.run_id == run_id)
+            .order_by(ForgePlanEntity.revision.desc())
+            .limit(1)
+        )
+
+
+@repository
+class ForgeTaskRepository(Repository[ForgeTaskEntity, UUID]):
+    async def find_for_run(self, run_id: UUID) -> list[ForgeTaskEntity]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeTaskEntity)
+                .where(ForgeTaskEntity.run_id == run_id)
+                .order_by(ForgeTaskEntity.created_at, ForgeTaskEntity.task_id)
+                .execution_options(populate_existing=True)
+            )
+        )
+
+    async def find_pending_recovery(self) -> list[ForgeTaskEntity]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeTaskEntity).where(ForgeTaskEntity.status == "running").order_by(ForgeTaskEntity.run_id)
+            )
+        )
+
+
+@repository
+class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
+    async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeJournalEntity)
+                .where(ForgeJournalEntity.run_id == run_id)
+                .order_by(ForgeJournalEntity.sequence)
+            )
+        )

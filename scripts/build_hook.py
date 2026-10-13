@@ -15,3 +15,4 @@ class CustomBuildHook(BuildHookInterface):
         if not (studio / "index.html").is_file():
             raise RuntimeError("Build Studio with npm --prefix studio run build before packaging Forge")
         build_data["force_include"][str(studio)] = "firefly_forge/static"
+        build_data["force_include"][str(Path(self.root) / "assets" / "fonts" / "manrope")] = "firefly_forge/fonts/manrope"

@@ -1,0 +1,60 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.run-wizard .run-brief {
+  height: 96px;
+  min-height: 86px;
+  max-height: 160px;
+  resize: vertical;
+}
+@media (max-width: 600px) {
+  .app .repository {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .app .repository > .repository-icon {
+    grid-column: 1;
+    width: 40px;
+    height: 44px;
+  }
+  .app .repository > div {
+    grid-column: 2;
+  }
+  .app .repository > button.quiet {
+    grid-column: 2;
+    justify-self: start;
+    margin-left: 0;
+    white-space: nowrap;
+  }
+  .app .repository h2 {
+    font-size: 17px;
+    line-height: 1.5;
+  }
+  .app .repository p {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .run-wizard .wizard-field-scroll .form-section {
+    gap: 16px;
+  }
+}
+
+.run-brief-details {
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.run-brief-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+}
+.run-brief-details p {
+  max-width: 85ch;
+  margin-top: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.run-heading h1 {
+  max-width: 45ch;
+}

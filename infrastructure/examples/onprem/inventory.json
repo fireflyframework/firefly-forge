@@ -1,0 +1,10 @@
+{
+  "all": {
+    "hosts": {
+      "application": {
+        "ansible_host": "192.0.2.8",
+        "ansible_user": "ubuntu"
+      }
+    }
+  }
+}

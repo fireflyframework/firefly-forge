@@ -1,0 +1,106 @@
+{
+  "terraform": {
+    "required_version": ">= 1.11.0, < 2.0.0",
+    "required_providers": {
+      "google": {
+        "source": "hashicorp/google",
+        "version": "~> 8.6.0"
+      }
+    },
+    "backend": {
+      "gcs": {
+        "bucket": "forge-state",
+        "prefix": "forge/project/inventory-244210e4.tfstate"
+      }
+    }
+  },
+  "provider": {
+    "google": {
+      "project": "forge-project",
+      "region": "us-central1",
+      "zone": "us-central1-a"
+    }
+  },
+  "resource": {
+    "google_compute_network": {
+      "app": {
+        "name": "inventory-244210e4",
+        "auto_create_subnetworks": false
+      }
+    },
+    "google_compute_subnetwork": {
+      "app": {
+        "name": "inventory-244210e4",
+        "region": "us-central1",
+        "ip_cidr_range": "10.42.0.0/24",
+        "network": "${google_compute_network.app.id}"
+      }
+    },
+    "google_compute_firewall": {
+      "ssh": {
+        "name": "inventory-244210e4-ssh",
+        "network": "${google_compute_network.app.name}",
+        "source_ranges": [
+          "203.0.113.8/32"
+        ],
+        "target_tags": [
+          "inventory-244210e4"
+        ],
+        "allow": {
+          "protocol": "tcp",
+          "ports": [
+            "22"
+          ]
+        }
+      },
+      "web": {
+        "name": "inventory-244210e4-web",
+        "network": "${google_compute_network.app.name}",
+        "source_ranges": [
+          "0.0.0.0/0"
+        ],
+        "target_tags": [
+          "inventory-244210e4"
+        ],
+        "allow": {
+          "protocol": "tcp",
+          "ports": [
+            "80",
+            "443"
+          ]
+        }
+      }
+    },
+    "google_compute_instance": {
+      "app": {
+        "name": "inventory-244210e4",
+        "machine_type": "e2-small",
+        "tags": [
+          "inventory-244210e4"
+        ],
+        "boot_disk": {
+          "initialize_params": {
+            "image": "ubuntu-os-cloud/ubuntu-2404-lts-amd64",
+            "size": 30
+          }
+        },
+        "network_interface": {
+          "subnetwork": "${google_compute_subnetwork.app.id}",
+          "access_config": {}
+        },
+        "metadata": {
+          "ssh-keys": "ubuntu:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29c",
+          "block-project-ssh-keys": "true"
+        },
+        "shielded_instance_config": {
+          "enable_secure_boot": true
+        }
+      }
+    }
+  },
+  "output": {
+    "host": {
+      "value": "${google_compute_instance.app.network_interface[0].access_config[0].nat_ip}"
+    }
+  }
+}

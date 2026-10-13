@@ -7,6 +7,11 @@ pyfly:
       port: -1
   admin:
     enabled: false
+  data:
+    relational:
+      enabled: true
+      url: "${FORGE_DATABASE_URL:}"
+      ddl-auto: none
   web:
     actuator:
       enabled: false

@@ -5,6 +5,8 @@ Code is licensed under the Apache License, Version 2.0.
 Firefly trademarks and generated visual assets retain their separate rights.
 See assets/brand/NOTICE and docs/brand.md for details.
 Fonts retain the license notices included beside their files.
+Studio Markdown dependencies retain their notices in
+studio/public/licenses/markdown-LICENSES.txt and the packaged licenses directory.
 
 This distribution does not contain internal Firefly Agent Bridge source,
 private brand-kit implementation, developer credentials or process artifacts.

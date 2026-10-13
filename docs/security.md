@@ -1,51 +1,46 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Give Forge trusted development access
+# Protect trusted development access
 
-Forge is a software execution service for trusted operators. An authenticated
-operator can register Git sources, ask an agent to change code and run
-verification commands on the server. An isolated Git clone protects the source
-checkout from direct edits; it does not isolate the process from the host.
+firefly forge executes code for authorized operators. A run uses an isolated Git clone. Trusted host execution uses the service account's identity and filesystem access; it is restricted to factory administrators. Configured Docker runners enforce their recorded container controls for supported commands. Use a dedicated service identity with limited access to repositories and external services.
 
-## Protect the control plane
+## Control the API
 
-Set a strong `FORGE_API_TOKEN`. The API expects `Authorization: Bearer <token>`.
-Do not expose an unauthenticated API or share an operator token with untrusted
-users. Use loopback binding for local work and HTTPS plus access controls for
-remote operation.
+Production uses Keycloak OIDC with a verified issuer and API audience. A `FORGE_API_TOKEN` is available only in explicitly selected loopback bootstrap mode. Native PyFly filters protect `/api/v1`, including health and OpenAPI. The sign-in endpoints and state-bound callbacks have their explicit authentication contracts. Management, admin and actuator surfaces are disabled, with no separate management listener.
 
-The packaged PyFly configuration disables the native management, admin and
-actuator surfaces. Its management server port is `-1`, so it does not open a
-separate management listener. Forge's own `/api/v1` routes, including health
-and OpenAPI, pass through the shared operator-token boundary.
+Source-control OAuth callbacks are the narrow exception: their exact GET paths accept a single-use server-side state and an HttpOnly browser nonce cookie. Authorization starts through the authenticated operator API. A callback cannot carry or recover the operator token.
 
-Studio keeps the entered token in page memory. It is cleared on reload, never
-put in a URL, and sent to the API address the operator enters. Provider tokens,
-Git credentials and CLI logins remain server-side.
+Studio uses an opaque HttpOnly session cookie and native CSRF protection; it does not persist authentication tokens in browser storage. Serve remote users through one HTTPS origin with an exact allowed host and browser origin. Host-header validation remains enabled.
 
-## Scope the execution identity
+## Protect credentials
 
-Use a dedicated user or isolated development host with limited permissions.
-Give its Git credentials access only to intended repositories. Avoid production
-databases, shared services and unrelated workspaces. Explicit command argument
-arrays prevent accidental shell interpretation, but the commands and generated
-code still execute with the server user's authority.
+Saved credentials and immutable run revisions are plaintext files with mode `0600` inside a mode `0700` configuration directory. Secret GET responses report presence only. Empty secret fields preserve saved values; explicit clearing removes them. This is owner-level filesystem protection, not encryption at rest.
 
-Repository instructions and product briefs are part of the coding agent's input.
-Review unfamiliar sources and treat generated output as untrusted until you
-inspect it and run appropriate checks. A coding provider's own workspace
-permissions do not create multi-tenant isolation for the complete factory.
+Configured credentials, URI passwords and private keys are redacted from evidence. Source containing a configured credential is rejected before delivery. Worker and verification processes receive filtered environments excluding the database URL and unrelated server secrets. Git credentials are supplied only to authorized Git operations, through ephemeral askpass configuration, never credential-bearing repository URLs or global Git settings.
 
-## Review publication
+Provider-native grants remain authoritative. Repository discovery is restricted to those grants, and clone/publication authentication rechecks the stored repository identity. GitHub tokens use a selected repository scope. Origin checks and disabled credential redirects prevent an agent's changed Git remote from receiving an application token.
 
-`publish: false` is the default. An explicit publishing run can write a remote
-branch and create a pull request using server credentials. Verification passing
-is a prerequisite, not approval of every possible generated change. Restrict
-publishing credentials and use the receiving project's ordinary reviews.
+## Keep core gates enabled
 
-Publication requires the final passing verification and the same source-tree
-snapshot that those commands checked. A changed workspace is rejected before a
-remote write. This integrity check does not establish correctness beyond the
-actual checks performed.
+Optional policy recommendations and quality gates can be selected per project. Core path confinement, credential checks, real verification, source integrity and explicit publication/deployment boundaries remain mandatory.
 
-For private security reporting, follow the repository's security policy.
-Never include tokens, private logs or sensitive source in a public issue.
+Native Agentic file tools reject traversal, symlink and hardlink access, Git metadata and private credential files. Official CLI providers have their own workspace tool permissions. Neither mechanism establishes operating-system isolation for the complete factory.
+
+Knowledge references are untrusted data with retained citations. They cannot authorize a new action or override core guards. Explicit knowledge indexing accepts selected verified tracked text files; it does not upload an operator's home, whole checkout or private configuration directory.
+
+## Inspect uncertain effects
+
+The write-ahead journal records intent before an effect and a receipt after its observed completion. A network failure after a remote write can leave its outcome unknown. Inspect the remote branch, deployment or flycanon source/version before continuing. Generic resume cannot replay an ambiguous remote effect.
+
+Passing checks establish only their tested behavior. Use the receiving project's normal source review and release controls. Report private security issues through the repository's security policy without attaching tokens, private logs or sensitive source.
+
+## Identity and project permissions
+
+Production sign-in uses [Keycloak OIDC](identity.md). Cookie mutations require native CSRF double-submit and the exact application origin. New identities receive no project access from their email. Project roles are distinct from agent roles; repository-level writes require the permission in every project sharing that repository.
+
+[User administration](user-administration.md) records provisioning/invitation intents before contacting the provider. An uncertain response needs reconciliation. Suspending a local factory identity revokes its sessions and blocks later checked effects. Project membership changes take effect at the next authorization boundary. Queued administrator work also checks the latest validated API-client grants, their expiry and the admitted audience. The original administrator flag alone cannot authorize execution. Older tokens cannot restore a role already observed as removed; tokens with equal issuance time can only reduce grants. [Identity](identity.md) explains these token-ordering rules and the requirement for a newly issued token to expand roles.
+
+Provider-side changes are observed through new validated tokens and expiry, not continuous introspection. Suspend an identity locally for immediate interruption. A current project membership can still authorize isolated work after global privileges expire or are removed. Host coding and host verification remain restricted to a current administrator.
+
+An initial hosted installation may expose OIDC sign-in while allowing execution only for trusted administrators. Keep repository-channel automation disabled unless its separately configured trusted-actor contract is intended. Do not grant administrator roles to untrusted tenants: host execution can access the service account's files. Project users need an explicitly configured, actually available isolated runner; an unavailable Docker profile never falls back to host execution. Do not mount the host Docker socket, provider login home, or server credentials into generated-code containers.
+
+Project users cannot select direct host coding CLIs through initial admission, independent review or handoff. Runners, source-control operations and deployment effects require their own authorization checks. Production API/worker separation, cluster isolation and hosted-to-local subscription relay remain explicit acceptance boundaries.

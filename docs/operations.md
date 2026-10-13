@@ -1,66 +1,58 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Operate a local factory
+# Operate the factory
 
-Run Forge under a dedicated development identity, with a private data directory
-and access only to the repositories and provider accounts it needs. Treat the
-API token as trusted operator access: runs execute commands on the server.
+Use a dedicated development identity with access to the intended repositories, provider accounts and PostgreSQL schema. The operator API token permits code execution and connection management on that host.
 
-## Inspect a run
+## Inspect actual work
 
-Use **Factory** for real run history and **Run details** for progress, diff,
-verification and artifacts. The API exposes the same evidence through
-`GET /runs/{id}`. Keep failed and corrected attempts separate.
+Open a run to inspect its plan, journal, source diff, checkpoint revision and verification. The floor displays real project work; use receipts and exit statuses to determine outcomes.
 
-If generation fails, inspect the provider error and login/model configuration.
-Verification failures first enter an automatic repair loop. Forge returns all
-failed commands, exit statuses and retained output to the selected coding
-provider, which repairs the existing implementation and reruns verification.
+`verification` preserves every check attempt. `final_verification` identifies the checks supporting success, and `source_tree` identifies the checked Git tree. `checkpoint_revision` is an actual local commit reference. A worker's final summary alone does not establish that a product works.
 
-`FORGE_REPAIR_ATTEMPTS` defaults to `2` and is bounded to `0` through `3`. These
-are additional repair attempts after the initial implementation: `0` disables
-automatic repair, while the default permits up to three implementation attempts
-in one run. Every command result retains its attempt number. `verification`
-contains the history; `final_verification` identifies the final passing checks.
-Earlier failures remain evidence even when a later attempt succeeds.
+## Build, maintain and test
 
-If the repair budget is exhausted, the run fails. Inspect the command output,
-correct the brief or environment and use **Retry run** to request a separate run.
+Build and maintenance use the selected coding provider followed by independent verification. Maintenance tells the worker to preserve the existing product and add focused regression coverage. Test mode verifies existing source without invoking a model or coding repair.
 
-## Cancel and recover
+Empty command lists use a detected repository gate. Selected policy quality gates add their real commands. If no executable verification is found, the run fails. There are at most 20 effective verification commands per run; each retains its own timeout and output.
 
-**Cancel run** requests cancellation of an active run. Forge terminates the
-provider process group and records cancellation. Cancellation cannot undo an
-external action already performed by generated code or an agent.
+Failed checks return to the worker for bounded repairs. `FORGE_REPAIR_ATTEMPTS` defaults to `2`, allowing an initial implementation and two repairs; its range is `0..3`. Earlier failures remain visible after a later passing attempt. [Workflows](workflows.md) explains mode selection.
 
-Shutdown stops active work. On restart, the engine reconciles durable run state.
-Interrupted work must not be reported as successfully verified. Review the
-recorded outcome before retrying.
+## Handle provider limits
 
-## Preserve evidence
+A rate limit pauses the current task with its retry time and retained workspace. The scheduler allows up to three automatic retries when the recorded failure permits them. Quota exhaustion and authentication failures require an operator action. Configure access or credits at the provider, then explicitly resume or hand off to another configured worker.
 
-The data directory contains persisted state and run workspaces. Stop Forge
-before copying that directory for a simple consistent local backup. Keep tokens,
-provider credentials and sensitive repository content out of public artifacts.
+The factory records reported usage and provider errors. It does not infer an account's remaining prepaid balance from token usage. A CLI login, a model listing and a successful generation establish different facts.
 
-Only one active Forge service may own a data directory. The engine acquires an
-exclusive file lock before recovering or dispatching work. A second service
-using that directory fails startup; give separate services separate data
-directories rather than bypassing ownership. `FORGE_CONCURRENCY` controls the
-number of active runs within the owning service.
+## Cancel, resume or retry
 
-Forge records the verified source-tree snapshot after commands pass. Checks
-that modify the source invalidate that attempt. Before publication, Forge
-compares the current source tree with the recorded snapshot and rejects a
-changed workspace. Create a fresh run to verify later edits; do not treat an old
-passing result as evidence for a changed tree.
+Cancellation stops queued or active work and terminates worker process groups. It cannot undo a completed external effect. Shutdown preserves interrupted work; an unacknowledged journal intent requires inspection before continuation.
 
-There is no automated retention policy in this initial version. Operators own
-workspace cleanup after reviewing which evidence and source changes must remain.
-Do not remove active workspaces or reset unrelated repositories to clear a run.
+Resume continues the same authorized workspace and snapshots. Handoff creates a new provider configuration and plan revision while retaining the source, policies and evidence. Retry creates a fresh run and clone. Use [recovery](recovery.md) to choose the correct action.
 
-## Remote operation
+## Back up the ledger and source together
 
-The local default binds to `127.0.0.1`. For remote access, use an HTTPS reverse
-proxy, restrict network exposure and manage the operator token securely. This
-version does not provide tenant isolation, per-user authorization or a hosted
-production support commitment. See [security](security.md).
+Stop the service for a straightforward consistent backup. Back up the dedicated PostgreSQL database with its ordinary PostgreSQL tools, and preserve the private data directory containing configuration revisions, workspaces and artifacts. Protect both backups as sensitive development data.
+
+Restoring only PostgreSQL can leave a run referring to missing source or credential revisions. Restoring only workspaces loses its durable task and verification history. Missing or changed retained workspaces require reconciliation; they must not be reported as accepted source.
+
+The service enforces ownership before recovering or dispatching work. Give independent installations their own data directories and ledger schemas. Global concurrency defaults to two active runs; one run per project is active at a time. There is no automatic artifact-retention policy. Review evidence before removing a completed workspace.
+
+## Publish and deploy deliberately
+
+Publication uses the existing local checkpoint commit, pushes a branch and creates an external review request. It never merges automatically. A changed tree or an uncertain previous publication prevents a blind repeat.
+
+Deployment requires an explicit target tied to the repository, configured commands and post-deployment verification. Rollback uses its retained command snapshot and verification. [Deployment](deployment.md) covers these operations and their remote-effect boundaries.
+
+For remote use, serve one HTTPS origin, restrict host headers and configure
+[OIDC sign-in and project roles](identity.md). Hosted users receive access through
+their project memberships; the local bootstrap is an explicitly enabled,
+loopback-only administrator mode. Project authorization does not establish
+isolation from arbitrary host code execution: non-admin coding requires the
+configured isolated runner and provider controls.
+
+The service has one execution owner per PostgreSQL schema. Choose a combined
+service or API replicas with one headless worker before the installation's first
+startup. The recorded topology, private storage binding and execution lease
+reject incompatible owners. Read [API and worker roles](runtime-roles.md) for
+startup, health and operation-routing details. Distributed worker pools remain
+outside this topology.

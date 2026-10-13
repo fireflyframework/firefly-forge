@@ -1,0 +1,47 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: Verified product and image
+'on':
+  pull_request: {}
+  push:
+    branches:
+    - main
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      CI_REVISION: ${{ github.sha }}
+      CI_PUBLISH: 'false'
+    steps: &id001
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Install checksum-pinned tooling
+      run: bash .forge-ci/bootstrap.sh
+    - name: Run product and security gates
+      run: bash .forge-ci/check.sh
+    - name: Retain security reports and SBOMs
+      if: always()
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: security-${{ github.job }}
+        path: 'security/*.json
+
+          security/image-reference.txt'
+        retention-days: 30
+  release:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      CI_REVISION: ${{ github.sha }}
+      CI_PUBLISH: 'true'
+      REGISTRY_USERNAME: ${{ github.actor }}
+      REGISTRY_PASSWORD: ${{ github.token }}
+    steps: *id001

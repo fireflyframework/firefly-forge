@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { repositoryLabels } from "./RepositoryLabels";
 import {
   cloneElement,
   isValidElement,
@@ -16,11 +17,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Box,
+  BookOpen,
   Check,
   CheckCircle2,
   ChevronRight,
   Circle,
-  Code2,
   ExternalLink,
   FileDiff,
   FolderGit2,
@@ -28,17 +29,21 @@ import {
   Hammer,
   Layers3,
   Loader2,
+  Monitor,
+  Moon,
   Play,
   Plus,
   RefreshCw,
   Settings2,
   ShieldCheck,
   Square,
+  Sun,
   Terminal,
   Unplug,
   X,
 } from "lucide-react";
 import {
+  ApiError,
   normalizeBase,
   parseCommands,
   post,
@@ -46,9 +51,52 @@ import {
   type Connection,
   type ForgeRun,
   type Repository,
+  type ProductSnapshot,
+  type ComponentRunContext,
+  type ProjectSnapshot,
 } from "./api";
+import { useAppearance, type Appearance } from "./appearance";
+import { Wizard } from "./Wizard";
+import { SourceControl } from "./SourceControl";
+import { KnowledgeExplorer, Knowledge } from "./Knowledge";
+import { FactoryFloor } from "./FactoryFloor";
+import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
+import { DeliverySetup, RunDelivery } from "./Delivery";
+import { Operations } from "./Operations";
+import { Projects } from "./Projects";
+import { MobileNavigation } from "./MobileNavigation";
+import { FactoryWelcome } from "./FactoryWelcome";
+import { ProductDefinition } from "./ProductDefinition";
+import { IdentityMenu, SignIn, useIdentity } from "./Identity";
+import { ProjectAccess } from "./ProjectAccess";
+import { UserAdministration } from "./UserAdministration";
+import { Administration } from "./Administration";
+import { Collaboration } from "./Collaboration";
+import "./Integrations.css";
+import "./UsabilityRefinements.css";
+import {
+  ProviderConfiguration,
+  Workshop,
+  type CodingProvider,
+  type Policy,
+} from "./Configuration";
 
-type Page = "overview" | "new" | "repositories" | "settings" | "run";
+type Page =
+  | "overview"
+  | "new"
+  | "repositories"
+  | "settings"
+  | "run"
+  | "workflow"
+  | "delivery"
+  | "operations"
+  | "product"
+  | "projects"
+  | "knowledge"
+  | "collaboration"
+  | "access"
+  | "admin"
+  | "users";
 const working = (status: string) =>
   [
     "queued",
@@ -63,6 +111,9 @@ const working = (status: string) =>
     "developing",
     "validating",
   ].includes(status);
+const deliveryPending = (run: ForgeRun) =>
+  ["queued", "executing"].includes(run.publication_request?.status ?? "") ||
+  run.cancel_request?.status === "requested";
 const errorText = (error: unknown) =>
   error instanceof Error
     ? error.message
@@ -157,11 +208,23 @@ function Empty({
 }
 
 export default function App() {
+  const { appearance, setAppearance, theme } = useAppearance();
   const [page, setPage] = useState<Page>("overview");
+  const [runProject, setRunProject] = useState("");
+  const [runComponent, setRunComponent] = useState<ComponentRunContext | null>(
+    null,
+  );
+  const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
+    null,
+  );
+  const [floorProject, setFloorProject] = useState("");
+  const [accessUser, setAccessUser] = useState<string>();
   const [connection, setConnection] = useState<Connection>({
     base: "/api/v1",
     token: "",
   });
+  const identity = useIdentity(connection.base);
+  const restoredGoal = useRef(false);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [runs, setRuns] = useState<ForgeRun[]>([]);
   const [providers, setProviders] = useState<unknown>(null);
@@ -174,23 +237,91 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(false);
+  const [setupGoal, setSetupGoal] = useState<"overview" | "product">(
+    "overview",
+  );
+  const [setupStep, setSetupStep] = useState<number | null>(null);
+  const [executionHealth, setExecutionHealth] = useState<{
+    execution_ready?: boolean;
+    detail?: string;
+  } | null>(null);
+  const navigation = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const rail = navigation.current;
+    if (!rail) return;
+    const showCurrent = () =>
+      rail
+        .querySelector<HTMLElement>("button.active")
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    showCurrent();
+    const resize = new ResizeObserver(showCurrent);
+    resize.observe(rail);
+    return () => resize.disconnect();
+  }, [page]);
+  useEffect(() => {
+    document
+      .querySelector<HTMLElement>(".workspace-main > main")
+      ?.scrollTo({ top: 0 });
+  }, [page]);
+  useEffect(() => {
+    if (identity.loading) return;
+    const authenticated = Boolean(identity.session);
+    setConnection((current) =>
+      current.authenticated === authenticated && !current.token
+        ? current
+        : { ...current, token: "", authenticated },
+    );
+    if (!authenticated) {
+      setConnected(false);
+      setRepositories([]);
+      setRuns([]);
+      setSelected(null);
+      setProviders(null);
+      setProfiles(null);
+    } else if (!restoredGoal.current) {
+      restoredGoal.current = true;
+      const goal = sessionStorage.getItem("forge.pending-goal");
+      sessionStorage.removeItem("forge.pending-goal");
+      if (goal === "/product") {
+        setSetupGoal("product");
+        setPage("product");
+      }
+    }
+  }, [identity.session, identity.loading]);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      if (!connection.token) return;
+      if (!connection.authenticated && !connection.token) return;
       setLoading(true);
       setError("");
       try {
-        const [repositoryResult, runResult, providerResult, profileResult] =
-          await Promise.all([
-            request<Repository[]>(connection, "/repositories", { signal }),
-            request<ForgeRun[]>(connection, "/runs", { signal }),
-            request<unknown>(connection, "/providers", { signal }),
-            request<unknown>(connection, "/profiles", { signal }),
-          ]);
+        const [
+          repositoryResult,
+          runResult,
+          providerResult,
+          profileResult,
+          healthResult,
+        ] = await Promise.all([
+          request<Repository[]>(connection, "/repositories", { signal }),
+          request<ForgeRun[]>(connection, "/runs", { signal }),
+          request<unknown>(connection, "/providers", { signal }).catch(
+            (cause) => {
+              if (cause instanceof ApiError && cause.status === 403)
+                return null;
+              throw cause;
+            },
+          ),
+          request<unknown>(connection, "/profiles", { signal }),
+          request<{ execution_ready?: boolean; detail?: string }>(
+            connection,
+            "/health",
+            { signal },
+          ),
+        ]);
         setRepositories(repositoryResult);
         setRuns(runResult);
         setProviders(providerResult);
         setProfiles(profileResult);
+        setExecutionHealth(healthResult);
         setConnected(true);
       } catch (cause) {
         if (!signal?.aborted) {
@@ -209,14 +340,33 @@ export default function App() {
     return () => controller.abort();
   }, [refresh]);
   useEffect(() => {
-    if (!connected || !runs.some((run) => working(run.status))) return;
+    if (
+      !connected ||
+      !runs.some(
+        (run) =>
+          working(run.status) ||
+          deliveryPending(run) ||
+          ["paused", "needs_reconciliation"].includes(run.status),
+      )
+    )
+      return;
     const timer = window.setInterval(() => {
       void refresh();
     }, 5000);
     return () => window.clearInterval(timer);
   }, [connected, runs, refresh]);
+  const selectedDeliveryPending = selected ? deliveryPending(selected) : false;
   useEffect(() => {
-    if (page !== "run" || !selected?.id || !working(selected.status)) return;
+    if (
+      page !== "run" ||
+      !selected?.id ||
+      !(
+        working(selected.status) ||
+        selectedDeliveryPending ||
+        ["paused", "needs_reconciliation"].includes(selected.status)
+      )
+    )
+      return;
     const controller = new AbortController();
     const timer = window.setInterval(() => {
       request<ForgeRun>(
@@ -233,7 +383,13 @@ export default function App() {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [page, selected?.id, selected?.status, connection]);
+  }, [
+    page,
+    selected?.id,
+    selected?.status,
+    selectedDeliveryPending,
+    connection,
+  ]);
   async function openRun(run: ForgeRun) {
     setPage("run");
     setSelected(run);
@@ -266,7 +422,9 @@ export default function App() {
         action === "cancel"
           ? "Cancellation requested."
           : action === "publish"
-            ? "Pull request publication completed."
+            ? result.pr_url
+              ? "Pull request publication completed."
+              : "Publication request recorded."
             : "A new run was requested.",
       );
       void refresh();
@@ -279,15 +437,41 @@ export default function App() {
   function navigate(next: Page) {
     setPage(next);
     setError("");
+    if (next === "new") setRunComponent(null);
+    if (next === "product") setProductProject(null);
+    if (next === "settings") setSetupStep(null);
   }
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
+  const projectRuns = runs.filter((run) => run.repository_id === floorProject);
   const nav = [
     { page: "overview" as const, icon: Layers3, label: "Factory" },
-    { page: "new" as const, icon: Hammer, label: "New product" },
+    { page: "new" as const, icon: Hammer, label: "Start a run" },
+    { page: "projects" as const, icon: Box, label: "Product projects" },
+    { page: "product" as const, icon: Layers3, label: "Product definition" },
     { page: "repositories" as const, icon: FolderGit2, label: "Repositories" },
-    { page: "settings" as const, icon: Settings2, label: "Connections" },
+    { page: "delivery" as const, icon: Box, label: "Deployment" },
+    { page: "operations" as const, icon: Activity, label: "Applications" },
+    { page: "knowledge" as const, icon: BookOpen, label: "Knowledge" },
+    { page: "admin" as const, icon: Settings2, label: "Administration" },
   ];
+  const administrationLabels: Partial<Record<Page, string>> = {
+    settings: "Connections",
+    workflow: "Agents & skills",
+    collaboration: "Repository workflow",
+    access: "Project access",
+    users: "People",
+  };
+  const navigationPage = administrationLabels[page]
+    ? "admin"
+    : page === "run"
+      ? "overview"
+      : page;
+  const pageLabel =
+    page === "run"
+      ? "Run details"
+      : (administrationLabels[page] ??
+        nav.find((item) => item.page === page)?.label);
   return (
     <div className="app">
       <a className="skip-link" href="#main">
@@ -302,28 +486,35 @@ export default function App() {
             navigate("overview");
           }}
         >
-          <img src="/assets/forge-lockup.svg" alt="Firefly Forge" />
+          <img src={`/assets/forge-lockup-${theme}.svg`} alt="Firefly Forge" />
         </a>
+        <MobileNavigation
+          items={nav.map((item) => ({
+            id: item.page,
+            label: item.label,
+            icon: item.icon,
+            ...(item.page === "repositories"
+              ? { count: repositories.length }
+              : {}),
+          }))}
+          current={navigationPage}
+          onNavigate={(id) => navigate(id as Page)}
+        />
         <div className="workspace">
           <span className="workspace-mark">
             <Hammer size={17} />
           </span>
           <div>
-            Software factory<small>Local workspace</small>
+            Software factory<small>Project workspace</small>
           </div>
         </div>
-        <nav aria-label="Main navigation">
+        <nav ref={navigation} aria-label="Main navigation">
           {nav.map((item) => (
             <button
               key={item.page}
-              className={
-                page === item.page ||
-                (page === "run" && item.page === "overview")
-                  ? "active"
-                  : ""
-              }
+              className={navigationPage === item.page ? "active" : ""}
               onClick={() => navigate(item.page)}
-              aria-current={page === item.page ? "page" : undefined}
+              aria-current={navigationPage === item.page ? "page" : undefined}
             >
               <item.icon size={19} />
               <span>{item.label}</span>
@@ -334,19 +525,12 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="build-note">
-            <ShieldCheck size={20} />
-            <p>
-              Built on evidence.
-              <small>Review every generated change before delivery.</small>
-            </p>
-          </div>
           <a
-            href="https://github.com/fireflyframework"
+            href="https://github.com/fireflyframework/firefly-forge"
             target="_blank"
             rel="noreferrer"
           >
-            Firefly Software Foundation
+            Source on GitHub
             <ExternalLink size={13} />
           </a>
         </div>
@@ -356,22 +540,67 @@ export default function App() {
           <div className="breadcrumb">
             Workspace
             <ChevronRight size={14} />
-            <strong>
-              {page === "run"
-                ? "Run details"
-                : nav.find((item) => item.page === page)?.label}
-            </strong>
+            <strong>{pageLabel}</strong>
           </div>
-          <button
-            className={"connection-indicator " + (connected ? "online" : "")}
-            onClick={() => navigate("settings")}
-          >
-            <span />
-            {connected ? "API connected" : "Connect your API"}
-            <Settings2 size={14} />
-          </button>
+          <span className="mobile-section-label">{pageLabel}</span>
+          <div className="topbar-actions">
+            <label className="appearance-control">
+              {appearance === "system" ? (
+                <Monitor size={16} />
+              ) : theme === "dark" ? (
+                <Moon size={16} />
+              ) : (
+                <Sun size={16} />
+              )}
+              <span className="sr-only">Appearance</span>
+              <select
+                aria-label="Appearance"
+                value={appearance}
+                onChange={(event) =>
+                  setAppearance(event.target.value as Appearance)
+                }
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <button
+              className={"connection-indicator " + (connected ? "online" : "")}
+              aria-label={connected ? "API connected" : "Connect your API"}
+              onClick={() => navigate("settings")}
+            >
+              <span />
+              <b className="connection-desktop-label">
+                {connected ? "API connected" : "Connect your API"}
+              </b>
+              <b className="connection-mobile-label" aria-hidden="true">
+                {connected ? "Connected" : "Connect API"}
+              </b>
+              <Settings2 size={14} />
+            </button>
+            {identity.session && (
+              <IdentityMenu
+                connection={connection}
+                session={identity.session}
+                onAccess={() => navigate("access")}
+                onSignedOut={() => {
+                  restoredGoal.current = false;
+                  identity.refresh();
+                  setConnected(false);
+                  setNotice("");
+                }}
+              />
+            )}
+          </div>
         </header>
         <main id="main" tabIndex={-1}>
+          {connected && executionHealth?.execution_ready === false && (
+            <div className="alert" role="alert">
+              {executionHealth.detail ||
+                "Execution is unavailable. Inspect interrupted work before restarting the factory."}
+            </div>
+          )}
           {error && (
             <div className="alert" role="alert">
               <Unplug size={18} />
@@ -391,7 +620,20 @@ export default function App() {
               </button>
             </div>
           )}
-          {page === "overview" && (
+          {page === "overview" && !connected && (
+            <FactoryWelcome
+              theme={theme}
+              onConnect={() => {
+                setSetupGoal("overview");
+                navigate("settings");
+              }}
+              onProduct={() => {
+                setSetupGoal("product");
+                navigate("settings");
+              }}
+            />
+          )}
+          {page === "overview" && connected && (
             <>
               <div className="page-heading">
                 <div>
@@ -400,70 +642,24 @@ export default function App() {
                     Give an idea a brief. Follow the work. Review the evidence.
                   </p>
                 </div>
-                <button className="primary" onClick={() => navigate("new")}>
+                <button className="primary" onClick={() => navigate("product")}>
                   <Plus size={17} />
                   New product
                 </button>
               </div>
-              <section
-                className="factory-panel"
-                aria-labelledby="production-title"
-              >
-                <div className="factory-title">
-                  <span>
-                    <Hammer size={18} />
-                    <h2 id="production-title">
-                      From intent to a verified change
-                    </h2>
-                  </span>
-                  <span className="subtle">One isolated workspace per run</span>
-                </div>
-                <div className="production-line">
-                  {[
-                    {
-                      icon: FileDiff,
-                      title: "Define",
-                      text: "Brief & repository",
-                    },
-                    {
-                      icon: GitBranch,
-                      title: "Isolate",
-                      text: "Clone & branch",
-                    },
-                    { icon: Code2, title: "Build", text: "Agent & stack" },
-                    {
-                      icon: ShieldCheck,
-                      title: "Verify",
-                      text: "Commands & evidence",
-                    },
-                    { icon: Box, title: "Deliver", text: "Diff & artifacts" },
-                  ].map((step, index) => (
-                    <div className="production-step" key={step.title}>
-                      <div className="machine">
-                        <step.icon size={27} strokeWidth={1.4} />
-                        <span>{index + 1}</span>
-                      </div>
-                      <h3>{step.title}</h3>
-                      <p>{step.text}</p>
-                      {index < 4 && <div className="conveyor" />}
-                    </div>
-                  ))}
-                </div>
-                <div className="factory-foot">
-                  <ShieldCheck size={15} />
-                  <span>
-                    Generated changes stay local until you choose to publish.
-                  </span>
-                  <a
-                    href="https://fireflyframework.github.io/firefly-forge/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Read the guide
-                    <ExternalLink size={13} />
-                  </a>
-                </div>
-              </section>
+              <FactoryFloor
+                connection={connection}
+                connected={connected}
+                repositories={repositories}
+                runs={runs}
+                theme={theme}
+                onOpen={(run) => void openRun(run)}
+                onCreate={() => {
+                  setRunProject(floorProject);
+                  navigate("new");
+                }}
+                onProjectChange={setFloorProject}
+              />
               <div className="metrics">
                 <div>
                   <span>Repositories</span>
@@ -473,7 +669,7 @@ export default function App() {
                   <FolderGit2 size={20} />
                 </div>
                 <div>
-                  <span>Active runs</span>
+                  <span>Factory active runs</span>
                   <strong>
                     {runs
                       .filter((run) => working(run.status))
@@ -483,7 +679,7 @@ export default function App() {
                   <Activity size={20} />
                 </div>
                 <div>
-                  <span>Completed runs</span>
+                  <span>Factory completed runs</span>
                   <strong>
                     {runs
                       .filter((run) =>
@@ -498,22 +694,22 @@ export default function App() {
               <section className="runs-section">
                 <div className="section-heading">
                   <h2>
-                    Recent runs <span>{runs.length}</span>
+                    Project runs <span>{projectRuns.length}</span>
                   </h2>
                   <button
                     className="quiet"
                     onClick={() => void refresh()}
-                    disabled={!connection.token || loading}
+                    disabled={!connected || loading}
                   >
                     <RefreshCw size={15} className={loading ? "spin" : ""} />
                     Refresh
                   </button>
                 </div>
-                {loading && !runs.length ? (
+                {loading && !projectRuns.length ? (
                   <Loading />
-                ) : runs.length ? (
+                ) : projectRuns.length ? (
                   <div className="run-list">
-                    {runs.map((run) => (
+                    {projectRuns.map((run) => (
                       <button
                         className="run-row"
                         key={run.id}
@@ -564,8 +760,74 @@ export default function App() {
               </section>
             </>
           )}
+          {page === "projects" && (
+            <Projects
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+              onOpen={(run) => void openRun(run)}
+              onProduct={(id, project) => {
+                setRunProject(id);
+                navigate("product");
+                setProductProject(project);
+              }}
+              onStart={(context) => {
+                setRunProject(context.component.repository_id);
+                navigate("new");
+                setRunComponent(context);
+              }}
+            />
+          )}
+          {page === "product" && (
+            <ProductDefinition
+              logicalProject={productProject}
+              onConfigure={() => {
+                navigate("settings");
+                setSetupStep(1);
+              }}
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+              initialRepository={runProject}
+              onStart={(id) => {
+                setRunProject(id);
+                navigate("new");
+              }}
+            />
+          )}
+          {page === "knowledge" && (
+            <KnowledgeExplorer
+              onConfigure={() => {
+                navigate("settings");
+                setSetupStep(3);
+              }}
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+            />
+          )}
+          {page === "collaboration" && (
+            <Collaboration
+              onConfigure={() => {
+                navigate("settings");
+                setSetupStep(2);
+              }}
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+              onOpen={(run) => void openRun(run)}
+            />
+          )}
           {page === "new" && (
             <NewProduct
+              key={
+                runComponent
+                  ? `${runComponent.project.id}/${runComponent.component.id}`
+                  : "standalone"
+              }
+              initialComponent={runComponent}
+              onStandalone={() => setRunComponent(null)}
+              initialRepository={runProject}
               repositories={repositories}
               profiles={profiles}
               connected={connected}
@@ -589,14 +851,26 @@ export default function App() {
                     point.
                   </p>
                 </div>
-                <button
-                  className="primary"
-                  onClick={() => setDialog(true)}
-                  disabled={!connected}
-                >
-                  <Plus size={17} />
-                  Add repository
-                </button>
+                <div className="integration-actions">
+                  <button
+                    className="primary"
+                    onClick={() => {
+                      navigate("settings");
+                      setSetupStep(2);
+                    }}
+                  >
+                    Connect applications
+                    <ArrowRight size={17} />
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => setDialog(true)}
+                    disabled={!connected}
+                  >
+                    <Plus size={17} />
+                    Add repository
+                  </button>
+                </div>
               </div>
               <div className="repository-list">
                 {repositories.length ? (
@@ -616,7 +890,13 @@ export default function App() {
                           </span>
                         </div>
                       </div>
-                      <button className="quiet" onClick={() => navigate("new")}>
+                      <button
+                        className="quiet"
+                        onClick={() => {
+                          setRunProject(repository.id);
+                          navigate("new");
+                        }}
+                      >
                         Start a run
                         <ArrowRight size={15} />
                       </button>
@@ -627,7 +907,7 @@ export default function App() {
                     title="No repositories registered"
                     body={
                       connected
-                        ? "Add a Git URL your Forge server can access. Credentials are configured on the server."
+                        ? "Grant repository access through your GitHub, GitLab or Bitbucket application. Local and generic Git sources can be added separately."
                         : "Connect your API first, then register a repository."
                     }
                     action={
@@ -647,8 +927,8 @@ export default function App() {
               <div className="inline-note">
                 <ShieldCheck size={17} />
                 <p>
-                  Repository credentials stay on the server. The factory creates
-                  an isolated branch and workspace for each run.
+                  Repository access stays on the server. The factory creates an
+                  isolated branch and workspace for each run.
                 </p>
               </div>
             </>
@@ -659,11 +939,80 @@ export default function App() {
               connected={connected}
               providers={providers}
               loading={loading}
-              onSave={(next) => {
-                setConnection(next);
-                setConnected(false);
-                setNotice("Connection updated. Checking your API.");
+              onUpdated={() => void refresh()}
+              initialStep={setupStep}
+              repositories={repositories}
+              onDone={() => navigate(setupGoal)}
+              doneLabel={
+                setupGoal === "product"
+                  ? "Open product definition"
+                  : "Open production floor"
+              }
+              signin={
+                <SignIn
+                  connection={connection}
+                  configuration={identity.configuration}
+                  loading={identity.loading}
+                  configurationError={identity.error}
+                  pendingGoal={setupGoal}
+                  onRefresh={identity.refresh}
+                  onReady={identity.refresh}
+                  onAddress={(base) => {
+                    setConnection({ base, token: "", authenticated: false });
+                    setConnected(false);
+                  }}
+                />
+              }
+            />
+          )}
+          {page === "admin" && (
+            <Administration session={identity.session} onNavigate={navigate} />
+          )}
+          {page === "users" && (
+            <UserAdministration
+              connection={connection}
+              session={identity.session}
+              onConfigure={() => navigate("settings")}
+              onAssign={(id) => {
+                setAccessUser(id);
+                navigate("access");
               }}
+            />
+          )}
+          {page === "access" && (
+            <ProjectAccess
+              connection={connection}
+              session={identity.session}
+              initialUser={accessUser}
+              onConfigure={() => navigate("settings")}
+              onUpdated={() => {
+                setAccessUser(undefined);
+                identity.refresh();
+              }}
+            />
+          )}
+          {page === "workflow" && (
+            <Workshop
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+            />
+          )}
+          {page === "delivery" && (
+            <DeliverySetup
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+            />
+          )}
+          {page === "operations" && (
+            <Operations
+              connection={connection}
+              connected={connected}
+              repositories={repositories}
+              providers={providers}
+              onOpen={(run) => void openRun(run)}
+              onConfigure={() => navigate("delivery")}
             />
           )}
           {page === "run" && selected && (
@@ -679,15 +1028,30 @@ export default function App() {
                 <div>
                   <div className="run-id">Run {selected.id}</div>
                   <h1>
-                    {selected.brief?.split("\n")[0] || "Software generation"}
+                    {selected.operation === "test"
+                      ? "Verify existing behavior"
+                      : selected.brief?.split("\n")[0]?.length > 96
+                        ? `${selected.brief
+                            .split("\n")[0]
+                            .slice(0, 96)
+                            .replace(/\s+\S*$/, "")}…`
+                        : selected.brief?.split("\n")[0] ||
+                          "Software generation"}
                   </h1>
                   <p>
                     {repositoryName(selected.repository_id)} ·{" "}
-                    {selected.backend} / {selected.frontend} · {selected.agent}
+                    {selected.backend} / {selected.frontend} ·{" "}
+                    {selected.operation === "test"
+                      ? "No coding provider · checks only"
+                      : selected.agent}
                   </p>
                 </div>
                 <Badge status={selected.status} />
               </div>
+              <details className="run-brief-details">
+                <summary>Full run brief</summary>
+                <p>{selected.brief}</p>
+              </details>
               <div className="run-controls">
                 <span>
                   <GitBranch size={16} />
@@ -696,15 +1060,17 @@ export default function App() {
                 {working(selected.status) ? (
                   <button
                     className="secondary"
-                    disabled={busy}
+                    disabled={
+                      busy || selected.cancel_request?.status === "requested"
+                    }
                     onClick={() => void runAction("cancel")}
                   >
                     <Square size={14} />
-                    Cancel run
+                    {selected.cancel_request?.status === "requested"
+                      ? "Cancellation requested"
+                      : "Cancel run"}
                   </button>
-                ) : ["failed", "cancelled", "interrupted"].includes(
-                    selected.status,
-                  ) ? (
+                ) : ["failed", "cancelled"].includes(selected.status) ? (
                   <button
                     className="secondary"
                     disabled={busy}
@@ -714,16 +1080,32 @@ export default function App() {
                     Retry run
                   </button>
                 ) : null}
-                {selected.status === "succeeded" && !selected.pr_url && (
-                  <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => void runAction("publish")}
-                  >
-                    <GitBranch size={15} />
-                    Publish pull request
-                  </button>
-                )}
+                {selected.status === "succeeded" &&
+                  selected.operation !== "test" &&
+                  !selected.pr_url && (
+                    <button
+                      className="primary"
+                      disabled={
+                        busy ||
+                        [
+                          "queued",
+                          "executing",
+                          "needs_reconciliation",
+                        ].includes(selected.publication_request?.status ?? "")
+                      }
+                      onClick={() => void runAction("publish")}
+                    >
+                      <GitBranch size={15} />
+                      {selected.publication_request?.status === "queued"
+                        ? "Publication queued"
+                        : selected.publication_request?.status === "executing"
+                          ? "Publishing pull request"
+                          : selected.publication_request?.status ===
+                              "needs_reconciliation"
+                            ? "Publication needs review"
+                            : "Publish pull request"}
+                    </button>
+                  )}
                 {selected.pr_url && /^https?:\/\//.test(selected.pr_url) && (
                   <a
                     className="primary"
@@ -746,14 +1128,43 @@ export default function App() {
                   {selected.error}
                 </div>
               )}
-              <RunDetail run={selected} busy={busy} connection={connection} />
+              <ContinueRun
+                key={selected.id}
+                run={selected}
+                connection={connection}
+                onUpdated={(run) => {
+                  setSelected(run);
+                  void refresh();
+                }}
+              />
+              <RunDetail
+                run={selected}
+                busy={busy}
+                connection={connection}
+                onDelivery={() => navigate("delivery")}
+              />
             </>
           )}
         </main>
         <footer>
-          Firefly Forge{" "}
-          <span>Software factory · Local changes, visible evidence.</span>
-          <span>0.1.0</span>
+          <span>© 2026 Firefly Software Foundation</span>
+          <span className="footer-links">
+            <a
+              href="https://github.com/fireflyframework/firefly-forge/blob/main/LICENSE"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Apache 2.0
+            </a>
+            <a
+              href="https://fireflyframework.github.io/firefly-forge/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Documentation
+            </a>
+          </span>
+          <span>v0.2.0</span>
         </footer>
       </div>
       {dialog && (
@@ -779,6 +1190,9 @@ function Loading() {
   );
 }
 function NewProduct({
+  initialComponent,
+  onStandalone,
+  initialRepository,
   repositories,
   profiles,
   connected,
@@ -787,6 +1201,9 @@ function NewProduct({
   onConnection,
   onCreated,
 }: {
+  initialComponent: ComponentRunContext | null;
+  onStandalone: () => void;
+  initialRepository: string;
   repositories: Repository[];
   profiles: unknown;
   connected: boolean;
@@ -795,214 +1212,558 @@ function NewProduct({
   onConnection: () => void;
   onCreated: (run: ForgeRun) => void;
 }) {
+  const projectLabels = repositoryLabels(repositories);
+  const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [backend, setBackend] = useState("pyfly");
-  const [frontend, setFrontend] = useState("react");
+  const [brief, setBrief] = useState("");
+  const [backend, setBackend] = useState(
+    initialComponent?.component.backend ?? "pyfly",
+  );
+  const [frontend, setFrontend] = useState(
+    initialComponent?.component.frontend ?? "react",
+  );
+  const [agent, setAgent] = useState("codex");
+  const [operation, setOperation] = useState("build");
+  const [commands, setCommands] = useState(
+    initialComponent
+      ? JSON.stringify(
+          initialComponent.component.verification.map((item) => item.argv),
+        )
+      : "",
+  );
+  const [repositoryId, setRepositoryId] = useState(initialRepository);
+  const productRepositoryId =
+    initialComponent?.project.definition.product_repository_id || repositoryId;
+  const [product, setProduct] = useState<ProductSnapshot | null>(null);
+  const [productLoaded, setProductLoaded] = useState("");
+  useEffect(() => {
+    if (!productRepositoryId) return;
+    const controller = new AbortController();
+    request<ProductSnapshot | null>(
+      connection,
+      `/repositories/${productRepositoryId}/product`,
+      { signal: controller.signal },
+    )
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        setProduct(
+          value &&
+            typeof value.revision === "number" &&
+            value.repository_id === productRepositoryId &&
+            value.definition
+            ? value
+            : null,
+        );
+        if (
+          !initialComponent &&
+          value?.repository_id === productRepositoryId &&
+          value.definition.architecture
+        ) {
+          setBackend(value.definition.architecture.backend);
+          setFrontend(value.definition.architecture.frontend);
+        }
+        setProductLoaded(productRepositoryId);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorText(cause));
+      });
+    return () => controller.abort();
+  }, [connection, productRepositoryId, initialComponent]);
+  const [skillCatalog, setSkillCatalog] = useState<Policy[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [overridePolicies, setOverridePolicies] = useState(false);
+  const [reviewAgent, setReviewAgent] = useState("");
+  useEffect(() => {
+    if (!connected) return;
+    const controller = new AbortController();
+    request<{ skills: Policy[] }>(connection, "/skills", {
+      signal: controller.signal,
+    })
+      .then((result) =>
+        setSkillCatalog(Array.isArray(result.skills) ? result.skills : []),
+      )
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorText(cause));
+      });
+    return () => controller.abort();
+  }, [connection, connected]);
+  useEffect(() => {
+    if (!repositoryId) return;
+    const controller = new AbortController();
+    request<{ skills: string[] }>(
+      connection,
+      `/repositories/${repositoryId}/policies`,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        setSelectedSkills(Array.isArray(result.skills) ? result.skills : []);
+        setOverridePolicies(false);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorText(cause));
+      });
+    return () => controller.abort();
+  }, [connection, repositoryId]);
+  const frozenArchitecture =
+    !initialComponent && productLoaded === productRepositoryId
+      ? product?.definition.architecture
+      : null;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
     setError("");
-    setBusy(true);
     try {
-      const payload = {
-        repository_id: String(data.get("repository_id")),
-        brief: String(data.get("brief")),
-        backend: String(data.get("backend")),
-        frontend: String(data.get("frontend")),
-        agent: String(data.get("agent")),
-        commands: parseCommands(String(data.get("commands"))),
-        publish: false as const,
-      };
-      onCreated(await post<ForgeRun>(connection, "/runs", payload));
+      const checks = parseCommands(commands);
+      if (step === 1 && frozenArchitecture && !frozenArchitecture.reviewed)
+        throw new Error(
+          "Review this product’s saved architecture in Product definition before starting a run.",
+        );
+      if (step < 3) {
+        setStep(step + 1);
+        return;
+      }
+      setBusy(true);
+      onCreated(
+        await post<ForgeRun>(connection, "/runs", {
+          repository_id: repositoryId,
+          brief:
+            brief.trim() ||
+            "Verify the current product using its executable checks.",
+          operation,
+          backend,
+          frontend,
+          agent: operation === "test" ? "codex" : agent,
+          ...(initialComponent
+            ? {
+                project_id: initialComponent.project.id,
+                component_id: initialComponent.component.id,
+              }
+            : { commands: checks }),
+          publish: false,
+          ...(!initialComponent &&
+          productLoaded === productRepositoryId &&
+          product
+            ? { product_definition: product }
+            : {}),
+          ...(overridePolicies ? { skills: selectedSkills } : {}),
+          ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
+        }),
+      );
     } catch (cause) {
       setError(errorText(cause));
     } finally {
       setBusy(false);
     }
   }
+  const titles = [
+    "Define the work",
+    "Choose your foundation",
+    "Set the checks",
+    "Review your run",
+  ];
+  const descriptions = [
+    operation === "test"
+      ? "Choose the existing source and the checks you want to execute. No coding model changes the product."
+      : "Choose the project and describe the outcome you need.",
+    operation === "test"
+      ? "Match the current repository’s frameworks. Test runs execute commands without a coding provider."
+      : "Select the frameworks and coding provider for this project.",
+    "Choose how the factory will verify the result and which project policies apply.",
+    "Confirm the project, instructions and checks before starting. Publication is a separate action.",
+  ];
   return (
     <>
       <div className="page-heading">
         <div>
-          <h1>What are we building?</h1>
+          <h1>Start a run</h1>
           <p>
-            Describe the outcome. Choose the foundation. Let the factory do the
-            work.
+            Build, maintain or test a product with a recorded plan and
+            verification evidence.
           </p>
         </div>
       </div>
-      <div className="creation-layout">
-        <form
-          className="product-form panel"
-          onSubmit={(event) => void submit(event)}
-        >
-          <div className="form-section">
-            <h2>
-              <FileDiff size={18} />
-              The brief
-            </h2>
-            <Field
-              label="What should this change accomplish?"
-              hint="Include the users, essential behavior and what success looks like."
-            >
-              <textarea
-                name="brief"
-                required
-                minLength={10}
-                rows={5}
-                placeholder="Build a customer onboarding portal with an application form, document upload and a review queue…"
-              />
-            </Field>
-            <Field label="Source repository">
-              <select
-                name="repository_id"
-                required
-                disabled={!repositories.length}
-              >
-                <option value="">Choose a repository</option>
-                {repositories.map((repository) => (
-                  <option key={repository.id} value={repository.id}>
-                    {repository.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {!repositories.length && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={connected ? onRepository : onConnection}
-              >
-                {connected
-                  ? "Register a repository first"
-                  : "Connect your API first"}
-                <ArrowRight size={14} />
-              </button>
-            )}
-          </div>
-          <div className="form-section">
-            <h2>
-              <Layers3 size={18} />
-              The foundation
-            </h2>
-            <div className="two-columns">
-              <Field label="Backend">
+      <Wizard
+        locked={busy}
+        className="run-wizard"
+        steps={["Brief", "Foundation", "Checks", "Review"]}
+        active={step}
+        onStep={setStep}
+        title={titles[step]}
+        description={descriptions[step]}
+        guide={
+          <>
+            <h3>
+              {step === 0
+                ? operation === "test"
+                  ? "Check existing behavior"
+                  : "Make the outcome clear"
+                : step === 1
+                  ? "Start with PyFly or LaraFly"
+                  : step === 2
+                    ? "Make success testable"
+                    : "Your source stays reviewable"}
+            </h3>
+            <p>
+              {step === 0
+                ? operation === "test"
+                  ? "Choose the repository you want to verify. Add its real test commands in Checks; the factory records their outcomes without changing source."
+                  : "Tell the agent who will use this product, what they need to do, and what must stay unchanged."
+                : step === 1
+                  ? "These are the first supported foundations. The profile details below show what has been validated for each stack."
+                  : step === 2
+                    ? "Use the project's own checks. Add tests for the behavior you need, including rejected inputs and failures."
+                    : "The factory records tasks, checks and a source checkpoint. You can inspect the result before publishing or deploying."}
+            </p>
+            <ul>
+              <li>Each run has its own repository workspace.</li>
+              <li>Project policies are frozen when the run is queued.</li>
+              <li>Paused work retains its plan and execution history.</li>
+            </ul>
+          </>
+        }
+      >
+        <form onSubmit={(event) => void submit(event)}>
+          {step === 0 && (
+            <div className="form-section">
+              <Field label="Run purpose">
                 <select
-                  name="backend"
-                  value={backend}
-                  onChange={(event) => setBackend(event.target.value)}
+                  value={operation}
+                  onChange={(event) => setOperation(event.target.value)}
                 >
-                  <option value="pyfly">PyFly · Python</option>
-                  <option value="larafly">LaraFly · Laravel</option>
-                  <optgroup label="Additional profiles — review catalog limits">
-                    <option value="java">Firefly · Java</option>
-                    <option value="rust">Rust</option>
-                    <option value="dotnet">.NET</option>
-                  </optgroup>
+                  <option value="build">Build a product or feature</option>
+                  <option value="maintain">Maintain an existing product</option>
+                  <option value="test">Test an existing product</option>
                 </select>
               </Field>
-              <Field label="Frontend">
+              <Field
+                label="What should this change accomplish?"
+                hint="Include the users, essential behavior and what success looks like."
+              >
+                <textarea
+                  required={operation !== "test"}
+                  minLength={operation === "test" ? 0 : 10}
+                  rows={3}
+                  className="run-brief"
+                  value={brief}
+                  onChange={(event) => setBrief(event.target.value)}
+                  placeholder="Build a customer onboarding portal with an application form, document upload and a review queue…"
+                />
+              </Field>
+              {initialComponent && (
+                <section className="integration-section">
+                  <strong>
+                    {initialComponent.project.definition.name} /{" "}
+                    {initialComponent.component.name}
+                  </strong>
+                  <p>
+                    Revision {initialComponent.project.revision} · root{" "}
+                    <code>{initialComponent.component.path}</code>. This run
+                    freezes the configured component stack, checks and shared
+                    product definition/design system.
+                  </p>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={onStandalone}
+                  >
+                    Use a standalone repository run
+                  </button>
+                </section>
+              )}
+              <Field label="Source repository">
                 <select
-                  name="frontend"
-                  value={frontend}
-                  onChange={(event) => setFrontend(event.target.value)}
+                  value={repositoryId}
+                  onChange={(event) => setRepositoryId(event.target.value)}
+                  required
+                  disabled={!repositories.length || Boolean(initialComponent)}
                 >
-                  <option value="react">React</option>
-                  <option value="angular">Angular</option>
-                  <option value="nextjs">Next.js</option>
-                  <option value="vue">Vue</option>
-                  <option value="none">API only</option>
+                  <option value="">Choose a repository</option>
+                  {repositories.map((repository) => (
+                    <option key={repository.id} value={repository.id}>
+                      {projectLabels.get(repository.id)}
+                    </option>
+                  ))}
                 </select>
               </Field>
+              {productLoaded === productRepositoryId && product && (
+                <p className="feature-status">
+                  Product definition revision {product.revision} will be frozen
+                  into this run.
+                </p>
+              )}
+              {!repositories.length && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={connected ? onRepository : onConnection}
+                >
+                  {connected
+                    ? "Connect a repository first"
+                    : "Connect your API first"}
+                  <ArrowRight size={14} />
+                </button>
+              )}
             </div>
-            <ProfileInfo profiles={profiles} kind="backends" id={backend} />
-            <ProfileInfo profiles={profiles} kind="frontends" id={frontend} />
-            <Field
-              label="Execution agent"
-              hint="The chosen provider must be configured on the Forge server."
-            >
-              <select name="agent" defaultValue="codex">
-                <option value="codex">Codex</option>
-                <option value="claude">Claude Code</option>
-                <option value="bridge">Firefly Agent Bridge</option>
-                <option value="agentic">Firefly Agentic</option>
-              </select>
-            </Field>
-          </div>
-          <div className="form-section">
-            <h2>
-              <ShieldCheck size={18} />
-              Verification
-            </h2>
-            <Field
-              label="Commands to run"
-              hint='JSON argument arrays, for example [["uv","run","pytest"],["npm","test"]]. No shell expressions. Each command has a 120-second limit.'
-            >
-              <textarea
-                name="commands"
-                rows={3}
-                placeholder='[["uv", "run", "pytest"]]'
-                spellCheck={false}
-                className="code-input"
-              />
-            </Field>
-            <div className="inline-note">
-              <ShieldCheck size={17} />
-              <p>
-                This run produces local changes and evidence. Publication is
-                disabled for this request.
-              </p>
+          )}
+          {step === 1 && (
+            <div className="form-section">
+              {frozenArchitecture && (
+                <p className="integration-status">
+                  Saved product revision {product?.revision} fixes the
+                  foundation to {frozenArchitecture.backend} /{" "}
+                  {frozenArchitecture.frontend}. To change this stack, edit the
+                  architecture in Product definition.
+                </p>
+              )}
+              <div className="two-columns">
+                <Field label="Backend">
+                  <select
+                    value={backend}
+                    disabled={Boolean(initialComponent || frozenArchitecture)}
+                    onChange={(event) => setBackend(event.target.value)}
+                  >
+                    {backend === "none" && (
+                      <option value="none">
+                        No backend · standalone frontend
+                      </option>
+                    )}
+                    <option value="pyfly">PyFly · Python</option>
+                    <option value="larafly">LaraFly · Laravel</option>
+                    <optgroup label="Additional profiles — review catalog limits">
+                      <option value="java">Firefly · Java</option>
+                      <option value="rust">Rust</option>
+                      <option value="dotnet">.NET</option>
+                    </optgroup>
+                  </select>
+                </Field>
+                <Field label="Frontend">
+                  <select
+                    value={frontend}
+                    disabled={Boolean(initialComponent || frozenArchitecture)}
+                    onChange={(event) => setFrontend(event.target.value)}
+                  >
+                    <option value="react">React</option>
+                    <option value="angular">Angular</option>
+                    <option value="nextjs">Next.js</option>
+                    <option value="vue">Vue</option>
+                    <option value="none">API only</option>
+                  </select>
+                </Field>
+              </div>
+              <ProfileInfo profiles={profiles} kind="backends" id={backend} />
+              <ProfileInfo profiles={profiles} kind="frontends" id={frontend} />
+              {operation !== "test" ? (
+                <Field
+                  label="Execution agent"
+                  hint="The provider must be configured and signed in on the factory server."
+                >
+                  <select
+                    value={agent}
+                    onChange={(event) => setAgent(event.target.value)}
+                  >
+                    <option value="codex">Codex</option>
+                    <option value="claude">Claude Code</option>
+                    <option value="bridge">Firefly Agent Bridge</option>
+                    <option value="agentic">Firefly Agentic</option>
+                  </select>
+                </Field>
+              ) : (
+                <p className="subtle">
+                  Test runs execute checks directly. They do not use a model
+                  subscription or change source.
+                </p>
+              )}
             </div>
-          </div>
+          )}
+          {step === 2 && (
+            <div className="form-section">
+              <Field
+                label="Commands to run"
+                hint='JSON argument arrays, for example [["uv","run","pytest"],["npm","test"]]. Each command has a 120-second limit.'
+              >
+                <textarea
+                  rows={4}
+                  value={commands}
+                  disabled={Boolean(initialComponent)}
+                  onChange={(event) => setCommands(event.target.value)}
+                  placeholder='[["uv", "run", "pytest"]]'
+                  spellCheck={false}
+                  className="code-input"
+                />
+              </Field>
+              <Field
+                label="Independent review provider"
+                hint="Optional. Review runs in a separate copied workspace and blocks delivery until approved. Provider credentials must be configured on the factory."
+              >
+                <select
+                  value={reviewAgent}
+                  onChange={(event) => setReviewAgent(event.target.value)}
+                >
+                  <option value="">No independent review requested</option>
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                  <option value="bridge">Firefly Agent Bridge</option>
+                  <option value="agentic">Firefly Agentic</option>
+                </select>
+              </Field>
+              {!!skillCatalog.length && (
+                <>
+                  <h3>Project policies</h3>
+                  <p className="subtle">
+                    Inherit the project's versioned selection or choose policies
+                    for this run. Core source and credential protections always
+                    apply.
+                  </p>
+                  <label className="check-choice">
+                    <input
+                      type="checkbox"
+                      checked={overridePolicies}
+                      onChange={(event) =>
+                        setOverridePolicies(event.target.checked)
+                      }
+                    />
+                    Override project policies for this run
+                  </label>
+                  {overridePolicies && (
+                    <div className="policy-grid">
+                      {skillCatalog.map((skill) => (
+                        <label className="policy-choice" key={skill.id}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSkills.includes(skill.id)}
+                            onChange={(event) =>
+                              setSelectedSkills((selected) =>
+                                event.target.checked
+                                  ? [...selected, skill.id]
+                                  : selected.filter((id) => id !== skill.id),
+                              )
+                            }
+                          />
+                          <span>
+                            <strong>{skill.name}</strong>
+                            <small>{skill.description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {step === 3 && (
+            <dl className="wizard-summary">
+              <div>
+                <dt>Project</dt>
+                <dd>
+                  {repositories.find((item) => item.id === repositoryId)?.name}
+                </dd>
+              </div>
+              <div>
+                <dt>Product definition</dt>
+                <dd>
+                  {productLoaded === productRepositoryId
+                    ? product
+                      ? `Saved revision ${product.revision} · ${product.definition.customer}`
+                      : "No saved definition; this run uses the brief."
+                    : "Definition not loaded; the factory will resolve project defaults."}
+                </dd>
+              </div>
+              <div>
+                <dt>Independent review</dt>
+                <dd>
+                  {reviewAgent
+                    ? `Requested from ${human(reviewAgent)} in a separate workspace`
+                    : "Not requested"}
+                </dd>
+              </div>
+              <div>
+                <dt>Purpose</dt>
+                <dd>{human(operation)}</dd>
+              </div>
+              <div>
+                <dt>Brief</dt>
+                <dd>
+                  {brief.trim() ||
+                    "Verify the current product using its executable checks."}
+                </dd>
+              </div>
+              <div>
+                <dt>Foundation</dt>
+                <dd>
+                  {backend} / {frontend}
+                </dd>
+              </div>
+              <div>
+                <dt>Worker</dt>
+                <dd>
+                  {operation === "test" ? "Verification runner" : human(agent)}
+                </dd>
+              </div>
+              <div>
+                <dt>Checks</dt>
+                <dd>
+                  {commands.trim() ? (
+                    <pre>{commands}</pre>
+                  ) : (
+                    "The factory will discover the project's executable checks."
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Policies</dt>
+                <dd>
+                  {overridePolicies
+                    ? selectedSkills.join(", ") ||
+                      "No optional policies selected"
+                    : "Project defaults"}
+                </dd>
+              </div>
+            </dl>
+          )}
           {error && (
             <div className="alert" role="alert">
               {error}
             </div>
           )}
-          <div className="form-footer">
-            <span>Review the result before delivery.</span>
+          <div className="wizard-actions">
+            {step ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setStep(step - 1)}
+                disabled={busy}
+              >
+                <ArrowLeft size={16} />
+                Back
+              </button>
+            ) : (
+              <span>Step 1 of 4</span>
+            )}
             <button
               className="primary"
               disabled={busy || !connected || !repositories.length}
             >
               {busy ? (
                 <Loader2 size={17} className="spin" />
-              ) : (
+              ) : step === 3 ? (
                 <Play size={16} />
+              ) : (
+                <ArrowRight size={16} />
               )}
-              Start building
+              {step < 2
+                ? "Continue"
+                : step === 2
+                  ? "Review run"
+                  : operation === "test"
+                    ? "Run tests"
+                    : operation === "maintain"
+                      ? "Start maintenance"
+                      : "Start building"}
             </button>
           </div>
         </form>
-        <aside className="brief-guide">
-          <div className="guide-icon">
-            <Hammer size={30} strokeWidth={1.3} />
-          </div>
-          <h2>A clear brief makes better software.</h2>
-          <p>Think of this as a handoff to your engineering team.</p>
-          <ol>
-            <li>
-              <strong>Name the outcome.</strong>
-              <span>Explain the task people need to complete.</span>
-            </li>
-            <li>
-              <strong>Set the boundaries.</strong>
-              <span>State what to include, preserve and avoid.</span>
-            </li>
-            <li>
-              <strong>Make success testable.</strong>
-              <span>Add commands that verify the behavior you need.</span>
-            </li>
-          </ol>
-          {profiles !== null && (
-            <div className="profile-note">
-              <CheckCircle2 size={16} />
-              <span>Stack profiles loaded from your server.</span>
-            </div>
-          )}
-        </aside>
-      </div>
+      </Wizard>
     </>
   );
 }
@@ -1041,139 +1802,179 @@ function Connections({
   connected,
   providers,
   loading,
-  onSave,
+  onUpdated,
+  signin,
+  repositories,
+  onDone,
+  initialStep,
+  doneLabel = "Open production floor",
 }: {
+  doneLabel?: string;
   current: Connection;
   connected: boolean;
   providers: unknown;
   loading: boolean;
-  onSave: (connection: Connection) => void;
+  onUpdated: () => void;
+  signin: ReactNode;
+  repositories: Repository[];
+  onDone: () => void;
+  initialStep: number | null;
 }) {
-  const [error, setError] = useState("");
-  function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      onSave({
-        base: normalizeBase(String(data.get("base"))),
-        token: String(data.get("token")).trim(),
-      });
-      setError("");
-    } catch (cause) {
-      setError(errorText(cause));
-    }
-  }
+  const { theme } = useAppearance();
+  const [chosenStep, setStep] = useState<number | null>(initialStep);
+  const [providerId, setProviderId] = useState("codex");
+  const step = connected ? (chosenStep ?? 1) : 0;
   const providerRecords = records(
     providers && typeof providers === "object" && "providers" in providers
       ? (providers as { providers: unknown }).providers
       : providers,
   );
+  const chosenProvider =
+    providerRecords.find(([, item]) => item.id === providerId) ??
+    providerRecords[0];
+  const apiForm = signin;
   return (
     <>
       <div className="page-heading">
         <div>
-          <h1>Connect the factory.</h1>
+          <h1>Connect the factory</h1>
           <p>
-            Your API is the control center. Agents and Git credentials live on
-            its server.
+            Set up the workspace, coding providers, repository access and
+            project knowledge.
           </p>
         </div>
-        <Badge status={connected ? "ready" : "disconnected"} />
+        <Badge status={connected ? "connected" : "disconnected"} />
       </div>
-      <div className="settings-layout">
-        <form className="panel settings-form" onSubmit={save}>
-          <h2>
-            <Unplug size={19} />
-            Forge API
-          </h2>
-          <Field
-            label="API address"
-            hint="Use /api/v1 for the same server, or a complete API address."
-          >
-            <input
-              name="base"
-              required
-              defaultValue={current.base}
-              placeholder="/api/v1"
-              autoComplete="url"
+      {!connected ? (
+        <section
+          className="connection-welcome"
+          aria-label="Connect your workspace"
+        >
+          <div className="connection-story">
+            <img
+              src={`/assets/forge-factory-${theme}.svg`}
+              alt="Firefly software factory"
             />
-          </Field>
-          <Field
-            label="API token"
-            hint="Kept in this page's memory. Reloading the page clears it."
-          >
-            <input
-              type="password"
-              name="token"
-              required
-              defaultValue={current.token}
-              placeholder="Enter FORGE_API_TOKEN"
-              autoComplete="off"
-            />
-          </Field>
-          <div className="inline-note">
-            <ShieldCheck size={17} />
+            <h2>After you connect</h2>
             <p>
-              Use an HTTPS address when connecting to a remote API. Your token
-              is sent only to the address you enter.
+              Connect your factory, choose a coding agent and grant repository
+              access. Then follow each product from its brief through checks,
+              review and deployment.
             </p>
+            <div className="integration-section">
+              <p>
+                Each project keeps its source, configuration and recorded work.
+                Independent repositories can run in parallel.
+              </p>
+            </div>
           </div>
-          {error && (
-            <div className="alert" role="alert">
-              {error}
+          {apiForm}
+        </section>
+      ) : (
+        <Wizard
+          steps={["Workspace", "Coding AI", "Repositories", "Knowledge"]}
+          active={step}
+          onStep={setStep}
+          title={
+            [
+              "Factory connection",
+              "Choose your coding provider",
+              "Grant repository access",
+              "Add project knowledge",
+            ][step]
+          }
+          description={
+            [
+              "Your server session determines identity and project access. Change servers or sign in explicitly.",
+              "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
+              "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
+              "Optionally connect flycanon for cited framework guidance, project source and verified run memory.",
+            ][step]
+          }
+        >
+          {step === 0 && apiForm}
+          {step === 1 && (
+            <div className="provider-panel">
+              <div
+                className="integration-provider-choice"
+                aria-label="Coding provider"
+              >
+                {providerRecords.map(([name, item]) => (
+                  <button
+                    type="button"
+                    key={name}
+                    className="secondary"
+                    aria-pressed={chosenProvider?.[0] === name}
+                    onClick={() => setProviderId(String(item.id ?? name))}
+                  >
+                    {String(item.name ?? name)}
+                  </button>
+                ))}
+              </div>
+              {loading && !providerRecords.length ? (
+                <Loading />
+              ) : chosenProvider ? (
+                chosenProvider[1].fields ? (
+                  <ProviderConfiguration
+                    key={chosenProvider[0]}
+                    provider={chosenProvider[1] as unknown as CodingProvider}
+                    connection={current}
+                    onUpdated={onUpdated}
+                  />
+                ) : (
+                  <div className="integration-card">
+                    <h3>
+                      {String(chosenProvider[1].name ?? chosenProvider[0])}
+                    </h3>
+                    <p>
+                      {String(
+                        chosenProvider[1].detail ?? "Readiness not reported",
+                      )}
+                    </p>
+                    <Badge
+                      status={
+                        chosenProvider[1].ready ? "configured" : "unavailable"
+                      }
+                    />
+                  </div>
+                )
+              ) : (
+                <Empty
+                  title="No provider details returned"
+                  body="Check your factory connection and server configuration."
+                />
+              )}
             </div>
           )}
-          <button className="primary" disabled={loading}>
-            {loading ? (
-              <Loader2 size={16} className="spin" />
-            ) : (
-              <Check size={16} />
-            )}
-            Save connection
-          </button>
-        </form>
-        <section className="panel provider-panel">
-          <h2>
-            <Terminal size={19} />
-            Execution providers
-          </h2>
-          <p className="subtle">Readiness reported by your Forge server.</p>
-          {loading ? (
-            <Loading />
-          ) : providerRecords.length ? (
-            providerRecords.map(([name, provider]) => (
-              <div className="provider" key={name}>
-                <span className="provider-icon">
-                  <Terminal size={17} />
-                </span>
-                <div>
-                  <strong>{human(provider.name ?? name)}</strong>
-                  <small>
-                    {String(
-                      provider.reason ??
-                        provider.description ??
-                        provider.detail ??
-                        "Configured on the server",
-                    )}
-                  </small>
-                </div>
-                <Badge
-                  status={
-                    provider.ready === true || provider.available === true
-                      ? "ready"
-                      : String(provider.status ?? "unavailable")
-                  }
-                />
-              </div>
-            ))
-          ) : (
-            <Empty
-              title="Provider readiness is unavailable"
-              body="Save a valid API connection to inspect configured agents."
-            />
+          {step === 2 && (
+            <SourceControl connection={current} onConnected={onUpdated} />
           )}
-        </section>
-      </div>
+          {step === 3 && (
+            <Knowledge connection={current} repositories={repositories} />
+          )}
+          <div className="wizard-actions">
+            {step > 0 ? (
+              <button className="secondary" onClick={() => setStep(step - 1)}>
+                <ArrowLeft size={16} />
+                Back
+              </button>
+            ) : (
+              <span>Factory connection is active</span>
+            )}
+            <button
+              className="primary"
+              onClick={() => (step === 3 ? onDone() : setStep(step + 1))}
+            >
+              {step === 3
+                ? doneLabel
+                : step === 2
+                  ? "Continue to knowledge"
+                  : "Continue"}
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        </Wizard>
+      )}
     </>
   );
 }
@@ -1311,19 +2112,30 @@ function RunDetail({
   run,
   busy,
   connection,
+  onDelivery,
 }: {
   run: ForgeRun;
   busy: boolean;
   connection: Connection;
+  onDelivery: () => void;
 }) {
   const [tab, setTab] = useState<
-    "timeline" | "diff" | "verification" | "artifacts"
+    | "timeline"
+    | "diff"
+    | "verification"
+    | "artifacts"
+    | "plan"
+    | "deployment"
+    | "review"
   >("timeline");
   const tabs = [
     { id: "timeline" as const, icon: Activity, label: "Timeline" },
+    { id: "plan" as const, icon: BookOpen, label: "Plan" },
     { id: "diff" as const, icon: FileDiff, label: "Changes" },
     { id: "verification" as const, icon: ShieldCheck, label: "Verification" },
+    { id: "review" as const, icon: ShieldCheck, label: "Independent review" },
     { id: "artifacts" as const, icon: Box, label: "Artifacts" },
+    { id: "deployment" as const, icon: Box, label: "Deployment" },
   ];
   const verification = records(run.verification);
   const [downloadError, setDownloadError] = useState("");
@@ -1334,7 +2146,12 @@ function RunDetail({
           "/runs/" +
           encodeURIComponent(run.id) +
           "/artifacts/changes.zip",
-        { headers: { Authorization: "Bearer " + connection.token } },
+        {
+          credentials: "include",
+          headers: connection.token
+            ? { Authorization: "Bearer " + connection.token }
+            : {},
+        },
       );
       if (!result.ok)
         throw new Error("Artifact download failed (" + result.status + ").");
@@ -1393,6 +2210,51 @@ function RunDetail({
         className="evidence-content"
       >
         {busy && <Loading />}
+        {tab === "review" && (
+          <section>
+            <h3>Independent review</h3>
+            {!run.review || run.review.status === "not_requested" ? (
+              <p>No independent review was requested for this run.</p>
+            ) : (
+              <>
+                <span className="feature-status">
+                  {run.review.status.replaceAll("_", " ")}
+                </span>
+                <p>{run.review.summary}</p>
+                <p className="feature-meta">
+                  Reviewed source tree <code>{run.review.source_tree}</code>
+                </p>
+                {run.review.findings.map((finding, index) => (
+                  <article key={index} className="feature-record">
+                    <strong>
+                      {finding.severity} · {finding.summary}
+                    </strong>
+                    {finding.path && (
+                      <p>
+                        <code>
+                          {finding.path}
+                          {finding.line ? `:${finding.line}` : ""}
+                        </code>
+                      </p>
+                    )}
+                    <p>{finding.evidence}</p>
+                  </article>
+                ))}
+              </>
+            )}
+          </section>
+        )}
+        {tab === "plan" && (
+          <ExecutionRecord key={run.id} run={run} connection={connection} />
+        )}
+        {tab === "deployment" && (
+          <RunDelivery
+            key={run.id}
+            run={run}
+            connection={connection}
+            onConfigure={onDelivery}
+          />
+        )}
         {tab === "timeline" &&
           (run.events?.length ? (
             <ol className="timeline">

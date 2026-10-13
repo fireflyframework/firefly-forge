@@ -30,7 +30,7 @@ Angular products use the current template revision and Hub components. An auth
 flag in a scaffold is not implemented identity behavior; generated products must
 actually implement and test authentication if their brief requires it.
 
-Forge Studio itself is a React application. Its own frontend does not restrict
+forge Studio itself is a React application. Its own frontend does not restrict
 the frontend selected for a generated product.
 
 ## Match verification to the repository
@@ -41,5 +41,5 @@ one project-owned gate. Command arguments are passed directly to the process,
 not interpreted as a shell expression.
 
 Leave commands empty only when the generated project declares a supported check
-that Forge can discover. A project without a verification command must fail
+that forge can discover. A project without a verification command must fail
 verification rather than receiving an assumed passing result.

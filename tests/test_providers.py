@@ -20,6 +20,79 @@ async def discard(kind, message):
     pass
 
 
+@pytest.mark.parametrize(
+    "status,revision,expected",
+    [
+        ("verified", "revision-1", "verified"),
+        ("unverified", "revision-1", "unverified"),
+        ("verified", "", "unverified"),
+    ],
+)
+async def test_bridge_vision_requires_authenticated_model_specific_revision(status, revision, expected):
+    import httpx
+
+    from firefly_forge.providers import BridgeProvider
+
+    def handler(request):
+        assert str(request.url) == "http://127.0.0.1:18766/v1/models"
+        assert request.headers["Authorization"] == "Bearer fixture-token"
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"id": "bridge/other", "image_input": {"status": "verified", "config_revision": "other"}},
+                    {
+                        "id": "bridge/default",
+                        "image_input": {
+                            "status": status,
+                            "config_revision": revision,
+                            "max_images": 5,
+                            "max_decoded_bytes": 6000000,
+                        },
+                    },
+                ]
+            },
+        )
+
+    provider = BridgeProvider({"FORGE_BRIDGE_URL": "http://127.0.0.1:18766", "FORGE_BRIDGE_TOKEN": "fixture-token"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        capability = await provider.image_input_capability(client=client)
+    assert capability["status"] == expected
+    assert "fixture-token" not in json.dumps(capability)
+
+
+async def test_unavailable_bridge_vision_is_dom_only():
+    import httpx
+
+    from firefly_forge.providers import BridgeProvider
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(401, text="private-token"))
+    ) as client:
+        capability = await BridgeProvider(
+            {"FORGE_BRIDGE_URL": "http://localhost:18766", "FORGE_BRIDGE_TOKEN": "private-token"}
+        ).image_input_capability(client=client)
+    assert capability == {"status": "unverified"}
+
+
+async def test_bridge_model_pins_verified_vision_revision_on_transport(tmp_path):
+    from firefly_forge.providers import BridgeProvider
+
+    provider = BridgeProvider({"FORGE_BRIDGE_URL": "http://localhost:18766", "FORGE_BRIDGE_TOKEN": "fixture-token"})
+    provider.configure_runtime(
+        scope_root=tmp_path,
+        repository_root=tmp_path,
+        image_capability={"status": "verified", "model": "bridge/default", "config_revision": "a" * 64},
+    )
+    model = provider.model()
+    assert model.client.default_headers.get("X-Bridge-Image-Revision") == "a" * 64
+    await model.client.close()
+    provider.configure_runtime(scope_root=tmp_path, repository_root=tmp_path, image_capability={"status": "unverified"})
+    text_model = provider.model()
+    assert "X-Bridge-Image-Revision" not in text_model.client.default_headers
+    await text_model.client.close()
+
+
 @pytest.mark.asyncio
 async def test_process_streaming_retains_actual_exit_and_events(tmp_path):
     events = []
@@ -148,18 +221,26 @@ async def test_bridge_native_tool_flow_omits_unimplemented_openai_token_cap(tmp_
         body = json.loads(request.content)
         requests.append(body)
         assert "max_completion_tokens" not in body
+        assert body["response_format"] == {"type": "json_object"}
+        assert all("pattern" not in json.dumps(tool["function"]["parameters"]) for tool in body["tools"])
+        message = {"role": "assistant", "content": json.dumps({"summary": "Generated service"})}
         if len(requests) == 1:
-            name, arguments = (
-                "write_file",
-                {"path": "src/service.py", "content": "def alert(qty):\n    return qty < 5\n"},
-            )
-        else:
-            name = next(
-                t["function"]["name"]
-                for t in body["tools"]
-                if t["function"]["name"] not in {"read_file", "write_file", "list_files"}
-            )
-            arguments = {"summary": "Generated service"}
+            message = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "write-1",
+                        "type": "function",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": json.dumps(
+                                {"path": "src/service.py", "content": "def alert(qty):\n    return qty < 5\n"}
+                            ),
+                        },
+                    }
+                ],
+            }
         return httpx.Response(
             200,
             json={
@@ -170,18 +251,8 @@ async def test_bridge_native_tool_flow_omits_unimplemented_openai_token_cap(tmp_
                 "choices": [
                     {
                         "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": None,
-                            "tool_calls": [
-                                {
-                                    "id": f"call-{len(requests)}",
-                                    "type": "function",
-                                    "function": {"name": name, "arguments": json.dumps(arguments)},
-                                }
-                            ],
-                        },
-                        "finish_reason": "tool_calls",
+                        "message": message,
+                        "finish_reason": "tool_calls" if len(requests) == 1 else "stop",
                     }
                 ],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
@@ -193,9 +264,93 @@ async def test_bridge_native_tool_flow_omits_unimplemented_openai_token_cap(tmp_
         monkeypatch.setattr(
             "pydantic_ai.providers.openai.OpenAIProvider", lambda **kwargs: OriginalProvider(openai_client=client)
         )
-        monkeypatch.setenv("FORGE_BRIDGE_URL", "http://test")
+        monkeypatch.setenv("FORGE_BRIDGE_URL", "http://127.0.0.1")
         monkeypatch.setenv("FORGE_BRIDGE_TOKEN", "test")
         result = await BridgeProvider().execute(tmp_path, "Create alert service", "pyfly", "none", discard)
     assert result.summary == "Generated service"
     assert result.usage["requests"] == 2
     assert (tmp_path / "src/service.py").is_file()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"data": [{"id": "bridge/default"}]}, {"models": [{"name": "bridge/default"}]}])
+async def test_connection_test_checks_actual_authenticated_models_not_generation(tmp_path, payload):
+    import httpx
+
+    from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
+    from firefly_forge.providers import test_provider_connection as check_connection
+
+    configuration = ConfigurationStore(tmp_path)
+    configuration.update(
+        "bridge", ProviderConfiguration(values={"endpoint": "http://127.0.0.1:8766", "token": "private-secret-token"})
+    )
+
+    def handler(request):
+        assert str(request.url) == "http://127.0.0.1:8766/v1/models"
+        assert request.headers["Authorization"] == "Bearer private-secret-token"
+        return httpx.Response(200, json=payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await check_connection("bridge", configuration, client)
+    assert result["readiness"]["state"] == "connected"
+    assert "real run" in result["detail"]
+    assert "private-secret-token" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_never_retains_provider_response_credentials(tmp_path):
+    import httpx
+
+    from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
+    from firefly_forge.providers import test_provider_connection as check_connection
+
+    configuration = ConfigurationStore(tmp_path)
+    configuration.update(
+        "bridge", ProviderConfiguration(values={"endpoint": "https://api.example.com", "token": "private-secret-token"})
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(401, text="private-secret-token"))
+    ) as client:
+        result = await check_connection("bridge", configuration, client)
+    assert result["readiness"]["state"] == "failed"
+    assert not result["ready"]
+    assert "private-secret-token" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_provider_uses_frozen_model_configuration_without_global_environment(tmp_path, monkeypatch):
+    executable = tmp_path / "fake-codex"
+    executable.write_text(
+        "#!"
+        + sys.executable
+        + (
+            '\nimport json,sys,pathlib\npathlib.Path("args.json").write_text(json.dumps(sys.a'
+            'rgv))\nprint(json.dumps({"type":"item.completed","item":{"type":"agent_message"'
+            ',"text":"Complete"}}))\n'
+        )
+    )
+    executable.chmod(0o755)
+    provider = CodexProvider({"FORGE_CODEX_EXECUTABLE": str(executable), "FORGE_CODEX_MODEL": "queued-model"})
+    monkeypatch.setenv("FORGE_CODEX_MODEL", "later-model")
+    await provider.execute(tmp_path, "Make product", "pyfly", "none", discard)
+    assert "queued-model" in json.loads((tmp_path / "args.json").read_text())
+    assert os.environ["FORGE_CODEX_MODEL"] == "later-model"
+
+
+@pytest.mark.asyncio
+async def test_native_api_never_infers_new_credentials_or_wrong_provider_family(tmp_path, monkeypatch):
+    from firefly_forge.providers import APIProvider, ProviderLimitError
+
+    async def unexpected(*args, **kwargs):
+        raise AssertionError("Generation must not infer a different provider or current process credentials")
+
+    monkeypatch.setattr("firefly_forge.agentic_runtime.execute_agentic", unexpected)
+    monkeypatch.setenv("OPENAI_API_KEY", "added-after-queue")
+    with pytest.raises(ProviderLimitError, match="key"):
+        await APIProvider({"FORGE_AGENTIC_MODEL": "openai-responses:model", "FORGE_AGENTIC_API_KEY": ""}).execute(
+            tmp_path, "Build", "pyfly", "none", discard
+        )
+    with pytest.raises(ProviderError, match="model family"):
+        await APIProvider({"FORGE_AGENTIC_MODEL": "unknown:model", "FORGE_AGENTIC_API_KEY": "private-api-key"}).execute(
+            tmp_path, "Build", "pyfly", "none", discard
+        )

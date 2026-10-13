@@ -1,25 +1,55 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Use the HTTP API
 
-The API prefix is `/api/v1`. Send `Authorization: Bearer <FORGE_API_TOKEN>` for
-operator requests. Request and response bodies use JSON. The actual running
-application's OpenAPI document is the authoritative schema where available.
+The API prefix is `/api/v1`. Hosted installations use an OIDC access token with
+the configured API audience. Browser sessions use the server's secure session
+cookie and CSRF protection. The explicitly enabled local bootstrap also accepts
+`Authorization: Bearer <FORGE_API_TOKEN>` from loopback clients. See
+[Sign in and manage project access](identity.md) for each mode.
+
+Request and response bodies use JSON unless a route downloads an artifact or
+file. Project permissions apply to the authenticated identity. The actual
+running application's OpenAPI document is the authoritative schema.
 
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |
 | GET | `/providers` | Read configured coding-provider readiness |
 | GET | `/openapi.json` | Read the authenticated OpenAPI contract |
+| PUT | `/providers/{id}/configuration` | Save write-only provider fields |
+| POST | `/providers/{id}/test` | Test configured access |
+| GET | `/skills`, `/policies`, `/workflow` | Inspect active policies and real stages |
+| POST | `/policies/sync` | Fetch a pinned data-only central catalog |
 | GET | `/profiles` | Read backend and frontend contracts |
 | GET | `/repositories` | List registered repositories |
 | POST | `/repositories` | Register a Git source |
+| GET/PUT | `/repositories/{id}/policies` | Read or select project policy IDs |
 | GET | `/runs` | List run history |
 | POST | `/runs` | Queue generation and verification |
 | GET | `/runs/{id}` | Read a run's events and evidence |
+| GET | `/runs/{id}/plan`, `/runs/{id}/journal` | Inspect durable tasks and receipts |
+| GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
+| POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
+| POST | `/runs/{id}/resume`, `/runs/{id}/handoff` | Continue retained source; optionally select a new worker |
+| GET | `/deployment-targets` | List delivery targets |
+| PUT | `/deployment-targets/{id}` | Configure a delivery target |
+| GET | `/deployments` | List delivery records |
+| POST | `/runs/{id}/deploy` | Explicitly deploy verified source |
+| POST | `/deployments/{id}/rollback` | Run retained rollback commands and checks |
+| GET | `/scm/connections` | Read native application setup and status |
+| PUT | `/scm/connections/{provider}` | Save write-only native application settings |
+| GET/PUT | `/knowledge/configuration` | Read status or save write-only knowledge settings |
+| POST | `/knowledge/test`, `/knowledge/search` | Check scope or retrieve cited context |
+| POST | `/runs/{id}/knowledge/index`, `/runs/{id}/knowledge/remember` | Explicit verified-source admission or memory |
 | POST | `/runs/{id}/cancel` | Request cancellation |
 | POST | `/runs/{id}/retry` | Create another attempt after failure, cancellation or interruption |
-| POST | `/runs/{id}/publish` | Publish an already verified local change |
+| POST | `/runs/{id}/publish` | Queue publication of an already verified local change |
 | GET | `/runs/{id}/artifacts/changes.zip` | Download retained changed files |
+| GET/POST | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments` | List metadata or upload a conversation file |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}` | Read scoped file metadata |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}/content` | Download the original conversation file |
+| GET | `/repositories/{id}/assistant/conversations/{conversation_id}/capabilities` | Inspect the frozen model's image-input capability without inference |
+| POST | `/repositories/{id}/assistant/conversations/{conversation_id}/turns/{turn_id}/recover` | Fence an expired ownership epoch for explicit reconciliation |
 
 ## Register a repository
 
@@ -41,6 +71,7 @@ Repository registration does not establish clone or publication permissions.
 {
   "repository_id": "the-id-returned-by-registration",
   "brief": "Build the meeting-room reservation service described in our brief.",
+  "operation": "build",
   "backend": "pyfly",
   "frontend": "none",
   "agent": "codex",
@@ -55,7 +86,7 @@ are `react`, `angular`, `nextjs`, `vue` and `none`. Agent values include `codex`
 selecting a combination.
 
 Commands require non-empty argument arrays and a timeout between 1 and 3600
-seconds. Empty commands ask Forge to discover verification from real project
+seconds. Empty commands ask forge to discover verification from real project
 files. There must still be an executable verification gate.
 
 ## Follow evidence and errors
@@ -69,10 +100,10 @@ Automatic repairs record an `attempt` number on each command result. The full
 contains the checks supporting a successful run, and `source_tree` identifies
 their source snapshot. Publication verifies that the workspace still matches
 that snapshot. The [operations guide](operations.md) explains the bounded repair
-budget and exclusive data-directory ownership.
+budget and data-directory and PostgreSQL schema ownership.
 
 Invalid input is rejected; a rejected token requires correcting authentication.
-A provider or command failure appears as a failed run. Retry creates a separate
+Provider limits can pause a retained task; unfinished effects can require reconciliation. Inspect `pause`, `display_status`, plan and journal before continuing. Resume takes `{}`; handoff takes `{"agent":"claude"}` and captures new configured access. Retry creates a separate
 attempt and preserves the failed result. Cancellation is a request to stop active
 work, not a rollback of external effects.
 
@@ -124,7 +155,14 @@ verification before accepting the result.
 `forge mcp` runs the standard MCP stdio transport. Configure your MCP client to
 launch that executable with `FORGE_URL` and `FORGE_API_TOKEN` in its environment.
 The tools list repositories, register a source, create a local run, inspect
-evidence, cancel work and explicitly publish a verified run. The token grants
-the same trusted operator authority as the CLI; an MCP connection does not add
-a separate user authorization model. Keep publishing tool use within the
-operator's explicit intent.
+evidence, cancel work and explicitly publish a verified run. MCP uses the same
+authenticated API and its identity and project permission checks. Keep
+publication within the authorized user's explicit intent.
+
+## Configure connections and project defaults
+
+Provider configuration accepts `{"values":{"model":"MODEL","api_key":"PRIVATE_KEY"},"clear_secrets":[]}`. Field names vary by provider and are listed in `/providers`. Secret values are write-only; GET responses report presence. Empty secret fields retain a saved value; `clear_secrets` explicitly removes it. Queued runs retain an immutable private configuration revision.
+
+Project policies accept `{"skills":["implementation","verification","security"]}`. Omitting `skills` when creating a run uses project defaults; an explicit empty array selects no optional policies. Core framework integration, source safety and verification cannot be disabled.
+
+Native SCM discovery, OAuth redirects and grants are detailed in [SCM](scm.md). Knowledge source selection and per-project scopes are detailed in [knowledge](knowledge.md). Target commands, source gates and rollback bodies are detailed in [deployment](deployment.md).

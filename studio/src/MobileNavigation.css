@@ -1,0 +1,154 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.mobile-navigation,
+.mobile-section-label,
+.connection-mobile-label {
+  display: none;
+}
+.connection-desktop-label {
+  font-weight: inherit;
+}
+@media (max-width: 900px) {
+  .app > .sidebar {
+    position: relative;
+    grid-template-rows: 60px;
+  }
+  .app > .sidebar > .brand {
+    padding-right: 100px;
+  }
+  .app > .sidebar > .brand img {
+    width: 168px;
+  }
+  .app > .sidebar > nav {
+    display: none;
+  }
+  .app .mobile-navigation {
+    display: block;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+  }
+  .app .mobile-menu-trigger {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .mobile-menu-dialog {
+    position: fixed;
+    inset: 12px;
+    margin: 0 auto;
+    width: min(420px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    padding: 20px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .mobile-menu-dialog:not([open]) {
+    display: none;
+  }
+  .mobile-menu-dialog::backdrop {
+    background: #0006;
+    backdrop-filter: blur(3px);
+  }
+  .mobile-menu-dialog > header {
+    display: flex;
+    gap: 16px;
+    align-items: start;
+    justify-content: space-between;
+    padding-bottom: 16px;
+  }
+  .mobile-menu-dialog h2 {
+    font-size: 20px;
+    line-height: 1.5;
+  }
+  .mobile-menu-dialog p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin: 4px 0 0;
+  }
+  .app .sidebar .mobile-menu-dialog nav {
+    display: grid;
+    gap: 4px;
+    padding: 0;
+    overflow: auto;
+    min-height: 0;
+    scroll-padding: 8px;
+  }
+  .app .sidebar .mobile-menu-dialog nav button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font-size: 14px;
+    gap: 12px;
+    margin: 0;
+    white-space: normal;
+  }
+  .app .sidebar .mobile-menu-dialog nav button.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+    color: var(--accent-ink);
+  }
+  .app .sidebar .mobile-menu-dialog nav button span {
+    flex: 1;
+    text-align: left;
+    font-size: 14px;
+  }
+  .app .sidebar .mobile-menu-dialog nav button small {
+    margin-left: auto;
+    font-size: 13px;
+  }
+  .app .sidebar .mobile-menu-dialog nav button svg {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+  }
+  .app .workspace-main > .topbar {
+    gap: 8px;
+  }
+  .app .topbar > .breadcrumb {
+    display: none;
+  }
+  .app .mobile-section-label {
+    display: block;
+    min-width: 0;
+    flex: 1 1 0;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 600;
+  }
+  .app .topbar > .topbar-actions {
+    width: auto;
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+  .app .topbar .appearance-control select {
+    width: 72px;
+    padding: 8px 2px;
+    font-size: 13px;
+  }
+  .app .topbar .connection-indicator {
+    padding: 8px;
+    font-size: 13px;
+    gap: 6px;
+    min-height: 40px;
+  }
+  .app .topbar .connection-indicator > svg,
+  .app .topbar .connection-desktop-label {
+    display: none;
+  }
+  .app .topbar .connection-mobile-label {
+    display: inline;
+    font-weight: inherit;
+  }
+}

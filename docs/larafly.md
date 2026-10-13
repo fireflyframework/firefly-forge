@@ -1,14 +1,14 @@
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Create a LaraFly application
 
-LaraFly is the primary PHP backend profile. Forge uses the Laravel-native
+LaraFly is the primary PHP backend profile. forge uses the Laravel-native
 Firefly contracts, including service composition, attributes, repositories and
 typed models. The agent must inspect the official skeleton and CLI stubs before
 using exact namespaces; it must not invent framework APIs.
 
 ## Prerequisites
 
-Install PHP 8.3+ and Composer on the Forge server, together with the extensions
+Install PHP 8.3+ and Composer on the forge server, together with the extensions
 required by the selected Laravel release. Register a Git repository and choose
 a ready agent. Select **LaraFly**, then a frontend or **API only**.
 

@@ -10,6 +10,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from firefly_forge.secrets import runtime_environment
+
 
 @dataclass(frozen=True)
 class ProcessResult:
@@ -18,14 +20,16 @@ class ProcessResult:
     output: str
 
 
-async def execute(argv: list[str], cwd: Path, timeout: int = 300) -> ProcessResult:
+async def execute(
+    argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None
+) -> ProcessResult:
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         start_new_session=True,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        env=runtime_environment(env),
     )
     chunks: list[bytes] = []
     size = 0
@@ -55,8 +59,8 @@ async def execute(argv: list[str], cwd: Path, timeout: int = 300) -> ProcessResu
     return ProcessResult(argv, process.returncode or 0, b"".join(chunks).decode("utf-8", errors="replace"))
 
 
-async def checked(argv: list[str], cwd: Path, timeout: int = 300) -> str:
-    result = await execute(argv, cwd, timeout)
+async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
+    result = await execute(argv, cwd, timeout, env=env)
     if result.exit_code:
         raise RuntimeError(f"{argv[0]} failed ({result.exit_code}): {result.output[-4000:]}")
     return result.output.strip()

@@ -1,0 +1,118 @@
+# Work from your repository
+
+Forge accepts trusted commands from GitHub issue and pull request comments, GitLab issue and merge request notes, and Bitbucket Cloud pull request comments. A command queues the same verified factory run used by Studio. Each run has its own workspace and branch, and retains the initiating receipt and issue identity.
+
+| Provider | Inbound verification | Supported conversations |
+| --- | --- | --- |
+| GitHub | HMAC-SHA256 over the original body; `X-Hub-Signature-256` | Issues and pull requests |
+| GitLab | Constant-time comparison of `X-Gitlab-Token` | Issues and merge requests |
+| Bitbucket Cloud | HMAC-SHA256 over the original body; `X-Hub-Signature` | Pull requests |
+
+Bitbucket Cloud [removed its native issue tracker API in August 2026](https://developer.atlassian.com/cloud/bitbucket/changelog/). Forge rejects Bitbucket issue creation and legacy issue events. Use a pull request conversation; a Jira connector is not part of this integration.
+
+## Connect and authorize
+
+1. Connect the repository through [your GitHub App or provider OAuth application](scm.md). Forge checks its current grants before remote writes. GitHub issue authoring needs the App's **Issues: write** permission; pull request comments also use **Pull requests: write**. GitLab needs its configured API grant. Bitbucket needs pull request write access.
+2. Open repository collaboration settings. Enable the workflow and enter exact trusted actor IDs: numeric GitHub/GitLab user IDs or Bitbucket account UUIDs. Names, organization membership, labels, and a comment mentioning Forge do not grant execution rights.
+3. Save a separate webhook secret. It is write-only; configuration responses show whether it is present. This secret is independent of the Forge operator token and provider OAuth/App credentials.
+4. Configure the provider webhook to send comment events to `https://YOUR-FACTORY/api/v1/webhooks/PROVIDER/REPOSITORY_ID`. Use `github`, `gitlab`, or `bitbucket` and the Forge repository ID. Terminate HTTPS at your organization's gateway. The webhook route verifies provider credentials rather than accepting the operator token.
+5. Select the allowed commands, agent, product stack, publish setting, and operator-owned verification commands. Save a [product definition](product-definition.md) when the work needs a customer contract.
+
+GitHub and Bitbucket signatures are verified against raw bytes without JSON reserialization. GitLab's supported secret-token mode requires HTTPS; it does not provide a payload HMAC. GitLab's newer signing-token mode is not supported by this configuration. Consult [GitHub verification](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), [GitLab webhook headers](https://docs.gitlab.com/user/project/integrations/webhooks/), and [Bitbucket webhook secrets](https://support.atlassian.com/bitbucket-cloud/docs/manage-webhooks/).
+
+## Commands
+
+Post one complete command as the comment. Options are a JSON object on the same line. Ordinary discussion, edited comments, review annotations, and shell command lines do not dispatch work.
+
+```text
+/forge run {"brief":"Add customer ticket search with account-level access checks"}
+/forge test
+/forge maintain {"brief":"Fix the failed ticket search acceptance case"}
+/forge status
+/forge status {"run_id":"0123456789abcdef0123456789abcdef"}
+```
+
+`run` and `maintain` require a brief. `test` runs the operator-selected verification plan and reports failures. New runs receive the current saved product revision; add `"product_revision":3` to require that exact current revision. If it changed before dispatch, Forge denies the command rather than silently using another contract.
+
+Comments cannot supply executable arguments, provider credentials, arbitrary branches, publish flags, or deployment scripts. Agent, stack, verification commands, and publication come from the repository's operator settings. A command from an untrusted actor, another remote repository, or a revoked setting receives a denied receipt and creates no run.
+
+Deployment requires an explicit command, trusted actor, allowed `deploy` command, `deploy_enabled`, and an allowlisted existing target:
+
+```text
+/forge deploy {"run_id":"0123456789abcdef0123456789abcdef","target_id":"staging"}
+```
+
+The deployment manager still checks repository ownership and the verified source snapshot. The command cannot create a target or bypass its deployment controls. Keep production targets disabled until an operator enables the required deployment policy.
+
+## Receipts and feedback
+
+Forge records a delivery digest, provider identity, actor, command, decision, and associated run. GitHub delivery IDs, GitLab retry-stable `webhook-id`/`Idempotency-Key` headers, and Bitbucket request UUIDs prevent duplicate delivery processing. The originating comment ID also prevents a second run when a provider sends a new delivery ID for the same comment. A delivery ID reused for different bytes is rejected.
+
+The inbox and run creation share a PostgreSQL transaction. The lifecycle worker runs under the factory's execution lease, dispatches accepted receipts once, and posts queued and completion status back to the originating conversation. `GET /api/v1/collaboration/receipts?repository_id=ID` exposes receipt state to authenticated operators.
+
+Remote comments and issue creation record a durable write intent before calling the provider. A timeout, interrupted write, or uncertain response produces `feedback_status: needs_reconciliation`. Forge does not repost it automatically. Check the provider conversation before taking a new action; do not treat an unknown outcome as a failed write. After checking, authenticated operators can call `POST /api/v1/collaboration/receipts/ID/reconcile` with `outcome: posted` or `not_posted` and a note. This records the observed result and sends no remote request. If no comment was posted, request a new explicit `/forge status` rather than replaying the uncertain write.
+
+Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/issues` with `title`, `body`, and an optional `idempotency_key`. Reuse that key when retrying the same request. Without a key, identical title/body content shares a digest key. Changing content with the same key is rejected. Provider App/OAuth credentials authorize the outbound call; the Forge operator token is never used as a provider credential.
+
+These flows are tested with isolated PostgreSQL schemas and provider HTTP transports. They do not claim a live customer repository has granted access or accepted a webhook. Validate those grants and one signed delivery on your deployment before enabling automatic work.
+
+## Register projects from a shared provider channel
+
+Configure the connected GitHub App or OAuth application once, then save operator-authenticated `PUT /api/v1/collaboration/bootstrap/PROVIDER`. The setup fields are `enabled`, `auto_register`, `trusted_actors`, `configuration_actors`, `defaults`, and the write-only `webhook_secret`. `configuration_actors` must be a subset of trusted actors. Defaults use the repository collaboration schema; verification commands, stack, agent, publication and deployment settings remain operator-owned.
+
+Point the provider webhook at `https://YOUR-FACTORY/api/v1/webhooks/PROVIDER`. No Forge repository ID is needed in this route. The first trusted structured comment can register its repository only after a fresh application-grant check confirms its exact remote identity and URL. Existing repository settings are preserved. GitHub installation and added-repository events must match the configured App installation; registration uses fresh granted repositories, not a repository list asserted by the payload. [GitHub documents these installation events](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
+
+`GET /api/v1/collaboration/bootstrap/PROVIDER` returns readiness booleans and a relative ingress path. It never returns a webhook secret or invents a publicly reachable URL. Operators provide their deployment's HTTPS address. `GET /api/v1/collaboration/bootstrap/PROVIDER/receipts` returns the latest global receipts, including denied events and the routed repository receipt ID. Dispatch rechecks global actor permissions and current repository grants, so removal after delivery prevents queued work.
+
+## Define and operate a product in the conversation
+
+Enable individual entries in the operator-owned `channel_commands` allowlist. Its default is empty for existing repository configurations; global onboarding defaults allow only `project` in this additional registry. Product saves, brand changes and design previews also require an explicit configuration actor in both repository and global settings when the delivery uses global ingress.
+
+| Command | JSON options and actual action |
+| --- | --- |
+| `/forge project` | Return the registered repository and current product revision; `operation: repositories` discovers authorized registered repositories; `configure` saves a `project_definition` with optional `project_id`; `status` reads the specified `project_id` |
+| `/forge analysis` | `operation: start`, `project_id` and optional `component_ids`; `status` with optional `analysis_id`; or `review` with `analysis_id` and its exact `digest` |
+| `/forge assistant` | `operation: start` with optional `project_id`; `status` with optional `conversation_id`; or `turn` with `conversation_id`, a 32-character hexadecimal `request_id` and `message` |
+| `/forge roles` | `operation: status`, or `configure` with validated `roles`; optional `project_id` selects logical-product defaults, otherwise repository defaults |
+| `/forge product` | `definition`: complete product definition; save an immutable revision after normal architecture/design validation |
+| `/forge brand` | `brand`: generated kit inputs or supported token/static SVG import; save the owned project kit |
+| `/forge design` | `operation: preview` with optional complete `definition`, or `operation: status` with a saved `digest` |
+| `/forge knowledge` | `operation: search` and `query`; `operation: index` with same-repository `run_id` and bounded `paths`; or `operation: remember` with a same-repository `run_id` |
+| `/forge applications` | Return configured applications for this repository |
+| `/forge maintenance` | `incident_id` and `brief`; queue maintenance for an existing same-repository incident with the operator's verification checks |
+| `/forge resume` | `run_id`; use the execution journal's existing resume guards |
+| `/forge handoff` | `run_id` and `agent`; hand off a paused/interrupted run through the journal |
+| `/forge cancel` | `run_id`; cancel the same-repository run through the engine |
+| `/forge publish` | `run_id`; require repository `publish` opt-in and the engine's final verification, source and review gates |
+
+These commands supplement `run`, `test`, `maintain`, `status`, and the explicitly enabled `deploy` action. They accept data fields, not operator settings, shell arguments or provider credentials. Incident maintenance cannot provision a new application or deployment target. Knowledge indexing uses a validated run workspace; file paths are checked by the existing knowledge service. Brand import supports inline bounded JSON and static SVG, not arbitrary external attachment downloads.
+
+Read-only search and status still require a trusted actor and an allowed command. A coding provider, configured application runtime or knowledge integration must actually be available for its action to succeed. Unsupported or uncertain effects remain visible in the receipt; they are not presented as completed capability.
+
+## Publish review references without changing application source
+
+The operator can enable `remote_artifacts` for a repository or its onboarding defaults. The flag is false by default. A permitted configuration actor's brand or design preview command can then publish the generated review files to `forge/references/DIGEST`, a separate deterministic branch. The originating conversation receives that branch link. A design status request only checks an existing reference; it does not create one.
+
+Brand and design files live under `docs/forge-references/DIGEST/brand` or `design`, with a SHA-256 manifest. An assistant turn can publish its complete unreviewed proposal to `docs/product/proposals/TURN_ID.json` and `.md` on the same separate reference branch when `remote_artifacts` is enabled. The files state that the proposal has not approved functional, architecture or design review. Publication accepts only generated kit and design reference names, at most 210 source files, 500 KB per file and 10 MB total. Provider reads are streamed with a 1 MB response cap. Existing branches are read and checked against every expected file hash; a mismatch stops publication rather than replacing them. The factory does not merge reference branches or alter the default branch. Repository collaborators can still edit branches unless the repository's own protection policy prevents it; subsequent hash checks detect changed reference files.
+
+GitHub uses a repository-scoped **Contents: write** grant, separate from its issue-comment grant, and the [Git tree/reference APIs](https://docs.github.com/en/rest/git/trees). GitLab uses its authorized API grant and [create-only commit actions on a new branch](https://docs.gitlab.com/api/commits/#create-a-commit-with-multiple-files-and-actions). Bitbucket uses its OAuth **repository:write** scope and [branch/source upload APIs](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-source/). Provider-specific contracts are covered by HTTP transport tests; this does not claim your installation has accepted a live reference publication.
+
+The repository receipt records the target branch and manifest before any content write. Ownership, actor roles, command permission and the artifact opt-in are checked before remote effects. A timeout or interruption leaves `status: needs_reconciliation` with the retained reference intent. Processing the same receipt does not replay the action. Check the provider branch, manifest and any local product/brand changes, then record `completed` or `not_completed` through the existing receipt reconciliation route with an evidence note. This records an operator observation and sends no provider request. It does not automatically retry missing files or replay a partial write.
+
+## Answer a factory question from the repository
+
+An issue-bound paused run can post its durable worker request through the same feedback intent used for lifecycle status. Enable `respond` in `channel_commands` and grant the author a configuration role. `/forge respond {"run_id":"0123456789abcdef0123456789abcdef","request_id":"request-1","answer":"Support account owners receive alerts."}` records the answer once under the signed actor identity. The run remains paused until an explicitly enabled resume action. An answer does not authorize deployment or publication. See [Factory roles](agent-roles.md) for the typed feedback contract and request budget.
+
+## Coordinate a logical product from signed comments
+
+Project discovery returns at most 20 authorized registered repositories and a `next_cursor`. Supply that cursor in the next `project` request with `operation: repositories`. A repository appears only when the connected provider grants its exact remote ID, canonical name and URL, and the signed actor has configuration permission and the `project` command in that repository. The list does not reveal other registered projects.
+
+A project configuration includes the native `ProjectDefinition` fields: name, description, topology, owners, components, and optional canonical `product_repository_id`, dependencies and roles. Component verification commands must remain omitted or empty in the comment. Forge copies each component repository's operator-owned checks. Comments cannot replace shell arguments, webhook secrets, model credentials or the global role registry.
+
+Every current project member must use the same connected provider as the signed origin, grant the exact actor and enable the requested action. Mutations, source inspection starts/reviews, repository discovery and model turns also require configuration permission across the graph. Reading older source reports or conversations checks their frozen member graph too. Removing a repository or revoking its grant does not authorize disclosure of its old evidence. A numeric actor ID from GitHub cannot stand in for a GitLab or Bitbucket identity.
+
+Start a conversation with `/forge assistant {"operation":"start","project_id":"PROJECT_ID"}`. The operator's `assistant_agent` setting selects `bridge` or `agentic`; comment authors cannot override it. Forge uses the project's canonical product repository after authorizing all members. Starting freezes configuration without invoking a model. A `turn` invokes the configured model and records its response under a caller-supplied request ID. Reusing the same ID and message retrieves the known response. A different message cannot reuse that ID. The reply remains unreviewed and cannot create a run, change the saved product, answer a worker, resume execution, publish code or deploy.
+
+Use `analysis start` to inspect the authorized source components. `analysis review` acknowledges the exact observed-source digest, not functional behavior or a product design. Role configuration changes validated future-run defaults and preserves old run snapshots. Global role instructions and provider settings remain operator-only.
+
+The repository inbox records an action intent before a model request, source inspection or configuration effect. Authorization failure before dispatch records a denial without an action intent. Unknown outcomes retain reconciliation state; the factory does not blindly retry a model turn or provider write. Comments contain a bounded summary, receipt and relevant IDs. Unreviewed status appears before shortened proposal text; an enabled reference publication supplies the complete proposal branch. Without that opt-in, the full result remains available through the authenticated receipt and assistant APIs.
