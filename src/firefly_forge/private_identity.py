@@ -3,14 +3,57 @@
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import os
 import stat
 import tempfile
-from collections.abc import Callable
-from contextlib import suppress
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
-from filelock import FileLock
+
+@contextmanager
+def identity_lock(path: Path) -> Iterator[None]:
+    try:
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    except OSError:
+        raise ValueError("Private identity lock must be an owner-only regular file") from None
+    locked = False
+    try:
+
+        def validate() -> None:
+            info = os.fstat(descriptor)
+            named = path.stat(follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_uid != os.getuid()
+                or info.st_nlink != 1
+                or (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino)
+            ):
+                raise ValueError("Private identity lock must retain its private regular inode with one link")
+
+        validate()
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except OSError as exc:
+                if exc.errno not in {errno.EAGAIN, errno.EACCES}:
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Private identity lock remained busy") from None
+                time.sleep(0.02)
+        validate()
+        yield
+    finally:
+        if locked:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def private_identity(path: Path, create: Callable[[], bytes], *, size: int) -> bytes:
@@ -37,7 +80,7 @@ def private_identity(path: Path, create: Callable[[], bytes], *, size: int) -> b
             return value
 
     # Serializing readers also hides the temporary second hardlink during publication.
-    with FileLock(str(path) + ".lock", timeout=5, mode=0o600):
+    with identity_lock(Path(str(path) + ".lock")):
         try:
             return read()
         except FileNotFoundError:

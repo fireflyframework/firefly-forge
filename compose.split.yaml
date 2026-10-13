@@ -2,7 +2,7 @@
 services:
   api:
     build: .
-    command: ["forge", "serve", "--role", "api", "--host", "0.0.0.0"]
+    command: ["/app/.venv/bin/forge", "serve", "--role", "api", "--host", "0.0.0.0"]
     ports:
       - "127.0.0.1:8787:8787"
     environment: &forge-environment
@@ -35,7 +35,7 @@ services:
         condition: service_healthy
   worker:
     build: .
-    command: ["forge", "worker"]
+    command: ["/app/.venv/bin/forge", "worker"]
     environment: *forge-environment
     volumes: *forge-storage
     restart: unless-stopped

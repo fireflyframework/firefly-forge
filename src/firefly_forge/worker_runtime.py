@@ -8,10 +8,27 @@ import signal
 from pathlib import Path
 from typing import Any
 
+from pyfly.kernel.lifecycle import CONSUMER_PHASE
+
 
 class WorkerSupervision:
+    phase = CONSUMER_PHASE + 100
+
     def __init__(self, engine: Any, consumers: dict[str, Any]) -> None:
         self.engine, self.consumers = engine, consumers
+        self.engine.consumer_tasks = self.effect_tasks
+
+    def effect_tasks(self) -> list[asyncio.Task[None]]:
+        tasks = {task for task in self.tasks().values() if task is not None}
+        for consumer in self.consumers.values():
+            tasks.update(getattr(consumer, "active", {}).values())
+        return list(tasks)
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        self.engine.prepare_shutdown()
 
     def tasks(self) -> dict[str, asyncio.Task[None] | None]:
         return {name: consumer.poller for name, consumer in self.consumers.items()}

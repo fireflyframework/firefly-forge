@@ -100,6 +100,7 @@ class Store:
         self._ownership_connection: AsyncConnection | None = None
         self._ownership_pid: int | None = None
         self._ownership_lock = asyncio.Lock()
+        self.execution_stopping = False
         self.repository_records = repository_records or ForgeRepositoryRepository()
         self.run_records = run_records or ForgeRunRepository()
         self.event_records = event_records or ForgeEventRepository()
@@ -167,6 +168,8 @@ class Store:
 
     async def assert_ownership(self) -> None:
         async with self._ownership_lock:
+            if self.execution_stopping:
+                raise RuntimeError("Execution dispatch is closed while the owner drains")
             await self._assert_ownership()
 
     async def _assert_ownership(self) -> None:
@@ -198,6 +201,9 @@ class Store:
         connection, self._ownership_connection = self._ownership_connection, None
         self._ownership_pid = None
         if connection is None:
+            return
+        if connection.closed or connection.invalidated:
+            await connection.close()
             return
         try:
             await connection.execute(

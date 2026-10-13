@@ -151,7 +151,7 @@ async def test_stop_during_acquisition_never_recovers_or_retains_leadership(stor
         assert engine.poller is None and engine.execution_state == "stopped"
         assert store._ownership_connection is None and not engine.owner_lock.is_locked
         assert (await store.get_run(run["id"]))["status"] == "preparing"
-        with pytest.raises(RuntimeError, match="ownership was lost"):
+        with pytest.raises(RuntimeError, match="dispatch is closed"):
             await engine.dispatch_queued()
     finally:
         await engine.stop()
@@ -165,11 +165,50 @@ async def test_ownership_loss_retains_storage_fence_until_lifecycle_consumers_dr
         await asyncio.wait_for(engine.poller, 2)
         assert engine.execution_state == "degraded"
         assert engine.owner_lock.is_locked, "A standby must not recover while other native consumers are draining"
-        with pytest.raises(RuntimeError, match="ownership was lost"):
+        with pytest.raises(RuntimeError, match="dispatch is closed"):
             await engine.dispatch_queued()
     finally:
         await engine.stop()
     assert not engine.owner_lock.is_locked
+
+
+async def test_shutdown_fence_also_tracks_effect_tasks_registered_after_initial_capture(store, tmp_path):
+    from firefly_forge.engine import RETAINED_EXECUTION_FENCES
+    from firefly_forge.operations import DeploymentManager
+
+    engine = await worker_engine(store, tmp_path)
+    deployments = DeploymentManager(store, engine)
+    supervision = WorkerSupervision(engine, {"execution": engine, "deployments": deployments})
+    await engine.start()
+    await supervision.stop()
+    release = asyncio.Event()
+    effect = asyncio.create_task(release.wait())
+    deployments.active["late-effect-fixture"] = effect
+    try:
+        await engine.stop()
+        assert engine.owner_lock.is_locked and engine.owner_lock in RETAINED_EXECUTION_FENCES
+        assert engine.execution_state == "degraded"
+        with pytest.raises(RuntimeError, match="dispatch is closed"):
+            await store.assert_ownership()
+    finally:
+        release.set()
+        await effect
+        await engine.stop()
+    assert not engine.owner_lock.is_locked and engine.owner_lock not in RETAINED_EXECUTION_FENCES
+
+
+async def test_releasing_a_lost_owner_never_reconnects_its_invalidated_session(store):
+    from sqlalchemy import text
+
+    await store.acquire_ownership()
+    connection = store._ownership_connection
+    async with store._unit() as session:
+        assert await session.scalar(text("SELECT pg_terminate_backend(:pid)"), {"pid": store._ownership_pid})
+    with pytest.raises(RuntimeError, match="ownership was lost"):
+        await store.assert_ownership()
+    assert connection.invalidated
+    await store.release_ownership()
+    assert connection.closed and store._ownership_connection is None
 
 
 @pytest.mark.parametrize("concurrency", [0, -1, 65])
@@ -400,3 +439,66 @@ async def test_two_headless_processes_keep_one_bounded_parallel_job_budget(tmp_p
             result = await wait_for_run(store, run["id"], {"succeeded", "failed"})
             assert result["status"] == "succeeded", result.get("error")
             assert marker.read_text() == "effect\n"
+
+
+async def test_native_shutdown_timeout_keeps_standby_fenced_until_old_effect_finishes(
+    tmp_path, store_factory, monkeypatch
+):
+    from firefly_forge.api import create_runtime
+    from firefly_forge.operations import DeploymentManager
+
+    monkeypatch.setenv("FORGE_AUTH_MODE", "local_bootstrap")
+    monkeypatch.setenv("FORGE_API_TOKEN", "headless-worker-local-fixture-token")
+    runtime = create_runtime(tmp_path, role="worker")
+    await runtime.startup()
+    engine = runtime.context.get_bean(Engine)
+    deployments = runtime.context.get_bean(DeploymentManager)
+    released = asyncio.Event()
+
+    async def resistant_effect():
+        while not released.is_set():
+            try:
+                await released.wait()
+            except asyncio.CancelledError:
+                continue
+        (tmp_path / "late-effect").write_text("completed")
+
+    effect = asyncio.create_task(resistant_effect())
+    deployments.active["retained-effect-fixture"] = effect
+    await asyncio.sleep(0)
+    get = runtime.context._config.get
+
+    def short_timeout(key, default=None):
+        return 0.05 if key == "pyfly.context.shutdown-timeout" else get(key, default)
+
+    monkeypatch.setattr(runtime.context._config, "get", short_timeout)
+    peer_store = await store_factory(engine.store.path)
+    peer = await worker_engine(peer_store, tmp_path)
+    starting = None
+    try:
+        await asyncio.wait_for(runtime.shutdown(), 5)
+        assert not effect.done()
+        assert engine.owner_lock.is_locked, "Bounded native shutdown must not hand off a live effect"
+        assert engine.execution_state == "degraded"
+        starting = asyncio.create_task(peer.start())
+        await asyncio.sleep(0.1)
+        assert not starting.done() and peer.execution_state == "standby"
+        released.set()
+        await asyncio.wait_for(effect, 2)
+
+        async def consumers_drained():
+            return all(task.done() for task in engine.shutdown_tasks | set(engine.consumer_tasks()))
+
+        await wait_for(consumers_drained, 2)
+        await engine.stop()
+        await asyncio.wait_for(starting, 5)
+        assert peer.execution_state == "ready" and (tmp_path / "late-effect").read_text() == "completed"
+    finally:
+        released.set()
+        await asyncio.wait_for(effect, 2)
+        if starting:
+            starting.cancel()
+            await asyncio.gather(starting, return_exceptions=True)
+        await peer.stop()
+        await engine.stop()
+        await runtime.shutdown()

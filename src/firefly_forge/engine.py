@@ -32,6 +32,8 @@ from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
 from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
 
+RETAINED_EXECUTION_FENCES: set[FileLock] = set()
+
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
     return await process_checked(trusted_git(argv), cwd, timeout, env=git_environment(env) if argv[0] == "git" else env)
@@ -128,6 +130,8 @@ class Engine:
         self.enforce_ownership = False
         self.ownership_failure: str | None = None
         self.execution_state = "stopped"
+        self.consumer_tasks: Callable[[], list[asyncio.Task[None]]] = list
+        self.shutdown_tasks: set[asyncio.Task[None]] = set()
         self.publication_lock = asyncio.Lock()
         self.owner_lock = FileLock(str(store.path.with_suffix(".lock")))
         self.credential_registry: Callable[[], dict[str, str]] = dict
@@ -144,6 +148,8 @@ class Engine:
             self.store.runtime_roles.require_execution()
         if self.poller is not None and not self.poller.done():
             return
+        if any(not task.done() for task in self.shutdown_tasks | set(self.consumer_tasks())):
+            raise RuntimeError("Execution consumers must finish draining before restarting this owner")
         standby = bool(self.store.runtime_roles and self.store.runtime_roles.role == "worker")
         self.stopping = False
         self.enforce_ownership = True
@@ -176,6 +182,7 @@ class Engine:
                         self.execution_state = "stopped"
                     return
                 self.execution_state = "recovering"
+                self.store.execution_stopping = False
                 if self.journal:
                     await self.assert_ownership()
                     await self.journal.recover()
@@ -197,9 +204,19 @@ class Engine:
                     self.owner_lock.release()
             raise
 
-    async def stop(self) -> None:
+    def prepare_shutdown(self) -> None:
         self.stopping = True
+        self.store.execution_stopping = True
         self.execution_state = "stopped"
+        self.shutdown_tasks.update(self.consumer_tasks())
+        self.shutdown_tasks.update(self.active.values())
+        if self.poller:
+            self.shutdown_tasks.add(self.poller)
+        if self.owner_lock.is_locked:
+            RETAINED_EXECUTION_FENCES.add(self.owner_lock)
+
+    async def stop(self) -> None:
+        self.prepare_shutdown()
         if self.poller:
             self.poller.cancel()
             await asyncio.gather(self.poller, return_exceptions=True)
@@ -207,11 +224,17 @@ class Engine:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        self.shutdown_tasks.update(self.consumer_tasks())
+        if any(not task.done() for task in self.shutdown_tasks):
+            self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
+            self.execution_state = "degraded"
+            return
         if self.enforce_ownership:
             try:
                 await self.store.release_ownership()
             finally:
                 self.owner_lock.release()
+                RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
 
     async def assert_ownership(self) -> None:
         if self.store.runtime_roles:
@@ -237,6 +260,7 @@ class Engine:
                 self.ownership_failure = "Execution ownership was lost; restart after inspecting interrupted work"
                 self.execution_state = "degraded"
                 self.stopping = True
+                self.store.execution_stopping = True
                 for task in self.active.values():
                     task.cancel()
                 await asyncio.gather(*self.active.values(), return_exceptions=True)
