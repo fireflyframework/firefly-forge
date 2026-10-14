@@ -815,6 +815,85 @@ def external_mcp() -> None:
     """Review external tool connections and project grants as a factory administrator."""
 
 
+@main.group("connections")
+def connections() -> None:
+    """Manage external connection authorization in the factory control plane."""
+
+
+@connections.group("oauth")
+def connection_oauth() -> None:
+    """Prepare browser consent and inspect durable OAuth connection state."""
+
+
+@connection_oauth.command("providers")
+def connection_oauth_providers() -> None:
+    with client() as connection:
+        display(connection.connection_oauth_providers())
+
+
+@connection_oauth.command("show")
+@click.argument("name")
+def connection_oauth_show(name: str) -> None:
+    with client() as connection:
+        display(connection.connection_oauth(name))
+
+
+@connection_oauth.command("configure")
+@click.argument("name")
+@click.option("--provider", required=True)
+@click.option("--client-id", required=True)
+@click.option(
+    "--authentication", type=click.Choice(["client_secret_post", "client_secret_basic"]), default="client_secret_post"
+)
+@click.option("--project-id")
+@click.option("--public-client", is_flag=True, default=None)
+@click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def connection_oauth_configure(
+    name: str,
+    provider: str,
+    client_id: str,
+    authentication: str,
+    project_id: str | None,
+    public_client: bool | None,
+    client_secret_file: Path | None,
+) -> None:
+    request = {
+        "provider": provider,
+        "client_id": client_id,
+        "authentication": authentication,
+        "project_id": project_id,
+        "public_client": public_client,
+    }
+    if client_secret_file:
+        request["client_secret"] = private_secret_file(client_secret_file)
+    with client() as connection:
+        display(connection.configure_connection_oauth(name, request))
+
+
+@connection_oauth.command("prepare")
+@click.argument("name")
+def connection_oauth_prepare(name: str) -> None:
+    """Return a short-lived link to open in your authenticated factory browser."""
+    with client() as connection:
+        display(connection.prepare_connection_oauth(name))
+
+
+@connection_oauth.command("refresh")
+@click.argument("name")
+@click.option("--request-id", required=True)
+def connection_oauth_refresh(name: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.refresh_connection_oauth(name, request_id))
+
+
+@connection_oauth.command("disconnect")
+@click.argument("name")
+def connection_oauth_disconnect(name: str) -> None:
+    """Disconnect locally; remote provider revocation remains a separate action."""
+    with client() as connection:
+        display(connection.disconnect_connection_oauth(name))
+
+
 @external_mcp.command("catalog")
 def external_mcp_catalog() -> None:
     with client() as connection:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
@@ -579,6 +580,39 @@ class ForgeClient:
 
     def external_mcp_catalog(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "tools/mcp"))
+
+    @staticmethod
+    def _oauth_name(name: str) -> str:
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
+            raise ValueError("Invalid OAuth connection name")
+        return name
+
+    def connection_oauth_providers(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "connection-oauth/providers"))
+
+    def connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"connection-oauth/{self._oauth_name(name)}"))
+
+    def configure_connection_oauth(self, name: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_models import OAuthConnectionInput
+
+        model = OAuthConnectionInput.model_validate(request)
+        payload = model.model_dump(exclude={"client_secret"})
+        if model.client_secret is not None:
+            payload["client_secret"] = model.client_secret.get_secret_value()
+        return dict(self.request("PUT", f"connection-oauth/{self._oauth_name(name)}", json=payload))
+
+    def prepare_connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/prepare"))
+
+    def refresh_connection_oauth(self, name: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_controllers import OAuthRefreshInput
+
+        body = OAuthRefreshInput(request_id=request_id)
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/refresh", json=body.model_dump()))
+
+    def disconnect_connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/disconnect"))
 
     def configure_external_mcp(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.mcp_registry import MCPConnectionInput, _connector

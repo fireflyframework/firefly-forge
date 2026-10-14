@@ -1050,7 +1050,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "pillow", specifier = ">=12,<13" },
     { name = "pydantic", specifier = ">=2.13.3,<3" },
-    { name = "pyfly", extras = ["data-relational", "oauth2-client", "postgresql", "security", "web"], url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.01/pyfly-26.10.1-py3-none-any.whl" },
+    { name = "pyfly", extras = ["data-relational", "oauth2-client", "postgresql", "security", "web"], url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.02/pyfly-26.10.2-py3-none-any.whl" },
     { name = "pypdf", specifier = ">=6.20.1,<7" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
     { name = "uvicorn", specifier = ">=0.41,<1" },
@@ -3238,14 +3238,14 @@ wheels = [
 
 [[package]]
 name = "pyfly"
-version = "26.10.1"
-source = { url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.01/pyfly-26.10.1-py3-none-any.whl" }
+version = "26.10.2"
+source = { url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.02/pyfly-26.10.2-py3-none-any.whl" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
 wheels = [
-    { url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.01/pyfly-26.10.1-py3-none-any.whl", hash = "sha256:c124c3cb7b0ece1dc87e6195ed8984aabf13be70ac777d2cd565237bd505ce09" },
+    { url = "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.02/pyfly-26.10.2-py3-none-any.whl", hash = "sha256:f19e1afe178fb1ea676d355ab4fde4641007eae6814365445a4f341b3c0d28bd" },
 ]
 
 [package.optional-dependencies]

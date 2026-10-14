@@ -57,6 +57,9 @@ from firefly_forge.collaboration_persistence import (
     ForgeWebhookInboxRepository,
 )
 from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration, redact_secrets
+from firefly_forge.connection_oauth import ConnectionOAuth
+from firefly_forge.connection_oauth_controllers import ConnectionOAuthController, ConnectionOAuthPrivacy
+from firefly_forge.connection_oauth_persistence import OAuthConnectionRepository
 from firefly_forge.controllers import (
     CatalogController,
     DeploymentController,
@@ -415,6 +418,18 @@ class FactoryConfiguration:
         return ProjectAccess(store, records)
 
     @bean
+    def connection_oauth(
+        self, store: Store, identity: IdentityService, records: OAuthConnectionRepository
+    ) -> ConnectionOAuth:
+        return ConnectionOAuth(
+            store,
+            encryption_key=identity.encryption_key,
+            browser_origin=identity.configuration()["browser_origin"] or "",
+            records=records,
+            allow_loopback_http=identity.config.allow_loopback_http,
+        )
+
+    @bean
     def ledger(
         self,
         session_provider: SessionProvider,
@@ -666,10 +681,11 @@ class FactoryConfiguration:
         auth: OperatorAuth,
         profiles: ModelProfiles,
         users: UserAdministration,
+        oauth: ConnectionOAuth,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
         manager.secret_registries.extend([search, external_mcp])
-        manager.secret_registries.extend([auth, profiles, users])
+        manager.secret_registries.extend([auth, profiles, users, oauth])
         return manager
 
     @bean
@@ -784,6 +800,9 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        OAuthConnectionRepository,
+        ConnectionOAuthController,
+        ConnectionOAuthPrivacy,
         ForgeRuntimeTopologyRepository,
         ForgeExecutionRequestRepository,
         ForgeExecutionRequestEventRepository,

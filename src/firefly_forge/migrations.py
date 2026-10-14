@@ -22,6 +22,14 @@ from firefly_forge.collaboration_persistence import (
     ForgeProductDefinitionEntity,
     ForgeWebhookInboxEntity,
 )
+from firefly_forge.connection_oauth_persistence import (
+    OAuthAttemptEntity,
+    OAuthConnectionEntity,
+    OAuthEffectEntity,
+    OAuthEventEntity,
+    OAuthGrantEntity,
+    OAuthRegistrationEntity,
+)
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity, ForgeExecutionRequestEventEntity
 from firefly_forge.identity_persistence import (
     ForgeIdentityAttemptEntity,
@@ -57,7 +65,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 20
+SCHEMA_REVISION = 21
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -119,6 +127,12 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeLearningRecordEntity,
                 ForgeLearningEventEntity,
                 ForgeLearningProjectionEntity,
+                OAuthConnectionEntity,
+                OAuthRegistrationEntity,
+                OAuthAttemptEntity,
+                OAuthGrantEntity,
+                OAuthEffectEntity,
+                OAuthEventEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
