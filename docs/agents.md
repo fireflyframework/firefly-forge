@@ -34,6 +34,8 @@ Codex ignores unrelated user configuration while retaining the official login. I
 
 ## Configure native Firefly Agentic
 
+The packaged factory consumes [fireflyframework-agentic 26.10.1](https://github.com/fireflyframework/fireflyframework-agentic/releases/tag/v26.10.1) through its immutable public wheel URL. The dependency lock records the resolved packages; the factory still owns retry, journal and handoff decisions. Optional provider and retrieval extras need their own credentials, infrastructure and security review.
+
 Choose an available provider-qualified model, for example `openai-responses:MODEL_ID`, `anthropic:MODEL_ID` or `google-gla:MODEL_ID`. Enter its API key in the write-only configuration form. This key is independent of CLI subscription login.
 
 For an OpenAI-compatible service, supply its HTTPS endpoint, key and model. The compatible endpoint uses Chat Completions. HTTP is accepted only for `localhost`, `127.0.0.1` and `::1`. URLs containing credentials, query strings or fragments are rejected.

@@ -9,11 +9,11 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-RELEASE = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.0/"
+RELEASE = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.2/"
 ASSETS = {
-    "flycanon-26.10.0-py3-none-any.whl": "1610e4762ab5898283b9a0d6ee3673b794375ee433c1e0535cadd664e81ffe8d",
-    "flycanon-26.10.0.tar.gz": "11e36445d3675efdda16fddf82aa3e19640b70a77329549c876b29cde3adeaa7",
-    "runtime-requirements-26.10.0.txt": "1212dc97ae3b4215dd669ddd149a4dbc3be0adb6f676eb2b7d05278ed8df5335",
+    "flycanon-26.10.2-py3-none-any.whl": "07d4ef39c8c09ddf65be8b1ed7d01a40bf8f1312b696fe3a706d203243c6a0e4",
+    "flycanon-26.10.2.tar.gz": "ccb494b69e928c97115a76ca00dc03e8ec48382110342bd522c35e5428f7e0ef",
+    "runtime-requirements-26.10.2.txt": "bfbad4f98679b21e8a4d198e5b34a977706ce76a28a8ff1453167de148aa3500",
 }
 
 with tempfile.TemporaryDirectory() as directory:
@@ -24,26 +24,26 @@ with tempfile.TemporaryDirectory() as directory:
         if hashlib.sha256(data).hexdigest() != digest:
             raise SystemExit("Released flycanon asset checksum mismatch: " + name)
         (target / name).write_bytes(data)
-    with tarfile.open(target / "flycanon-26.10.0.tar.gz") as archive:
+    with tarfile.open(target / "flycanon-26.10.2.tar.gz") as archive:
         members = [
             member
             for member in archive.getmembers()
-            if member.name.startswith("flycanon-26.10.0/migrations/") or member.name == "flycanon-26.10.0/alembic.ini"
+            if member.name.startswith("flycanon-26.10.2/migrations/") or member.name == "flycanon-26.10.2/alembic.ini"
         ]
         archive.extractall(target / "scaffold", members=members, filter="data")
     import shutil
 
-    scaffold = target / "scaffold/flycanon-26.10.0"
+    scaffold = target / "scaffold/flycanon-26.10.2"
     shutil.copytree(scaffold / "migrations", "/app/migrations")
     shutil.copyfile(scaffold / "alembic.ini", "/app/alembic.ini")
-    requirements = (target / "runtime-requirements-26.10.0.txt").read_text().splitlines()
-    requirements[0] = "flycanon @ " + (target / "flycanon-26.10.0-py3-none-any.whl").as_uri()
+    requirements = (target / "runtime-requirements-26.10.2.txt").read_text().splitlines()
+    requirements[0] = "flycanon @ " + (target / "flycanon-26.10.2-py3-none-any.whl").as_uri()
     (target / "install.txt").write_text("\n".join(requirements) + "\n")
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--no-cache-dir", "-r", str(target / "install.txt")], check=True
     )
     # The release's pyfly configuration is packaged as a separately checksummed asset.
-    with urllib.request.urlopen(RELEASE + "pyfly-26.10.0.yaml", timeout=120) as response:
+    with urllib.request.urlopen(RELEASE + "pyfly-26.10.2.yaml", timeout=120) as response:
         configuration = response.read()
     if hashlib.sha256(configuration).hexdigest() != "5288abf593807f5bdc6642c361ca033741f35b9fca940792778e28f97b2adc1e":
         raise SystemExit("Released flycanon configuration checksum mismatch")
