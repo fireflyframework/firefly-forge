@@ -3,6 +3,7 @@
 
 from dataclasses import asdict
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pyfly.container import service
@@ -28,10 +29,20 @@ Data = dict[str, Any]
 @service
 class OAuthProviderPolicies:
     def __init__(
-        self, store: Store, records: OAuthProviderPolicyRepository, *, local_development_available: bool = False
+        self,
+        store: Store,
+        records: OAuthProviderPolicyRepository,
+        *,
+        local_development_available: bool = False,
+        browser_origin: str = "",
     ) -> None:
         self.store, self.records = store, records
         self.local_development_available = local_development_available is True
+        self.browser_host = urlsplit(browser_origin).hostname
+
+    def _host_isolated(self, origin: str) -> bool:
+        # Host-only cookies ignore ports, so every browser handoff needs a different host.
+        return self.browser_host in {"127.0.0.1", "::1"} and urlsplit(origin).hostname != self.browser_host
 
     @staticmethod
     def _document(origin: str, enabled: bool) -> Data:
@@ -100,7 +111,7 @@ class OAuthProviderPolicies:
         if row is None:
             return None
         revision = await self._revision(session, row)
-        if revision.data["enabled"] is not True:
+        if revision.data["enabled"] is not True or not self._host_isolated(revision.data["local_origin"]):
             return None
         data = revision.data["provider"]
         return OAuthPolicyBinding(OAuthProvider(**{**data, "scopes": tuple(data["scopes"])}), row.revision, row.digest)
@@ -132,6 +143,8 @@ class OAuthProviderPolicies:
             row = await self.records.named(name)
             if request.enabled and not self.local_development_available:
                 raise ValueError("Enable the explicit local development configuration before admitting this service")
+            if request.enabled and not self._host_isolated(request.local_origin):
+                raise ValueError("Use a different literal host from the factory to keep its browser cookies private")
             if row is None and not self.local_development_available:
                 raise ValueError("Local development policy is unavailable")
             if row:

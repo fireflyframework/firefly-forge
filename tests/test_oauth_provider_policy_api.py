@@ -11,7 +11,7 @@ BASE = "/api/v1/oauth-provider-policies"
 PROVIDER = "local-repository-tools"
 
 
-def registration(*, enabled=True, revision=0, origin="http://127.0.0.1:49152"):
+def registration(*, enabled=True, revision=0, origin="http://[::1]:49152"):
     return {
         "enabled": enabled,
         "expected_revision": revision,
@@ -47,7 +47,7 @@ def test_supported_local_policy_controls_the_actual_production_di_catalog(tmp_pa
         packet = admitted.json()
         assert packet["revision"] == 1 and packet["enabled"] is True
         assert packet["provider"]["id"] == PROVIDER
-        assert packet["provider"]["resource"] == "http://127.0.0.1:49152/mcp/readonly"
+        assert packet["provider"]["resource"] == "http://[::1]:49152/mcp/readonly"
         assert packet["provider"]["scopes"] == ["repository:read"]
         assert client.put(BASE + "/" + PROVIDER, headers=headers, json=request).json() == packet
         stale = client.put(BASE + "/" + PROVIDER, headers=headers, json=registration())
@@ -149,13 +149,13 @@ def test_policy_changes_block_dispatch_but_keep_diagnostics_and_disconnect_usabl
             json={"provider": PROVIDER, "client_id": "client", "public_client": True},
         )
         assert configured.status_code == 200
-        changed = registration(enabled=enabled, revision=1, origin="http://127.0.0.1:49153")
+        changed = registration(enabled=enabled, revision=1, origin="http://[::1]:49153")
         assert client.put(BASE + "/" + PROVIDER, headers=headers, json=changed).status_code == 200
         directory = client.get("/api/v1/connection-oauth", headers=headers)
         assert directory.status_code == 200, directory.text
         summary = directory.json()[0]
         assert summary["policy_current"] is False
-        assert summary["resource"] == "http://127.0.0.1:49152/mcp/readonly"
+        assert summary["resource"] == "http://[::1]:49152/mcp/readonly"
         assert not summary["allowed_actions"]["authorize"]
         assert not summary["allowed_actions"]["refresh"]
         assert summary["allowed_actions"]["disconnect"]

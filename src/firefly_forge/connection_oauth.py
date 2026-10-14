@@ -442,7 +442,9 @@ class ConnectionOAuth:
             state = await self.policy_directory(actor)
             rows = state["policies"]
             if state["local_development_available"] or rows:
-                active = bool(state["local_development_available"] and rows and rows[0]["enabled"])
+                async with self.store._unit() as session:
+                    await self._authority(session, actor)
+                    active = await self._admitted_policy(session, "local-repository-tools") is not None
                 result.append(
                     {
                         "provider": "local-repository-tools",

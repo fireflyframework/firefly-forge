@@ -429,7 +429,12 @@ class FactoryConfiguration:
             and self.identity_configuration.allow_loopback_http
             and urlsplit(self.identity_configuration.browser_origin).hostname in {"127.0.0.1", "::1"}
         )
-        return OAuthProviderPolicies(store, records, local_development_available=available)
+        return OAuthProviderPolicies(
+            store,
+            records,
+            local_development_available=available,
+            browser_origin=self.identity_configuration.browser_origin,
+        )
 
     @bean
     def connection_oauth(

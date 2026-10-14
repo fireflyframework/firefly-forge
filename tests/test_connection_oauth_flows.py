@@ -26,11 +26,19 @@ from test_connection_oauth_ledger import actor
 
 @asynccontextmanager
 async def local_provider(
-    *, delay=False, mutate=None, connection_name="design", callback_uri=None, scope="read", resource_path="/mcp"
+    *,
+    delay=False,
+    mutate=None,
+    connection_name="design",
+    callback_uri=None,
+    scope="read",
+    resource_path="/mcp",
+    loopback_host="127.0.0.1",
 ):
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
-    origin = "http://127.0.0.1:" + str(listener.getsockname()[1])
+    listener = socket.socket(socket.AF_INET6 if loopback_host == "::1" else socket.AF_INET)
+    listener.bind((loopback_host, 0))
+    host = "[::1]" if loopback_host == "::1" else loopback_host
+    origin = "http://" + host + ":" + str(listener.getsockname()[1])
     callbacks, forms, entered, release = [], [], asyncio.Event(), asyncio.Event()
     native = AuthorizationServer(
         "fixture-signing-key-is-local-only-32-bytes",

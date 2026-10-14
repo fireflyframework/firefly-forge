@@ -64,6 +64,7 @@ async def test_native_authenticated_browser_to_real_http_pkce_callback_refresh_d
         callback_uri="https://127.0.0.1:49200/api/v1/connection-oauth/design/callback",
         scope="repository:read",
         resource_path="/mcp/readonly",
+        loopback_host="::1",
     ) as (origin, forms, _, _, tokens):
         app = create_application(tmp_path, TOKEN)
         async with (
