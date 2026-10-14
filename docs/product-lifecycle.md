@@ -4,6 +4,8 @@ description: Evolve product features and integration contracts while preserving 
 
 # Evolve a product without replacing its definition
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 A product can contain several customer journeys, features and integrations. Each feature has a stable ID, expected behavior, failure paths and references to the product's acceptance criteria. An integration connects those features to a named owned service or a third-party system.
 
 Incremental changes preserve the existing product definition. A request names its base revision and digest, upserts or removes specific contract IDs, and optionally appends journeys, acceptance criteria or user stories. Existing acceptance numbers and untouched features remain unchanged.

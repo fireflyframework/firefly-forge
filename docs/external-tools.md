@@ -4,6 +4,8 @@ description: Configure reviewed external MCP connections, approve tool schemas a
 
 # External tools
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 forge can expose reviewed external tools to a native agentic or Bridge worker. A factory administrator controls the connection, schema review and project grant. Credentials remain in the control plane; the project image and worker arguments receive no API key.
 
 External MCP complements the native source-control, flycanon and browser integrations. It does not replace them. Direct Codex and Claude CLI execution uses the CLI's own authority and does not inherit these Python tool grants.

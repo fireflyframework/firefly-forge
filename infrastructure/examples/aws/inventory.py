@@ -1,3 +1,4 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 import json,subprocess
 from pathlib import Path
 host=json.loads(subprocess.check_output(['tofu','-chdir=.forge-deployment','output','-json','host']))

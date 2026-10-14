@@ -4,6 +4,8 @@ description: Manage factory users, project roles and invitations through readabl
 
 # Manage users and invitations
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Factory administrators can suspend registered identities and, when a dedicated Keycloak service client is configured, provision new accounts. Project membership remains a separate action. Creating an account or matching an email address grants no project access.
 
 The administration API accepts no passwords, administrator roles or project-role shortcuts. Keycloak owns credential setup and account verification. Browser administrators authenticate through the normal [identity flow](identity.md).

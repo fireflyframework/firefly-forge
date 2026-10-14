@@ -1,3 +1,4 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 .PHONY: check python-check studio-check docs docs-check docs-pages-check package serve
 
 check: python-check studio-check docs-check

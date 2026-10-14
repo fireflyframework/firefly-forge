@@ -1,3 +1,4 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 [build-system]
 requires = ["hatchling>=1.28"]
 build-backend = "hatchling.build"

@@ -1,5 +1,7 @@
 # Reviewed product CI
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 These templates execute on trusted Linux x86_64 CI runners. Install through a reviewed branch and configure
 your provider's protected main branch, runner and registry permissions. `make check` and a root Dockerfile
 must be real project gates; missing files or tools fail the pipeline.

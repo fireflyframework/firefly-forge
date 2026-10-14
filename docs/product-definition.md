@@ -4,6 +4,8 @@ description: Define customers, journeys, features and integration contracts, the
 
 # Define the product and customer
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 A brief describes a change. A product definition gives the agent a durable customer contract: who needs it, what problem it solves, how the journey works, and which acceptance and security checks determine success.
 
 Save the definition at `PUT /api/v1/repositories/ID/product`. Every save creates an immutable revision; `GET` returns the latest revision with its digest and creation time.

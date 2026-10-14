@@ -1,5 +1,7 @@
 # firefly forge
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 ![firefly forge: from brief to verified software](assets/banner.svg)
 
 firefly forge is the Firefly software factory. Describe a product's users, journeys and acceptance checks, connect its repositories, then choose a stack and coding provider. Review the implementation, actual checks and retained evidence before publishing a pull request.

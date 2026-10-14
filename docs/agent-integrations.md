@@ -4,6 +4,8 @@ description: Operate forge through the Python SDK, CLI and MCP with authenticate
 
 # Operate products from Python, the CLI or MCP
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 The Python client, CLI and MCP tools call the same authenticated factory API. Project operations, source inspections, product conversations and worker questions use the factory's permissions, revisions and durable receipts. The clients use the running factory and its execution lease.
 
 Set `FORGE_URL` to the running factory and provide `FORGE_API_TOKEN` through your operator environment. Source-control credentials remain in the factory's application or OAuth configuration; do not put the operator token in an issue comment or product brief.

@@ -1,5 +1,7 @@
 # Contributing
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Open an issue describing the behavior and how to reproduce it. Keep changes focused and match existing conventions. Use Python 3.13+, Node.js 22+ and Git.
 
 ```sh
