@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "firefly-forge"
-version = "0.2.4"
+version = "0.2.5"
 description = "Firefly software factory: brief to verified product with interchangeable coding agents"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -24,7 +24,7 @@ dependencies = [
   "cryptography>=50.0.2,<51",
   "PyYAML>=6.0.3,<7",
   "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.04/pyfly-26.10.4-py3-none-any.whl",
-  "fireflyframework-agentic @ https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.09.0/fireflyframework_agentic-26.9.0-py3-none-any.whl",
+  "fireflyframework-agentic @ https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl",
   "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.1/flycanon_sdk-26.10.1-py3-none-any.whl",
   "fonttools[woff]>=4.62,<5",
   "pypdf>=6.20.1,<7",

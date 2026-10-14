@@ -1002,7 +1002,7 @@ wheels = [
 
 [[package]]
 name = "firefly-forge"
-version = "0.2.4"
+version = "0.2.5"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1041,7 +1041,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.3,<9" },
     { name = "cryptography", specifier = ">=50.0.2,<51" },
     { name = "filelock", specifier = ">=3.20,<5" },
-    { name = "fireflyframework-agentic", url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.09.0/fireflyframework_agentic-26.9.0-py3-none-any.whl" },
+    { name = "fireflyframework-agentic", url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl" },
     { name = "flycanon-sdk", url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.1/flycanon_sdk-26.10.1-py3-none-any.whl" },
     { name = "fonttools", extras = ["woff"], specifier = ">=4.62,<5" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
@@ -1071,8 +1071,8 @@ docs = [
 
 [[package]]
 name = "fireflyframework-agentic"
-version = "26.9.0"
-source = { url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.09.0/fireflyframework_agentic-26.9.0-py3-none-any.whl" }
+version = "26.10.1"
+source = { url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl" }
 dependencies = [
     { name = "genai-prices" },
     { name = "httpx" },
@@ -1087,7 +1087,7 @@ dependencies = [
     { name = "pyyaml" },
 ]
 wheels = [
-    { url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.09.0/fireflyframework_agentic-26.9.0-py3-none-any.whl", hash = "sha256:a6ecb82abd54c9a1d4fa71af46593b57228ed3336e41ea0f0e821724d9bf0224" },
+    { url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl", hash = "sha256:ab9bf27b29e39a2d198c17d47f7bacd7d73c6348299a4e432f3dc56bbb391dda" },
 ]
 
 [package.metadata]
@@ -1095,10 +1095,10 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30.0" },
     { name = "asyncpg", marker = "extra == 'vectorstores-pgvector'", specifier = ">=0.30.0" },
     { name = "boto3", marker = "extra == 'bedrock-embeddings'", specifier = ">=1.35.0" },
-    { name = "cairosvg", marker = "extra == 'binary'", specifier = ">=2.7" },
+    { name = "cairosvg", marker = "extra == 'binary'", specifier = ">=2.9.1" },
     { name = "chromadb", marker = "extra == 'vectorstores-chroma'", specifier = ">=0.5.0" },
     { name = "cohere", marker = "extra == 'cohere-embeddings'", specifier = ">=5.0.0" },
-    { name = "cryptography", marker = "extra == 'security'", specifier = ">=48.0.1" },
+    { name = "cryptography", marker = "extra == 'security'", specifier = ">=50.0.0" },
     { name = "extract-msg", marker = "extra == 'binary'", specifier = ">=0.51" },
     { name = "fireflyframework-agentic", extras = ["postgres", "mongodb", "security", "embeddings", "openai-embeddings", "cohere-embeddings", "google-embeddings", "mistral-embeddings", "voyage-embeddings", "azure-embeddings", "bedrock-embeddings", "ollama-embeddings", "vectorstores-chroma", "vectorstores-pinecone", "vectorstores-qdrant", "vectorstores-pgvector", "vectorstores-sqlite-vec", "watch", "binary", "script-execution"], marker = "extra == 'all'" },
     { name = "genai-prices", specifier = ">=0.1.9,<0.2" },
@@ -1123,17 +1123,17 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
     { name = "pandas", marker = "extra == 'reasoning-eval'", specifier = ">=2.2.0" },
     { name = "pdfplumber", marker = "extra == 'dev'", specifier = ">=0.11.0" },
-    { name = "pillow", marker = "extra == 'binary'", specifier = ">=11.0" },
+    { name = "pillow", marker = "extra == 'binary'", specifier = ">=12.3.0" },
     { name = "pillow-heif", marker = "extra == 'binary'", specifier = ">=0.18" },
     { name = "pinecone", marker = "extra == 'vectorstores-pinecone'", specifier = ">=5.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.8.0" },
-    { name = "py7zr", marker = "extra == 'binary'", specifier = ">=0.22" },
+    { name = "py7zr", marker = "extra == 'binary'", specifier = ">=1.1.4" },
     { name = "pydantic", specifier = ">=2.13,<3" },
-    { name = "pydantic-ai", extras = ["ag-ui", "bedrock", "cohere", "groq", "huggingface", "mistral", "retries", "spec", "temporal", "ui", "xai"], specifier = ">=2.51.0,<3" },
+    { name = "pydantic-ai", extras = ["ag-ui", "bedrock", "cohere", "groq", "huggingface", "mistral", "retries", "spec", "temporal", "ui", "xai"], specifier = ">=2.53.0,<3" },
     { name = "pydantic-monty", marker = "extra == 'script-execution'", specifier = ">=0.0.18" },
     { name = "pydantic-settings", specifier = ">=2.14.2,<3" },
-    { name = "pymongo", marker = "extra == 'mongodb'", specifier = ">=4.10.0" },
-    { name = "pypdf", marker = "extra == 'binary'", specifier = ">=6.13.3" },
+    { name = "pymongo", marker = "extra == 'mongodb'", specifier = ">=4.18.2" },
+    { name = "pypdf", marker = "extra == 'binary'", specifier = ">=6.19.0" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
