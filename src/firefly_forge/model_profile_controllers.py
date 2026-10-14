@@ -33,7 +33,9 @@ class ModelProfileController:
                 "values": {key: value for key, value in body.values.items() if key not in SECRETS},
             }
         )
-        return self.profiles.save(id, body)
+        public, digest = self.profiles.preview_save(id, body)
+        await self.store.admit_credentials(public)
+        return self.profiles.save(id, body, expected_digest=digest)
 
     @post_mapping("/model-profiles/{id}/test")
     async def test_profile(self, id: PathVar[str]) -> dict[str, Any]:
