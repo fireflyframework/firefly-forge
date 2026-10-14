@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner
 from starlette.testclient import TestClient
 from test_connection_oauth_directory import effect
-from test_connection_oauth_ledger import provider
+from test_oauth_provider_policy_api import BASE, PROVIDER, registration
 
 from firefly_forge import cli
 from firefly_forge.api import create_application
@@ -20,8 +20,10 @@ from firefly_forge.mcp_server import create_server
 
 def test_native_directory_effect_supersession_http_sdk_cli_mcp_contract(tmp_path, postgres_schema, monkeypatch):
     token = "owned-directory-operator-token-32-characters"
-    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://forge.example")
-    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "forge.example")
+    monkeypatch.setenv("FORGE_OAUTH_LOCAL_DEVELOPMENT", "1")
+    monkeypatch.setenv("FORGE_OIDC_ALLOW_LOOPBACK_HTTP", "true")
+    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://127.0.0.1:49200")
+    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "127.0.0.1")
 
     class InProcess(TestClient):
         def request(self, *args, **kwargs):
@@ -30,18 +32,18 @@ def test_native_directory_effect_supersession_http_sdk_cli_mcp_contract(tmp_path
 
     with InProcess(
         create_application(tmp_path, token),
-        base_url="https://forge.example/api/v1/",
+        base_url="https://127.0.0.1:49200/api/v1/",
         headers={"Authorization": "Bearer " + token},
         client=("127.0.0.1", 50000),
     ) as http:
-        connection = ForgeClient("https://forge.example", token)
+        connection = ForgeClient("https://127.0.0.1:49200", token)
         connection.http.close()
         connection.http = http
         monkeypatch.setattr(cli, "client", lambda: contextlib.nullcontext(connection))
         vault = http.app.state.runtime.context.get_bean(ConnectionOAuth)
-        vault.catalog["fixture"] = provider()
+        assert http.put(BASE.removeprefix("/api/v1/") + "/" + PROVIDER, json=registration()).status_code == 200
         connection.configure_connection_oauth(
-            "design", {"provider": "fixture", "client_id": "client", "public_client": True}
+            "design", {"provider": PROVIDER, "client_id": "client", "public_client": True}
         )
         directory = http.get("connection-oauth")
         assert directory.status_code == 200, directory.text
@@ -81,7 +83,7 @@ def test_native_directory_effect_supersession_http_sdk_cli_mcp_contract(tmp_path
                     "unknown_effect_ids": [unknown],
                     "reason": "Retain the interrupted outcome while admitting a new authorization.",
                     "acknowledge_unknown": True,
-                    "provider": "fixture",
+                    "provider": PROVIDER,
                     "client_id": "client",
                     "public_client": True,
                 },
@@ -107,7 +109,7 @@ def test_native_directory_effect_supersession_http_sdk_cli_mcp_contract(tmp_path
                 "Preserve the second interrupted outcome and start a new admission.",
                 "--acknowledge-unknown",
                 "--provider",
-                "fixture",
+                PROVIDER,
                 "--client-id",
                 "client",
                 "--public-client",

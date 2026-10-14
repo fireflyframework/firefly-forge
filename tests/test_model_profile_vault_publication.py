@@ -2,8 +2,8 @@
 """Generated public metadata must be admitted before local profile publication."""
 
 import pytest
-from test_connection_oauth_ledger import actor, configuration
-from test_oauth_vault_admission import replicas
+from test_connection_oauth_ledger import actor
+from test_oauth_vault_admission import native_configuration, replicas
 
 
 @pytest.mark.parametrize("credential", ["agentic", "unverified", "false"])
@@ -15,7 +15,7 @@ async def test_generated_profile_metadata_rejects_credentials_without_mutating_c
         before = profiles.path.read_bytes() if profiles.path.exists() else None
         # Reproduce retained legacy history, including secrets now rejected by
         # prospective OAuth response admission. The model assertion stays intact.
-        await services[0]._configure("design", configuration(client_secret=credential), actor())
+        await services[0]._configure("design", native_configuration(client_secret=credential), actor())
         response = await client.put(
             "/api/v1/model-profiles/design",
             json={"name": "Design model", "description": "Design guidance", "provider": "agentic", "values": {}},

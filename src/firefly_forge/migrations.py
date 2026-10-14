@@ -43,6 +43,11 @@ from firefly_forge.learning_persistence import (
     ForgeLearningProjectionEntity,
     ForgeLearningRecordEntity,
 )
+from firefly_forge.oauth_provider_policy_persistence import (
+    OAuthProviderPolicyEntity,
+    OAuthProviderPolicyOperationEntity,
+    OAuthProviderPolicyRevisionEntity,
+)
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
     ForgeEventEntity,
@@ -66,7 +71,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 22
+SCHEMA_REVISION = 23
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -135,6 +140,9 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 OAuthEffectEntity,
                 OAuthEventEntity,
                 OAuthCredentialEvidenceEntity,
+                OAuthProviderPolicyEntity,
+                OAuthProviderPolicyRevisionEntity,
+                OAuthProviderPolicyOperationEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
@@ -336,6 +344,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
         )
 
     await _oauth_history_guards(session)
+    await _oauth_provider_policy_guards(session)
 
 
 async def _oauth_history_guards(session: AsyncSession) -> None:
@@ -378,5 +387,42 @@ async def _oauth_history_guards(session: AsyncSession) -> None:
         text(
             "CREATE OR REPLACE TRIGGER forge_oauth_effect_delete "
             "BEFORE DELETE ON forge_oauth_effects FOR EACH ROW EXECUTE FUNCTION forge_refuse_immutable_change()"
+        )
+    )
+
+
+async def _oauth_provider_policy_guards(session: AsyncSession) -> None:
+    for table in ("forge_oauth_provider_policy_revisions", "forge_oauth_provider_policy_operations"):
+        await session.execute(
+            text(
+                f"CREATE OR REPLACE TRIGGER {table}_immutable "
+                f"BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW "
+                "EXECUTE FUNCTION forge_refuse_immutable_change()"
+            )
+        )
+    await session.execute(
+        text("""
+        CREATE OR REPLACE FUNCTION forge_guard_oauth_provider_policy() RETURNS trigger AS $$
+        BEGIN
+          IF OLD.id IS DISTINCT FROM NEW.id OR OLD.name IS DISTINCT FROM NEW.name
+            OR NEW.revision <> OLD.revision + 1 THEN
+            RAISE EXCEPTION 'Provider policy identity is immutable and revisions must advance';
+          END IF;
+          RETURN NEW;
+        END; $$ LANGUAGE plpgsql
+    """)
+    )
+    await session.execute(
+        text(
+            "CREATE OR REPLACE TRIGGER forge_oauth_provider_policy_revision "
+            "BEFORE UPDATE ON forge_oauth_provider_policies FOR EACH ROW "
+            "EXECUTE FUNCTION forge_guard_oauth_provider_policy()"
+        )
+    )
+    await session.execute(
+        text(
+            "CREATE OR REPLACE TRIGGER forge_oauth_provider_policy_delete "
+            "BEFORE DELETE ON forge_oauth_provider_policies FOR EACH ROW "
+            "EXECUTE FUNCTION forge_refuse_immutable_change()"
         )
     )

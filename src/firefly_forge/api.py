@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Authenticated PyFly API and Studio host for a single trusted factory operator."""
+"""Native pyfly API, shared sessions and project-scoped Studio host."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr
 from pyfly.container import bean, configuration, service
@@ -113,6 +114,9 @@ from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
 from firefly_forge.model_profiles import ModelProfiles
 from firefly_forge.models import RepositoryInput, RunInput
+from firefly_forge.oauth_provider_policies import OAuthProviderPolicies
+from firefly_forge.oauth_provider_policy_controllers import OAuthProviderPolicyController
+from firefly_forge.oauth_provider_policy_persistence import OAuthProviderPolicyRepository
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
 from firefly_forge.persistence import (
     ForgeDeploymentRepository,
@@ -418,8 +422,21 @@ class FactoryConfiguration:
         return ProjectAccess(store, records)
 
     @bean
+    def oauth_provider_policies(self, store: Store, records: OAuthProviderPolicyRepository) -> OAuthProviderPolicies:
+        available = (
+            os.getenv("FORGE_OAUTH_LOCAL_DEVELOPMENT") == "1"
+            and self.identity_configuration.allow_loopback_http
+            and urlsplit(self.identity_configuration.browser_origin).hostname in {"127.0.0.1", "::1"}
+        )
+        return OAuthProviderPolicies(store, records, local_development_available=available)
+
+    @bean
     def connection_oauth(
-        self, store: Store, identity: IdentityService, records: OAuthConnectionRepository
+        self,
+        store: Store,
+        identity: IdentityService,
+        records: OAuthConnectionRepository,
+        policies: OAuthProviderPolicies,
     ) -> ConnectionOAuth:
         return ConnectionOAuth(
             store,
@@ -427,6 +444,8 @@ class FactoryConfiguration:
             browser_origin=identity.configuration()["browser_origin"] or "",
             records=records,
             allow_loopback_http=identity.config.allow_loopback_http,
+            policy_lookup=policies.lookup,
+            policy_directory=policies.directory,
         )
 
     @bean
@@ -801,6 +820,8 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        OAuthProviderPolicyRepository,
+        OAuthProviderPolicyController,
         OAuthConnectionRepository,
         ConnectionOAuthController,
         ConnectionOAuthPrivacy,

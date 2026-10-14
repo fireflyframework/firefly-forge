@@ -32,6 +32,7 @@ from firefly_forge.connection_oauth_models import (
     OAuthDisposition,
     OAuthEffectReceipt,
     OAuthEffectSummary,
+    OAuthPolicyBinding,
     OAuthProvider,
     OAuthSupersedeInput,
 )
@@ -46,18 +47,15 @@ from firefly_forge.connection_oauth_persistence import (
     OAuthRegistrationEntity,
 )
 from firefly_forge.identity import Principal
-from firefly_forge.identity_persistence import ForgeIdentityUserEntity
+from firefly_forge.journal import digest as packet_digest
+from firefly_forge.oauth_authority import OAuthAccessDenied as OAuthAccessDenied
+from firefly_forge.oauth_authority import require_oauth_administrator
 from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, OAuthCredentialMatcher
-from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectEntity
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store
 
 Data = dict[str, Any]
-
-
-class OAuthAccessDenied(PermissionError, AccessDenied):
-    pass
 
 
 def digest(value: str) -> str:
@@ -77,6 +75,8 @@ class ConnectionOAuth:
         catalog: Mapping[str, OAuthProvider] | None = None,
         records: OAuthConnectionRepository | None = None,
         allow_loopback_http: bool = False,
+        policy_lookup: Callable[[AsyncSession, str], Awaitable[OAuthPolicyBinding | None]] | None = None,
+        policy_directory: Callable[[Principal], Awaitable[Data]] | None = None,
     ) -> None:
         self.store, self.cipher = store, Fernet(encryption_key.encode())
         self._secrets = {"FORGE_CONNECTION_OAUTH_SECRET_ENCRYPTION_KEY": encryption_key}
@@ -85,6 +85,7 @@ class ConnectionOAuth:
         self.records = records or OAuthConnectionRepository()
         self.browser_origin = browser_origin
         self.catalog = dict(catalog or {})
+        self.policy_lookup, self.policy_directory = policy_lookup, policy_directory
         self.loopback = allow_loopback_http is True
         if browser_origin:
             self._endpoint(browser_origin, origin=True)
@@ -311,16 +312,17 @@ class ConnectionOAuth:
             "grafana": "An approved managed HTTPS endpoint and scoped OAuth adapter are required.",
             "playwright": "Use the native browser runner; no external OAuth connection is admitted.",
         }
+        catalog = {} if self.policy_lookup is not None else self.catalog
         return [
             {
                 "provider": name,
                 "status": "registration_available"
-                if name in self.catalog and not self.catalog[name].prerequisite and self.browser_origin
+                if name in catalog and not catalog[name].prerequisite and self.browser_origin
                 else "prerequisite_required",
                 "reason": requirements.get(name, "This provider uses an explicitly admitted control-plane policy."),
                 "agent_ready": False,
             }
-            for name in dict.fromkeys((*requirements, *self.catalog))
+            for name in dict.fromkeys((*requirements, *catalog))
         ]
 
     def _open(self, encoded: str, context: Data) -> Data:
@@ -347,29 +349,36 @@ class ConnectionOAuth:
         return cast(datetime, await session.scalar(select(func.clock_timestamp())))
 
     async def _authority(self, session: AsyncSession, actor: Principal) -> None:
-        row = await session.scalar(
-            select(ForgeIdentityUserEntity).where(ForgeIdentityUserEntity.id == actor.id).with_for_update()
-        )
-        if actor.authentication_method == "local_bootstrap":
-            if row is None or row.enabled and row.issuer == actor.issuer and row.subject == actor.subject:
-                return
-        elif (
-            row is not None
-            and row.enabled
-            and row.issuer == actor.issuer
-            and row.subject == actor.subject
-            and ProjectAccess.is_admin(actor)
-            and bool(actor.api_audience)
-            and actor.api_audience == row.api_roles_audience
-            and "forge-admin" in row.api_roles
-            and row.api_roles_issued_at is not None
-            and row.api_roles_expires_at is not None
-            and row.api_roles_expires_at > await self._time(session)
-        ):
-            return
-        raise OAuthAccessDenied("Current factory administrator authority is required")
+        await require_oauth_administrator(session, actor)
 
-    async def _registration(self, session: AsyncSession, row: OAuthConnectionEntity) -> OAuthRegistrationEntity:
+    async def _admitted_policy(self, session: AsyncSession, name: str) -> OAuthPolicyBinding | None:
+        if self.policy_lookup is not None:
+            return await self.policy_lookup(session, name)
+        policy = self.catalog.get(name)
+        return OAuthPolicyBinding(policy, 0, packet_digest(asdict(policy))) if policy else None
+
+    async def provider_directory(self, actor: Principal) -> list[Data]:
+        result = self.providers()
+        if self.policy_directory is not None:
+            state = await self.policy_directory(actor)
+            rows = state["policies"]
+            if state["local_development_available"] or rows:
+                active = bool(state["local_development_available"] and rows and rows[0]["enabled"])
+                result.append(
+                    {
+                        "provider": "local-repository-tools",
+                        "status": "registration_available" if active else "prerequisite_required",
+                        "reason": (
+                            "Connect an explicitly configured local test service; "
+                            "project tools require separate review."
+                        ),
+                        "agent_ready": False,
+                    }
+                )
+        await self.store.admit_credentials(result)
+        return result
+
+    async def _stored_registration(self, session: AsyncSession, row: OAuthConnectionEntity) -> OAuthRegistrationEntity:
         result = await session.scalar(
             select(OAuthRegistrationEntity).where(
                 OAuthRegistrationEntity.connection_id == row.id, OAuthRegistrationEntity.revision == row.revision
@@ -382,13 +391,25 @@ class ConnectionOAuth:
             and await session.get(ForgeProjectEntity, UUID(result.data["project_id"])) is None
         ):
             raise KeyError("Connection project is unavailable")
-        admitted = self.catalog.get(result.data["provider"])
-        if admitted is None or asdict(admitted) != {
-            **result.data["policy"],
-            "scopes": tuple(result.data["policy"]["scopes"]),
-        }:
-            raise ValueError("Admitted provider policy changed; configure a new revision")
         self._open(result.encrypted_secret, self._client_context(row.id, row.revision, result.data))
+        return result
+
+    def _policy_matches(self, registration: OAuthRegistrationEntity, binding: OAuthPolicyBinding | None) -> bool:
+        return (
+            binding is not None
+            and asdict(binding.provider)
+            == {**registration.data["policy"], "scopes": tuple(registration.data["policy"]["scopes"])}
+            and (
+                self.policy_lookup is None
+                or registration.data.get("policy_revision") == binding.revision
+                and registration.data.get("policy_digest") == binding.digest
+            )
+        )
+
+    async def _registration(self, session: AsyncSession, row: OAuthConnectionEntity) -> OAuthRegistrationEntity:
+        result = await self._stored_registration(session, row)
+        if not self._policy_matches(result, await self._admitted_policy(session, result.data["provider"])):
+            raise ValueError("Admitted provider policy changed; configure a new revision")
         return result
 
     async def _required(self, name: str) -> OAuthConnectionEntity:
@@ -497,7 +518,11 @@ class ConnectionOAuth:
     async def _summary(
         self, session: AsyncSession, row: OAuthConnectionEntity, actor: Principal, *, completing: UUID | None = None
     ) -> Data:
-        registration = await self._registration(session, row)
+        # Diagnostics and local revocation remain available after policy withdrawal.
+        # Effect-producing paths still require _registration and current admission.
+        registration = await self._stored_registration(session, row)
+        binding = await self._admitted_policy(session, registration.data["provider"])
+        policy_current = self._policy_matches(registration, binding)
         secret = self._open(
             registration.encrypted_secret, self._client_context(row.id, row.revision, registration.data)
         ).get("secret")
@@ -513,6 +538,11 @@ class ConnectionOAuth:
             result["allowed_actions"]["refresh"] = (
                 not blocked and bool(payload.get("refresh_token")) and grant.actor_id == actor.id
             )
+        result["policy_current"] = policy_current
+        if not policy_current:
+            result["allowed_actions"].update(authorize=False, refresh=False)
+            if binding is None:
+                result["allowed_actions"].update(configure=False, supersede=False)
         return OAuthConnectionSummary.model_validate(result).model_dump()
 
     async def _grant(self, session: AsyncSession, row: OAuthConnectionEntity) -> OAuthGrantEntity | None:
@@ -578,24 +608,29 @@ class ConnectionOAuth:
         recovery: OAuthSupersedeInput | None = None,
         admission: Callable[[Data, str | None], Awaitable[None]] | None = None,
     ) -> Data:
-        policy = self.catalog.get(request.provider)
-        if policy is None or policy.prerequisite or not self.browser_origin:
-            raise ValueError("Provider registration prerequisites are not satisfied")
-        data: Data = {
-            "provider": request.provider,
-            "project_id": request.project_id,
-            "client_id": request.client_id,
-            "authentication": request.authentication,
-            "policy": asdict(policy),
-            "callback": self.browser_origin + "/api/v1/connection-oauth/" + name + "/callback",
-        }
-        # Normalize tuples to the immutable JSON shape persisted by PostgreSQL.
-        data = json.loads(json.dumps(data))
         async with self._locked(name) as session:
             await self._authority(session, actor)
+            row = await self.records.named(name)
+            if request.expected_revision is not None and request.expected_revision != (row.revision if row else 0):
+                raise ValueError("Connection changed; refresh its current configuration before saving")
+            binding = await self._admitted_policy(session, request.provider)
+            policy = binding.provider if binding else None
+            if policy is None or policy.prerequisite or not self.browser_origin:
+                raise ValueError("Provider registration prerequisites are not satisfied")
+            data: Data = {
+                "provider": request.provider,
+                "project_id": request.project_id,
+                "client_id": request.client_id,
+                "authentication": request.authentication,
+                "policy": asdict(policy),
+                "callback": self.browser_origin + "/api/v1/connection-oauth/" + name + "/callback",
+            }
+            if self.policy_lookup is not None:
+                assert binding is not None
+                data.update(policy_revision=binding.revision, policy_digest=binding.digest)
+            data = json.loads(json.dumps(data))
             if request.project_id and await session.get(ForgeProjectEntity, UUID(request.project_id)) is None:
                 raise KeyError("Connection project not found")
-            row = await self.records.named(name)
             if recovery and row is None:
                 raise KeyError("Connection not found")
             previous = None
@@ -730,7 +765,8 @@ class ConnectionOAuth:
         async with self._locked(name) as session:
             await self._authority(session, actor)
             row = await self._required(name)
-            await self._registration(session, row)
+            registration = await self._stored_registration(session, row)
+            binding = await self._admitted_policy(session, registration.data["provider"])
             effect = await session.scalar(
                 select(OAuthEffectEntity).where(
                     OAuthEffectEntity.connection_id == row.id, OAuthEffectEntity.request_id == request_id
@@ -748,7 +784,8 @@ class ConnectionOAuth:
                     "registration_revision": effect.data["registration_revision"],
                     "lease_expired": expired,
                     "observed_at": effect.data.get("observed_at"),
-                    "current_context": effect.data.get("actor_id") == actor.id.hex
+                    "current_context": self._policy_matches(registration, binding)
+                    and effect.data.get("actor_id") == actor.id.hex
                     and effect.data["registration_revision"] == row.revision
                     and row.status != "disconnected",
                 }

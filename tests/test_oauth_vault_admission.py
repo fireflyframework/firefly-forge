@@ -7,8 +7,9 @@ from uuid import uuid4
 import httpx
 import pytest
 from cryptography.fernet import Fernet
-from test_connection_oauth_ledger import actor, configuration, provider
+from test_connection_oauth_ledger import actor, configuration
 from test_connection_oauth_ledger import service as connection_service
+from test_oauth_provider_policy_api import BASE, PROVIDER, registration
 
 from firefly_forge.api import create_application
 from firefly_forge.connection_oauth import ConnectionOAuth
@@ -16,23 +17,30 @@ from firefly_forge.connection_oauth import ConnectionOAuth
 TOKEN = "fixture-factory-vault-operator-32-characters"
 
 
+def native_configuration(**overrides):
+    return configuration(**overrides).model_copy(update={"provider": PROVIDER})
+
+
 @asynccontextmanager
 async def replicas(tmp_path, monkeypatch):
     monkeypatch.setenv("FORGE_IDENTITY_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://forge.example")
-    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "forge.example")
+    monkeypatch.setenv("FORGE_OAUTH_LOCAL_DEVELOPMENT", "1")
+    monkeypatch.setenv("FORGE_OIDC_ALLOW_LOOPBACK_HTTP", "true")
+    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://127.0.0.1:49200")
+    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "127.0.0.1")
     applications = [create_application(tmp_path / "shared", TOKEN, role="api") for _ in range(2)]
     async with (
         applications[0].router.lifespan_context(applications[0]),
         applications[1].router.lifespan_context(applications[1]),
     ):
         services = [app.state.runtime.context.get_bean(ConnectionOAuth) for app in applications]
-        services[0].catalog["fixture"] = provider()
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=applications[1], client=("127.0.0.1", 50000)),
-            base_url="https://forge.example",
+            base_url="https://127.0.0.1:49200",
             headers={"Authorization": "Bearer " + TOKEN},
         ) as client:
+            policy = await client.put(BASE + "/" + PROVIDER, json=registration())
+            assert policy.status_code == 200, policy.text
             yield services, client
 
 
@@ -42,11 +50,11 @@ async def test_stale_replica_rejects_new_and_rotated_secrets_from_role_instructi
 ):
     async with replicas(tmp_path, monkeypatch) as (services, client):
         first = "owned-client-secret-" + uuid4().hex
-        await services[0].configure("design", configuration(client_secret=first), actor())
+        await services[0].configure("design", native_configuration(client_secret=first), actor())
         secrets = [first]
         if rotate:
             second = "owned-rotated-secret-" + uuid4().hex
-            await services[0].configure("design", configuration(client_secret=second), actor())
+            await services[0].configure("design", native_configuration(client_secret=second), actor())
             await services[0].disconnect("design", actor())
             secrets.append(second)
         document = (await client.get("/api/v1/agent-roles")).json()["document"]
@@ -61,7 +69,7 @@ async def test_stale_replica_rejects_new_and_rotated_secrets_from_role_instructi
 
 async def test_current_vault_positive_role_edit_remains_usable(tmp_path, postgres_schema, monkeypatch):
     async with replicas(tmp_path, monkeypatch) as (services, client):
-        await services[0].configure("design", configuration(client_secret="owned-only-secret"), actor())
+        await services[0].configure("design", native_configuration(client_secret="owned-only-secret"), actor())
         document = (await client.get("/api/v1/agent-roles")).json()["document"]
         document["roles"][0]["instructions"] = "Review the customer journey and report reproducible findings."
         result = await client.put("/api/v1/agent-roles", json=document)
@@ -86,7 +94,7 @@ async def test_stale_replica_rejects_current_secret_from_public_model_profile_fi
 ):
     async with replicas(tmp_path, monkeypatch) as (services, client):
         value = "owned-client-secret-" + uuid4().hex
-        await services[0].configure("design", configuration(client_secret=value), actor())
+        await services[0].configure("design", native_configuration(client_secret=value), actor())
         result = await client.put(
             "/api/v1/model-profiles/design",
             json={"name": "Design model", "description": value, "provider": "agentic", "values": {}},
@@ -136,7 +144,7 @@ async def test_retained_public_text_is_withheld_after_later_vault_publication(
             )
             endpoint = "/api/v1/model-profiles"
         assert saved.status_code == 200, saved.text
-        await services[0].configure("design", configuration(client_secret=value), actor())
+        await services[0].configure("design", native_configuration(client_secret=value), actor())
         retained = await client.get(endpoint)
         assert retained.status_code == 409, retained.text
         assert value not in retained.text
@@ -227,7 +235,7 @@ async def test_direct_search_api_checks_current_vault_before_provider_dispatch(t
             search.client = remote
             search.configure({"provider": "tavily", "api_key": "owned-fixture-search-key"})
             value = "owned-client-secret-" + uuid4().hex
-            await services[0].configure("design", configuration(client_secret=value), actor())
+            await services[0].configure("design", native_configuration(client_secret=value), actor())
             result = await client.post("/api/v1/search/query", json={"query": "Find " + value, "max_results": 1})
             assert result.status_code == 409, result.text
             assert calls == []

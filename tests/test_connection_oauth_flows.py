@@ -25,7 +25,9 @@ from test_connection_oauth_ledger import actor
 
 
 @asynccontextmanager
-async def local_provider(*, delay=False, mutate=None):
+async def local_provider(
+    *, delay=False, mutate=None, connection_name="design", callback_uri=None, scope="read", resource_path="/mcp"
+):
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     origin = "http://127.0.0.1:" + str(listener.getsockname()[1])
@@ -37,13 +39,14 @@ async def local_provider(*, delay=False, mutate=None):
                 registration_id="client",
                 client_id="client",
                 client_secret="fixture-secret",
-                redirect_uri="https://forge.example/api/v1/connection-oauth/design/callback",
-                scopes=["read"],
+                redirect_uri=callback_uri
+                or f"https://forge.example/api/v1/connection-oauth/{connection_name}/callback",
+                scopes=[scope],
             )
         ),
         InMemoryTokenStore(),
         issuer=origin,
-        audience=origin + "/mcp",
+        audience=origin + resource_path,
     )
 
     async def token(request):

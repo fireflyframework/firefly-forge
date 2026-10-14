@@ -39,7 +39,11 @@ class BrowserConsentRequired(AccessDenied):
 class ConnectionOAuthPrivacy(OncePerRequestFilter):
     async def do_filter(self, request: Request, call_next: CallNext) -> Response:
         response = cast(Response, await call_next(request))
-        if request.url.path == "/api/v1/connection-oauth" or request.url.path.startswith("/api/v1/connection-oauth/"):
+        if (
+            request.url.path == "/api/v1/connection-oauth"
+            or request.url.path.startswith("/api/v1/connection-oauth/")
+            or request.url.path.startswith("/api/v1/oauth-provider-policies")
+        ):
             # The native default header filter appends its general policy. Override
             # outside that filter so a browser cannot select its less strict value.
             response.headers["Referrer-Policy"] = "no-referrer"
@@ -85,8 +89,8 @@ class ConnectionOAuthController:
         return actor
 
     @get_mapping("/providers")
-    def providers(self) -> list[dict[str, Any]]:
-        return self.connections.providers()
+    async def providers(self) -> list[dict[str, Any]]:
+        return await self.connections.provider_directory(self._actor())
 
     @get_mapping("")
     async def directory(self, project_id: QueryParam[str | None] = None) -> list[OAuthConnectionSummary]:

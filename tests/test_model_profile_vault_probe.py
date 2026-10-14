@@ -4,8 +4,8 @@
 from uuid import uuid4
 
 import pytest
-from test_connection_oauth_ledger import actor, configuration
-from test_oauth_vault_admission import replicas
+from test_connection_oauth_ledger import actor
+from test_oauth_vault_admission import native_configuration, replicas
 
 
 @pytest.mark.parametrize("credential", ["agentic", "unverified", "false"])
@@ -19,7 +19,7 @@ async def test_model_connection_probe_checks_current_public_metadata(
         assert created.status_code == 200
         # Reconstruct actual encrypted legacy history; prospective connection
         # admission now refuses a secret colliding with its own JSON packet.
-        await services[0]._configure("design", configuration(client_secret=credential), actor())
+        await services[0]._configure("design", native_configuration(client_secret=credential), actor())
         calls = []
         profiles = services[1].store.task_router.profiles
         original = profiles.test
@@ -42,7 +42,7 @@ async def test_generated_probe_result_is_admitted_before_public_return(tmp_path,
         )
         assert created.status_code == 200
         credential = "owned-probe-credential-" + uuid4().hex
-        await services[0].configure("design", configuration(client_secret=credential), actor())
+        await services[0].configure("design", native_configuration(client_secret=credential), actor())
         calls = []
 
         async def observed(name):

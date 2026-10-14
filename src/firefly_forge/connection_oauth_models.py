@@ -13,6 +13,7 @@ class OAuthConnectionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     provider: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     project_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    expected_revision: int | None = Field(default=None, strict=True, ge=0, le=2_147_483_647)
     client_id: str = Field(min_length=1, max_length=200)
     client_secret: SecretStr | None = None
     public_client: bool | None = None
@@ -110,6 +111,7 @@ class OAuthConnectionSummary(BaseModel):
     grant_revision: int | None = None
     grant_status: str | None = None
     observed_at: str | None = None
+    policy_current: bool = True
 
 
 class OAuthEffectReceipt(BaseModel):
@@ -136,6 +138,13 @@ class OAuthProvider:
     refresh_scope_omission: Literal["reject", "preserve"] = "reject"
     refresh_token_omission: Literal["reject", "preserve"] = "reject"
     prerequisite: str | None = None
+
+
+@dataclass(frozen=True)
+class OAuthPolicyBinding:
+    provider: OAuthProvider
+    revision: int
+    digest: str
 
 
 @dataclass(frozen=True)

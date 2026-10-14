@@ -6,19 +6,20 @@ import json
 import pytest
 from click.testing import CliRunner
 from starlette.testclient import TestClient
-from test_connection_oauth_ledger import provider
+from test_oauth_provider_policy_api import BASE, PROVIDER, registration
 
 from firefly_forge import cli
 from firefly_forge.api import create_application
 from firefly_forge.client import ForgeClient
-from firefly_forge.connection_oauth import ConnectionOAuth
 from firefly_forge.mcp_server import create_server
 
 
 def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path, postgres_schema, monkeypatch):
     token = "fixture-oauth-client-owner-token-32chars"
-    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://forge.example")
-    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "forge.example")
+    monkeypatch.setenv("FORGE_OAUTH_LOCAL_DEVELOPMENT", "1")
+    monkeypatch.setenv("FORGE_OIDC_ALLOW_LOOPBACK_HTTP", "true")
+    monkeypatch.setenv("FORGE_BROWSER_ORIGIN", "https://127.0.0.1:49200")
+    monkeypatch.setenv("FORGE_ALLOWED_HOSTS", "127.0.0.1")
 
     class InProcess(TestClient):
         def request(self, *args, **kwargs):
@@ -27,16 +28,15 @@ def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path
 
     with InProcess(
         create_application(tmp_path, token),
-        base_url="https://forge.example/api/v1/",
+        base_url="https://127.0.0.1:49200/api/v1/",
         headers={"Authorization": "Bearer " + token},
         client=("127.0.0.1", 50000),
     ) as http:
-        connection = ForgeClient("https://forge.example", token)
+        connection = ForgeClient("https://127.0.0.1:49200", token)
         connection.http.close()
         connection.http = http
         monkeypatch.setattr(cli, "client", lambda: contextlib.nullcontext(connection))
-        service = http.app.state.runtime.context.get_bean(ConnectionOAuth)
-        service.catalog["fixture"] = provider()
+        assert http.put(BASE.removeprefix("/api/v1/") + "/" + PROVIDER, json=registration()).status_code == 200
         assert len(connection.connection_oauth_providers()) == 6
         key = tmp_path / "client.secret"
         key.write_text("fixture-private-client-secret")
@@ -49,7 +49,7 @@ def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path
                 "configure",
                 "design",
                 "--provider",
-                "fixture",
+                PROVIDER,
                 "--client-id",
                 "client",
                 "--client-secret-file",
@@ -64,7 +64,7 @@ def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path
         assert connection.connection_oauth("design")["revision"] == 1
         prepared = CliRunner().invoke(cli.main, ["connections", "oauth", "prepare", "design"])
         assert prepared.exit_code == 0, prepared.output
-        assert json.loads(prepared.output)["continuation_url"].startswith("https://forge.example/api/")
+        assert json.loads(prepared.output)["continuation_url"].startswith("https://127.0.0.1:49200/api/")
         assert "authorization_url" not in json.loads(prepared.output)
         server = create_server()
         tools = {item.name: item for item in asyncio.run(server.list_tools())}

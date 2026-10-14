@@ -50,7 +50,7 @@ async def test_native_schema_additive_revision_and_encrypted_registration(store)
     result = await svc.configure("design", configuration(client_secret="private-secret"), user)
     assert result["revision"] == 1 and result["status"] == "authorization_required"
     async with store._unit() as session:
-        assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == 22
+        assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == 23
         from firefly_forge.connection_oauth_persistence import OAuthRegistrationEntity
 
         row = await session.scalar(select(OAuthRegistrationEntity))
