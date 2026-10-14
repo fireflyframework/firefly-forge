@@ -39,7 +39,11 @@ class ModelProfileController:
 
     @post_mapping("/model-profiles/{id}/test")
     async def test_profile(self, id: PathVar[str]) -> dict[str, Any]:
-        return await self.profiles.test(id)
+        public = [entry for entry in self.profiles.catalog() if entry["id"] == id]
+        await self.store.admit_credentials(public)
+        result = await self.profiles.test(id)
+        await self.store.admit_credentials(result)
+        return result
 
     @get_mapping("/task-routing")
     def task_routing(self) -> dict[str, Any]:
