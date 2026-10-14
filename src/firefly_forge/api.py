@@ -117,6 +117,7 @@ from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.oauth_provider_policies import OAuthProviderPolicies
 from firefly_forge.oauth_provider_policy_controllers import OAuthProviderPolicyController
 from firefly_forge.oauth_provider_policy_persistence import OAuthProviderPolicyRepository
+from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
 from firefly_forge.persistence import (
     ForgeDeploymentRepository,
@@ -647,8 +648,12 @@ class FactoryConfiguration:
         return KnowledgeFirst(store, journal, ledger, broker, search)
 
     @bean
-    def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
-        return ExternalMCPRegistry(private)
+    def oauth_resources(self, connections: ConnectionOAuth, access: ProjectAccess) -> OAuthResources:
+        return OAuthResources(connections, access)
+
+    @bean
+    def external_mcp_registry(self, private: ConfigurationStore, resources: OAuthResources) -> ExternalMCPRegistry:
+        return ExternalMCPRegistry(private, resources=resources)
 
     @bean
     def tool_invocation_broker(

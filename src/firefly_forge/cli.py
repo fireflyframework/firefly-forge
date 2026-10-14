@@ -984,6 +984,21 @@ def configure_external_mcp(connector: str, enable: bool, key_file: Path | None, 
         )
 
 
+@external_mcp.command("oauth")
+@click.argument("connector", type=click.Choice(["github", "local-repository-tools"]))
+@click.option("--connection", "connection_name", required=True)
+@click.option("--project-id", required=True)
+@click.option("--enable/--disable", default=True)
+def link_external_mcp_oauth(connector: str, connection_name: str, project_id: str, enable: bool) -> None:
+    """Link an already authorized native connection; no token is exported."""
+    with client() as connection:
+        display(
+            connection.link_external_mcp_oauth(
+                connector, {"connection_name": connection_name, "project_id": project_id, "enabled": enable}
+            )
+        )
+
+
 @external_mcp.command("discover")
 @click.argument("connector")
 def discover_external_mcp(connector: str) -> None:

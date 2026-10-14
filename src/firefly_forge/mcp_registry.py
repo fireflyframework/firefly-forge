@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -22,7 +23,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
 
 from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.identity import Principal
 from firefly_forge.journal import digest
+from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.workspace_tools import _private_name
 
@@ -69,6 +72,21 @@ CATALOG: dict[str, Data] = {
         "source": "https://github.com/grafana/mcp-grafana",
     },
 }
+
+CATALOG["local-repository-tools"] = {
+    "name": "Local repository tools",
+    "endpoint": None,
+    "tools": list(CATALOG["github"]["tools"]),
+    "prerequisite": None,
+    "source": "https://fireflyframework.org/forge/",
+}
+
+
+class MCPOAuthConnectionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    connection_name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    project_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    enabled: bool = True
 
 
 class MCPAdmissionError(ValueError):
@@ -269,7 +287,8 @@ def mcp_snapshot(directory: Path | ConfigurationStore, project_id: str | None, r
 
 @service
 class ExternalMCPRegistry:
-    def __init__(self, directory: Path | ConfigurationStore) -> None:
+    def __init__(self, directory: Path | ConfigurationStore, *, resources: OAuthResources | None = None) -> None:
+        self.resources = resources
         self.private = directory if isinstance(directory, ConfigurationStore) else ConfigurationStore(directory)
         self.path = self.private.directory / "external-mcp.json"
         self.revisions = self.private.directory / "mcp-revisions"
@@ -298,9 +317,15 @@ class ExternalMCPRegistry:
     def catalog(self) -> list[Data]:
         with self.private.lock:
             connections = self._state()["connections"]
+        return self._catalog(connections)
+
+    @staticmethod
+    def _catalog(connections: Data) -> list[Data]:
         result = []
         for connector, definition in CATALOG.items():
             record = connections.get(connector, {})
+            if connector == "local-repository-tools" and not record:
+                continue
             readiness = (
                 "prerequisite_required"
                 if definition["prerequisite"]
@@ -318,6 +343,8 @@ class ExternalMCPRegistry:
                 {
                     "id": connector,
                     **copy.deepcopy(definition),
+                    "endpoint": record.get("endpoint", definition["endpoint"]),
+                    "authentication": record.get("authentication", "token"),
                     "enabled": bool(record.get("enabled")),
                     "credential_configured": bool(record.get("credential_revision")),
                     "readiness": readiness,
@@ -330,6 +357,8 @@ class ExternalMCPRegistry:
 
     def configure(self, connector: str, request: MCPConnectionInput) -> Data:
         definition = _connector(connector)
+        if connector == "local-repository-tools":
+            raise ValueError("Local repository tools require an admitted native OAuth policy binding")
         if definition["prerequisite"] and (request.enabled or request.api_key):
             raise ValueError("This connector has an unmet prerequisite: " + definition["prerequisite"])
         if request.api_key and (any(ord(c) <= 32 for c in request.api_key) or request.clear_secret):
@@ -354,19 +383,146 @@ class ExternalMCPRegistry:
             self.private._write(self.path, state)
         return next(item for item in self.catalog() if item["id"] == connector)
 
+    def _oauth_endpoint(self, connector: str, binding: Data) -> str:
+        if self.resources is None or binding["provider"] != connector or binding["policy_revision"] < 1:
+            raise ValueError("MCP OAuth requires a current supported native provider policy")
+        endpoint = binding["resource"]
+        if not isinstance(endpoint, str):
+            raise ValueError("MCP OAuth resource must be an exact endpoint")
+        if connector == "github":
+            if endpoint != CATALOG["github"]["endpoint"]:
+                raise ValueError("MCP OAuth resource differs from its approved GitHub endpoint")
+        elif connector == "local-repository-tools":
+            origin, browser = urlsplit(binding["issuer"]), urlsplit(self.resources.connections.browser_origin)
+            if (
+                os.environ.get("FORGE_OAUTH_LOCAL_DEVELOPMENT") != "1"
+                or not self.resources.connections.loopback
+                or browser.scheme != "http"
+                or browser.hostname not in {"127.0.0.1", "::1"}
+                or origin.scheme != "http"
+                or origin.hostname not in {"127.0.0.1", "::1"}
+                or origin.port is None
+                or not 1024 <= origin.port <= 65535
+                or origin.path
+                or origin.query
+                or origin.fragment
+                or origin.username
+                or origin.password
+                or endpoint != binding["issuer"] + "/mcp/readonly"
+                or binding["scopes"] != ["repository:read"]
+            ):
+                raise ValueError("Local MCP OAuth requires its exact development resource policy")
+        else:
+            raise ValueError("This MCP OAuth provider requires its reviewed scoped adapter")
+        return endpoint
+
+    async def link_oauth(self, connector: str, request: MCPOAuthConnectionInput, actor: Principal) -> Data:
+        _connector(connector)
+        if self.resources is None:
+            raise ValueError("Native OAuth resource custody is unavailable")
+        async with self.resources.store._unit() as session:
+            await self.resources.connections._authority(session, actor)
+        if not request.enabled:
+            with self.private.lock:
+                state = self._state()
+                previous_digest = digest(state)
+                record = state["connections"].get(connector, {})
+                if (
+                    record.get("oauth_connection") != request.connection_name
+                    or record.get("project_id") != request.project_id
+                ):
+                    raise ValueError("Select the exact configured OAuth connection and project")
+                record["enabled"] = False
+                proposal = next(item for item in self._catalog(state["connections"]) if item["id"] == connector)
+            await self.resources.store.admit_credentials(proposal)
+            with self.private.lock:
+                if digest(self._state()) != previous_digest:
+                    raise ValueError("MCP settings changed during admission; review and retry")
+                self.private._write(self.path, state)
+            return proposal
+        binding = await self.resources.bind(
+            request.connection_name,
+            actor,
+            project_id=request.project_id,
+            resource=(await self.resources.connections.summary(request.connection_name, actor))["resource"],
+        )
+        endpoint = self._oauth_endpoint(connector, binding)
+        revision = uuid.uuid4().hex
+        record = {
+            "credential_revision": revision,
+            "enabled": True,
+            "authentication": "oauth",
+            "endpoint": endpoint,
+            "oauth_connection": request.connection_name,
+            "project_id": request.project_id,
+        }
+        with self.private.lock:
+            state = self._state()
+            previous_digest = digest(state)
+            state["connections"][connector] = record
+            proposal = next(item for item in self._catalog(state["connections"]) if item["id"] == connector)
+        await self.resources.store.admit_credentials({"record": record, "summary": proposal})
+        with self.private.lock:
+            if digest(self._state()) != previous_digest:
+                raise ValueError("MCP settings changed during admission; review and retry")
+            self.private._write(
+                self.revisions / (revision + ".json"), {"connector": connector, "oauth_binding": binding}
+            )
+            self.private._write(self.path, state)
+        return proposal
+
     @asynccontextmanager
     async def _session(
-        self, connector: str, revision: str, expected: Data | None = None
-    ) -> AsyncIterator[tuple[ClientSession, Data]]:
+        self,
+        connector: str,
+        revision: str,
+        expected: Data | None = None,
+        *,
+        run_id: str | None = None,
+        actor: Principal | None = None,
+        authority: Callable[[], None] | None = None,
+        repository_id: str | None = None,
+    ) -> AsyncIterator[tuple[ClientSession, Data, list[Data]]]:
         definition = _connector(connector)
         _identifier(revision)
         with self.private.lock:
             credential = self.private._read(self.revisions / (revision + ".json"))
-        if credential.get("connector") != connector or not credential.get("api_key"):
+        if credential.get("connector") != connector:
             raise MCPAdmissionError("Frozen MCP credential revision is unavailable")
-        transport = _PinnedTransport(
-            self.transport or httpx2.AsyncHTTPTransport(retries=0), definition["endpoint"], expected
-        )
+        endpoint = definition["endpoint"]
+        headers = {}
+        observations: list[Data] = []
+        inner = self.transport or httpx2.AsyncHTTPTransport(retries=0)
+        if credential.get("oauth_binding"):
+            binding = credential["oauth_binding"]
+            endpoint = self._oauth_endpoint(connector, binding)
+            assert self.resources is not None
+
+            def current_connection() -> None:
+                with self.private.lock:
+                    current = self._state()["connections"].get(connector, {})
+                    if not current.get("enabled") or (
+                        expected is None and current.get("credential_revision") != revision
+                    ):
+                        raise MCPAdmissionError("MCP OAuth connection changed or was disabled")
+                if authority:
+                    authority()
+
+            resource_transport = self.resources.transport(
+                binding,
+                run_id=run_id,
+                actor=actor,
+                inner=inner,
+                authority=current_connection,
+                repository_id=repository_id,
+            )
+            inner = resource_transport
+            observations = resource_transport.observations
+        elif credential.get("api_key"):
+            headers = {"Authorization": "Bearer " + credential["api_key"]}
+        else:
+            raise MCPAdmissionError("Frozen MCP credential revision is unavailable")
+        transport = _PinnedTransport(inner, endpoint, expected)
         try:
             async with (
                 asyncio.timeout(30),
@@ -375,18 +531,22 @@ class ExternalMCPRegistry:
                     timeout=15,
                     trust_env=False,
                     follow_redirects=False,
-                    headers={"Authorization": "Bearer " + credential["api_key"]},
+                    headers=headers,
                 ) as http,
-                streamable_http_client(
-                    definition["endpoint"], http_client=http, max_sse_event_size=1_000_000
-                ) as streams,
+                streamable_http_client(endpoint, http_client=http, max_sse_event_size=1_000_000) as streams,
                 ClientSession(streams[0], streams[1], read_timeout_seconds=15) as session,
             ):
                 initialized = await session.initialize()
                 info = initialized.server_info.model_dump(by_alias=True, exclude_none=True)
                 if len(json.dumps(info).encode()) > 1024:
                     raise MCPAdmissionError("MCP server identity exceeds its bounds")
-                yield session, info
+                yield session, info, observations
+                if credential.get("oauth_binding"):
+                    assert self.resources is not None
+                    await self.resources._admission(
+                        credential["oauth_binding"], run_id=run_id, actor=actor, repository_id=repository_id
+                    )
+                    current_connection()
         except Exception as error:
             safe = _safe_error(error)
             raise safe or MCPAdmissionError(
@@ -408,7 +568,7 @@ class ExternalMCPRegistry:
             raise MCPAdmissionError("MCP server exposes no admitted repository-scoped tools")
         return tools
 
-    async def discover(self, connector: str) -> Data:
+    async def discover(self, connector: str, *, actor: Principal | None = None) -> Data:
         definition = _connector(connector)
         if definition["prerequisite"]:
             raise ValueError("This connector has an unmet prerequisite")
@@ -417,15 +577,19 @@ class ExternalMCPRegistry:
             revision = connection.get("credential_revision")
             if not connection.get("enabled") or not revision:
                 raise ValueError("Enable a configured connector before discovery")
-        async with self._session(connector, revision) as (session, info):
+        async with self._session(connector, revision, actor=actor) as (session, info, observations):
             tools = await self._tools(session, connector)
         payload = {
             "connector": connector,
-            "endpoint": definition["endpoint"],
+            "endpoint": connection.get("endpoint", definition["endpoint"]),
             "credential_revision": revision,
             "server": info,
             "tools": tools,
         }
+        if observations:
+            payload["oauth_source"] = observations
+        if self.resources is not None:
+            await self.resources.store.admit_credentials(payload)
         if contains_known_credential(payload, {**self.credentials(), **self.credential_registry()}):
             raise ValueError("MCP discovery reflected configured credentials")
         discovery = {**payload, "digest": digest(payload)}
@@ -458,7 +622,7 @@ class ExternalMCPRegistry:
         parsed = urlsplit(repository["url"])
         parts = parsed.path.removesuffix(".git").strip("/").split("/")
         if (
-            connector != "github"
+            connector not in {"github", "local-repository-tools"}
             or parsed.scheme != "https"
             or parsed.netloc != "github.com"
             or parsed.query
@@ -488,7 +652,7 @@ class ExternalMCPRegistry:
                 "project_id": project_id,
                 "repository_id": request.repository_id,
                 "connector": connector,
-                "endpoint": CATALOG[connector]["endpoint"],
+                "endpoint": discovery["endpoint"],
                 "credential_revision": discovery["credential_revision"],
                 "review_digest": request.review_digest,
                 "server": discovery["server"],
@@ -579,12 +743,32 @@ class ExternalMCPRegistry:
         return copy.deepcopy(grant), args
 
     async def call(
-        self, snapshot: Data, connector: str, tool: str, arguments: Data, *, roles: list[str], stage: str
+        self,
+        snapshot: Data,
+        connector: str,
+        tool: str,
+        arguments: Data,
+        *,
+        roles: list[str],
+        stage: str,
+        run_id: str | None = None,
     ) -> Data:
         grant, args = self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
-        async with self._session(connector, grant["credential_revision"], {"name": tool, "arguments": args}) as (
+
+        def current_grant() -> None:
+            self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
+
+        async with self._session(
+            connector,
+            grant["credential_revision"],
+            {"name": tool, "arguments": args},
+            run_id=run_id,
+            authority=current_grant,
+            repository_id=grant["repository_id"],
+        ) as (
             session,
             info,
+            observations,
         ):
             tools = await self._tools(session, connector)
             if info != grant["server"] or tools.get(tool) != grant["tools"][tool]:
@@ -605,6 +789,10 @@ class ExternalMCPRegistry:
             "untrusted": True,
             "text": [item["text"] for item in content],
         }
+        if observations:
+            result["oauth_source"] = observations
+        if self.resources is not None:
+            await self.resources.store.admit_credentials(result)
         if contains_known_credential(result, {**self.credentials(), **self.credential_registry()}):
             raise ValueError("MCP result reflected configured credentials")
         self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)

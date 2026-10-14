@@ -6,7 +6,14 @@ from typing import Any
 from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 
-from firefly_forge.mcp_registry import ExternalMCPRegistry, MCPConnectionInput, MCPGrantInput, MCPReviewInput
+from firefly_forge.connection_oauth_controllers import ConnectionOAuthController
+from firefly_forge.mcp_registry import (
+    ExternalMCPRegistry,
+    MCPConnectionInput,
+    MCPGrantInput,
+    MCPOAuthConnectionInput,
+    MCPReviewInput,
+)
 from firefly_forge.projects import Projects
 from firefly_forge.store import Store
 
@@ -18,16 +25,22 @@ class ExternalMCPController:
         self.registry, self.store = registry, store
 
     @get_mapping("")
-    def catalog(self) -> list[dict[str, Any]]:
-        return self.registry.catalog()
+    async def catalog(self) -> list[dict[str, Any]]:
+        result = self.registry.catalog()
+        await self.store.admit_credentials(result)
+        return result
 
     @put_mapping("/{connector}")
     def configure(self, connector: PathVar[str], body: Body[MCPConnectionInput]) -> dict[str, Any]:
         return self.registry.configure(connector, body)
 
+    @put_mapping("/{connector}/oauth")
+    async def link_oauth(self, connector: PathVar[str], body: Body[MCPOAuthConnectionInput]) -> dict[str, Any]:
+        return await self.registry.link_oauth(connector, body, ConnectionOAuthController._actor())
+
     @post_mapping("/{connector}/discover")
     async def discover(self, connector: PathVar[str]) -> dict[str, Any]:
-        return await self.registry.discover(connector)
+        return await self.registry.discover(connector, actor=ConnectionOAuthController._actor())
 
     @post_mapping("/{connector}/review")
     def review(self, connector: PathVar[str], body: Body[MCPReviewInput]) -> dict[str, Any]:

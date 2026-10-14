@@ -968,6 +968,18 @@ def create_server() -> MCPServer:
             )
 
     @server.tool()
+    def link_external_mcp_oauth(
+        connector: str, connection_name: str, project_id: str, enabled: bool = True
+    ) -> dict[str, Any]:
+        """Link a currently authorized project connection; schema review and tool grants remain explicit."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.link_external_mcp_oauth(
+                connector, {"connection_name": connection_name, "project_id": project_id, "enabled": enabled}
+            )
+
+    @server.tool()
     def discover_external_mcp(connector: str) -> dict[str, Any]:
         """Make an explicit bounded remote schema discovery; do not claim tool execution from discovery."""
         from firefly_forge.cli import client

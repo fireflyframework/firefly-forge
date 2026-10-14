@@ -640,6 +640,13 @@ class ForgeClient:
         model = MCPConnectionInput.model_validate(request)
         return dict(self.request("PUT", f"tools/mcp/{connector}", json=model.model_dump()))
 
+    def link_external_mcp_oauth(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import MCPOAuthConnectionInput, _connector
+
+        _connector(connector)
+        model = MCPOAuthConnectionInput.model_validate(request)
+        return dict(self.request("PUT", f"tools/mcp/{connector}/oauth", json=model.model_dump()))
+
     def discover_external_mcp(self, connector: str) -> dict[str, Any]:
         from firefly_forge.mcp_registry import _connector
 

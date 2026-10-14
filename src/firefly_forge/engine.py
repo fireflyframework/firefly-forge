@@ -556,7 +556,13 @@ class Engine:
                         return cast(
                             dict[str, Any],
                             await self.external_mcp.call(
-                                run["mcp_snapshot"], connector, tool, arguments, roles=roles, stage="implement"
+                                run["mcp_snapshot"],
+                                connector,
+                                tool,
+                                arguments,
+                                roles=roles,
+                                stage="implement",
+                                run_id=identifier,
                             ),
                         )
 
