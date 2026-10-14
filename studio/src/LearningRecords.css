@@ -53,6 +53,10 @@
 .learning-records-grid > * {
   min-width: 0;
 }
+.learning-records-grid > aside {
+  position: sticky;
+  top: 28px;
+}
 .learning-records-list {
   list-style: none;
   margin: 0;
@@ -215,6 +219,9 @@
   }
   .learning-records-list {
     max-height: 260px;
+  }
+  .learning-records-grid > aside {
+    position: static;
   }
   .learning-records-detail {
     border-left: 0;

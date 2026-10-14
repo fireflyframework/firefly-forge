@@ -106,6 +106,47 @@ async function open(
     .click();
   return calls;
 }
+
+for (const theme of ["light", "dark"]) {
+  test(`wide provenance keeps the selected record available in ${theme}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(
+      (value) => localStorage.setItem("forge.appearance", value),
+      theme,
+    );
+    await open(page, { records: [record] });
+    const selected = page.getByRole("button", {
+      name: record.envelope.question,
+      exact: true,
+    });
+    await selected.click();
+    await page
+      .getByText("Identifiers and verification receipts", { exact: true })
+      .click();
+    await page
+      .getByRole("heading", {
+        name: "Native verification receipts",
+        exact: true,
+      })
+      .scrollIntoViewIfNeeded();
+    const main = await page.locator(".workspace-main > main").boundingBox();
+    const choice = await selected.boundingBox();
+    expect(main).not.toBeNull();
+    expect(choice).not.toBeNull();
+    expect(choice!.y).toBeGreaterThanOrEqual(main!.y);
+    expect(choice!.y + choice!.height).toBeLessThanOrEqual(
+      main!.y + main!.height,
+    );
+    await selected.focus();
+    await expect(selected).toBeFocused();
+    if (process.env.FORGE_RECORDS_CAPTURE_DIR)
+      await page.screenshot({
+        path: `${process.env.FORGE_RECORDS_CAPTURE_DIR}/context-wide-${theme}-receipts.png`,
+      });
+  });
+}
 test("an identity change clears prior evidence and reads the new actor's authorized scope", async ({
   page,
 }) => {
