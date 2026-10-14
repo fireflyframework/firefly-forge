@@ -112,6 +112,78 @@ The projection panel reads the selected local outcome's saved flycanon status an
 
 **Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request; Studio write controls remain pending until that reconciliation contract is available.
 
+<figure class="forge-shot" markdown="1">
+
+![Learning records for the selected repository](assets/screenshots/learning-records-desktop-light.png)
+
+<figcaption>Choose a repository, then a saved record. The list distinguishes a verified local outcome from an observed failure. This guide uses controlled API fixtures; no knowledge service or command runs during capture.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect projection, provenance and a failed-check candidate</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Saved flycanon projection](assets/screenshots/learning-projection-desktop-light.png)
+
+<figcaption>The fixture's projection has a recorded source and citation. The notice keeps saved verification separate from current reuse eligibility.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Native receipt references beside the retained record selector](assets/screenshots/learning-provenance-desktop-light.png)
+
+<figcaption>Open identifiers and verification receipts to inspect the source and journal references. The desktop selector stays reachable while the detail scrolls.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![An observed failed-check candidate](assets/screenshots/learning-candidate-desktop-light.png)
+
+<figcaption>A rejected check records an observation in its own scope. This candidate cannot authorize a verified solution or a new projection.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow the same inspection on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Learning record selection on a phone](assets/screenshots/learning-records-mobile-dark.png)
+
+<figcaption>The narrow layout places selection before the detail. Filters remain available above the returned records.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Saved projection on a phone](assets/screenshots/learning-projection-mobile-dark.png)
+
+<figcaption>Selecting a record focuses its detail. Read the saved projection state before opening its identifiers.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Verification references on a phone](assets/screenshots/learning-provenance-mobile-dark.png)
+
+<figcaption>Long identifiers wrap in the detail. Scroll to the receipt references within the main content area.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Failure candidate on a phone](assets/screenshots/learning-candidate-mobile-dark.png)
+
+<figcaption>The candidate retains its observed purpose and date. Reviewing it performs reads without replaying a submission.</figcaption>
+</figure>
+
+</div>
+</details>
+
 ## Keep authority and retrieval separate
 
 | Component | Responsibility | Evidence it supplies |

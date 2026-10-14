@@ -43,7 +43,9 @@ Administrators can explicitly configure a mutually authenticated local command c
 
 ## Give agents scoped context and tools
 
-Flycanon supplies cited project and framework context. Fresh managed installations require retrieval and enable automatic memory after final verification. Knowledge and memory use a separate `forge-<repository_id>` workspace for each repository; a product spanning several components does not automatically create one combined memory scope. Read [knowledge and memory](docs/knowledge.md) before indexing source or changing scope grants.
+flycanon supplies cited project and framework context. Fresh managed installations require retrieval and enable automatic memory after final verification. Knowledge and memory use a separate `forge-<repository_id>` workspace for each repository; a product spanning several components does not automatically create one combined memory scope. Read [knowledge and memory](docs/knowledge.md) before indexing source or changing scope grants.
+
+**Knowledge > Learning records** shows saved outcomes, failed-check candidates and projection provenance for an authorized repository. The [learning walkthrough](docs/learning.md#review-saved-records-in-studio) explains these read-only views and the separate lookup eligibility checks. A frozen same-run proposal cap can hold repeated coding repairs after actual QA; it preserves verification and the existing no-progress guard.
 
 Select [agent roles](docs/agent-roles.md), project policies and the configured runner capabilities. Firefly Agentic and bridge execution use bounded native file, search, edit, diff, command and browser tools. Official Codex and Claude Code follow their own CLI permissions; a role tool list is advisory for those providers. Browser checks use a fresh restricted container context, and internet search requires explicit Brave or Tavily provider configuration and an authorized credential. See [native tools](docs/agent-tools.md) and [browser journeys](docs/browser-qa.md).
 

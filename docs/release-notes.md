@@ -13,6 +13,8 @@ After actual failed QA, the captured learning policy can hold the next same-run 
 
 The runtime retains the qualified public pyfly 26.10.6, fireflyframework-agentic 26.10.1 and flycanon SDK 26.10.3 dependencies. Existing admitted runs retain their captured settings. Studio record inspection is read-only; lifecycle writes still require their reviewed operator and reconciliation contracts.
 
+SDK, CLI and factory MCP clients add six reads for global and repository role lifecycle, registered users, eligible project members, identity administration and retained identity operations. Each request uses the existing server permission and redaction boundary. The MCP catalog has 114 tools; the 108 earlier contracts remain unchanged. These additions do not introduce user-management writes or grant changes. See [operator integrations](agent-integrations.md).
+
 ## 0.2.6
 
 Administrators can configure verified learning through **Administration > Learning**. The wizard separates knowledge selection, retrieval limits and review. It preserves saved preferences when learning is disabled and requires a read of saved settings after an uncertain write. New runs capture the revised policy; existing runs retain theirs. See [learning and knowledge-first execution](learning.md).
