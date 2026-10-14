@@ -2,18 +2,16 @@
 """Owned loopback HTTP authorization server, public pyfly client and native PG ledger."""
 
 import asyncio
-import base64
 import json
 import socket
 from contextlib import asynccontextmanager
-from urllib.parse import parse_qs, unquote_plus, urlsplit
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import httpx
 import pytest
 import uvicorn
 from cryptography.fernet import Fernet
-from pyfly.kernel.exceptions import SecurityException
 from pyfly.security.context import SecurityContext
 from pyfly.security.oauth2.authorization_server import AuthorizationServer, InMemoryTokenStore
 from pyfly.security.oauth2.client import ClientRegistration, InMemoryClientRegistrationRepository
@@ -54,25 +52,10 @@ async def local_provider(*, delay=False, mutate=None):
         entered.set()
         if delay:
             await release.wait()
-        client_id, client_secret = str(form.get("client_id", "")), str(form.get("client_secret", ""))
-        if request.headers.get("authorization", "").startswith("Basic "):
-            pair = base64.b64decode(request.headers["authorization"][6:]).decode().split(":", 1)
-            client_id, client_secret = (unquote_plus(value) for value in pair)
-        try:
-            # The public stock endpoint currently omits code/redirect/verifier; this
-            # fixture adapter forwards them to the public native server explicitly.
-            result = await native.token(
-                grant_type=str(form["grant_type"]),
-                client_id=client_id,
-                client_secret=client_secret,
-                code=str(form["code"]) if "code" in form else None,
-                redirect_uri=str(form["redirect_uri"]) if "redirect_uri" in form else None,
-                code_verifier=str(form["code_verifier"]) if "code_verifier" in form else None,
-                refresh_token=str(form["refresh_token"]) if "refresh_token" in form else None,
-                scope=str(form.get("scope", "")),
-            )
-        except SecurityException as exc:
-            return JSONResponse({"error": (exc.code or "invalid_request").lower()}, status_code=400)
+        response = await stock_token(request)
+        if response.status_code >= 400:
+            return response
+        result = json.loads(response.body)
         if mutate:
             result = mutate(result)
         callbacks.append(result)
@@ -83,8 +66,11 @@ async def local_provider(*, delay=False, mutate=None):
             request.state.security_context = SecurityContext(user_id="fixture-owner")
             return await call_next(request)
 
-    routes = [route for route in AuthorizationServerEndpoints(native).routes() if route.path != "/oauth2/token"]
-    app = Starlette(routes=[Route("/oauth2/token", token, methods=["POST"]), *routes])
+    routes = AuthorizationServerEndpoints(native).routes()
+    stock_token = next(route.endpoint for route in routes if route.path == "/oauth2/token")
+    app = Starlette(
+        routes=[Route("/oauth2/token", token, methods=["POST"]), *[r for r in routes if r.path != "/oauth2/token"]]
+    )
     app.add_middleware(OwnerMiddleware)
     server = uvicorn.Server(uvicorn.Config(app, log_level="critical", access_log=False, lifespan="off"))
     task = asyncio.create_task(server.serve(sockets=[listener]))
