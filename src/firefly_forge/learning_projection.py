@@ -9,11 +9,19 @@ import copy
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
 import httpx
-from flycanon_sdk import CanonAPIError, CanonError, SourceMetadata, SubmitSourceJsonPayload, WorkspaceCreate  # type: ignore[import-untyped]
+from flycanon_sdk import (  # type: ignore[import-untyped]
+    CanonAPIError,
+    CanonError,
+    SearchRequest,
+    SourceMetadata,
+    SubmitSourceJsonPayload,
+    WorkspaceCreate,
+)
 from pydantic import ValidationError
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -21,6 +29,7 @@ from pyfly.data.relational.sqlalchemy import LockMode
 from firefly_forge.journal import Journal, digest
 from firefly_forge.knowledge import KnowledgeManager, snapshot_knowledge
 from firefly_forge.learning import LearningLedger
+from firefly_forge.learning_configuration import frozen_learning
 from firefly_forge.learning_models import LearningContext
 from firefly_forge.learning_persistence import ForgeLearningProjectionEntity, ForgeLearningRecordEntity
 from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
@@ -82,6 +91,146 @@ class LearningProjection:
             return "forge-learning-" + context.repository_id
         identity = {"version": 1, "project_id": context.project_id, "repository_id": context.repository_id}
         return "forge-learning-" + digest(identity)[:48]
+
+    @staticmethod
+    def _identity(row: ForgeLearningProjectionEntity) -> Data:
+        return {
+            "projection_id": row.id.hex,
+            "record_id": row.record_id.hex,
+            "state": row.state,
+            "payload_digest": row.payload_digest,
+            "mapping_digest": digest(row.data),
+        }
+
+    def _same_target(self, run: Data, target: Data | None) -> bool:
+        captured = run.get("knowledge_snapshot")
+        if not captured or not target:
+            return False
+        # Each capture has its own revision file even when its frozen settings are identical.
+        if {key: value for key, value in captured.items() if key != "revision"} != {
+            key: value for key, value in target.items() if key != "revision"
+        }:
+            return False
+        try:
+            return self.knowledge.settings(run) == self.knowledge.settings({"knowledge_snapshot": target})
+        except ValueError:
+            return False
+
+    async def retrieve(self, run_id: str, query: str, observed: Data, candidate_id: str) -> Data:
+        """Read only the exact eligible record's verified, frozen-scope projection."""
+        async with self.store._unit():
+            run = await self.store.get_run(run_id)
+            policy = frozen_learning(run.get("learning_snapshot"))["settings"]
+            if not policy.get("projected_retrieval", False):
+                return {"state": "disabled"}
+            decision = await self.ledger.lookup(run_id, query, observed)
+            if not decision["eligible"] or decision.get("candidate_id") != candidate_id:
+                return {"state": "unavailable", "reason": "record_ineligible"}
+            record = decision["outcome"]
+            row = await self.ledger.projections.for_record(identifier(candidate_id))
+            if row is None or row.state != "verified":
+                return {"state": "unavailable", "reason": "projection_unverified"}
+            context = LearningContext.model_validate(observed)
+            body = self._body(row.data.get("payload", {}))
+            workspace = self.workspace_id(context)
+            if (
+                row.data.get("workspace_id") != workspace
+                or not self._same_target(run, row.data.get("target"))
+                or row.payload_digest != digest(record["envelope"])
+                or row.payload_digest != digest(row.data.get("payload", {}))
+                or len(body) > 64_000
+                or row.data.get("content_sha256") != hashlib.sha256(body).hexdigest()
+                or not row.data.get("source_id")
+            ):
+                return {"state": "unavailable", "reason": "projection_identity_mismatch"}
+            selected = copy.deepcopy(row.data)
+            identity = self._identity(row)
+            settings = self.knowledge.settings(run)
+        try:
+            async with asyncio.timeout(20), self.knowledge.client(settings, workspace) as client:
+                source = (
+                    await client.agent.get_source(selected["source_id"])
+                    if settings["agent_token"]
+                    else await client.get_source(selected["source_id"])
+                )
+                if (
+                    source.id != selected["source_id"]
+                    or source.filename != "forge-learning-" + candidate_id + ".json"
+                    or source.content_sha256 != selected["content_sha256"]
+                    or source.status != "ingested"
+                    or source.n_chunks < 1
+                    or source.metadata is None
+                    or source.metadata.extra.get("learning_record_id") != candidate_id
+                    or source.metadata.extra.get("payload_digest") != identity["payload_digest"]
+                    or source.metadata.extra.get("project_id") != context.project_id
+                    or source.metadata.extra.get("run_id") != record["envelope"]["run_id"]
+                ):
+                    return {"state": "unavailable", "reason": "source_identity_mismatch"}
+                found = (
+                    await client.agent.search(
+                        SearchRequest(query=query, top_k=8, source_ids=[source.id]), idempotency_key=uuid.uuid4().hex
+                    )
+                    if settings["agent_token"]
+                    else await client.search(query, top_k=8, source_ids=[source.id])
+                )
+                if not found.hits or any(hit.source_id != source.id or not hit.chunk_id for hit in found.hits):
+                    return {"state": "unavailable", "reason": "source_citation_unavailable"}
+                citations = [
+                    {"workspace_id": workspace, "source_id": hit.source_id, "chunk_id": hit.chunk_id}
+                    for hit in found.hits[:8]
+                ]
+        except (CanonError, httpx.HTTPError, ValidationError, json.JSONDecodeError, TimeoutError):
+            return {"state": "unavailable", "reason": "projection_service_unavailable"}
+        return {
+            **identity,
+            "state": "verified",
+            "citations": citations,
+            "citations_digest": digest({"citations": citations}),
+        }
+
+    async def retain(self, run_id: str, observed: Data, selected: Data) -> Callable[[], None]:
+        """Lock order is local record (held by ledger.retain), then exact projection."""
+        sessions = self.store.session_provider
+        if sessions is None or sessions.current() is None:
+            raise RuntimeError("Retained projected evidence requires an active admission unit")
+        message = "Retained projected evidence changed; request an explicit refresh"
+        async with self.store._unit():
+            run = await self.store.get_run(run_id)
+            if not frozen_learning(run.get("learning_snapshot"))["settings"].get("projected_retrieval", False):
+                raise ValueError(message)
+            row = await self.ledger.projections.find_by_id(
+                identifier(selected["projection_id"]), lock=LockMode.PESSIMISTIC_READ
+            )
+            expected = {
+                key: selected[key]
+                for key in ("projection_id", "record_id", "state", "payload_digest", "mapping_digest")
+            }
+            if (
+                row is None
+                or self._identity(row) != expected
+                or not self._same_target(run, row.data.get("target"))
+                or row.data.get("workspace_id") != self.workspace_id(LearningContext.model_validate(observed))
+                or not selected.get("citations")
+                or selected.get("citations_digest") != digest({"citations": selected["citations"]})
+                or any(
+                    citation.get("source_id") != row.data.get("source_id")
+                    or citation.get("workspace_id") != row.data.get("workspace_id")
+                    or not citation.get("chunk_id")
+                    for citation in selected["citations"]
+                )
+            ):
+                raise ValueError(message)
+            target = copy.deepcopy(run.get("knowledge_snapshot"))
+
+            def guard() -> None:
+                if (
+                    self._identity(row) != expected
+                    or run.get("knowledge_snapshot") != target
+                    or not self._same_target(run, row.data.get("target"))
+                ):
+                    raise ValueError(message)
+
+            return guard
 
     async def submit(self, record_id: str, *, request_id: str) -> Data:
         identifier(request_id)

@@ -17,6 +17,7 @@ from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_configuration import frozen_learning
 from firefly_forge.learning_context import observe_context
 from firefly_forge.learning_models import ToolObservation
+from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.store import Store
 from firefly_forge.tool_broker import ToolInvocationBroker
@@ -33,10 +34,17 @@ class KnowledgeQuery(BaseModel):
 @service
 class KnowledgeFirst:
     def __init__(
-        self, store: Store, journal: Journal, ledger: LearningLedger, broker: ToolInvocationBroker, search: SearchTools
+        self,
+        store: Store,
+        journal: Journal,
+        ledger: LearningLedger,
+        broker: ToolInvocationBroker,
+        search: SearchTools,
+        projection: LearningProjection | None = None,
     ) -> None:
         self.store, self.journal, self.ledger, self.broker, self.web = store, journal, ledger, broker, search
         self.knowledge: Any = None
+        self.projection = projection
 
     async def search(
         self,
@@ -114,7 +122,23 @@ class KnowledgeFirst:
                     ]
                 ):
                     raise ValueError("Retained local evidence is no longer applicable; request an explicit refresh")
+                projected = decision.get("projection", {})
+                if projected.get("state") == "verified":
+                    if self.projection is None or projected.get("record_id") != decision["candidate_id"]:
+                        raise ValueError("Retained projected evidence changed; request an explicit refresh")
+                    projection_guard = await self.projection.retain(run_id, context.model_dump(), projected)
+
+                    def combined() -> None:
+                        guard()
+                        projection_guard()
+
+                    return combined
                 return guard
+            return None
+
+        async def fresh(result: Data) -> Callable[[], None] | None:
+            if result.get("knowledge_decision", {}).get("reason") == "verified_exact_match":
+                return await retained(result)
             return None
 
         async def request() -> Data:
@@ -140,6 +164,15 @@ class KnowledgeFirst:
             observation["reason"] = decision["reason"]
             if decision["eligible"]:
                 outcome = decision["outcome"]
+                if policy["settings"].get("projected_retrieval", False):
+                    projected = (
+                        await self.projection.retrieve(run_id, query, context.model_dump(), outcome["id"])
+                        if self.projection is not None
+                        else {"state": "unavailable", "reason": "projection_service_unavailable"}
+                    )
+                    stamp["projection"] = projected
+                    if projected.get("state") == "verified":
+                        stamp["reference_citations"] = (stamp["reference_citations"] + projected["citations"])[:24]
                 observation["classification"] = "verified_outcome"
                 return {
                     "untrusted": True,
@@ -196,4 +229,5 @@ class KnowledgeFirst:
             configuration=configuration,
             observation=lambda: observation,
             validate_receipt=retained,
+            validate_result=fresh,
         )
