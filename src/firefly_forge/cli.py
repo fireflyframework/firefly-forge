@@ -1018,3 +1018,62 @@ def knowledge_initialize(data_dir: Path) -> None:
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+@main.group()
+def learning() -> None:
+    """Inspect scoped learning evidence and review its knowledge projection."""
+
+
+@learning.command("policy")
+def learning_policy() -> None:
+    with client() as connection:
+        display(connection.learning_policy())
+
+
+@learning.command("configure")
+@click.argument("file_path", type=click.Path(exists=True, path_type=Path))
+def learning_configure(file_path: Path) -> None:
+    with client() as connection:
+        display(connection.configure_learning_policy(json_document(file_path)))
+
+
+@learning.command("records")
+@click.argument("repository_id")
+def learning_records(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.learning_records(repository_id))
+
+
+@learning.command("invalidate")
+@click.argument("record_id")
+@click.option("--reason", required=True)
+@click.option("--request-id", required=True)
+def learning_invalidate(record_id: str, reason: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.invalidate_learning(record_id, reason, request_id))
+
+
+@learning.command("projection")
+@click.argument("record_id")
+def learning_projection(record_id: str) -> None:
+    with client() as connection:
+        display(connection.learning_projection(record_id))
+
+
+@learning.command("submit")
+@click.argument("record_id")
+@click.option("--request-id", required=True)
+def learning_submit(record_id: str, request_id: str) -> None:
+    """Submit once. Unknown outcomes require observation, never another submission."""
+    with client() as connection:
+        display(connection.submit_learning_projection(record_id, request_id))
+
+
+@learning.command("observe")
+@click.argument("record_id")
+@click.option("--request-id", required=True)
+@click.option("--source-id", default=None)
+def learning_observe(record_id: str, request_id: str, source_id: str | None) -> None:
+    with client() as connection:
+        display(connection.observe_learning_projection(record_id, request_id, source_id))

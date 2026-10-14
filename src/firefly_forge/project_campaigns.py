@@ -18,7 +18,8 @@ from sqlalchemy import text
 
 from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal, digest
-from firefly_forge.knowledge import _current
+from firefly_forge.knowledge import _current, snapshot_knowledge
+from firefly_forge.learning_configuration import learning_snapshot
 from firefly_forge.mcp_registry import mcp_snapshot
 from firefly_forge.models import AssuranceInput, RunInput
 from firefly_forge.persistence import ForgeRunEntity
@@ -122,6 +123,7 @@ class ProjectCampaigns:
             "runners": digest(private._read(private.directory / "runners.json")),
             "search": digest(self.engine.search.snapshot()) if self.engine.search is not None else None,
             "tool_policy": tool_policy_snapshot(private)["digest"],
+            "learning_policy": learning_snapshot(private)["digest"],
             "external_mcp": digest(private._read(private.directory / "external-mcp.json")),
             "credentials": {agent: digest(private.resolve(agent)) for agent in sorted(agents)},
         }
@@ -149,6 +151,11 @@ class ProjectCampaigns:
             raise ValueError("The knowledge snapshot differs from the campaign's frozen settings")
         if run.get("search_snapshot") and digest(run["search_snapshot"]) != configuration["search"]:
             raise ValueError("The search snapshot differs from the campaign's frozen settings")
+        if ("learning_snapshot" in run) != ("learning_policy" in configuration) or (
+            "learning_snapshot" in run
+            and (run.get("learning_snapshot") or {}).get("digest") != configuration.get("learning_policy")
+        ):
+            raise ValueError("The learning policy differs from the campaign frozen settings")
         if ("tool_policy" in configuration or "tool_policy_snapshot" in run) and run.get(
             "tool_policy_snapshot", {}
         ).get("digest") != configuration.get("tool_policy"):
@@ -235,7 +242,12 @@ class ProjectCampaigns:
         if self.store.runners is not None:
             for repo_id in sorted(repositories):
                 runner = await self.store.runners.capture_run(repo_id)
-                runner = {**runner, "mcp_snapshot": mcp_snapshot(self.store.configuration, project_id, repo_id)}
+                runner = {
+                    **runner,
+                    "mcp_snapshot": mcp_snapshot(self.store.configuration, project_id, repo_id),
+                    "knowledge_snapshot": snapshot_knowledge(self.store.configuration),
+                    "learning_snapshot": learning_snapshot(self.store.configuration),
+                }
                 tools = await self.store.runners.capabilities(runner)
                 prepared[repo_id] = (runner, tools)
         source_bases = {

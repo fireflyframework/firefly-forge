@@ -92,6 +92,7 @@ nav:
       - Agent roles and feedback: agent-roles.md
       - Lifecycle phases: agent-lifecycle.md
       - Agent tools: agent-tools.md
+      - Tool and provider prerequisites: tooling-prerequisites.md
       - Configure internet search: search-providers.md
       - Tool invocation evidence: tool-broker.md
       - Reviewed external tools: external-tools.md

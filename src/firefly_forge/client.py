@@ -624,6 +624,45 @@ class ForgeClient:
     def tool_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "tools/policy"))
 
+    def learning_policy(self) -> dict[str, Any]:
+        return dict(self.request("GET", "learning/policy"))
+
+    def configure_learning_policy(self, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.learning_models import LearningPolicy
+
+        model = LearningPolicy.model_validate(request)
+        return dict(self.request("PUT", "learning/policy", json=model.model_dump()))
+
+    def learning_records(self, repository_id: str) -> list[dict[str, Any]]:
+        return list(self.request("GET", f"repositories/{self._id(repository_id)}/learning"))
+
+    def invalidate_learning(self, record_id: str, reason: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.learning_controllers import LearningInvalidation
+
+        body = LearningInvalidation(reason=reason, request_id=request_id)
+        return dict(self.request("POST", f"learning/records/{self._id(record_id)}/invalidate", json=body.model_dump()))
+
+    def learning_projection(self, record_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"learning/records/{self._id(record_id)}/projection"))
+
+    def submit_learning_projection(self, record_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.learning_controllers import LearningAction
+
+        body = LearningAction(request_id=request_id)
+        return dict(
+            self.request("POST", f"learning/records/{self._id(record_id)}/projection/submit", json=body.model_dump())
+        )
+
+    def observe_learning_projection(
+        self, record_id: str, request_id: str, source_id: str | None = None
+    ) -> dict[str, Any]:
+        from firefly_forge.learning_controllers import LearningObservation
+
+        body = LearningObservation(request_id=request_id, source_id=source_id)
+        return dict(
+            self.request("POST", f"learning/records/{self._id(record_id)}/projection/observe", json=body.model_dump())
+        )
+
     def configure_tool_policy(self, request: dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.tool_broker import ToolPolicyInput
 

@@ -94,8 +94,17 @@ from firefly_forge.knowledge import (
     KnowledgeSearch,
     KnowledgeTest,
 )
+from firefly_forge.knowledge_first import KnowledgeFirst
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
+from firefly_forge.learning import LearningLedger
+from firefly_forge.learning_controllers import LearningController
+from firefly_forge.learning_persistence import (
+    ForgeLearningEventRepository,
+    ForgeLearningProjectionRepository,
+    ForgeLearningRepository,
+)
+from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.mcp_controllers import ExternalMCPController
 from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
@@ -457,6 +466,8 @@ class FactoryConfiguration:
         search: SearchTools,
         tool_broker: ToolInvocationBroker,
         external_mcp: ExternalMCPRegistry,
+        learning: LearningLedger,
+        knowledge_first: KnowledgeFirst,
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
@@ -473,6 +484,8 @@ class FactoryConfiguration:
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
         engine.external_mcp = tool_broker.external_mcp = external_mcp
+        engine.learning, engine.knowledge_first = learning, knowledge_first
+        learning.engine = engine
         external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
@@ -576,6 +589,29 @@ class FactoryConfiguration:
         return SearchTools(self.data_dir / "tools" / "search")
 
     @bean
+    def learning_ledger(
+        self,
+        store: Store,
+        journal: Journal,
+        records: ForgeLearningRepository,
+        events: ForgeLearningEventRepository,
+        projections: ForgeLearningProjectionRepository,
+    ) -> LearningLedger:
+        return LearningLedger(store, journal, records, events, projections)
+
+    @bean
+    def learning_projection(
+        self, store: Store, journal: Journal, ledger: LearningLedger, knowledge: KnowledgeManager
+    ) -> LearningProjection:
+        return LearningProjection(store, journal, ledger, knowledge)
+
+    @bean
+    def knowledge_first(
+        self, store: Store, journal: Journal, ledger: LearningLedger, broker: ToolInvocationBroker, search: SearchTools
+    ) -> KnowledgeFirst:
+        return KnowledgeFirst(store, journal, ledger, broker, search)
+
+    @bean
     def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
         return ExternalMCPRegistry(private)
 
@@ -642,11 +678,17 @@ class FactoryConfiguration:
 
     @bean
     def knowledge_manager(
-        self, store: Store, engine: Engine, journal: Journal, connection: KnowledgeConnection
+        self,
+        store: Store,
+        engine: Engine,
+        journal: Journal,
+        connection: KnowledgeConnection,
+        knowledge_first: KnowledgeFirst,
     ) -> KnowledgeManager:
         manager = KnowledgeManager(store, engine, connection=connection)
         manager.journal = journal
         engine.knowledge = manager
+        knowledge_first.knowledge = manager
         return manager
 
     @bean
@@ -773,6 +815,7 @@ def create_runtime(
         DeploymentController,
         SCMController,
         KnowledgeController,
+        LearningController,
         JournalController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
@@ -806,6 +849,9 @@ def create_runtime(
         RepositoryRoleController,
         ForgeSandboxRepository,
         ForgeToolInvocationRepository,
+        ForgeLearningRepository,
+        ForgeLearningEventRepository,
+        ForgeLearningProjectionRepository,
         RunnerController,
         ToolController,
         ExternalMCPController,

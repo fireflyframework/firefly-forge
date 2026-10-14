@@ -104,6 +104,18 @@ class AccessRoutes:
         if path == "knowledge/explore" and safe:
             await self.access.require_repository(user, request.query_params.get("repository_id", ""), "read")
             return
+        if len(parts) >= 3 and parts[:2] == ["learning", "records"]:
+            from firefly_forge.learning_persistence import ForgeLearningRepository
+            from firefly_forge.store import identifier
+
+            async with self.store._unit():
+                record = await ForgeLearningRepository().find_by_id(identifier(parts[2]))
+                if record is None or not record.data["envelope"]["context"].get("project_id"):
+                    raise AccessDenied("Unassigned learning requires a factory administrator")
+                await self.access.require_project(
+                    user, record.data["envelope"]["context"]["project_id"], "read" if safe else "review"
+                )
+            return
         if path == "knowledge/search" and not safe:
             await self.access.require_repository(user, body.get("repository_id", ""), "read")
             return

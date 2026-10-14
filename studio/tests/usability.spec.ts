@@ -99,6 +99,15 @@ test("phone run and deployment wizards expose their initial action without movin
       .locator(".workspace-main>main")
       .evaluate((element) => (element.scrollTop = 0));
     const next = page.getByRole("button", { name: "Continue", exact: true });
+    await expect
+      .poll(() =>
+        next.evaluate((button) =>
+          (
+            button.closest(".wizard-frame") as HTMLElement
+          ).style.getPropertyValue("--wizard-frame-height"),
+        ),
+      )
+      .toMatch(/^[0-9]/);
     const geometry = await next.evaluate((button) => {
       const r = button.getBoundingClientRect(),
         footer = document

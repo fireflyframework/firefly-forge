@@ -19,6 +19,10 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `browser_check` | A fresh Playwright context against a declared container-local project origin. |
 | `browser_journey` | Declared user flows with typed actions, state DOM evidence and optional verified image input. |
 | `internet_search` | A configured server-mediated search API with bounded citations. |
+| `external_mcp` | An exact reviewed read tool within the project/repository/role grant. |
+| `knowledge_lookup` | Repository-scoped references and eligible local outcomes under the run's frozen learning policy. |
+
+Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phase and provider before enabling a capability. Commands, browsers, internet search and external MCP are optional configured capabilities; the initial implementation role grants the six confined source tools.
 
 Native tool arguments reject known configured credentials before file writes or external requests. Text returned by every native tool is redacted against the shared server credential registry before the model receives it. This checks known values and their configured representations; it does not discover every possible secret in a repository.
 
@@ -66,6 +70,8 @@ The key is write-only in the API and stored in an owner-private `0600` file. `GE
 Set `sandbox.internet_search` to `true` and grant the role `internet_search` before queueing a run. The run freezes the provider, private credential revision and domain restrictions; later rotation affects new runs. A missing search configuration prevents enabling that capability. Existing Brave configurations and queued snapshots retain their provider. Changing providers requires a new key and never changes the provider of an admitted run. Requests use the selected provider's fixed HTTPS endpoint. See [search providers](search-providers.md) for the request limits, authentication, and quota failures.
 
 Queries have a 600-character and 75-word limit. Results are capped at ten, with bounded titles and excerpts. The server rejects known factory credentials before sending a query and excludes them from admitted results. It does not give the search key to the model or container. Search excerpts remain untrusted evidence and cannot change the task or tool permissions.
+
+When the run captures enabled learning, native search first checks authorized knowledge and eligible local evidence. An explicit refresh request retains its request identity and requires a new lookup; it cannot silently reuse an old provider result. `knowledge_lookup` uses the same scoped decision path without an external search. See [learning controls](learning.md) for policy, eligibility and projection limits.
 
 Each admitted result carries its source URL and stable citation ID. The private cache retains at most 1,000 citations; results beyond that cache capacity still include their source URLs and report `cached: false`. Retrieve a cached citation through `GET /api/v1/search/citations/{id}`. `POST /api/v1/search/query` provides the same bounded search operation to authenticated operators.
 

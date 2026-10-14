@@ -591,6 +591,7 @@ class ExternalMCPRegistry:
                 raise MCPAdmissionError("MCP server identity or schema changed; perform explicit discovery and review")
             self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
             response = await session.call_tool(tool, args, read_timeout_seconds=15)
+            self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
             packet = response.model_dump(by_alias=True, exclude_none=True)
         if packet.get("isError") or len(json.dumps(packet).encode()) > 256_000:
             raise ValueError("MCP tool result was not admitted within its response bound")
@@ -606,4 +607,5 @@ class ExternalMCPRegistry:
         }
         if contains_known_credential(result, {**self.credentials(), **self.credential_registry()}):
             raise ValueError("MCP result reflected configured credentials")
+        self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
         return result

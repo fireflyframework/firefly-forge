@@ -27,6 +27,7 @@ export function Wizard({
   progressMode = "validated",
   pageFlow = false,
   headingAction,
+  minimumFieldHeight = 160,
 }: {
   steps: string[];
   active: number;
@@ -40,6 +41,7 @@ export function Wizard({
   progressMode?: "validated" | "visited";
   pageFlow?: boolean;
   headingAction?: ReactNode;
+  minimumFieldHeight?: number;
 }) {
   const frame = useRef<HTMLElement>(null);
   const [height, setHeight] = useState<number>();
@@ -91,7 +93,7 @@ export function Wizard({
         ? parseFloat(padding.paddingTop) + parseFloat(padding.paddingBottom)
         : 0;
       setHeight(remaining);
-      setFlow(remaining < chrome + contentPadding + 160);
+      setFlow(remaining < chrome + contentPadding + minimumFieldHeight);
     };
     measure();
     let pending = 0;
@@ -122,11 +124,18 @@ export function Wizard({
       cancelAnimationFrame(pending);
       window.removeEventListener("resize", schedule);
     };
-  }, [pageFlow]);
+  }, [pageFlow, minimumFieldHeight]);
   useEffect(() => {
     const element = frame.current;
     const owner = element?.closest("main");
-    if (!element || !owner || element.closest("dialog") || pageFlow || flow)
+    if (
+      height === undefined ||
+      !element ||
+      !owner ||
+      element.closest("dialog") ||
+      pageFlow ||
+      flow
+    )
       return;
     const bottom =
       owner.getBoundingClientRect().bottom -

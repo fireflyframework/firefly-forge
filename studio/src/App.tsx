@@ -73,6 +73,7 @@ import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
 import { SearchConfiguration } from "./SearchConfiguration";
+import { ExternalTools } from "./ExternalTools";
 import { Collaboration } from "./Collaboration";
 import "./Integrations.css";
 import "./UsabilityRefinements.css";
@@ -99,7 +100,8 @@ type Page =
   | "access"
   | "admin"
   | "users"
-  | "search";
+  | "search"
+  | "external-tools";
 const working = (status: string) =>
   [
     "queued",
@@ -465,6 +467,7 @@ export default function App() {
     access: "Project access",
     users: "People",
     search: "Internet search",
+    "external-tools": "External tools",
   };
   const navigationPage = administrationLabels[page]
     ? "admin"
@@ -987,6 +990,13 @@ export default function App() {
             <SearchConfiguration
               connection={connection}
               session={identity.session}
+            />
+          )}
+          {page === "external-tools" && (
+            <ExternalTools
+              connection={connection}
+              session={identity.session}
+              onAgents={() => setPage("workflow")}
             />
           )}
           {page === "access" && (

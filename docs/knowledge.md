@@ -7,6 +7,18 @@ description: Configure required flycanon retrieval, inspect citations and retain
 
 Flycanon is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
 
+## Structured learning evidence
+
+The learning-ledger runtime retains local procedure outcomes separately from the memory summary. An outcome needs passing command receipts and a matching checkpoint in the write-ahead journal. Source inspection must match the retained base revision, checkpoint revision and verified tree. Framework and dependency declarations come from bounded regular files in that exact Git tree; edits to the working directory cannot supply a different version for verified evidence.
+
+Reuse follows the consuming run's frozen policy. The effective expiry is the earlier of the original record's expiry and its verification time plus the consuming run's maximum age. Reobserving the same outcome preserves its original verification time. A stricter project policy can therefore require refresh without changing the older record.
+
+Projection into flycanon records an intent before writing. An execution worker checks its current PostgreSQL ownership before remote writes, after source submission and before accepting the receipt. A manual reviewer needs current project review permission. Lost ownership, revoked access or an uncertain response leaves an unknown outcome for explicit observation; another submission does not replay it. Source admission is separate from indexed, content-matching retrieval.
+
+Project learning uses `forge-learning-` plus a 48-character digest of the full project and repository identities. This 63-character name fits flycanon's workspace contract and keeps those scopes separate. The full identities remain in the evidence body and journal. Unassigned repository learning retains its existing repository-based name. Once a projection records its target, observation continues against that exact workspace; a naming change cannot redirect an uncertain or admitted source.
+
+These contracts do not grant shared framework learning, an automatic projection scheduler or a negative procedure that can bypass testing. Those capabilities require separate admission and verification.
+
 <picture>
   <source media="(max-width: 640px)" srcset="../diagrams/knowledge-lifecycle-narrow.svg">
   <img src="../diagrams/knowledge-lifecycle.svg" alt="Initialize authenticated knowledge, retrieve exact project and framework citations, implement and verify source, then index selected files and save bounded memory with write-ahead receipts.">

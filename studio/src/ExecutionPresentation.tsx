@@ -1,6 +1,13 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useState } from "react";
-import { Copy, FileCode2, Terminal, Check, ChevronDown } from "lucide-react";
+import {
+  Copy,
+  FileCode2,
+  Terminal,
+  Check,
+  ChevronDown,
+  Waypoints,
+} from "lucide-react";
 import {
   asRecord,
   boundedText,
@@ -358,11 +365,216 @@ export type JournalIdentity = {
   kind: string;
   task_id: string;
   idempotency_key?: string;
+  payload?: unknown;
 };
+export function ToolEvidence({
+  kind,
+  value,
+  disposition,
+}: {
+  kind: string;
+  value: unknown;
+  disposition?: string;
+}) {
+  const record = asRecord(value);
+  if (!record) return <EvidenceView value={value} />;
+  const names: Record<string, string> = {
+    internet_search: "Internet search",
+    "external_mcp:github:get_file_contents": "GitHub · Read repository files",
+    "external_mcp:github:get_commit": "GitHub · Read a commit",
+    "external_mcp:github:list_commits": "GitHub · List commits",
+    "external_mcp:github:list_branches": "GitHub · List branches",
+  };
+  const tool =
+    typeof record.tool === "string" ? record.tool : "Tool invocation";
+  const outcome =
+    (kind === "tool_unknown" ? disposition : undefined) ??
+    toolOutcome({ kind, task_id: "", payload: record }) ??
+    (kind === "tool_intent" ? "Tool request recorded" : "Outcome not recorded");
+  const result = asRecord(record.result);
+  const texts =
+    Array.isArray(result?.text) &&
+    result.text.every((item) => typeof item === "string")
+      ? (result.text as string[])
+      : null;
+  const metadata = Object.fromEntries(
+    Object.entries(record).filter(
+      ([key]) =>
+        ![
+          "tool",
+          "arguments",
+          "source",
+          "configuration",
+          "result",
+          "error",
+          "status",
+          "correlation_id",
+          "decision",
+        ].includes(key),
+    ),
+  );
+  return (
+    <article
+      className="record-evidence record-command record-tool"
+      aria-label="Tool evidence"
+    >
+      <div className="record-command-heading">
+        <Waypoints size={17} />
+        <strong>
+          <BoundedLabel value={names[tool] ?? tool} />
+        </strong>
+        <span
+          className={`record-outcome ${kind === "tool_receipt" && record.status === "succeeded" ? "passed" : kind === "tool_receipt" && record.status === "rejected" ? "failed" : ""}`}
+        >
+          {outcome}
+        </span>
+      </div>
+      <div className="record-command-meta">
+        {typeof record.correlation_id === "string" && (
+          <span>
+            Invocation{" "}
+            <code>
+              <BoundedLabel value={record.correlation_id} limit={64} />
+            </code>
+          </span>
+        )}
+      </div>
+      <details className="record-tool-identity">
+        <summary>Tool identity</summary>
+        <code className="record-tool-identity-text">
+          <BoundedLabel value={tool} limit={180} />
+        </code>
+        <CopyButton value={tool} label="Copy tool identity" />
+      </details>
+      {kind === "tool_unknown" && (
+        <p className="subtle">
+          {disposition?.startsWith("Superseded") ||
+          disposition === "Abandoned without replay"
+            ? "This is the original unknown outcome. The later correlated record is shown in the status above."
+            : "The provider outcome was not admitted. Review its usage before another request."}
+        </p>
+      )}
+      {kind === "tool_reconciled" &&
+        record.decision === "abandoned_without_replay" && (
+          <p className="subtle">
+            This invocation will not be replayed. Abandonment does not establish
+            that the provider delivered a result or incurred no charge.
+          </p>
+        )}
+      {record.arguments !== undefined && (
+        <EvidenceView
+          title="Requested arguments"
+          value={record.arguments}
+          advanced={false}
+        />
+      )}
+      {record.source !== undefined && (
+        <EvidenceView
+          title="Source proof"
+          value={record.source}
+          advanced={false}
+        />
+      )}
+      {record.error !== undefined && (
+        <EvidenceView
+          title="Recorded error"
+          value={record.error}
+          advanced={false}
+        />
+      )}
+      {texts ? (
+        <>
+          {texts.slice(0, 8).map((text, index) => (
+            <OutputView
+              key={index}
+              label={
+                texts.length === 1
+                  ? "Untrusted provider output"
+                  : `Untrusted provider output ${index + 1}`
+              }
+              value={text}
+            />
+          ))}
+          {texts.length > 8 && (
+            <p className="subtle">
+              Showing 8 of {texts.length} text blocks. The advanced record
+              retains every block.
+            </p>
+          )}
+          <EvidenceView
+            value={Object.fromEntries(
+              Object.entries(result!).filter(([key]) => key !== "text"),
+            )}
+            advanced={false}
+          />
+        </>
+      ) : (
+        record.result !== undefined && (
+          <EvidenceView
+            title="Recorded result"
+            value={record.result}
+            advanced={false}
+          />
+        )
+      )}
+      {!!Object.keys(metadata).length && (
+        <EvidenceView value={metadata} advanced={false} />
+      )}
+      <AdvancedRecord value={value} />
+    </article>
+  );
+}
+function toolOutcome(entry: JournalIdentity) {
+  const payload = asRecord(entry.payload);
+  if (!payload) return undefined;
+  if (entry.kind === "tool_reconciled")
+    return payload.decision === "abandoned_without_replay"
+      ? "Abandoned without replay"
+      : undefined;
+  if (entry.kind === "tool_unknown")
+    return "Outcome unknown; reconciliation required";
+  if (entry.kind === "tool_receipt")
+    return payload.status === "succeeded"
+      ? "Succeeded receipt recorded"
+      : payload.status === "rejected"
+        ? "Rejected receipt recorded"
+        : "Receipt recorded; status unknown";
+  return undefined;
+}
 export function journalDisposition(
   entry: JournalIdentity,
   entries: JournalIdentity[],
 ) {
+  if (entry.kind.startsWith("tool_")) {
+    const correlation = asRecord(entry.payload)?.correlation_id;
+    if (
+      typeof correlation !== "string" ||
+      !/^[a-f0-9]{32}$/.test(correlation) ||
+      (entry.kind !== "tool_reconciled" &&
+        entry.idempotency_key !== correlation)
+    )
+      return entry.kind === "tool_intent" ? "Outcome not recorded" : undefined;
+    const outcomes = entries.filter(
+      (item) =>
+        item.task_id === entry.task_id &&
+        asRecord(item.payload)?.correlation_id === correlation &&
+        (item.kind === "tool_reconciled" ||
+          item.idempotency_key === correlation) &&
+        toolOutcome(item),
+    );
+    const latest = outcomes.at(-1);
+    if (entry.kind === "tool_intent")
+      return latest ? toolOutcome(latest) : "Outcome not recorded";
+    if (entry.kind === "tool_unknown" && latest?.kind === "tool_receipt") {
+      const status = asRecord(latest.payload)?.status;
+      return status === "succeeded" || status === "rejected"
+        ? `Superseded by a ${status} receipt`
+        : "Superseded by a receipt with unknown status";
+    }
+    if (entry.kind === "tool_unknown" && latest?.kind === "tool_reconciled")
+      return toolOutcome(latest);
+    return toolOutcome(entry);
+  }
   if (!["intent", "sandbox_intent"].includes(entry.kind)) return undefined;
   const receiptKind =
     entry.kind === "sandbox_intent" ? "sandbox_receipt" : "receipt";

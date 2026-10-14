@@ -219,7 +219,7 @@ Pinned community skills are instruction adaptations with retained source, hash a
 | Official Codex / Claude Code | The official CLI's native tools and permission controls | A Python role tool list is advisory; it is not the CLI sandbox. |
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 89 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 96 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 
@@ -229,7 +229,7 @@ Source: [`agent_roles.py`](https://github.com/fireflyframework/firefly-forge/blo
 
 ## Learning and structured knowledge decisions
 
-The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The published runtime already has required retrieval and verified repository memory. The added learning ledger and repeat controls require their own runtime qualification before acceptance.
+The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The initial implementation adds scoped PostgreSQL records, native knowledge-first tools and explicit one-shot flycanon projection. Automatic retrieval from projected learning namespaces, classified negative repair controls and sharing between projects remain open; their contracts do not establish runtime acceptance.
 
 ## Runner ownership, collection and takeover
 

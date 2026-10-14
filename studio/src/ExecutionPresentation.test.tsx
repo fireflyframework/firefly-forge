@@ -10,6 +10,101 @@ import {
 import { parseDiff, boundedText, tokenizeCode } from "./ExecutionFormat";
 
 describe("execution evidence presentation", () => {
+  it("correlates tool outcomes by task and original invocation, with unknown superseded only by an observed receipt", () => {
+    const intent = {
+      task_id: "implement",
+      kind: "tool_intent",
+      idempotency_key: "1".repeat(32),
+      payload: { correlation_id: "1".repeat(32) },
+    };
+    const unknown = {
+      ...intent,
+      kind: "tool_unknown",
+      payload: { ...intent.payload, status: "unknown" },
+    };
+    const receipt = {
+      ...intent,
+      kind: "tool_receipt",
+      payload: { ...intent.payload, status: "succeeded" },
+    };
+    expect(journalDisposition(intent, [intent])).toBe("Outcome not recorded");
+    expect(journalDisposition(intent, [intent, unknown])).toBe(
+      "Outcome unknown; reconciliation required",
+    );
+    expect(
+      journalDisposition(intent, [
+        intent,
+        unknown,
+        { ...receipt, task_id: "verify" },
+      ]),
+    ).toBe("Outcome unknown; reconciliation required");
+    expect(
+      journalDisposition(intent, [
+        intent,
+        unknown,
+        { ...receipt, idempotency_key: "2".repeat(32) },
+      ]),
+    ).toBe("Outcome unknown; reconciliation required");
+    expect(journalDisposition(intent, [intent, unknown, receipt])).toBe(
+      "Succeeded receipt recorded",
+    );
+    expect(journalDisposition(unknown, [intent, unknown, receipt])).toBe(
+      "Superseded by a succeeded receipt",
+    );
+    expect(journalDisposition(intent, [intent, receipt, unknown])).toBe(
+      "Outcome unknown; reconciliation required",
+    );
+  });
+  it("distinguishes rejected tool receipts and explicit abandonment from successful delivery", () => {
+    const intent = {
+      task_id: "implement",
+      kind: "tool_intent",
+      idempotency_key: "1".repeat(32),
+      payload: { correlation_id: "1".repeat(32) },
+    };
+    const rejected = {
+      ...intent,
+      kind: "tool_receipt",
+      payload: {
+        ...intent.payload,
+        status: "rejected",
+        error: { kind: "quota" },
+      },
+    };
+    const abandoned = {
+      task_id: "implement",
+      kind: "tool_reconciled",
+      idempotency_key: "3".repeat(32),
+      payload: {
+        correlation_id: "1".repeat(32),
+        decision: "abandoned_without_replay",
+      },
+    };
+    expect(journalDisposition(intent, [intent, rejected])).toBe(
+      "Rejected receipt recorded",
+    );
+    expect(journalDisposition(intent, [intent, abandoned])).toBe(
+      "Abandoned without replay",
+    );
+    expect(
+      journalDisposition(intent, [
+        intent,
+        {
+          ...abandoned,
+          payload: { ...abandoned.payload, decision: "delivered" },
+        },
+      ]),
+    ).toBe("Outcome not recorded");
+    expect(
+      journalDisposition(intent, [
+        intent,
+        {
+          ...abandoned,
+          payload: { ...abandoned.payload, correlation_id: "4".repeat(32) },
+        },
+      ]),
+    ).toBe("Outcome not recorded");
+  });
   it("keeps failed commands failed even if a contradictory passed flag is supplied", () => {
     const payload = Object.freeze({
       argv: ["npm", "test"],
