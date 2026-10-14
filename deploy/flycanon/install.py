@@ -9,7 +9,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-RELEASE = "https://github.com/firefly-operationOS/flycanon/releases/download/v26.10.0/"
+RELEASE = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.0/"
 ASSETS = {
     "flycanon-26.10.0-py3-none-any.whl": "1610e4762ab5898283b9a0d6ee3673b794375ee433c1e0535cadd664e81ffe8d",
     "flycanon-26.10.0.tar.gz": "11e36445d3675efdda16fddf82aa3e19640b70a77329549c876b29cde3adeaa7",
