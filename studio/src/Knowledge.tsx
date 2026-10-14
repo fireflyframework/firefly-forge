@@ -3,6 +3,8 @@ import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState, type FormEvent } from "react";
 import { post, request, type Connection, type Repository } from "./api";
 import { KnowledgeUploads } from "./KnowledgeUploads";
+import { LearningRecords } from "./LearningRecords";
+import type { IdentitySession } from "./Identity";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
 
@@ -401,11 +403,13 @@ export function KnowledgeExplorer({
   connected,
   repositories,
   onConfigure,
+  session,
 }: {
   connection: Connection;
   connected: boolean;
   repositories: Repository[];
   onConfigure: () => void;
+  session?: IdentitySession | null;
 }) {
   const projectLabels = repositoryLabels(repositories);
   const [project, setProject] = useState("");
@@ -413,7 +417,7 @@ export function KnowledgeExplorer({
     repositories.find((item) => item.id === project) ?? repositories[0] ?? null;
   const [settings, setSettings] = useState<Settings | null>(null);
   const [tab, setTab] = useState<
-    "sources" | "knowledge" | "search" | "history"
+    "sources" | "knowledge" | "search" | "history" | "learning"
   >("sources");
   const [scope, setScope] = useState<"project" | "framework">("project");
   const [offset, setOffset] = useState(0);
@@ -454,6 +458,7 @@ export function KnowledgeExplorer({
       !id ||
       tab === "search" ||
       tab === "history" ||
+      tab === "learning" ||
       !settings?.enabled
     )
       return;
@@ -605,12 +610,12 @@ export function KnowledgeExplorer({
               </div>
             )}
           </div>
-          {error && (
+          {error && tab !== "learning" && (
             <div className="alert" role="alert">
               {error}
             </div>
           )}
-          {!settings?.enabled && (
+          {!settings?.enabled && tab !== "learning" && (
             <p className="integration-status">
               Enable and configure knowledge retrieval before browsing or
               searching.
@@ -621,56 +626,68 @@ export function KnowledgeExplorer({
             role="tablist"
             aria-label="Knowledge views"
           >
-            {(["sources", "knowledge", "search", "history"] as const).map(
-              (value) => (
-                <button
-                  key={value}
-                  role="tab"
-                  tabIndex={tab === value ? 0 : -1}
-                  onKeyDown={(event) => {
-                    const tabs = [
-                      "sources",
-                      "knowledge",
-                      "search",
-                      "history",
-                    ] as const;
-                    if (
-                      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                        event.key,
-                      )
-                    ) {
-                      event.preventDefault();
-                      const index = tabs.indexOf(value);
-                      const next =
-                        event.key === "Home"
-                          ? 0
-                          : event.key === "End"
-                            ? 3
-                            : (index +
-                                (event.key === "ArrowRight" ? 1 : -1) +
-                                4) %
-                              4;
-                      setTab(tabs[next]);
-                      setOffset(0);
-                      document
-                        .getElementById(`explorer-tab-${tabs[next]}`)
-                        ?.focus();
-                    }
-                  }}
-                  id={`explorer-tab-${value}`}
-                  aria-selected={tab === value}
-                  onClick={() => {
-                    setTab(value);
+            {(
+              ["sources", "knowledge", "search", "history", "learning"] as const
+            ).map((value) => (
+              <button
+                key={value}
+                role="tab"
+                tabIndex={tab === value ? 0 : -1}
+                onKeyDown={(event) => {
+                  const tabs = [
+                    "sources",
+                    "knowledge",
+                    "search",
+                    "history",
+                    "learning",
+                  ] as const;
+                  if (
+                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                      event.key,
+                    )
+                  ) {
+                    event.preventDefault();
+                    const index = tabs.indexOf(value);
+                    const next =
+                      event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? tabs.length - 1
+                          : (index +
+                              (event.key === "ArrowRight" ? 1 : -1) +
+                              tabs.length) %
+                            tabs.length;
+                    setTab(tabs[next]);
                     setOffset(0);
-                  }}
-                >
-                  {value === "knowledge"
-                    ? "Knowledge items"
+                    document
+                      .getElementById(`explorer-tab-${tabs[next]}`)
+                      ?.focus();
+                  }
+                }}
+                id={`explorer-tab-${value}`}
+                aria-selected={tab === value}
+                onClick={() => {
+                  setTab(value);
+                  setOffset(0);
+                }}
+              >
+                {value === "knowledge"
+                  ? "Knowledge items"
+                  : value === "learning"
+                    ? "Learning records"
                     : value[0].toUpperCase() + value.slice(1)}
-                </button>
-              ),
-            )}
+              </button>
+            ))}
           </div>
+          {tab === "learning" && (
+            <LearningRecords
+              key={`${connection.base}:${id}:${session?.user.id ?? ""}`}
+              connection={connection}
+              repository={id}
+              repositoryLabel={id ? projectLabels.get(id) : undefined}
+              session={session}
+            />
+          )}
           {(tab === "sources" || tab === "knowledge") && (
             <section className="feature-record">
               <header>
