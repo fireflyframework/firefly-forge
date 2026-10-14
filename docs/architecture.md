@@ -219,7 +219,7 @@ Pinned community skills are instruction adaptations with retained source, hash a
 | Official Codex / Claude Code | The official CLI's native tools and permission controls | A Python role tool list is advisory; it is not the CLI sandbox. |
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 89 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 96 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 
@@ -229,7 +229,7 @@ Source: [`agent_roles.py`](https://github.com/fireflyframework/firefly-forge/blo
 
 ## Learning and structured knowledge decisions
 
-The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The published runtime already has required retrieval and verified repository memory. The added learning ledger and repeat controls require their own runtime qualification before acceptance.
+The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The initial implementation adds scoped PostgreSQL records, native knowledge-first tools and explicit one-shot flycanon projection. Automatic retrieval from projected learning namespaces, classified negative repair controls and sharing between projects remain open; their contracts do not establish runtime acceptance.
 
 ## Runner ownership, collection and takeover
 
@@ -251,7 +251,7 @@ The [learning architecture](learning.md) defines exact reuse eligibility, eviden
 
 The leader holds a private-storage lock and a PostgreSQL schema advisory lease. The topology also binds the resolved storage path, owner and protected storage-identity marker. Split replicas need the same durable storage at the retained paths. A copied marker or same-host Compose volume does not establish working multi-host storage.
 
-Current `RunnerBackends` selects host or Docker. A future pool binding is rejected rather than falling back to either transport. Host commands run as the worker identity. Docker uses the explicit context, frozen image/resource/network policy and confined workspace; browser execution has its separate no-network local-origin profile.
+The legacy `RunnerBackends` selects host or Docker and rejects a future `pool_binding` rather than falling back to either transport. Administrator opt-in command pools use the separate Factory worker and controller contract described in [execution runners](sandbox.md#administrator-opt-in-local-command-pools). Host commands run as the worker identity. Docker uses the explicit context, frozen image/resource/network policy and confined workspace; browser execution has its separate no-network local-origin profile.
 
 Docker result collection prepares a complete replacement tree, retains the returned archive, and uses an atomic directory exchange. It checks both directory identities and preserves local Git/credential metadata. Failed or uncertain collection retains its archive, original tree or containers for reconciliation; repeating the invocation does not rerun the command. Source replacement is a filesystem effect with its own receipt, not a PostgreSQL transaction. See [runners and source collection](sandbox.md).
 
@@ -259,9 +259,9 @@ Lease loss closes dispatch and stops consumers. If old effects cannot drain, the
 
 | Surface | Current implementation | Separate boundary |
 | --- | --- | --- |
-| Split runtime | API replicas, one leader and waiting workers | Independently active distributed worker pools are not implemented. |
-| Host and Docker executors | Frozen supported transports and retained invocation evidence | A configured future pool cannot activate a legacy transport. |
-| Native tool registry | Built-in workspace/browser/search tools | An external MCP-server tool registry is not implemented. |
+| Split runtime | API replicas, one leader, waiting workers and administrator opt-in local command pools | Complete provider/browser placement, Kubernetes and shared multi-host storage require separate qualification. |
+| Host, Docker and command-pool executors | Frozen supported transports and retained invocation evidence | A legacy `pool_binding` cannot activate a command pool or select another transport. |
+| Native tool registry | Built-in workspace/browser/search tools and reviewed text-only GitHub MCP tools | External tools need exact schema review and current project grants; other catalog templates remain prerequisites. |
 | Product cloud recipes | Generate repository-bound infrastructure/deployment inputs | They do not demonstrate the factory's production availability or a live target. |
 | External design services | Reviewed retained design/reference inputs | No general Figma account access or connector entitlement is established. |
 

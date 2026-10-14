@@ -135,6 +135,11 @@ class SCMConnections:
         ):
             status, detail = "needs_authorization", "Authorize this application through the provider"
         status, detail = self._status.get(provider, (status, detail))
+        if "refresh_state" in grant:
+            status, detail = (
+                "needs_authorization",
+                "The previous token refresh outcome is uncertain; authorize this application again",
+            )
         host = self._host(provider)
         installation = (
             host + "/apps/" + quote(values["app_slug"], safe="") + "/installations/new"
@@ -242,6 +247,15 @@ class SCMConnections:
         async with self._lock:
             data = self.private._read(self.path)
             record = data.get(provider, {})
+            previous = {**definition["defaults"], **record.get("values", {})}
+            if (
+                provider in {"gitlab", "bitbucket"}
+                and previous.get("client_secret")
+                and any(checked.get(key, previous.get(key)) != previous.get(key) for key in ("host", "client_id"))
+                and "client_secret" not in checked
+                and "client_secret" not in clear
+            ):
+                raise ValueError("A changed OAuth host or client requires an explicitly reviewed client secret")
             merged = {**record.get("values", {}), **checked}
             for key in clear:
                 merged[key] = ""
@@ -449,6 +463,8 @@ class SCMConnections:
             data = self.private._read(self.path)
             record, values = data[provider], self._values(provider)
             grant = record.get("grant", {})
+            if "refresh_state" in grant:
+                raise ValueError("The previous token refresh outcome is uncertain; authorize the application again")
             if grant.get("access_token") and grant.get("expires_at", 0) > time.time() + 90:
                 if provider == "bitbucket" and not {"repository:write", "pullrequest:write"} <= set(
                     str(grant.get("scope", "")).split()
@@ -466,6 +482,9 @@ class SCMConnections:
                 form.update(client_id=values["client_id"], redirect_uri=values["redirect_uri"])
                 if values.get("client_secret"):
                     form["client_secret"] = values["client_secret"]
+            if form["grant_type"] == "refresh_token":
+                grant["refresh_state"] = "dispatching"
+                self.private._write(self.path, data)
             response = await self._request(
                 "POST",
                 self._host(provider) + ("/oauth/token" if provider == "gitlab" else "/site/oauth2/access_token"),

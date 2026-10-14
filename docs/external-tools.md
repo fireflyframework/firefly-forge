@@ -8,6 +8,8 @@ forge can expose reviewed external tools to a native agentic or Bridge worker. A
 
 External MCP complements the native source-control, flycanon and browser integrations. It does not replace them. Direct Codex and Claude CLI execution uses the CLI's own authority and does not inherit these Python tool grants.
 
+Follow the [provider setup checklists](tooling-prerequisites.md#github) for GitHub, Figma, Sentry, Grafana and native Playwright. Each checklist states the account, scope and adapter requirements; blocked templates remain blocked.
+
 ## Available connectors
 
 All templates start disabled. The catalog separates an unmet prerequisite from an enabled connection that still needs discovery, review or a project grant.

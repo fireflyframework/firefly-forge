@@ -268,3 +268,55 @@ async def test_cancellation_requests_only_drain_of_original_identity_and_preserv
     assert len(cancelled) == 1 and controller.submissions == 1
     assert (await journal.sandbox_executions(run["id"]))[0]["effects"]["start"]["status"] == "intent"
     assert (workspace / "main.txt").read_text() == "original\n"
+
+
+@pytest.mark.parametrize("loss", ["owner", "cancellation", "actor"])
+async def test_cached_completion_rechecks_current_authority_after_journal_read(store, tmp_path, loss):
+    from firefly_forge.identity import Principal
+    from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
+    from firefly_forge.project_access import AccessDenied, ProjectAccess
+
+    worker, controller, run, journal, workspace = await fixture(store, tmp_path)
+    actor = Principal(uuid4(), "local:bootstrap", "fixture-operator", authentication_method="local_bootstrap")
+    if loss == "actor":
+        async with store._unit():
+            await ForgeIdentityUserRepository().save(
+                ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject)
+            )
+        await store.update(run["id"], execution_actor=ProjectAccess.actor_snapshot(actor))
+    result = await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+    assert result.exit_code == 0 and controller.submissions == 1
+    original_read = journal.sandbox_executions
+    retained = await original_read(run["id"])
+    entries = await journal.entries(run["id"])
+    artifacts = {path.name: path.read_bytes() for path in worker.artifacts.directory.iterdir() if path.is_file()}
+    changed = False
+
+    async def read_then_lose_authority(run_id):
+        nonlocal changed
+        rows = await original_read(run_id)
+        if not changed:
+            if loss == "owner":
+                await store.release_ownership()
+            elif loss == "cancellation":
+                await store.update(run_id, cancel_request={"status": "requested"})
+            else:
+                async with store._unit():
+                    users = ForgeIdentityUserRepository()
+                    user = await users.find_by_id(actor.id)
+                    user.enabled = False
+                    await users.save(user)
+            changed = True
+        return rows
+
+    journal.sandbox_executions = read_then_lose_authority
+    with pytest.raises((RuntimeError, AccessDenied), match="owner|cancel|suspended"):
+        await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+    assert changed and controller.submissions == 1
+    assert await original_read(run["id"]) == retained
+    assert await journal.entries(run["id"]) == entries
+    assert (workspace / "main.txt").read_text() == "runner result\n"
+    assert (workspace / ".git" / "retained").read_text() == "original host metadata"
+    assert {
+        path.name: path.read_bytes() for path in worker.artifacts.directory.iterdir() if path.is_file()
+    } == artifacts

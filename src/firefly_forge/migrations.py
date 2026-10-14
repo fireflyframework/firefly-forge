@@ -29,6 +29,11 @@ from firefly_forge.identity_persistence import (
     ForgeIdentityUserEntity,
 )
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadEntity
+from firefly_forge.learning_persistence import (
+    ForgeLearningEventEntity,
+    ForgeLearningProjectionEntity,
+    ForgeLearningRecordEntity,
+)
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
     ForgeEventEntity,
@@ -52,7 +57,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 19
+SCHEMA_REVISION = 20
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -111,6 +116,9 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeIdentityAdminOperationEntity,
                 ForgeIdentityAdminEventEntity,
                 ForgeToolInvocationEntity,
+                ForgeLearningRecordEntity,
+                ForgeLearningEventEntity,
+                ForgeLearningProjectionEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
@@ -181,6 +189,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             "forge_campaign_events",
             "forge_access_events",
             "forge_identity_admin_events",
+            "forge_learning_events",
         ):
             await session.execute(
                 text(
@@ -239,5 +248,73 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             text(
                 "CREATE OR REPLACE TRIGGER forge_tool_invocation_delete "
                 "BEFORE DELETE ON forge_tool_invocations FOR EACH ROW EXECUTE FUNCTION forge_refuse_immutable_change()"
+            )
+        )
+
+        await session.execute(
+            text("""
+            CREATE OR REPLACE FUNCTION forge_guard_learning_record() RETURNS trigger AS $$
+            BEGIN
+              IF OLD.run_id IS DISTINCT FROM NEW.run_id OR OLD.repository_id IS DISTINCT FROM NEW.repository_id
+                OR OLD.correlation_id IS DISTINCT FROM NEW.correlation_id OR OLD.kind IS DISTINCT FROM NEW.kind
+                OR OLD.data IS DISTINCT FROM NEW.data THEN
+                RAISE EXCEPTION 'Learning origin and evidence are immutable';
+              END IF;
+              IF OLD.state IS DISTINCT FROM NEW.state AND NOT (
+                OLD.state IN ('candidate','verified') AND NEW.state IN ('invalidated','superseded')
+              ) THEN RAISE EXCEPTION 'Learning state transition requires native evidence'; END IF;
+              RETURN NEW;
+            END; $$ LANGUAGE plpgsql
+        """)
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_learning_admission BEFORE UPDATE ON forge_learning_records "
+                "FOR EACH ROW EXECUTE FUNCTION forge_guard_learning_record()"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_learning_delete BEFORE DELETE ON forge_learning_records "
+                "FOR EACH ROW EXECUTE FUNCTION forge_refuse_immutable_change()"
+            )
+        )
+
+        await session.execute(
+            text("""
+            CREATE OR REPLACE FUNCTION forge_guard_learning_projection() RETURNS trigger AS $$
+            BEGIN
+              IF OLD.record_id IS DISTINCT FROM NEW.record_id
+                OR OLD.payload_digest IS DISTINCT FROM NEW.payload_digest
+                OR OLD.data->'payload' IS DISTINCT FROM NEW.data->'payload'
+                OR (OLD.data ? 'target' AND (OLD.data->'target' IS DISTINCT FROM NEW.data->'target'
+                    OR OLD.data->'workspace_id' IS DISTINCT FROM NEW.data->'workspace_id'
+                    OR OLD.data->'content_sha256' IS DISTINCT FROM NEW.data->'content_sha256'
+                    OR OLD.data->'request_id' IS DISTINCT FROM NEW.data->'request_id'))
+                OR (OLD.state IN ('verified','abandoned') AND
+                    (OLD.state IS DISTINCT FROM NEW.state OR OLD.data IS DISTINCT FROM NEW.data)) THEN
+                RAISE EXCEPTION 'Learning projection admission and final outcome are immutable';
+              END IF;
+              IF OLD.state IS DISTINCT FROM NEW.state AND NOT (
+                (OLD.state='pending' AND NEW.state='executing') OR
+                (OLD.state='executing' AND NEW.state IN ('source_admitted','unknown','verified')) OR
+                (OLD.state IN ('source_admitted','unknown') AND NEW.state IN ('verified','abandoned'))
+              ) THEN RAISE EXCEPTION 'Learning projection transition cannot replay a submission'; END IF;
+              RETURN NEW;
+            END; $$ LANGUAGE plpgsql
+        """)
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_learning_projection_admission "
+                "BEFORE UPDATE ON forge_learning_projections FOR EACH ROW "
+                "EXECUTE FUNCTION forge_guard_learning_projection()"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE OR REPLACE TRIGGER forge_learning_projection_delete "
+                "BEFORE DELETE ON forge_learning_projections FOR EACH ROW "
+                "EXECUTE FUNCTION forge_refuse_immutable_change()"
             )
         )

@@ -47,6 +47,13 @@ async def test_mcp_tools_have_real_input_contracts():
         "search_project_knowledge",
         "index_verified_source",
         "remember_verified_run",
+        "get_learning_policy",
+        "configure_learning_policy",
+        "list_learning_records",
+        "invalidate_learning",
+        "get_learning_projection",
+        "submit_learning_projection",
+        "observe_learning_projection",
         "list_deployment_targets",
         "deploy_verified_run",
         "rollback_deployment",
@@ -123,6 +130,10 @@ async def test_mcp_tools_have_real_input_contracts():
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]
     assert tools["request_incident_maintenance"].input_schema["required"] == ["identifier", "brief", "checks"]
+    assert tools["invalidate_learning"].input_schema["required"] == ["record_id", "reason", "request_id"]
+    assert tools["submit_learning_projection"].input_schema["required"] == ["record_id", "request_id"]
+    assert tools["observe_learning_projection"].input_schema["required"] == ["record_id", "request_id"]
+    assert "source_id" in tools["observe_learning_projection"].input_schema["properties"]
 
 
 def test_cli_version_and_command_help():

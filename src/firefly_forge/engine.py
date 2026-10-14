@@ -142,6 +142,8 @@ class Engine:
         self.search: Any = None
         self.tool_broker: Any = None
         self.external_mcp: Any = None
+        self.learning: Any = None
+        self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
 
     async def start(self) -> None:
@@ -483,10 +485,28 @@ class Engine:
                 async def reference_resolver(plan: BrowserJourney) -> tuple[QAReference, EvidenceImage] | None:
                     return await self._resolve_qa_reference(run, scope, plan)
 
-                async def internet_search(query: str, count: int) -> dict[str, Any]:
+                async def internet_search(
+                    query: str, count: int, refresh: bool = False, refresh_request_id: str | None = None
+                ) -> dict[str, Any]:
                     if self.tool_broker is None:
                         raise ValueError("A durable tool broker is required for agent internet search")
                     source = await self._inspect_workspace(identifier, workspace, settings)
+                    if self.knowledge_first and (run.get("learning_snapshot") or {}).get("settings", {}).get("enabled"):
+                        return cast(
+                            dict[str, Any],
+                            await self.knowledge_first.search(
+                                identifier,
+                                "implement",
+                                query,
+                                count,
+                                source=source,
+                                workspace=workspace,
+                                refresh=refresh,
+                                refresh_request_id=refresh_request_id,
+                            ),
+                        )
+                    if refresh or refresh_request_id is not None:
+                        raise ValueError("This run has no captured knowledge-first refresh permission")
 
                     async def request() -> dict[str, Any]:
                         return cast(
@@ -504,6 +524,23 @@ class Engine:
                             request,
                             source=source,
                             configuration=run["search_snapshot"],
+                        ),
+                    )
+
+                async def knowledge_lookup(query: str, refresh: bool, refresh_request_id: str | None) -> dict[str, Any]:
+                    source = await self._inspect_workspace(identifier, workspace, settings)
+                    return cast(
+                        dict[str, Any],
+                        await self.knowledge_first.search(
+                            identifier,
+                            "implement",
+                            query,
+                            5,
+                            source=source,
+                            workspace=workspace,
+                            allow_external=False,
+                            refresh=refresh,
+                            refresh_request_id=refresh_request_id,
                         ),
                     )
 
@@ -541,6 +578,12 @@ class Engine:
                     scope_root=scope,
                     repository_root=workspace,
                     allowed_tools=frozenset(grants or ()),
+                    knowledge_lookup=knowledge_lookup
+                    if self.knowledge_first and "knowledge_lookup" in (grants or ())
+                    else None,
+                    internet_search_refresh=internet_search
+                    if self.knowledge_first and "internet_search" in (grants or ())
+                    else None,
                     external_mcp=external_mcp
                     if self.external_mcp
                     and (run.get("mcp_snapshot") or {}).get("grants")
@@ -833,6 +876,12 @@ class Engine:
                         },
                     )
                 active_key = None
+                if (
+                    failures
+                    and self.learning
+                    and (run.get("learning_snapshot") or {}).get("settings", {}).get("enabled")
+                ):
+                    await self.learning.capture_failure(identifier)
                 if halt:
                     raise ValueError(halt)
                 if not failures:
@@ -881,6 +930,8 @@ class Engine:
                 )
             active_key = None
             (await self.store.finish(identifier, "succeeded"))
+            if self.learning and (run.get("learning_snapshot") or {}).get("settings", {}).get("enabled"):
+                await self.learning.capture_outcome(identifier)
             await self._remember_knowledge(identifier, emit)
             if run["publish"]:
                 await self.publish(identifier)

@@ -200,7 +200,12 @@ class SearchTools:
         return record
 
     async def search(
-        self, query: str, max_results: int = 5, *, snapshot: dict[str, Any] | None = None
+        self,
+        query: str,
+        max_results: int = 5,
+        *,
+        snapshot: dict[str, Any] | None = None,
+        on_dispatch: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         record = self._resolve(snapshot)
         provider = _provider(record)
@@ -239,6 +244,8 @@ class SearchTools:
             }
         try:
             async with asyncio.timeout(15):
+                if on_dispatch is not None:
+                    on_dispatch()
                 async with client.stream(
                     method, ENDPOINTS[provider], **options, timeout=15, follow_redirects=False
                 ) as response:

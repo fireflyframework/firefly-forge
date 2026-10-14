@@ -37,6 +37,8 @@ The default combined service admits and executes work. A split installation sepa
 
 Choose and verify the execution environment before admitting a run. Git workspaces protect the consumer checkout; host commands still run with the worker's operating-system identity. Project users require isolated execution, while host coding and host verification require current administrator authority. [Runner configuration](docs/sandbox.md) and [security](docs/security.md) describe the enforced boundaries.
 
+Administrators can explicitly configure a mutually authenticated local command controller with frozen execution profiles and project quotas. Its isolated containers receive sanitized component source and return bounded command receipts and artifacts. This adapter has local qualification on a trusted Factory host; browser pools, full coding-provider isolation, Kubernetes and multi-host placement remain separate work. Follow the [local pool setup](docs/sandbox.md#administrator-opt-in-local-command-pools) before selecting it.
+
 ## Give agents scoped context and tools
 
 Flycanon supplies cited project and framework context. Fresh managed installations require retrieval and enable automatic memory after final verification. Knowledge and memory use a separate `forge-<repository_id>` workspace for each repository; a product spanning several components does not automatically create one combined memory scope. Read [knowledge and memory](docs/knowledge.md) before indexing source or changing scope grants.
@@ -44,6 +46,8 @@ Flycanon supplies cited project and framework context. Fresh managed installatio
 Select [agent roles](docs/agent-roles.md), project policies and the configured runner capabilities. Firefly Agentic and bridge execution use bounded native file, search, edit, diff, command and browser tools. Official Codex and Claude Code follow their own CLI permissions; a role tool list is advisory for those providers. Browser checks use a fresh restricted container context, and internet search requires explicit Brave or Tavily provider configuration and an authorized credential. See [native tools](docs/agent-tools.md) and [browser journeys](docs/browser-qa.md).
 
 Project policies can use the public [central policy catalog](https://github.com/fireflyframework/firefly-forge-policies). Teams can connect a separately installed [Firefly Agent Bridge](docs/bridge.md). Studio, the CLI, SDK and the factory's own MCP tools operate the authenticated application contracts; [agent integrations](docs/agent-integrations.md) explains those entry points.
+
+Repository-scoped [learning](docs/learning.md) binds exact questions to verified local outcomes and current applicability. Invalidated or expired evidence cannot supply a cached answer. Explicit flycanon projection retains one submission identity and preserves uncertain outcomes. Automatic projected-namespace retrieval, classified repair circuits and sharing lessons between projects remain open.
 
 ## Development
 

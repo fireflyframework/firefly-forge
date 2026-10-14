@@ -44,7 +44,7 @@ const run = {
     },
   ],
 };
-async function openRun(page: Page) {
+async function openRun(page: Page, toolEntries?: Record<string, unknown>[]) {
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
@@ -82,7 +82,7 @@ async function openRun(page: Page) {
             : path.endsWith("/journal")
               ? {
                   valid: true,
-                  entries: [
+                  entries: toolEntries ?? [
                     {
                       sequence: 1,
                       task_id: "verify",
@@ -122,6 +122,216 @@ async function openRun(page: Page) {
     .getByRole("button", { name: /Fixture reservation verification/ })
     .click();
 }
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 375, height: 600 },
+])
+  for (const theme of ["light", "dark"])
+    test(`typed broker WAL preserves superseded unknown, rejected and abandoned evidence at ${viewport.width}px ${theme}`, async ({
+      page,
+    }) => {
+      const first = "1".repeat(32),
+        second = "2".repeat(32),
+        third = "3".repeat(32);
+      const remote =
+        "<img src=x onerror=window.injected=true>\n" +
+        "Untrusted read result\n".repeat(300);
+      const events = [
+        {
+          kind: "tool_intent",
+          idempotency_key: first,
+          payload: {
+            correlation_id: first,
+            tool: "external_mcp:github:get_file_contents",
+            arguments: {
+              connector: "github",
+              tool: "get_file_contents",
+              arguments: {
+                owner: "team",
+                repo: "product",
+                path: "src/check.py",
+              },
+            },
+            source: { head: "a".repeat(40), source_tree: "b".repeat(40) },
+            configuration: { digest: "c".repeat(64) },
+          },
+        },
+        {
+          kind: "tool_unknown",
+          idempotency_key: first,
+          payload: {
+            correlation_id: first,
+            tool: "external_mcp:github:get_file_contents",
+            status: "unknown",
+            error: { message: "Tool outcome was not admitted" },
+          },
+        },
+        {
+          kind: "tool_receipt",
+          idempotency_key: first,
+          payload: {
+            correlation_id: first,
+            tool: "external_mcp:github:get_file_contents",
+            status: "succeeded",
+            result: { untrusted: true, text: [remote] },
+          },
+        },
+        {
+          kind: "tool_intent",
+          idempotency_key: second,
+          payload: {
+            correlation_id: second,
+            tool: "internet_search",
+            arguments: { query: "pyfly DI", max_results: 1 },
+          },
+        },
+        {
+          kind: "tool_unknown",
+          idempotency_key: second,
+          payload: {
+            correlation_id: second,
+            tool: "internet_search",
+            status: "unknown",
+            error: { message: "Tool execution was interrupted" },
+          },
+        },
+        {
+          kind: "tool_reconciled",
+          idempotency_key: "4".repeat(32),
+          payload: {
+            correlation_id: second,
+            decision: "abandoned_without_replay",
+            actor: { actor_id: "fixture-operator" },
+          },
+        },
+        {
+          kind: "tool_intent",
+          idempotency_key: third,
+          payload: {
+            correlation_id: third,
+            tool: "internet_search",
+            arguments: { query: "pyfly DI", max_results: 1 },
+          },
+        },
+        {
+          kind: "tool_receipt",
+          idempotency_key: third,
+          payload: {
+            correlation_id: third,
+            tool: "internet_search",
+            status: "rejected",
+            error: {
+              kind: "quota",
+              status_code: 402,
+              message: "Provider quota exhausted",
+            },
+          },
+        },
+      ].map((event, index) => ({
+        ...event,
+        sequence: index + 1,
+        task_id: "implement",
+        created_at: "2026-10-13T15:00:00Z",
+        digest: String(index + 1).repeat(64),
+        previous_hash: index ? String(index).repeat(64) : "0".repeat(64),
+      }));
+      await page.setViewportSize(viewport);
+      await openRun(page, events);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      const rows = page.getByRole("tabpanel").locator(".journal-entries>li");
+      await expect(rows).toHaveCount(8);
+      await expect(rows.nth(1)).toContainText(
+        "Superseded by a succeeded receipt",
+      );
+      await expect(rows.nth(1)).not.toContainText("reconciliation required");
+      await expect(rows.nth(4)).toContainText("Abandoned without replay");
+      await expect(rows.nth(5)).toContainText("fixture-operator");
+      await expect(rows.nth(7)).toContainText("Rejected receipt recorded");
+      await expect(rows.nth(7)).not.toContainText("Succeeded");
+      await expect(rows.locator("img,script")).toHaveCount(0);
+      await expect(rows.locator(".record-advanced[open]")).toHaveCount(0);
+      await expect(rows.nth(2)).toContainText("3".repeat(64));
+      await page.evaluate(() =>
+        Object.defineProperty(navigator, "clipboard", {
+          value: {
+            writeText: async (value: string) => {
+              (window as Window & { copied?: string }).copied = value;
+            },
+          },
+          configurable: true,
+        }),
+      );
+      const identity = rows.nth(2).locator(".record-tool-identity");
+      await expect(identity).not.toHaveAttribute("open", "");
+      await identity.locator("summary").focus();
+      await page.keyboard.press("Enter");
+      const machineId = identity.locator(".record-tool-identity-text");
+      await expect(machineId).toHaveText(
+        "external_mcp:github:get_file_contents",
+      );
+      const machineLayout = await machineId.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(
+          element.querySelector(".record-bounded-label")!,
+        );
+        return {
+          whiteSpace: style.whiteSpace,
+          overflowX: style.overflowX,
+          textLines: range.getClientRects().length,
+        };
+      });
+      expect(machineLayout).toEqual({
+        whiteSpace: "nowrap",
+        overflowX: "auto",
+        textLines: 1,
+      });
+      await identity
+        .getByRole("button", { name: "Copy tool identity", exact: true })
+        .click();
+      expect(
+        await page.evaluate(
+          () => (window as Window & { copied?: string }).copied,
+        ),
+      ).toBe("external_mcp:github:get_file_contents");
+      await identity.locator("summary").click();
+      const copy = rows
+        .nth(2)
+        .getByRole("button", { name: "Copy full output", exact: true })
+        .first();
+      await copy.focus();
+      const box = await copy.boundingBox(),
+        footer = await page.locator(".workspace-main>footer").boundingBox();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(footer!.y);
+      expect(
+        await copy.evaluate((button) => {
+          const r = button.getBoundingClientRect();
+          return button.contains(
+            document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
+          );
+        }),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      expect(
+        await page.evaluate(
+          () => (window as Window & { copied?: string }).copied,
+        ),
+      ).toBe(remote);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      expect(
+        await page.evaluate(
+          () => (window as Window & { injected?: boolean }).injected,
+        ),
+      ).toBeUndefined();
+      await page.screenshot({
+        path: test.info().outputPath(`typed-tool-${theme}.png`),
+      });
+    });
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 375, height: 667 },

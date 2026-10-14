@@ -7,12 +7,19 @@ import {
   Settings2,
   ShieldCheck,
   Users,
+  Waypoints,
 } from "lucide-react";
 import type { IdentitySession } from "./Identity";
 import "./Administration.css";
 
 export type AdministrationPage =
-  "access" | "users" | "settings" | "workflow" | "collaboration" | "search";
+  | "access"
+  | "users"
+  | "settings"
+  | "workflow"
+  | "collaboration"
+  | "search"
+  | "external-tools";
 export function Administration({
   session,
   onNavigate,
@@ -64,6 +71,14 @@ export function Administration({
       body: "Choose how coding agents work and which tools they can use.",
       allowed: Boolean(session),
       scope: "Catalog read; project policies restricted",
+    },
+    {
+      page: "external-tools" as const,
+      icon: Waypoints,
+      title: "External tools",
+      body: "Connect reviewed tools and grant access to a project repository.",
+      allowed: administrator,
+      scope: "Factory administrator",
     },
     {
       page: "collaboration" as const,

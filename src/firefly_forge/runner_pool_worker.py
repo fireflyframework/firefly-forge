@@ -193,6 +193,7 @@ class RunnerPoolWorker:
                     raise ValueError("Frozen Factory invocation command changed")
                 evidence = previous["effects"].get("start", {}).get("evidence", {})
                 if previous["status"] == "removed" and evidence.get("workspace_import") == "complete":
+                    await self._current(run_id, task_id, scope)
                     return ProcessResult(argv, evidence["exit_code"], evidence["output"])
                 raise RuntimeError("Existing Factory invocation requires reconciliation; it cannot be resubmitted")
             if len(records) >= policy.command_limit:

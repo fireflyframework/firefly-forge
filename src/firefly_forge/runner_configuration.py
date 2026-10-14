@@ -138,6 +138,15 @@ class RunnerConfiguration:
                     "browser_journey": bool(configuration.get("browser")),
                     "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
                     "external_mcp": bool((snapshot.get("mcp_snapshot") or {}).get("grants")),
+                    "knowledge_lookup": bool(
+                        (snapshot.get("learning_snapshot") or {}).get("settings", {}).get("enabled")
+                        and (snapshot.get("knowledge_snapshot") or {}).get("enabled")
+                        and (snapshot.get("knowledge_snapshot") or {}).get("endpoint")
+                        and (
+                            (snapshot.get("knowledge_snapshot") or {}).get("api_key_configured")
+                            or (snapshot.get("knowledge_snapshot") or {}).get("agent_token_configured")
+                        )
+                    ),
                 },
                 provider,
             )
@@ -161,6 +170,15 @@ class RunnerConfiguration:
                 "browser_journey": browser_available,
                 "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
                 "external_mcp": bool((snapshot.get("mcp_snapshot") or {}).get("grants")),
+                "knowledge_lookup": bool(
+                    (snapshot.get("learning_snapshot") or {}).get("settings", {}).get("enabled")
+                    and (snapshot.get("knowledge_snapshot") or {}).get("enabled")
+                    and (snapshot.get("knowledge_snapshot") or {}).get("endpoint")
+                    and (
+                        (snapshot.get("knowledge_snapshot") or {}).get("api_key_configured")
+                        or (snapshot.get("knowledge_snapshot") or {}).get("agent_token_configured")
+                    )
+                ),
             },
             provider,
         )

@@ -10,7 +10,12 @@ Inspect the existing repositories before proposing changes. firefly forge reads 
 Use the logical project's component graph to select the repositories and paths to inspect. The project's `product_repository_id` owns the product definition and assistant conversation. Component repositories remain separate scopes.
 
 ```mermaid
-flowchart LR
+---
+config:
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart TD
   Source[Committed component source] --> Inspect[Source inspection]
   Inspect --> Review[Owner reviews exact evidence digest]
   Review --> Context[Frozen assistant context]

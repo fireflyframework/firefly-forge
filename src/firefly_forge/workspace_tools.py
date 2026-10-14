@@ -26,6 +26,8 @@ class ToolRuntimeContext:
     command_executor: Callable[[list[str], int], Awaitable[ProcessResult]] | None = None
     browser_runner: Callable[[str, int, int, str], Awaitable[dict[str, Any]]] | None = None
     internet_search: Callable[[str, int], Awaitable[dict[str, Any]]] | None = None
+    internet_search_refresh: Callable[[str, int, bool, str | None], Awaitable[dict[str, Any]]] | None = None
+    knowledge_lookup: Callable[[str, bool, str | None], Awaitable[dict[str, Any]]] | None = None
     external_mcp: Callable[[str, str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
     credential_registry: Callable[[], dict[str, str]] = dict
     browser_journey: Callable[[BrowserJourney], Awaitable[JourneyEvidence]] | None = None
@@ -279,6 +281,7 @@ _TOOL_DESCRIPTIONS = {
     "browser_journey": "Exercise bounded user journeys and return DOM and screenshot evidence",
     "internet_search": "Search the configured server-mediated search provider",
     "external_mcp": "Read an exact reviewed external tool within a project and repository grant",
+    "knowledge_lookup": "Inspect scoped references and exact verified local outcomes without a web-search key",
 }
 
 
@@ -292,6 +295,7 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
             "browser_journey",
             "internet_search",
             "external_mcp",
+            "knowledge_lookup",
         }
         available = not optional or bool(snapshot.get(identifier, False))
         supported = provider in {"agentic", "bridge", "api"}

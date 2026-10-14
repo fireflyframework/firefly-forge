@@ -3,6 +3,7 @@
 """Qualify generated assets, embedded font rights and the documented MCP count."""
 
 import ast
+import re
 import unittest
 from xml.etree import ElementTree
 
@@ -59,7 +60,10 @@ class ArchitectureDiagramTests(unittest.TestCase):
                 for decorator in node.decorator_list
             )
         ]
-        self.assertEqual(len(tools), 89, "Update the documented factory MCP surface when registrations change")
+        architecture = (diagrams.ROOT / "docs/architecture.md").read_text()
+        documented = re.search(r"\| Factory MCP \| (\d+) authenticated operator tools", architecture)
+        self.assertIsNotNone(documented, "Document the authenticated factory MCP surface")
+        self.assertEqual(len(tools), int(documented.group(1)), "Update the documented factory MCP surface")
 
 
 if __name__ == "__main__":

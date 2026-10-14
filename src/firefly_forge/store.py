@@ -253,6 +253,7 @@ class Store:
     ) -> Data:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
+        from firefly_forge.learning_configuration import learning_snapshot
         from firefly_forge.mcp_registry import mcp_snapshot
         from firefly_forge.product_design import ProductDesign
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
@@ -329,7 +330,14 @@ class Store:
                 raise ValueError(
                     "Direct host coding CLIs require a factory administrator; choose a configured API agent"
                 )
-        runner = {**runner, "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id)}
+        knowledge = snapshot_knowledge(self.configuration)
+        learning = learning_snapshot(self.configuration)
+        runner = {
+            **runner,
+            "knowledge_snapshot": knowledge,
+            "learning_snapshot": learning,
+            "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id),
+        }
         tools = (
             prepared_tools
             if prepared_tools is not None
@@ -435,7 +443,8 @@ class Store:
                     runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
                 ),
                 **frozen_configuration,
-                "knowledge_snapshot": snapshot_knowledge(self.configuration),
+                "knowledge_snapshot": knowledge,
+                "learning_snapshot": learning,
                 "id": uuid.uuid4().hex,
                 "repository_name": repo["name"],
                 "status": "queued",

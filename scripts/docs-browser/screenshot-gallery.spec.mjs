@@ -32,6 +32,7 @@ for (const width of [1440, 390, 375]) {
       for (const guide of [
         "console-tour",
         "search-providers",
+        "external-tools-tour",
         "quickstart",
         "guide",
       ]) {
@@ -57,7 +58,12 @@ for (const width of [1440, 390, 375]) {
           await page.keyboard.press("Enter");
           await expect(summary.locator("..")).toHaveAttribute("open", "");
         }
-        await readyImages(article.locator(".forge-shot__link:visible img"));
+        for (const image of await article
+          .locator(".forge-shot__link:visible img")
+          .all()) {
+          await image.scrollIntoViewIfNeeded();
+          await readyImages(image);
+        }
         await expect
           .poll(() =>
             article
@@ -70,7 +76,13 @@ for (const width of [1440, 390, 375]) {
                   ),
               ),
           )
-          .toBe(["console-tour", "search-providers"].includes(guide));
+          .toBe(
+            [
+              "console-tour",
+              "search-providers",
+              "external-tools-tour",
+            ].includes(guide),
+          );
         const links = article.locator(".forge-shot__link:visible");
         for (const link of await links.all()) {
           const image = link.locator("img");
@@ -125,7 +137,7 @@ for (const width of [1440, 390, 375]) {
   }
 }
 
-for (const guide of ["console-tour", "search-providers"])
+for (const guide of ["console-tour", "search-providers", "external-tools-tour"])
   test(`${guide} gallery remains readable with text enlarged to 200 percent`, async ({
     page,
   }) => {
@@ -149,3 +161,43 @@ for (const guide of ["console-tour", "search-providers"])
     const box = await grid.boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(720);
   });
+
+test("external tool walkthrough keeps the fixture boundary and each provider's next step", async ({
+  page,
+}) => {
+  await page.goto("/external-tools-tour/");
+  const article = page.locator("article");
+  await expect(article).not.toContainText("[^captures]");
+  await expect(
+    article.locator('a.footnote-ref[href="#fn:captures"]'),
+  ).toHaveCount(1);
+  await expect(article.locator('[id="fn:captures"]')).toContainText(
+    "Keys are synthetic",
+  );
+  await expect(article.locator('[id="fn:captures"]')).toContainText(
+    "not authenticated vendor access",
+  );
+  for (const provider of ["figma", "sentry", "grafana"]) {
+    await expect(
+      article.locator(
+        `a[href="https://fireflyframework.github.io/firefly-forge/tooling-prerequisites/#${provider}"]`,
+      ),
+    ).toHaveCount(1);
+    await expect(article.locator(`h3#${provider}`)).toBeVisible();
+  }
+  for (const title of [
+    "1. Save the connection",
+    "2. Request discovery explicitly",
+    "3. Review the returned tools",
+    "4. Grant the repository and roles",
+  ])
+    await expect(article.locator("h3").filter({ hasText: title })).toHaveCount(
+      1,
+    );
+  const image = article.locator(".forge-shot__link:visible img").first();
+  await image.scrollIntoViewIfNeeded();
+  await readyImages(image);
+  await image.locator("..").focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/external-catalog-desktop-light\.png$/);
+});

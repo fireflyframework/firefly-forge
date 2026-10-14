@@ -10,6 +10,7 @@ from mcp.server.mcpserver.utilities.types import Image
 from pydantic import WithJsonSchema
 
 from firefly_forge.assistant_attachments import AttachmentInput
+from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
 from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
@@ -907,6 +908,62 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.abandon_tool_invocation(run_id, correlation_id, request_id)
+
+    @server.tool()
+    def get_learning_policy() -> dict[str, Any]:
+        """Read bounded factory learning policy; existing runs retain captured settings."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.learning_policy()
+
+    @server.tool()
+    def configure_learning_policy(request: LearningPolicy) -> dict[str, Any]:
+        """Configure learning for new runs as factory administrator; never grants cross-project sharing."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_learning_policy(request.model_dump())
+
+    @server.tool()
+    def list_learning_records(repository_id: str) -> list[dict[str, Any]]:
+        """List authorized scoped evidence. Candidate records cannot authorize solution reuse."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.learning_records(repository_id)
+
+    @server.tool()
+    def invalidate_learning(record_id: str, reason: str, request_id: str) -> dict[str, Any]:
+        """Invalidate scoped evidence with a durable review identity and reason."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.invalidate_learning(record_id, reason, request_id)
+
+    @server.tool()
+    def get_learning_projection(record_id: str) -> dict[str, Any]:
+        """Read projection state without secret credentials or remote source creation."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.learning_projection(record_id)
+
+    @server.tool()
+    def submit_learning_projection(record_id: str, request_id: str) -> dict[str, Any]:
+        """Submit a verified local outcome once; unknown effects cannot be automatically replayed."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.submit_learning_projection(record_id, request_id)
+
+    @server.tool()
+    def observe_learning_projection(record_id: str, request_id: str, source_id: str | None = None) -> dict[str, Any]:
+        """Verify admitted source content and retrievable citations without creating another source."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.observe_learning_projection(record_id, request_id, source_id)
 
     return server
 

@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "build/docs-scene"
 _hashes = {}
 _walkthrough = {}
+CAPTURE_HELPERS = {"studio/tests/walkthrough-capture.ts", "studio/tests/navigation.ts", "studio/tests/auth-fixture.ts"}
+CAPTURE_PRODUCERS = {"studio/tests/docs-walkthrough.spec.ts", "studio/tests/external-tools.spec.ts"}
 
 
 def _load_walkthrough(config, root=ROOT):
@@ -24,28 +26,84 @@ def _load_walkthrough(config, root=ROOT):
     if not path.exists():
         return {}
     manifest = json.loads(path.read_text())
-    if manifest.get("schema_version") != 1 or not manifest.get("fixture_only"):
+    if manifest.get("schema_version") != 2 or not manifest.get("fixture_only"):
         raise ValueError("Unsupported walkthrough capture manifest")
+    inventory = {
+        str(path.relative_to(root))
+        for folder in ("studio/src", "studio/public")
+        for path in (root / folder).rglob("*")
+        if path.is_file()
+    }
+    inventory.update(("studio/index.html", "studio/package.json"))
+    if inventory != set(manifest["frontend"]):
+        raise ValueError("Walkthrough frontend inventory changed; recapture all inputs")
     for source, expected in manifest["frontend"].items():
         if hashlib.sha256((root / source).read_bytes()).hexdigest() != expected:
             raise ValueError("Walkthrough frontend changed; recapture " + source)
-    capture = root / "studio/tests/docs-walkthrough.spec.ts"
-    if hashlib.sha256(capture.read_bytes()).hexdigest() != manifest["capture_test_sha256"]:
-        raise ValueError("Walkthrough capture test changed; recapture its source")
+    for group, label, required in (
+        ("capture_helpers", "capture helper", CAPTURE_HELPERS),
+        ("capture_producers", "capture producer", CAPTURE_PRODUCERS),
+    ):
+        if not isinstance(manifest.get(group), dict) or set(manifest[group]) != required:
+            raise ValueError("Missing walkthrough " + label + " registry")
+        for source, expected in manifest[group].items():
+            if not source.startswith("studio/tests/") or ".." in Path(source).parts:
+                raise ValueError("Invalid walkthrough " + label + " path")
+            if hashlib.sha256((root / source).read_bytes()).hexdigest() != expected:
+                raise ValueError("Walkthrough " + label + " changed; recapture its source")
+    capture_config = manifest.get("capture_config", {})
+    if capture_config.get("path") != "studio/playwright.docs.config.ts":
+        raise ValueError("Invalid walkthrough capture config")
+    if hashlib.sha256((root / capture_config["path"]).read_bytes()).hexdigest() != capture_config.get("sha256"):
+        raise ValueError("Walkthrough capture config changed; recapture its source")
+    helper_digest = hashlib.sha256(
+        json.dumps(manifest["capture_helpers"], sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     source_digest = hashlib.sha256(
         json.dumps(manifest["frontend"], sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     for name, record in manifest["captures"].items():
-        if record.get("frontend_digest", source_digest) != source_digest:
+        producer = record.get("producer")
+        if producer not in manifest["capture_producers"]:
+            raise ValueError("Walkthrough screenshot has unknown producer: " + name)
+        if record.get("producer_sha256") != manifest["capture_producers"][producer]:
+            raise ValueError("Walkthrough screenshot has stale producer: " + name)
+        if record.get("capture_helpers_digest") != helper_digest:
+            raise ValueError("Walkthrough screenshot has stale capture helpers: " + name)
+        if record.get("capture_config_sha256") != capture_config["sha256"]:
+            raise ValueError("Walkthrough screenshot has stale capture config: " + name)
+        if record.get("frontend_digest") != source_digest:
             raise ValueError("Walkthrough screenshot has stale frontend: " + name)
-        if record.get("studio_version", manifest.get("studio_version")) != manifest.get("studio_version"):
+        if record.get("studio_version") != manifest.get("studio_version"):
             raise ValueError("Walkthrough screenshot has stale Studio version: " + name)
+        if record.get("fixture") is not True:
+            raise ValueError("Walkthrough screenshot is missing its fixture declaration: " + name)
+        stage, device, theme = record.get("stage"), record.get("device"), record.get("theme")
+        if (
+            not isinstance(stage, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", stage)
+            or device not in ("desktop", "mobile")
+            or theme not in ("light", "dark")
+            or name != f"{stage}-{device}-{theme}.png"
+        ):
+            raise ValueError("Walkthrough screenshot stage differs from its path: " + name)
+        expected_producer = (
+            "studio/tests/external-tools.spec.ts"
+            if stage.startswith("external-")
+            else "studio/tests/docs-walkthrough.spec.ts"
+        )
+        if producer != expected_producer:
+            raise ValueError("Walkthrough screenshot stage differs from its producer: " + name)
+        if record.get("path") != "assets/screenshots/" + name or ".." in Path(name).parts:
+            raise ValueError("Invalid walkthrough screenshot path: " + name)
         png = (Path(config["docs_dir"]) / record["path"]).read_bytes()
         if hashlib.sha256(png).hexdigest() != record["sha256"]:
             raise ValueError("Walkthrough screenshot changed: " + name)
         width, height = struct.unpack(">II", png[16:24])
         if {"width": width, "height": height} != record["viewport"]:
             raise ValueError("Walkthrough screenshot viewport differs: " + name)
+    if manifest.get("studio_version") != json.loads((root / "studio/package.json").read_text())["version"]:
+        raise ValueError("Walkthrough has stale Studio version")
     return manifest
 
 
