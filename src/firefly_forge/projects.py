@@ -9,6 +9,7 @@ import json
 import uuid
 from typing import Any
 
+from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
 
 from firefly_forge.models import RunInput
@@ -24,13 +25,20 @@ from firefly_forge.store import Store, identifier, now
 Data = dict[str, Any]
 
 
+@service
 class Projects:
-    def __init__(self, store: Store, records: ForgeProjectRepository | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        records: ForgeProjectRepository | None = None,
+        revisions: ForgeProjectRevisionRepository | None = None,
+    ) -> None:
         self.store, self.records = store, records or ForgeProjectRepository()
+        self.revisions = revisions or ForgeProjectRevisionRepository()
 
     async def configure(self, definition: ProjectDefinition, project_id: str | None = None) -> Data:
         self.store.roles.snapshot(definition.roles, self.store.policies.selection())
-        self.store.reject_credentials(definition.model_dump())
+        await self.store.admit_credentials(definition.model_dump())
         for repository_id in {component.repository_id for component in definition.components}:
             await self.store.repository(repository_id)
         async with self.store._unit():
@@ -54,14 +62,14 @@ class Projects:
             else:
                 row = ForgeProjectEntity(id=identifier(data["id"]), data=data)
             await self.records.save(row)
-            await ForgeProjectRevisionRepository().save(
+            await self.revisions.save(
                 ForgeProjectRevisionEntity(project_id=row.id, revision=data["revision"], data=copy.deepcopy(data))
             )
             return copy.deepcopy(data)
 
     async def revision(self, project_id: str, revision: int) -> Data:
         async with self.store._unit():
-            row = await ForgeProjectRevisionRepository().revision(identifier(project_id), revision)
+            row = await self.revisions.revision(identifier(project_id), revision)
             if row is None:
                 raise KeyError("Product project revision not found")
             return copy.deepcopy(row.data)

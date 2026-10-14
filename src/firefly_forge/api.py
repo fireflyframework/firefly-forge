@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Authenticated PyFly API and Studio host for a single trusted factory operator."""
+"""Native pyfly API, shared sessions and project-scoped Studio host."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr
 from pyfly.container import bean, configuration, service
@@ -57,6 +58,9 @@ from firefly_forge.collaboration_persistence import (
     ForgeWebhookInboxRepository,
 )
 from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration, redact_secrets
+from firefly_forge.connection_oauth import ConnectionOAuth
+from firefly_forge.connection_oauth_controllers import ConnectionOAuthController, ConnectionOAuthPrivacy
+from firefly_forge.connection_oauth_persistence import OAuthConnectionRepository
 from firefly_forge.controllers import (
     CatalogController,
     DeploymentController,
@@ -110,6 +114,10 @@ from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
 from firefly_forge.model_profiles import ModelProfiles
 from firefly_forge.models import RepositoryInput, RunInput
+from firefly_forge.oauth_provider_policies import OAuthProviderPolicies
+from firefly_forge.oauth_provider_policy_controllers import OAuthProviderPolicyController
+from firefly_forge.oauth_provider_policy_persistence import OAuthProviderPolicyRepository
+from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
 from firefly_forge.persistence import (
     ForgeDeploymentRepository,
@@ -415,6 +423,38 @@ class FactoryConfiguration:
         return ProjectAccess(store, records)
 
     @bean
+    def oauth_provider_policies(self, store: Store, records: OAuthProviderPolicyRepository) -> OAuthProviderPolicies:
+        available = (
+            os.getenv("FORGE_OAUTH_LOCAL_DEVELOPMENT") == "1"
+            and self.identity_configuration.allow_loopback_http
+            and urlsplit(self.identity_configuration.browser_origin).hostname in {"127.0.0.1", "::1"}
+        )
+        return OAuthProviderPolicies(
+            store,
+            records,
+            local_development_available=available,
+            browser_origin=self.identity_configuration.browser_origin,
+        )
+
+    @bean
+    def connection_oauth(
+        self,
+        store: Store,
+        identity: IdentityService,
+        records: OAuthConnectionRepository,
+        policies: OAuthProviderPolicies,
+    ) -> ConnectionOAuth:
+        return ConnectionOAuth(
+            store,
+            encryption_key=identity.encryption_key,
+            browser_origin=identity.configuration()["browser_origin"] or "",
+            records=records,
+            allow_loopback_http=identity.config.allow_loopback_http,
+            policy_lookup=policies.lookup,
+            policy_directory=policies.directory,
+        )
+
+    @bean
     def ledger(
         self,
         session_provider: SessionProvider,
@@ -424,6 +464,8 @@ class FactoryConfiguration:
         event_records: ForgeEventRepository,
         deployment_records: ForgeDeploymentRepository,
         product_records: ForgeProductDefinitionRepository,
+        campaign_records: ForgeCampaignRepository,
+        campaign_children: ForgeCampaignChildRepository,
     ) -> Store:
         return Store(
             self.data_dir / "factory.db",
@@ -434,6 +476,8 @@ class FactoryConfiguration:
             event_records=event_records,
             deployment_records=deployment_records,
             product_records=product_records,
+            campaign_records=campaign_records,
+            campaign_children=campaign_children,
         )
 
     @bean
@@ -489,6 +533,7 @@ class FactoryConfiguration:
         external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
+        search.credential_admission = store.admit_credentials
         tool_broker.credential_registry = lambda: engine.credential_registry()
         journal.credential_registry = lambda: engine.credential_registry()
         store.credential_registry = lambda: engine.credential_registry()
@@ -499,12 +544,16 @@ class FactoryConfiguration:
         return Assurance(store, self.data_dir / "reviews", journal)
 
     @bean
-    def product_projects(self, store: Store, records: ForgeProjectRepository) -> Projects:
-        return Projects(store, records)
+    def product_projects(
+        self, store: Store, records: ForgeProjectRepository, revisions: ForgeProjectRevisionRepository
+    ) -> Projects:
+        return Projects(store, records, revisions)
 
     @bean
-    def reverse_engineering(self, store: Store, projects: Projects, connections: SCMConnections) -> ReverseEngineering:
-        return ReverseEngineering(store, projects, self.data_dir / "analyses", connections)
+    def reverse_engineering(
+        self, store: Store, projects: Projects, connections: SCMConnections, records: ForgeAnalysisRepository
+    ) -> ReverseEngineering:
+        return ReverseEngineering(store, projects, self.data_dir / "analyses", connections, records=records)
 
     @bean
     def reviewed_analysis_context(
@@ -526,6 +575,10 @@ class FactoryConfiguration:
         engine: Engine,
         analysis_context: ReviewedAnalysisContext,
         attachments: AssistantAttachments,
+        projects: Projects,
+        records: ForgeAssistantSessionRepository,
+        turns: ForgeAssistantTurnRepository,
+        events: ForgeAssistantEventRepository,
     ) -> ProductAssistant:
         return ProductAssistant(
             store,
@@ -534,6 +587,10 @@ class FactoryConfiguration:
             analysis_context=analysis_context,
             credential_registry=lambda: engine.credential_registry(),
             attachments=attachments,
+            projects=projects,
+            records=records,
+            turns=turns,
+            events=events,
         )
 
     @bean
@@ -612,8 +669,12 @@ class FactoryConfiguration:
         return KnowledgeFirst(store, journal, ledger, broker, search)
 
     @bean
-    def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
-        return ExternalMCPRegistry(private)
+    def oauth_resources(self, connections: ConnectionOAuth, access: ProjectAccess) -> OAuthResources:
+        return OAuthResources(connections, access)
+
+    @bean
+    def external_mcp_registry(self, private: ConfigurationStore, resources: OAuthResources) -> ExternalMCPRegistry:
+        return ExternalMCPRegistry(private, resources=resources)
 
     @bean
     def tool_invocation_broker(
@@ -644,8 +705,12 @@ class FactoryConfiguration:
         records: ForgeCampaignRepository,
         children: ForgeCampaignChildRepository,
         events: ForgeCampaignEventRepository,
+        projects: Projects,
+        project_records: ForgeProjectRepository,
     ) -> ProjectCampaigns:
-        return ProjectCampaigns(store, engine, journal, records, children, events)
+        return ProjectCampaigns(
+            store, engine, journal, records, children, events, projects=projects, project_records=project_records
+        )
 
     @bean
     def provider_configuration(self, store: Store) -> ConfigurationStore:
@@ -666,10 +731,11 @@ class FactoryConfiguration:
         auth: OperatorAuth,
         profiles: ModelProfiles,
         users: UserAdministration,
+        oauth: ConnectionOAuth,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
         manager.secret_registries.extend([search, external_mcp])
-        manager.secret_registries.extend([auth, profiles, users])
+        manager.secret_registries.extend([auth, profiles, users, oauth])
         return manager
 
     @bean
@@ -784,6 +850,11 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        OAuthProviderPolicyRepository,
+        OAuthProviderPolicyController,
+        OAuthConnectionRepository,
+        ConnectionOAuthController,
+        ConnectionOAuthPrivacy,
         ForgeRuntimeTopologyRepository,
         ForgeExecutionRequestRepository,
         ForgeExecutionRequestEventRepository,

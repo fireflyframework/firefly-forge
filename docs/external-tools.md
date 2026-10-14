@@ -4,6 +4,8 @@ description: Configure reviewed external MCP connections, approve tool schemas a
 
 # External tools
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 forge can expose reviewed external tools to a native agentic or Bridge worker. A factory administrator controls the connection, schema review and project grant. Credentials remain in the control plane; the project image and worker arguments receive no API key.
 
 External MCP complements the native source-control, flycanon and browser integrations. It does not replace them. Direct Codex and Claude CLI execution uses the CLI's own authority and does not inherit these Python tool grants.
@@ -16,6 +18,7 @@ All templates start disabled. The catalog separates an unmet prerequisite from a
 
 | Connector | Current execution boundary |
 | --- | --- |
+| Local repository tools | Explicit development-only native OAuth binding to the fixed local `repository:read` resource. The four read tools still require exact schema review and project/repository grants; see [connected accounts](connected-accounts.md). |
 | GitHub | Fixed `https://api.githubcopilot.com/mcp/readonly` endpoint. Reviewed `get_file_contents`, `get_commit`, `list_commits` and `list_branches` tools can read the repository assigned to the run. |
 | Sentry | Template only. A project-scoped adapter and reviewed server skill constraints are still required. The current upstream issue tool can enrich results through Seer and related data; forge does not admit those calls. |
 | Figma | Template only. Figma requires an approved client or waitlist admission and an authorized OAuth connection. Registering a template does not satisfy those requirements. |
@@ -28,7 +31,7 @@ The initial GitHub adapter accepts bounded text results. Binary blocks and resou
 
 The same actions are available through the authenticated API, Python SDK, operator CLI and forge's own MCP server. Only a factory administrator can change external connections or grants. Project ownership alone does not authorize the use of a platform credential.
 
-1. **Configure the connection.** Supply a narrowly scoped authorized credential in an owner-private file. No arbitrary URL or executable is accepted.
+1. **Configure the connection.** Supply a narrowly scoped authorized credential in an owner-private file. The token adapter accepts its fixed GitHub endpoint. The separate local OAuth adapter requires its admitted literal-loopback policy; neither accepts an arbitrary URL or executable.
 2. **Discover the schemas.** This makes an explicit bounded remote request. Discovery never runs a tool or grants it to an agent.
 3. **Review the exact digest.** Select only the known read tools you need. Remote descriptions, instructions and `readOnlyHint` annotations cannot grant permission.
 4. **Grant a project repository.** Select a registered repository belonging to the product, exact tools, implementation roles and the `implement` stage.

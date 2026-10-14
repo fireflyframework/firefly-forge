@@ -1,10 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 [build-system]
 requires = ["hatchling>=1.28"]
 build-backend = "hatchling.build"
 
 [project]
 name = "firefly-forge"
-version = "0.2.3"
+version = "0.2.4"
 description = "Firefly software factory: brief to verified product with interchangeable coding agents"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -22,7 +23,7 @@ dependencies = [
   "filelock>=3.20,<5",
   "cryptography>=50.0.2,<51",
   "PyYAML>=6.0.3,<7",
-  "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.02/pyfly-26.10.2-py3-none-any.whl",
+  "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.03/pyfly-26.10.3-py3-none-any.whl",
   "fireflyframework-agentic @ https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.09.0/fireflyframework_agentic-26.9.0-py3-none-any.whl",
   "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.0/flycanon_sdk-26.10.0-py3-none-any.whl",
   "fonttools[woff]>=4.62,<5",
@@ -55,7 +56,7 @@ path = "scripts/build_hook.py"
 "studio/dist" = "studio/dist"
 
 [tool.hatch.build]
-exclude = ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/*.tsbuildinfo", "**/.codex/**", "**/AGENTS.md", "**/CLAUDE.md", "**/.env", "**/test-results/**", "**/playwright-report/**", "**/.forge/**", "/dist/**", "/build/**"]
+exclude = ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/*.tsbuildinfo", "**/.codex/**", "**/AGENTS.md", "**/CLAUDE.md", "**/.env", "**/test-results/**", "**/playwright-report/**", "**/.forge/**", "/dist/**", "/build/**", "**/work/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

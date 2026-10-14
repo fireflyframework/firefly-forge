@@ -16,6 +16,12 @@ Start with the [local stack](installation.md#run-the-complete-local-stack). Use 
 
 [Open the infrastructure diagram](diagrams/factory-infrastructure.svg) · [Portrait layout](diagrams/factory-infrastructure-narrow.svg)
 
+## Required and optional services
+
+The managed stack installs [flycanon](https://github.com/fireflyframework/flycanon) as a separate released server, alongside forge's SDK client. Its PostgreSQL, original-object volume, local embedding model, migration job and ingestion worker are part of the supplied Compose topology. The default factory depends on completed knowledge initialization before startup.
+
+[flyquery](https://github.com/fireflyframework/flyquery) is an assessed optional analytics service. The supplied stack has no flyquery image, database, credentials, adapter or setup wizard. Do not connect it to factory PostgreSQL or mount factory private storage. A future deployment needs its own identity, explicit snapshot objects and isolated execution environment after the [structured analytics admission checks](structured-knowledge.md#checks-before-enabling-an-adapter) pass.
+
 ## 1. Choose the runtime and owners
 
 Assign an owner for the factory, identity, knowledge service, storage and backups. Record the intended recovery time and acceptable data loss. A development machine and a production installation should have different databases, credentials and private directories.

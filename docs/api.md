@@ -169,4 +169,4 @@ Provider configuration accepts `{"values":{"model":"MODEL","api_key":"PRIVATE_KE
 
 Project policies accept `{"skills":["implementation","verification","security"]}`. Omitting `skills` when creating a run uses project defaults; an explicit empty array selects no optional policies. Core framework integration, source safety and verification cannot be disabled.
 
-See [SCM](scm.md) for repository discovery, OAuth redirects and grants; [knowledge](knowledge.md) for source selection and project scopes; and [deployment](deployment.md) for target commands, source checks and rollback requests.
+See [connected accounts](connected-accounts.md#api-and-client-contract) for typed service policy, client registration, browser consent and effect receipts; [SCM](scm.md) for repository discovery, OAuth redirects and grants; [knowledge](knowledge.md) for source selection and project scopes; and [deployment](deployment.md) for target commands, source checks and rollback requests.

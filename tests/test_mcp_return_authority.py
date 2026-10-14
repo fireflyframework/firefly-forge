@@ -68,8 +68,8 @@ async def test_grant_lost_during_session_cleanup_cannot_return_data(tmp_path):
     original_session = registry._session
 
     @asynccontextmanager
-    async def close_then_revoke(*args):
-        async with original_session(*args) as session:
+    async def close_then_revoke(*args, **kwargs):
+        async with original_session(*args, **kwargs) as session:
             yield session
         registry.revoke("a" * 32, grant["id"])
 

@@ -553,7 +553,7 @@ class RepositoryChannels:
                                 data["repository_ids"].append((await self._register(provider, grant, settings))["id"])
                     else:
                         event = normalized_event(provider, body, headers)
-                        self.store.reject_credentials(event["text"])
+                        await self.store.admit_credentials(event["text"])
                         if event["actor"] not in settings["trusted_actors"]:
                             reason = "untrusted_actor"
                         else:

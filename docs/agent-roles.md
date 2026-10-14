@@ -4,6 +4,8 @@ description: Configure factory roles and community skill instructions, with expl
 
 # Factory roles and community skills
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 A role assigns responsibility to an actual factory stage. It does not create a separate model session. The default implementation uses one selected coding provider, deterministic planning and source checks, real repository verification, and an optional explicitly configured assurance reviewer.
 
 ## Responsibilities and execution

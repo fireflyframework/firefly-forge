@@ -4,6 +4,8 @@ description: Inspect participants, skills, knowledge access and handoffs through
 
 # Agent lifecycle
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Use **Agents & skills** to follow work from a product decision through source delivery and application operation. The lifecycle catalog distinguishes AI dialogue, a run-selected coding provider, and deterministic services. A participant describes an implemented service or instruction binding; it is not evidence that a model session or external action has occurred.
 
 <picture>

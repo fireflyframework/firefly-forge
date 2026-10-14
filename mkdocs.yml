@@ -1,3 +1,4 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 site_name: firefly forge
 site_url: https://fireflyframework.github.io/firefly-forge/
 site_description: Build and verify software with Firefly's software factory.
@@ -98,6 +99,7 @@ nav:
       - Agent tools: agent-tools.md
       - Tool and provider prerequisites: tooling-prerequisites.md
       - External tool setup walkthrough: external-tools-tour.md
+      - Authorize connected accounts: connected-accounts.md
       - Configure internet search: search-providers.md
       - Tool invocation evidence: tool-broker.md
       - Reviewed external tools: external-tools.md
@@ -112,6 +114,7 @@ nav:
       - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
+      - Structured analytics architecture: structured-knowledge.md
       - Learning and knowledge reuse: learning.md
       - DevSecOps pipelines: devsecops.md
   - Operations:

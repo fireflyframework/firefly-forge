@@ -4,6 +4,8 @@ description: Assign configured models to product dialogue, implementation and re
 
 # Choose models for specific tasks
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Use named model profiles when planning, coding and reviewing should use different models or credentials. A profile belongs to one real provider: direct Firefly Agentic API, an optional compatible bridge, Codex CLI or Claude Code CLI. Direct API profiles do not require a bridge.
 
 The provider's existing connection configuration and a named profile are separate. New profiles copy nonsecret connection defaults. They inherit a provider credential only when you explicitly set `inherit_credentials: true`; otherwise supply the profile's own credential. Updating one profile does not edit another profile or the server's process environment.

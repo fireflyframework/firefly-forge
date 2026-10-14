@@ -817,6 +817,167 @@ def create_server() -> MCPServer:
             return connection.external_mcp_catalog()
 
     @server.tool()
+    def get_oauth_provider_policies() -> dict[str, Any]:
+        """Read current native provider policy and local development availability."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.oauth_provider_policies()
+
+    @server.tool()
+    def configure_local_oauth_provider_policy(
+        enabled: bool,
+        local_origin: str,
+        expected_revision: int,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """Admit the fixed local service; server development and administrator gates apply."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_local_oauth_provider_policy(
+                {
+                    "enabled": enabled,
+                    "local_origin": local_origin,
+                    "expected_revision": expected_revision,
+                    "request_id": request_id,
+                }
+            )
+
+    @server.tool()
+    def get_connection_oauth_providers() -> list[dict[str, Any]]:
+        """Read admitted OAuth registrations and unmet provider prerequisites."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_providers()
+
+    @server.tool()
+    def get_connection_oauth(name: str) -> dict[str, Any]:
+        """Read connection metadata without access, refresh or client-secret values."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth(name)
+
+    @server.tool()
+    def list_connection_oauth(project_id: str | None = None) -> list[dict[str, Any]]:
+        """Read the current administrator's safe connection directory and server-owned actions."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_connections(project_id)
+
+    @server.tool()
+    def get_connection_oauth_effect(name: str, request_id: str) -> dict[str, Any]:
+        """Observe an exact OAuth request receipt without replaying or exposing its token data."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_effect(name, request_id)
+
+    @server.tool()
+    def supersede_connection_oauth(
+        name: str,
+        expected_revision: int,
+        unknown_effect_ids: list[str],
+        reason: str,
+        acknowledge_unknown: bool,
+        provider: str,
+        client_id: str,
+        client_secret_file: str | None = None,
+        public_client: bool | None = None,
+        project_id: str | None = None,
+        authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
+    ) -> dict[str, Any]:
+        """Explicitly acknowledge exact unknown effects and admit a new registration as admin.
+
+        Old effects remain unknown. This does not replay them or complete browser consent.
+        """
+        from pathlib import Path
+
+        from firefly_forge.cli import client, private_secret_file
+
+        registration: dict[str, Any] = {
+            "provider": provider,
+            "client_id": client_id,
+            "public_client": public_client,
+            "project_id": project_id,
+            "authentication": authentication,
+        }
+        if client_secret_file:
+            registration["client_secret"] = private_secret_file(Path(client_secret_file))
+        with client() as connection:
+            return connection.supersede_connection_oauth(
+                name,
+                {
+                    "expected_revision": expected_revision,
+                    "unknown_effect_ids": unknown_effect_ids,
+                    "reason": reason,
+                    "acknowledge_unknown": acknowledge_unknown,
+                    "registration": registration,
+                },
+            )
+
+    @server.tool()
+    def configure_connection_oauth(
+        name: str,
+        provider: str,
+        client_id: str,
+        client_secret_file: str | None = None,
+        public_client: bool | None = None,
+        project_id: str | None = None,
+        authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
+    ) -> dict[str, Any]:
+        """Configure an admitted provider as admin; use an owner-private secret file.
+
+        Configuration does not complete browser consent or approve agent tool access.
+        Endpoint, issuer, resource and scope URLs are not accepted as tool arguments.
+        """
+        from pathlib import Path
+
+        from firefly_forge.cli import client, private_secret_file
+
+        request: dict[str, Any] = {
+            "provider": provider,
+            "client_id": client_id,
+            "public_client": public_client,
+            "project_id": project_id,
+            "authentication": authentication,
+        }
+        if client_secret_file:
+            request["client_secret"] = private_secret_file(Path(client_secret_file))
+        with client() as connection:
+            return connection.configure_connection_oauth(name, request)
+
+    @server.tool()
+    def prepare_connection_oauth(name: str) -> dict[str, Any]:
+        """Prepare a short-lived link for the actor's authenticated factory browser.
+
+        Tools cannot exchange authorization codes or complete a user's consent.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.prepare_connection_oauth(name)
+
+    @server.tool()
+    def refresh_connection_oauth(name: str, request_id: str) -> dict[str, Any]:
+        """Request one recorded refresh; reuse its request ID and never retry unknown rotation."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.refresh_connection_oauth(name, request_id)
+
+    @server.tool()
+    def disconnect_connection_oauth(name: str) -> dict[str, Any]:
+        """Revoke local connection access immediately; remote revocation is separate."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.disconnect_connection_oauth(name)
+
+    @server.tool()
     def configure_external_mcp(
         connector: str, enabled: bool = False, api_key_file: str | None = None, clear_secret: bool = False
     ) -> dict[str, Any]:
@@ -832,6 +993,18 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.configure_external_mcp(
                 connector, {"enabled": enabled, "api_key": key, "clear_secret": clear_secret}
+            )
+
+    @server.tool()
+    def link_external_mcp_oauth(
+        connector: str, connection_name: str, project_id: str, enabled: bool = True
+    ) -> dict[str, Any]:
+        """Link a currently authorized project connection; schema review and tool grants remain explicit."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.link_external_mcp_oauth(
+                connector, {"connection_name": connection_name, "project_id": project_id, "enabled": enabled}
             )
 
     @server.tool()

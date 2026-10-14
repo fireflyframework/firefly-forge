@@ -22,7 +22,7 @@ The factory itself uses [pyfly](https://fireflyframework.org/frameworks/python/)
 <figcaption>The same services support a combined process and split admission/execution. Read the arrows as responsibility boundaries; coding providers, Git and knowledge services produce effects outside a database transaction.</figcaption>
 </figure>
 
-`create_runtime()` constructs the native `PyFlyApplication`, registers `ForgeBeans` and the typed controllers/repositories, then lets the container inject their dependencies. `create_application()` adds the Starlette adapter, request limits, trusted-host middleware and Studio's static build. The worker uses the runtime without an HTTP listener.
+`create_runtime()` constructs the native `PyFlyApplication`, registers `FactoryConfiguration` and the typed controllers/repositories, then resolves their registered dependencies through the container. Domain services also retain explicit collaborators and test seams; this does not establish that every construction path is container-owned. `create_application()` adds the Starlette adapter, request limits, trusted-host middleware and Studio's static build. The worker uses the runtime without an HTTP listener.
 
 | Layer | Concrete implementation | Contract |
 | --- | --- | --- |
@@ -35,7 +35,36 @@ The factory itself uses [pyfly](https://fireflyframework.org/frameworks/python/)
 
 Lifecycle ordering initializes `Store` before topology and execution consumers. The engine acquires ownership before recovering retained work. Worker supervision watches coding, delivery, deployment, campaign, channel and application-observation consumers. A stopped required consumer degrades execution readiness; shutdown closes dispatch and drains effects before releasing ownership. See [runtime roles](runtime-roles.md).
 
-Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`ForgeBeans`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
+### Native knowledge services
+
+`FactoryConfiguration.knowledge_connection()` injects the private `ConfigurationStore` into `KnowledgeConnection`. `knowledge_manager()` injects `Store`, `Engine`, `Journal`, that connection and `KnowledgeFirst`; it connects the same manager to execution and native knowledge-first tools. `KnowledgeController` uses typed pyfly mappings for configuration, authentication tests, scoped search, source indexing and verified memory. `KnowledgeUploads` has its own injected repository for retained source-upload evidence.
+
+The connection owns authenticated SDK transport and TLS trust. The manager chooses the frozen connection revision, confines repository scope and handles source/canonical receipts. `KnowledgeFirst` combines those cited references with eligible PostgreSQL procedure outcomes before considering configured web search. It cannot treat a search hit as an approved procedure.
+
+Flycanon's server runs in a separate environment, with its own migration and ingestion worker. Installing the Python SDK into forge supplies the client; the managed server image installs the released server independently. No flyquery bean, controller, client dependency or analytics worker is registered in this runtime.
+
+Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`FactoryConfiguration`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
+
+### Connection OAuth and resource custody
+
+`FactoryConfiguration` registers `OAuthProviderPolicies`, `ConnectionOAuth`, `OAuthResources` and the external MCP registry as separate native beans. Policy admission fixes the issuer, endpoints, resource and scope. The connection service binds client registration and browser attempts to the current actor and immutable revision; it uses public pyfly OAuth client and PKCE APIs. PostgreSQL stores encrypted credentials, grant families, effects and append-only events.
+
+`OAuthResources` signs a project/resource binding and rechecks current policy, registration, grant family/revision, expiry and project authority before dispatch. A schema review and exact repository/tool grant remain mandatory. Current authorization also protects cached broker receipts: a completed result cannot bypass a withdrawn policy or revoked grant.
+
+<figure class="forge-shot forge-architecture-diagram" markdown="1">
+<picture>
+  <source media="(max-width: 640px)" srcset="../diagrams/architecture-oauth-narrow.svg">
+  <img src="../diagrams/architecture-oauth.svg" alt="Admit a fixed service, retain client registration, authorize in the browser, record token effects, bind the exact project resource, and review schemas and tool grants before broker dispatch.">
+</picture>
+
+[Open full diagram](diagrams/architecture-oauth.svg) · [Portrait layout](diagrams/architecture-oauth-narrow.svg)
+
+<figcaption>Consent retains an account grant. Current resource custody, exact schemas and project tool admission remain separate checks.</figcaption>
+</figure>
+
+The implemented local service is administrator-only and requires explicit development flags, literal loopback addresses and different factory/provider hosts. The native browser qualification used IPv4 for forge and IPv6 for the owned stock pyfly service. GitHub, Figma, Sentry, Grafana and external Playwright OAuth retain their provider prerequisites. [Connected accounts](connected-accounts.md) explains the actual wizard, typed API and separate MCP admission steps.
+
+Source: [`oauth_provider_policies.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/oauth_provider_policies.py), [`connection_oauth.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/connection_oauth.py), [`oauth_resources.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/oauth_resources.py), [`mcp_registry.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/mcp_registry.py).
 
 ## PostgreSQL records and transaction boundaries
 
@@ -219,7 +248,7 @@ Pinned community skills are instruction adaptations with retained source, hash a
 | Official Codex / Claude Code | The official CLI's native tools and permission controls | A Python role tool list is advisory; it is not the CLI sandbox. |
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 96 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 108 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 
@@ -230,6 +259,12 @@ Source: [`agent_roles.py`](https://github.com/fireflyframework/firefly-forge/blo
 ## Learning and structured knowledge decisions
 
 The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The initial implementation adds scoped PostgreSQL records, native knowledge-first tools and explicit one-shot flycanon projection. Automatic retrieval from projected learning namespaces, classified negative repair controls and sharing between projects remain open; their contracts do not establish runtime acceptance.
+
+### Structured analytics boundary
+
+The optional [flyquery](https://github.com/fireflyframework/flyquery) architecture would query explicit, versioned project snapshots through an independently authorized service. It would never receive a direct connection to the factory ledger, retained private directory or flycanon database. Query results remain untrusted analytical evidence; factory records and cited canonical memory retain their existing authority.
+
+The [structured analytics design](structured-knowledge.md) records the assessed pipeline, known execution gaps, proposed native service boundaries and required authorization, snapshot and write-ahead checks. This release has no forge adapter or managed flyquery deployment.
 
 ## Runner ownership, collection and takeover
 

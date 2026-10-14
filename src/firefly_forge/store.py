@@ -8,8 +8,8 @@ import copy
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -38,6 +38,7 @@ from firefly_forge.persistence import (
     ForgeRunRepository,
 )
 from firefly_forge.policies import PolicyCatalog
+from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
 from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
@@ -78,12 +79,15 @@ class Store:
         event_records: ForgeEventRepository | None = None,
         deployment_records: ForgeDeploymentRepository | None = None,
         product_records: ForgeProductDefinitionRepository | None = None,
+        campaign_records: ForgeCampaignRepository | None = None,
+        campaign_children: ForgeCampaignChildRepository | None = None,
     ) -> None:
         self.path = path or Path(os.environ.get("FORGE_DATA_DIR", ".forge")) / "factory.db"
         self.configuration = ConfigurationStore(self.path.parent)
         self.policies = PolicyCatalog(self.path.parent)
         self.roles = RoleRegistry(self.path.parent)
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
         self.task_router: Any = None
         self.runtime_roles: Any = None
         self.execution_requests: Any = None
@@ -107,6 +111,8 @@ class Store:
         self.event_records = event_records or ForgeEventRepository()
         self.deployment_records = deployment_records or ForgeDeploymentRepository()
         self.product_records = product_records or ForgeProductDefinitionRepository()
+        self.campaign_records = campaign_records or ForgeCampaignRepository()
+        self.campaign_children = campaign_children or ForgeCampaignChildRepository()
 
     async def start(self) -> None:
         await self.initialize()
@@ -219,13 +225,14 @@ class Store:
             await connection.close()
 
     @asynccontextmanager
-    async def _unit(self) -> AsyncIterator[AsyncSession]:
+    async def _unit(self, *, autoflush: bool = True) -> AsyncIterator[AsyncSession]:
         if not self._initialized or self.session_provider is None:
             raise RuntimeError("Await Store.initialize() before accessing the ledger")
         async with self.session_provider.unit() as session:
-            await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
-            await session.execute(text("SET LOCAL synchronous_commit TO on"))
-            yield session
+            with nullcontext() if autoflush else session.no_autoflush:
+                await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                await session.execute(text("SET LOCAL synchronous_commit TO on"))
+                yield session
 
     async def add_repository(self, request: RepositoryInput) -> Data:
         data = {**request.model_dump(), "id": uuid.uuid4().hex, "created_at": now()}
@@ -296,7 +303,7 @@ class Store:
             await ProjectAccess(self).require_project(
                 actor, request.project_id, "release" if request.publish else "execute"
             )
-        self.reject_credentials(request.model_dump())
+        await self.admit_credentials(request.model_dump())
         runner = (
             prepared_runner
             if prepared_runner is not None
@@ -410,7 +417,7 @@ class Store:
                     "The product brand revision changed while freezing its reviewed design; retry admission"
                 )
             role_snapshot = self.roles.snapshot(role_selection, snapshot, tool_catalog=tools)
-            self.reject_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
+            await self.admit_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
             review_configuration = (
                 {
                     "config_revision": review_selection["config_revision"],
@@ -480,13 +487,31 @@ class Store:
                 "Do not place configured credentials in product briefs, definitions or worker instructions"
             )
 
+    async def admit_credentials(self, value: Any) -> None:
+        if self.vault_credential_admission is not None:
+            await self.vault_credential_admission(value)
+        else:
+            from sqlalchemy import select
+
+            from firefly_forge.connection_oauth_persistence import (
+                OAuthCredentialEvidenceEntity,
+                OAuthGrantEntity,
+                OAuthRegistrationEntity,
+            )
+
+            async with self._unit(autoflush=False) as session:
+                for entity in (OAuthCredentialEvidenceEntity, OAuthGrantEntity, OAuthRegistrationEntity):
+                    if await session.scalar(select(entity.id).limit(1)) is not None:
+                        raise ValueError("OAuth credential admission service is unavailable")
+        self.reject_credentials(value)
+
     async def repository_roles(self, value: str) -> Data:
         repo = await self.repository(value)
         return {"roles": repo.get("roles"), "inherited": "roles" not in repo}
 
     async def set_repository_roles(self, value: str, request: ProjectRoles) -> Data:
         self.roles.snapshot(request, self.policies.selection())
-        self.reject_credentials(request.model_dump())
+        await self.admit_credentials(request.model_dump())
         async with self._unit():
             row = await self.repository_records.find_by_id(identifier(value), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None:
@@ -556,18 +581,16 @@ class Store:
             return True
 
     async def assert_campaign_current(self, run: Data, *, action_id: str | None = None) -> None:
-        from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
-
         context = run.get("campaign_context") or {}
         if not context.get("campaign_id"):
             return
-        header = await ForgeCampaignRepository().find_by_id(
+        header = await self.campaign_records.find_by_id(
             identifier(context["campaign_id"]),
             lock=LockMode.PESSIMISTIC_WRITE,
         )
         if header is None or header.data["current_attempts"].get(context["component_id"]) != context["attempt"]:
             raise ValueError("This component attempt is no longer current in its project campaign")
-        children = await ForgeCampaignChildRepository().children(header.id)
+        children = await self.campaign_children.children(header.id)
         if not any(
             child.run_id.hex == run["id"]
             and child.component_id == context["component_id"]

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "copyright": "Copyright 2026 Firefly Software Foundation",
+  "license": "Apache-2.0",
+  "software_version": "0.2.4",
+  "capture_scope": "Four source-bound actual Studio captures from an isolated API-only factory and owned stock public pyfly authorization/MCP service; synthetic project and repository data.",
+  "backend_commit": "52fec10e96396de2281445bc3f9a9382bd302bdd",
+  "backend_tree": "a910d97dca102fe4f6e78efedc8d92194ffcc29b",
+  "studio_commit": "52fec10e96396de2281445bc3f9a9382bd302bdd",
+  "pyfly_distribution": "26.10.3",
+  "factory_transport": "actual IPv4 TCP uvicorn",
+  "provider_transport": "actual IPv6 TCP uvicorn, stock public pyfly authorization server and MCP server",
+  "functional_qualification": "PASS",
+  "security_cookie_boundary": "PASS",
+  "public_evidence_secret_scan": true,
+  "wal_chain_verified": true,
+  "cached_receipt_replay_prevented": true,
+  "withdrawn_policy_cached_receipt_denied": true,
+  "capture_count": 4,
+  "source_hash_count": 245,
+  "source_hash_manifest_sha256": "87aab748a7560c505af3fee437967eb581a4542886ff43a0e061075323a2f9c3",
+  "capture_identities": [
+    {
+      "path": "client-desktop-light.png",
+      "source_capture": "client-registration-1440-light.png",
+      "sha256": "091bec3188ec5ffd0130083c19944ad5d6fa36cda60f4e68b620f68e7cc7f64a"
+    },
+    {
+      "path": "client-mobile-light.png",
+      "source_capture": "client-registration-390-light.png",
+      "sha256": "70e00c3fbace0d7c6554cf8550cec9c33522a1e3561026cdad3b64bde1ce9ff7"
+    },
+    {
+      "path": "guide-desktop-dark.png",
+      "source_capture": "client-registration-guide-scrolled-1200-dark.png",
+      "sha256": "e0dc9c0fbf95d8de27432a394212276d661bf34963934561487392d1777c8d07"
+    },
+    {
+      "path": "state-desktop-dark.png",
+      "source_capture": "connection-state-1440-dark.png",
+      "sha256": "b330bf8b6212fb3b0b6f6cde7c45aceac3a1a8e36e82b07e8533a4646ea89096"
+    }
+  ],
+  "qualification_receipt_sha256": "6a864aa8ddaf84406db5b0402074a2b5ca33cabdf7472ab27b256a00c984ed5c",
+  "cloud_deployments": 0,
+  "external_provider_calls": 0,
+  "qualification_scope": "Local bootstrap and owned services; Studio consent forms are distinct from native API MCP setup and in-process broker resource dispatch. Vendor accounts, production federation and complete factory acceptance require separate evidence."
+}

@@ -5,7 +5,27 @@ description: Configure required flycanon retrieval, inspect citations and retain
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-Flycanon is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+
+## Service responsibilities
+
+| Service | Responsibility | Authority |
+| --- | --- | --- |
+| forge PostgreSQL and journal | Run admission, project permissions, verified source/check evidence and learning eligibility | Current factory records authorize work and retain observed outcomes. |
+| flycanon | Cited framework manuals, admitted project documents and canonical versions of verified memory | Source/chunk/version receipts establish provenance within the selected workspace. |
+| flyquery, assessed optional integration | Questions over explicit structured snapshots, such as check durations or procedure outcomes | No forge adapter, managed service or configuration screen is implemented. |
+
+A structured query result cannot change a run's status, approve source, satisfy a delivery gate or create verified memory. [Structured analytics architecture](structured-knowledge.md) defines the proposed flyquery boundary and its admission prerequisites. Keep flycanon required for the managed factory.
+
+## Set up knowledge from a fresh installation
+
+1. Complete [installation and identity setup](installation.md#run-the-complete-local-stack), then start the supplied Compose stack. Bootstrap, database migration, model download and framework initialization have separate outcomes.
+2. Check that `knowledge-initialize` completed successfully. It verifies embedding-backed retrieval; Flycanon's version health check alone cannot establish this.
+3. Sign in to Studio and open **Knowledge**. Review the saved address, tenant, shared framework workspace, required retrieval and automatic memory settings.
+4. Select **Check knowledge access**, then choose the registered repository under **Try a project search**. Inspect the expected framework or project citation, including its workspace and source identity.
+5. Run a small project with executable acceptance checks. Inspect its source/checkpoint evidence, index an explicit verified path when needed, then retrieve its saved memory from the same repository scope.
+
+Studio's Knowledge setup is a settings form followed by an authentication check, project search and source explorer. **Save knowledge settings** retains configuration; **Check knowledge access** tests platform authentication. Neither button installs a server or downloads an embedding model. The private CA is configured through the API; the current form has no CA input. There is no flyquery setup wizard.
 
 ## Structured learning evidence
 

@@ -4,6 +4,8 @@ description: Configure OIDC sign-in and durable server sessions, then enforce cu
 
 # Sign-in and server identity
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 firefly forge authenticates people through Keycloak using an authorization code and PKCE. The browser receives an opaque session cookie. ID tokens, access tokens and refresh tokens stay on the server, encrypted in PostgreSQL.
 
 Authentication identifies the caller. Project memberships determine which products that caller can access. A new identity receives no project memberships automatically; a matching email address does not grant access.

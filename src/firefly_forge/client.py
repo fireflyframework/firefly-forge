@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
@@ -580,12 +581,80 @@ class ForgeClient:
     def external_mcp_catalog(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "tools/mcp"))
 
+    @staticmethod
+    def _oauth_name(name: str) -> str:
+        if name == "providers" or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
+            raise ValueError("Invalid OAuth connection name")
+        return name
+
+    def oauth_provider_policies(self) -> dict[str, Any]:
+        return dict(self.request("GET", "oauth-provider-policies"))
+
+    def configure_local_oauth_provider_policy(self, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.oauth_provider_policy_models import OAuthProviderPolicyInput
+
+        payload = OAuthProviderPolicyInput.model_validate(request).model_dump()
+        return dict(self.request("PUT", "oauth-provider-policies/local-repository-tools", json=payload))
+
+    def connection_oauth_providers(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "connection-oauth/providers"))
+
+    def connection_oauth_connections(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        if project_id is not None and not re.fullmatch(r"[a-f0-9]{32}", project_id):
+            raise ValueError("Select an exact project identifier")
+        return list(self.request("GET", "connection-oauth", params={"project_id": project_id} if project_id else {}))
+
+    def connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"connection-oauth/{self._oauth_name(name)}"))
+
+    def connection_oauth_effect(self, name: str, request_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[a-f0-9]{32}", request_id):
+            raise ValueError("Select an exact effect request identifier")
+        return dict(self.request("GET", f"connection-oauth/{self._oauth_name(name)}/effects/{request_id}"))
+
+    def supersede_connection_oauth(self, name: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_models import OAuthSupersedeInput
+
+        model = OAuthSupersedeInput.model_validate(request)
+        payload = model.model_dump(exclude={"registration": {"client_secret"}})
+        if model.registration.client_secret is not None:
+            payload["registration"]["client_secret"] = model.registration.client_secret.get_secret_value()
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/supersede", json=payload))
+
+    def configure_connection_oauth(self, name: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_models import OAuthConnectionInput
+
+        model = OAuthConnectionInput.model_validate(request)
+        payload = model.model_dump(exclude={"client_secret"})
+        if model.client_secret is not None:
+            payload["client_secret"] = model.client_secret.get_secret_value()
+        return dict(self.request("PUT", f"connection-oauth/{self._oauth_name(name)}", json=payload))
+
+    def prepare_connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/prepare"))
+
+    def refresh_connection_oauth(self, name: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_controllers import OAuthRefreshInput
+
+        body = OAuthRefreshInput(request_id=request_id)
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/refresh", json=body.model_dump()))
+
+    def disconnect_connection_oauth(self, name: str) -> dict[str, Any]:
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/disconnect"))
+
     def configure_external_mcp(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.mcp_registry import MCPConnectionInput, _connector
 
         _connector(connector)
         model = MCPConnectionInput.model_validate(request)
         return dict(self.request("PUT", f"tools/mcp/{connector}", json=model.model_dump()))
+
+    def link_external_mcp_oauth(self, connector: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.mcp_registry import MCPOAuthConnectionInput, _connector
+
+        _connector(connector)
+        model = MCPOAuthConnectionInput.model_validate(request)
+        return dict(self.request("PUT", f"tools/mcp/{connector}/oauth", json=model.model_dump()))
 
     def discover_external_mcp(self, connector: str) -> dict[str, Any]:
         from firefly_forge.mcp_registry import _connector

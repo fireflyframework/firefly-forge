@@ -19,7 +19,7 @@ for (const width of [1440, 375])
         theme === "dark" ? "slate" : "default",
       );
       const figures = page.locator(".forge-architecture-diagram");
-      await expect(figures).toHaveCount(8);
+      await expect(figures).toHaveCount(9);
       for (const summary of await page
         .locator(".forge-gallery > summary")
         .all()) {
@@ -63,7 +63,7 @@ test("diagram text stays inside its canvas and does not overlap other labels", a
   const links = await page
     .locator(".forge-architecture-diagram a")
     .evaluateAll((nodes) => [...new Set(nodes.map((node) => node.href))]);
-  expect(links).toHaveLength(16);
+  expect(links).toHaveLength(18);
   for (const link of links) {
     await page.goto(link);
     const collisions = await page.evaluate(async () => {

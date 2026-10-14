@@ -4,6 +4,8 @@ description: Use repository conversations to define products, request changes an
 
 # Work from your repository
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 forge accepts trusted commands from GitHub issue and pull request comments, GitLab issue and merge request notes, and Bitbucket Cloud pull request comments. A command queues the same verified factory run used by Studio. Each run has its own workspace and branch, and retains the initiating receipt and issue identity.
 
 | Provider | Inbound verification | Supported conversations |

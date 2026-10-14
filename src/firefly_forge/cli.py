@@ -815,6 +815,181 @@ def external_mcp() -> None:
     """Review external tool connections and project grants as a factory administrator."""
 
 
+@main.group("connections")
+def connections() -> None:
+    """Manage external connection authorization in the factory control plane."""
+
+
+@connections.group("oauth")
+def connection_oauth() -> None:
+    """Prepare browser consent and inspect durable OAuth connection state."""
+
+
+@connection_oauth.command("policy-list")
+def oauth_policy_list() -> None:
+    """Read the current server-owned provider admission policy."""
+    with client() as connection:
+        display(connection.oauth_provider_policies())
+
+
+@connection_oauth.command("local-policy")
+@click.option("--origin", required=True)
+@click.option("--enable/--disable", default=True)
+@click.option("--expected-revision", type=click.IntRange(0, 2_147_483_646), required=True)
+@click.option("--request-id", required=True)
+def local_oauth_policy(origin: str, enable: bool, expected_revision: int, request_id: str) -> None:
+    """Admit the fixed local repository service under the server's development gates."""
+    with client() as connection:
+        display(
+            connection.configure_local_oauth_provider_policy(
+                {
+                    "enabled": enable,
+                    "local_origin": origin,
+                    "expected_revision": expected_revision,
+                    "request_id": request_id,
+                }
+            )
+        )
+
+
+@connection_oauth.command("providers")
+def connection_oauth_providers() -> None:
+    with client() as connection:
+        display(connection.connection_oauth_providers())
+
+
+@connection_oauth.command("show")
+@click.argument("name")
+def connection_oauth_show(name: str) -> None:
+    with client() as connection:
+        display(connection.connection_oauth(name))
+
+
+@connection_oauth.command("list")
+@click.option("--project-id")
+def connection_oauth_list(project_id: str | None) -> None:
+    """List the server-owned connection directory and available actions."""
+    with client() as connection:
+        display(connection.connection_oauth_connections(project_id))
+
+
+@connection_oauth.command("effect")
+@click.argument("name")
+@click.option("--request-id", required=True)
+def connection_oauth_effect(name: str, request_id: str) -> None:
+    """Observe one exact request receipt without repeating its provider call."""
+    with client() as connection:
+        display(connection.connection_oauth_effect(name, request_id))
+
+
+@connection_oauth.command("configure")
+@click.argument("name")
+@click.option("--provider", required=True)
+@click.option("--client-id", required=True)
+@click.option(
+    "--authentication", type=click.Choice(["client_secret_post", "client_secret_basic"]), default="client_secret_post"
+)
+@click.option("--project-id")
+@click.option("--public-client", is_flag=True, default=None)
+@click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def connection_oauth_configure(
+    name: str,
+    provider: str,
+    client_id: str,
+    authentication: str,
+    project_id: str | None,
+    public_client: bool | None,
+    client_secret_file: Path | None,
+) -> None:
+    request = {
+        "provider": provider,
+        "client_id": client_id,
+        "authentication": authentication,
+        "project_id": project_id,
+        "public_client": public_client,
+    }
+    if client_secret_file:
+        request["client_secret"] = private_secret_file(client_secret_file)
+    with client() as connection:
+        display(connection.configure_connection_oauth(name, request))
+
+
+@connection_oauth.command("supersede")
+@click.argument("name")
+@click.option("--expected-revision", type=click.IntRange(min=1), required=True)
+@click.option("--unknown-effect-id", multiple=True, required=True)
+@click.option("--reason", required=True)
+@click.option("--acknowledge-unknown", is_flag=True, required=True)
+@click.option("--provider", required=True)
+@click.option("--client-id", required=True)
+@click.option(
+    "--authentication", type=click.Choice(["client_secret_post", "client_secret_basic"]), default="client_secret_post"
+)
+@click.option("--project-id")
+@click.option("--public-client", is_flag=True, default=None)
+@click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def connection_oauth_supersede(
+    name: str,
+    expected_revision: int,
+    unknown_effect_id: tuple[str, ...],
+    reason: str,
+    acknowledge_unknown: bool,
+    provider: str,
+    client_id: str,
+    authentication: str,
+    project_id: str | None,
+    public_client: bool | None,
+    client_secret_file: Path | None,
+) -> None:
+    """Start a new admission while preserving the explicitly acknowledged unknown history."""
+    registration = {
+        "provider": provider,
+        "client_id": client_id,
+        "authentication": authentication,
+        "project_id": project_id,
+        "public_client": public_client,
+    }
+    if client_secret_file:
+        registration["client_secret"] = private_secret_file(client_secret_file)
+    with client() as connection:
+        display(
+            connection.supersede_connection_oauth(
+                name,
+                {
+                    "expected_revision": expected_revision,
+                    "unknown_effect_ids": list(unknown_effect_id),
+                    "reason": reason,
+                    "acknowledge_unknown": acknowledge_unknown,
+                    "registration": registration,
+                },
+            )
+        )
+
+
+@connection_oauth.command("prepare")
+@click.argument("name")
+def connection_oauth_prepare(name: str) -> None:
+    """Return a short-lived link to open in your authenticated factory browser."""
+    with client() as connection:
+        display(connection.prepare_connection_oauth(name))
+
+
+@connection_oauth.command("refresh")
+@click.argument("name")
+@click.option("--request-id", required=True)
+def connection_oauth_refresh(name: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.refresh_connection_oauth(name, request_id))
+
+
+@connection_oauth.command("disconnect")
+@click.argument("name")
+def connection_oauth_disconnect(name: str) -> None:
+    """Disconnect locally; remote provider revocation remains a separate action."""
+    with client() as connection:
+        display(connection.disconnect_connection_oauth(name))
+
+
 @external_mcp.command("catalog")
 def external_mcp_catalog() -> None:
     with client() as connection:
@@ -832,6 +1007,21 @@ def configure_external_mcp(connector: str, enable: bool, key_file: Path | None, 
         display(
             connection.configure_external_mcp(
                 connector, {"enabled": enable, "api_key": key, "clear_secret": clear_secret}
+            )
+        )
+
+
+@external_mcp.command("oauth")
+@click.argument("connector", type=click.Choice(["github", "local-repository-tools"]))
+@click.option("--connection", "connection_name", required=True)
+@click.option("--project-id", required=True)
+@click.option("--enable/--disable", default=True)
+def link_external_mcp_oauth(connector: str, connection_name: str, project_id: str, enable: bool) -> None:
+    """Link an already authorized native connection; no token is exported."""
+    with client() as connection:
+        display(
+            connection.link_external_mcp_oauth(
+                connector, {"connection_name": connection_name, "project_id": project_id, "enabled": enable}
             )
         )
 

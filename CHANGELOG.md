@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 ## 0.1.0 — 2026-10-11
 
 - Introduce the Firefly Forge software factory, PyFly control plane and web Studio.

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 
@@ -94,6 +95,7 @@ class AssistantTurnInput(BaseModel):
         return value
 
 
+@service
 class ProductAssistant:
     phase = CONSUMER_PHASE
 
@@ -104,6 +106,10 @@ class ProductAssistant:
         knowledge: Any = None,
         *,
         analysis_context: ReviewedAnalysisContext | None = None,
+        projects: Projects | None = None,
+        records: ForgeAssistantSessionRepository | None = None,
+        turns: ForgeAssistantTurnRepository | None = None,
+        events: ForgeAssistantEventRepository | None = None,
         designer: Designer = design_reply,
         credential_registry: Callable[[], dict[str, str]] = dict,
         attachments: Any = None,
@@ -111,10 +117,11 @@ class ProductAssistant:
     ) -> None:
         self.store, self.directory, self.knowledge, self.designer = store, directory, knowledge, designer
         self.analysis_context = analysis_context
+        self.projects = projects or Projects(store)
         self.records, self.turns, self.events = (
-            ForgeAssistantSessionRepository(),
-            ForgeAssistantTurnRepository(),
-            ForgeAssistantEventRepository(),
+            records or ForgeAssistantSessionRepository(),
+            turns or ForgeAssistantTurnRepository(),
+            events or ForgeAssistantEventRepository(),
         )
         self.active: set[str] = set()
         if not 15 <= lease_seconds <= 300:
@@ -293,7 +300,7 @@ class ProductAssistant:
             if selection
             else self.store.configuration.snapshot(selected_agent)
         )
-        project = await Projects(self.store).project(request.project_id) if request.project_id else None
+        project = await self.projects.project(request.project_id) if request.project_id else None
         if project and project["definition"]["product_repository_id"] != repository_id:
             raise ValueError("Use the logical project's product definition and design repository")
         analysis_snapshot = None
@@ -306,6 +313,7 @@ class ProductAssistant:
                 request.analysis_id,
                 AnalysisContextInput(digest=request.analysis_digest, component_ids=request.analysis_component_ids),
             )
+        await self.store.admit_credentials([project, analysis_snapshot])
         if self.contains_credential([project, analysis_snapshot], self.store.configuration.resolve(request.agent)):
             raise ValueError("Remove configured credentials from product context before starting a conversation")
         data: Data = {
@@ -499,6 +507,7 @@ class ProductAssistant:
             if session.get("model_selection")
             else self.store.configuration.load_snapshot(session["config_revision"])
         )
+        await self.store.admit_credentials(request.message)
         if self.contains_credential(request.message, settings):
             raise ValueError("Do not place configured credentials in a product conversation")
         async with self.store._unit():
@@ -586,6 +595,7 @@ class ProductAssistant:
                 "attachment_text": file_text,
                 "image_input_receipt": image_receipt,
             }
+            await self.store.admit_credentials(context)
             if self.contains_credential(context, settings):
                 raise ValueError("Remove configured credentials from the frozen product context before continuing")
             data: Data = {
@@ -652,6 +662,7 @@ class ProductAssistant:
                         "knowledge_snapshot": snapshot_knowledge(self.store.configuration),
                     }
                 )
+                await self.store.admit_credentials(evidence)
                 if self.contains_credential(evidence, settings):
                     raise ValueError("Retrieved context contains a configured credential; response withheld")
                 context["knowledge"] = evidence
@@ -680,6 +691,7 @@ class ProductAssistant:
                     await access.require_repository(actor, repository_id, "edit")
             if not await self._renew_claim(data["id"], 1):
                 raise AssistantClaimLost("Dialogue ownership expired; explicitly recover its retained receipt")
+            await self.store.admit_credentials(prompt)
             if images:
                 reply = await self.designer(prompt, settings, images=images, image_input_receipt=image_receipt)
             else:
@@ -703,6 +715,7 @@ class ProductAssistant:
             encoded = json.dumps(reply.model_dump(mode="json"), ensure_ascii=False)
             if len(encoded.encode()) > 100000:
                 raise ValueError("The product proposal exceeds 100 KB; request a narrower design scope")
+            await self.store.admit_credentials(reply.model_dump(mode="json"))
             if self.contains_credential(reply.model_dump(mode="json"), settings):
                 raise ValueError("The model response contains a configured credential; proposal withheld")
             await self._authorize_session(session, "edit")

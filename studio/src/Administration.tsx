@@ -19,6 +19,7 @@ export type AdministrationPage =
   | "workflow"
   | "collaboration"
   | "search"
+  | "browser-connections"
   | "external-tools";
 export function Administration({
   session,
@@ -32,6 +33,14 @@ export function Administration({
     session?.memberships.some((item) => item.permissions.includes("members")),
   );
   const cards = [
+    {
+      page: "browser-connections" as const,
+      icon: Globe,
+      title: "Connected accounts",
+      body: "Register a client, authorize an account in your browser, and manage its connection.",
+      allowed: administrator,
+      scope: "Factory administrator",
+    },
     {
       page: "access" as const,
       icon: ShieldCheck,

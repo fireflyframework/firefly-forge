@@ -4,6 +4,8 @@ description: Attach documents and images to product conversations and retain sou
 
 # Use files in an AI conversation
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Attach customer notes, integration contracts or a wireframe when discussing a product with the assistant. Files belong to the conversation where you upload them. Each model turn records the exact selected files and their hashes alongside its response.
 
 ## Upload, select and send

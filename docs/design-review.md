@@ -4,6 +4,8 @@ description: Review wireframes by customer journey and retain approved design re
 
 # Review customer journey wireframes
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Generate references before implementation so customers and developers can check each journey, its acceptance criteria, and the shared layout. forge renders a deterministic wireframe from the current product definition and project brand kit. The result is a review template, not an AI-generated finished product or proof of final visual acceptance.
 
 The product wizard shows every journey at desktop and mobile sizes in light and dark themes. Review all four frames for every screen before acknowledging the bundle. If the customer definition, reviewed architecture, or project brand changes, generate and review a new bundle.

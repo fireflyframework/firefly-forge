@@ -4,9 +4,11 @@ description: Check which tools a factory phase can use, prepare each provider's 
 
 # Prepare the tools your project needs
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 Start with the task, then enable the tools it needs. A product conversation, an implementation worker and an application health probe have different permissions. Adding a provider to the catalog does not authorize an account, grant a project or prove that a tool call worked.
 
-The native agent registry has twelve handlers. The factory's own MCP server has 96 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
+The native agent registry has twelve handlers. The factory's own MCP server has 108 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
 
 ## Follow the phase boundary
 
@@ -61,19 +63,13 @@ Signing in to forge identifies the operator. Authorizing a provider grants acces
 
 See [factory identity](identity.md) and [SCM application setup](scm.md) for the implemented flows. Direct coding-provider and Bridge configuration is separate from external MCP authorization.
 
-### Required external OAuth connection flow
+### Implemented connection OAuth foundation
 
-Providers that require OAuth need a complete control-plane connection flow before they can be enabled. This is an implementation requirement, not an available connection wizard contract in the current MCP adapter.
+**Connected accounts** provides the native administrator flow for service policy, client registration, browser consent, current state, refresh and local disconnect. The supported `local-repository-tools` policy requires explicit development settings and fixes the service paths and `repository:read` scope. Five vendor OAuth entries remain at their prerequisite state. Saving an account registration cannot enable an agent tool.
 
-1. **Register the approved application.** Admit the provider's issuer, authorization/token endpoints, protected resource, scopes and client ID. Keep any client secret write-only. The exact callback must belong to the configured forge origin; provider discovery must not grant permission to an arbitrary URL. A changed issuer, token host or client registration needs a newly admitted matching credential; an old client secret cannot be forwarded to that new host.
-2. **Authorize in the browser.** Bind an expiring, single-use PostgreSQL attempt to the current actor, browser and connection revision. Require S256 PKCE. A provider error, changed connection, mismatched issuer or consumed state must leave the connection unavailable.
-3. **Retain the grant privately.** Encrypt tokens server-side and validate the granted scopes, token type, expiry and resource binding according to the admitted provider contract. Login-session tokens must never be copied into the provider grant or project image.
-4. **Manage its lifetime.** Record refresh/rotation intents and outcomes under a shared database fence. A lost token response requires reauthorization or explicit reconciliation; rotating refresh tokens cannot be blindly replayed. Recheck current actor, project and tool authority, and make disconnect/revocation stop future calls.
-5. **Expose the same controls to clients.** The API, SDK, CLI, factory MCP and visual wizard must share readiness, authorization, reconnect and disconnect behavior. OAuth completion still needs exact schema review and the selected project/tool grant.
+The foundation uses public pyfly OAuth acquisition, refresh, resource/client-authentication and S256 PKCE APIs. Single-use PostgreSQL attempts bind the actor, browser and registration revision. Encrypted server-side grants retain their resource, scope, expiry and family. Exchange and refresh use retained effects and exact request receipts; unknown responses block replay. Current policy and project authority are checked again for resource calls and cached broker receipts.
 
-The foundation must reuse public pyfly OAuth acquisition and PKCE APIs, factory identity/current-access checks and PostgreSQL persistence. The pinned framework still needs a reviewed public refresh/resource/client-authentication extension before a general external OAuth flow can be claimed; private transport calls are not a supported substitute. It must preserve existing login/SCM flows and queued configuration revisions. It does not create vendor client approval, enable unsupported tools or register accounts automatically.
-
-The [MCP authorization specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) describes protected-resource metadata, authorization-server discovery and resource-bound access. [S256 PKCE](https://www.rfc-editor.org/rfc/rfc7636) and the [OAuth security best current practice](https://www.rfc-editor.org/rfc/rfc9700) inform the connection controls. Until this flow and the provider adapter are qualified, keep the affected connector at its prerequisite state.
+Follow the [connected-account guide](connected-accounts.md) for the actual wizard, development prerequisites and API/SDK/CLI/MCP contracts. An authorized account still needs the separate MCP link, explicit discovery, exact schema review, repository/tool grant and worker capability. The local adapter admits the four fixed repository-read tools. Vendor approval and scoped adapters remain separate requirements.
 
 ## GitHub
 

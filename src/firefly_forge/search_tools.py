@@ -9,7 +9,7 @@ import ipaddress
 import json
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -107,6 +107,7 @@ class SearchTools:
         self.lock = FileLock(str(directory / "search.lock"))
         self.client = client
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        self.credential_admission: Callable[[Any], Awaitable[None]] | None = None
 
     @staticmethod
     def _public(record: dict[str, Any]) -> dict[str, Any]:
@@ -214,6 +215,8 @@ class SearchTools:
             raise ValueError("Search query must contain 1..600 characters and at most 75 words")
         if type(max_results) is not int or not 1 <= max_results <= 10:
             raise ValueError("Search result count must be 1..10")
+        if self.credential_admission is not None:
+            await self.credential_admission([query, *domains])
         credentials = {**self.credential_registry(), **self.secrets()}
         if contains_known_credential([query, *domains], credentials):
             raise ValueError("Search queries cannot contain configured credentials")

@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.4
+
+Connected accounts now provides an administrator flow for the owned local repository service: admit its fixed policy, register a client and project, complete browser consent, inspect state, request refresh and disconnect locally. The native foundation uses public pyfly 26.10.3 OAuth client and S256 PKCE APIs. Different literal factory/provider hosts protect browser cookies; a same-host policy is rejected before provider contact. See [connected-account setup](connected-accounts.md).
+
+PostgreSQL retains encrypted registration/grant context, stable request identities and token-effect receipts. Unknown exchange or rotating-refresh responses block replay. Historical credential evidence reserves its bounded custody capacity before dispatch. Scoped resource use and cached tool receipts recheck current policy, grant family, expiry and project authority. Schema discovery, exact review, repository/tool grants and the worker capability remain separate admissions. The supported local adapter has four fixed repository-read tools; GitHub, Figma, Sentry, Grafana and external Playwright OAuth remain at their vendor prerequisites.
+
+Native runtime composition uses `FactoryConfiguration`, typed controllers/repositories and injected service collaborators. The [architecture guide](architecture.md) documents knowledge, OAuth resource custody, the ledger and write-ahead boundaries without claiming every domain construction path is container-owned. The Studio walkthrough retains 228 fixture captures tied to its exact frontend and package version. Native OAuth captures keep their own source identities and local qualification scope.
+
+The authoritative [flycanon](https://github.com/fireflyframework/flycanon) repository and the optional [flyquery](https://github.com/fireflyframework/flyquery) repository are now under `fireflyframework`. Forge's SDK and managed server installation use the canonical flycanon release URLs. Required flycanon retrieval and canonical verified memory remain implemented; [structured analytics](structured-knowledge.md) documents a proposed snapshot-based flyquery integration, its assessed safety gaps and admission checks. Forge has no flyquery adapter or managed service.
+
+The native local qualification exercised actual Studio forms, a stock public pyfly authorization/MCP service, token refresh, disconnect, scoped resource calls and retained WAL. MCP linking, discovery, review and project grants used native API requests; resource dispatch used the native in-process broker. This evidence does not establish hosted vendor accounts, production identity federation, paid models, cluster deployment or complete factory acceptance. Release packaging and exact-source CI have their own checks.
+
 ## 0.2.3
 
 Repository-scoped learning records retain their question, source tree, checks and review evidence in PostgreSQL. Native knowledge-first tools can reuse an exact eligible local outcome. Cached reuse holds a shared lock on the selected record and rechecks its policy, expiry and current execution authority before returning it. Explicit invalidation preserves the historical receipt. Submission to flycanon is a separate, single-dispatch action; uncertain submission requires observation rather than another write. Automatic retrieval from projected learning namespaces, classified repair controls and sharing between projects remain open. See [learning](learning.md).

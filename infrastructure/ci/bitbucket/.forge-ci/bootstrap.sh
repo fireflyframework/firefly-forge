@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 [ "$(uname -m)" = x86_64 ] || { echo 'Use a trusted Linux x86_64 CI runner'; exit 1; }
 sudo_cmd=()

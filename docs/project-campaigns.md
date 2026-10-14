@@ -4,6 +4,8 @@ description: Coordinate product components through a dependency graph, immutable
 
 # Deliver a product across components
 
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+
 A delivery campaign coordinates the configured components of one product project. It admits every child run together, then releases components as their dependencies finish. Different repositories can run in parallel; the factory keeps one active run per repository.
 
 Before launch, configure each component's source root, stack, dependency list and executable verification commands. Choose the coding provider and, when needed, a separate review provider. A campaign does not infer a customer's requirements or replace a reviewed product definition.
