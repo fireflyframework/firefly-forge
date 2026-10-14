@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.utilities.types import Image
+from mcp.types import ToolAnnotations
 from pydantic import WithJsonSchema
 
 from firefly_forge.assistant_attachments import AttachmentInput
@@ -22,6 +23,7 @@ from firefly_forge.tool_broker import ToolPolicyInput
 
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
+EligibleUserQuery = Annotated[str, WithJsonSchema({"type": "string", "minLength": 3, "maxLength": 120})]
 
 
 def create_server() -> MCPServer:
@@ -598,6 +600,54 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.agent_roles()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def get_agent_role_lifecycle() -> dict[str, Any]:
+        """Read the authenticated global role lifecycle and actual permission flags."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.agent_role_lifecycle()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def get_repository_agent_role_lifecycle(repository_id: str) -> dict[str, Any]:
+        """Read the lifecycle of a repository visible to the current caller."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.repository_role_lifecycle(repository_id)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def list_identity_users() -> list[dict[str, Any]]:
+        """Read the bounded registered-user directory; requires factory administrator authority."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.identity_users()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def find_project_eligible_users(project_id: str, query: EligibleUserQuery) -> list[dict[str, Any]]:
+        """Find enabled registered users using existing project membership-administration permission."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.project_eligible_users(project_id, query)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def get_identity_administration() -> dict[str, Any]:
+        """Read administrator-only identity readiness; no credentials or remote verification are inferred."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.identity_administration()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def list_identity_operations() -> list[dict[str, Any]]:
+        """Read administrator-only operation receipts, preserving unknown outcomes without replay."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.identity_operations()
 
     @server.tool()
     def save_agent_roles(document: dict[str, Any]) -> dict[str, Any]:

@@ -297,6 +297,37 @@ def list_projects() -> None:
         display(connection.projects())
 
 
+@project.command("eligible-users")
+@click.argument("identifier")
+@click.option("--query", required=True, help="Find an enabled registered user using 3 to 120 characters.")
+def find_project_eligible_users(identifier: str, query: str) -> None:
+    with client() as connection:
+        display(connection.project_eligible_users(identifier, query))
+
+
+@main.group()
+def identity() -> None:
+    """Read administrator-only identity catalogs and retained operation receipts."""
+
+
+@identity.command("users")
+def list_identity_users() -> None:
+    with client() as connection:
+        display(connection.identity_users())
+
+
+@identity.command("administration")
+def identity_administration() -> None:
+    with client() as connection:
+        display(connection.identity_administration())
+
+
+@identity.command("operations")
+def list_identity_operations() -> None:
+    with client() as connection:
+        display(connection.identity_operations())
+
+
 @project.command("save")
 @click.argument("definition", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--id", "project_id", default=None)
@@ -537,6 +568,19 @@ def roles() -> None:
 def get_roles() -> None:
     with client() as connection:
         display(connection.agent_roles())
+
+
+@roles.command("lifecycle")
+def get_role_lifecycle() -> None:
+    with client() as connection:
+        display(connection.agent_role_lifecycle())
+
+
+@roles.command("repository-lifecycle")
+@click.argument("repository_id")
+def get_repository_role_lifecycle(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.repository_role_lifecycle(repository_id))
 
 
 @roles.command("save")

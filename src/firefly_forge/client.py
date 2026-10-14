@@ -464,6 +464,27 @@ class ForgeClient:
     def agent_roles(self) -> dict[str, Any]:
         return dict(self.request("GET", "agent-roles"))
 
+    def agent_role_lifecycle(self) -> dict[str, Any]:
+        return dict(self.request("GET", "agent-roles/lifecycle"))
+
+    def repository_role_lifecycle(self, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"repositories/{self._id(repository_id)}/agent-roles/lifecycle"))
+
+    def identity_users(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "identity/users"))
+
+    def project_eligible_users(self, project_id: str, query: str) -> list[dict[str, Any]]:
+        query = query.strip()
+        if not 3 <= len(query) <= 120:
+            raise ValueError("Enter between 3 and 120 characters to find a registered user")
+        return list(self.request("GET", f"projects/{self._id(project_id)}/eligible-users", params={"query": query}))
+
+    def identity_administration(self) -> dict[str, Any]:
+        return dict(self.request("GET", "identity/administration"))
+
+    def identity_operations(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "identity/operations"))
+
     def save_agent_roles(self, document: RoleDocument | dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.agent_roles import RoleDocument
 
