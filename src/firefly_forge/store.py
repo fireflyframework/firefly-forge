@@ -38,6 +38,7 @@ from firefly_forge.persistence import (
     ForgeRunRepository,
 )
 from firefly_forge.policies import PolicyCatalog
+from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
 from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
@@ -78,6 +79,8 @@ class Store:
         event_records: ForgeEventRepository | None = None,
         deployment_records: ForgeDeploymentRepository | None = None,
         product_records: ForgeProductDefinitionRepository | None = None,
+        campaign_records: ForgeCampaignRepository | None = None,
+        campaign_children: ForgeCampaignChildRepository | None = None,
     ) -> None:
         self.path = path or Path(os.environ.get("FORGE_DATA_DIR", ".forge")) / "factory.db"
         self.configuration = ConfigurationStore(self.path.parent)
@@ -108,6 +111,8 @@ class Store:
         self.event_records = event_records or ForgeEventRepository()
         self.deployment_records = deployment_records or ForgeDeploymentRepository()
         self.product_records = product_records or ForgeProductDefinitionRepository()
+        self.campaign_records = campaign_records or ForgeCampaignRepository()
+        self.campaign_children = campaign_children or ForgeCampaignChildRepository()
 
     async def start(self) -> None:
         await self.initialize()
@@ -576,18 +581,16 @@ class Store:
             return True
 
     async def assert_campaign_current(self, run: Data, *, action_id: str | None = None) -> None:
-        from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
-
         context = run.get("campaign_context") or {}
         if not context.get("campaign_id"):
             return
-        header = await ForgeCampaignRepository().find_by_id(
+        header = await self.campaign_records.find_by_id(
             identifier(context["campaign_id"]),
             lock=LockMode.PESSIMISTIC_WRITE,
         )
         if header is None or header.data["current_attempts"].get(context["component_id"]) != context["attempt"]:
             raise ValueError("This component attempt is no longer current in its project campaign")
-        children = await ForgeCampaignChildRepository().children(header.id)
+        children = await self.campaign_children.children(header.id)
         if not any(
             child.run_id.hex == run["id"]
             and child.component_id == context["component_id"]

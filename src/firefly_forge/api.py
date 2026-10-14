@@ -459,6 +459,8 @@ class FactoryConfiguration:
         event_records: ForgeEventRepository,
         deployment_records: ForgeDeploymentRepository,
         product_records: ForgeProductDefinitionRepository,
+        campaign_records: ForgeCampaignRepository,
+        campaign_children: ForgeCampaignChildRepository,
     ) -> Store:
         return Store(
             self.data_dir / "factory.db",
@@ -469,6 +471,8 @@ class FactoryConfiguration:
             event_records=event_records,
             deployment_records=deployment_records,
             product_records=product_records,
+            campaign_records=campaign_records,
+            campaign_children=campaign_children,
         )
 
     @bean
@@ -535,12 +539,16 @@ class FactoryConfiguration:
         return Assurance(store, self.data_dir / "reviews", journal)
 
     @bean
-    def product_projects(self, store: Store, records: ForgeProjectRepository) -> Projects:
-        return Projects(store, records)
+    def product_projects(
+        self, store: Store, records: ForgeProjectRepository, revisions: ForgeProjectRevisionRepository
+    ) -> Projects:
+        return Projects(store, records, revisions)
 
     @bean
-    def reverse_engineering(self, store: Store, projects: Projects, connections: SCMConnections) -> ReverseEngineering:
-        return ReverseEngineering(store, projects, self.data_dir / "analyses", connections)
+    def reverse_engineering(
+        self, store: Store, projects: Projects, connections: SCMConnections, records: ForgeAnalysisRepository
+    ) -> ReverseEngineering:
+        return ReverseEngineering(store, projects, self.data_dir / "analyses", connections, records=records)
 
     @bean
     def reviewed_analysis_context(
@@ -562,6 +570,10 @@ class FactoryConfiguration:
         engine: Engine,
         analysis_context: ReviewedAnalysisContext,
         attachments: AssistantAttachments,
+        projects: Projects,
+        records: ForgeAssistantSessionRepository,
+        turns: ForgeAssistantTurnRepository,
+        events: ForgeAssistantEventRepository,
     ) -> ProductAssistant:
         return ProductAssistant(
             store,
@@ -570,6 +582,10 @@ class FactoryConfiguration:
             analysis_context=analysis_context,
             credential_registry=lambda: engine.credential_registry(),
             attachments=attachments,
+            projects=projects,
+            records=records,
+            turns=turns,
+            events=events,
         )
 
     @bean
@@ -684,8 +700,12 @@ class FactoryConfiguration:
         records: ForgeCampaignRepository,
         children: ForgeCampaignChildRepository,
         events: ForgeCampaignEventRepository,
+        projects: Projects,
+        project_records: ForgeProjectRepository,
     ) -> ProjectCampaigns:
-        return ProjectCampaigns(store, engine, journal, records, children, events)
+        return ProjectCampaigns(
+            store, engine, journal, records, children, events, projects=projects, project_records=project_records
+        )
 
     @bean
     def provider_configuration(self, store: Store) -> ConfigurationStore:

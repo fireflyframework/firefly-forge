@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
 
 from firefly_forge.configuration import redact_secrets
@@ -39,10 +40,19 @@ class AnalysisReview(BaseModel):
     reviewed: Literal[True] = True
 
 
+@service
 class ReverseEngineering:
-    def __init__(self, store: Store, projects: Projects, directory: Path, connections: Any = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        projects: Projects,
+        directory: Path,
+        connections: Any = None,
+        *,
+        records: ForgeAnalysisRepository | None = None,
+    ) -> None:
         self.store, self.projects, self.directory, self.connections = store, projects, directory, connections
-        self.records = ForgeAnalysisRepository()
+        self.records = records or ForgeAnalysisRepository()
         self.active: set[str] = set()
 
     def safe(self, value: str) -> str:

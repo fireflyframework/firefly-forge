@@ -85,12 +85,16 @@ class ProjectCampaigns:
         events: ForgeCampaignEventRepository | None = None,
         *,
         source_resolver: SourceResolver | None = None,
+        projects: Projects | None = None,
+        project_records: ForgeProjectRepository | None = None,
     ) -> None:
         self.store, self.engine, self.journal = store, engine, journal
         self.records = records or ForgeCampaignRepository()
         self.children = children or ForgeCampaignChildRepository()
         self.events = events or ForgeCampaignEventRepository()
         self.source_resolver = source_resolver
+        self.projects = projects or Projects(store)
+        self.project_records = project_records or ForgeProjectRepository()
         self.poller: asyncio.Task[None] | None = None
         self.last_error: str | None = None
 
@@ -230,7 +234,7 @@ class ProjectCampaigns:
                 if existing.data["request_digest"] != request_digest:
                     raise ValueError("Campaign request identity already has another launch definition")
                 return await self.campaign(project_id, existing.id.hex)
-        project = await Projects(self.store).project(project_id)
+        project = await self.projects.project(project_id)
         definition = ProjectDefinition.model_validate(project["definition"])
         selected = self._scope(definition, request.component_ids)
         repositories = {item.repository_id for item in definition.components if item.id in selected}
@@ -263,7 +267,7 @@ class ProjectCampaigns:
                 if existing.data["request_digest"] != request_digest:
                     raise ValueError("Campaign request identity already has another launch definition")
                 return await self.campaign(project_id, existing.id.hex)
-            current = await ForgeProjectRepository().find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
+            current = await self.project_records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
             if current is None or current.data["digest"] != project["digest"]:
                 raise ValueError("The project changed during campaign admission; launch again with a new request")
             for repo_id in sorted(repositories | {str(definition.product_repository_id)}):
@@ -366,7 +370,7 @@ class ProjectCampaigns:
             return await self.campaign(project_id, row.id.hex)
 
     async def campaigns(self, project_id: str) -> list[Data]:
-        await Projects(self.store).project(project_id)
+        await self.projects.project(project_id)
         async with self.store._unit():
             return [
                 await self.campaign(project_id, row.id.hex) for row in await self.records.latest(identifier(project_id))

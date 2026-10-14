@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 
@@ -94,6 +95,7 @@ class AssistantTurnInput(BaseModel):
         return value
 
 
+@service
 class ProductAssistant:
     phase = CONSUMER_PHASE
 
@@ -104,6 +106,10 @@ class ProductAssistant:
         knowledge: Any = None,
         *,
         analysis_context: ReviewedAnalysisContext | None = None,
+        projects: Projects | None = None,
+        records: ForgeAssistantSessionRepository | None = None,
+        turns: ForgeAssistantTurnRepository | None = None,
+        events: ForgeAssistantEventRepository | None = None,
         designer: Designer = design_reply,
         credential_registry: Callable[[], dict[str, str]] = dict,
         attachments: Any = None,
@@ -111,10 +117,11 @@ class ProductAssistant:
     ) -> None:
         self.store, self.directory, self.knowledge, self.designer = store, directory, knowledge, designer
         self.analysis_context = analysis_context
+        self.projects = projects or Projects(store)
         self.records, self.turns, self.events = (
-            ForgeAssistantSessionRepository(),
-            ForgeAssistantTurnRepository(),
-            ForgeAssistantEventRepository(),
+            records or ForgeAssistantSessionRepository(),
+            turns or ForgeAssistantTurnRepository(),
+            events or ForgeAssistantEventRepository(),
         )
         self.active: set[str] = set()
         if not 15 <= lease_seconds <= 300:
@@ -293,7 +300,7 @@ class ProductAssistant:
             if selection
             else self.store.configuration.snapshot(selected_agent)
         )
-        project = await Projects(self.store).project(request.project_id) if request.project_id else None
+        project = await self.projects.project(request.project_id) if request.project_id else None
         if project and project["definition"]["product_repository_id"] != repository_id:
             raise ValueError("Use the logical project's product definition and design repository")
         analysis_snapshot = None
