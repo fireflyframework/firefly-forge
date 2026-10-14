@@ -187,16 +187,31 @@ function ValueView({ value, depth }: { value: unknown; depth: number }) {
 export function EvidenceView({
   value,
   title,
+  kind,
   depth = 0,
   advanced = true,
   omitFields = [],
 }: {
   value: unknown;
   title?: string;
+  kind?: string;
   depth?: number;
   advanced?: boolean;
   omitFields?: string[];
 }) {
+  if (kind === "repair_proposal") {
+    title ??= "Repair proposal";
+    omitFields = [
+      ...omitFields,
+      "allowed",
+      "reason",
+      "context",
+      "source_tree",
+      "fingerprint",
+      "policy_digest",
+      "verification_receipt",
+    ];
+  }
   const record = asRecord(value);
   if (!record)
     return (

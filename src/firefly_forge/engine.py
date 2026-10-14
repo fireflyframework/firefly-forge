@@ -750,6 +750,8 @@ class Engine:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, repairs + 2):
+                if implementation_failures and self.journal:
+                    await self._repair_proposal(identifier, workspace, settings, attempt)
                 await self.store.admit_credentials(brief)
                 (await self.store.update(identifier, status="developing", attempt=attempt))
                 implementation = await self._begin_task(
@@ -861,6 +863,19 @@ class Engine:
                             "output": "Verification modified the source tree; validate the final source snapshot",
                         }
                     )
+                repair_context = None
+                if failures and final_tree == tree and self.journal:
+                    from firefly_forge.repair_proposals import verification_context
+
+                    repair_context = await verification_context(
+                        run,
+                        {
+                            "base_revision": base,
+                            "head": await checked(["git", "rev-parse", "HEAD"], workspace),
+                            "source_tree": tree,
+                        },
+                        workspace,
+                    )
                 halt = None
                 async with self.store._unit():
                     if failures:
@@ -881,6 +896,7 @@ class Engine:
                             "failed_checks": failures,
                             "source_tree": final_tree,
                             "implementation_round": attempt,
+                            "repair_context": repair_context,
                         },
                     )
                 active_key = None
@@ -1041,6 +1057,31 @@ class Engine:
             workspace, base, allow_unchanged=True, secrets=secrets, expected_head=head
         )
         return {"base_revision": base, "head": head, "source_tree": tree, "origin": origin, "changed_files": files}
+
+    async def _repair_proposal(
+        self, identifier: str, workspace: Path, secrets: dict[str, str], next_attempt: int
+    ) -> None:
+        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.repair_proposals import repair_proposal, verification_context
+
+        await self.assert_ownership()
+        if self.tool_broker and await self.tool_broker.unresolved(identifier):
+            raise ReconciliationRequired("A prior tool invocation needs reconciliation before implementation")
+        current = await self.store.get_run(identifier)
+        if current.get("cancel_request", {}).get("status") == "requested":
+            raise asyncio.CancelledError()
+        await ProjectAccess(self.store).authorize_execution(current)
+        source = await self._inspect_workspace(identifier, workspace, secrets)
+        observed = await verification_context(current, source, workspace)
+        assert self.journal is not None
+        try:
+            decision = await repair_proposal(
+                self.journal, identifier, observed, next_attempt, source_tree=source["source_tree"]
+            )
+        except ValueError as exc:
+            raise ReconciliationRequired(str(exc)) from exc
+        if not decision["allowed"]:
+            raise ValueError(decision["summary"])
 
     async def _begin_task(
         self,
