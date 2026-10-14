@@ -590,8 +590,27 @@ class ForgeClient:
     def connection_oauth_providers(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "connection-oauth/providers"))
 
+    def connection_oauth_connections(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        if project_id is not None and not re.fullmatch(r"[a-f0-9]{32}", project_id):
+            raise ValueError("Select an exact project identifier")
+        return list(self.request("GET", "connection-oauth", params={"project_id": project_id} if project_id else {}))
+
     def connection_oauth(self, name: str) -> dict[str, Any]:
         return dict(self.request("GET", f"connection-oauth/{self._oauth_name(name)}"))
+
+    def connection_oauth_effect(self, name: str, request_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[a-f0-9]{32}", request_id):
+            raise ValueError("Select an exact effect request identifier")
+        return dict(self.request("GET", f"connection-oauth/{self._oauth_name(name)}/effects/{request_id}"))
+
+    def supersede_connection_oauth(self, name: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.connection_oauth_models import OAuthSupersedeInput
+
+        model = OAuthSupersedeInput.model_validate(request)
+        payload = model.model_dump(exclude={"registration": {"client_secret"}})
+        if model.registration.client_secret is not None:
+            payload["registration"]["client_secret"] = model.registration.client_secret.get_secret_value()
+        return dict(self.request("POST", f"connection-oauth/{self._oauth_name(name)}/supersede", json=payload))
 
     def configure_connection_oauth(self, name: str, request: dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.connection_oauth_models import OAuthConnectionInput

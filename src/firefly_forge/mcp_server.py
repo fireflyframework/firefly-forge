@@ -833,6 +833,65 @@ def create_server() -> MCPServer:
             return connection.connection_oauth(name)
 
     @server.tool()
+    def list_connection_oauth(project_id: str | None = None) -> list[dict[str, Any]]:
+        """Read the current administrator's safe connection directory and server-owned actions."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_connections(project_id)
+
+    @server.tool()
+    def get_connection_oauth_effect(name: str, request_id: str) -> dict[str, Any]:
+        """Observe an exact OAuth request receipt without replaying or exposing its token data."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_effect(name, request_id)
+
+    @server.tool()
+    def supersede_connection_oauth(
+        name: str,
+        expected_revision: int,
+        unknown_effect_ids: list[str],
+        reason: str,
+        acknowledge_unknown: bool,
+        provider: str,
+        client_id: str,
+        client_secret_file: str | None = None,
+        public_client: bool | None = None,
+        project_id: str | None = None,
+        authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
+    ) -> dict[str, Any]:
+        """Explicitly acknowledge exact unknown effects and admit a new registration as admin.
+
+        Old effects remain unknown. This does not replay them or complete browser consent.
+        """
+        from pathlib import Path
+
+        from firefly_forge.cli import client, private_secret_file
+
+        registration: dict[str, Any] = {
+            "provider": provider,
+            "client_id": client_id,
+            "public_client": public_client,
+            "project_id": project_id,
+            "authentication": authentication,
+        }
+        if client_secret_file:
+            registration["client_secret"] = private_secret_file(Path(client_secret_file))
+        with client() as connection:
+            return connection.supersede_connection_oauth(
+                name,
+                {
+                    "expected_revision": expected_revision,
+                    "unknown_effect_ids": unknown_effect_ids,
+                    "reason": reason,
+                    "acknowledge_unknown": acknowledge_unknown,
+                    "registration": registration,
+                },
+            )
+
+    @server.tool()
     def configure_connection_oauth(
         name: str,
         provider: str,

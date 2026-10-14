@@ -15,7 +15,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from firefly_forge.connection_oauth import ConnectionOAuth
-from firefly_forge.connection_oauth_models import OAuthConnectionInput
+from firefly_forge.connection_oauth_models import (
+    OAuthConnectionInput,
+    OAuthConnectionSummary,
+    OAuthEffectReceipt,
+    OAuthSupersedeInput,
+)
 from firefly_forge.identity import SESSION_COOKIE, IdentityService, Principal
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 
@@ -34,7 +39,7 @@ class BrowserConsentRequired(AccessDenied):
 class ConnectionOAuthPrivacy(OncePerRequestFilter):
     async def do_filter(self, request: Request, call_next: CallNext) -> Response:
         response = cast(Response, await call_next(request))
-        if request.url.path.startswith("/api/v1/connection-oauth/"):
+        if request.url.path == "/api/v1/connection-oauth" or request.url.path.startswith("/api/v1/connection-oauth/"):
             # The native default header filter appends its general policy. Override
             # outside that filter so a browser cannot select its less strict value.
             response.headers["Referrer-Policy"] = "no-referrer"
@@ -83,13 +88,28 @@ class ConnectionOAuthController:
     def providers(self) -> list[dict[str, Any]]:
         return self.connections.providers()
 
+    @get_mapping("")
+    async def directory(self, project_id: QueryParam[str | None] = None) -> list[OAuthConnectionSummary]:
+        return [
+            OAuthConnectionSummary.model_validate(entry)
+            for entry in await self.connections.directory(self._actor(), project_id=project_id)
+        ]
+
     @get_mapping("/{name}")
-    async def summary(self, name: PathVar[str]) -> dict[str, Any]:
-        return await self.connections.summary(name, self._actor())
+    async def summary(self, name: PathVar[str]) -> OAuthConnectionSummary:
+        return OAuthConnectionSummary.model_validate(await self.connections.summary(name, self._actor()))
+
+    @get_mapping("/{name}/effects/{request_id}")
+    async def effect_receipt(self, name: PathVar[str], request_id: PathVar[str]) -> OAuthEffectReceipt:
+        return OAuthEffectReceipt.model_validate(await self.connections.effect_receipt(name, request_id, self._actor()))
 
     @put_mapping("/{name}")
     async def configure(self, name: PathVar[str], body: Body[OAuthConnectionInput]) -> dict[str, Any]:
         return await self.connections.configure(name, body, self._actor())
+
+    @post_mapping("/{name}/supersede")
+    async def supersede(self, name: PathVar[str], body: Body[OAuthSupersedeInput]) -> OAuthConnectionSummary:
+        return OAuthConnectionSummary.model_validate(await self.connections.supersede(name, body, self._actor()))
 
     @post_mapping("/{name}/prepare")
     async def prepare(self, name: PathVar[str]) -> dict[str, Any]:

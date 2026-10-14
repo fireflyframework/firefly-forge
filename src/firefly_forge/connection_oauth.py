@@ -9,7 +9,7 @@ import hmac
 import json
 import re
 import secrets
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -28,8 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from firefly_forge.connection_oauth_models import (
     OAuthChallenge,
     OAuthConnectionInput,
+    OAuthConnectionSummary,
     OAuthDisposition,
+    OAuthEffectReceipt,
+    OAuthEffectSummary,
     OAuthProvider,
+    OAuthSupersedeInput,
 )
 from firefly_forge.connection_oauth_persistence import (
     OAuthAttemptEntity,
@@ -409,24 +413,107 @@ class ConnectionOAuth:
             )
         )
 
-    async def _summary(self, session: AsyncSession, row: OAuthConnectionEntity) -> Data:
-        registration = await self._registration(session, row)
-        result = {
+    async def _effect_packets(
+        self, session: AsyncSession, row: OAuthConnectionEntity, *, ignore: UUID | None = None
+    ) -> list[Data]:
+        effects = list(
+            await session.scalars(
+                select(OAuthEffectEntity)
+                .where(
+                    OAuthEffectEntity.connection_id == row.id,
+                    OAuthEffectEntity.state.in_(("executing", "unknown")),
+                )
+                .order_by(OAuthEffectEntity.created_at, OAuthEffectEntity.id)
+                .limit(101)
+                .with_for_update()
+            )
+        )
+        if len(effects) > 100:
+            raise ValueError("Connection uncertainty exceeds its reviewed history bound")
+        at = await self._time(session)
+        return [
+            OAuthEffectSummary.model_validate(
+                {
+                    "id": effect.id.hex,
+                    "kind": effect.kind,
+                    "state": "unknown" if effect.state == "unknown" or effect.lease_expires_at <= at else "executing",
+                    "registration_revision": effect.data["registration_revision"],
+                    "lease_expired": effect.lease_expires_at <= at,
+                }
+            ).model_dump()
+            for effect in effects
+            if effect.id != ignore
+        ]
+
+    @staticmethod
+    def _effect_block(row: OAuthConnectionEntity, packets: list[Data]) -> str | None:
+        if any(packet["state"] == "executing" for packet in packets):
+            return "effect_executing"
+        if any(packet["registration_revision"] == row.revision for packet in packets):
+            return "effect_unknown_explicit_supersession_required"
+        return None
+
+    @staticmethod
+    def _summary_packet(row: OAuthConnectionEntity, data: Data, secret: str | None, effects: list[Data]) -> Data:
+        pending = [
+            packet
+            for packet in effects
+            if packet["registration_revision"] == row.revision or packet["state"] == "executing"
+        ]
+        archived = [packet for packet in effects if packet not in pending]
+        blocked = ConnectionOAuth._effect_block(row, effects)
+        state = "executing" if blocked == "effect_executing" else "unknown" if blocked else "none"
+        result: Data = {
             "name": row.name,
             "revision": row.revision,
-            "provider": registration.data["provider"],
-            "client_id": registration.data["client_id"],
-            "project_id": registration.data.get("project_id"),
+            "provider": data["provider"],
+            "client_id": data["client_id"],
+            "project_id": data.get("project_id"),
             "status": row.status,
-            "resource": registration.data["policy"]["resource"],
-            "scopes": registration.data["policy"]["scopes"],
+            "resource": data["policy"]["resource"],
+            "scopes": data["policy"]["scopes"],
             "agent_ready": False,
             "remote_revocation_supported": False,
+            "authentication": data["authentication"],
+            "public_client": not bool(secret),
+            "secret_configured": bool(secret),
+            "callback_uri": data["callback"],
+            "refresh_available": False,
+            "grant_expires_at": None,
+            "effect_state": state,
+            "unresolved_effects": pending,
+            "archived_unknown_effects": archived,
+            "reconciliation_required": bool(effects),
+            "allowed_actions": {
+                "configure": not blocked,
+                "authorize": not blocked and row.status != "disconnected",
+                "refresh": False,
+                "disconnect": row.status != "disconnected",
+                "supersede": state == "unknown",
+            },
         }
+        return result
+
+    async def _summary(
+        self, session: AsyncSession, row: OAuthConnectionEntity, actor: Principal, *, completing: UUID | None = None
+    ) -> Data:
+        registration = await self._registration(session, row)
+        secret = self._open(
+            registration.encrypted_secret, self._client_context(row.id, row.revision, registration.data)
+        ).get("secret")
+        effects = await self._effect_packets(session, row, ignore=completing)
+        blocked = self._effect_block(row, effects)
+        result = self._summary_packet(row, registration.data, secret, effects)
         grant = await self._grant(session, row)
         if grant is not None:
             result.update(family=grant.family, grant_revision=grant.revision, grant_status=grant.status)
-        return result
+            payload = self._open(grant.encrypted_data, self._grant_context(row, grant))
+            result["refresh_available"] = bool(payload.get("refresh_token"))
+            result["grant_expires_at"] = grant.expires_at.isoformat()
+            result["allowed_actions"]["refresh"] = (
+                not blocked and bool(payload.get("refresh_token")) and grant.actor_id == actor.id
+            )
+        return OAuthConnectionSummary.model_validate(result).model_dump()
 
     async def _grant(self, session: AsyncSession, row: OAuthConnectionEntity) -> OAuthGrantEntity | None:
         return await session.scalar(
@@ -466,7 +553,31 @@ class ConnectionOAuth:
             return "effect_unknown_reauthorization_required"
         return None
 
+    async def _admit_registration(self, packet: Data, secret: str | None) -> None:
+        await self.store.admit_credentials(packet)
+        if secret:
+            identifier = uuid4().hex
+            prospective = self.matcher.packet(identifier, "registration", identifier, 1, [secret])
+            if self.matcher.contains(packet, [prospective]):
+                raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
+
     async def configure(self, name: str, request: OAuthConnectionInput, actor: Principal) -> Data:
+        return await self._configure(name, request, actor, admission=self._admit_registration)
+
+    async def supersede(self, name: str, request: OAuthSupersedeInput, actor: Principal) -> Data:
+        return await self._configure(
+            name, request.registration, actor, recovery=request, admission=self._admit_registration
+        )
+
+    async def _configure(
+        self,
+        name: str,
+        request: OAuthConnectionInput,
+        actor: Principal,
+        *,
+        recovery: OAuthSupersedeInput | None = None,
+        admission: Callable[[Data, str | None], Awaitable[None]] | None = None,
+    ) -> Data:
         policy = self.catalog.get(request.provider)
         if policy is None or policy.prerequisite or not self.browser_origin:
             raise ValueError("Provider registration prerequisites are not satisfied")
@@ -485,8 +596,31 @@ class ConnectionOAuth:
             if request.project_id and await session.get(ForgeProjectEntity, UUID(request.project_id)) is None:
                 raise KeyError("Connection project not found")
             row = await self.records.named(name)
+            if recovery and row is None:
+                raise KeyError("Connection not found")
             previous = None
+            effects: list[Data] = []
+            unknown: set[str] = set()
             if row:
+                effects = await self._effect_packets(session, row)
+                blocked = self._effect_block(row, effects)
+                if recovery:
+                    if row.revision != recovery.expected_revision:
+                        raise ValueError("Connection revision changed; review its current uncertainty")
+                    unknown = {
+                        packet["id"]
+                        for packet in effects
+                        if packet["state"] == "unknown" and packet["registration_revision"] == row.revision
+                    }
+                    if blocked == "effect_executing" or not unknown or set(recovery.unknown_effect_ids) != unknown:
+                        raise ValueError(
+                            "Select the exact current unknown effects; active effects cannot be superseded"
+                        )
+                    if recovery.registration.client_secret is None and not recovery.registration.public_client:
+                        raise ValueError("A new admission requires an explicit secret choice")
+                    await self.store.admit_credentials(recovery.reason)
+                elif blocked:
+                    raise OAuthDisposition(blocked)
                 previous = await session.scalar(
                     select(OAuthRegistrationEntity).where(
                         OAuthRegistrationEntity.connection_id == row.id,
@@ -497,13 +631,49 @@ class ConnectionOAuth:
             if previous and previous.data != data and not explicit:
                 raise ValueError("A changed registration requires an explicit secret choice")
             if previous and previous.data == data and not explicit:
-                return await self._summary(session, cast(OAuthConnectionEntity, row))
+                result = await self._summary(session, cast(OAuthConnectionEntity, row), actor)
+                if admission:
+                    await admission(result, None)
+                return result
             if previous is None and not explicit:
                 raise ValueError("A new registration requires an explicit secret choice")
             secret = request.client_secret.get_secret_value() if request.client_secret else None
-            self._remember({"secret": secret})
             if request.authentication == "client_secret_basic" and not secret:
                 raise ValueError("Basic authentication requires a confidential client secret")
+            if admission:
+                prospective = OAuthConnectionEntity(
+                    id=row.id if row else uuid4(),
+                    name=name,
+                    revision=row.revision + 1 if row else 1,
+                    status="authorization_required",
+                )
+                packet = self._summary_packet(prospective, data, secret, effects)
+                await admission(
+                    {
+                        "summary": OAuthConnectionSummary.model_validate(packet).model_dump(),
+                        "registration": data,
+                        "recovery_reason": recovery.reason if recovery else None,
+                    },
+                    secret,
+                )
+            if recovery:
+                assert row is not None
+                for effect_id in unknown:
+                    uncertain = await session.get(OAuthEffectEntity, UUID(effect_id))
+                    assert uncertain is not None
+                    if uncertain.state == "executing":
+                        uncertain.state = "unknown"
+                await self._event(
+                    session,
+                    row,
+                    "uncertain_revision_superseded",
+                    actor,
+                    unknown_effect_ids=sorted(unknown),
+                    previous_revision=row.revision,
+                    reason=recovery.reason,
+                    acknowledged_unknown=True,
+                )
+            self._remember({"secret": secret})
             if row is None:
                 row = OAuthConnectionEntity(id=uuid4(), name=name, revision=1, status="authorization_required")
                 await self.records.save(row)
@@ -523,18 +693,77 @@ class ConnectionOAuth:
                 session, row.id, "registration", registration.id, row.revision, {"secret": secret}
             )
             await self._event(session, row, "registration_configured", actor)
-            return await self._summary(session, row)
+            return await self._summary(session, row, actor)
+
+    async def directory(self, actor: Principal, *, project_id: str | None = None) -> list[Data]:
+        if project_id is not None and not re.fullmatch(r"[a-f0-9]{32}", project_id):
+            raise ValueError("Select an exact project identifier")
+        async with self.store._unit() as session:
+            await self._authority(session, actor)
+            if project_id and await session.get(ForgeProjectEntity, UUID(project_id)) is None:
+                raise KeyError("Connection project not found")
+            rows = list(
+                await session.scalars(
+                    select(OAuthConnectionEntity).order_by(OAuthConnectionEntity.name).limit(101).with_for_update()
+                )
+            )
+            if len(rows) > 100:
+                raise ValueError("Connection directory exceeds its reviewed bound")
+            result = []
+            for row in rows:
+                summary = await self._summary(session, row, actor)
+                if project_id is None or summary["project_id"] == project_id:
+                    result.append(summary)
+            await self.store.admit_credentials(result)
+            return result
 
     async def summary(self, name: str, actor: Principal) -> Data:
         async with self._locked(name) as session:
             await self._authority(session, actor)
-            return await self._summary(session, await self._required(name))
+            result = await self._summary(session, await self._required(name), actor)
+            await self.store.admit_credentials(result)
+            return result
+
+    async def effect_receipt(self, name: str, request_id: str, actor: Principal) -> Data:
+        if not re.fullmatch(r"[a-f0-9]{32}", request_id):
+            raise ValueError("Select an exact effect request identifier")
+        async with self._locked(name) as session:
+            await self._authority(session, actor)
+            row = await self._required(name)
+            await self._registration(session, row)
+            effect = await session.scalar(
+                select(OAuthEffectEntity).where(
+                    OAuthEffectEntity.connection_id == row.id, OAuthEffectEntity.request_id == request_id
+                )
+            )
+            if effect is None:
+                raise KeyError("Connection effect not found")
+            expired = effect.lease_expires_at <= await self._time(session)
+            result = OAuthEffectReceipt.model_validate(
+                {
+                    "id": effect.id.hex,
+                    "request_id": request_id,
+                    "kind": effect.kind,
+                    "state": "unknown" if effect.state == "executing" and expired else effect.state,
+                    "registration_revision": effect.data["registration_revision"],
+                    "lease_expired": expired,
+                    "observed_at": effect.data.get("observed_at"),
+                    "current_context": effect.data.get("actor_id") == actor.id.hex
+                    and effect.data["registration_revision"] == row.revision
+                    and row.status != "disconnected",
+                }
+            ).model_dump()
+            await self.store.admit_credentials(result)
+            return result
 
     async def prepare(self, name: str, actor: Principal) -> Data:
         async with self._locked(name) as session:
             await self._authority(session, actor)
             row = await self._required(name)
             await self._registration(session, row)
+            blocked = self._effect_block(row, await self._effect_packets(session, row))
+            if blocked:
+                raise OAuthDisposition(blocked)
             if row.status == "disconnected":
                 raise ValueError("Connection is disconnected; configure a new revision")
             ticket, attempt_id = secrets.token_urlsafe(32), uuid4()
@@ -575,6 +804,9 @@ class ConnectionOAuth:
             await self._authority(session, actor)
             row = await self._required(name)
             registration = await self._registration(session, row)
+            blocked = self._effect_block(row, await self._effect_packets(session, row))
+            if blocked:
+                raise OAuthDisposition(blocked)
             handoff = await session.scalar(
                 select(OAuthAttemptEntity)
                 .where(
@@ -648,7 +880,7 @@ class ConnectionOAuth:
                 grant.status = "revoked"
                 grant.encrypted_data = self._seal(self._grant_context(row, grant), {})
             await self._event(session, row, "locally_disconnected", actor)
-            return await self._summary(session, row)
+            return await self._summary(session, row, actor)
 
     async def complete(
         self, name: str, state: str, code: str, browser_nonce: str, actor: Principal, *, issuer: str
@@ -887,7 +1119,7 @@ class ConnectionOAuth:
             )
             row.status = "authorized_unverified"
             await session.flush()
-            result = await self._summary(session, row)
+            result = await self._summary(session, row, actor, completing=effect.id)
             observed_at = (await self._time(session)).isoformat()
             result["observed_at"] = observed_at
             effect.data = {**effect.data, "result": result, "observed_at": observed_at}

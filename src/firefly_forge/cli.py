@@ -838,6 +838,23 @@ def connection_oauth_show(name: str) -> None:
         display(connection.connection_oauth(name))
 
 
+@connection_oauth.command("list")
+@click.option("--project-id")
+def connection_oauth_list(project_id: str | None) -> None:
+    """List the server-owned connection directory and available actions."""
+    with client() as connection:
+        display(connection.connection_oauth_connections(project_id))
+
+
+@connection_oauth.command("effect")
+@click.argument("name")
+@click.option("--request-id", required=True)
+def connection_oauth_effect(name: str, request_id: str) -> None:
+    """Observe one exact request receipt without repeating its provider call."""
+    with client() as connection:
+        display(connection.connection_oauth_effect(name, request_id))
+
+
 @connection_oauth.command("configure")
 @click.argument("name")
 @click.option("--provider", required=True)
@@ -868,6 +885,58 @@ def connection_oauth_configure(
         request["client_secret"] = private_secret_file(client_secret_file)
     with client() as connection:
         display(connection.configure_connection_oauth(name, request))
+
+
+@connection_oauth.command("supersede")
+@click.argument("name")
+@click.option("--expected-revision", type=click.IntRange(min=1), required=True)
+@click.option("--unknown-effect-id", multiple=True, required=True)
+@click.option("--reason", required=True)
+@click.option("--acknowledge-unknown", is_flag=True, required=True)
+@click.option("--provider", required=True)
+@click.option("--client-id", required=True)
+@click.option(
+    "--authentication", type=click.Choice(["client_secret_post", "client_secret_basic"]), default="client_secret_post"
+)
+@click.option("--project-id")
+@click.option("--public-client", is_flag=True, default=None)
+@click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def connection_oauth_supersede(
+    name: str,
+    expected_revision: int,
+    unknown_effect_id: tuple[str, ...],
+    reason: str,
+    acknowledge_unknown: bool,
+    provider: str,
+    client_id: str,
+    authentication: str,
+    project_id: str | None,
+    public_client: bool | None,
+    client_secret_file: Path | None,
+) -> None:
+    """Start a new admission while preserving the explicitly acknowledged unknown history."""
+    registration = {
+        "provider": provider,
+        "client_id": client_id,
+        "authentication": authentication,
+        "project_id": project_id,
+        "public_client": public_client,
+    }
+    if client_secret_file:
+        registration["client_secret"] = private_secret_file(client_secret_file)
+    with client() as connection:
+        display(
+            connection.supersede_connection_oauth(
+                name,
+                {
+                    "expected_revision": expected_revision,
+                    "unknown_effect_ids": list(unknown_effect_id),
+                    "reason": reason,
+                    "acknowledge_unknown": acknowledge_unknown,
+                    "registration": registration,
+                },
+            )
+        )
 
 
 @connection_oauth.command("prepare")

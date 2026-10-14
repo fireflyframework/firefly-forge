@@ -13,7 +13,9 @@ async def test_generated_profile_metadata_rejects_credentials_without_mutating_c
     async with replicas(tmp_path, monkeypatch) as (services, client):
         profiles = services[1].store.task_router.profiles
         before = profiles.path.read_bytes() if profiles.path.exists() else None
-        await services[0].configure("design", configuration(client_secret=credential), actor())
+        # Reproduce retained legacy history, including secrets now rejected by
+        # prospective OAuth response admission. The model assertion stays intact.
+        await services[0]._configure("design", configuration(client_secret=credential), actor())
         response = await client.put(
             "/api/v1/model-profiles/design",
             json={"name": "Design model", "description": "Design guidance", "provider": "agentic", "values": {}},
