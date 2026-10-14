@@ -8,7 +8,7 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. Repeat-control rules remain a pure contract awaiting runtime integration.
 
 !!! info "Implementation boundary"
-    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration; its record inspection, projection review and invalidation workflow remains open, alongside classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration and read-only record and projection inspection. Its submission, reconciliation and invalidation workflows remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -99,6 +99,18 @@ The intended lookup begins with the current task and inspected source. It consul
 A verified exact match can supply its bounded local procedure result without a new provider request. Missing knowledge, stale references or a changed dependency context produce an explicit search reason. A requested refresh must perform a fresh lookup even if an older result exists. Credentials stay in private provider configuration, and external results retain their untrusted-reference status.
 
 No result is silently moved from another repository into the task. If a known framework version differs from the product's version, that difference must remain visible. An absent version is unknown; the system cannot infer compatibility from a framework name alone.
+
+## Review saved records in Studio
+
+Open **Knowledge > Learning records** and choose an authorized repository. The factory returns records visible to your current project permissions. Local evidence remains readable when remote knowledge retrieval is disabled; denied access is shown explicitly.
+
+Select a record to inspect its saved state, question, supported statement, framework version, scope and freshness dates. Verified local outcomes show their recorded verification time. Failure candidates show when the check was observed. **Identifiers and verification receipts** contains the exact source tree, dependency and question digests, origin run and native receipt references. The filters search only the returned records.
+
+**Verified evidence** describes a saved observation. Current reuse also requires matching scope, framework and dependency versions, question, source, freshness and intact receipts. A candidate failure cannot authorize a verified solution. Invalidated and superseded evidence remains available for review and is excluded from reuse.
+
+The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
+
+**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request; Studio write controls remain pending until that reconciliation contract is available.
 
 ## Keep authority and retrieval separate
 
