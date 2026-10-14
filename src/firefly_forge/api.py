@@ -658,13 +658,25 @@ class FactoryConfiguration:
 
     @bean
     def learning_projection(
-        self, store: Store, journal: Journal, ledger: LearningLedger, knowledge: KnowledgeManager
+        self,
+        store: Store,
+        journal: Journal,
+        ledger: LearningLedger,
+        knowledge: KnowledgeManager,
+        knowledge_first: KnowledgeFirst,
     ) -> LearningProjection:
-        return LearningProjection(store, journal, ledger, knowledge)
+        projection = LearningProjection(store, journal, ledger, knowledge)
+        knowledge_first.projection = projection
+        return projection
 
     @bean
     def knowledge_first(
-        self, store: Store, journal: Journal, ledger: LearningLedger, broker: ToolInvocationBroker, search: SearchTools
+        self,
+        store: Store,
+        journal: Journal,
+        ledger: LearningLedger,
+        broker: ToolInvocationBroker,
+        search: SearchTools,
     ) -> KnowledgeFirst:
         return KnowledgeFirst(store, journal, ledger, broker, search)
 

@@ -111,6 +111,7 @@ class ToolInvocationBroker:
         configuration: Data,
         observation: Callable[[], Data] | None = None,
         validate_receipt: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
+        validate_result: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
     ) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", correlation_id):
             raise ValueError("Tool correlation ID requires 32 lowercase hexadecimal characters")
@@ -299,7 +300,7 @@ class ToolInvocationBroker:
             await self.store.admit_credentials(result)
             if contains_known_credential(result, self.credential_registry()):
                 raise ValueError("Tool result reflected configured credentials")
-            await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}))
+            await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}), validate_result)
             return result
         except SearchProviderError as exc:
             if exc.kind in {"rate_limit", "quota", "authentication"}:
@@ -337,14 +338,27 @@ class ToolInvocationBroker:
             # The committed intent remains unresolved if a receipt cannot be committed.
             return
 
-    async def _complete(self, run_id: str, correlation_id: str, status: str, evidence: Data) -> None:
+    async def _complete(
+        self,
+        run_id: str,
+        correlation_id: str,
+        status: str,
+        evidence: Data,
+        validate_result: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
+    ) -> None:
         async with self.store._unit():
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
             row = next(item for item in await self.records.for_run(run.id) if item.correlation_id == correlation_id)
             if row.status != "pending":
                 raise ValueError("Tool invocation already has a recorded outcome")
+            completion_guard = await validate_result(copy.deepcopy(evidence["result"])) if validate_result else None
+            if completion_guard is not None:
+                await ProjectAccess(self.store).authorize_execution(run.data)
+                completion_guard()
             await self._authorize_result(row, status)
+            if completion_guard is not None:
+                completion_guard()
             row.status = status
             row.data = {**row.data, **copy.deepcopy(evidence), "completed_at": now()}
             await self.records.save(row)
@@ -356,6 +370,8 @@ class ToolInvocationBroker:
                 {"correlation_id": correlation_id, "tool": row.tool, "status": status, **evidence},
             )
             await self._authorize_result(row, status)
+            if completion_guard is not None:
+                completion_guard()
 
     async def _authorize_result(self, row: ForgeToolInvocationEntity, status: str) -> None:
         if status != "succeeded" or not row.tool.startswith("external_mcp:"):

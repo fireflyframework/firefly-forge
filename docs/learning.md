@@ -8,7 +8,7 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. Repeat-control rules remain a pure contract awaiting runtime integration.
 
 !!! info "Implementation boundary"
-    The initial learning slice implements scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. Local qualification includes an actual indexed source, citation and local embedding, with repeat submission creating no duplicate. Automatic retrieval from projected learning namespaces, classified negative repair circuits, a complete Studio learning workflow and sharing between projects remain open. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+    The initial learning slice implements scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can also retrieve a citation from the verified projection of an exact eligible local record. This does not discover or authorize related lessons through semantic similarity. Classified negative repair circuits, a complete Studio learning workflow and sharing between projects remain open. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -17,6 +17,7 @@ Learning policy applies to new runs; admitted runs retain their captured policy.
 ```json
 {
   "enabled": true,
+  "projected_retrieval": false,
   "max_age_hours": 72,
   "max_candidates": 8,
   "max_repeated_attempts": 2,
@@ -24,7 +25,13 @@ Learning policy applies to new runs; admitted runs retain their captured policy.
 }
 ```
 
+In Studio, open **Administration > Learning** and choose **Edit learning settings**. Review **Knowledge**, set the bounds in **Limits**, then inspect **Review** before **Save learning settings**. Only a factory administrator can change this policy. **Enable verified learning** controls whether new runs can use it; turning it off keeps the projection preference saved but inactive. The review distinguishes policy for new runs from the snapshots held by existing runs, and preserves the repeated-attempt setting without presenting it as an enforced repair circuit. If saving has an uncertain outcome, read the current policy before trying another write.
+
 The values shown are defaults. The repeated-attempt setting belongs to the pure repair-control contract and is not enforced by the worker repair loop. Existing repair and clarification budgets still govern execution. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
+
+Set `projected_retrieval` to `true` to let newly admitted runs read the separate learning workspace for an exact eligible local record. Older snapshots without this permission retain their prior behavior. Lookup uses existing credentials and never creates a workspace, submits a source, mints a token or expands its workspace allowlist. A token needs both query and source-read permission for that workspace. An unavailable optional projection produces an explicit diagnostic while ordinary required source retrieval and local evidence checks continue.
+
+The selected projection must be verified and match the current project/repository scope, local envelope and original source bytes. The source must still be indexed and return a matching citation. Both its original captured knowledge configuration and the consuming run's configuration must resolve to identical frozen settings, including tenant, endpoint, credentials and CA. Capture revision IDs remain separate provenance references; different random IDs do not establish configuration drift. PostgreSQL record and projection identities are rechecked at fresh admission and cached reuse, with current execution authority and freshness. Remote reads finish before either shared record lock is held.
 
 | Action | CLI command | Factory MCP tool |
 | --- | --- | --- |
