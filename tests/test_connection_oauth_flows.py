@@ -89,7 +89,7 @@ async def local_provider(
         listener.close()
 
 
-async def setup(store, origin):
+async def setup(store, origin, *, connection_name="design", key=None):
     from firefly_forge.connection_oauth import ConnectionOAuth
     from firefly_forge.connection_oauth_models import OAuthConnectionInput, OAuthProvider
 
@@ -103,7 +103,7 @@ async def setup(store, origin):
         scope_omission="requested",
         refresh_scope_omission="preserve",
     )
-    key = Fernet.generate_key().decode()
+    key = key or Fernet.generate_key().decode()
     service = ConnectionOAuth(
         store,
         encryption_key=key,
@@ -113,7 +113,7 @@ async def setup(store, origin):
     )
     user = actor()
     await service.configure(
-        "design",
+        connection_name,
         OAuthConnectionInput(
             provider="fixture",
             client_id="client",
@@ -122,8 +122,8 @@ async def setup(store, origin):
         ),
         user,
     )
-    handoff = await service.prepare("design", user)
-    challenge = await service.begin("design", handoff["ticket"], user, browser_authenticated=True)
+    handoff = await service.prepare(connection_name, user)
+    challenge = await service.begin(connection_name, handoff["ticket"], user, browser_authenticated=True)
     async with httpx.AsyncClient(follow_redirects=False, trust_env=False) as client:
         authorization = await client.get(challenge.authorization_url)
     assert authorization.status_code == 302

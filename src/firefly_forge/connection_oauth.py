@@ -50,12 +50,13 @@ from firefly_forge.identity import Principal
 from firefly_forge.journal import digest as packet_digest
 from firefly_forge.oauth_authority import OAuthAccessDenied as OAuthAccessDenied
 from firefly_forge.oauth_authority import require_oauth_administrator
-from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, OAuthCredentialMatcher
+from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, MAX_REPRESENTATIONS, OAuthCredentialMatcher
 from firefly_forge.project_persistence import ForgeProjectEntity
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store
 
 Data = dict[str, Any]
+GRANT_RESERVATION_REPRESENTATIONS = 32
 
 
 def digest(value: str) -> str:
@@ -158,16 +159,27 @@ class ConnectionOAuth:
         return rows
 
     async def _credential_evidence(
-        self, session: AsyncSession, connection_id: UUID, kind: str, source_id: UUID, revision: int, payload: Data
+        self,
+        session: AsyncSession,
+        connection_id: UUID,
+        kind: str,
+        source_id: UUID,
+        revision: int,
+        payload: Data,
+        *,
+        reservation: OAuthEffectEntity | None = None,
     ) -> None:
         await self._vault_lock(session)
         rows = await self._history(session)
         if any(row.kind == kind and row.source_id == source_id and row.revision == revision for row in rows):
             return
-        if len(rows) == MAX_HISTORY:
-            raise ValueError("OAuth credential history exceeds its bound; review retention before publication")
         evidence_id = uuid4()
         values = [value for value in payload.values() if isinstance(value, str) and value]
+        packet = self.matcher.packet(evidence_id.hex, kind, source_id.hex, revision, values, connection_id.hex)
+        self.matcher.contains("", [packet])
+        await self._history_capacity(
+            session, rows, representations=len(packet["representations"]), reservation=reservation
+        )
         session.add(
             OAuthCredentialEvidenceEntity(
                 id=evidence_id,
@@ -175,10 +187,77 @@ class ConnectionOAuth:
                 kind=kind,
                 source_id=source_id,
                 revision=revision,
-                data=self.matcher.packet(evidence_id.hex, kind, source_id.hex, revision, values, connection_id.hex),
+                data=packet,
             )
         )
         await session.flush()
+
+    @staticmethod
+    def _reservation_packet(effect: OAuthEffectEntity) -> Data:
+        return {
+            "version": 1,
+            "effect_id": effect.id.hex,
+            "connection_id": effect.connection_id.hex,
+            "kind": effect.kind,
+            "registration_revision": effect.data["registration_revision"],
+            "rows": 1,
+            "representations": GRANT_RESERVATION_REPRESENTATIONS,
+        }
+
+    def _verify_reservation(self, effect: OAuthEffectEntity, *, required: bool = True) -> None:
+        marker = effect.data.get("history_reservation")
+        if marker is None and not required:
+            return
+        if (
+            not isinstance(marker, dict)
+            or effect.kind not in {"code", "refresh"}
+            or any(
+                type(marker.get(key)) is not int
+                for key in ("version", "registration_revision", "rows", "representations")
+            )
+            or type(effect.data.get("registration_revision")) is not int
+            or not 1 <= effect.data["registration_revision"] <= 2_147_483_647
+            or marker != self._reservation_packet(effect)
+        ):
+            raise OAuthDisposition("history_reservation_invalid")
+
+    async def _history_capacity(
+        self,
+        session: AsyncSession,
+        rows: list[OAuthCredentialEvidenceEntity],
+        *,
+        representations: int,
+        reservation: OAuthEffectEntity | None = None,
+    ) -> None:
+        # The caller holds the vault lock after its connection/authority locks.
+        # Reading other effects without row locks avoids reversing that order.
+        effects = list(
+            await session.scalars(
+                select(OAuthEffectEntity).where(OAuthEffectEntity.state == "executing").limit(MAX_HISTORY + 1)
+            )
+        )
+        if len(effects) > MAX_HISTORY:
+            raise OAuthDisposition("history_capacity_exhausted")
+        for effect in effects:
+            self._verify_reservation(effect, required=False)
+        if reservation is not None:
+            self._verify_reservation(reservation)
+            if not any(effect.id == reservation.id for effect in effects):
+                raise OAuthDisposition("history_reservation_unavailable")
+            effects = [effect for effect in effects if effect.id != reservation.id]
+        if len(rows) + len(effects) + 1 > MAX_HISTORY:
+            raise OAuthDisposition("history_capacity_exhausted")
+        represented = sum(len(row.data["representations"]) for row in rows)
+        if represented + len(effects) * GRANT_RESERVATION_REPRESENTATIONS + representations > MAX_REPRESENTATIONS:
+            raise OAuthDisposition("history_representation_capacity_exhausted")
+
+    async def _reserve_history(self, session: AsyncSession, effect: OAuthEffectEntity) -> None:
+        await self._vault_lock(session)
+        await self._history_capacity(
+            session, await self._history(session), representations=GRANT_RESERVATION_REPRESENTATIONS
+        )
+        effect.data = {**effect.data, "history_reservation": self._reservation_packet(effect)}
+        self._verify_reservation(effect)
 
     async def admit_credentials(self, value: Any) -> None:
         # One statement sees evidence and source coverage at the same committed
@@ -932,6 +1011,8 @@ class ConnectionOAuth:
             raise ValueError("Invalid authorization response")
         if actor.kind == "service" or actor.authentication_method == "oidc_bearer":
             raise ValueError("An authenticated human browser is required")
+        if self.store.session_provider is not None and self.store.session_provider.current() is not None:
+            raise OAuthDisposition("independent_effect_unit_required")
         rejection: str | None = None
         async with self._locked(name) as session:
             await self._authority(session, actor)
@@ -977,6 +1058,7 @@ class ConnectionOAuth:
                         "request_digest": digest(state),
                     },
                 )
+                await self._reserve_history(session, effect)
                 session.add(effect)
                 await self._event(
                     session, row, "exchange_intent", actor, effect_id=effect.id.hex, attempt_id=attempt.id.hex
@@ -1020,6 +1102,7 @@ class ConnectionOAuth:
             effect = await session.get(OAuthEffectEntity, effect_id)
             if effect is None or effect.state != "executing" or effect.data["actor_id"] != actor.id.hex:
                 raise OAuthDisposition("effect_changed")
+            self._verify_reservation(effect)
             if effect.data["registration_revision"] != row.revision or row.status == "disconnected":
                 raise OAuthDisposition("connection_changed")
             if effect.lease_expires_at <= await self._time(session):
@@ -1088,6 +1171,7 @@ class ConnectionOAuth:
                 or effect.lease_expires_at <= await self._time(session)
             ):
                 raise OAuthDisposition("connection_changed")
+            self._verify_reservation(effect)
             policy = registration.data["policy"]
             previous = await self._grant(session, row)
             expected = set(policy["scopes"])
@@ -1159,6 +1243,7 @@ class ConnectionOAuth:
                 grant.id,
                 grant.revision,
                 {"access_token": tokens.access_token, "refresh_token": refresh},
+                reservation=effect,
             )
             row.status = "authorized_unverified"
             await session.flush()
@@ -1182,6 +1267,7 @@ class ConnectionOAuth:
     async def refresh(self, name: str, request_id: str, actor: Principal) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", request_id):
             raise ValueError("Refresh requires a stable request ID")
+        independent = self.store.session_provider is None or self.store.session_provider.current() is None
         rejection: str | None = None
         async with self._locked(name) as session:
             await self._authority(session, actor)
@@ -1211,6 +1297,8 @@ class ConnectionOAuth:
                 if existing.state == "rejected":
                     raise OAuth2ClientError(existing.data.get("disposition", "invalid_response"))
                 raise OAuthDisposition("effect_" + existing.state)
+            if not independent:
+                raise OAuthDisposition("independent_effect_unit_required")
             grant = await self._grant(session, row)
             if grant is None or row.status != "authorized_unverified" or grant.actor_id != actor.id:
                 raise OAuthDisposition("reauthorization_required")
@@ -1236,6 +1324,7 @@ class ConnectionOAuth:
                         "grant_revision": grant.revision,
                     },
                 )
+                await self._reserve_history(session, effect)
                 session.add(effect)
                 frozen, effect_id = dict(registration.data), effect.id
                 await self._event(
