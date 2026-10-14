@@ -111,6 +111,23 @@ forge resume RUN_ID
 
 Save the `document` object from the registry response, rather than the whole response envelope. Registry edits affect future runs. Binding fields and mandatory platform checks remain enforced. Answers are journaled and leave the run paused until explicit resume; they do not grant publication or deployment approval.
 
+## Read role lifecycle and identity administration
+
+These clients read the existing native API. They do not create users, change membership, send invitations or reconcile an identity operation.
+
+| Read | Python method | CLI command | MCP tool |
+| --- | --- | --- | --- |
+| Global role lifecycle | `agent_role_lifecycle()` | `forge roles lifecycle` | `get_agent_role_lifecycle` |
+| Repository role lifecycle | `repository_role_lifecycle(repository_id)` | `forge roles repository-lifecycle REPOSITORY_ID` | `get_repository_agent_role_lifecycle` |
+| Registered users | `identity_users()` | `forge identity users` | `list_identity_users` |
+| Eligible registered users | `project_eligible_users(project_id, query)` | `forge project eligible-users PROJECT_ID --query "Stock owner"` | `find_project_eligible_users` |
+| Identity administration readiness | `identity_administration()` | `forge identity administration` | `get_identity_administration` |
+| Retained identity operations | `identity_operations()` | `forge identity operations` | `list_identity_operations` |
+
+Global lifecycle requires authentication. Repository lifecycle requires current repository read permission; its returned edit flags describe current authority. Finding eligible users requires project membership-administration permission, a query of 3 to 120 characters and an enabled registered identity. The server returns at most 20 matches and treats wildcard characters literally. The registered-user directory, administration readiness and operation receipts require current factory administrator authority.
+
+The clients preserve the server's bounded contact fields, permission flags and readiness distinctions. A configured administration connection does not prove user provisioning or mail delivery. Reading a retained operation preserves its status and journal evidence without retrying an unknown effect. These six reads are a bounded addition; they do not establish universal API, SDK, CLI and MCP parity.
+
 ## Python client
 
 ```python
