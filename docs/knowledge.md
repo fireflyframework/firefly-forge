@@ -5,7 +5,7 @@ description: Configure required flycanon retrieval, inspect citations and retain
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-Flycanon is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/firefly-operationOS/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+Flycanon is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.0) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
 
 ## Structured learning evidence
 
@@ -145,7 +145,7 @@ Back up Flycanon PostgreSQL and original object storage with forge's ledger and 
 
 ## Flycanon server compatibility
 
-Use flycanon server 26.10.0 or a build containing [the identifier-scanning fix](https://github.com/firefly-operationOS/flycanon/pull/76). Earlier servers can mistake numeric fragments inside run IDs and Git hashes for phone numbers, causing `pii_policy=reject` to reject verified memory before admission. The fix preserves rejection of genuine phone numbers and email addresses.
+Use flycanon server 26.10.0 or a build containing [the identifier-scanning fix](https://github.com/fireflyframework/flycanon/pull/76). Earlier servers can mistake numeric fragments inside run IDs and Git hashes for phone numbers, causing `pii_policy=reject` to reject verified memory before admission. The fix preserves rejection of genuine phone numbers and email addresses.
 
 The Python SDK and flycanon server are installed separately. Updating the SDK does not apply a server-side scanner change. Keep an uncertain memory intent in the journal and inspect the source admission outcome before another write.
 

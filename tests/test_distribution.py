@@ -16,7 +16,7 @@ def archives(directory: Path, target: str | None = None, cache: str = "") -> Non
         wheel.writestr(
             "firefly_forge-0.2.3.dist-info/METADATA",
             "Metadata-Version: 2.4\nName: firefly-forge\nVersion: 0.2.3\n"
-            "Requires-Dist: flycanon-sdk @ https://github.com/firefly-operationOS/flycanon/releases/"
+            "Requires-Dist: flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/"
             "download/v26.10.0/flycanon_sdk-26.10.0-py3-none-any.whl\n",
         )
         wheel.writestr("firefly_forge/static/index.html", "<html>Studio fixture</html>")

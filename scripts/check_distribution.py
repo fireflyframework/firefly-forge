@@ -23,10 +23,8 @@ def inspect(directory: Path) -> None:
                 metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
                 requirements = BytesParser().parsebytes(wheel.read(metadata_path)).get_all("Requires-Dist", [])
                 if not any(
-                    requirement.startswith("flycanon-sdk@ https://github.com/firefly-operationOS/flycanon/releases/")
-                    or requirement.startswith(
-                        "flycanon-sdk @ https://github.com/firefly-operationOS/flycanon/releases/"
-                    )
+                    requirement.startswith("flycanon-sdk@ https://github.com/fireflyframework/flycanon/releases/")
+                    or requirement.startswith("flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/")
                     for requirement in requirements
                 ):
                     raise SystemExit("Wheel must retain the Flycanon SDK release URL for standalone installation")
