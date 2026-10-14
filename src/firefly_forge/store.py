@@ -9,7 +9,7 @@ import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -220,13 +220,14 @@ class Store:
             await connection.close()
 
     @asynccontextmanager
-    async def _unit(self) -> AsyncIterator[AsyncSession]:
+    async def _unit(self, *, autoflush: bool = True) -> AsyncIterator[AsyncSession]:
         if not self._initialized or self.session_provider is None:
             raise RuntimeError("Await Store.initialize() before accessing the ledger")
         async with self.session_provider.unit() as session:
-            await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
-            await session.execute(text("SET LOCAL synchronous_commit TO on"))
-            yield session
+            with nullcontext() if autoflush else session.no_autoflush:
+                await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                await session.execute(text("SET LOCAL synchronous_commit TO on"))
+                yield session
 
     async def add_repository(self, request: RepositoryInput) -> Data:
         data = {**request.model_dump(), "id": uuid.uuid4().hex, "created_at": now()}
@@ -493,7 +494,7 @@ class Store:
                 OAuthRegistrationEntity,
             )
 
-            async with self._unit() as session:
+            async with self._unit(autoflush=False) as session:
                 for entity in (OAuthCredentialEvidenceEntity, OAuthGrantEntity, OAuthRegistrationEntity):
                     if await session.scalar(select(entity.id).limit(1)) is not None:
                         raise ValueError("OAuth credential admission service is unavailable")

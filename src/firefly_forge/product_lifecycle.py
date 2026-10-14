@@ -270,7 +270,7 @@ class ProductLifecycle:
         }
 
     async def preview(self, repository_id: str, request: FeatureChangeInput) -> Data:
-        self.store.reject_credentials(request.model_dump())
+        await self.store.admit_credentials(request.model_dump())
         previous = await self.collaboration.product(repository_id)
         if previous is None:
             raise ValueError("Save an initial product definition before requesting a feature change")
@@ -280,7 +280,7 @@ class ProductLifecycle:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.collaboration_persistence import ForgeProductDefinitionEntity
 
-        self.store.reject_credentials(request.model_dump())
+        await self.store.admit_credentials(request.model_dump())
         request_digest = content_digest(request.model_dump())
         async with self.store._unit():
             await self.collaboration._repo_lock(repository_id)
@@ -294,7 +294,7 @@ class ProductLifecycle:
                 raise ValueError("Save an initial product definition before requesting a feature change")
             prepared = self._prepare(previous.data, request)
             definition = ProductDefinition.model_validate(prepared["definition"])
-            self.store.reject_credentials(definition.model_dump())
+            await self.store.admit_credentials(definition.model_dump())
             origin = await validate_origin(self.store, repository_id, definition)
             data = {
                 "repository_id": repository_id,

@@ -105,7 +105,7 @@ class ChannelProducts:
             or current_origin["name"] != repo["name"]
         ):
             raise ValueError("Signed origin no longer matches its exact connected repository")
-        self.store.reject_credentials(command.model_dump(exclude_none=True))
+        await self.store.admit_credentials(command.model_dump(exclude_none=True))
         if command.action == "roles" and command.operation == "configure":
             self.store.roles.snapshot(ProjectRoles.model_validate(command.roles), self.store.policies.selection())
         project = await self.projects.project(command.project_id) if command.project_id else None
@@ -411,7 +411,7 @@ class ChannelProducts:
             + json.dumps(turn["reply"].get("proposal"), indent=2)
             + "\n```\n",
         }
-        self.store.reject_credentials(sources)
+        await self.store.admit_credentials(sources)
         digest = hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest()
 
         async def intent(value: Data) -> None:

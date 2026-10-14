@@ -164,6 +164,8 @@ class OAuthCredentialMatcher:
                 raise ValueError("Credential admission requires bounded JSON data")
 
         visit(value, 0)
+        if isinstance(value, (dict, list, tuple)):
+            capture(json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
         return strings
 
     def contains(self, value: Any, packets: list[Data]) -> bool:

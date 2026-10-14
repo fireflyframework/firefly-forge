@@ -188,8 +188,8 @@ class UserAdministration:
         if not await ProjectAccess(self.store).current_administrator(actor):
             raise PermissionError("Identity administration requires a verified factory administrator")
 
-    def _guard(self, value: Any) -> None:
-        self.store.reject_credentials(value)
+    async def _guard(self, value: Any) -> None:
+        await self.store.admit_credentials(value)
         if contains_known_credential(value, {**self.identity.redaction_settings(), **self.redaction_settings()}):
             raise ValueError("Remove configured credentials from identity metadata")
 
@@ -262,7 +262,7 @@ class UserAdministration:
     async def _claim(
         self, kind: str, request: Data, actor: Principal
     ) -> tuple[ForgeIdentityAdminOperationEntity, bool]:
-        self._guard(request)
+        await self._guard(request)
         request_digest = content_digest({"kind": kind, "request": request})
         async with self.store._unit() as session:
             await session.execute(
@@ -355,7 +355,7 @@ class UserAdministration:
         return token
 
     async def _local_user(self, subject: str, remote: Data) -> UUID:
-        self._guard({key: remote.get(key) for key in ("username", "email", "firstName", "lastName")})
+        await self._guard({key: remote.get(key) for key in ("username", "email", "firstName", "lastName")})
         full_name = " ".join(
             value for key in ("firstName", "lastName") if isinstance(value := remote.get(key), str)
         ).strip()[:200]
@@ -557,7 +557,7 @@ class UserAdministration:
 
     async def recover_operation(self, operation_id: str, request: AdministrationRecovery, actor: Principal) -> Data:
         await self._actor(actor)
-        self._guard(request.model_dump())
+        await self._guard(request.model_dump())
         request_digest = content_digest(request.model_dump())
         async with self.store._unit():
             row = await self.operations.find_by_id(identifier(operation_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -584,7 +584,7 @@ class UserAdministration:
 
     async def reconcile(self, operation_id: str, request: AdministrationReconciliation, actor: Principal) -> Data:
         await self._actor(actor)
-        self._guard(request.model_dump())
+        await self._guard(request.model_dump())
         async with self.store._unit():
             row = await self.operations.find_by_id(identifier(operation_id))
             if row is None:

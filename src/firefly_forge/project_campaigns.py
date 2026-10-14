@@ -220,7 +220,7 @@ class ProjectCampaigns:
         return True
 
     async def launch(self, project_id: str, request: CampaignLaunch) -> Data:
-        self.store.reject_credentials(request.model_dump())
+        await self.store.admit_credentials(request.model_dump())
         if not self.store.runtime_roles or self.store.runtime_roles.executes_jobs:
             await self.engine.assert_ownership()
         request_digest = digest(request.model_dump())

@@ -211,7 +211,7 @@ class LearningLedger:
                     ],
                 }
             )
-            self.store.reject_credentials(envelope.model_dump())
+            await self.store.admit_credentials(envelope.model_dump())
             policy = LearningPolicy.model_validate(frozen_learning(run.get("learning_snapshot"))["settings"])
             if not policy.enabled:
                 raise ValueError("Learning requires an enabled policy captured by this run")
@@ -329,7 +329,7 @@ class LearningLedger:
                     ],
                 }
             )
-            self.store.reject_credentials(envelope.model_dump())
+            await self.store.admit_credentials(envelope.model_dump())
             at = await self.records_repository.database_time()
             row = ForgeLearningRecordEntity(
                 id=uuid.uuid4(),
@@ -436,7 +436,7 @@ class LearningLedger:
         identifier(request_id)
         if not reason.strip() or len(reason) > 2000:
             raise ValueError("Learning invalidation requires a bounded reason")
-        self.store.reject_credentials(reason)
+        await self.store.admit_credentials(reason)
         async with self.store._unit():
             row = await self.records_repository.find_by_id(identifier(record_id), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None:

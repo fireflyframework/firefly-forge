@@ -209,7 +209,7 @@ class ConnectionOAuth:
                 literal(None, type_=JSONB),
             ).limit(MAX_HISTORY + 1),
         )
-        async with self.store._unit() as session:
+        async with self.store._unit(autoflush=False) as session:
             records = list((await session.execute(snapshot)).mappings())
             groups = {
                 kind: [row for row in records if row["record_kind"] == kind]
