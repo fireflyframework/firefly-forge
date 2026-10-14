@@ -279,6 +279,8 @@ test("empty numeric limits stay editable and cannot advance or save", async ({
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 2560, height: 1080 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 560 },
   { width: 812, height: 375 },
   { width: 390, height: 844 },
 ]) {
@@ -297,6 +299,14 @@ for (const viewport of [
         .getByRole("button", { name: "Edit learning settings" })
         .click();
       for (let step = 0; step < 3; step++) {
+        await expect
+          .poll(async () => {
+            const fields = await page
+              .locator(".learning-wizard .wizard-field-scroll")
+              .boundingBox();
+            return fields?.height ?? 0;
+          })
+          .toBeGreaterThanOrEqual(120);
         const action = page.getByRole("button", {
           name: step === 2 ? "Save learning settings" : "Continue",
           exact: true,
@@ -309,6 +319,9 @@ for (const viewport of [
           const footer = document
             .querySelector(".workspace-main > footer")!
             .getBoundingClientRect();
+          const heading = main
+            .querySelector(".learning-wizard .wizard-heading")!
+            .getBoundingClientRect();
           return {
             fits:
               box.left >= bounds.left &&
@@ -317,9 +330,14 @@ for (const viewport of [
               box.bottom <= bounds.bottom &&
               box.bottom <= footer.top,
             horizontal: main.scrollWidth <= main.clientWidth + 1,
+            context: innerHeight < 560 || heading.top >= bounds.top,
           };
         });
-        expect(geometry).toEqual({ fits: true, horizontal: true });
+        expect(geometry).toEqual({
+          fits: true,
+          horizontal: true,
+          context: true,
+        });
         if (process.env.FORGE_LEARNING_CAPTURE_DIR) {
           await page.evaluate(() => document.fonts.ready);
           await expect(page.locator("html")).toHaveAttribute(

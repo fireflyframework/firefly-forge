@@ -38,7 +38,7 @@ export function LearningConfiguration({
 }) {
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading learning-page-heading">
         <div>
           <h1>Learning</h1>
           <p>Choose how new runs reuse verified project knowledge.</p>
@@ -227,6 +227,7 @@ function LearningAdministrator({ connection }: { connection: Connection }) {
           onStep={setStep}
           locked={busy || uncertain}
           className="learning-wizard"
+          minimumFieldHeight={120}
           title={
             [
               "What should a run learn from?",

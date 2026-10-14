@@ -75,12 +75,13 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) var(--surface-subtle);
 }
-@media (max-height: 480px) {
-  .learning-wizard .wizard-guide {
+@media (max-width: 1100px), (max-height: 600px) {
+  .learning-wizard.wizard-frame .wizard-guide {
     display: none;
   }
-  .learning-wizard .wizard-body.has-guide {
+  .learning-wizard.wizard-frame .wizard-body.has-guide {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 .learning-help {
@@ -89,6 +90,58 @@
   line-height: 1.7;
   margin-top: 18px;
   max-width: 75ch;
+}
+@media (max-height: 600px) {
+  .workspace-main > main:has(> .learning-configuration) {
+    padding-block: 16px;
+  }
+  .learning-page-heading.page-heading {
+    margin-bottom: 8px;
+  }
+  .learning-page-heading.page-heading h1 {
+    font-size: 24px;
+  }
+  .learning-page-heading.page-heading p {
+    margin-top: 8px;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) {
+    height: var(--wizard-frame-height, 640px);
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-body,
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
+    overflow: hidden;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-content {
+    display: flex;
+    height: 100%;
+    padding: 12px;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
+    display: grid;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-field-scroll {
+    overflow: auto;
+  }
+  .learning-wizard .wizard-steps {
+    padding: 4px 12px;
+    min-height: 48px;
+    gap: 8px;
+  }
+  .learning-wizard .wizard-heading {
+    margin-bottom: 8px;
+  }
+  .learning-wizard .wizard-heading h2 {
+    font-size: 18px;
+  }
+  .learning-wizard .wizard-heading p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+  .learning-wizard.wizard-frame .wizard-actions {
+    padding: 8px 0 0;
+    min-height: 50px;
+  }
 }
 @media (max-width: 1000px) {
   .learning-limits {

@@ -11,7 +11,7 @@ Administrators can configure verified learning through **Administration > Learni
 
 Verified learning projections can be read from flycanon when a new run explicitly permits it. The record must match the current project, repository, framework and dependencies. Source identity and citation checks precede admission; current local authority and freshness are checked again before new or cached results are returned. An unavailable optional projection leaves ordinary source retrieval and local evidence checks intact. Cross-project promotion and automatic repair circuits remain separate work.
 
-The locked runtime adopts public pyfly 26.10.5 and flycanon SDK 26.10.3. Managed knowledge installs the separately checksummed flycanon 26.10.3 service in its own framework environment. Existing private configuration, corpora and queued revisions are preserved. No migration of Canon/Query's legacy framework events is implied.
+The locked runtime adopts public pyfly 26.10.6 and flycanon SDK 26.10.3. Managed knowledge installs the separately checksummed flycanon 26.10.3 service in its own framework environment. Existing private configuration, corpora and queued revisions are preserved. Canon and Query keep their separately qualified framework event contracts.
 
 ## 0.2.5
 
