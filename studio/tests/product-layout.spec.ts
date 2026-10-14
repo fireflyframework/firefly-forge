@@ -413,3 +413,73 @@ test("a product load warning reduces the panel budget without clipping the assis
       .evaluate((element) => element.scrollHeight - element.clientHeight),
   ).toBeLessThanOrEqual(1);
 });
+
+for (const theme of ["light", "dark"]) {
+  test(`short landscape assistant keeps a readable conversation and reachable composer in ${theme}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openProduct(page, true);
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    await page.setViewportSize({ width: 812, height: 375 });
+    const trigger = page.getByRole("button", {
+      name: "Open design assistant",
+      exact: true,
+    });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    const dialogue = page.getByRole("region", {
+      name: "Recorded design dialogue",
+      exact: true,
+    });
+    const reading = await dialogue.evaluate((element) => ({
+      height: element.clientHeight,
+      line: parseFloat(
+        getComputedStyle(element.querySelector(".rich-markdown")!).lineHeight,
+      ),
+    }));
+    expect(reading.height).toBeGreaterThanOrEqual(reading.line * 3);
+    const bodyVisible = await dialogue.evaluate((element) => {
+      const body = element
+        .querySelector(".rich-markdown p")!
+        .getBoundingClientRect();
+      const viewport = element.getBoundingClientRect();
+      const line = parseFloat(
+        getComputedStyle(element.querySelector(".rich-markdown")!).lineHeight,
+      );
+      return body.top + line <= viewport.bottom;
+    });
+    expect(bodyVisible).toBe(true);
+    const message = page.getByLabel("Product design message", { exact: true });
+    await message.fill("Retain this fictional stock reservation question");
+    await dialogue.hover();
+    await page.mouse.wheel(0, 300);
+    await expect
+      .poll(() => dialogue.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(100);
+    const send = page.getByRole("button", {
+      name: "Send design message",
+      exact: true,
+    });
+    const reachable = await send.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return (
+        box.top >= 0 &&
+        box.bottom <= innerHeight &&
+        document
+          .elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+          ?.closest("button") === element
+      );
+    });
+    expect(reachable).toBe(true);
+    await message.focus();
+    await page.keyboard.press("Tab");
+    await expect(
+      page.getByRole("button", { name: "Files", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(send).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+  });
+}

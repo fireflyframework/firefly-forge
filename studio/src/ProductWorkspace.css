@@ -783,6 +783,44 @@ dialog.product-assistant-panel::backdrop {
   }
 }
 
+@media (max-height: 480px) {
+  dialog.product-assistant-panel {
+    padding: 12px;
+  }
+  .product-assistant-panel .product-assistant > header,
+  .product-assistant-panel .assistant-history-control {
+    margin-bottom: 4px;
+  }
+  .product-assistant-panel .assistant-task-choice select {
+    min-height: 36px;
+    padding-block: 6px;
+  }
+  .product-assistant-panel .assistant-conversation-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 8px;
+  }
+  .product-assistant-panel .assistant-turn {
+    padding: 8px;
+  }
+  .product-assistant-panel .assistant-turn > header,
+  .product-assistant-panel .assistant-source-label {
+    margin-bottom: 0;
+  }
+  .product-assistant-panel .assistant-composer {
+    gap: 4px;
+    padding-top: 4px;
+  }
+  .product-assistant-panel .assistant-composer textarea {
+    min-height: 40px;
+    height: 40px;
+  }
+  .product-assistant-panel .assistant-composer button {
+    min-height: 36px;
+    padding-block: 6px;
+  }
+}
+
 .markdown-editor-columns.single-pane {
   grid-template-columns: minmax(0, 1fr);
 }

@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.5
+
+Native model execution now uses the public fireflyframework-agentic 26.10.1 release. The dependency lock also consumes pyfly 26.10.4 and flycanon SDK 26.10.2. Managed knowledge installs the checksummed flycanon 26.10.2 server, configuration and migration archive in its separate runtime. Existing knowledge configuration and queued revisions retain their original state. The factory keeps its journal-controlled retry and handoff boundaries; upgrading the model framework does not authorize replay of an uncertain external effect. See [coding providers](agents.md) and [agent tools](agent-tools.md).
+
+The product design assistant uses a compact drawer in windows below 480 pixels high. Its recorded response remains readable while the message field, file picker and send action stay reachable. The short-window checks cover light and dark themes, conversation scrolling, keyboard navigation and focus restoration.
+
+Agentic 26.10.1 includes dependency compatibility corrections and namespace-safe PostgreSQL vector updates. Optional Ragas and Chroma dependencies retain known upstream advisories; review the [Agentic security guidance](https://github.com/fireflyframework/fireflyframework-agentic/blob/main/docs/security.md) before enabling those extras. This release does not establish hosted vendor access or production cluster acceptance.
+
 ## 0.2.4
 
 Connected accounts now provides an administrator flow for the owned local repository service: admit its fixed policy, register a client and project, complete browser consent, inspect state, request refresh and disconnect locally. The native foundation uses public pyfly 26.10.3 OAuth client and S256 PKCE APIs. Different literal factory/provider hosts protect browser cookies; a same-host policy is rejected before provider contact. See [connected-account setup](connected-accounts.md).

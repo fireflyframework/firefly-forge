@@ -12,7 +12,7 @@ from firefly_forge.product_fonts import manrope_license, manrope_style, manrope_
 package = Path(firefly_forge.__file__).parent
 assert "site-packages" in package.parts, package
 assert version("firefly-forge") == firefly_forge.__version__
-assert version("flycanon-sdk") == "26.10.0"
+assert version("flycanon-sdk") == "26.10.2"
 assert (package / "static" / "index.html").is_file()
 assert '<path d="' in manrope_wordmark("forge", "#262821")
 assert "data:font/woff2;base64," in manrope_style()
