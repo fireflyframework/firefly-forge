@@ -26,7 +26,7 @@ docs-check: docs
 	node studio/node_modules/prettier/bin/prettier.cjs --check scripts/docs-scene scripts/docs-browser scripts/*docs*.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
 	node --test scripts/test_docs_scene.mjs scripts/test_operator_motion.mjs scripts/test_factory_sequence.mjs
 	uv run --group docs python -m unittest scripts.test_docs_scene_hook scripts.test_architecture_diagrams scripts.test_docs_discovery
-	node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-playwright.config.mjs
+	uv run --group docs node studio/node_modules/@playwright/test/cli.js test --config scripts/docs-playwright.config.mjs
 
 docs-pages-check:
 	uv run --group docs mkdocs build --strict --site-dir build/docs-pages/firefly-forge
