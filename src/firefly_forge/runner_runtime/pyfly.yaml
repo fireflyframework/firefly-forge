@@ -1,0 +1,17 @@
+pyfly:
+  application:
+    name: firefly-forge-runner
+  management:
+    enabled: false
+    server:
+      port: -1
+  admin:
+    enabled: false
+  data:
+    relational:
+      enabled: true
+      url: "${FORGE_RUNNER_DATABASE_URL:}"
+      ddl-auto: none
+  web:
+    actuator:
+      enabled: false

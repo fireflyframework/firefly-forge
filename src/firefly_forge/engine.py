@@ -368,7 +368,7 @@ class Engine:
                 if not frozen_tools <= available:
                     raise ValueError("The worker cannot attest every frozen tool grant; execution is blocked")
                 if (
-                    run.get("sandbox_snapshot", {}).get("configuration", {}).get("mode") == "docker"
+                    run.get("sandbox_snapshot", {}).get("configuration", {}).get("mode") in {"docker", "pool"}
                     and not (await self.sandbox.probe(run["sandbox_snapshot"]))["available"]
                 ):
                     raise ValueError("The frozen Docker runner is unavailable on the execution worker")
@@ -1267,7 +1267,7 @@ class Engine:
                 ordinal=ordinal,
                 git_root=workspace if stage == "verify" else None,
             )
-        if run.get("sandbox_snapshot", {}).get("mode") == "docker":
+        if run.get("sandbox_snapshot", {}).get("mode") in {"docker", "pool"}:
             raise ValueError("The selected Docker runner is unavailable; execution cannot fall back to the host")
         return await execute(argv, directory, timeout)
 

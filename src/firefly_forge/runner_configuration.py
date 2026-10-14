@@ -17,6 +17,7 @@ from starlette.responses import Response
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.runner_backends import require_available_runner
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.search_tools import SearchTools, search_domains
@@ -28,7 +29,7 @@ from firefly_forge.workspace_tools import tool_catalog
 
 class RunnerDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sandbox: SandboxInput
+    sandbox: FactoryPoolSelection | SandboxInput
 
 
 class SearchConfiguration(BaseModel):
@@ -73,8 +74,14 @@ class RunnerConfiguration:
     async def configure_repository(self, repository_id: str, request: RunnerDefaults) -> dict[str, Any]:
         repository_id = identifier(repository_id).hex
         await self.store.repository(repository_id)
-        require_available_runner(request.sandbox)
-        configuration = capture_sandbox(request.sandbox)["configuration"]
+        if isinstance(request.sandbox, FactoryPoolSelection):
+            if self.executor.pool_worker is None:
+                raise RuntimeError("Factory pool worker is not configured")
+            request.sandbox.require_transport(self.executor.pool_worker.client.transport)
+            configuration = capture_factory_pool(request.sandbox)["configuration"]
+        else:
+            require_available_runner(request.sandbox)
+            configuration = capture_sandbox(request.sandbox)["configuration"]
         if contains_known_credential(configuration, self.search.credential_registry()):
             raise ValueError("Runner defaults cannot contain configured credentials")
         with self.private.lock:
@@ -85,11 +92,28 @@ class RunnerConfiguration:
             self.private._write(self.path, saved)
         return await self.configuration(repository_id)
 
-    async def capture_run(self, repository_id: str, selected: SandboxInput | None = None) -> dict[str, Any]:
+    async def capture_run(
+        self, repository_id: str, selected: FactoryPoolSelection | SandboxInput | None = None
+    ) -> dict[str, Any]:
         settings = await self.configuration(repository_id)
-        config = selected if selected is not None else SandboxInput.model_validate(settings["sandbox"])
-        require_available_runner(config)
-        sandbox = capture_sandbox(config)
+        saved = settings["sandbox"]
+        config = (
+            selected
+            if selected is not None
+            else (
+                FactoryPoolSelection.model_validate(saved)
+                if saved.get("mode") == "pool"
+                else SandboxInput.model_validate(saved)
+            )
+        )
+        if isinstance(config, FactoryPoolSelection):
+            if self.executor.pool_worker is None:
+                raise RuntimeError("Factory pool worker is not configured")
+            config.require_transport(self.executor.pool_worker.client.transport)
+            sandbox = capture_factory_pool(config)
+        else:
+            require_available_runner(config)
+            sandbox = capture_sandbox(config)
         if contains_known_credential(sandbox, self.search.credential_registry()):
             raise ValueError("Runner configuration cannot contain configured credentials")
         search = self.search.snapshot() if config.internet_search else None

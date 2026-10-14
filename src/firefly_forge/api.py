@@ -140,6 +140,11 @@ from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
 from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
+from firefly_forge.runner_controller_client import RunnerControllerClient
+from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
+from firefly_forge.runner_factory_models import load_factory_worker_configuration
+from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
+from firefly_forge.runner_pool_worker import RunnerPoolWorker
 from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyRepository
 from firefly_forge.runtime_roles import Role, RuntimeRoleConfig, RuntimeRoles
 from firefly_forge.sandbox import SandboxExecutor
@@ -546,7 +551,25 @@ class FactoryConfiguration:
 
     @bean
     def sandbox_executor(self, store: Store, journal: Journal, backends: RunnerBackends) -> SandboxExecutor:
-        return SandboxExecutor(store, journal, backends)
+        executor = SandboxExecutor(store, journal, backends)
+        configuration_path = os.environ.get("FORGE_RUNNER_WORKER_CONFIGURATION")
+        if configuration_path:
+            admin = load_factory_worker_configuration(Path(configuration_path))
+            if admin.transport.active:
+                workspaces = self.data_dir / "workspaces"
+                workspaces.mkdir(parents=True, exist_ok=True)
+                directory = self.data_dir / ".forge-pool-artifacts"
+                directory.mkdir(mode=0o700, exist_ok=True)
+                executor.pool_worker = RunnerPoolWorker(
+                    store,
+                    journal,
+                    RunnerFactoryAuthority(store, journal),
+                    RunnerControllerClient(admin.transport),
+                    RunnerGitSnapshot(admin.git_binary),
+                    workspaces,
+                    directory,
+                )
+        return executor
 
     @bean
     def search_tools(self) -> SearchTools:

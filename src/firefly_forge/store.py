@@ -38,6 +38,7 @@ from firefly_forge.persistence import (
     ForgeRunRepository,
 )
 from firefly_forge.policies import PolicyCatalog
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
 
@@ -302,7 +303,11 @@ class Store:
                 await self.runners.capture_run(request.repository_id, request.sandbox)
                 if self.runners is not None
                 else {
-                    "sandbox_snapshot": capture_sandbox(request.sandbox),
+                    "sandbox_snapshot": (
+                        capture_factory_pool(request.sandbox)
+                        if isinstance(request.sandbox, FactoryPoolSelection)
+                        else capture_sandbox(request.sandbox)
+                    ),
                     "search_snapshot": None,
                     "runner_config_revision": None,
                 }
@@ -314,7 +319,7 @@ class Store:
         if not isinstance(sandbox_snapshot, dict):
             raise ValueError("The selected runner requires a frozen sandbox configuration")
         if actor is not None and not await ProjectAccess(self).current_administrator(actor):
-            if sandbox_snapshot["mode"] != "docker":
+            if sandbox_snapshot["mode"] not in {"docker", "pool"}:
                 raise ValueError(
                     "Project users require an isolated runner; host execution requires a factory administrator"
                 )

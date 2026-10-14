@@ -13,6 +13,7 @@ Choose a runner before queueing a run. firefly forge freezes its configuration, 
 | --- | --- |
 | `host` | Commands run as the development service account with a filtered environment, timeout and output limit. The operating system account can access other host files and networks. |
 | `docker` | Commands run in a digest-pinned image with the component workspace mounted, a read-only root filesystem, dropped capabilities and resource limits. An unavailable image or context fails execution. |
+| `pool` | Administrator opt-in command execution through an authenticated local controller, with frozen profiles, durable admission quotas and archive transport. Requires a separately configured Factory worker. |
 
 The runner applies to independent verification and the native Firefly Agentic `execute_command` tool. Native Codex and Claude Code processes use their official CLI policies. Their own file, command and network tools execute outside this Docker runner. Native Python tool grants cannot enforce restrictions inside those CLIs.
 
@@ -60,6 +61,20 @@ Source reads and result extraction use directory-relative descriptors with no-fo
 The host workspace filesystem must support Linux `renameat2(RENAME_EXCHANGE)` or macOS `renameatx_np(RENAME_SWAP)`. Unsupported filesystems fail closed. Completed source collection is idempotent during receipt recovery. A returned archive is retained privately before publication; its hash and actual command outcome are recorded in the execution receipt. Failed imports record `workspace_import=requires_reconciliation`; retrying that invocation does not report success or run the command again. Inspect its retained archive and source before explicit stage recovery. If the archive cannot be retained locally, the exited owned containers remain available for reconciliation.
 
 Command timeout, rejected archives with retained evidence, and failed initialization clean up the owned command container, helper and anonymous volumes under their exact durable labels. Include private `.forge-sandbox-results` archives with the execution journal in operational backups; they can contain source and Git metadata.
+
+## Administrator opt-in local command pools
+
+Pool selection uses the explicit `forge-factory-pool-v1` policy and `forge-project-bundle-v1` transport. Earlier `pool_binding` fields remain disabled and never activate a pool or change a frozen run. The trusted Factory worker retains user, project, repository and stage authority; project containers receive neither its PostgreSQL credentials nor its controller token, TLS material, provider credentials, other workspaces or Docker socket. The controller alone owns the administrator Docker context.
+
+Start the controller with an explicit private configuration through `python -m firefly_forge.runner_controller_runtime --configuration /absolute/private/controller.yaml`. Its runner schema must differ from the Factory schema in the same PostgreSQL database. Mutual TLS, a private controller token, cached approved image digests, the observed Docker engine identity and an administrator-controlled absolute `git_binary` are required for project bundles. No image pull or host fallback occurs. Factory enables this adapter only when `FORGE_RUNNER_WORKER_CONFIGURATION` points to a private owner-controlled YAML or TOML file with the `forge.runner.worker` section, an active `transport` and an absolute `git_binary`. Transport binds the HTTPS endpoint, certificate, private key, CA, token, profile ID and immutable profile revision. The repository policy must match that approved private profile. Keep these files private and outside project source.
+
+Factory transfers sanitized component source and a synthesized parentless Git snapshot of those exact files. This snapshot supports local source diffs; it does not expose or reproduce the original repository's history, remotes, configuration or hooks. The controller independently reconstructs the minimum Git snapshot before admission and before creating project resources. Git metadata stays read-only and is never imported into the Factory repository. Transferring original repository objects would grant repository-read authority; component selection alone would not make those objects confidential.
+
+Project commands use network `none`, a read-only source volume, bounded writable workspace tmpfs, a non-root user and an independent PID1 deadline. Workspace tmpfs consumes the container memory budget. Export has a separate bounded grace period; a lost export leaves an unknown outcome. One profile identity owns each physical engine, with capacity and project quotas shared across its immutable revisions. Quarantined resources continue reserving capacity until exact backend observations establish drain.
+
+Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
+
+Local qualification covers a trusted Factory host, mutually authenticated controller and isolated command containers. Browser pool profiles, Factory worker container placement, project database sidecars, Kubernetes and shared multi-host storage require separate qualification. Native Codex/Claude provider processes retain their own execution boundary.
 
 ## Read execution and recovery evidence
 

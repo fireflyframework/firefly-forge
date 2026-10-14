@@ -18,7 +18,13 @@ from firefly_forge.secrets import runtime_environment
 
 
 async def _bounded_process(
-    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
+    argv: list[str],
+    cwd: Path,
+    timeout: int,
+    max_output_bytes: int,
+    *,
+    input_data: bytes | None = None,
+    environment: dict[str, str] | None = None,
 ) -> tuple[int, bytes]:
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -27,7 +33,7 @@ async def _bounded_process(
         stderr=asyncio.subprocess.STDOUT,
         stdin=asyncio.subprocess.PIPE if input_data is not None else asyncio.subprocess.DEVNULL,
         start_new_session=True,
-        env=runtime_environment(),
+        env=runtime_environment() if environment is None else environment,
     )
     output = bytearray()
 

@@ -19,7 +19,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pyfly.container import service
 
@@ -38,6 +38,9 @@ from firefly_forge.sandbox_models import (
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.store import Store
 from firefly_forge.workspace_tools import _private_name
+
+if TYPE_CHECKING:
+    from firefly_forge.runner_pool_worker import RunnerPoolWorker
 
 
 class SandboxReconciliationRequired(RuntimeError):
@@ -430,6 +433,7 @@ class SandboxExecutor:
     def __init__(self, store: Store, journal: Journal, backends: RunnerBackends | None = None) -> None:
         self.store, self.journal = store, journal
         self.backends = backends if backends is not None else RunnerBackends()
+        self.pool_worker: RunnerPoolWorker | None = None
         self.owner = hashlib.sha256((str(store.path.parent.resolve()) + store.schema).encode()).hexdigest()[:24]
         self.credential_registry: Callable[[], dict[str, str]] = dict
         transfer_image = os.environ.get("FORGE_SANDBOX_TRANSFER_IMAGE")
@@ -461,6 +465,10 @@ class SandboxExecutor:
         )
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        if snapshot.get("mode") == "pool":
+            if self.pool_worker is None:
+                return {"available": False, "mode": "pool", "reason": "Factory pool worker is not configured"}
+            return await self.pool_worker.probe(snapshot)
         config = validate_sandbox_snapshot(snapshot)
         if config.pool_binding is not None:
             return {
@@ -800,6 +808,19 @@ class SandboxExecutor:
             await self.store.assert_ownership()
             run = await self.store.get_run(run_id)
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
+            if snapshot.get("mode") == "pool":
+                if self.pool_worker is None:
+                    raise RuntimeError("Factory pool worker is not configured; execution cannot fall back")
+                if _browser or _browser_input is not None:
+                    raise ValueError("Pool browser execution requires a separately qualified browser profile")
+                stage = next(item for item in (await self.journal.plan(run_id))["tasks"] if item["id"] == task_id)
+                if ordinal is None:
+                    slot = (run_id, task_id, stage["attempt"])
+                    self._ordinals[slot] += 1
+                    ordinal = self._ordinals[slot]
+                return await self.pool_worker.execute(
+                    run_id, workspace, directory, argv, timeout, task_id, ordinal=ordinal
+                )
             config = validate_sandbox_snapshot(snapshot)
             backend = self.backends.select(config)
             if _browser:
@@ -1076,6 +1097,13 @@ class SandboxExecutor:
             counts["inspected"] += 1
             run_id, task_id, execution_id = row["run_id"], row["task_id"], row["execution_id"]
             payload = row["request"]
+            if payload["request"].get("protocol") == "forge-project-invocation-v1":
+                if self.pool_worker is None:
+                    raise RuntimeError("Retained pool execution requires its configured Factory worker for recovery")
+                recovered = await self.pool_worker.recover(row)
+                for key, value in recovered.items():
+                    counts[key] += value
+                continue
             config = SandboxInput.model_validate(payload["request"]["configuration"])
             labels = {
                 "org.firefly.forge.owner": self.owner,

@@ -107,3 +107,77 @@ def test_native_runner_configuration_routes_are_authenticated_and_write_only(tmp
         assert "/api/v1/repositories/{id}/runner" in schema["paths"]
         assert "/api/v1/runner-evidence/{id}/screenshot" in schema["paths"]
         assert client.get("/api/v1/runner-evidence/../../private/screenshot", headers=headers).status_code in {400, 404}
+
+
+async def test_new_pool_defaults_require_private_profile_binding_and_freeze_without_secrets(store, tmp_path):
+    from test_runner_pool_worker import fixture
+
+    from firefly_forge.models import RepositoryInput
+    from firefly_forge.runner_configuration import RunnerDefaults
+    from firefly_forge.runner_factory_models import FactoryPoolSelection
+
+    worker, controller, run, journal, workspace = await fixture(store, tmp_path)
+    settings = await service(store, tmp_path)
+    repo = await store.add_repository(RepositoryInput(name="Pool default", url="https://example.invalid/default.git"))
+    selection = FactoryPoolSelection.model_validate(
+        (await store.get_run(run["id"]))["sandbox_snapshot"]["configuration"]
+    )
+    with pytest.raises(RuntimeError, match="pool.*configured"):
+        await settings.configure_repository(repo["id"], RunnerDefaults(sandbox=selection))
+    settings.executor.pool_worker = worker
+    await settings.configure_repository(repo["id"], RunnerDefaults(sandbox=selection))
+    frozen = await settings.capture_run(repo["id"])
+    assert frozen["sandbox_snapshot"]["mode"] == "pool"
+    assert "private-fixture-worker-token" not in str(frozen)
+
+
+def test_native_pyfly_factory_wires_private_pool_transport_only_with_explicit_admin_opt_in(
+    tmp_path, postgres_schema, monkeypatch
+):
+    import yaml
+    from starlette.testclient import TestClient
+    from test_runner_controller_tls import certificates
+
+    from firefly_forge.api import create_application
+    from firefly_forge.runner_pool_models import RunnerPoolProfile
+    from firefly_forge.sandbox import SandboxExecutor
+
+    image = "example/worker@sha256:" + "a" * 64
+    profile = RunnerPoolProfile(
+        profile_id="owned", daemon_id="approved-engine", approved_images=(image,), transfer_image=image
+    )
+    tls = certificates(tmp_path / "tls")
+    private = tmp_path / "worker.yaml"
+    private.write_text(
+        yaml.safe_dump(
+            {
+                "forge": {
+                    "runner": {
+                        "worker": {
+                            "git_binary": "/usr/bin/git",
+                            "transport": {
+                                "active": True,
+                                "endpoint": "https://127.0.0.1:9917",
+                                "certificate": str(tls / "client.pem"),
+                                "private_key": str(tls / "client.key"),
+                                "ca": str(tls / "ca.pem"),
+                                "token": "private-test-native-worker-token-32-chars",
+                                "profile_id": profile.profile_id,
+                                "profile_revision": profile.revision,
+                            },
+                        }
+                    }
+                }
+            }
+        )
+    )
+    private.chmod(0o600)
+    monkeypatch.setenv("FORGE_RUNNER_WORKER_CONFIGURATION", str(private))
+    with TestClient(create_application(tmp_path / "factory", "test-only-factory-token-32chars")) as client:
+        executor = client.app.state.runtime.context.get_bean(SandboxExecutor)
+        assert executor.pool_worker is not None
+        assert executor.pool_worker.client.transport.profile_revision == profile.revision
+        assert executor.pool_worker.workspaces == (tmp_path / "factory" / "workspaces").resolve()
+    monkeypatch.delenv("FORGE_RUNNER_WORKER_CONFIGURATION")
+    with TestClient(create_application(tmp_path / "factory", "test-only-factory-token-32chars")) as client:
+        assert client.app.state.runtime.context.get_bean(SandboxExecutor).pool_worker is None
