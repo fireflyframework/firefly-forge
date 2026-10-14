@@ -9,7 +9,7 @@ description: Review the optional flyquery analytics design, its assessed SQL pip
 
 [flycanon](https://github.com/fireflyframework/flycanon) remains the required service for cited framework guidance, project documents and canonical verified memory. forge PostgreSQL and the journal retain execution authority. flyquery's query history and proposed SQL examples have separate meanings: they cannot approve a procedure, mark a run verified or replace source/checkpoint receipts.
 
-## Assessed flyquery pipeline
+## Earlier assessment and released corrections
 
 The assessed `QueryService` retrieves and reranks schema context, grounds the question, then either compiles declared semantic metrics or asks a generation agent for SQL. `AstClassifier` classifies the candidate, `ScopeGuard` checks its operation and dataset access, and `TableResolver` resolves registered Parquet snapshots. `DuckDBExecutor` runs the statement, with bounded critic attempts after execution errors. An explainer prepares the answer. The service retains query/results and may propose an example for later review.
 
@@ -20,7 +20,9 @@ Assessment of [revision `7b02792`](https://github.com/fireflyframework/flyquery/
 | AST classification and scope guard | A `SELECT` using `read_csv_auto` produced no registered table references and passed with query-read scope and an empty dataset allowlist. Actual DuckDB execution read a synthetic, unregistered local file. | Reject external-file and network table functions, unknown references and unsupported AST forms before execution. Every data reference must resolve to an explicitly authorized snapshot. |
 | DuckDB execution | A fresh in-process connection applies memory and thread settings and caps returned rows. The executor does not enforce the declared `default_statement_timeout_ms`. | Enforce real wall time and cancellation in an isolated process, with operating-system resource limits and confined snapshot access. |
 
-A separate in-memory DuckDB connection does not isolate the host filesystem or network. A row cap bounds the response, not the work needed to compute it. Keep the proposed forge integration disabled until those boundaries are repaired and tested through the actual query path, including critic-generated revisions.
+Those findings describe the pinned assessment revision. Published [flyquery 26.10.2](https://github.com/fireflyframework/flyquery/releases/tag/v26.10.2) restricts the supported read path to authorized registered local snapshots. [26.10.3](https://github.com/fireflyframework/flyquery/releases/tag/v26.10.3) adds cooperative statement deadlines and cancellation, preserves source data during copy-on-write cleanup, and refuses late success. A statement deadline is a terminal execution outcome rather than an invitation for the critic to repair SQL.
+
+A separate in-memory DuckDB connection still does not isolate the host filesystem or network. Cooperative cancellation is not an operating-system process kill. The proposed forge adapter must qualify confined snapshot access, resource limits, cancellation and all revised SQL through its actual authorized path before it can be enabled. The released SDK and executor proofs do not establish that adapter.
 
 Source: [`QueryService`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/query/query_service.py), [`AstClassifier`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/ast_classifier.py), [`ScopeGuard`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/scope_guard.py), [`DuckDBExecutor`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/duckdb_executor.py).
 

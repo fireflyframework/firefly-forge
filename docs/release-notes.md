@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.7
+
+**Knowledge > Learning records** lists saved evidence for the selected authorized repository. Operators can inspect its source, verification receipts, dates and saved flycanon projection without submitting or replaying a write. The desktop selector stays reachable while long provenance scrolls; narrow windows use the normal vertical flow. A saved verified state does not establish current reuse eligibility. See [record inspection](learning.md#review-saved-records-in-studio).
+
+After actual failed QA, the captured learning policy can hold the next same-run repair proposal when identical native evidence has reached its limit. The journal retains the decision and original checks. Current authority and unresolved effects are checked before dispatch; retrying the same proposal does not count the verification twice. The limit never relaxes the existing two-round no-progress stop. Verification, intentional RED tests and test-only runs remain available. Cross-run failure classification and sharing between projects remain separate.
+
+The runtime retains the qualified public pyfly 26.10.6, fireflyframework-agentic 26.10.1 and flycanon SDK 26.10.3 dependencies. Existing admitted runs retain their captured settings. Studio record inspection is read-only; lifecycle writes still require their reviewed operator and reconciliation contracts.
+
 ## 0.2.6
 
 Administrators can configure verified learning through **Administration > Learning**. The wizard separates knowledge selection, retrieval limits and review. It preserves saved preferences when learning is disabled and requires a read of saved settings after an uncertain write. New runs capture the revised policy; existing runs retain theirs. See [learning and knowledge-first execution](learning.md).

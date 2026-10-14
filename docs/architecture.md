@@ -258,7 +258,19 @@ Source: [`agent_roles.py`](https://github.com/fireflyframework/firefly-forge/blo
 
 ## Learning and structured knowledge decisions
 
-The [learning architecture](learning.md) defines exact reuse eligibility, evidence-backed local procedure outcomes, observed failed checks and typed question/tool/review associations. Its diagrams separate PostgreSQL decision authority from flycanon retrieval and show where native fireflyframework-agentic workers provide proposals. The initial implementation adds scoped PostgreSQL records, native knowledge-first tools and explicit one-shot flycanon projection. Automatic retrieval from projected learning namespaces, classified negative repair controls and sharing between projects remain open; their contracts do not establish runtime acceptance.
+The [learning architecture](learning.md) binds a question to its source, scope and native verification receipts. PostgreSQL decides whether an exact local outcome may be reused; flycanon supplies the cited projection. A run must explicitly permit projected retrieval, and the factory checks current authority, versions and freshness before returning a new or cached result. Studio exposes saved records and projection status through authorized reads. Saved verification is visible history; current eligibility is decided during lookup.
+
+After failed QA, `Engine._repair_proposal` inspects the owned workspace and checks current authority and unresolved effects before another coding dispatch. `repair_proposals.py` takes the native run lock, checks the frozen plan and policy against the intact journal, and counts distinct completed verification rounds with the same source, context and failed-command fingerprint. A stable receipt-bound key retains the decision across interruption. The effective cap is the lower of two and the captured repeated-attempt limit; disabling learning preserves the existing no-progress stop. An unknown effect requires reconciliation before that decision.
+
+| Native component | Decision it owns | Evidence retained |
+| --- | --- | --- |
+| `LearningLedger` | Capture verified outcomes and evaluate exact local reuse | Question, scope, source, versions, checks and review receipts |
+| `LearningProjection` | Submit or observe a separate flycanon projection; read an exact eligible citation | Captured target, source identity, content digest and citation |
+| Repair proposal admission | Permit or hold the next same-run coding proposal after actual QA | Native verification receipt, matching round count, policy digest and decision |
+
+The proposal cap leaves verification commands, diagnostic checks, intentional RED tests and test-only runs available. It does not classify an approach as invalid across runs. Cross-run negative learning, reviewed sharing between projects and Studio lifecycle-write reconciliation remain separate work.
+
+Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning.py), [`learning_projection.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning_projection.py), [`repair_proposals.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/repair_proposals.py). The [learning guide](learning.md#review-saved-records-in-studio) explains record inspection and its read-only boundary.
 
 ### Structured analytics boundary
 
