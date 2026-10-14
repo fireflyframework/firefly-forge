@@ -227,7 +227,7 @@ class ToolInvocationBroker:
                     await ProjectAccess(self.store).authorize_execution(run.data)
                     if completion_guard is not None:
                         completion_guard()
-                    self._authorize_result(previous, "succeeded")
+                    await self._authorize_result(previous, "succeeded")
                     return copy.deepcopy(previous.data["result"])
                 if previous.status == "rejected":
                     error = previous.data["error"]
@@ -344,7 +344,7 @@ class ToolInvocationBroker:
             row = next(item for item in await self.records.for_run(run.id) if item.correlation_id == correlation_id)
             if row.status != "pending":
                 raise ValueError("Tool invocation already has a recorded outcome")
-            self._authorize_result(row, status)
+            await self._authorize_result(row, status)
             row.status = status
             row.data = {**row.data, **copy.deepcopy(evidence), "completed_at": now()}
             await self.records.save(row)
@@ -355,22 +355,23 @@ class ToolInvocationBroker:
                 "tool_receipt" if status != "unknown" else "tool_unknown",
                 {"correlation_id": correlation_id, "tool": row.tool, "status": status, **evidence},
             )
-            self._authorize_result(row, status)
+            await self._authorize_result(row, status)
 
-    def _authorize_result(self, row: ForgeToolInvocationEntity, status: str) -> None:
+    async def _authorize_result(self, row: ForgeToolInvocationEntity, status: str) -> None:
         if status != "succeeded" or not row.tool.startswith("external_mcp:"):
             return
         if self.external_mcp is None:
             raise ValueError("External MCP result requires its registered authority")
         admission = row.data["admission"]
         arguments = admission["arguments"]
-        self.external_mcp.authorize(
+        await self.external_mcp.authorize_result(
             admission["configuration"],
             arguments["connector"],
             arguments["tool"],
             arguments["arguments"],
             roles=admission["roles"],
             stage=row.task_id,
+            run_id=row.run_id.hex,
         )
 
     async def reconcile(self, run_id: str, correlation_id: str, reconciliation_id: str) -> Data:

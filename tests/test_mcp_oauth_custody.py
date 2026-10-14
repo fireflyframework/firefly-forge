@@ -105,11 +105,11 @@ def test_native_oauth_link_api_sdk_cli_mcp_share_the_write_only_free_contract(tm
 
 
 async def test_public_mcp_catalog_checks_current_replica_credentials(tmp_path, postgres_schema, monkeypatch):
-    from test_connection_oauth_ledger import actor, configuration
-    from test_oauth_vault_admission import replicas
+    from test_connection_oauth_ledger import actor
+    from test_oauth_vault_admission import native_configuration, replicas
 
     async with replicas(tmp_path, monkeypatch) as (services, reader):
-        await services[0].configure("design", configuration(client_secret="GitHub"), actor())
+        await services[0].configure("design", native_configuration(client_secret="GitHub"), actor())
         response = await reader.get("/api/v1/tools/mcp")
         assert response.status_code == 409, response.text
         assert "GitHub" not in response.text

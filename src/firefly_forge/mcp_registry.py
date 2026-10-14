@@ -397,7 +397,7 @@ class ExternalMCPRegistry:
             if (
                 os.environ.get("FORGE_OAUTH_LOCAL_DEVELOPMENT") != "1"
                 or not self.resources.connections.loopback
-                or browser.scheme != "http"
+                or browser.scheme not in {"http", "https"}
                 or browser.hostname not in {"127.0.0.1", "::1"}
                 or origin.scheme != "http"
                 or origin.hostname not in {"127.0.0.1", "::1"}
@@ -741,6 +741,29 @@ class ExternalMCPRegistry:
         if contains_known_credential(args, {**self.credentials(), **self.credential_registry()}):
             raise ValueError("MCP arguments cannot contain configured credentials")
         return copy.deepcopy(grant), args
+
+    async def authorize_result(
+        self,
+        snapshot: Data,
+        connector: str,
+        tool: str,
+        arguments: Data,
+        *,
+        roles: list[str],
+        stage: str,
+        run_id: str,
+    ) -> None:
+        grant, _ = self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
+        with self.private.lock:
+            credential = self.private._read(self.revisions / (grant["credential_revision"] + ".json"))
+        if credential.get("connector") != connector:
+            raise MCPAdmissionError("Frozen MCP credential revision is unavailable")
+        if credential.get("oauth_binding"):
+            binding = credential["oauth_binding"]
+            self._oauth_endpoint(connector, binding)
+            assert self.resources is not None
+            await self.resources.authorize(binding, run_id=run_id, repository_id=grant["repository_id"])
+        self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
 
     async def call(
         self,

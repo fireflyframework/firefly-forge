@@ -817,6 +817,34 @@ def create_server() -> MCPServer:
             return connection.external_mcp_catalog()
 
     @server.tool()
+    def get_oauth_provider_policies() -> dict[str, Any]:
+        """Read current native provider policy and local development availability."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.oauth_provider_policies()
+
+    @server.tool()
+    def configure_local_oauth_provider_policy(
+        enabled: bool,
+        local_origin: str,
+        expected_revision: int,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """Admit the fixed local service; server development and administrator gates apply."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_local_oauth_provider_policy(
+                {
+                    "enabled": enabled,
+                    "local_origin": local_origin,
+                    "expected_revision": expected_revision,
+                    "request_id": request_id,
+                }
+            )
+
+    @server.tool()
     def get_connection_oauth_providers() -> list[dict[str, Any]]:
         """Read admitted OAuth registrations and unmet provider prerequisites."""
         from firefly_forge.cli import client

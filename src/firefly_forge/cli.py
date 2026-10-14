@@ -825,6 +825,33 @@ def connection_oauth() -> None:
     """Prepare browser consent and inspect durable OAuth connection state."""
 
 
+@connection_oauth.command("policy-list")
+def oauth_policy_list() -> None:
+    """Read the current server-owned provider admission policy."""
+    with client() as connection:
+        display(connection.oauth_provider_policies())
+
+
+@connection_oauth.command("local-policy")
+@click.option("--origin", required=True)
+@click.option("--enable/--disable", default=True)
+@click.option("--expected-revision", type=click.IntRange(0, 2_147_483_646), required=True)
+@click.option("--request-id", required=True)
+def local_oauth_policy(origin: str, enable: bool, expected_revision: int, request_id: str) -> None:
+    """Admit the fixed local repository service under the server's development gates."""
+    with client() as connection:
+        display(
+            connection.configure_local_oauth_provider_policy(
+                {
+                    "enabled": enable,
+                    "local_origin": origin,
+                    "expected_revision": expected_revision,
+                    "request_id": request_id,
+                }
+            )
+        )
+
+
 @connection_oauth.command("providers")
 def connection_oauth_providers() -> None:
     with client() as connection:

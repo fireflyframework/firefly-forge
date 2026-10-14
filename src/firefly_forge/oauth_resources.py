@@ -123,6 +123,9 @@ class OAuthResources:
     ) -> _ResourceCredential:
         binding = self._checked(binding)
         async with self.connections._locked(binding["connection_name"]) as session:
+            # Policy writers lock current administrator authority before the policy row.
+            if actor is not None:
+                await self.connections._authority(session, actor)
             row = await self.connections._required(binding["connection_name"])
             registration = await self.connections._registration(session, row)
             policy = registration.data["policy"]
@@ -157,7 +160,6 @@ class OAuthResources:
                 raise ValueError("OAuth resource grant is unavailable, expired or changed")
             await self.access.authorize_actor(binding["owner_actor"], binding["project_id"], "execute")
             if actor is not None:
-                await self.connections._authority(session, actor)
                 if actor.id != grant.actor_id:
                     raise ValueError("The current grant owner must authorize resource discovery")
             else:
@@ -195,6 +197,10 @@ class OAuthResources:
                     "observed_at": (await self.connections._time(session)).isoformat(),
                 },
             )
+
+    async def authorize(self, binding: Data, *, run_id: str, repository_id: str) -> None:
+        """Recheck current native resource authority without dispatch or a new observation."""
+        await self._admission(binding, run_id=run_id, repository_id=repository_id)
 
     def transport(
         self,

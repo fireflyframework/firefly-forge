@@ -587,6 +587,15 @@ class ForgeClient:
             raise ValueError("Invalid OAuth connection name")
         return name
 
+    def oauth_provider_policies(self) -> dict[str, Any]:
+        return dict(self.request("GET", "oauth-provider-policies"))
+
+    def configure_local_oauth_provider_policy(self, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.oauth_provider_policy_models import OAuthProviderPolicyInput
+
+        payload = OAuthProviderPolicyInput.model_validate(request).model_dump()
+        return dict(self.request("PUT", "oauth-provider-policies/local-repository-tools", json=payload))
+
     def connection_oauth_providers(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "connection-oauth/providers"))
 
