@@ -50,9 +50,14 @@ async function assertDiagrams(page, count) {
   await expect
     .poll(async () => {
       diagrams = await renderedDiagrams(page);
-      return diagrams.length;
+      return {
+        count: diagrams.length,
+        painted: diagrams.every(
+          (diagram) => diagram.width > 100 && diagram.height > 30,
+        ),
+      };
     })
-    .toBe(count);
+    .toEqual({ count, painted: true });
   for (const diagram of diagrams) {
     expect(diagram.width).toBeGreaterThan(100);
     expect(diagram.height).toBeGreaterThan(30);
@@ -70,6 +75,32 @@ async function assertDiagrams(page, count) {
   ).toBe(0);
   return diagrams;
 }
+
+test("Mermaid readiness waits for geometry after SVG insertion", async ({
+  page,
+}) => {
+  await optionalRepositoryBadges(page);
+  await page.goto("product-lifecycle/");
+  await assertDiagrams(page, 1);
+  await page.evaluate(() => {
+    const original = window.SVGElement.prototype.getBoundingClientRect;
+    let pending = true;
+    window.unpaintedDiagramSamples = 0;
+    window.SVGElement.prototype.getBoundingClientRect = function () {
+      const box = original.call(this);
+      if (pending && this.localName === "svg") {
+        pending = false;
+        window.unpaintedDiagramSamples += 1;
+        return new window.DOMRect(box.x, box.y, 0, 0);
+      }
+      return box;
+    };
+  });
+  const diagrams = await assertDiagrams(page, 1);
+  expect(await page.evaluate(() => window.unpaintedDiagramSamples)).toBe(1);
+  expect(diagrams[0].width).toBeGreaterThan(100);
+  expect(diagrams[0].height).toBeGreaterThan(30);
+});
 
 for (const entry of mermaidPages(join(root, "docs"))) {
   for (const theme of ["light", "dark"]) {

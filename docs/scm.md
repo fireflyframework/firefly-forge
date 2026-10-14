@@ -7,13 +7,13 @@ description: Connect GitHub, GitLab or Bitbucket applications and retain project
 
 Open **Connections → Source control** to register an application owned by your
 GitHub organization, GitLab account or Bitbucket workspace. The provider controls
-its permissions and grants. Forge discovers the repositories it can access and
+its permissions and grants. forge discovers the repositories it can access and
 checks the current grant again before cloning or publishing.
 
 Application registration and owner approval happen on the provider's website.
-Saving a client ID or private key in Forge does not create an application or prove
+Saving a client ID or private key in forge does not create an application or prove
 access. **Test connection** makes a real provider request. **Connect repository**
-accepts a discovered repository ID; Forge obtains its URL and default branch
+accepts a discovered repository ID; forge obtains its URL and default branch
 from a fresh provider response.
 
 ## GitHub App
@@ -22,23 +22,23 @@ from a fresh provider response.
 under the account that should own it. Request repository **Contents: read and
 write** and **Pull requests: read and write**. Install it on the selected
 repositories. Save its app ID, installation ID and unencrypted RSA private key
-in Forge. The optional app slug provides a direct installation link.
+in forge. The optional app slug provides a direct installation link.
 
-Forge signs a short-lived app JWT. Repository discovery uses an installation
+forge signs a short-lived app JWT. Repository discovery uses an installation
 token with metadata permission. Git execution and pull requests use a token
 restricted to the selected repository ID, with the two write permissions above.
 Tokens are refreshed before expiry. Organization approval, branch protections
 and workflow-file permissions can still prevent an operation. See
 [GitHub's installation-token contract](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
-For GitHub Enterprise Server, set **Host** to its HTTPS origin. Forge derives
+For GitHub Enterprise Server, set **Host** to its HTTPS origin. forge derives
 `/api/v3` from that origin and rejects clone URLs or pagination links from another
 host. App installation and permissions must exist on that same server.
 
 ## GitLab OAuth application
 
 [Register an OAuth application](https://docs.gitlab.com/integration/oauth_provider/)
-with the redirect URI displayed in Forge:
+with the redirect URI displayed in forge:
 
 ```text
 https://your-forge.example/api/v1/scm/connections/gitlab/callback
@@ -49,7 +49,7 @@ Git access. Save the application ID and redirect URI; save its client secret
 when the application is confidential. Select **Authorize** to complete the
 provider's consent screen.
 
-Forge uses authorization code with PKCE, a browser-bound state that expires
+forge uses authorization code with PKCE, a browser-bound state that expires
 after ten minutes, and server-side rotating refresh tokens. State can be used
 once. Discovery requests non-archived projects where the authorized user is a
 member with developer access or higher. GitLab OAuth follows the user's grants;
@@ -62,10 +62,10 @@ Self-managed GitLab uses its configured HTTPS origin. See the
 Create an [OAuth consumer in the workspace](https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud/)
 and enable `repository`, `repository:write`, `pullrequest` and `pullrequest:write`.
 Save its client key, client secret and workspace slug. The default grant is
-**client credentials**: Forge obtains a short-lived token representing the
+**client credentials**: forge obtains a short-lived token representing the
 consumer's owner and lists repositories in the configured workspace.
 
-For user consent, choose **authorization code**, register the Forge callback
+For user consent, choose **authorization code**, register the forge callback
 URI and select **Authorize**. This uses browser-bound, single-use state and
 rotating refresh tokens. Client-credentials tokens are obtained again on expiry;
 that grant does not require a refresh token.
@@ -84,11 +84,11 @@ secret values cannot be read back. Blank secret fields preserve saved values.
 Use the explicit clear action to remove them. Changing application settings
 invalidates saved grants, cached tokens and pending authorization state.
 Changing an OAuth host or client ID also requires an explicitly supplied client
-secret or an explicit clear action. Forge refuses to carry a confidential
+secret or an explicit clear action. forge refuses to carry a confidential
 client's saved secret to that new destination. A public GitLab client can clear
 the old secret before starting a new authorization.
 
-Before refreshing a rotating token, Forge persists a dispatch marker in its
+Before refreshing a rotating token, forge persists a dispatch marker in its
 current private SCM grant storage. A timeout, invalid response or interrupted
 process leaves that marker unresolved; subsequent requests cannot send the old
 refresh token again, including after restart. The connection reports
@@ -109,8 +109,8 @@ products. Coding and verification workers do not receive those credentials.
 Provider errors omit response bodies that might contain sensitive data.
 
 Revoke an installation or OAuth grant at the provider to remove its authority.
-Forge's next grant check fails if access is revoked. Clearing the local secret
-removes Forge's copy; it does not uninstall the provider's application. Existing
+forge's next grant check fails if access is revoked. Clearing the local secret
+removes forge's copy; it does not uninstall the provider's application. Existing
 remote branches and pull requests remain.
 
 ## Connection API
@@ -142,7 +142,7 @@ or credentials supplied by the caller.
 Studio runs begin with `publish: false`. After verification succeeds, **Publish
 pull request** creates a branch and invokes the provider's pull-request API.
 Operators can also use `forge publish RUN_ID` or explicitly request `publish:
-true` when creating a run. Forge does not merge a pull request or deploy a
+true` when creating a run. forge does not merge a pull request or deploy a
 product through this action. Project reviews and branch protections still apply.
 
 Generic Git, Azure DevOps and Gitea retain the manual repository path. HTTPS URLs
@@ -152,7 +152,7 @@ remain available; GitHub, GitLab and Bitbucket application connections provide
 the managed grant flow described above.
 
 Contract tests check request construction, state handling and failure boundaries.
-Loopback HTTP acceptance runs a real Forge API server and a provider fixture
+Loopback HTTP acceptance runs a real forge API server and a provider fixture
 server for GitHub Enterprise `/api/v3`, self-managed GitLab `/api/v4`, and
 Bitbucket Cloud. It verifies operator authentication, GitHub JWT signatures,
 GitLab PKCE and refresh rotation, bearer-authorized repository discovery, signed

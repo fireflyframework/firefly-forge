@@ -40,7 +40,7 @@ Image bytes are passed as multimodal content to the model. Their receipts record
 
 If an upload loses its reply, refresh the saved-file list before retrying. An exact retry uses the original request ID, filename and content and returns the same receipt. Changing the filename or bytes under that request ID is rejected. The UI keeps the pending file available for an explicit retry.
 
-For a model response with an uncertain outcome, inspect the retained turn and its journal before sending again. Reusing the request ID requires the same message and file selection. Forge does not automatically repeat an uncertain model request.
+For a model response with an uncertain outcome, inspect the retained turn and its journal before sending again. Reusing the request ID requires the same message and file selection. forge does not automatically repeat an uncertain model request.
 
 Each active turn has a persisted owner, an ownership epoch and a renewable lease measured against PostgreSQL's clock. Reading it from another API instance leaves the active request alone. If the lease expires, an authorized editor can explicitly recover that epoch for reconciliation. Recovery fences late replies and records the observed expiry; it does not repeat the model call. See [Conversation recovery](recovery.md#recover-a-product-conversation).
 

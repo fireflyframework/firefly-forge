@@ -88,7 +88,7 @@ profiles. Angular, React, Next.js and Vue are selectable frontend contracts.
   the provider and preserves each attempt's results.
 - Final passing verification tied to a source-tree snapshot, checked again
   before publication, plus exclusive service ownership of each data directory.
-- Token protection across the Forge API, with native management/admin/actuator
+- Token protection across the forge API, with native management/admin/actuator
   surfaces disabled in the packaged pyfly configuration.
 - Firefly branding, self-hosted typography, accessible SVG diagrams and
   task-based installation, product, integration and operations guides.
@@ -99,7 +99,7 @@ The configured factory gate covers Python tests, lint, formatting and types;
 Studio types, lint, formatting, unit tests, browser journeys and production
 build; and strict MkDocs compilation.
 
-Studio was also exercised against the real authenticated Forge API: connection,
+Studio was also exercised against the real authenticated forge API: connection,
 repository and run creation, cancellation, run diff and verification evidence,
 an actual ZIP download and the product form. Direct browser review covered 1440,
 640, 390 and 360 pixel widths without

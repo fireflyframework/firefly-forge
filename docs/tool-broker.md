@@ -5,7 +5,7 @@ description: Inspect durable tool intents, bounded outcomes, frozen budgets and 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Review mediated tool execution
 
-Agent internet searches and approved external MCP calls pass through a run-scoped broker. Before sending a request, forge records its intent and reserves a call from the run's frozen budget in PostgreSQL. The same transaction appends the intent to the run's hash-chain journal.
+Native knowledge lookups, agent internet searches and approved external MCP calls pass through a run-scoped broker. Before sending a request, forge records its intent and reserves a call from the run's frozen budget in PostgreSQL. The same transaction appends the intent to the run's hash-chain journal.
 
 An invocation retains its correlation ID, execution stage, repository and project association, active role grants, actual source commit and tree, provider revision, hostname restrictions and policy. A successful result includes its `invocation_id`. Citations and provider usage receipts remain part of the recorded result.
 
@@ -69,6 +69,6 @@ An invocation that may still be running cannot be abandoned until its bounded le
 
 Factory policy routes require a factory administrator. Run activity follows the existing project read permission. Reconciliation follows the run's execution permission and publication guards. The authenticated decision actor is recorded with the reconciliation event.
 
-The Python SDK provides `tool_policy()`, `configure_tool_policy()`, `tool_invocations()` and `abandon_tool_invocation()`. Forge's MCP server provides `get_tool_policy`, `configure_tool_policy`, `get_run_tool_invocations` and `abandon_tool_invocation` through those same API routes.
+The Python SDK provides `tool_policy()`, `configure_tool_policy()`, `tool_invocations()` and `abandon_tool_invocation()`. forge's MCP server provides `get_tool_policy`, `configure_tool_policy`, `get_run_tool_invocations` and `abandon_tool_invocation` through those same API routes.
 
-The broker currently mediates agent internet search and approved external MCP calls. Workspace operations, commands and browser checks retain their existing execution guards and evidence mechanisms; this does not move every native or official CLI tool into the broker. External MCP calls require the [approved registry and project grants](external-tools.md). See [agent tools](agent-tools.md), [search providers](search-providers.md) and [capability limits](capabilities.md).
+The broker currently mediates native knowledge lookup, agent internet search and approved external MCP calls. Workspace operations, commands and browser checks retain their existing execution guards and evidence mechanisms; this does not move every native or official CLI tool into the broker. External MCP calls require the [approved registry and project grants](external-tools.md). See [agent tools](agent-tools.md), [search providers](search-providers.md) and [capability limits](capabilities.md).

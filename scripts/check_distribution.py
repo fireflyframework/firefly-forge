@@ -35,7 +35,12 @@ def inspect(directory: Path) -> None:
                 names = source.getnames()
         for name in names:
             parts = Path(name).parts
-            if DENIED.intersection(parts) or "bridge" in parts or any(part == "plans" for part in parts):
+            if (
+                DENIED.intersection(parts)
+                or "bridge" in parts
+                or any(part == "plans" for part in parts)
+                or name.endswith(".tsbuildinfo")
+            ):
                 raise SystemExit(f"Release contains excluded content: {name}")
         if archive.suffix == ".whl" and not any(name.endswith("static/index.html") for name in names):
             raise SystemExit("Wheel does not include the built Studio")

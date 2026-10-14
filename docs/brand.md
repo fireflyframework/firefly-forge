@@ -7,7 +7,7 @@ description: Use firefly forge logos, Manrope typography and licensed brand asse
 # Use firefly forge visual assets
 
 The product name is **firefly forge**, in lowercase. Its identity combines the
-unmodified Firefly parent artwork, a measured hairline separator and a Forge
+unmodified Firefly parent artwork, a measured hairline separator and a forge
 wordmark with an original lowercase **f** emblem. The factory scene comes from
 the actual Firefly website geometry, rather than a separate flowchart style.
 
@@ -60,7 +60,7 @@ SVG box to the shared shell grid, not a hand-typed product title.
 onboarding composition: projected machines, module platforms, connected
 conveyors, side lane, and separate API/event backbone pipes. Only material
 colors change between themes. Website business-step numbers and decision badges
-are omitted so they do not imply a Forge runtime operation.
+are omitted so they do not imply a forge runtime operation.
 
 The authoritative renderer is `src/scripts/factory-drawing.ts` in
 `firefly-oss/firefly-software-website`, pinned to
@@ -126,7 +126,7 @@ than flattening to a single color. Communicate status in text as well as color.
 revisions and SHA-256 values for generated assets and application copies. Keep
 `NOTICE` with the marks, `OFL.txt` with fonts and the icon notices with their
 bundles. The separate Agent Bridge uses its own connected-span
-identity; its assets are not part of the public Forge inventory.
+identity; its assets are not part of the public forge inventory.
 
 ## Regenerate and review
 
