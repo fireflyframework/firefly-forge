@@ -84,9 +84,9 @@ async def test_ciphertext_cannot_move_between_schema_connection_revision_or_purp
     async with store._unit() as session:
         rows = list(await session.scalars(select(OAuthRegistrationEntity).order_by(OAuthRegistrationEntity.created_at)))
         encoded = rows[0].encrypted_secret
-        rows[1].encrypted_secret = encoded
+        context = svc._client_context(rows[1].connection_id, rows[1].revision, rows[1].data)
     with pytest.raises(ValueError, match="context"):
-        await svc.prepare("second", user)
+        svc._open(encoded, context)
 
 
 async def test_bearer_can_prepare_but_cannot_bind_browser_consent(store):
@@ -131,9 +131,10 @@ async def test_registration_cipher_is_bound_to_client_and_exact_policy(store):
 
     async with store._unit() as session:
         row = await session.scalar(select(OAuthRegistrationEntity))
-        row.data = {**row.data, "client_id": "different"}
+        altered_context = svc._client_context(row.connection_id, row.revision, {**row.data, "client_id": "different"})
+        encoded = row.encrypted_secret
     with pytest.raises(ValueError, match="context"):
-        await svc.prepare("design", user)
+        svc._open(encoded, altered_context)
 
 
 async def test_project_scope_must_exist_and_is_frozen_in_registration(store):

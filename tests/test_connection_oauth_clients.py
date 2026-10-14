@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 
+import pytest
 from click.testing import CliRunner
 from starlette.testclient import TestClient
 from test_connection_oauth_ledger import provider
@@ -84,9 +85,34 @@ def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path
 def test_oauth_sdk_rejects_path_injection_before_http():
     connection = ForgeClient("https://forge.example", "fixture-token")
     try:
-        import pytest
-
         with pytest.raises(ValueError):
             connection.prepare_connection_oauth("../../auth/callback")
+    finally:
+        connection.http.close()
+
+
+@pytest.mark.parametrize("action", ["show", "configure", "prepare", "refresh", "disconnect"])
+def test_oauth_sdk_rejects_reserved_catalog_name_before_http(action, monkeypatch):
+    connection = ForgeClient("https://forge.example", "fixture-token")
+    calls = []
+
+    def unexpected_request(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("Reserved names cannot send a request")
+
+    monkeypatch.setattr(connection, "request", unexpected_request)
+    methods = {
+        "show": lambda: connection.connection_oauth("providers"),
+        "configure": lambda: connection.configure_connection_oauth(
+            "providers", {"provider": "fixture", "client_id": "client", "public_client": True}
+        ),
+        "prepare": lambda: connection.prepare_connection_oauth("providers"),
+        "refresh": lambda: connection.refresh_connection_oauth("providers", "a" * 32),
+        "disconnect": lambda: connection.disconnect_connection_oauth("providers"),
+    }
+    try:
+        with pytest.raises(ValueError, match="name"):
+            methods[action]()
+        assert not calls
     finally:
         connection.http.close()

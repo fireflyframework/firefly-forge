@@ -121,3 +121,24 @@ async def test_native_authenticated_browser_to_real_http_pkce_callback_refresh_d
                     assert (
                         secret not in complete.text and secret not in refreshed.text and secret not in disconnect.text
                     )
+
+
+def test_reserved_name_is_rejected_without_shadowing_the_provider_catalog(tmp_path, postgres_schema):
+    from test_connection_oauth_ledger import provider
+
+    from firefly_forge.connection_oauth import ConnectionOAuth
+
+    with TestClient(create_application(tmp_path, TOKEN), client=("127.0.0.1", 50000)) as client:
+        svc = client.app.state.runtime.context.get_bean(ConnectionOAuth)
+        svc.catalog["fixture"] = provider()
+        svc.browser_origin = "https://forge.example"
+        headers = {"Authorization": "Bearer " + TOKEN}
+        body = {"provider": "fixture", "client_id": "client", "public_client": True}
+        rejected = client.put("/api/v1/connection-oauth/providers", headers=headers, json=body)
+        assert rejected.status_code == 409
+        catalog = client.get("/api/v1/connection-oauth/providers", headers=headers)
+        assert catalog.status_code == 200 and isinstance(catalog.json(), list)
+        saved = client.put("/api/v1/connection-oauth/design", headers=headers, json=body)
+        assert saved.status_code == 200
+        viewed = client.get("/api/v1/connection-oauth/design", headers=headers)
+        assert viewed.status_code == 200 and viewed.json()["name"] == "design"

@@ -583,7 +583,7 @@ class ForgeClient:
 
     @staticmethod
     def _oauth_name(name: str) -> str:
-        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
+        if name == "providers" or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
             raise ValueError("Invalid OAuth connection name")
         return name
 

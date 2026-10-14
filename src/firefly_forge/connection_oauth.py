@@ -204,7 +204,7 @@ class ConnectionOAuth:
 
     @asynccontextmanager
     async def _locked(self, name: str) -> AsyncIterator[AsyncSession]:
-        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
+        if name == "providers" or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
             raise ValueError("Invalid connection name")
         async with self.store._unit() as session:
             await session.execute(
@@ -748,12 +748,13 @@ class ConnectionOAuth:
                     "refresh_token": refresh,
                 },
             )
-            row.status, effect.state = "authorized_unverified", "completed"
+            row.status = "authorized_unverified"
             await session.flush()
             result = await self._summary(session, row)
             observed_at = (await self._time(session)).isoformat()
             result["observed_at"] = observed_at
             effect.data = {**effect.data, "result": result, "observed_at": observed_at}
+            effect.state = "completed"
             await self._event(
                 session,
                 row,
