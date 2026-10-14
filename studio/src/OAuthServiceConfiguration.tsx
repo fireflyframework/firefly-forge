@@ -40,13 +40,24 @@ export function OAuthServiceConfiguration({
   onComplete: () => void;
 }) {
   const storageKey = policyPendingKey(connection.base, actor);
-  const [pending, setPending] = useState(() =>
-    readPolicyPending(
-      sessionStorage.getItem(storageKey),
-      connection.base,
-      actor,
-    ),
-  );
+  const [retained] = useState(() => {
+    try {
+      return {
+        pending: readPolicyPending(
+          sessionStorage.getItem(storageKey),
+          connection.base,
+          actor,
+        ),
+        readable: true,
+      };
+    } catch {
+      return { pending: null, readable: false };
+    }
+  });
+  const storageError = retained.readable
+    ? ""
+    : "This browser cannot read session storage. Allow access and reopen this setup before saving; an earlier request may still need confirmation.";
+  const [pending, setPending] = useState(retained.pending);
   const previous = initial.policies[0];
   const initialOrigin = pending?.body.local_origin || previous?.local_origin;
   const [host, setHost] = useState(
@@ -67,7 +78,7 @@ export function OAuthServiceConfiguration({
   const [receipt, setReceipt] = useState<OAuthLocalPolicy | null>(null);
   const [step, setStep] = useState(pending ? 1 : 0);
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(storageError);
   const active = useRef<AbortController | null>(null),
     alert = useRef<HTMLDivElement>(null);
   const current = directory.policies[0];
@@ -88,7 +99,7 @@ export function OAuthServiceConfiguration({
     if (busy || pending) return;
     try {
       localOrigin(origin);
-      setError("");
+      setError(storageError);
       setStep(1);
     } catch (cause) {
       setError(
@@ -116,7 +127,7 @@ export function OAuthServiceConfiguration({
     const controller = new AbortController();
     active.current = controller;
     setBusy(true);
-    setError("");
+    setError(storageError);
     try {
       await readCurrent(controller);
     } catch {
@@ -130,7 +141,8 @@ export function OAuthServiceConfiguration({
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (busy || !directory.local_development_available) return;
+    if (busy || !directory.local_development_available || !retained.readable)
+      return;
     let body: OAuthPolicyInput;
     try {
       body = pending?.body || {
@@ -385,7 +397,11 @@ export function OAuthServiceConfiguration({
               </button>
               <button
                 className="primary"
-                disabled={busy || !directory.local_development_available}
+                disabled={
+                  busy ||
+                  !directory.local_development_available ||
+                  !retained.readable
+                }
               >
                 {busy
                   ? "Saving…"

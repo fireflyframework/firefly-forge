@@ -1815,3 +1815,44 @@ test("local service storage failure prevents dispatch and invalid ports fail nat
   await expect(page.getByRole("alert")).toContainText("session storage");
   expect(writes).toEqual([]);
 });
+
+test("denied local service storage reads keep navigation and account history usable without dispatch", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key) {
+      if (key.startsWith("forge.local-service-action:"))
+        throw new DOMException("Fixture denied storage read", "SecurityError");
+      return original.call(this, key);
+    };
+  });
+  const writes = await fixture(page, false, true, { localDevelopment: true });
+  await page
+    .locator("main")
+    .getByRole("button", { name: "Connected accounts", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Configure local service", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("session storage");
+  await page.getByLabel("Service port", { exact: true }).fill("49152");
+  await page
+    .getByRole("button", { name: "Review configuration", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: "Save service configuration",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("session storage");
+  await page
+    .getByRole("button", { name: "Account overview", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Saved accounts", exact: true }),
+  ).toBeVisible();
+  expect(writes).toEqual([]);
+});
