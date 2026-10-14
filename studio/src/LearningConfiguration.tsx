@@ -328,9 +328,9 @@ function LearningAdministrator({ connection }: { connection: Connection }) {
                       },
                       {
                         key: "max_candidates",
-                        label: "Candidates per lookup",
+                        label: "Source results per lookup",
                         max: 16,
-                        help: "Limit the eligible records examined for one lookup.",
+                        help: "Limit project and framework source results when no exact procedure matches.",
                       },
                       {
                         key: "max_lookup_calls",
@@ -447,7 +447,7 @@ function PolicySummary({ values }: { values: LearningValues }) {
         <dd>{values.max_age_hours} hours</dd>
       </div>
       <div>
-        <dt>Candidates per lookup</dt>
+        <dt>Source results per lookup</dt>
         <dd>{values.max_candidates}</dd>
       </div>
       <div>

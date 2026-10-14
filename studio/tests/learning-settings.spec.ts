@@ -115,7 +115,7 @@ test("administrator reviews and saves native learning policy without changing re
     .check();
   await next(page);
   await page.getByLabel("Maximum age (hours)", { exact: true }).fill("48");
-  await page.getByLabel("Candidates per lookup", { exact: true }).fill("4");
+  await page.getByLabel("Source results per lookup", { exact: true }).fill("4");
   await next(page);
   expect(writes).toHaveLength(0);
   await expect(
