@@ -2,44 +2,47 @@
   "schema_version": 1,
   "copyright": "Copyright 2026 Firefly Software Foundation",
   "license": "Apache-2.0",
-  "fixture_scope": "Actual frozen Studio forms against an isolated native factory and owned stock public pyfly authorization/MCP service; synthetic project and repository data.",
-  "backend_commit": "963048a0d32d284fb683fdbee2de02263be07c11",
-  "backend_tree": "0dc91b4736eb51dc2c01790bdde7996d0136b311",
-  "studio_commit": "e5c1a7f2646a1801e7d1eefa77b7b6f3e18922da",
+  "software_version": "0.2.4",
+  "capture_scope": "Four source-bound actual Studio captures from an isolated API-only factory and owned stock public pyfly authorization/MCP service; synthetic project and repository data.",
+  "backend_commit": "52fec10e96396de2281445bc3f9a9382bd302bdd",
+  "backend_tree": "a910d97dca102fe4f6e78efedc8d92194ffcc29b",
+  "studio_commit": "52fec10e96396de2281445bc3f9a9382bd302bdd",
   "pyfly_distribution": "26.10.3",
-  "browser": "Owned headless Chromium via actual Playwright",
+  "factory_transport": "actual IPv4 TCP uvicorn",
   "provider_transport": "actual IPv6 TCP uvicorn, stock public pyfly authorization server and MCP server",
   "functional_qualification": "PASS",
   "security_cookie_boundary": "PASS",
+  "public_evidence_secret_scan": true,
+  "wal_chain_verified": true,
+  "cached_receipt_replay_prevented": true,
+  "withdrawn_policy_cached_receipt_denied": true,
+  "capture_count": 4,
+  "source_hash_count": 245,
+  "source_hash_manifest_sha256": "87aab748a7560c505af3fee437967eb581a4542886ff43a0e061075323a2f9c3",
   "capture_identities": [
     {
       "path": "client-desktop-light.png",
-      "source_public_capture": "forge-native-oauth-client-desktop-light-20261014.png",
-      "sha256": "5c9731beb2fff044dceb718695dc207cba591af66b3d6c6bd3b517e3659ed96e"
+      "source_capture": "client-registration-1440-light.png",
+      "sha256": "091bec3188ec5ffd0130083c19944ad5d6fa36cda60f4e68b620f68e7cc7f64a"
     },
     {
       "path": "client-mobile-light.png",
-      "source_public_capture": "forge-native-oauth-client-mobile-light-20261014.png",
-      "sha256": "9f68b5b677403368385e8284626db91afdd12cbe7682258006da2713716949a4"
-    },
-    {
-      "path": "state-desktop-dark.png",
-      "source_public_capture": "forge-native-oauth-state-desktop-dark-20261014.png",
-      "sha256": "7d369df5d58356405f9a3358040703b96d4f7edc84b9b4b5783a4cf55fbc74cf"
+      "source_capture": "client-registration-390-light.png",
+      "sha256": "70e00c3fbace0d7c6554cf8550cec9c33522a1e3561026cdad3b64bde1ce9ff7"
     },
     {
       "path": "guide-desktop-dark.png",
-      "source_public_capture": "forge-native-oauth-guide-desktop-dark-20261014.png",
-      "sha256": "fad84da9d8e5456a817ee4ff7f05d0b2ee13ae567bcfece32b442c884459c565"
+      "source_capture": "client-registration-guide-scrolled-1200-dark.png",
+      "sha256": "e0dc9c0fbf95d8de27432a394212276d661bf34963934561487392d1777c8d07"
+    },
+    {
+      "path": "state-desktop-dark.png",
+      "source_capture": "connection-state-1440-dark.png",
+      "sha256": "b330bf8b6212fb3b0b6f6cde7c45aceac3a1a8e36e82b07e8533a4646ea89096"
     }
   ],
-  "qualification_receipt_sha256": "eaf9d8d97089a0ac7da185c646378aa9cb3b3af234be5794563107402cd5c1b0",
-  "limitations": [
-    "The authorization server and MCP resource are owned local stock public pyfly fixtures, not actual GitHub/Figma/vendor accounts.",
-    "Factory login uses explicitly enabled local bootstrap; production Entra/Google federation is not exercised.",
-    "Actual Studio forms cover service policy, registration, consent, refresh and disconnect. MCP link/discovery/review/project-grant setup uses native browser fetch; native in-process broker dispatch performs actual HTTP MCP calls and persisted WAL.",
-    "No browser route interception, HTTP response mocks, ASGI factory client or provider-catalog injection is used.",
-    "This receipt establishes this frozen source and reviewed OAuth journey, not all outstanding software-factory requirements or a release/package/cloud deployment.",
-    "Only six representative frames were directly inspected; automated width, hit-test and navigation assertions cover the recorded matrix."
-  ]
+  "qualification_receipt_sha256": "6a864aa8ddaf84406db5b0402074a2b5ca33cabdf7472ab27b256a00c984ed5c",
+  "cloud_deployments": 0,
+  "external_provider_calls": 0,
+  "qualification_scope": "Local bootstrap and owned services; Studio consent forms are distinct from native API MCP setup and in-process broker resource dispatch. Vendor accounts, production federation and complete factory acceptance require separate evidence."
 }

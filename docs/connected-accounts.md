@@ -8,7 +8,7 @@ description: Configure the owned local OAuth service, register a client, complet
 
 Open **Administration → Connected accounts** as a current factory administrator. This page configures the owned local repository service, registers its client, opens browser consent and shows the retained connection state. Account authorization is followed by separate MCP schema review and project/tool grants.
 
-The native captures below retain their original Studio 0.2.3 source identity. They show an isolated API-only qualification with an owned provider and synthetic data. Current 0.2.4 walkthrough fixtures are captured separately. The execution warning reflects that API-only topology; worker readiness is a separate check.
+The four native captures below show Studio 0.2.4 at its recorded source revision, during an isolated API-only qualification with an owned provider and synthetic data. The broader walkthrough uses its separately identified API fixtures. The execution warning reflects that API-only topology; worker readiness is a separate check.
 
 The supported `local-repository-tools` provider is for explicit local development. GitHub, Figma, Sentry, Grafana and external Playwright OAuth remain at **Prerequisite required**. Native GitHub App SCM, the fixed GitHub token MCP adapter and the native BrowserRunner retain their own setup paths.
 
