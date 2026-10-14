@@ -250,6 +250,32 @@ test("malformed native settings block edits instead of silently creating default
   ).toHaveCount(0);
   expect(writes).toEqual([]);
 });
+test("empty numeric limits stay editable and cannot advance or save", async ({
+  page,
+}) => {
+  const warnings: string[] = [];
+  page.on("console", (value) => {
+    if (value.type() === "error") warnings.push(value.text());
+  });
+  const { writes } = await fixture(page);
+  await open(page);
+  await page.getByRole("button", { name: "Edit learning settings" }).click();
+  await next(page);
+  await page.getByLabel("Maximum age (hours)").fill("");
+  await next(page);
+  await expect(
+    page.getByRole("heading", {
+      name: "How much knowledge can a run retrieve?",
+    }),
+  ).toBeVisible();
+  expect(writes).toEqual([]);
+  expect(warnings.some((value) => value.includes("NaN"))).toBe(false);
+  await page.getByLabel("Maximum age (hours)").fill("48");
+  await next(page);
+  await expect(
+    page.getByRole("heading", { name: "Review learning settings" }),
+  ).toBeVisible();
+});
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 2560, height: 1080 },

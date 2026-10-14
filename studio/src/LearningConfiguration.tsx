@@ -351,7 +351,11 @@ function LearningAdministrator({ connection }: { connection: Connection }) {
                         max={item.max}
                         step={1}
                         required
-                        value={draft[item.key]}
+                        value={
+                          Number.isFinite(draft[item.key])
+                            ? draft[item.key]
+                            : ""
+                        }
                         disabled={busy || uncertain}
                         onChange={(e) =>
                           setDraft({
