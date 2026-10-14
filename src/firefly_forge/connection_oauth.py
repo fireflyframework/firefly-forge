@@ -786,7 +786,7 @@ class ConnectionOAuth:
                 )
             )
             await self._event(session, row, "browser_handoff_prepared", actor, attempt_id=attempt_id.hex)
-            return {
+            result = {
                 "ticket": ticket,
                 "continuation_url": self.browser_origin
                 + "/api/v1/connection-oauth/"
@@ -794,6 +794,8 @@ class ConnectionOAuth:
                 + "/continue?"
                 + urlencode({"ticket": ticket}),
             }
+            await self.store.admit_credentials(result)
+            return result
 
     async def begin(self, name: str, ticket: str, actor: Principal, *, browser_authenticated: bool) -> OAuthChallenge:
         if not ticket or len(ticket) > 128:
@@ -865,9 +867,11 @@ class ConnectionOAuth:
                 "code_challenge": pair.challenge,
                 "code_challenge_method": "S256",
             }
-            return OAuthChallenge(
+            result = OAuthChallenge(
                 registration.data["policy"]["authorization_endpoint"] + "?" + urlencode(params), nonce, attempt_id.hex
             )
+            await self.store.admit_credentials({"parameters": params, "challenge": asdict(result)})
+            return result
 
     async def disconnect(self, name: str, actor: Principal) -> Data:
         async with self._locked(name) as session:
@@ -880,7 +884,9 @@ class ConnectionOAuth:
                 grant.status = "revoked"
                 grant.encrypted_data = self._seal(self._grant_context(row, grant), {})
             await self._event(session, row, "locally_disconnected", actor)
-            return await self._summary(session, row, actor)
+            result = await self._summary(session, row, actor)
+            await self.store.admit_credentials(result)
+            return result
 
     async def complete(
         self, name: str, state: str, code: str, browser_nonce: str, actor: Principal, *, issuer: str
@@ -1122,6 +1128,7 @@ class ConnectionOAuth:
             result = await self._summary(session, row, actor, completing=effect.id)
             observed_at = (await self._time(session)).isoformat()
             result["observed_at"] = observed_at
+            await self.store.admit_credentials(result)
             effect.data = {**effect.data, "result": result, "observed_at": observed_at}
             effect.state = "completed"
             await self._event(
@@ -1161,7 +1168,9 @@ class ConnectionOAuth:
                     grant = await self._grant(session, row)
                     if grant is None or grant.family != existing.data["family"]:
                         raise OAuthDisposition("grant_changed")
-                    return cast(Data, existing.data["result"])
+                    result = cast(Data, existing.data["result"])
+                    await self.store.admit_credentials(result)
+                    return result
                 if existing.state == "rejected":
                     raise OAuth2ClientError(existing.data.get("disposition", "invalid_response"))
                 raise OAuthDisposition("effect_" + existing.state)
