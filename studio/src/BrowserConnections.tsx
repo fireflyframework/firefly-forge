@@ -1016,7 +1016,7 @@ function Connections({
                 </h3>
                 <p>
                   {step === 1
-                    ? "Match the service’s registered client type; both use PKCE. Factory-wide or project scope requires a separate tool grant. The secret is write-only and cleared after submission. Keep tokens and secrets out of model messages."
+                    ? "Confidential clients need a secret; public clients do not. Both use PKCE. Secret in body sends the secret in the token request; Basic authentication uses HTTP Basic. The secret is write-only and cleared after submission. Keep credentials out of model messages. Account scope still requires a separate tool grant."
                     : step === 2
                       ? "The factory checks your signed-in browser, one-time state and PKCE. The consent handoff expires after five minutes. No token or authorization code is shown here."
                       : "The factory must separately admit the account, adapter, resource and project tool grant. This flow cannot enable a blocked vendor template."}
@@ -1137,10 +1137,8 @@ function Connections({
                         setSecret("");
                       }}
                     >
-                      <option value="public">Public client (no secret)</option>
-                      <option value="confidential">
-                        Confidential client (secret required)
-                      </option>
+                      <option value="public">Public</option>
+                      <option value="confidential">Confidential</option>
                     </select>
                   </div>
                   {clientType === "confidential" && (
@@ -1155,10 +1153,10 @@ function Connections({
                           onChange={(e) => setAuthentication(e.target.value)}
                         >
                           <option value="client_secret_post">
-                            Secret in token request body
+                            Secret in body
                           </option>
                           <option value="client_secret_basic">
-                            HTTP Basic client authentication
+                            Basic authentication
                           </option>
                         </select>
                       </div>

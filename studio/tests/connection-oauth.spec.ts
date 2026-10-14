@@ -23,6 +23,7 @@ async function fixture(
     localDevelopment?: boolean;
     losePolicyResponse?: boolean;
     historicalPolicyReplay?: boolean;
+    executionUnavailable?: boolean;
     beforeSave?: () => Promise<void>;
     newSetup?: boolean;
     denyActions?: boolean;
@@ -276,6 +277,8 @@ async function fixture(
       return route.fulfill({
         json: { mode: "local_bootstrap", issuer: "", cookie_secure: false },
       });
+    if (path.endsWith("/health") && options.executionUnavailable)
+      return route.fulfill({ json: { execution_ready: false } });
     if (path.endsWith("/auth/session"))
       return route.fulfill({
         json: {
@@ -843,6 +846,85 @@ for (const viewport of [
     await frame("Connection state");
   });
 }
+
+test("enabled local service uses a different literal cookie host while disabled configuration stays diagnostic", async ({
+  page,
+}) => {
+  const writes = await fixture(page, false, true, { localDevelopment: true });
+  await page
+    .locator("main")
+    .getByRole("button", { name: "Connected accounts", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Configure local service", exact: true })
+    .click();
+  await page
+    .getByLabel("Local host", { exact: true })
+    .selectOption("127.0.0.1");
+  await page.getByLabel("Service port", { exact: true }).fill("49152");
+  await page
+    .getByRole("button", { name: "Review configuration", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("cookies");
+  await expect(
+    page.getByRole("heading", {
+      name: "Configure a local service",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(writes).toEqual([]);
+  await page
+    .getByLabel("Browser registrations", { exact: true })
+    .selectOption("disabled");
+  await page
+    .getByRole("button", { name: "Review configuration", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save service configuration", exact: true })
+    .click();
+  await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0].body).toMatchObject({
+    enabled: false,
+    local_origin: "http://127.0.0.1:49152",
+  });
+});
+
+test("an older same-host pending policy stays retained without dispatch or silent replacement", async ({
+  page,
+}) => {
+  const writes = await fixture(page, false, true, { localDevelopment: true });
+  const marker = {
+    actor: "f".repeat(32),
+    base: "/api/v1",
+    body: {
+      enabled: true,
+      local_origin: "http://127.0.0.1:49152",
+      expected_revision: 0,
+      request_id: "d".repeat(32),
+    },
+  };
+  const key = `forge.local-service-action:${marker.actor}:${encodeURIComponent(marker.base)}`;
+  await page.evaluate(
+    ({ key, marker }) => sessionStorage.setItem(key, JSON.stringify(marker)),
+    { key, marker },
+  );
+  await page
+    .locator("main")
+    .getByRole("button", { name: "Connected accounts", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Configure local service", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm original save", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("cookies");
+  expect(writes).toEqual([]);
+  expect(
+    await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), key),
+  ).toEqual(marker);
+});
 test("inspecting a registration does not mark browser consent completed", async ({
   page,
 }) => {
@@ -1856,3 +1938,125 @@ test("denied local service storage reads keep navigation and account history usa
   ).toBeVisible();
   expect(writes).toEqual([]);
 });
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`execution-unavailable banner preserves complete initial client field groups at${viewport.width}x${viewport.height}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await fixture(page, true, true, {
+      newSetup: true,
+      executionUnavailable: true,
+    });
+    await page
+      .locator("main")
+      .getByRole("button", { name: "Connected accounts", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Set up a connection", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByLabel("Client type", { exact: true })
+      .selectOption("confidential");
+    await expect(page.getByRole("alert")).toContainText(
+      "Execution is unavailable",
+    );
+    const ids =
+      viewport.width === 1440
+        ? [
+            "oauth-name",
+            "oauth-project",
+            "oauth-client-id",
+            "oauth-client-type",
+            "oauth-auth-method",
+            "oauth-client-secret",
+          ]
+        : ["oauth-name", "oauth-project"];
+    const boxes = await page
+      .locator(".oauth-client-fields")
+      .evaluate((fields, ids) => {
+        const scroll = fields
+          .closest(".wizard-field-scroll")!
+          .getBoundingClientRect();
+        return ids.map((id) => ({
+          id,
+          top: fields
+            .querySelector(`label[for="${id}"]`)!
+            .getBoundingClientRect().top,
+          bottom: fields.querySelector(`#${id}`)!.getBoundingClientRect()
+            .bottom,
+          visibleTop: scroll.top,
+          visibleBottom: scroll.bottom,
+        }));
+      }, ids);
+    await testInfo.attach("banner-client-allocation", {
+      body: JSON.stringify(boxes),
+      contentType: "application/json",
+    });
+    if (process.env.OAUTH_UI_PROOF) {
+      mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
+      await page.screenshot({
+        path: join(
+          process.env.OAUTH_UI_PROOF,
+          `oauth-client-execution-unavailable-${viewport.width}x${viewport.height}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+    for (const box of boxes) {
+      expect(box.top).toBeGreaterThanOrEqual(box.visibleTop);
+      expect(box.bottom).toBeLessThanOrEqual(box.visibleBottom);
+    }
+  });
+}
+
+for (const width of [1200, 1320]) {
+  test(`banner layout preserves readable selected credential choices at${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await fixture(page, true, true, {
+      newSetup: true,
+      executionUnavailable: true,
+    });
+    await page
+      .locator("main")
+      .getByRole("button", { name: "Connected accounts", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Set up a connection", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByLabel("Client type", { exact: true })
+      .selectOption("confidential");
+    await page
+      .getByLabel("Client authentication", { exact: true })
+      .selectOption("client_secret_basic");
+    await page.evaluate(() => document.fonts.ready);
+    for (const label of ["Client type", "Client authentication"]) {
+      const fits = await page
+        .getByLabel(label, { exact: true })
+        .evaluate((select: HTMLSelectElement) => {
+          const style = getComputedStyle(select),
+            ctx = document.createElement("canvas").getContext("2d")!;
+          ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+          const available =
+            select.clientWidth -
+            parseFloat(style.paddingLeft) -
+            parseFloat(style.paddingRight) -
+            24;
+          return {
+            text: ctx.measureText(select.selectedOptions[0].textContent!.trim())
+              .width,
+            available,
+          };
+        });
+      expect(fits.text).toBeLessThanOrEqual(fits.available);
+    }
+  });
+}

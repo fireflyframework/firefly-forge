@@ -83,6 +83,18 @@ export function OAuthServiceConfiguration({
     alert = useRef<HTMLDivElement>(null);
   const current = directory.policies[0];
   const origin = `http://${host}:${port}`;
+  const cookieError =
+    "Choose the other loopback host for an enabled service. Browser cookies are shared across ports on the same host.";
+  function address(value: string, allowRegistrations: boolean) {
+    const canonical = localOrigin(value);
+    if (
+      allowRegistrations &&
+      new URL(canonical).hostname ===
+        new URL(connection.base, window.location.href).hostname
+    )
+      throw new Error(cookieError);
+    return canonical;
+  }
   const readyForRegistration =
     directory.local_development_available &&
     current?.enabled === true &&
@@ -98,7 +110,7 @@ export function OAuthServiceConfiguration({
     event.preventDefault();
     if (busy || pending) return;
     try {
-      localOrigin(origin);
+      address(origin, enabled);
       setError(storageError);
       setStep(1);
     } catch (cause) {
@@ -147,16 +159,19 @@ export function OAuthServiceConfiguration({
     try {
       body = pending?.body || {
         enabled,
-        local_origin: localOrigin(origin),
+        local_origin: address(origin, enabled),
         expected_revision: current?.revision || 0,
         request_id: crypto.randomUUID().replaceAll("-", ""),
       };
+      address(body.local_origin, body.enabled);
       const marker = policyPending(body, connection.base, actor);
       sessionStorage.setItem(storageKey, JSON.stringify(marker));
       setPending(marker);
-    } catch {
+    } catch (cause) {
       setError(
-        "This browser cannot retain a valid configuration request. Check the address and session storage before saving.",
+        cause instanceof Error && cause.message === cookieError
+          ? cookieError
+          : "This browser cannot retain a valid configuration request. Check the address and session storage before saving.",
       );
       return;
     }
