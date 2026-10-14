@@ -72,6 +72,9 @@ export async function captureWalkthrough(
     "search-provider": "Provider",
     "search-access": "Access",
     "search-review": "Review",
+    "learning-knowledge": "Knowledge",
+    "learning-limits": "Limits",
+    "learning-review": "Review",
   };
   if (expectedStep[stage])
     await expect(
