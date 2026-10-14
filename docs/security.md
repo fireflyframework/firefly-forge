@@ -17,7 +17,9 @@ Studio uses an opaque HttpOnly session cookie and native CSRF protection; it doe
 
 ## Protect credentials
 
-Saved credentials and immutable run revisions are plaintext files with mode `0600` inside a mode `0700` configuration directory. Secret GET responses report presence only. Empty secret fields preserve saved values; explicit clearing removes them. This is owner-level filesystem protection, not encryption at rest.
+File-backed service credentials and immutable run revisions are plaintext files with mode `0600` inside a mode `0700` configuration directory. Secret GET responses report presence only. Empty secret fields preserve saved values; explicit clearing removes them. This is owner-level filesystem protection, not encryption at rest.
+
+Connection OAuth client secrets and grant tokens are separately encrypted in PostgreSQL, bound to their connection and revision context. Historical credential fingerprints remain available for admission checks after rotation or local disconnect. Capacity is reserved before code/refresh dispatch; exhausted custody history blocks new admission. Preserve the shared encryption key with the installation backup. [Connected accounts](connected-accounts.md) explains browser consent, policy withdrawal, exact effect receipts and local disconnect.
 
 Configured credentials, URI passwords and private keys are redacted from evidence. Source containing a configured credential is rejected before delivery. Worker and verification processes receive filtered environments excluding the database URL and unrelated server secrets. Git credentials are supplied only to authorized Git operations, through ephemeral askpass configuration, never credential-bearing repository URLs or global Git settings.
 

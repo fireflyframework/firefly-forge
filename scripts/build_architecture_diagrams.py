@@ -29,7 +29,7 @@ DIAGRAMS = {
         "title": "Native services behind the factory",
         "subtitle": "Clients submit contracts; the execution leader owns effects.",
         "cards": [
-            ("Operator surfaces", "Studio, CLI, ForgeClient and 89 factory MCP tools use authenticated contracts."),
+            ("Operator surfaces", "Studio, CLI, ForgeClient and 108 factory MCP tools use authenticated contracts."),
             (
                 "Identity and project access",
                 "OperatorAuth validates identity. AccessRoutes checks the requested resource and operation.",
@@ -49,6 +49,20 @@ DIAGRAMS = {
             ),
         ],
         "footer": "Default combined process or split API replicas with one execution leader.",
+    },
+    "architecture-oauth": {
+        "icon": "identity",
+        "title": "OAuth consent and project resource custody",
+        "subtitle": "Account authorization precedes exact schema review and project tool admission.",
+        "cards": [
+            ("Admit the service", "Native policy fixes issuer, endpoints, resource and scope. Local development uses different literal loopback hosts."),
+            ("Register the client", "Current administrator authority and expected revision bind the client to its selected project and retained policy."),
+            ("Authorize in the browser", "Single-use state, issuer, browser nonce and S256 PKCE bind consent to the actor and immutable registration."),
+            ("Retain token effects", "PostgreSQL records intent before exchange or refresh. Encrypted grants and exact receipts retain observed outcomes."),
+            ("Bind the project resource", "OAuthResources rechecks policy, grant family, expiry and current project authority before resource use."),
+            ("Review and grant tools", "Exact discovered schemas, repository/tool grants and frozen role permission precede broker dispatch and receipt reuse."),
+        ],
+        "footer": "Five vendor OAuth templates remain blocked; the owned local service has four read tools.",
     },
     "architecture-ledger": {
         "icon": "database",

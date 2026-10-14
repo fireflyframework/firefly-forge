@@ -99,6 +99,7 @@ nav:
       - Agent tools: agent-tools.md
       - Tool and provider prerequisites: tooling-prerequisites.md
       - External tool setup walkthrough: external-tools-tour.md
+      - Authorize connected accounts: connected-accounts.md
       - Configure internet search: search-providers.md
       - Tool invocation evidence: tool-broker.md
       - Reviewed external tools: external-tools.md

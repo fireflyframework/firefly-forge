@@ -1211,15 +1211,23 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
                 .boundingBox(),
               header = await page
                 .locator(".workspace-main>header")
-                .boundingBox(),
-              actions = await wizard.locator(".wizard-actions").boundingBox(),
-              footer = await page
-                .locator(".workspace-main>footer")
                 .boundingBox();
             expect(heading!.y).toBeGreaterThanOrEqual(
               header!.y + header!.height,
             );
-            expect(actions!.y + actions!.height).toBeLessThanOrEqual(footer!.y);
+            await expect
+              .poll(() =>
+                page.evaluate(() => {
+                  const actions = document
+                    .querySelector(".external-tools-wizard .wizard-actions")!
+                    .getBoundingClientRect();
+                  const footer = document
+                    .querySelector(".workspace-main>footer")!
+                    .getBoundingClientRect();
+                  return actions.bottom <= footer.top;
+                }),
+              )
+              .toBe(true);
           }
           expect(
             await page.evaluate(

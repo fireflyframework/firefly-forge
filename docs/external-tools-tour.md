@@ -7,7 +7,7 @@ description: Follow the GitHub setup wizard, review exact tool schemas, grant pr
 
 # Configure external tools in Studio
 
-Open Administration, then External tools to manage a connection and its project permissions. Follow the GitHub setup below, or inspect the requirements for another provider.
+Open Administration, then External tools to manage a connection and its project permissions. Follow the GitHub setup below, or inspect the requirements for another provider. For the implemented local OAuth policy and browser consent wizard, use [Connected accounts](connected-accounts.md).
 
 Screenshots use controlled fixtures.[^captures] Select an image to open the full capture; its theme follows the page appearance.
 
