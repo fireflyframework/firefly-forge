@@ -85,12 +85,35 @@ for (const device of ["desktop", "mobile"])
         live_search_verified: false,
       };
       let searchTests = 0;
+      let learningSettings = {
+        version: 1,
+        revision: "a".repeat(32),
+        digest: "b".repeat(64),
+        settings: {
+          enabled: true,
+          projected_retrieval: false,
+          max_age_hours: 72,
+          max_candidates: 8,
+          max_lookup_calls: 30,
+          max_repeated_attempts: 2,
+        },
+      };
       await page.route("**/api/v1/**", async (route) => {
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
         let json: unknown = {};
-        if (path.endsWith("/search/configuration")) {
+        if (path.endsWith("/learning/policy")) {
+          if (request.method() === "PUT") {
+            learningSettings = {
+              ...learningSettings,
+              revision: "c".repeat(32),
+              digest: "d".repeat(64),
+              settings: request.postDataJSON(),
+            };
+          }
+          json = learningSettings;
+        } else if (path.endsWith("/search/configuration")) {
           if (request.method() === "PUT") {
             const values = request.postDataJSON();
             searchSettings = {
@@ -435,5 +458,31 @@ for (const device of ["desktop", "mobile"])
       await expect(page.getByText("Not tested", { exact: true })).toBeVisible();
       await capture(page, "search-saved", theme, device);
       expect(searchTests).toBe(0);
+      await navigate(page, "Administration");
+      await page
+        .locator("main")
+        .getByRole("button", { name: "Learning", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Edit learning settings", exact: true })
+        .click();
+      await page
+        .getByLabel("Read verified learning from flycanon", { exact: true })
+        .check();
+      await capture(page, "learning-knowledge", theme, device);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByLabel("Maximum age (hours)", { exact: true }).fill("48");
+      await capture(page, "learning-limits", theme, device);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await capture(page, "learning-review", theme, device);
+      await page
+        .getByRole("button", { name: "Save learning settings", exact: true })
+        .click();
+      await expect(page.getByRole("status")).toContainText(
+        "Learning settings saved",
+      );
+      await capture(page, "learning-saved", theme, device, {
+        actionSelector: ".learning-actions button.primary",
+      });
     });
   }

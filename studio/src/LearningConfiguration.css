@@ -1,0 +1,156 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.learning-configuration {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.learning-state {
+  display: grid;
+  gap: 20px;
+}
+.learning-state .section-heading {
+  align-items: flex-start;
+  gap: 16px;
+}
+.learning-state .section-heading svg {
+  flex: 0 0 auto;
+  color: var(--accent-ink);
+}
+.learning-actions,
+.learning-wizard .wizard-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.learning-summary {
+  margin: 0;
+}
+.learning-summary > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr);
+  gap: 20px;
+  padding-block: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.learning-summary dt {
+  color: var(--muted);
+}
+.learning-summary dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.learning-wizard .wizard-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.learning-limits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.learning-choice {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 12px;
+  padding-block: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.learning-choice input {
+  grid-row: span 2;
+  margin-top: 4px;
+  accent-color: var(--accent-ink);
+}
+.learning-choice span {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.learning-wizard .wizard-field-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--surface-subtle);
+}
+@media (max-width: 1100px), (max-height: 600px) {
+  .learning-wizard.wizard-frame .wizard-guide {
+    display: none;
+  }
+  .learning-wizard.wizard-frame .wizard-body.has-guide {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+.learning-help {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin-top: 18px;
+  max-width: 75ch;
+}
+@media (max-height: 600px) {
+  .workspace-main > main:has(> .learning-configuration) {
+    padding-block: 16px;
+  }
+  .learning-page-heading.page-heading {
+    margin-bottom: 8px;
+  }
+  .learning-page-heading.page-heading h1 {
+    font-size: 24px;
+  }
+  .learning-page-heading.page-heading p {
+    margin-top: 8px;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) {
+    height: var(--wizard-frame-height, 640px);
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-body,
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
+    overflow: hidden;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-content {
+    display: flex;
+    height: 100%;
+    padding: 12px;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
+    display: grid;
+  }
+  .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-field-scroll {
+    overflow: auto;
+  }
+  .learning-wizard .wizard-steps {
+    padding: 4px 12px;
+    min-height: 48px;
+    gap: 8px;
+  }
+  .learning-wizard .wizard-heading {
+    margin-bottom: 8px;
+  }
+  .learning-wizard .wizard-heading h2 {
+    font-size: 18px;
+  }
+  .learning-wizard .wizard-heading p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+  .learning-wizard.wizard-frame .wizard-actions {
+    padding: 8px 0 0;
+    min-height: 50px;
+  }
+}
+@media (max-width: 1000px) {
+  .learning-limits {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .learning-summary > div {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+}

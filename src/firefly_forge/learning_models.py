@@ -33,6 +33,7 @@ Reason = Literal[
 class LearningPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     enabled: bool = Field(default=True, strict=True)
+    projected_retrieval: bool = Field(default=False, strict=True)
     max_age_hours: int = Field(default=72, ge=1, le=720, strict=True)
     max_candidates: int = Field(default=8, ge=1, le=16, strict=True)
     max_repeated_attempts: int = Field(default=2, ge=1, le=3, strict=True)

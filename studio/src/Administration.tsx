@@ -4,6 +4,7 @@ import {
   Bot,
   GitBranch,
   Globe,
+  GraduationCap,
   Settings2,
   ShieldCheck,
   Users,
@@ -19,6 +20,7 @@ export type AdministrationPage =
   | "workflow"
   | "collaboration"
   | "search"
+  | "learning"
   | "browser-connections"
   | "external-tools";
 export function Administration({
@@ -33,6 +35,14 @@ export function Administration({
     session?.memberships.some((item) => item.permissions.includes("members")),
   );
   const cards = [
+    {
+      page: "learning" as const,
+      icon: GraduationCap,
+      title: "Learning",
+      body: "Choose how new runs reuse verified project knowledge and keep retrieval bounded.",
+      allowed: administrator,
+      scope: "Factory administrator",
+    },
     {
       page: "browser-connections" as const,
       icon: Globe,

@@ -130,23 +130,21 @@ async def cached_case(store, tmp_path, request):
         )
 
     native_invoke = broker.invoke
+    original = await lookup()
     if fixture_kind in {"statement", "source_tree", "run_id", "citation_id"}:
 
         async def malformed_receipt(*args, **kwargs):
-            callback = args[5]
+            validation = kwargs["validate_receipt"]
 
-            async def malformed_result():
-                result = await callback()
+            async def malformed_result(result):
                 result["results"][0][fixture_kind] = (
                     "Unverified replacement" if fixture_kind == "statement" else "a" * 40
                 )
-                return result
+                return await validation(result)
 
-            return await native_invoke(*args[:5], malformed_result, *args[6:], **kwargs)
+            return await native_invoke(*args, **{**kwargs, "validate_receipt": malformed_result})
 
         broker.invoke = malformed_receipt
-    original = await lookup()
-    broker.invoke = native_invoke
     assert original["knowledge_decision"]["reason"] == "verified_exact_match"
     return ledger, broker, run, record, calls, lookup, original, actor, access
 

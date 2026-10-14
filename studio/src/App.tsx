@@ -72,6 +72,7 @@ import { IdentityMenu, SignIn, useIdentity } from "./Identity";
 import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
+import { LearningConfiguration } from "./LearningConfiguration";
 import { SearchConfiguration } from "./SearchConfiguration";
 import { ExternalTools } from "./ExternalTools";
 import { BrowserConnections } from "./BrowserConnections";
@@ -103,6 +104,7 @@ type Page =
   | "admin"
   | "users"
   | "search"
+  | "learning"
   | "browser-connections"
   | "external-tools";
 const working = (status: string) =>
@@ -479,6 +481,7 @@ export default function App() {
     access: "Project access",
     users: "People",
     search: "Internet search",
+    learning: "Learning",
     "external-tools": "External tools",
     "browser-connections": "Connected accounts",
   };
@@ -1001,6 +1004,12 @@ export default function App() {
           )}
           {page === "search" && (
             <SearchConfiguration
+              connection={connection}
+              session={identity.session}
+            />
+          )}
+          {page === "learning" && (
+            <LearningConfiguration
               connection={connection}
               session={identity.session}
             />

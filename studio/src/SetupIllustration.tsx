@@ -11,10 +11,16 @@ export function SetupIllustration({
     | "cloud"
     | "collaboration"
     | "knowledge"
+    | "learning"
     | "onboarding";
   step: number;
 }) {
   const labels = {
+    learning: [
+      ["Evidence", "Knowledge"],
+      ["Age", "Limits"],
+      ["Policy", "New run"],
+    ],
     knowledge: [
       ["File", "Workspace"],
       ["Title", "Source"],
