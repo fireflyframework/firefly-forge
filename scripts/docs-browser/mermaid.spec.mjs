@@ -3,6 +3,8 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   buildRuntimeFixture,
   mermaidPages,
@@ -12,6 +14,22 @@ const { test, expect } = createRequire(
   new URL("../../studio/package.json", import.meta.url),
 )("@playwright/test");
 const root = fileURLToPath(new URL("../..", import.meta.url));
+
+test("Mermaid enumeration maps nested index pages to portable directory URLs", () => {
+  const docs = mkdtempSync(join(tmpdir(), "docs-mermaid-paths-"));
+  mkdirSync(join(docs, "guides", "nested"), { recursive: true });
+  const fence = "  ```mermaid\nflowchart TD\n A --> B\n  ```\n";
+  for (const name of ["index.md", "guides/index.md", "guides/nested/graph.md"])
+    writeFileSync(join(docs, name), fence);
+  writeFileSync(join(docs, "ordinary.md"), "# Ordinary prose\n");
+  expect(
+    mermaidPages(docs).sort((a, b) => a.path.localeCompare(b.path)),
+  ).toEqual([
+    { path: "/", count: 1 },
+    { path: "guides/", count: 1 },
+    { path: "guides/nested/graph/", count: 1 },
+  ]);
+});
 
 async function optionalRepositoryBadges(page) {
   for (const endpoint of [

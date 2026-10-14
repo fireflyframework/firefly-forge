@@ -8,14 +8,14 @@ import {
   mkdirSync,
   statSync,
 } from "node:fs";
-import { join, resolve, sep, extname } from "node:path";
+import { join, resolve, sep, extname, posix } from "node:path";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 export function mermaidPages(directory, prefix = "") {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const name = join(prefix, entry.name);
+    const name = posix.join(prefix, entry.name);
     if (entry.isDirectory())
       return mermaidPages(join(directory, entry.name), name);
     if (!entry.name.endsWith(".md")) return [];
