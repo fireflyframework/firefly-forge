@@ -478,7 +478,7 @@ test("a handoff to another origin is rejected without navigating away", async ({
     0,
   );
 });
-test("a lost refresh response is not retried or unlocked by state reload or page reload", async ({
+test("a lost refresh response retains its request across reloads and requires explicit recovery", async ({
   page,
 }) => {
   const writes = await fixture(page, true, true, {
@@ -494,24 +494,62 @@ test("a lost refresh response is not retried or unlocked by state reload or page
       exact: true,
     }),
   ).toBeVisible();
+  const pending = await page.evaluate(
+    () =>
+      JSON.parse(sessionStorage.getItem("forge.browser-connection")!).pending,
+  );
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Request refresh", exact: true }),
-  ).toBeDisabled();
-  await page.reload();
-  await expect(
-    page.getByText("Outstanding action needs server reconciliation", {
+  for (const reloadPage of [false, true]) {
+    if (reloadPage) await page.reload();
+    await expect(
+      page.getByRole("button", {
+        name: "Start new authorization",
+        exact: true,
+      }),
+    ).toBeEnabled();
+    await expect(
+      page.getByText("Outstanding action needs server reconciliation", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Request refresh", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () =>
+          JSON.parse(sessionStorage.getItem("forge.browser-connection")!)
+            .pending,
+      ),
+    ).toEqual(pending);
+    expect(writes).toHaveLength(1);
+  }
+  await page
+    .getByRole("button", { name: "Start new authorization", exact: true })
+    .click();
+  const save = page.getByRole("button", {
+    name: "Save new authorization revision",
+    exact: true,
+  });
+  await expect(save).toBeDisabled();
+  await page
+    .getByLabel("Reason for the new authorization", { exact: true })
+    .fill("The original refresh response was not confirmed.");
+  await expect(save).toBeDisabled();
+  await page
+    .getByLabel("I understand the previous provider outcome remains unknown.", {
       exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Request refresh", exact: true }),
-  ).toBeDisabled();
+    })
+    .check();
+  await expect(save).toBeEnabled();
   expect(writes).toHaveLength(1);
   expect(writes[0].path).toBe("/api/v1/connection-oauth/owned/refresh");
   expect(writes[0].body).toMatchObject({
     request_id: expect.stringMatching(/^[a-f0-9]{32}$/),
   });
+  expect(pending.requestId).toBe(
+    (writes[0].body as { request_id: string }).request_id,
+  );
 });
 test("refresh is explicit and local disconnect asks for confirmation without claiming provider revocation", async ({
   page,
