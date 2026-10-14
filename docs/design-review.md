@@ -4,7 +4,7 @@ description: Review wireframes by customer journey and retain approved design re
 
 # Review customer journey wireframes
 
-Generate references before implementation so customers and developers can check each journey, its acceptance criteria, and the shared layout. Forge renders a deterministic wireframe from the current product definition and project brand kit. The result is a review template, not an AI-generated finished product or proof of final visual acceptance.
+Generate references before implementation so customers and developers can check each journey, its acceptance criteria, and the shared layout. forge renders a deterministic wireframe from the current product definition and project brand kit. The result is a review template, not an AI-generated finished product or proof of final visual acceptance.
 
 The product wizard shows every journey at desktop and mobile sizes in light and dark themes. Review all four frames for every screen before acknowledging the bundle. If the customer definition, reviewed architecture, or project brand changes, generate and review a new bundle.
 
@@ -46,7 +46,7 @@ Add this metadata to the unchanged definition, using the actual returned digest 
 }
 ```
 
-This is an excerpt to merge into the full product definition, not a standalone product save request. Save through `PUT /api/v1/repositories/{repository_id}/product`. Forge checks that the immutable saved bundle belongs to that repository, matches the definition and current brand digest, and includes all screens, viewports, and themes. Invented digests, missing references, duplicate screen attestations, and stale reviews are rejected.
+This is an excerpt to merge into the full product definition, not a standalone product save request. Save through `PUT /api/v1/repositories/{repository_id}/product`. forge checks that the immutable saved bundle belongs to that repository, matches the definition and current brand digest, and includes all screens, viewports, and themes. Invented digests, missing references, duplicate screen attestations, and stale reviews are rejected.
 
 Existing brief-only workflows can omit `design_review`. The product wizard requires the reference acknowledgement before its final product save. Acknowledgement records the operator's review; it does not replace accessibility testing or a customer's acceptance of the implemented application.
 
@@ -64,7 +64,7 @@ Inspect the actual application separately at wide and narrow widths, both themes
 
 The product definition carries a typed, editable `visual_design` contract. Each product saves its own settings; references freeze those values together with the product's brand digest. Logical project components may inherit their project's canonical product definition. Factory interface settings do not change customer products.
 
-Defaults use a 4 px spacing baseline, 12 desktop columns with 24 px gutters and 32 px outer margins, and four mobile columns with 16 px gutters and 20 px margins. The desktop shell defaults to a 76 px header, 248 px rail and 64 px footer. Reference canvases default to 1440 × 900 and 390 × 844 px. The preview is a review template for the customer product; it does not reproduce the Forge portal or claim to be a finished interface.
+Defaults use a 4 px spacing baseline, 12 desktop columns with 24 px gutters and 32 px outer margins, and four mobile columns with 16 px gutters and 20 px margins. The desktop shell defaults to a 76 px header, 248 px rail and 64 px footer. Reference canvases default to 1440 × 900 and 390 × 844 px. The preview is a review template for the customer product; it does not reproduce the forge portal or claim to be a finished interface.
 
 | Product setting | Supported values |
 | --- | --- |

@@ -5,7 +5,7 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Learn from evidence and reuse knowledge safely
 
-A useful lesson explains which question it addresses, what was observed and where that observation still applies. Forge already retrieves required flycanon context and retains verified repository memory. The learning subsystem adds deterministic eligibility, exact question-to-evidence associations and controls for repeating an unchanged repair attempt.
+A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. Repeat-control rules remain a pure contract awaiting runtime integration.
 
 !!! info "Implementation boundary"
     The initial learning slice implements scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. Local qualification includes an actual indexed source, citation and local embedding, with repeat submission creating no duplicate. Automatic retrieval from projected learning namespaces, classified negative repair circuits, a complete Studio learning workflow and sharing between projects remain open. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
@@ -24,7 +24,7 @@ Learning policy applies to new runs; admitted runs retain their captured policy.
 }
 ```
 
-The values shown are defaults. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
+The values shown are defaults. The repeated-attempt setting belongs to the pure repair-control contract and is not enforced by the worker repair loop. Existing repair and clarification budgets still govern execution. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
 
 | Action | CLI command | Factory MCP tool |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ A negative record says that an observed command or check failed in an exact cont
 
 ## Bound repairs while preserving independent QA
 
-An attempt fingerprint identifies the repository/component, exact source tree, dependency context, command and bounded outcome evidence. Repeat control applies to repair generation. If the worker proposes the same failed attempt without changing its context, the orchestrator can hold that attempt and request a different approach or an authorized override.
+An attempt fingerprint identifies the repository/component, exact source tree, dependency context, command and bounded outcome evidence. The pure repeat-control rules apply to repair-generation proposals and preserve independent verification. They are not yet wired into the orchestrator's repair loop. Holding an unchanged failed attempt or requesting an authorized override still requires that integration and its qualification.
 
 Independent final verification still runs. Diagnostics, intentional RED tests and regression checks retain an explicit purpose and cannot be skipped because a previous failure exists. Existing repair and clarification budgets continue to limit execution. A known failure is useful input for the next implementation decision; it cannot substitute for current QA.
 

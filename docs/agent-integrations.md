@@ -236,4 +236,4 @@ The additional MCP tools retain the same API contracts:
 | Mediated search | `get_internet_search_configuration`, `configure_internet_search`, `test_internet_search`, `search_internet`, `get_search_citation` |
 | Recorded browser image | `get_browser_evidence_image` |
 
-`configure_internet_search` takes a private key-file path on the **MCP host**, rather than a model-visible key, or an explicit `clear_secret`. The factory server receives the key through its authenticated write-only configuration API. `get_browser_evidence_image` returns native MCP image content from an existing authenticated capture. The Forge transport remains stdio; these tools do not create a public HTTP MCP connector.
+`configure_internet_search` takes a private key-file path on the **MCP host**, rather than a model-visible key, or an explicit `clear_secret`. The factory server receives the key through its authenticated write-only configuration API. `get_browser_evidence_image` returns native MCP image content from an existing authenticated capture. The forge transport remains stdio; these tools do not create a public HTTP MCP connector.
