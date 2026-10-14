@@ -30,6 +30,7 @@ class ToolRuntimeContext:
     knowledge_lookup: Callable[[str, bool, str | None], Awaitable[dict[str, Any]]] | None = None
     external_mcp: Callable[[str, str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
     credential_registry: Callable[[], dict[str, str]] = dict
+    credential_admission: Callable[[Any], Awaitable[None]] | None = None
     browser_journey: Callable[[BrowserJourney], Awaitable[JourneyEvidence]] | None = None
     image_capability: dict[str, Any] = field(default_factory=dict)
     qa_references: tuple[dict[str, Any], ...] = ()

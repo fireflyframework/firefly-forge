@@ -21,7 +21,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from pyfly.container import service
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 from pyfly.oauth2 import OAuth2Client, OAuth2ClientError, OAuth2Endpoints, OAuth2Tokens, generate_pkce
-from sqlalchemy import func, select, text
+from sqlalchemy import func, literal, select, text, union_all
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from firefly_forge.connection_oauth_models import (
@@ -34,6 +35,7 @@ from firefly_forge.connection_oauth_persistence import (
     OAuthAttemptEntity,
     OAuthConnectionEntity,
     OAuthConnectionRepository,
+    OAuthCredentialEvidenceEntity,
     OAuthEffectEntity,
     OAuthEventEntity,
     OAuthGrantEntity,
@@ -41,8 +43,10 @@ from firefly_forge.connection_oauth_persistence import (
 )
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserEntity
+from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, OAuthCredentialMatcher
 from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectEntity
+from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store
 
 Data = dict[str, Any]
@@ -71,7 +75,9 @@ class ConnectionOAuth:
         allow_loopback_http: bool = False,
     ) -> None:
         self.store, self.cipher = store, Fernet(encryption_key.encode())
-        self._secrets = {"FORGE_CONNECTION_OAUTH_ENCRYPTION_KEY": encryption_key}
+        self._secrets = {"FORGE_CONNECTION_OAUTH_SECRET_ENCRYPTION_KEY": encryption_key}
+        self.matcher = OAuthCredentialMatcher(encryption_key, store.schema)
+        self.store.vault_credential_admission = self.admit_credentials
         self.records = records or OAuthConnectionRepository()
         self.browser_origin = browser_origin
         self.catalog = dict(catalog or {})
@@ -100,22 +106,142 @@ class ConnectionOAuth:
 
     async def start(self) -> None:
         async with self.store._unit() as session:
+            await self._vault_lock(session)
             registrations = list(await session.scalars(select(OAuthRegistrationEntity).limit(1025)))
             grants = list(await session.scalars(select(OAuthGrantEntity).limit(1025)))
             if len(registrations) > 1024 or len(grants) > 1024:
                 raise RuntimeError("OAuth credential history requires a reviewed retention checkpoint")
             for registration in registrations:
-                self._remember(
-                    self._open(
-                        registration.encrypted_secret,
-                        self._client_context(registration.connection_id, registration.revision, registration.data),
-                    )
+                payload = self._open(
+                    registration.encrypted_secret,
+                    self._client_context(registration.connection_id, registration.revision, registration.data),
+                )
+                self._remember(payload)
+                await self._credential_evidence(
+                    session, registration.connection_id, "registration", registration.id, registration.revision, payload
                 )
             for grant in grants:
                 row = await session.get(OAuthConnectionEntity, grant.connection_id)
                 if row is None:
                     raise ValueError("OAuth connection history is unavailable")
-                self._remember(self._open(grant.encrypted_data, self._grant_context(row, grant)))
+                payload = self._open(grant.encrypted_data, self._grant_context(row, grant))
+                self._remember(payload)
+                if payload:
+                    await self._credential_evidence(session, row.id, "grant", grant.id, grant.revision, payload)
+
+    async def _vault_lock(self, session: AsyncSession) -> None:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": self.store.schema + ":connection-oauth:credential-admission"},
+        )
+
+    async def _history(self, session: AsyncSession) -> list[OAuthCredentialEvidenceEntity]:
+        rows = list(await session.scalars(select(OAuthCredentialEvidenceEntity).limit(MAX_HISTORY + 1)))
+        if len(rows) > MAX_HISTORY:
+            raise ValueError("OAuth credential history exceeds its bound; review retention before admission")
+        for row in rows:
+            expected = {
+                "row_id": row.id.hex,
+                "connection_id": row.connection_id.hex,
+                "kind": row.kind,
+                "source_id": row.source_id.hex,
+                "revision": row.revision,
+            }
+            if not isinstance(row.data, dict) or any(row.data.get(key) != value for key, value in expected.items()):
+                raise ValueError("OAuth credential history source context is invalid")
+        self.matcher.contains("", [row.data for row in rows])
+        return rows
+
+    async def _credential_evidence(
+        self, session: AsyncSession, connection_id: UUID, kind: str, source_id: UUID, revision: int, payload: Data
+    ) -> None:
+        await self._vault_lock(session)
+        rows = await self._history(session)
+        if any(row.kind == kind and row.source_id == source_id and row.revision == revision for row in rows):
+            return
+        if len(rows) == MAX_HISTORY:
+            raise ValueError("OAuth credential history exceeds its bound; review retention before publication")
+        evidence_id = uuid4()
+        values = [value for value in payload.values() if isinstance(value, str) and value]
+        session.add(
+            OAuthCredentialEvidenceEntity(
+                id=evidence_id,
+                connection_id=connection_id,
+                kind=kind,
+                source_id=source_id,
+                revision=revision,
+                data=self.matcher.packet(evidence_id.hex, kind, source_id.hex, revision, values, connection_id.hex),
+            )
+        )
+        await session.flush()
+
+    async def admit_credentials(self, value: Any) -> None:
+        # One statement sees evidence and source coverage at the same committed
+        # snapshot, including inside an ambient unit. It acquires no advisory lock.
+        evidence = OAuthCredentialEvidenceEntity
+        registration, grant = OAuthRegistrationEntity, OAuthGrantEntity
+        snapshot = union_all(
+            select(
+                literal("evidence").label("record_kind"),
+                evidence.id.label("row_id"),
+                evidence.connection_id.label("connection_id"),
+                evidence.kind.label("source_kind"),
+                evidence.source_id.label("source_id"),
+                evidence.revision.label("revision"),
+                evidence.data.label("data"),
+            ).limit(MAX_HISTORY + 1),
+            select(
+                literal("registration"),
+                registration.id,
+                registration.connection_id,
+                literal("registration"),
+                registration.id,
+                registration.revision,
+                literal(None, type_=JSONB),
+            ).limit(MAX_HISTORY + 1),
+            select(
+                literal("grant"),
+                grant.id,
+                grant.connection_id,
+                literal("grant"),
+                grant.id,
+                grant.revision,
+                literal(None, type_=JSONB),
+            ).limit(MAX_HISTORY + 1),
+        )
+        async with self.store._unit() as session:
+            records = list((await session.execute(snapshot)).mappings())
+            groups = {
+                kind: [row for row in records if row["record_kind"] == kind]
+                for kind in ("evidence", "registration", "grant")
+            }
+            if any(len(rows) > MAX_HISTORY for rows in groups.values()):
+                raise ValueError("OAuth credential history exceeds its bound")
+            packets = []
+            for row in groups["evidence"]:
+                expected = {
+                    "row_id": row["row_id"].hex,
+                    "connection_id": row["connection_id"].hex,
+                    "kind": row["source_kind"],
+                    "source_id": row["source_id"].hex,
+                    "revision": row["revision"],
+                }
+                if not isinstance(row["data"], dict) or any(
+                    row["data"].get(key) != item for key, item in expected.items()
+                ):
+                    raise ValueError("OAuth credential history source context is invalid")
+                packets.append(row["data"])
+            origins = {(row["source_kind"], row["source_id"], row["revision"]) for row in groups["evidence"]}
+            if any(("registration", row["row_id"], row["revision"]) not in origins for row in groups["registration"]):
+                raise ValueError("OAuth credential history is unavailable; initialize admission before continuing")
+            for row in groups["grant"]:
+                history = {
+                    revision for kind, source, revision in origins if kind == "grant" and source == row["row_id"]
+                }
+                if not 1 <= row["revision"] <= MAX_HISTORY or history != set(range(1, row["revision"] + 1)):
+                    raise ValueError("Retired OAuth credential history is incomplete; reviewed recovery is required")
+            if self.matcher.contains(value, packets) or contains_known_credential(value, self._secrets):
+                raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
 
     async def stop(self) -> None:
         self._secrets.clear()
@@ -384,15 +510,18 @@ class ConnectionOAuth:
             else:
                 row.revision += 1
                 row.status = "authorization_required"
-            session.add(
-                OAuthRegistrationEntity(
-                    connection_id=row.id,
-                    revision=row.revision,
-                    data=data,
-                    encrypted_secret=self._seal(self._client_context(row.id, row.revision, data), {"secret": secret}),
-                )
+            registration = OAuthRegistrationEntity(
+                id=uuid4(),
+                connection_id=row.id,
+                revision=row.revision,
+                data=data,
+                encrypted_secret=self._seal(self._client_context(row.id, row.revision, data), {"secret": secret}),
             )
+            session.add(registration)
             await session.flush()
+            await self._credential_evidence(
+                session, row.id, "registration", registration.id, row.revision, {"secret": secret}
+            )
             await self._event(session, row, "registration_configured", actor)
             return await self._summary(session, row)
 
@@ -747,6 +876,14 @@ class ConnectionOAuth:
                     "access_token": tokens.access_token,
                     "refresh_token": refresh,
                 },
+            )
+            await self._credential_evidence(
+                session,
+                row.id,
+                "grant",
+                grant.id,
+                grant.revision,
+                {"access_token": tokens.access_token, "refresh_token": refresh},
             )
             row.status = "authorized_unverified"
             await session.flush()

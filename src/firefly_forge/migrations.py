@@ -25,6 +25,7 @@ from firefly_forge.collaboration_persistence import (
 from firefly_forge.connection_oauth_persistence import (
     OAuthAttemptEntity,
     OAuthConnectionEntity,
+    OAuthCredentialEvidenceEntity,
     OAuthEffectEntity,
     OAuthEventEntity,
     OAuthGrantEntity,
@@ -65,7 +66,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 21
+SCHEMA_REVISION = 22
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -133,6 +134,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 OAuthGrantEntity,
                 OAuthEffectEntity,
                 OAuthEventEntity,
+                OAuthCredentialEvidenceEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
@@ -337,7 +339,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
 
 
 async def _oauth_history_guards(session: AsyncSession) -> None:
-    for table in ("forge_oauth_registrations", "forge_oauth_events"):
+    for table in ("forge_oauth_registrations", "forge_oauth_events", "forge_oauth_credential_evidence"):
         await session.execute(
             text(
                 f"CREATE OR REPLACE TRIGGER {table}_immutable "

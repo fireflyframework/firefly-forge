@@ -125,6 +125,7 @@ class ToolInvocationBroker:
             raise ValueError("Tool invocation requires an actual source association")
         if len(json.dumps(arguments).encode()) > 64_000:
             raise ValueError("Tool arguments exceed 64 KB")
+        await self.store.admit_credentials([arguments, source, configuration, correlation_id])
         if contains_known_credential([arguments, source, configuration, correlation_id], self.credential_registry()):
             raise ValueError("Tool invocations cannot contain configured credentials")
         from firefly_forge.runner_configuration import SearchQuery
@@ -292,6 +293,7 @@ class ToolInvocationBroker:
             result = {**result, "invocation_id": correlation_id}
             if len(json.dumps(result).encode()) > limits["max_result_bytes"]:
                 raise ValueError("Tool result exceeds its frozen response bound")
+            await self.store.admit_credentials(result)
             if contains_known_credential(result, self.credential_registry()):
                 raise ValueError("Tool result reflected configured credentials")
             await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}))

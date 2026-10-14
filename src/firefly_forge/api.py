@@ -504,6 +504,7 @@ class FactoryConfiguration:
         external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
+        search.credential_admission = store.admit_credentials
         tool_broker.credential_registry = lambda: engine.credential_registry()
         journal.credential_registry = lambda: engine.credential_registry()
         store.credential_registry = lambda: engine.credential_registry()

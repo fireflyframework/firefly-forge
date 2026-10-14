@@ -8,7 +8,7 @@ import copy
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,6 +84,7 @@ class Store:
         self.policies = PolicyCatalog(self.path.parent)
         self.roles = RoleRegistry(self.path.parent)
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
         self.task_router: Any = None
         self.runtime_roles: Any = None
         self.execution_requests: Any = None
@@ -296,7 +297,7 @@ class Store:
             await ProjectAccess(self).require_project(
                 actor, request.project_id, "release" if request.publish else "execute"
             )
-        self.reject_credentials(request.model_dump())
+        await self.admit_credentials(request.model_dump())
         runner = (
             prepared_runner
             if prepared_runner is not None
@@ -410,7 +411,7 @@ class Store:
                     "The product brand revision changed while freezing its reviewed design; retry admission"
                 )
             role_snapshot = self.roles.snapshot(role_selection, snapshot, tool_catalog=tools)
-            self.reject_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
+            await self.admit_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
             review_configuration = (
                 {
                     "config_revision": review_selection["config_revision"],
@@ -480,13 +481,31 @@ class Store:
                 "Do not place configured credentials in product briefs, definitions or worker instructions"
             )
 
+    async def admit_credentials(self, value: Any) -> None:
+        if self.vault_credential_admission is not None:
+            await self.vault_credential_admission(value)
+        else:
+            from sqlalchemy import select
+
+            from firefly_forge.connection_oauth_persistence import (
+                OAuthCredentialEvidenceEntity,
+                OAuthGrantEntity,
+                OAuthRegistrationEntity,
+            )
+
+            async with self._unit() as session:
+                for entity in (OAuthCredentialEvidenceEntity, OAuthGrantEntity, OAuthRegistrationEntity):
+                    if await session.scalar(select(entity.id).limit(1)) is not None:
+                        raise ValueError("OAuth credential admission service is unavailable")
+        self.reject_credentials(value)
+
     async def repository_roles(self, value: str) -> Data:
         repo = await self.repository(value)
         return {"roles": repo.get("roles"), "inherited": "roles" not in repo}
 
     async def set_repository_roles(self, value: str, request: ProjectRoles) -> Data:
         self.roles.snapshot(request, self.policies.selection())
-        self.reject_credentials(request.model_dump())
+        await self.admit_credentials(request.model_dump())
         async with self._unit():
             row = await self.repository_records.find_by_id(identifier(value), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None:

@@ -71,6 +71,16 @@ class OAuthEventEntity(BaseEntity):
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
 
 
+class OAuthCredentialEvidenceEntity(BaseEntity):
+    __tablename__ = "forge_oauth_credential_evidence"
+    __table_args__ = (UniqueConstraint("kind", "source_id", "revision"),)
+    connection_id: Mapped[UUID] = mapped_column(ForeignKey("forge_oauth_connections.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    source_id: Mapped[UUID] = mapped_column()
+    revision: Mapped[int] = mapped_column()
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
 @repository
 class OAuthConnectionRepository(Repository[OAuthConnectionEntity, UUID]):
     async def named(self, name: str) -> OAuthConnectionEntity | None:

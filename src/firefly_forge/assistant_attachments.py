@@ -155,6 +155,7 @@ class AssistantAttachments:
 
     async def admit(self, repository_id: str, session_id: str, request: AttachmentInput) -> Data:
         request = AttachmentInput.model_validate(request)
+        await self.store.admit_credentials(request.filename)
         self._guard(request.filename)
         try:
             raw = base64.b64decode(request.content_base64, validate=True)
@@ -162,6 +163,7 @@ class AssistantAttachments:
             raise ValueError("Upload valid base64 file content") from None
         if not raw or len(raw) > MAX_BYTES:
             raise ValueError("Upload a nonempty file of at most 1 MB")
+        await self.store.admit_credentials(raw.decode("utf8", errors="ignore"))
         self._guard(raw.decode("utf8", errors="ignore"))
         sha256 = hashlib.sha256(raw).hexdigest()
         async with self.store._unit():
@@ -193,6 +195,7 @@ class AssistantAttachments:
             and (not isinstance(image, bytes) or not image or len(image) > MAX_BYTES)
         ):
             raise ValueError("Attachment decoder returned invalid bounded content")
+        await self.store.admit_credentials(content)
         self._guard(content)
         identifier_value = uuid4()
         metadata = {

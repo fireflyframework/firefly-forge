@@ -34,8 +34,10 @@ class AgentRoleController:
         self.runners = runners
 
     @get_mapping("/agent-roles")
-    def catalog(self) -> dict[str, Any]:
-        return {**self.roles.current(), "community_skills": community_catalog(), "tools": self.roles.tools()}
+    async def catalog(self) -> dict[str, Any]:
+        result = {**self.roles.current(), "community_skills": community_catalog(), "tools": self.roles.tools()}
+        await self.store.admit_credentials(result)
+        return result
 
     async def _lifecycle(self, repository_id: str | None = None) -> dict[str, Any]:
         repo = await self.store.repository(repository_id) if repository_id else None
@@ -70,7 +72,7 @@ class AgentRoleController:
             assistant_policy=self.store.policies.current(),
             tools=tools,
         )
-        self.store.reject_credentials(result)
+        await self.store.admit_credentials(result)
         actor = CURRENT_PRINCIPAL.get()
         access = ProjectAccess(self.store)
         admin = await access.current_administrator(actor) if actor else False
@@ -93,7 +95,8 @@ class AgentRoleController:
         return await self._lifecycle(id)
 
     @put_mapping("/agent-roles")
-    def save(self, body: Body[RoleDocument]) -> dict[str, Any]:
+    async def save(self, body: Body[RoleDocument]) -> dict[str, Any]:
+        await self.store.admit_credentials(body.model_dump(mode="json"))
         return self.roles.save(body)
 
     @get_mapping("/runs/{id}/worker-messages")
