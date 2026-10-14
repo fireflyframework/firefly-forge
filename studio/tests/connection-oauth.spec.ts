@@ -2060,3 +2060,91 @@ for (const width of [1200, 1320]) {
     }
   });
 }
+
+for (const theme of ["light", "dark"]) {
+  test(`narrow desktop credential guide wraps its action without horizontal overflow ${theme}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await fixture(page, true, true, {
+      newSetup: true,
+      executionUnavailable: true,
+    });
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    await page
+      .locator("main")
+      .getByRole("button", { name: "Connected accounts", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Set up a connection", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const guide = page.locator(".oauth-wizard .wizard-guide");
+    await page.evaluate(() => document.fonts.ready);
+    const geometry = await guide.evaluate((e) => {
+      const range = document.createRange();
+      range.selectNodeContents(e.querySelector("h3")!);
+      return {
+        scrollWidth: e.scrollWidth,
+        clientWidth: e.clientWidth,
+        headingLines: new Set(Array.from(range.getClientRects(), (r) => r.top))
+          .size,
+      };
+    });
+    await testInfo.attach("guide-width", {
+      body: JSON.stringify(geometry),
+      contentType: "application/json",
+    });
+    expect(geometry.scrollWidth).toBe(geometry.clientWidth);
+    expect(geometry.headingLines).toBeLessThanOrEqual(2);
+    if (process.env.OAUTH_UI_PROOF) {
+      mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
+      await page.screenshot({
+        path: join(
+          process.env.OAUTH_UI_PROOF,
+          `oauth-guide-initial-1200x800-${theme}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+    const action = guide.getByRole("button", {
+      name: "Review external tool prerequisites",
+      exact: true,
+    });
+    await action.scrollIntoViewIfNeeded();
+    await action.focus();
+    const hit = await action.evaluate((button) => {
+      const rect = button.getBoundingClientRect(),
+        parent = button.closest("aside")!.getBoundingClientRect(),
+        target = document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        );
+      return {
+        within:
+          rect.left >= parent.left &&
+          rect.right <= parent.right &&
+          rect.top >= parent.top &&
+          rect.bottom <= parent.bottom,
+        hit: target === button || button.contains(target),
+      };
+    });
+    expect(hit.within).toBe(true);
+    expect(hit.hit).toBe(true);
+    expect(await page.locator("main").evaluate((e) => e.scrollTop)).toBe(0);
+    if (process.env.OAUTH_UI_PROOF) {
+      mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
+      await page.screenshot({
+        path: join(
+          process.env.OAUTH_UI_PROOF,
+          `oauth-guide-action-1200x800-${theme}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+    await action.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "External tools", exact: true }),
+    ).toBeVisible();
+  });
+}

@@ -66,6 +66,15 @@
 }
 .oauth-wizard .wizard-guide button {
   text-align: left;
+  white-space: normal;
+  max-width: 100%;
+  align-items: flex-start;
+}
+.oauth-wizard .wizard-guide button span {
+  min-width: 0;
+}
+.oauth-wizard .wizard-guide button svg {
+  flex-shrink: 0;
 }
 .oauth-disconnect {
   padding-block: 16px;

@@ -1009,7 +1009,7 @@ function Connections({
                 <ShieldCheck size={28} />
                 <h3>
                   {step === 1
-                    ? "Private credential custody"
+                    ? "Private credentials"
                     : step === 2
                       ? "Consent stays in your browser"
                       : "Before agent tools can use this account"}
@@ -1022,7 +1022,7 @@ function Connections({
                       : "The factory must separately admit the account, adapter, resource and project tool grant. This flow cannot enable a blocked vendor template."}
                 </p>
                 <button className="text-button" onClick={onTools}>
-                  Review external tool prerequisites
+                  <span>Review external tool prerequisites</span>
                   <ExternalLink size={16} />
                 </button>
               </>
