@@ -9,7 +9,7 @@ A product can contain several customer journeys, features and integrations. Each
 Incremental changes preserve the existing product definition. A request names its base revision and digest, upserts or removes specific contract IDs, and optionally appends journeys, acceptance criteria or user stories. Existing acceptance numbers and untouched features remain unchanged.
 
 ```mermaid
-flowchart LR
+flowchart TD
   A[Current product revision] --> B[Preview feature change]
   B --> C[Save immutable definition revision]
   C --> D[Review function, design and architecture]

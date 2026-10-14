@@ -6,30 +6,24 @@ const { expect } = createRequire(
 )("@playwright/test");
 
 export async function readyImages(images) {
-  await images.evaluateAll((nodes) => {
-    for (const image of nodes)
-      if (image.loading === "lazy" && !image.currentSrc)
-        image.loading = "eager";
-  });
-  await expect
-    .poll(() =>
-      images.evaluateAll((nodes) =>
-        nodes.every((image) => {
-          const declared = image.getAttribute("src");
+  for (const image of await images.all()) {
+    await image.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        image.evaluate((element) => {
+          const declared = element.getAttribute("src");
           return (
             declared &&
-            image.currentSrc === new URL(declared, document.baseURI).href &&
-            image.complete &&
-            image.naturalWidth > 0 &&
-            image.naturalHeight > 0
+            element.currentSrc === new URL(declared, document.baseURI).href &&
+            element.complete &&
+            element.naturalWidth > 0 &&
+            element.naturalHeight > 0
           );
         }),
-      ),
-    )
-    .toBe(true);
-  await images.evaluateAll((nodes) =>
-    Promise.all(nodes.map((image) => image.decode())),
-  );
+      )
+      .toBe(true);
+    await image.evaluate((element) => element.decode());
+  }
 }
 
 export async function readyPictureImage(image) {
