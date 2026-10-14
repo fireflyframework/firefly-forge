@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.6
+
+Administrators can configure verified learning through **Administration > Learning**. The wizard separates knowledge selection, retrieval limits and review. It preserves saved preferences when learning is disabled and requires a read of saved settings after an uncertain write. New runs capture the revised policy; existing runs retain theirs. See [learning and knowledge-first execution](learning.md).
+
+Verified learning projections can be read from flycanon when a new run explicitly permits it. The record must match the current project, repository, framework and dependencies. Source identity and citation checks precede admission; current local authority and freshness are checked again before new or cached results are returned. An unavailable optional projection leaves ordinary source retrieval and local evidence checks intact. Cross-project promotion and automatic repair circuits remain separate work.
+
+The locked runtime adopts public pyfly 26.10.5 and flycanon SDK 26.10.3. Managed knowledge installs the separately checksummed flycanon 26.10.3 service in its own framework environment. Existing private configuration, corpora and queued revisions are preserved. No migration of Canon/Query's legacy framework events is implied.
+
 ## 0.2.5
 
 Native model execution now uses the public fireflyframework-agentic 26.10.1 release. The dependency lock also consumes pyfly 26.10.4 and flycanon SDK 26.10.2. Managed knowledge installs the checksummed flycanon 26.10.2 server, configuration and migration archive in its separate runtime. Existing knowledge configuration and queued revisions retain their original state. The factory keeps its journal-controlled retry and handoff boundaries; upgrading the model framework does not authorize replay of an uncertain external effect. See [coding providers](agents.md) and [agent tools](agent-tools.md).
