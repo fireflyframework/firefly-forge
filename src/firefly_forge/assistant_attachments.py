@@ -78,8 +78,8 @@ class AssistantAttachments:
         self.decoder = decoder or decode_attachment
         self.credential_registry: Callable[[], dict[str, str]] = dict
 
-    def _guard(self, value: Any) -> None:
-        self.store.reject_credentials(value)
+    async def _guard(self, value: Any) -> None:
+        await self.store.admit_credentials(value)
         if contains_known_credential(value, self.credential_registry()):
             raise ValueError("Remove configured credentials from conversation attachments")
 
@@ -101,7 +101,7 @@ class AssistantAttachments:
                 await access.require_repository(actor, repository_id, permission)
         return row
 
-    def _public(self, row: ForgeAssistantAttachmentEntity) -> Data:
+    async def _public(self, row: ForgeAssistantAttachmentEntity) -> Data:
         result = {key: copy.deepcopy(value) for key, value in row.data.items() if key in PUBLIC_FIELDS}
         if any(
             result.get(key) != value
@@ -116,10 +116,10 @@ class AssistantAttachments:
             }.items()
         ):
             raise ValueError("Attachment metadata integrity check failed")
-        self._guard(result)
+        await self._guard(result)
         return result
 
-    def _verified(self, row: ForgeAssistantAttachmentEntity) -> Data:
+    async def _verified(self, row: ForgeAssistantAttachmentEntity) -> Data:
         if row.status != "ready":
             raise ValueError("Only ready attachments can enter model context")
         if (
@@ -137,7 +137,7 @@ class AssistantAttachments:
                 raise ValueError("Attachment image hash check failed")
         elif row.kind != "document" or row.canonical_image is not None or row.image_sha256 is not None:
             raise ValueError("Attachment content type integrity check failed")
-        result = self._public(row)
+        result = await self._public(row)
         if (
             len(row.extracted_text) > MAX_TEXT
             or result["text_chars"] != len(row.extracted_text)
@@ -145,30 +145,30 @@ class AssistantAttachments:
             or row.data.get("text_sha256") != hashlib.sha256(row.extracted_text.encode()).hexdigest()
         ):
             raise ValueError("Attachment text hash, limits or metadata do not match")
-        self._guard([row.extracted_text, row.raw_bytes.decode("utf8", errors="ignore")])
+        await self._guard([row.extracted_text, row.raw_bytes.decode("utf8", errors="ignore")])
         return result
 
-    def _replay(self, row: ForgeAssistantAttachmentEntity, filename: str, sha256: str) -> Data:
+    async def _replay(self, row: ForgeAssistantAttachmentEntity, filename: str, sha256: str) -> Data:
         if row.filename != filename or row.sha256 != sha256:
             raise ValueError("Attachment replay conflicts with the original filename or content")
-        return self._verified(row)
+        return await self._verified(row)
 
     async def admit(self, repository_id: str, session_id: str, request: AttachmentInput) -> Data:
         request = AttachmentInput.model_validate(request)
-        self._guard(request.filename)
+        await self._guard(request.filename)
         try:
             raw = base64.b64decode(request.content_base64, validate=True)
         except (ValueError, binascii.Error):
             raise ValueError("Upload valid base64 file content") from None
         if not raw or len(raw) > MAX_BYTES:
             raise ValueError("Upload a nonempty file of at most 1 MB")
-        self._guard(raw.decode("utf8", errors="ignore"))
+        await self._guard(raw.decode("utf8", errors="ignore"))
         sha256 = hashlib.sha256(raw).hexdigest()
         async with self.store._unit():
             parent = await self._parent(repository_id, session_id, write=True)
             existing = await self.records.request(parent.id, request.request_id)
             if existing is not None:
-                return self._replay(existing, request.filename, sha256)
+                return await self._replay(existing, request.filename, sha256)
             if await self.records.count_for_session(parent.id) >= 20:
                 raise ValueError("This conversation already contains twenty attachments")
         try:
@@ -193,7 +193,7 @@ class AssistantAttachments:
             and (not isinstance(image, bytes) or not image or len(image) > MAX_BYTES)
         ):
             raise ValueError("Attachment decoder returned invalid bounded content")
-        self._guard(content)
+        await self._guard(content)
         identifier_value = uuid4()
         metadata = {
             "id": identifier_value.hex,
@@ -209,15 +209,15 @@ class AssistantAttachments:
             "created_at": now(),
             "text_sha256": hashlib.sha256(content[:MAX_TEXT].encode()).hexdigest(),
         }
-        self._guard(metadata)
+        await self._guard(metadata)
         async with self.store._unit():
             parent = await self._parent(repository_id, session_id, write=True, lock=True)
             existing = await self.records.request(parent.id, request.request_id)
             if existing is not None:
-                return self._replay(existing, request.filename, sha256)
+                return await self._replay(existing, request.filename, sha256)
             if await self.records.count_for_session(parent.id) >= 20:
                 raise ValueError("This conversation already contains twenty attachments")
-            self._guard([metadata, content, raw.decode("utf8", errors="ignore")])
+            await self._guard([metadata, content, raw.decode("utf8", errors="ignore")])
             row = ForgeAssistantAttachmentEntity(
                 id=identifier_value,
                 session_id=parent.id,
@@ -234,12 +234,12 @@ class AssistantAttachments:
                 data=metadata,
             )
             await self.records.save(row)
-            return self._public(row)
+            return await self._public(row)
 
     async def list(self, repository_id: str, session_id: str) -> list[Data]:
         async with self.store._unit():
             parent = await self._parent(repository_id, session_id)
-            return [self._public(row) for row in await self.records.for_session(parent.id)]
+            return [await self._public(row) for row in await self.records.for_session(parent.id)]
 
     async def get(self, repository_id: str, session_id: str, attachment_id: str) -> Data:
         async with self.store._unit():
@@ -247,7 +247,7 @@ class AssistantAttachments:
             selected = await self.records.metadata(parent.id, identifier(attachment_id))
             if selected is None:
                 raise KeyError("Attachment not found in this conversation")
-            return self._public(selected)
+            return await self._public(selected)
 
     async def freeze(self, repository_id: str, session_id: str, ids: builtins.list[str]) -> builtins.list[Data]:
         if len(ids) > 8 or len(set(ids)) != len(ids):
@@ -265,7 +265,7 @@ class AssistantAttachments:
                 row = selected[key]
                 result.append(
                     {
-                        **self._verified(row),
+                        **(await self._verified(row)),
                         "text": row.extracted_text,
                         "image": row.canonical_image,
                         "image_sha256": row.image_sha256,

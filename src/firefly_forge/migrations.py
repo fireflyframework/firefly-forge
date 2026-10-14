@@ -22,6 +22,15 @@ from firefly_forge.collaboration_persistence import (
     ForgeProductDefinitionEntity,
     ForgeWebhookInboxEntity,
 )
+from firefly_forge.connection_oauth_persistence import (
+    OAuthAttemptEntity,
+    OAuthConnectionEntity,
+    OAuthCredentialEvidenceEntity,
+    OAuthEffectEntity,
+    OAuthEventEntity,
+    OAuthGrantEntity,
+    OAuthRegistrationEntity,
+)
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity, ForgeExecutionRequestEventEntity
 from firefly_forge.identity_persistence import (
     ForgeIdentityAttemptEntity,
@@ -57,7 +66,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 20
+SCHEMA_REVISION = 22
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -119,6 +128,13 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeLearningRecordEntity,
                 ForgeLearningEventEntity,
                 ForgeLearningProjectionEntity,
+                OAuthConnectionEntity,
+                OAuthRegistrationEntity,
+                OAuthAttemptEntity,
+                OAuthGrantEntity,
+                OAuthEffectEntity,
+                OAuthEventEntity,
+                OAuthCredentialEvidenceEntity,
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
@@ -318,3 +334,49 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 "EXECUTE FUNCTION forge_refuse_immutable_change()"
             )
         )
+
+    await _oauth_history_guards(session)
+
+
+async def _oauth_history_guards(session: AsyncSession) -> None:
+    for table in ("forge_oauth_registrations", "forge_oauth_events", "forge_oauth_credential_evidence"):
+        await session.execute(
+            text(
+                f"CREATE OR REPLACE TRIGGER {table}_immutable "
+                f"BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW "
+                "EXECUTE FUNCTION forge_refuse_immutable_change()"
+            )
+        )
+    await session.execute(
+        text("""
+        CREATE OR REPLACE FUNCTION forge_guard_oauth_effect() RETURNS trigger AS $$
+        BEGIN
+          IF OLD.id IS DISTINCT FROM NEW.id OR OLD.connection_id IS DISTINCT FROM NEW.connection_id
+            OR OLD.request_id IS DISTINCT FROM NEW.request_id OR OLD.kind IS DISTINCT FROM NEW.kind
+            OR OLD.created_at IS DISTINCT FROM NEW.created_at
+            OR OLD.lease_expires_at IS DISTINCT FROM NEW.lease_expires_at
+            OR (OLD.data - ARRAY['result','observed_at','disposition']) IS DISTINCT FROM
+               (NEW.data - ARRAY['result','observed_at','disposition'])
+            OR (OLD.state IN ('completed','rejected','unknown') AND
+              (OLD.state IS DISTINCT FROM NEW.state OR OLD.data IS DISTINCT FROM NEW.data)) THEN
+            RAISE EXCEPTION 'OAuth effect admission and closed outcome are immutable';
+          END IF;
+          IF OLD.state IS DISTINCT FROM NEW.state AND NOT (
+            OLD.state='executing' AND NEW.state IN ('completed','rejected','unknown')
+          ) THEN RAISE EXCEPTION 'OAuth effect transition cannot replay a request'; END IF;
+          RETURN NEW;
+        END; $$ LANGUAGE plpgsql
+        """)
+    )
+    await session.execute(
+        text(
+            "CREATE OR REPLACE TRIGGER forge_oauth_effect_admission "
+            "BEFORE UPDATE ON forge_oauth_effects FOR EACH ROW EXECUTE FUNCTION forge_guard_oauth_effect()"
+        )
+    )
+    await session.execute(
+        text(
+            "CREATE OR REPLACE TRIGGER forge_oauth_effect_delete "
+            "BEFORE DELETE ON forge_oauth_effects FOR EACH ROW EXECUTE FUNCTION forge_refuse_immutable_change()"
+        )
+    )

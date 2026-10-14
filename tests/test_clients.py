@@ -126,6 +126,12 @@ async def test_mcp_tools_have_real_input_contracts():
         "get_external_mcp_grants",
         "grant_external_mcp",
         "revoke_external_mcp",
+        "get_connection_oauth_providers",
+        "get_connection_oauth",
+        "configure_connection_oauth",
+        "prepare_connection_oauth",
+        "refresh_connection_oauth",
+        "disconnect_connection_oauth",
     }
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]

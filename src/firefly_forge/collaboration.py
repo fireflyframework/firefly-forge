@@ -345,7 +345,7 @@ class Collaboration:
             return copy.deepcopy(row.data) if row else None
 
     async def save_product(self, repository_id: str, request: ProductDefinition) -> Data:
-        self.store.reject_credentials(request.model_dump())
+        await self.store.admit_credentials(request.model_dump())
         if request.architecture is not None and not request.architecture.reviewed:
             raise ValueError("Review the architecture proposal before saving the product definition")
         await ProductDesign(self.store).validate_review(repository_id, request)
@@ -446,7 +446,7 @@ class Collaboration:
                 event["issue"]["url"] = self._ticket_url(repo, event["issue"])
                 if event["issue"]["number"] <= 0:
                     raise ValueError("invalid_issue")
-                self.store.reject_credentials(event)
+                await self.store.admit_credentials(event)
                 reason = self._allowed(repo, settings, event, provider)
                 if not reason:
                     command = RepositoryCommand.parse(event.pop("text"))

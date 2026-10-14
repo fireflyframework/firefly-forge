@@ -155,32 +155,47 @@ class ModelProfiles:
             settings[endpoint] = validate_endpoint(settings[endpoint])
         return settings
 
-    def save(self, name: str, request: ModelProfileInput) -> Data:
+    def _prepared_record(self, name: str, request: ModelProfileInput, document: Data) -> Data:
+        previous = document.get(name)
+        settings = self._settings(request, previous)
+        secret_values = {
+            fields[key]: settings.get(fields[key], "")
+            for fields in [FIELDS[request.provider]]
+            for key in SECRETS & fields.keys()
+        }
+        public = {
+            "name": request.name,
+            "description": request.description,
+            "settings": public_settings(request.provider, settings),
+        }
+        registry = {**secret_values, **self.redaction_settings(), **self.credential_registry()}
+        if contains_known_credential(public, registry):
+            raise ValueError("Remove configured credentials from public model profile fields")
+        return {
+            "name": request.name,
+            "description": request.description,
+            "provider": request.provider,
+            "revision": previous["revision"] + 1 if previous else 1,
+            "settings": settings,
+        }
+
+    def preview_save(self, name: str, request: ModelProfileInput) -> tuple[Data, str]:
         name = profile_id(name)
         with self.private.lock:
             document = self.private._read(self.path)
-            previous = document.get(name)
-            settings = self._settings(request, previous)
-            secret_values = {
-                fields[key]: settings.get(fields[key], "")
-                for fields in [FIELDS[request.provider]]
-                for key in SECRETS & fields.keys()
-            }
-            public = {
-                "name": request.name,
-                "description": request.description,
-                "settings": public_settings(request.provider, settings),
-            }
-            registry = {**secret_values, **self.redaction_settings(), **self.credential_registry()}
-            if contains_known_credential(public, registry):
-                raise ValueError("Remove configured credentials from public model profile fields")
-            record = {
-                "name": request.name,
-                "description": request.description,
-                "provider": request.provider,
-                "revision": previous["revision"] + 1 if previous else 1,
-                "settings": settings,
-            }
+            record = self._prepared_record(name, request, document)
+            return self._public(name, record), content_digest({"document": document, "record": record})
+
+    def save(self, name: str, request: ModelProfileInput, *, expected_digest: str | None = None) -> Data:
+        name = profile_id(name)
+        with self.private.lock:
+            document = self.private._read(self.path)
+            record = self._prepared_record(name, request, document)
+            if (
+                expected_digest is not None
+                and content_digest({"document": document, "record": record}) != expected_digest
+            ):
+                raise ValueError("Model profile settings changed during admission; review and retry")
             document[name] = record
             self.private._write(self.path, document)
         return self._public(name, record)

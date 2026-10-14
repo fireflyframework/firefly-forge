@@ -817,6 +817,80 @@ def create_server() -> MCPServer:
             return connection.external_mcp_catalog()
 
     @server.tool()
+    def get_connection_oauth_providers() -> list[dict[str, Any]]:
+        """Read admitted OAuth registrations and unmet provider prerequisites."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth_providers()
+
+    @server.tool()
+    def get_connection_oauth(name: str) -> dict[str, Any]:
+        """Read connection metadata without access, refresh or client-secret values."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.connection_oauth(name)
+
+    @server.tool()
+    def configure_connection_oauth(
+        name: str,
+        provider: str,
+        client_id: str,
+        client_secret_file: str | None = None,
+        public_client: bool | None = None,
+        project_id: str | None = None,
+        authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
+    ) -> dict[str, Any]:
+        """Configure an admitted provider as admin; use an owner-private secret file.
+
+        Configuration does not complete browser consent or approve agent tool access.
+        Endpoint, issuer, resource and scope URLs are not accepted as tool arguments.
+        """
+        from pathlib import Path
+
+        from firefly_forge.cli import client, private_secret_file
+
+        request: dict[str, Any] = {
+            "provider": provider,
+            "client_id": client_id,
+            "public_client": public_client,
+            "project_id": project_id,
+            "authentication": authentication,
+        }
+        if client_secret_file:
+            request["client_secret"] = private_secret_file(Path(client_secret_file))
+        with client() as connection:
+            return connection.configure_connection_oauth(name, request)
+
+    @server.tool()
+    def prepare_connection_oauth(name: str) -> dict[str, Any]:
+        """Prepare a short-lived link for the actor's authenticated factory browser.
+
+        Tools cannot exchange authorization codes or complete a user's consent.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.prepare_connection_oauth(name)
+
+    @server.tool()
+    def refresh_connection_oauth(name: str, request_id: str) -> dict[str, Any]:
+        """Request one recorded refresh; reuse its request ID and never retry unknown rotation."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.refresh_connection_oauth(name, request_id)
+
+    @server.tool()
+    def disconnect_connection_oauth(name: str) -> dict[str, Any]:
+        """Revoke local connection access immediately; remote revocation is separate."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.disconnect_connection_oauth(name)
+
+    @server.tool()
     def configure_external_mcp(
         connector: str, enabled: bool = False, api_key_file: str | None = None, clear_secret: bool = False
     ) -> dict[str, Any]:

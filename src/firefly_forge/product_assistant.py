@@ -306,6 +306,7 @@ class ProductAssistant:
                 request.analysis_id,
                 AnalysisContextInput(digest=request.analysis_digest, component_ids=request.analysis_component_ids),
             )
+        await self.store.admit_credentials([project, analysis_snapshot])
         if self.contains_credential([project, analysis_snapshot], self.store.configuration.resolve(request.agent)):
             raise ValueError("Remove configured credentials from product context before starting a conversation")
         data: Data = {
@@ -499,6 +500,7 @@ class ProductAssistant:
             if session.get("model_selection")
             else self.store.configuration.load_snapshot(session["config_revision"])
         )
+        await self.store.admit_credentials(request.message)
         if self.contains_credential(request.message, settings):
             raise ValueError("Do not place configured credentials in a product conversation")
         async with self.store._unit():
@@ -586,6 +588,7 @@ class ProductAssistant:
                 "attachment_text": file_text,
                 "image_input_receipt": image_receipt,
             }
+            await self.store.admit_credentials(context)
             if self.contains_credential(context, settings):
                 raise ValueError("Remove configured credentials from the frozen product context before continuing")
             data: Data = {
@@ -652,6 +655,7 @@ class ProductAssistant:
                         "knowledge_snapshot": snapshot_knowledge(self.store.configuration),
                     }
                 )
+                await self.store.admit_credentials(evidence)
                 if self.contains_credential(evidence, settings):
                     raise ValueError("Retrieved context contains a configured credential; response withheld")
                 context["knowledge"] = evidence
@@ -680,6 +684,7 @@ class ProductAssistant:
                     await access.require_repository(actor, repository_id, "edit")
             if not await self._renew_claim(data["id"], 1):
                 raise AssistantClaimLost("Dialogue ownership expired; explicitly recover its retained receipt")
+            await self.store.admit_credentials(prompt)
             if images:
                 reply = await self.designer(prompt, settings, images=images, image_input_receipt=image_receipt)
             else:
@@ -703,6 +708,7 @@ class ProductAssistant:
             encoded = json.dumps(reply.model_dump(mode="json"), ensure_ascii=False)
             if len(encoded.encode()) > 100000:
                 raise ValueError("The product proposal exceeds 100 KB; request a narrower design scope")
+            await self.store.admit_credentials(reply.model_dump(mode="json"))
             if self.contains_credential(reply.model_dump(mode="json"), settings):
                 raise ValueError("The model response contains a configured credential; proposal withheld")
             await self._authorize_session(session, "edit")

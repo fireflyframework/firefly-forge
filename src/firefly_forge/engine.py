@@ -600,6 +600,7 @@ class Engine:
                     if "browser_journey" in (grants or ()) and hasattr(provider, "image_input_capability")
                     else {"status": "unverified"},
                     credential_registry=self.credential_registry,
+                    credential_admission=self.store.admit_credentials,
                     internet_search=internet_search
                     if self.search and run.get("search_snapshot") and "internet_search" in (grants or ())
                     else None,
@@ -743,6 +744,7 @@ class Engine:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, repairs + 2):
+                await self.store.admit_credentials(brief)
                 (await self.store.update(identifier, status="developing", attempt=attempt))
                 implementation = await self._begin_task(
                     identifier, "implement", workspace, settings, implementation_failures

@@ -83,13 +83,30 @@ async def execute_agentic(
                     for key, value in kwargs.items()
                 },
             ]
+            if context.credential_admission is not None:
+                await context.credential_admission(arguments)
             if contains_known_credential(arguments, context.credential_registry()):
                 raise ValueError("Native tool arguments cannot contain configured credentials")
             try:
-                return safe_data(await handler(*args, **kwargs))
+                result = await handler(*args, **kwargs)
+                if context.credential_admission is not None:
+                    public = result.return_value if isinstance(result, ToolReturn) else result
+                    await context.credential_admission(public)
+                return safe_data(result)
             except SearchProviderError as exc:
-                raise SearchProviderError(exc.provider, exc.kind, safe_data(str(exc)), status=exc.status) from None
+                message = safe_data(str(exc))
+                if context.credential_admission is not None:
+                    try:
+                        await context.credential_admission(message)
+                    except ValueError:
+                        message = "Provider error details withheld by credential admission"
+                raise SearchProviderError(exc.provider, exc.kind, message, status=exc.status) from None
             except (ValueError, OSError) as exc:
+                if context.credential_admission is not None:
+                    try:
+                        await context.credential_admission(str(exc))
+                    except ValueError:
+                        raise ValueError("Native tool error details withheld by credential admission") from None
                 raise ValueError(safe_data(str(exc))) from None
 
         return invoke
@@ -208,13 +225,24 @@ async def execute_agentic(
         )
         return ToolReturn(report, content=content)
 
-    def image_history(messages: list[Any]) -> list[Any]:
+    async def image_history(messages: list[Any]) -> list[Any]:
         bounded = bounded_image_history(messages)
         attached_ids.clear()
+        text = []
         for message in bounded:
             for part in message.parts:
+                content = getattr(part, "content", None)
+                arguments = getattr(part, "args", None)
+                if isinstance(content, (str, dict)):
+                    text.append(content)
+                elif isinstance(content, list):
+                    text.extend(item for item in content if isinstance(item, str))
+                if isinstance(arguments, (str, dict)):
+                    text.append(arguments)
                 if isinstance(part, UserPromptPart) and not isinstance(part.content, str):
                     attached_ids.update(item.identifier for item in part.content if isinstance(item, BinaryContent))
+        if context.credential_admission is not None:
+            await context.credential_admission(text)
         return bounded
 
     async def internet_search(
@@ -354,6 +382,8 @@ async def execute_agentic(
             if isinstance(cause, (SearchProviderError, ToolReconciliationRequired)):
                 raise cause from None
         raise
+    if context.credential_admission is not None:
+        await context.credential_admission(result.output.model_dump(mode="json"))
     feedback = result.output.worker_feedback
     if not tools.files_written and (feedback is None or feedback.disposition not in {"blocked", "clarification"}):
         raise RuntimeError("Firefly Agentic returned without writing any project source")

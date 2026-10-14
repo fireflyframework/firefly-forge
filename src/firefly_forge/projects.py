@@ -30,7 +30,7 @@ class Projects:
 
     async def configure(self, definition: ProjectDefinition, project_id: str | None = None) -> Data:
         self.store.roles.snapshot(definition.roles, self.store.policies.selection())
-        self.store.reject_credentials(definition.model_dump())
+        await self.store.admit_credentials(definition.model_dump())
         for repository_id in {component.repository_id for component in definition.components}:
             await self.store.repository(repository_id)
         async with self.store._unit():

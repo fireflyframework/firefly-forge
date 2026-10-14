@@ -242,7 +242,7 @@ class ExecutionRequests:
 
     async def _observation(self, request_id: str, kind: str, evidence: Data) -> None:
         await self.store.assert_ownership()
-        self.store.reject_credentials(evidence)
+        await self.store.admit_credentials(evidence)
         observed = await self.get(request_id)
         async with self.store._unit():
             await self.store.run_records.find_by_id(identifier(observed["run_id"]), lock=LockMode.PESSIMISTIC_WRITE)
@@ -442,7 +442,7 @@ class ExecutionRequests:
     async def reconcile(self, run_id: str, request_id: str, body: ExecutionRequestReconciliation) -> Data:
         from firefly_forge.journal import Journal
 
-        self.store.reject_credentials(body.model_dump())
+        await self.store.admit_credentials(body.model_dump())
         observed = await self.get(request_id)
         if observed["run_id"] != identifier(run_id).hex:
             raise KeyError("Execution request not found in this run")
