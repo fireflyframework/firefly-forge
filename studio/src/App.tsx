@@ -74,6 +74,8 @@ import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
 import { SearchConfiguration } from "./SearchConfiguration";
 import { ExternalTools } from "./ExternalTools";
+import { BrowserConnections } from "./BrowserConnections";
+import { readResume, resumeKey } from "./ConnectionOAuthSettings";
 import { Collaboration } from "./Collaboration";
 import "./Integrations.css";
 import "./UsabilityRefinements.css";
@@ -101,6 +103,7 @@ type Page =
   | "admin"
   | "users"
   | "search"
+  | "browser-connections"
   | "external-tools";
 const working = (status: string) =>
   [
@@ -291,8 +294,17 @@ export default function App() {
         setSetupGoal("product");
         setPage("product");
       }
+      if (
+        identity.session?.global_admin &&
+        readResume(
+          sessionStorage.getItem(resumeKey),
+          connection.base,
+          identity.session.user.id,
+        )
+      )
+        setPage("browser-connections");
     }
-  }, [identity.session, identity.loading]);
+  }, [identity.session, identity.loading, connection.base]);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       if (!connection.authenticated && !connection.token) return;
@@ -468,6 +480,7 @@ export default function App() {
     users: "People",
     search: "Internet search",
     "external-tools": "External tools",
+    "browser-connections": "Connected accounts",
   };
   const navigationPage = administrationLabels[page]
     ? "admin"
@@ -997,6 +1010,13 @@ export default function App() {
               connection={connection}
               session={identity.session}
               onAgents={() => setPage("workflow")}
+            />
+          )}
+          {page === "browser-connections" && (
+            <BrowserConnections
+              connection={connection}
+              session={identity.session}
+              onTools={() => navigate("external-tools")}
             />
           )}
           {page === "access" && (
