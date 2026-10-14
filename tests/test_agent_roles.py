@@ -215,7 +215,7 @@ def test_role_native_tool_selection_requires_actual_catalog_and_available_execut
     ]
     catalog.extend(
         {"id": ident, "availability": "not_configured", "providers": ["agentic", "bridge"]}
-        for ident in ["search_text", "edit_lines", "git_diff"]
+        for ident in ["search_text", "edit_lines", "git_diff", "knowledge_lookup"]
     )
     restricted = registry.snapshot(tool_catalog=catalog)
     assert stage_allowed_tools(restricted, "implement", "bridge") == {"list_files", "read_file"}

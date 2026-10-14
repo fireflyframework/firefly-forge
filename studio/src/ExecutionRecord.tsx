@@ -2,7 +2,11 @@
 import { useEffect, useState } from "react";
 import { post, request, type Connection, type ForgeRun } from "./api";
 import type { DevelopmentPlan } from "./factory";
-import { EvidenceView, journalDisposition } from "./ExecutionPresentation";
+import {
+  EvidenceView,
+  ToolEvidence,
+  journalDisposition,
+} from "./ExecutionPresentation";
 
 type Journal = {
   valid: boolean;
@@ -245,7 +249,20 @@ export function ExecutionRecord({
                   </span>
                 )}
               </div>
-              <EvidenceView value={entry.payload} />
+              {[
+                "tool_intent",
+                "tool_receipt",
+                "tool_unknown",
+                "tool_reconciled",
+              ].includes(entry.kind) ? (
+                <ToolEvidence
+                  kind={entry.kind}
+                  value={entry.payload}
+                  disposition={journalDisposition(entry, journal.entries)}
+                />
+              ) : (
+                <EvidenceView value={entry.payload} />
+              )}
               <div className="record-ledger-hash">
                 <span>Record hash</span>
                 <code>{entry.digest}</code>

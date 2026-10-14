@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.3
+
+Repository-scoped learning records retain their question, source tree, checks and review evidence in PostgreSQL. Native knowledge-first tools can reuse an exact eligible local outcome. Cached reuse holds a shared lock on the selected record and rechecks its policy, expiry and current execution authority before returning it. Explicit invalidation preserves the historical receipt. Submission to flycanon is a separate, single-dispatch action; uncertain submission requires observation rather than another write. Automatic retrieval from projected learning namespaces, classified repair controls and sharing between projects remain open. See [learning](learning.md).
+
+Administrators can opt into an authenticated local command controller with immutable profiles, project quotas and bounded Docker execution. Component bundles transfer sanitized source and a minimum Git snapshot. The controller retains command results and returned artifacts; concurrent source edits reject publication without losing either version. Cached results still require current task ownership and authority. This release's qualification covers a trusted Factory host and local command containers. Browser pools, complete coding-provider isolation, Kubernetes and multi-host placement require further qualification. See [runner setup](sandbox.md#administrator-opt-in-local-command-pools).
+
+The external-tool wizard separates saving a connection, requesting discovery, reviewing exact schemas and granting project access. GitHub repository-read tools remain the first executable external adapter. Figma, Sentry and Grafana guides show prerequisites and their blocked state. The [walkthrough](external-tools-tour.md) joins the Studio and search guides in a gallery of 228 source-bound light/dark desktop/phone captures. Their fixtures are identified in the guides.
+
+SCM credential custody refuses silent reuse when a confidential client or provider host changes. A retained refresh-dispatch marker blocks reuse after an uncertain rotating-token exchange. Approved MCP calls recheck current authority before returning persisted or cached results. The package uses public pyfly 26.10.2 with explicit web, data, PostgreSQL, security and OAuth client dependencies. The separate general-provider OAuth foundation is outside this release.
+
+Documentation now renders Mermaid through Material's native runtime. The product lifecycle and AS-IS handoff diagrams use readable vertical layouts on desktop and phones. Local browser checks use a loopback documentation server that admits gallery asset bursts and retain the exact SVG snapshot inspected during theme changes.
+
 ## 0.2.2
 
 Administrators can configure internet search through a three-step Studio wizard. Existing provider settings remain selected; changing providers requires a new write-only key. Saving and making a potentially billable connection test are separate actions. Desktop and mobile screenshots are tied to the current frontend source and package version.

@@ -17,7 +17,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 1050 },
   },
   webServer: {
-    command: `"${process.env.BRIDGE_PYTHON ?? "python3"}" -m http.server 8795 --bind 127.0.0.1 --directory build/docs-site`,
+    command: `"${process.env.BRIDGE_PYTHON ?? "python3"}" scripts/docs_server.py --port 8795 --directory build/docs-site`,
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     url: "http://127.0.0.1:8795",
     reuseExistingServer: false,

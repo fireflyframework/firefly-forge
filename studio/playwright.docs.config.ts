@@ -3,10 +3,15 @@ import { defineConfig } from "@playwright/test";
 const port = Number(process.env.FORGE_DOCS_PORT ?? 5227);
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "docs-walkthrough.spec.ts",
+  testMatch: ["docs-walkthrough.spec.ts", "external-tools.spec.ts"],
+  grep: /guided fixture journey|actual fixture review frames/,
   workers: 1,
   timeout: 90000,
-  use: { baseURL: `http://127.0.0.1:${port}`, headless: true },
+  use: {
+    baseURL: `http://127.0.0.1:${port}`,
+    headless: true,
+    launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
+  },
   webServer: {
     command: `npm run dev -- --port ${port} --strictPort`,
     url: `http://127.0.0.1:${port}`,

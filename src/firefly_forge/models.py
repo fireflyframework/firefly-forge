@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from firefly_forge.agent_roles import ProjectRoles
+from firefly_forge.runner_factory_models import FactoryPoolSelection
 from firefly_forge.sandbox_models import SandboxInput
 
 Provider = Literal["git", "github", "gitlab", "bitbucket", "azure", "gitea"]
@@ -88,7 +89,7 @@ class RunInput(BaseModel):
     operation: Literal["build", "maintain", "test"] = "build"
     assurance: AssuranceInput = Field(default_factory=AssuranceInput)
     roles: ProjectRoles | None = None
-    sandbox: SandboxInput | None = None
+    sandbox: FactoryPoolSelection | SandboxInput | None = None
     product_definition: dict[str, object] | None = None
     issue_context: dict[str, object] | None = None
     skills: list[str] = Field(default_factory=lambda: ["implementation", "verification", "security"], max_length=100)

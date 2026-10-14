@@ -439,7 +439,9 @@ Follow [recovery and handoff](recovery.md) for the accepted state and request co
 
 ## Keep captures current
 
-The [capture inventory](assets/screenshots/walkthrough-manifest.json) records each path, fixture state, theme, actual viewport, image SHA-256, action bounds and the frontend source hashes. Each entry retains its capture-code provenance and Studio version. The strict documentation build rejects changed source, capture code or image bytes, and rejects a mixture of frontend versions until the inventory is refreshed.
+For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).
+
+The [capture inventory](assets/screenshots/walkthrough-manifest.json) records each path, fixture state, theme, actual viewport, image SHA-256, action bounds and frontend source hashes. Each entry retains its producer, shared-helper and browser-configuration hashes with the Studio version. The strict build rejects missing capture inputs, changed image bytes and mixed frontend versions until the complete inventory is refreshed.
 
 From the repository root, with the existing Studio dependencies installed, capture through the isolated fixture browser configuration:
 
@@ -449,8 +451,8 @@ UPDATE_DOC_SCREENSHOTS=1 FORGE_DOCS_PORT=5227 \
   --config studio/playwright.docs.config.ts
 ```
 
-For complementary views against unchanged frontend source, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend or Studio version change, refresh the complete journey.
+The configuration captures both the product journey and external tool setup. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh both complete journeys.
 
-Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Review the actual images and rendered guide after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
+Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Native scrollbar painting stays enabled. Review the actual images and rendered guides after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
 
 [^captures]: These screenshots render the Studio source and version recorded in the capture inventory with controlled API fixtures. Provider readiness, product receipts, command results and journal hashes are fixtures. The journey makes no real model, command, remote repository or knowledge-service call. It demonstrates navigation and presentation; browser success does not establish execution, authenticated provider access or customer acceptance. Phone captures use their recorded viewport and remain bounded in the guide. See [capture maintenance and source hashes](#keep-captures-current).

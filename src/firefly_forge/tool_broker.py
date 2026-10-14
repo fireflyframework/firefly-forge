@@ -109,11 +109,14 @@ class ToolInvocationBroker:
         *,
         source: Data,
         configuration: Data,
+        observation: Callable[[], Data] | None = None,
+        validate_receipt: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
     ) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", correlation_id):
             raise ValueError("Tool correlation ID requires 32 lowercase hexadecimal characters")
         external = re.fullmatch(r"external_mcp:([a-z][a-z0-9-]{0,30}):([a-z][a-z0-9_]{0,80})", tool)
-        if tool != "internet_search" and external is None:
+        knowledge_lookup = tool == "knowledge_lookup"
+        if tool != "internet_search" and not knowledge_lookup and external is None:
             raise ValueError("Select a registered broker tool")
         if any(
             not isinstance(source.get(key), str) or not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", source[key])
@@ -126,16 +129,47 @@ class ToolInvocationBroker:
             raise ValueError("Tool invocations cannot contain configured credentials")
         from firefly_forge.runner_configuration import SearchQuery
 
-        if external is None:
-            arguments = SearchQuery.model_validate(arguments).model_dump()
+        refresh = {key: arguments[key] for key in ("refresh", "refresh_request_id") if key in arguments}
+        if set(refresh) and (
+            refresh.get("refresh") is not True
+            or not isinstance(refresh.get("refresh_request_id"), str)
+            or not re.fullmatch(r"[a-f0-9]{32}", refresh["refresh_request_id"])
+        ):
+            raise ValueError("Tool refresh requires a stable explicit request identity")
+        clean_arguments = {key: value for key, value in arguments.items() if key not in refresh}
+        if knowledge_lookup:
+            from firefly_forge.knowledge_first import KnowledgeQuery
+
+            arguments = {**KnowledgeQuery.model_validate(clean_arguments).model_dump(), **refresh}
+        elif external is None:
+            arguments = {**SearchQuery.model_validate(clean_arguments).model_dump(), **refresh}
             if not arguments["query"].strip() or len(arguments["query"].split()) > 75:
                 raise ValueError("Search query must contain nonempty text and at most 75 words")
         async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
             policy = frozen_policy(run.data.get("tool_policy_snapshot"))
-            if configuration != run.data.get("mcp_snapshot" if external else "search_snapshot"):
+            expected_configuration = (
+                {
+                    "knowledge_snapshot": run.data.get("knowledge_snapshot"),
+                    "learning_snapshot": run.data.get("learning_snapshot"),
+                }
+                if knowledge_lookup
+                else run.data.get("mcp_snapshot" if external else "search_snapshot")
+            )
+            if configuration != expected_configuration:
                 raise ValueError("Tool configuration differs from the frozen run")
+            if knowledge_lookup:
+                from firefly_forge.learning_configuration import frozen_learning
+
+                knowledge = run.data.get("knowledge_snapshot") or {}
+                if (
+                    not frozen_learning(run.data.get("learning_snapshot"))["settings"]["enabled"]
+                    or not knowledge.get("enabled")
+                    or not knowledge.get("endpoint")
+                    or not (knowledge.get("api_key_configured") or knowledge.get("agent_token_configured"))
+                ):
+                    raise ValueError("Knowledge lookup requires captured enabled knowledge access and learning policy")
             roles = roles_for_stage(run.data.get("role_snapshot") or {}, task_id)
             provider = "agentic" if run.data["agent"] == "api" else run.data["agent"]
             if ("external_mcp" if external else tool) not in (
@@ -176,6 +210,9 @@ class ToolInvocationBroker:
                 "roles": [role["id"] for role in roles],
                 "policy": policy,
             }
+            if run.data.get("learning_snapshot") is not None and tool in {"internet_search", "knowledge_lookup"}:
+                request["learning_snapshot"] = copy.deepcopy(run.data["learning_snapshot"])
+                request["knowledge_snapshot"] = copy.deepcopy(run.data.get("knowledge_snapshot"))
             request_digest = digest(request)
             rows = await self.records.for_run(run.id)
             previous = next((row for row in rows if row.correlation_id == correlation_id), None)
@@ -183,6 +220,13 @@ class ToolInvocationBroker:
                 if previous.data["request_digest"] != request_digest:
                     raise ValueError("Tool correlation ID already belongs to another invocation")
                 if previous.status == "succeeded":
+                    completion_guard = None
+                    if validate_receipt is not None:
+                        completion_guard = await validate_receipt(copy.deepcopy(previous.data["result"]))
+                    await ProjectAccess(self.store).authorize_execution(run.data)
+                    if completion_guard is not None:
+                        completion_guard()
+                    self._authorize_result(previous, "succeeded")
                     return copy.deepcopy(previous.data["result"])
                 if previous.status == "rejected":
                     error = previous.data["error"]
@@ -194,6 +238,16 @@ class ToolInvocationBroker:
                 raise ToolReconciliationRequired(
                     "Tool invocation has an unresolved outcome; reconcile it before continuing"
                 )
+            if run.data.get("learning_snapshot") is not None and tool in {"internet_search", "knowledge_lookup"}:
+                from firefly_forge.learning_configuration import frozen_learning
+
+                learning = frozen_learning(run.data["learning_snapshot"])["settings"]
+                if (
+                    observation is not None
+                    and sum(row.tool in {"internet_search", "knowledge_lookup"} for row in rows)
+                    >= learning["max_lookup_calls"]
+                ):
+                    raise ValueError("The frozen learning lookup budget is exhausted")
             limits = policy["settings"]
             if len(rows) >= limits["calls_limit"] or sum(row.tool == tool for row in rows) >= limits["per_tool_limit"]:
                 raise ValueError("The frozen run tool-call budget is exhausted")
@@ -222,6 +276,17 @@ class ToolInvocationBroker:
                 )
             )
             await self.journal._append(run_id, task_id, correlation_id, "tool_intent", request)
+
+        def evidence(payload: Data) -> Data:
+            if observation is None:
+                return payload
+            from firefly_forge.learning_models import ToolObservation
+
+            observed = ToolObservation.model_validate(observation()).model_dump()
+            if contains_known_credential(observed, self.credential_registry()):
+                raise ValueError("Tool observations cannot reflect configured credentials")
+            return {**payload, "observation": observed}
+
         try:
             async with asyncio.timeout(limits["timeout_seconds"]):
                 result = await callback()
@@ -232,31 +297,34 @@ class ToolInvocationBroker:
                 raise ValueError("Tool result exceeds its frozen response bound")
             if contains_known_credential(result, self.credential_registry()):
                 raise ValueError("Tool result reflected configured credentials")
-            await self._complete(run_id, correlation_id, "succeeded", {"result": result})
+            await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}))
             return result
         except SearchProviderError as exc:
             if exc.kind in {"rate_limit", "quota", "authentication"}:
                 await self._complete(
-                    run_id, correlation_id, "rejected", {"error": {**exc.metadata(), "message": str(exc)}}
+                    run_id, correlation_id, "rejected", evidence({"error": {**exc.metadata(), "message": str(exc)}})
                 )
                 raise
             await self._unknown(
                 run_id,
                 correlation_id,
                 "unknown",
-                {"error": {"message": "Provider outcome was not admitted; reconcile its usage"}},
+                evidence({"error": {"message": "Provider outcome was not admitted; reconcile its usage"}}),
             )
             raise ToolReconciliationRequired("Tool outcome is unknown; reconcile it before requesting again") from exc
         except asyncio.CancelledError:
             await asyncio.shield(
                 self._unknown(
-                    run_id, correlation_id, "unknown", {"error": {"message": "Tool execution was interrupted"}}
+                    run_id,
+                    correlation_id,
+                    "unknown",
+                    evidence({"error": {"message": "Tool execution was interrupted"}}),
                 )
             )
             raise
         except Exception as exc:
             await self._unknown(
-                run_id, correlation_id, "unknown", {"error": {"message": "Tool outcome was not admitted"}}
+                run_id, correlation_id, "unknown", evidence({"error": {"message": "Tool outcome was not admitted"}})
             )
             raise ToolReconciliationRequired("Tool outcome is unknown; reconcile it before requesting again") from exc
 
@@ -270,9 +338,11 @@ class ToolInvocationBroker:
     async def _complete(self, run_id: str, correlation_id: str, status: str, evidence: Data) -> None:
         async with self.store._unit():
             run = await self.journal._run(run_id)
+            await ProjectAccess(self.store).authorize_execution(run.data)
             row = next(item for item in await self.records.for_run(run.id) if item.correlation_id == correlation_id)
             if row.status != "pending":
                 raise ValueError("Tool invocation already has a recorded outcome")
+            self._authorize_result(row, status)
             row.status = status
             row.data = {**row.data, **copy.deepcopy(evidence), "completed_at": now()}
             await self.records.save(row)
@@ -283,6 +353,23 @@ class ToolInvocationBroker:
                 "tool_receipt" if status != "unknown" else "tool_unknown",
                 {"correlation_id": correlation_id, "tool": row.tool, "status": status, **evidence},
             )
+            self._authorize_result(row, status)
+
+    def _authorize_result(self, row: ForgeToolInvocationEntity, status: str) -> None:
+        if status != "succeeded" or not row.tool.startswith("external_mcp:"):
+            return
+        if self.external_mcp is None:
+            raise ValueError("External MCP result requires its registered authority")
+        admission = row.data["admission"]
+        arguments = admission["arguments"]
+        self.external_mcp.authorize(
+            admission["configuration"],
+            arguments["connector"],
+            arguments["tool"],
+            arguments["arguments"],
+            roles=admission["roles"],
+            stage=row.task_id,
+        )
 
     async def reconcile(self, run_id: str, correlation_id: str, reconciliation_id: str) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", reconciliation_id):

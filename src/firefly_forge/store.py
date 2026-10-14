@@ -38,6 +38,7 @@ from firefly_forge.persistence import (
     ForgeRunRepository,
 )
 from firefly_forge.policies import PolicyCatalog
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
 
@@ -252,6 +253,7 @@ class Store:
     ) -> Data:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
+        from firefly_forge.learning_configuration import learning_snapshot
         from firefly_forge.mcp_registry import mcp_snapshot
         from firefly_forge.product_design import ProductDesign
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
@@ -302,7 +304,11 @@ class Store:
                 await self.runners.capture_run(request.repository_id, request.sandbox)
                 if self.runners is not None
                 else {
-                    "sandbox_snapshot": capture_sandbox(request.sandbox),
+                    "sandbox_snapshot": (
+                        capture_factory_pool(request.sandbox)
+                        if isinstance(request.sandbox, FactoryPoolSelection)
+                        else capture_sandbox(request.sandbox)
+                    ),
                     "search_snapshot": None,
                     "runner_config_revision": None,
                 }
@@ -314,7 +320,7 @@ class Store:
         if not isinstance(sandbox_snapshot, dict):
             raise ValueError("The selected runner requires a frozen sandbox configuration")
         if actor is not None and not await ProjectAccess(self).current_administrator(actor):
-            if sandbox_snapshot["mode"] != "docker":
+            if sandbox_snapshot["mode"] not in {"docker", "pool"}:
                 raise ValueError(
                     "Project users require an isolated runner; host execution requires a factory administrator"
                 )
@@ -324,7 +330,14 @@ class Store:
                 raise ValueError(
                     "Direct host coding CLIs require a factory administrator; choose a configured API agent"
                 )
-        runner = {**runner, "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id)}
+        knowledge = snapshot_knowledge(self.configuration)
+        learning = learning_snapshot(self.configuration)
+        runner = {
+            **runner,
+            "knowledge_snapshot": knowledge,
+            "learning_snapshot": learning,
+            "mcp_snapshot": mcp_snapshot(self.configuration, request.project_id, request.repository_id),
+        }
         tools = (
             prepared_tools
             if prepared_tools is not None
@@ -430,7 +443,8 @@ class Store:
                     runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
                 ),
                 **frozen_configuration,
-                "knowledge_snapshot": snapshot_knowledge(self.configuration),
+                "knowledge_snapshot": knowledge,
+                "learning_snapshot": learning,
                 "id": uuid.uuid4().hex,
                 "repository_name": repo["name"],
                 "status": "queued",

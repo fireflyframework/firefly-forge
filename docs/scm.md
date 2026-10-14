@@ -83,6 +83,20 @@ has `0700` permissions. API summaries return configured flags for secrets;
 secret values cannot be read back. Blank secret fields preserve saved values.
 Use the explicit clear action to remove them. Changing application settings
 invalidates saved grants, cached tokens and pending authorization state.
+Changing an OAuth host or client ID also requires an explicitly supplied client
+secret or an explicit clear action. Forge refuses to carry a confidential
+client's saved secret to that new destination. A public GitLab client can clear
+the old secret before starting a new authorization.
+
+Before refreshing a rotating token, Forge persists a dispatch marker in its
+current private SCM grant storage. A timeout, invalid response or interrupted
+process leaves that marker unresolved; subsequent requests cannot send the old
+refresh token again, including after restart. The connection reports
+**Needs authorization**. Complete a new provider consent flow to establish a
+fresh grant. This recovery does not claim whether the previous provider request
+succeeded. SCM storage remains owner-private configuration; the general
+encrypted PostgreSQL provider-connection lifecycle is separate work.
+
 Token issuance and repository discovery also check that the application revision
 did not change while a provider request was in flight. An obsolete response cannot
 cache credentials or register a repository. Repeat the operation after saving the

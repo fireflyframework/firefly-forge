@@ -191,7 +191,15 @@ def _default_document() -> RoleDocument:
                 stages=stages,
                 responsibilities=responsibilities,
                 skills=skills,
-                allowed_tools=["list_files", "read_file", "write_file", "search_text", "edit_lines", "git_diff"]
+                allowed_tools=[
+                    "list_files",
+                    "read_file",
+                    "write_file",
+                    "search_text",
+                    "edit_lines",
+                    "git_diff",
+                    "knowledge_lookup",
+                ]
                 if mode == "coding_provider"
                 else [],
                 inputs=inputs,
@@ -201,7 +209,7 @@ def _default_document() -> RoleDocument:
                 escalation="Persist a bounded clarification or blocker before pausing; never infer approval.",
             )
         )
-    return RoleDocument(version="1.0.0", roles=roles)
+    return RoleDocument(version="1.1.0", roles=roles)
 
 
 @service
@@ -217,7 +225,7 @@ class RoleRegistry:
         document = RoleDocument.model_validate(value["document"]) if value else _default_document()
         data = document.model_dump(mode="json")
         self._reject_credentials(data)
-        return {"revision": value.get("revision", "builtin-1"), "digest": role_digest(data), "document": data}
+        return {"revision": value.get("revision", "builtin-2"), "digest": role_digest(data), "document": data}
 
     def save(self, value: RoleDocument | Data) -> Data:
         document = RoleDocument.model_validate(value).model_dump(mode="json")

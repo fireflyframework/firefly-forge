@@ -94,8 +94,17 @@ from firefly_forge.knowledge import (
     KnowledgeSearch,
     KnowledgeTest,
 )
+from firefly_forge.knowledge_first import KnowledgeFirst
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
+from firefly_forge.learning import LearningLedger
+from firefly_forge.learning_controllers import LearningController
+from firefly_forge.learning_persistence import (
+    ForgeLearningEventRepository,
+    ForgeLearningProjectionRepository,
+    ForgeLearningRepository,
+)
+from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.mcp_controllers import ExternalMCPController
 from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
@@ -140,6 +149,11 @@ from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
 from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
+from firefly_forge.runner_controller_client import RunnerControllerClient
+from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
+from firefly_forge.runner_factory_models import load_factory_worker_configuration
+from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
+from firefly_forge.runner_pool_worker import RunnerPoolWorker
 from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyRepository
 from firefly_forge.runtime_roles import Role, RuntimeRoleConfig, RuntimeRoles
 from firefly_forge.sandbox import SandboxExecutor
@@ -452,6 +466,8 @@ class FactoryConfiguration:
         search: SearchTools,
         tool_broker: ToolInvocationBroker,
         external_mcp: ExternalMCPRegistry,
+        learning: LearningLedger,
+        knowledge_first: KnowledgeFirst,
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
@@ -468,6 +484,8 @@ class FactoryConfiguration:
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
         engine.external_mcp = tool_broker.external_mcp = external_mcp
+        engine.learning, engine.knowledge_first = learning, knowledge_first
+        learning.engine = engine
         external_mcp.credential_registry = lambda: engine.credential_registry()
         store.runners, store.task_router = runners, routing
         search.credential_registry = lambda: engine.credential_registry()
@@ -546,11 +564,52 @@ class FactoryConfiguration:
 
     @bean
     def sandbox_executor(self, store: Store, journal: Journal, backends: RunnerBackends) -> SandboxExecutor:
-        return SandboxExecutor(store, journal, backends)
+        executor = SandboxExecutor(store, journal, backends)
+        configuration_path = os.environ.get("FORGE_RUNNER_WORKER_CONFIGURATION")
+        if configuration_path:
+            admin = load_factory_worker_configuration(Path(configuration_path))
+            if admin.transport.active:
+                workspaces = self.data_dir / "workspaces"
+                workspaces.mkdir(parents=True, exist_ok=True)
+                directory = self.data_dir / ".forge-pool-artifacts"
+                directory.mkdir(mode=0o700, exist_ok=True)
+                executor.pool_worker = RunnerPoolWorker(
+                    store,
+                    journal,
+                    RunnerFactoryAuthority(store, journal),
+                    RunnerControllerClient(admin.transport),
+                    RunnerGitSnapshot(admin.git_binary),
+                    workspaces,
+                    directory,
+                )
+        return executor
 
     @bean
     def search_tools(self) -> SearchTools:
         return SearchTools(self.data_dir / "tools" / "search")
+
+    @bean
+    def learning_ledger(
+        self,
+        store: Store,
+        journal: Journal,
+        records: ForgeLearningRepository,
+        events: ForgeLearningEventRepository,
+        projections: ForgeLearningProjectionRepository,
+    ) -> LearningLedger:
+        return LearningLedger(store, journal, records, events, projections)
+
+    @bean
+    def learning_projection(
+        self, store: Store, journal: Journal, ledger: LearningLedger, knowledge: KnowledgeManager
+    ) -> LearningProjection:
+        return LearningProjection(store, journal, ledger, knowledge)
+
+    @bean
+    def knowledge_first(
+        self, store: Store, journal: Journal, ledger: LearningLedger, broker: ToolInvocationBroker, search: SearchTools
+    ) -> KnowledgeFirst:
+        return KnowledgeFirst(store, journal, ledger, broker, search)
 
     @bean
     def external_mcp_registry(self, private: ConfigurationStore) -> ExternalMCPRegistry:
@@ -619,11 +678,17 @@ class FactoryConfiguration:
 
     @bean
     def knowledge_manager(
-        self, store: Store, engine: Engine, journal: Journal, connection: KnowledgeConnection
+        self,
+        store: Store,
+        engine: Engine,
+        journal: Journal,
+        connection: KnowledgeConnection,
+        knowledge_first: KnowledgeFirst,
     ) -> KnowledgeManager:
         manager = KnowledgeManager(store, engine, connection=connection)
         manager.journal = journal
         engine.knowledge = manager
+        knowledge_first.knowledge = manager
         return manager
 
     @bean
@@ -750,6 +815,7 @@ def create_runtime(
         DeploymentController,
         SCMController,
         KnowledgeController,
+        LearningController,
         JournalController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
@@ -783,6 +849,9 @@ def create_runtime(
         RepositoryRoleController,
         ForgeSandboxRepository,
         ForgeToolInvocationRepository,
+        ForgeLearningRepository,
+        ForgeLearningEventRepository,
+        ForgeLearningProjectionRepository,
         RunnerController,
         ToolController,
         ExternalMCPController,

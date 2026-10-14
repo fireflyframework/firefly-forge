@@ -12,7 +12,7 @@ export default defineConfig({
   timeout: 30000,
   use: { baseURL: "http://127.0.0.1:8796/firefly-forge/", headless: true },
   webServer: {
-    command: `"${process.env.BRIDGE_PYTHON ?? "python3"}" -m http.server 8796 --bind 127.0.0.1 --directory build/docs-pages`,
+    command: `"${process.env.BRIDGE_PYTHON ?? "python3"}" scripts/docs_server.py --port 8796 --directory build/docs-pages`,
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     url: "http://127.0.0.1:8796/firefly-forge/",
     reuseExistingServer: false,

@@ -46,10 +46,13 @@ async function optionalRepositoryBadges(page) {
 }
 
 async function assertDiagrams(page, count) {
+  let diagrams = [];
   await expect
-    .poll(async () => (await renderedDiagrams(page)).length)
+    .poll(async () => {
+      diagrams = await renderedDiagrams(page);
+      return diagrams.length;
+    })
     .toBe(count);
-  const diagrams = await renderedDiagrams(page);
   for (const diagram of diagrams) {
     expect(diagram.width).toBeGreaterThan(100);
     expect(diagram.height).toBeGreaterThan(30);

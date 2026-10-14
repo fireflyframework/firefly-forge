@@ -8,7 +8,35 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. Forge already retrieves required flycanon context and retains verified repository memory. The learning subsystem adds deterministic eligibility, exact question-to-evidence associations and controls for repeating an unchanged repair attempt.
 
 !!! info "Implementation boundary"
-    The published runtime supports required flycanon retrieval, repository-scoped verified memory and retained execution evidence. The additional learning ledger, knowledge-first internet-search decision and negative repair controls described here are under implementation. Their contracts require native runtime and PostgreSQL qualification before operators can rely on them. Automatic sharing between projects is outside the initial learning slice.
+    The initial learning slice implements scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. Local qualification includes an actual indexed source, citation and local embedding, with repeat submission creating no duplicate. Automatic retrieval from projected learning namespaces, classified negative repair circuits, a complete Studio learning workflow and sharing between projects remain open. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+
+## Configure and inspect local learning
+
+Learning policy applies to new runs; admitted runs retain their captured policy. An administrator can inspect it with `forge learning policy` and save a reviewed JSON policy with `forge learning configure policy.json`:
+
+```json
+{
+  "enabled": true,
+  "max_age_hours": 72,
+  "max_candidates": 8,
+  "max_repeated_attempts": 2,
+  "max_lookup_calls": 30
+}
+```
+
+The values shown are defaults. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
+
+| Action | CLI command | Factory MCP tool |
+| --- | --- | --- |
+| Read policy | `forge learning policy` | `get_learning_policy` |
+| Save policy | `forge learning configure policy.json` | `configure_learning_policy` |
+| List authorized records | `forge learning records REPOSITORY_ID` | `list_learning_records` |
+| Invalidate evidence | `forge learning invalidate RECORD_ID --reason REASON --request-id REQUEST_ID` | `invalidate_learning` |
+| Read projection state | `forge learning projection RECORD_ID` | `get_learning_projection` |
+| Submit once | `forge learning submit RECORD_ID --request-id REQUEST_ID` | `submit_learning_projection` |
+| Observe an admitted source | `forge learning observe RECORD_ID --request-id REQUEST_ID --source-id SOURCE_ID` | `observe_learning_projection` |
+
+Record, repository and request IDs use 32 lowercase hexadecimal characters; the source ID is the actual flycanon identifier. Each new action needs an explicit request identity. Inspect the record's source, checks and scope before submitting it. Submission requires verified local outcome evidence and current review authority. If its effect is unknown, observe the known source or retain the unresolved state; another submission must not replay it. The API and SDK expose the same actions. These commands do not create a cross-project grant or a new model session.
 
 ## Decide whether a search is needed
 
@@ -40,6 +68,10 @@ No result is silently moved from another repository into the task. If a known fr
 | Configured reviewer | Review the exact retained source and supported lesson statement | A separate review decision tied to the reviewed tree |
 
 PostgreSQL is the authority for accepting a learning record. flycanon is its retrieval projection and the source-knowledge service. A semantic result must resolve back to a current authorized record before the factory treats it as an eligible learned outcome. A stale or missing projection never establishes acceptance.
+
+Cached reuse performs the same eligibility checks as a fresh selection. The broker then reads the exact selected record with a native PostgreSQL shared lock, held through its admission transaction. An independent invalidation either commits before that read and refuses reuse, or waits for the admission to finish. The final synchronous guard runs after the execution-authority check and compares the retained policy, outcome, citation and source references. PostgreSQL time plus elapsed monotonic time bounds expiry. This defines the server's admission point; it does not make delivery to a network client atomic with a later invalidation.
+
+If an eligible result has changed, expired or been invalidated, the original succeeded tool receipt remains intact. The caller receives an explicit refresh requirement. The factory does not silently search again, call a provider or replay the original tool. See [tool invocation evidence](tool-broker.md) for the request identity and uncertainty rules.
 
 The current runtime binds native tools through `fireflyframework_agentic.tools.firefly_tool` and executes a `FireflyAgent` with bounded model usage. Its `RuntimeReport`, `WorkerFeedback`, browser plans and QA reports are typed. Official coding CLI workers have their own tool and permission systems; their native calls do not automatically pass through every Python tool contract. See [agent tools](agent-tools.md) and [architecture](architecture.md#agent-roles-native-tools-and-cited-context) for the implemented boundaries.
 

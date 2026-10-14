@@ -71,6 +71,24 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.record-tool .record-command-heading > strong {
+  flex: 1;
+  min-width: 0;
+}
+.record-tool-identity {
+  margin-top: 10px;
+}
+.record-tool-identity-text {
+  display: block;
+  max-width: 100%;
+  margin-block: 10px;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.record-tool-identity-text .record-bounded-label {
+  white-space: nowrap;
+}
 .record-command-meta {
   margin-top: 10px;
   font-size: 12px;
