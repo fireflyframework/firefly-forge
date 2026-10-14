@@ -2,10 +2,10 @@
 """Dispatcher contract tests; recorded transports are not native Docker proof."""
 
 import importlib
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from runner_test_support import installed_docker_binary
 
 from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile
 
@@ -49,7 +49,7 @@ def authority(tmp_path):
     state.mkdir(mode=0o700)
     return module.RunnerDockerAuthority(
         profile=policy(),
-        docker_binary=Path("/usr/local/bin/docker"),
+        docker_binary=installed_docker_binary(),
         context="colima-forge-tests",
         config_directory=config,
         state_directory=state,

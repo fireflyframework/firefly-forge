@@ -2,10 +2,10 @@
 """Durable execution failure boundaries with actual PostgreSQL and recorded Docker transport."""
 
 import importlib
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from runner_test_support import installed_docker_binary
 from sqlalchemy import text
 
 from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts, source_tree_digest
@@ -44,7 +44,7 @@ async def test_unknown_create_or_tampered_input_is_quarantined_without_replay(st
     state.mkdir(mode=0o700)
     authority = RunnerDockerAuthority(
         profile,
-        Path("/usr/local/bin/docker"),
+        installed_docker_binary(),
         "colima-forge-tests",
         config,
         state,
@@ -117,7 +117,7 @@ async def test_reconciliation_never_releases_unknown_create_without_resource_obs
     state.mkdir(mode=0o700)
     authority = RunnerDockerAuthority(
         profile,
-        Path("/usr/local/bin/docker"),
+        installed_docker_binary(),
         "colima-forge-tests",
         config,
         state,

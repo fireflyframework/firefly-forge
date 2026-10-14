@@ -2,11 +2,11 @@
 """Native PyFly control boundary. ASGI tests are separate from live mTLS proof."""
 
 import importlib
-from pathlib import Path
 
 import pytest
 from pydantic import SecretStr
 from pyfly.data.relational.sqlalchemy import SessionProvider
+from runner_test_support import installed_docker_binary
 from starlette.testclient import TestClient
 
 from firefly_forge.runner_controller_config import RunnerServerTLS
@@ -42,7 +42,7 @@ def settings(tmp_path, schema):
     )
     authority = RunnerDockerAuthority(
         profile,
-        Path("/usr/local/bin/docker"),
+        installed_docker_binary(),
         "colima-forge-tests",
         config,
         state,
