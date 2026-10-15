@@ -199,7 +199,8 @@ A later credential registration can block readback of retained values. Neither
 a missing receipt nor an unknown legacy field authorizes resubmission.
 
 The projection status GET also exposes its authoritative `payload_digest` for
-comparison with the original admitted envelope. Source observation verifies the
+comparison with the original admitted envelope. Source observation checks the selected
+source ID against current credentials before contacting flycanon, verifies the
 returned source ID and indexed content, then checks the retained admission
 identity again before recording the event. It does not claim that remote
 indexing and the local transaction are atomic.

@@ -194,3 +194,22 @@ async def test_observation_tool_read_contract():
     annotations = tool.annotations.model_dump(by_alias=True)
     assert annotations["readOnlyHint"] and annotations["idempotentHint"]
     assert not annotations["destructiveHint"] and not annotations["openWorldHint"]
+
+
+@pytest.mark.parametrize("source_id", [None, "owned-source"])
+async def test_source_reclassified_as_credential_never_leaves_forge(
+    store, tmp_path, monkeypatch, canon_reads, source_id
+):
+    from test_learning_invalidation_receipts import retained
+
+    service, record, _ = await admitted_projection(store, tmp_path, remote_service=canon_reads)
+    before = await retained(service.ledger, record)
+    request_id = uuid4().hex
+    monkeypatch.setenv("FORGE_TEST_API_TOKEN", "owned-source")
+    with pytest.raises(ValueError, match="credentials") as failure:
+        await service.observe(record["id"], source_id=source_id, request_id=request_id)
+    assert "owned-source" not in str(failure.value)
+    assert canon_reads["calls"] == []
+    assert not canon_reads["errors"]
+    assert (await service.status(record["id"]))["state"] == "source_admitted"
+    assert await retained(service.ledger, record) == before

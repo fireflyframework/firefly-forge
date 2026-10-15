@@ -471,6 +471,7 @@ class LearningProjection:
             if row.data.get("source_id") and selected != row.data["source_id"]:
                 raise ValueError("Projection already belongs to another admitted source")
             identity = self._observation_identity(row)
+            await self.store.admit_credentials(selected)
             settings = self.knowledge.settings({"knowledge_snapshot": identity["target"]})
             workspace = identity["workspace_id"]
         async with self.knowledge.client(settings, workspace) as client:
