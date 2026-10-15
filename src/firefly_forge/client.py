@@ -807,6 +807,14 @@ class ForgeClient:
     def learning_invalidation_receipt(self, record_id: str, request_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"learning/records/{self._id(record_id)}/invalidations/{self._id(request_id)}"))
 
+    def learning_projection_observation_receipt(self, record_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.learning_models import LearningProjectionObservationReceipt
+
+        result = self.request(
+            "GET", f"learning/records/{self._id(record_id)}/projection/observations/{self._id(request_id)}"
+        )
+        return LearningProjectionObservationReceipt.model_validate(result).model_dump(mode="json")
+
     def learning_projection(self, record_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"learning/records/{self._id(record_id)}/projection"))
 

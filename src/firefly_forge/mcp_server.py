@@ -1270,6 +1270,18 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.learning_invalidation_receipt(record_id, request_id)
 
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_learning_projection_observation_receipt(record_id: str, request_id: str) -> dict[str, Any]:
+        """Read an exact immutable observation; current verified state never confirms another request."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.learning_projection_observation_receipt(record_id, request_id)
+
     @server.tool()
     def get_learning_projection(record_id: str) -> dict[str, Any]:
         """Read projection state without secret credentials or remote source creation."""

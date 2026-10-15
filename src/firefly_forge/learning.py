@@ -91,7 +91,7 @@ class LearningLedger:
             "created_at": at.isoformat(),
             "previous_hash": existing[-1].digest if existing else "0" * 64,
         }
-        if kind == "invalidation":
+        if kind in {"invalidation", "projection_observation"}:
             actor = CURRENT_PRINCIPAL.get()
             event["actor_id"] = actor.id.hex if actor is not None else None
         event["digest"] = digest(event)

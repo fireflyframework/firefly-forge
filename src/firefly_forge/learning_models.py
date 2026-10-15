@@ -47,6 +47,37 @@ class LearningInvalidationReceipt(BaseModel):
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class LearningProjectionCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    source_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,200}$")
+    chunk_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,200}$")
+
+
+class LearningProjectionObservationReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    event_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    record_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    repository_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    run_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    kind: Literal["projection_observation"] = "projection_observation"
+    event_state: Literal["verified"] = "verified"
+    current_record_state: State
+    current_projection_state: Literal["pending", "executing", "source_admitted", "verified", "unknown", "abandoned"]
+    actor_id: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    projection_id: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    submission_request_id: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    workspace_id: str | None = Field(pattern=r"^[A-Za-z0-9._-]{1,200}$")
+    target_revision: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    payload_digest: str | None = Field(pattern=r"^[a-f0-9]{64}$")
+    source_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,200}$")
+    content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    citations: tuple[LearningProjectionCitation, ...] = Field(min_length=1, max_length=8)
+    created_at: str = Field(min_length=1, max_length=64)
+    sequence: int = Field(ge=1, strict=True)
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class LearningPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     enabled: bool = Field(default=True, strict=True)

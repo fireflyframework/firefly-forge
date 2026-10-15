@@ -49,6 +49,7 @@ running application's OpenAPI document is the authoritative schema.
 | POST | `/runs/{id}/retry` | Create another attempt after failure, cancellation or interruption |
 | POST | `/runs/{id}/publish` | Queue publication of an already verified local change |
 | GET | `/runs/{id}/artifacts/changes.zip` | Download retained changed files |
+| GET | `/learning/records/{id}/projection/observations/{request_id}` | Read the exact committed projection observation with current review access |
 | GET/POST | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments` | List metadata or upload a conversation file |
 | GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}` | Read scoped file metadata |
 | GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}/content` | Download the original conversation file |
@@ -170,3 +171,35 @@ Provider configuration accepts `{"values":{"model":"MODEL","api_key":"PRIVATE_KE
 Project policies accept `{"skills":["implementation","verification","security"]}`. Omitting `skills` when creating a run uses project defaults; an explicit empty array selects no optional policies. Core framework integration, source safety and verification cannot be disabled.
 
 See [connected accounts](connected-accounts.md#api-and-client-contract) for typed service policy, client registration, browser consent and effect receipts; [SCM](scm.md) for repository discovery, OAuth redirects and grants; [knowledge](knowledge.md) for source selection and project scopes; and [deployment](deployment.md) for target commands, source checks and rollback requests.
+
+## Recover a projection observation
+
+When an observation response is lost, read its original request ID. This GET
+reads the local immutable event; it does not contact flycanon, submit a source
+or repeat the observation. A `404` means that exact request has no recorded
+observation. Another request's verified projection does not establish success.
+
+```python
+with ForgeClient(factory_url, access_token) as client:
+    receipt = client.learning_projection_observation_receipt(record_id, request_id)
+```
+
+The same read is available as `forge learning observation-receipt RECORD_ID
+--request-id REQUEST_ID` and the MCP tool
+`get_learning_projection_observation_receipt(record_id, request_id)`. Each uses
+the authenticated API and current project review permission. The MCP read is
+marked read-only and idempotent.
+
+The typed receipt separates the original `event_state` from
+`current_record_state` and `current_projection_state`. New observations retain
+the original actor, projection, submission request, workspace, target revision,
+payload digest, content hash and citations. Historical fields that were never
+recorded remain `null`; they are not reconstructed from today's projection.
+A later credential registration can block readback of retained values. Neither
+a missing receipt nor an unknown legacy field authorizes resubmission.
+
+The projection status GET also exposes its authoritative `payload_digest` for
+comparison with the original admitted envelope. Source observation verifies the
+returned source ID and indexed content, then checks the retained admission
+identity again before recording the event. It does not claim that remote
+indexing and the local transaction are atomic.

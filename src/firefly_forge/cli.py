@@ -1398,6 +1398,15 @@ def learning_invalidation_receipt(record_id: str, request_id: str) -> None:
         display(connection.learning_invalidation_receipt(record_id, request_id))
 
 
+@learning.command("observation-receipt")
+@click.argument("record_id")
+@click.option("--request-id", required=True)
+def learning_observation_receipt(record_id: str, request_id: str) -> None:
+    """Read exact observation evidence. A missing receipt never authorizes resubmission."""
+    with client() as connection:
+        display(connection.learning_projection_observation_receipt(record_id, request_id))
+
+
 @learning.command("projection")
 @click.argument("record_id")
 def learning_projection(record_id: str) -> None:
