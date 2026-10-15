@@ -54,7 +54,7 @@ These contracts do not grant shared framework learning, an automatic projection 
 
 ## Initialize the managed service
 
-The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.2, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
+The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.4, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
 
 The bootstrap operation is also available as a CLI command:
 
