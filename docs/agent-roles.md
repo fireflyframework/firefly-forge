@@ -62,15 +62,19 @@ Read the durable conversation at `GET /api/v1/runs/{id}/worker-messages`. An aut
 {"id":"response-1","actor":"operator","answer":"Support account owners receive the alerts."}
 ```
 
+The `actor` field is a caller-supplied label, not authentication. New responses also retain a server-derived `responding_actor` with `version: 1`, the authenticated `user_id`, and `authentication_method` (`oidc_session`, `oidc_bearer`, or `local_bootstrap`). The server requires a matching enabled identity and current project execute permission, plus release permission when the run publishes. Reusing a new response ID requires the same authenticated actor and authentication method as well as the same answer and label. Authorized legacy responses replay unchanged, without fabricated actor metadata.
+
+Response calls must run outside an active caller transaction. Credential admission precedes the server's own transaction; membership, identity, and run locks protect the final authority check through commit. A later permission or credential refusal can prevent returning a response that is already committed. Keep the original response ID and read the conversation after restoring authorized access; an error or missing response is not permission to send another answer. Both conversation and journal reads recheck current read permission and credentials before returning their initial immutable snapshot. Internal reads that started without a principal remain internal, without an authenticated-actor claim. Suspending a caller transaction for read admission does not release its physical locks.
+
 Answering leaves the run paused. Resume explicitly after resolving the question. A pending request must be answered before resuming. Responses remain in the journal alongside prior attempts and their evidence.
 
-For issue-bound runs, the existing source-control feedback intent records the pending question before posting it. An enabled `/forge respond` command lets a trusted configuration actor answer in that repository:
+For issue-bound runs, the existing source-control feedback intent records the pending question before posting it. The signed channel parser recognizes an enabled `/forge respond` command in that repository:
 
 ```text
 /forge respond {"run_id":"0123456789abcdef0123456789abcdef","request_id":"request-1","answer":"Support account owners receive the alerts."}
 ```
 
-The signed receipt supplies the actor identity and response ID. The command cannot answer another repository's run, forge operator credentials are never sent to the provider, and uncertain comment writes require reconciliation rather than blind reposting. `/forge resume` remains a separate enabled action.
+The signed channel receipt supplies a provider actor label and stable response ID, but does not establish an authenticated Forge operator. New replies without that operator context are refused, including internal or channel calls that only supply a label. External actor mapping remains separate work; use the authenticated API or client to answer. The command cannot answer another repository's run, Forge operator credentials are never sent to the provider, and uncertain comment writes require reconciliation rather than blind reposting. `/forge resume` remains a separate enabled action.
 
 ## Pinned community instructions
 

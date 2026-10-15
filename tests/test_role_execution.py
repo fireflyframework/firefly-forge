@@ -3,6 +3,7 @@ import json
 import sys
 
 import pytest
+from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.agent_roles import ProjectRoles, WorkerResponse
 from firefly_forge.engine import Engine
@@ -90,9 +91,10 @@ async def test_real_worker_blocker_pauses_and_requires_answer_before_explicit_re
     assert paused["status"] == "paused" and paused["worker_request"]["status"] == "pending"
     with pytest.raises(ValueError, match="Answer"):
         await journal.resume(run["id"])
-    await journal.worker_response(
-        run["id"], "stock-amount", WorkerResponse(id="answer-stock", actor="operator", answer="Use 5")
-    )
+    async with authenticated_operator(store):
+        await journal.worker_response(
+            run["id"], "stock-amount", WorkerResponse(id="answer-stock", actor="operator", answer="Use 5")
+        )
     await journal.resume(run["id"])
     await engine.execute_run(run["id"])
     completed = await store.get_run(run["id"])
