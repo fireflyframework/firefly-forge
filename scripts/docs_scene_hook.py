@@ -17,7 +17,12 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "build/docs-scene"
 _hashes = {}
 _walkthrough = {}
-CAPTURE_HELPERS = {"studio/tests/walkthrough-capture.ts", "studio/tests/navigation.ts", "studio/tests/auth-fixture.ts"}
+CAPTURE_HELPERS = {
+    "studio/tests/walkthrough-capture.ts",
+    "studio/tests/navigation.ts",
+    "studio/tests/auth-fixture.ts",
+    "studio/tests/learning-record-fixture.ts",
+}
 CAPTURE_PRODUCERS = {"studio/tests/docs-walkthrough.spec.ts", "studio/tests/external-tools.spec.ts"}
 
 
@@ -116,9 +121,15 @@ def on_page_markdown(markdown, page, config, files=None):
         name = Path(path).name
         if name not in captures:
             return match.group(0)
-        dark = name.replace("-light.png", "-dark.png")
+        suffix = re.fullmatch(r"([a-z0-9][a-z0-9-]*)-(desktop|mobile)-(?:light|dark)\.png", name)
+        if suffix is None:
+            return match.group(0)
+        base = f"{suffix[1]}-{suffix[2]}"
+        light, dark = f"{base}-light.png", f"{base}-dark.png"
+        if light not in captures or dark not in captures:
+            raise ValueError("Walkthrough screenshot requires captured appearance counterparts: " + name)
         links = []
-        for filename, theme in [(name, "light"), (dark, "dark")]:
+        for filename, theme in [(light, "light"), (dark, "dark")]:
             record = captures[filename]
             url = html.escape(get_relative_url(record["path"], page.url), quote=True)
             label = html.escape(alt, quote=True)

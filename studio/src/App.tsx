@@ -820,6 +820,7 @@ export default function App() {
           )}
           {page === "knowledge" && (
             <KnowledgeExplorer
+              session={identity.session}
               onConfigure={() => {
                 navigate("settings");
                 setSetupStep(3);

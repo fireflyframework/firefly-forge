@@ -111,6 +111,58 @@ forge resume RUN_ID
 
 Save the `document` object from the registry response, rather than the whole response envelope. Registry edits affect future runs. Binding fields and mandatory platform checks remain enforced. Answers are journaled and leave the run paused until explicit resume; they do not grant publication or deployment approval.
 
+## Current identity and project membership
+
+`identity_configuration()` reads the public `/api/v1/auth/configuration` response. `identity_session()` reads the authenticated caller's current identity, memberships and server role permissions. The native session route accepts a verified API bearer or a valid browser session cookie; it returns neither credential. The SDK constructor still requires an operator token, and CLI/MCP use the configured bearer. These read bindings do not perform browser sign-in, exchange codes or export a cookie.
+
+| Action | Python method | CLI command | MCP tool |
+| --- | --- | --- | --- |
+| Public authentication configuration | `identity_configuration()` | `forge identity configuration` | `get_identity_configuration` |
+| Current authenticated caller | `identity_session()` | `forge identity session` | `get_identity_session` |
+| Project membership list | `project_members(project_id)` | `forge project members PROJECT_ID` | `list_project_members` |
+| Set or revoke membership | `set_project_membership(project_id, user_id, request)` | `forge project member PROJECT_ID USER_ID --role viewer` or `--revoke` | `set_project_membership` |
+
+Membership reads and writes require current project-owner or factory-administrator authority. The target user must already be registered. The native `MembershipInput` requires `role`: `owner`, `maintainer`, `developer`, `reviewer`, `viewer`, or explicit `null` to revoke. CLI requires exactly one of `--role` and `--revoke`; MCP accepts the same closed native body under `request`. The server preserves its last-owner safeguard and records the actor and membership revision. Revocation applies at the next authorization boundary, including subsequent member reads and writes.
+
+A membership write has no request-ID or compare-and-swap field in the native contract. Writes to an existing membership advance its revision. Revoking a registered user who has no membership leaves it absent. The clients dispatch once; after a lost response, inspect current membership before making another decision.
+
+Connection OAuth configuration now also accepts optional CLI `--expected-revision` and MCP `expected_revision`. Read the current connection revision, then supply it to reject a stale edit. `0` asserts that the registration does not yet exist. Omitting the field preserves existing no-revision behavior; it does not make a write idempotent or grant consent. The existing tool schema adds only this optional bounded integer field.
+
+## Read role lifecycle and identity administration
+
+The following reads use the existing native API without creating users, changing membership, sending invitations or reconciling an identity operation.
+
+| Read | Python method | CLI command | MCP tool |
+| --- | --- | --- | --- |
+| Global role lifecycle | `agent_role_lifecycle()` | `forge roles lifecycle` | `get_agent_role_lifecycle` |
+| Repository role lifecycle | `repository_role_lifecycle(repository_id)` | `forge roles repository-lifecycle REPOSITORY_ID` | `get_repository_agent_role_lifecycle` |
+| Registered users | `identity_users()` | `forge identity users` | `list_identity_users` |
+| Eligible registered users | `project_eligible_users(project_id, query)` | `forge project eligible-users PROJECT_ID --query "Stock owner"` | `find_project_eligible_users` |
+| Identity administration readiness | `identity_administration()` | `forge identity administration` | `get_identity_administration` |
+| Retained identity operations | `identity_operations()` | `forge identity operations` | `list_identity_operations` |
+
+Global lifecycle requires authentication. Repository lifecycle requires current repository read permission; its returned edit flags describe current authority. Finding eligible users requires project membership-administration permission, a query of 3 to 120 characters and an enabled registered identity. The server returns at most 20 matches and treats wildcard characters literally. The registered-user directory, administration readiness and operation receipts require current factory administrator authority.
+
+The clients preserve the server's bounded contact fields, permission flags and readiness distinctions. A configured administration connection does not prove user provisioning or mail delivery. Reading a retained operation preserves its status and journal evidence without retrying an unknown effect. These six reads are a bounded addition; they do not establish universal API, SDK, CLI and MCP parity.
+
+## Identity writes
+
+Five identity mutations use the existing administrator-only routes and native input models. They grant no new permissions or project memberships. Python methods accept the native request model or an equivalent dictionary; local user and operation IDs are validated before dispatch.
+
+| Write | Python method and MCP tool | CLI command |
+| --- | --- | --- |
+| Enable or suspend a local identity | `set_identity_user_enabled` | `forge identity set-enabled USER_ID --enable` or `--disable` |
+| Request provider-managed account creation | `provision_identity_user` | `forge identity provision user.json` |
+| Request a separate invitation | `invite_identity_user` | `forge identity invite USER_ID --request-id REQUEST_ID` |
+| Reconcile an inspected uncertain outcome | `reconcile_identity_operation` | `forge identity reconcile OPERATION_ID --outcome OUTCOME --note "Inspection evidence"` |
+| Confirm an interrupted owner has stopped | `recover_identity_operation` | `forge identity recover OPERATION_ID --request-id REQUEST_ID --owner-stopped --note "Owner stopped"` |
+
+`user.json` uses `UserProvisionInput`: a stable 32-character hexadecimal `request_id`, `username`, and optional `email`, `first_name` and `last_name`. Passwords, role shortcuts and caller-supplied provider results are rejected. Enable/suspend requires an actual boolean in Python or MCP and an explicit CLI flag. MCP marks all five tools as mutations.
+
+Python `invite_identity_user(user_id, request)` takes `UserInviteInput`; MCP accepts `user_id` and `request_id` directly. Reconciliation takes `AdministrationReconciliation` under the MCP `request` argument. `created` requires the exact provider `subject`, passed as `--subject` in the CLI; the server freshly checks the provider account's original request markers. The other outcomes retain the server's explicit operator-attestation labels. Recovery takes `AdministrationRecovery`: `request_id`, `owner_stopped: true` and `note`. It fences an executing operation for reconciliation and does not submit another remote effect.
+
+Each client dispatches once and preserves the returned receipt. An identical provision or invitation request returns its existing receipt without repeating the effect. After a transport failure, inspect `forge identity operations` before deciding what to do; no client retries automatically or invents an outcome. Unknown operations require inspection and explicit reconciliation. Reconciliation is not a replay-safe polling action, and mail provider acceptance still does not prove delivery. Read [user administration](user-administration.md) before using these writes. Coverage of all other API routes remains separate.
+
 ## Python client
 
 ```python

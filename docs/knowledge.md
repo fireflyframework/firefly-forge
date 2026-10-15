@@ -5,7 +5,13 @@ description: Configure required flycanon retrieval, inspect citations and retain
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.2) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.4) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+
+## Pinned service and SDK
+
+The managed installer verifies the published flycanon `26.10.4` server, source archive, runtime requirements and configuration before installation. forge uses the matching Python SDK. The server runs in a separate framework environment; its qualified pyfly `26.09.04` event contract does not replace forge's pyfly `26.10.6` dependency.
+
+Workspace creation requires the body `id` to equal `X-Workspace-Id`. The knowledge connection selects the target workspace before creating it, including project-scoped learning workspaces. A mismatch returns `400 workspace_scope_mismatch` before storage or event publication. Existing credentials, corpora and saved run configuration retain their original state; upgrading the SDK does not authorize a retry of an unknown remote effect.
 
 ## Service responsibilities
 
@@ -48,7 +54,7 @@ These contracts do not grant shared framework learning, an automatic projection 
 
 ## Initialize the managed service
 
-The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.2, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
+The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.4, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
 
 The bootstrap operation is also available as a CLI command:
 

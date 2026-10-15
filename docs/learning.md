@@ -5,10 +5,10 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Learn from evidence and reuse knowledge safely
 
-A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. Repeat-control rules remain a pure contract awaiting runtime integration.
+A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. A receipt-backed same-run cap also bounds identical repair proposals without replacing verification.
 
 !!! info "Implementation boundary"
-    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration; its record inspection, projection review and invalidation workflow remains open, alongside classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration and read-only record and projection inspection. Its submission, reconciliation and invalidation workflows remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -25,7 +25,7 @@ Learning policy applies to new runs; admitted runs retain their captured policy.
 }
 ```
 
-In Studio, open **Administration > Learning** and choose **Edit learning settings**. Review **Knowledge**, set the bounds in **Limits**, then inspect **Review** before **Save learning settings**. Only a factory administrator can change this policy. **Enable verified learning** controls whether new runs can use it; turning it off keeps the projection preference saved but inactive. The review distinguishes policy for new runs from the snapshots held by existing runs, and preserves the repeated-attempt setting without presenting it as an enforced repair circuit. If saving has an uncertain outcome, read the current policy before trying another write.
+In Studio, open **Administration > Learning** and choose **Edit learning settings**. Review **Knowledge**, set the bounds in **Limits**, then inspect **Review** before **Save learning settings**. Only a factory administrator can change this policy. **Enable verified learning** controls whether new runs can use it; turning it off keeps the projection preference saved but inactive. The review distinguishes policy for new runs from the snapshots held by existing runs, and preserves the repeated-attempt setting. Compatible native runtimes apply that setting to receipt-backed repair proposals; older servers keep their existing repair budgets. If saving has an uncertain outcome, read the current policy before trying another write.
 
 <figure class="forge-shot" markdown="1">
 
@@ -63,7 +63,7 @@ In Studio, open **Administration > Learning** and choose **Edit learning setting
 </div>
 </details>
 
-The values shown are defaults. The repeated-attempt setting belongs to the pure repair-control contract and is not enforced by the worker repair loop. Existing repair and clarification budgets still govern execution. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
+The values shown are defaults. The native repair-proposal cap uses the frozen repeated-attempt setting as an additional upper bound. Its effective limit is at most two, even when the saved value is three; the existing no-progress stop and repair/clarification budgets stay active. A value of one can hold the next coding proposal after one verified failed round. Disabling the policy affects later admissions. Required framework knowledge remains a separate setting and can still block generation when unavailable.
 
 Set `projected_retrieval` to `true` to let newly admitted runs read the separate learning workspace for an exact eligible local record. Older snapshots without this permission retain their prior behavior. Lookup uses existing credentials and never creates a workspace, submits a source, mints a token or expands its workspace allowlist. A token needs both query and source-read permission for that workspace. An unavailable optional projection produces an explicit diagnostic while ordinary required source retrieval and local evidence checks continue.
 
@@ -99,6 +99,90 @@ The intended lookup begins with the current task and inspected source. It consul
 A verified exact match can supply its bounded local procedure result without a new provider request. Missing knowledge, stale references or a changed dependency context produce an explicit search reason. A requested refresh must perform a fresh lookup even if an older result exists. Credentials stay in private provider configuration, and external results retain their untrusted-reference status.
 
 No result is silently moved from another repository into the task. If a known framework version differs from the product's version, that difference must remain visible. An absent version is unknown; the system cannot infer compatibility from a framework name alone.
+
+## Review saved records in Studio
+
+Open **Knowledge > Learning records** and choose an authorized repository. The factory returns records visible to your current project permissions. Local evidence remains readable when remote knowledge retrieval is disabled; denied access is shown explicitly.
+
+Select a record to inspect its saved state, question, supported statement, framework version, scope and freshness dates. Verified local outcomes show their recorded verification time. Failure candidates show when the check was observed. **Identifiers and verification receipts** contains the exact source tree, dependency and question digests, origin run and native receipt references. The filters search only the returned records.
+
+**Verified evidence** describes a saved observation. Current reuse also requires matching scope, framework and dependency versions, question, source, freshness and intact receipts. A candidate failure cannot authorize a verified solution. Invalidated and superseded evidence remains available for review and is excluded from reuse.
+
+The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
+
+**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request; Studio write controls remain pending until that reconciliation contract is available.
+
+<figure class="forge-shot" markdown="1">
+
+![Learning records for the selected repository](assets/screenshots/learning-records-desktop-light.png)
+
+<figcaption>Choose a repository, then a saved record. The list distinguishes a verified local outcome from an observed failure. This guide uses controlled API fixtures; no knowledge service or command runs during capture.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect projection, provenance and a failed-check candidate</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Saved flycanon projection](assets/screenshots/learning-projection-desktop-light.png)
+
+<figcaption>The fixture's projection has a recorded source and citation. The notice keeps saved verification separate from current reuse eligibility.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Native receipt references beside the retained record selector](assets/screenshots/learning-provenance-desktop-light.png)
+
+<figcaption>Open identifiers and verification receipts to inspect the source and journal references. The desktop selector stays reachable while the detail scrolls.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![An observed failed-check candidate](assets/screenshots/learning-candidate-desktop-light.png)
+
+<figcaption>A rejected check records an observation in its own scope. This candidate cannot authorize a verified solution or a new projection.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow the same inspection on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Learning record selection on a phone](assets/screenshots/learning-records-mobile-dark.png)
+
+<figcaption>The narrow layout places selection before the detail. Filters remain available above the returned records.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Saved projection on a phone](assets/screenshots/learning-projection-mobile-dark.png)
+
+<figcaption>Selecting a record focuses its detail. Read the saved projection state before opening its identifiers.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Verification references on a phone](assets/screenshots/learning-provenance-mobile-dark.png)
+
+<figcaption>Long identifiers wrap in the detail. Scroll to the receipt references within the main content area.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Failure candidate on a phone](assets/screenshots/learning-candidate-mobile-dark.png)
+
+<figcaption>The candidate retains its observed purpose and date. Reviewing it performs reads without replaying a submission.</figcaption>
+</figure>
+
+</div>
+</details>
 
 ## Keep authority and retrieval separate
 
@@ -146,9 +230,13 @@ A negative record says that an observed command or check failed in an exact cont
 
 ## Bound repairs while preserving independent QA
 
-An attempt fingerprint identifies the repository/component, exact source tree, dependency context, command and bounded outcome evidence. The pure repeat-control rules apply to repair-generation proposals and preserve independent verification. They are not yet wired into the orchestrator's repair loop. Holding an unchanged failed attempt or requesting an authorized override still requires that integration and its qualification.
+A native proposal fingerprint identifies the same run and repository/component, exact source tree, observed framework version and dependency declarations, failed command and bounded sanitized output. The additional cap applies only after completed verification has retained ordinary exit-code-one failures at an unchanged source. It counts distinct failed rounds from the intact native journal, not coding-provider errors or repeated proposal requests. Source or dependency drift, an unknown framework version, and older receipts without this provenance cannot establish the cap.
 
-Independent final verification still runs. Diagnostics, intentional RED tests and regression checks retain an explicit purpose and cannot be skipped because a previous failure exists. Existing repair and clarification budgets continue to limit execution. A known failure is useful input for the next implementation decision; it cannot substitute for current QA.
+When the frozen learning policy is enabled, the factory records an available or held repair proposal before another coding intent. A held proposal fails generation explicitly and preserves the failed QA receipts; it never turns failure into success. The decision survives an interrupted response or worker resume without counting the same round again. Disabled or missing legacy policies leave the original attempt budgets and two-round no-progress guard intact. This adds no override that can weaken those guards.
+
+These are same-run execution controls, not classified engineering lessons. Existing observed failures remain unclassified candidates and cannot suppress work in another run or repository. Provider rate limits, quota, authentication and transient failures keep their operational pause/retry handling. Unknown journal/tool effects require reconciliation before a repair proposal; they do not become engineering-negative evidence.
+
+Independent final verification still runs. The pure purpose contract keeps diagnostic, intentional RED and regression checks unconditional. Runtime verification commands and test-only runs still execute their actual checks; the cap controls only a subsequent coding proposal. The public command schema remains `argv` and `timeout`, with no invented per-command purpose field. Existing repair and clarification budgets continue to limit execution. A known failure is useful input for the next implementation decision; it cannot substitute for current QA.
 
 Transient provider and infrastructure failures must not poison the engineering knowledge base. Their recovery belongs to the execution log, provider controls and [reconciliation workflow](recovery.md).
 

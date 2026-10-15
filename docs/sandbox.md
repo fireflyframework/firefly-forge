@@ -19,6 +19,14 @@ The runner applies to independent verification and the native Firefly Agentic `e
 
 Cloud provisioning and deployment commands use the separately configured [deployment target and credentials](deployment.md). Their credential workflows are outside this code runner.
 
+## Keep Python verification tied to current source
+
+Factory commands receive a fresh execution-owned Python cache namespace and `PYTHONDONTWRITEBYTECODE=1`. The namespace replaces inherited or caller-supplied `PYTHONPYCACHEPREFIX` values. This prevents normal Python imports from accepting an earlier timestamp-and-size cache after a same-size source edit. Disabling bytecode writes alone would still allow an existing stale cache to be read.
+
+Host execution uses a private temporary directory and removes only that owned directory after the process has exited or been terminated. Docker and pool commands use their existing fresh container `/tmp` filesystem. Project caches are not cleared; command arguments, runner resource limits and journal recovery rules stay unchanged.
+
+These settings govern Python interpreters that honor their environment. `-E` or `-I` ignores them; an explicit interpreter cache-prefix option or a custom loader can select other behavior. Source-less `.pyc` modules remain explicit project artifacts, and this policy does not establish their source equivalence. Keep source available and avoid those overrides when a verification check must evaluate current Python source. Native coding CLIs retain their separate execution boundary.
+
 ## Prepare an image and context
 
 Use a dedicated Docker context and a non-root development service account. Prepare an image containing the project's actual Python/PHP/Node runtimes, package tools and dependencies. Copy its immutable `repository@sha256:...` reference from the image inventory. Runtime commands use `--pull=never`; image preparation belongs to the operator.

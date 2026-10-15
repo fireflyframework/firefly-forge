@@ -1,0 +1,284 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.learning-records {
+  min-width: 0;
+}
+.learning-records > header {
+  margin-bottom: 12px;
+}
+.learning-records > header h2 {
+  margin-bottom: 4px;
+}
+.learning-records > header p {
+  margin-bottom: 0;
+}
+.learning-records-filter-toggle summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+.learning-records-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+.learning-records-boundary svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--accent-ink);
+}
+.learning-records-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  gap: 16px;
+  margin-top: 24px;
+}
+.learning-records-filters .field {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.learning-records-count {
+  color: var(--muted);
+  font-size: 13px;
+}
+.learning-records-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.7fr);
+  gap: 28px;
+  align-items: start;
+}
+.learning-records-grid > * {
+  min-width: 0;
+}
+.learning-records-grid > aside {
+  position: sticky;
+  top: 28px;
+}
+.learning-records-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(560px, 58vh);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.learning-records-list li + li {
+  margin-top: 8px;
+}
+.learning-records-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.learning-records-list button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.learning-record-question {
+  display: block;
+  font-weight: 650;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.learning-record-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.learning-record-state {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--raised);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.learning-record-state[data-state="verified"] {
+  background: var(--success-bg);
+  color: var(--success-ink);
+  border-color: var(--success-line);
+}
+.learning-record-state[data-state="invalidated"] {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  border-color: var(--danger-line);
+}
+.learning-records-detail {
+  border-left: 1px solid var(--line);
+  padding-left: 28px;
+}
+.learning-record-detail-heading h3 {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.learning-record-statement {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.learning-record-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 24px 0;
+}
+.learning-record-summary dt,
+.learning-record-receipts dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.learning-record-summary dd,
+.learning-record-receipts dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.learning-record-reuse,
+.learning-record-projection {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.learning-records h4 {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 10px;
+}
+.learning-record-projection h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.learning-record-projection .alert {
+  margin-top: 12px;
+}
+.learning-record-provenance {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.learning-record-provenance summary {
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.7;
+  font-weight: 600;
+}
+.learning-record-provenance li {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.learning-record-receipts {
+  margin: 0 0 24px;
+  padding-left: 20px;
+}
+.learning-record-receipts li {
+  padding: 12px 0;
+}
+.learning-record-receipts li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.learning-record-receipts strong,
+.learning-record-receipts span {
+  display: block;
+}
+.learning-record-receipts span {
+  color: var(--muted);
+}
+.learning-record-receipts dl {
+  margin: 8px 0 0;
+}
+.learning-records-empty {
+  padding: 20px 0;
+  color: var(--muted);
+}
+.learning-records-empty svg {
+  color: var(--accent-ink);
+  margin-bottom: 12px;
+}
+@media (max-width: 900px) {
+  .learning-records-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .learning-records-list {
+    max-height: 260px;
+  }
+  .learning-records-grid > aside {
+    position: static;
+  }
+  .learning-records-detail {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 24px 0 0;
+  }
+}
+@media (max-width: 600px) {
+  .learning-records > header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .learning-records-filters,
+  .learning-record-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .learning-records {
+    padding: 20px;
+  }
+}
+@media (max-height: 480px) {
+  .workspace-main > main:has(.learning-records) {
+    scroll-padding-block: 8px;
+  }
+  .learning-records {
+    padding: 16px;
+  }
+  .learning-records > header h2 {
+    font-size: 18px;
+  }
+  .learning-records-boundary {
+    display: none;
+  }
+  .learning-records > header {
+    margin-bottom: 8px;
+  }
+  .learning-records > header p {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .learning-records-list button {
+    padding: 8px 12px;
+  }
+  .learning-record-question {
+    font-size: 13px;
+  }
+  .learning-record-list-meta {
+    margin-top: 6px;
+  }
+  .learning-record-state {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+  .learning-records-count {
+    margin: 8px 0;
+  }
+  .learning-records-list {
+    max-height: 210px;
+  }
+}

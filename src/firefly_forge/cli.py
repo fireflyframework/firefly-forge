@@ -297,6 +297,134 @@ def list_projects() -> None:
         display(connection.projects())
 
 
+@project.command("eligible-users")
+@click.argument("identifier")
+@click.option("--query", required=True, help="Find an enabled registered user using 3 to 120 characters.")
+def find_project_eligible_users(identifier: str, query: str) -> None:
+    with client() as connection:
+        display(connection.project_eligible_users(identifier, query))
+
+
+@main.group()
+def identity() -> None:
+    """Inspect identity receipts and request explicit administrator-only changes."""
+
+
+@identity.command("configuration")
+def identity_configuration() -> None:
+    """Read public authentication configuration; no credentials are returned."""
+    with client() as connection:
+        display(connection.identity_configuration())
+
+
+@identity.command("session")
+def identity_session() -> None:
+    """Read the authenticated caller's current identity and memberships."""
+    with client() as connection:
+        display(connection.identity_session())
+
+
+@project.command("members")
+@click.argument("project_id")
+def project_members(project_id: str) -> None:
+    """Read members with current owner or administrator permission."""
+    with client() as connection:
+        display(connection.project_members(project_id))
+
+
+@project.command("member")
+@click.argument("project_id")
+@click.argument("user_id")
+@click.option("--role", type=click.Choice(["owner", "maintainer", "developer", "reviewer", "viewer"]))
+@click.option("--revoke", is_flag=True)
+def set_project_membership(project_id: str, user_id: str, role: str | None, revoke: bool) -> None:
+    """Set an existing user's project role or explicitly revoke membership."""
+    if (role is None) == (not revoke):
+        raise click.ClickException("Choose exactly one of --role or --revoke")
+    with client() as connection:
+        display(connection.set_project_membership(project_id, user_id, {"role": role}))
+
+
+@identity.command("users")
+def list_identity_users() -> None:
+    with client() as connection:
+        display(connection.identity_users())
+
+
+@identity.command("administration")
+def identity_administration() -> None:
+    with client() as connection:
+        display(connection.identity_administration())
+
+
+@identity.command("operations")
+def list_identity_operations() -> None:
+    with client() as connection:
+        display(connection.identity_operations())
+
+
+@identity.command("set-enabled")
+@click.argument("user_id")
+@click.option("--enable/--disable", "enabled", default=None, required=True)
+def set_identity_user_enabled(user_id: str, enabled: bool | None) -> None:
+    """Enable or suspend a registered local identity; revoked sessions stay revoked."""
+    if enabled is None:
+        raise click.ClickException("Choose explicit --enable or --disable")
+    with client() as connection:
+        display(connection.set_identity_user_enabled(user_id, enabled))
+
+
+@identity.command("provision")
+@click.argument("request", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def provision_identity_user(request: Path) -> None:
+    """Request provider-managed creation from nonsecret JSON with a stable request ID."""
+    with client() as connection:
+        display(connection.provision_identity_user(json_document(request)))
+
+
+@identity.command("invite")
+@click.argument("user_id")
+@click.option("--request-id", required=True)
+def invite_identity_user(user_id: str, request_id: str) -> None:
+    """Request a separate invitation; provider acceptance does not prove delivery."""
+    with client() as connection:
+        display(connection.invite_identity_user(user_id, {"request_id": request_id}))
+
+
+@identity.command("reconcile")
+@click.argument("operation_id")
+@click.option(
+    "--outcome", type=click.Choice(["created", "not_created", "provider_accepted", "not_accepted"]), required=True
+)
+@click.option("--subject", default=None, help="Exact provider subject required for a created account.")
+@click.option("--note", required=True)
+def reconcile_identity_operation(operation_id: str, outcome: str, subject: str | None, note: str) -> None:
+    """Record an inspected uncertain outcome using the server's existing checks."""
+    with client() as connection:
+        display(
+            connection.reconcile_identity_operation(
+                operation_id, {"outcome": outcome, "subject": subject, "note": note}
+            )
+        )
+
+
+@identity.command("recover")
+@click.argument("operation_id")
+@click.option("--request-id", required=True)
+@click.option("--owner-stopped", is_flag=True, help="Confirm the original execution owner has stopped.")
+@click.option("--note", required=True)
+def recover_identity_operation(operation_id: str, request_id: str, owner_stopped: bool, note: str) -> None:
+    """Fence an interrupted operation for reconciliation; never repeat its effect."""
+    if not owner_stopped:
+        raise click.ClickException("Explicit --owner-stopped confirmation is required")
+    with client() as connection:
+        display(
+            connection.recover_identity_operation(
+                operation_id, {"request_id": request_id, "owner_stopped": owner_stopped, "note": note}
+            )
+        )
+
+
 @project.command("save")
 @click.argument("definition", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--id", "project_id", default=None)
@@ -537,6 +665,19 @@ def roles() -> None:
 def get_roles() -> None:
     with client() as connection:
         display(connection.agent_roles())
+
+
+@roles.command("lifecycle")
+def get_role_lifecycle() -> None:
+    with client() as connection:
+        display(connection.agent_role_lifecycle())
+
+
+@roles.command("repository-lifecycle")
+@click.argument("repository_id")
+def get_repository_role_lifecycle(repository_id: str) -> None:
+    with client() as connection:
+        display(connection.repository_role_lifecycle(repository_id))
 
 
 @roles.command("save")
@@ -892,6 +1033,7 @@ def connection_oauth_effect(name: str, request_id: str) -> None:
 @click.option("--project-id")
 @click.option("--public-client", is_flag=True, default=None)
 @click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--expected-revision", type=click.IntRange(0, 2147483647), default=None)
 def connection_oauth_configure(
     name: str,
     provider: str,
@@ -900,14 +1042,17 @@ def connection_oauth_configure(
     project_id: str | None,
     public_client: bool | None,
     client_secret_file: Path | None,
+    expected_revision: int | None,
 ) -> None:
-    request = {
+    request: dict[str, Any] = {
         "provider": provider,
         "client_id": client_id,
         "authentication": authentication,
         "project_id": project_id,
         "public_client": public_client,
     }
+    if expected_revision is not None:
+        request["expected_revision"] = expected_revision
     if client_secret_file:
         request["client_secret"] = private_secret_file(client_secret_file)
     with client() as connection:

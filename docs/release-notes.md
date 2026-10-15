@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.7
+
+**Knowledge > Learning records** lists saved evidence for the selected authorized repository. Operators can inspect its source, verification receipts, dates and saved flycanon projection without submitting or replaying a write. The desktop selector stays reachable while long provenance scrolls; narrow windows use the normal vertical flow. A saved verified state does not establish current reuse eligibility. See [record inspection](learning.md#review-saved-records-in-studio).
+
+After actual failed QA, the captured learning policy can hold the next same-run repair proposal when identical native evidence has reached its limit. The journal retains the decision and original checks. Current authority and unresolved effects are checked before dispatch; retrying the same proposal does not count the verification twice. The limit never relaxes the existing two-round no-progress stop. Verification, intentional RED tests and test-only runs remain available. Cross-run failure classification and sharing between projects remain separate.
+
+Project commands receive a fresh Python cache namespace so normal imports check current source, including same-size edits that could previously reuse stale bytecode and produce incorrect QA results. Host commands clean up their own temporary namespace; container runners use their existing ephemeral filesystem. Project caches remain intact. See [Python verification and its limits](sandbox.md#keep-python-verification-tied-to-current-source).
+
+The runtime uses public pyfly 26.10.6, fireflyframework-agentic 26.10.1 and flycanon SDK 26.10.4. Managed knowledge installs the checksummed flycanon 26.10.4 service in its separate framework environment. Existing admitted runs retain their captured settings. Studio record inspection is read-only; lifecycle writes still require their reviewed operator and reconciliation contracts.
+
+SDK, CLI and factory MCP clients add six reads for global and repository role lifecycle, registered users, eligible project members, identity administration and retained identity operations. Each request uses the existing server permission and redaction boundary. Five existing identity writes also gain client bindings for enable/suspend, provisioning, invitation, reconciliation and owner-stopped recovery. They preserve native administrator checks and durable receipts, without new grants or automatic retries. Four further bindings read public authentication configuration, current authenticated identity and project members, and explicitly set or revoke a registered user’s membership. OAuth configuration adds optional revision comparison in CLI/MCP while preserving no-revision calls. Current owner/admin checks, revocation and the last-owner safeguard remain server-owned. The MCP catalog has 123 tools: 118 earlier contracts are unchanged, one adds only optional `expected_revision`, and four are new. See [operator integrations](agent-integrations.md).
+
 ## 0.2.6
 
 Administrators can configure verified learning through **Administration > Learning**. The wizard separates knowledge selection, retrieval limits and review. It preserves saved preferences when learning is disabled and requires a read of saved settings after an uncertain write. New runs capture the revised policy; existing runs retain theirs. See [learning and knowledge-first execution](learning.md).

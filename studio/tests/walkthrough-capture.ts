@@ -193,6 +193,7 @@ export async function captureWalkthrough(
     "studio/tests/walkthrough-capture.ts",
     "studio/tests/navigation.ts",
     "studio/tests/auth-fixture.ts",
+    "studio/tests/learning-record-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",

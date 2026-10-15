@@ -56,6 +56,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/walkthrough-capture.ts": "fixture helper",
                 "studio/tests/navigation.ts": "fixture navigation",
                 "studio/tests/auth-fixture.ts": "fixture identity",
+                "studio/tests/learning-record-fixture.ts": "fixture learning record",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -86,6 +87,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/walkthrough-capture.ts",
                     "studio/tests/navigation.ts",
                     "studio/tests/auth-fixture.ts",
+                    "studio/tests/learning-record-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -127,6 +129,7 @@ class WalkthroughTests(unittest.TestCase):
             hook._load_walkthrough({"docs_dir": str(docs)}, root)
             for name, error in [
                 ("studio/tests/walkthrough-capture.ts", "capture helper"),
+                ("studio/tests/learning-record-fixture.ts", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/playwright.docs.config.ts", "capture config"),
             ]:
@@ -222,6 +225,34 @@ class WalkthroughTests(unittest.TestCase):
             self.assertIn("theme-light", output)
             self.assertIn("theme-dark", output)
             self.assertTrue(output.endswith(" | Next |"))
+            dark_reference = "![Connect & inspect](assets/screenshots/connect-mobile-dark.png)"
+            output = hook.on_page_markdown(dark_reference, SimpleNamespace(url="console-tour/"), {})
+            self.assertIn(
+                'class="forge-shot__link theme-light" href="../assets/screenshots/connect-mobile-light.png"', output
+            )
+            self.assertIn(
+                'class="forge-shot__link theme-dark" href="../assets/screenshots/connect-mobile-dark.png"', output
+            )
+        finally:
+            hook._walkthrough = previous
+
+    def test_theme_pair_never_invents_a_missing_captured_appearance(self):
+        previous = hook._walkthrough
+        try:
+            hook._walkthrough = {
+                "captures": {
+                    "connect-mobile-dark.png": {
+                        "path": "assets/screenshots/connect-mobile-dark.png",
+                        "viewport": {"width": 390, "height": 844},
+                    }
+                }
+            }
+            with self.assertRaisesRegex(ValueError, "counterpart"):
+                hook.on_page_markdown(
+                    "![Connect](assets/screenshots/connect-mobile-dark.png)", SimpleNamespace(url="console-tour/"), {}
+                )
+            markdown = "![Uncaptured](assets/screenshots/not-a-capture.png)"
+            self.assertEqual(hook.on_page_markdown(markdown, SimpleNamespace(url="console-tour/"), {}), markdown)
         finally:
             hook._walkthrough = previous
 
@@ -249,6 +280,8 @@ class WalkthroughTests(unittest.TestCase):
             navigation.write_text("fixture navigation")
             identity = root / "studio/tests/auth-fixture.ts"
             identity.write_text("fixture identity")
+            learning_fixture = root / "studio/tests/learning-record-fixture.ts"
+            learning_fixture.write_text("fixture learning record")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")
             capture_config = root / "studio/playwright.docs.config.ts"
@@ -274,6 +307,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/walkthrough-capture.ts": sha(helper),
                     "studio/tests/navigation.ts": sha(navigation),
                     "studio/tests/auth-fixture.ts": sha(identity),
+                    "studio/tests/learning-record-fixture.ts": sha(learning_fixture),
                 },
                 "capture_config": {"path": "studio/playwright.docs.config.ts", "sha256": sha(capture_config)},
                 "captures": {

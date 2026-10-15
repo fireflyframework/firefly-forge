@@ -10,6 +10,8 @@ Factory administrators can suspend registered identities and, when a dedicated K
 
 The administration API accepts no passwords, administrator roles or project-role shortcuts. Keycloak owns credential setup and account verification. Browser administrators authenticate through the normal [identity flow](identity.md).
 
+The Python SDK, CLI and factory MCP expose these same five writes through [operator integrations](agent-integrations.md#identity-writes). They preserve current administrator authorization, stable request IDs and uncertain-outcome receipts; they do not retry provider effects automatically.
+
 ## Suspend a registered identity
 
 Send `{"enabled": false}` to `PUT /api/v1/identity/users/{id}`. The server locks the identity, disables it, revokes every local browser session and appends an immutable audit receipt in one PostgreSQL transaction.
@@ -68,6 +70,8 @@ SMTP errors remain visible as failed receipts. Unknown invitation outcomes requi
 `GET /api/v1/identity/operations` returns bounded recent operations with immutable journal entries and chain validation. Remote credentials, access tokens and raw provider error bodies are not returned. Each receipt distinguishes its operation status, invitation outcome and project-access grant state.
 
 The active execution owner recovers interrupted operations as `needs_reconciliation` during startup. It does not replay them. Reconciliation is rejected while an operation remains in flight.
+
+When the original owner has stopped but an operation remains `executing`, an administrator can post `request_id`, `owner_stopped: true` and an inspection `note` to `/api/v1/identity/operations/{id}/recover`. This explicit confirmation moves the receipt to `needs_reconciliation` without contacting the provider. Repeating that exact confirmation returns the retained receipt; a conflicting confirmation is rejected. Do not confirm a still-running owner or infer its outcome from elapsed time.
 
 Post an explicit decision to `/api/v1/identity/operations/{id}/reconcile`:
 

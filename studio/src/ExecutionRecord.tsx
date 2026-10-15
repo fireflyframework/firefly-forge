@@ -261,7 +261,7 @@ export function ExecutionRecord({
                   disposition={journalDisposition(entry, journal.entries)}
                 />
               ) : (
-                <EvidenceView value={entry.payload} />
+                <EvidenceView kind={entry.kind} value={entry.payload} />
               )}
               <div className="record-ledger-hash">
                 <span>Record hash</span>

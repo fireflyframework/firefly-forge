@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
+import { record as learningRecord } from "./learning-record-fixture";
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
@@ -11,6 +12,42 @@ const repository = {
   provider: "git",
   url: "/local/fixture-inventory",
   default_branch: "main",
+};
+const learningRepository = {
+  ...repository,
+  id: learningRecord.envelope.context.repository_id,
+  name: "Fixture Learning Inventory",
+  url: "/local/fixture-learning-inventory",
+};
+const failureCandidate = {
+  ...learningRecord,
+  id: "9".repeat(32),
+  state: "candidate",
+  kind: "observed_failure",
+  observed_at: "2026-10-14T12:05:00Z",
+  verified_at: undefined,
+  envelope: {
+    ...learningRecord.envelope,
+    type: "observed_failure",
+    correlation_id: "8".repeat(32),
+    run_id: "7".repeat(32),
+    question: "Observe a rejected reservation check",
+    statement:
+      "The reservation assertion failed in the recorded source context. This observation does not establish a reusable solution.",
+    context: {
+      ...learningRecord.envelope.context,
+      query_digest: "5".repeat(64),
+    },
+    citations: [],
+    receipts: [
+      {
+        kind: "receipt",
+        key: "fixture-failure:verify",
+        sequence: 8,
+        digest: "4".repeat(64),
+      },
+    ],
+  },
 };
 const run = {
   id: "fixture-run",
@@ -85,6 +122,7 @@ for (const device of ["desktop", "mobile"])
         live_search_verified: false,
       };
       let searchTests = 0;
+      const learningReads: string[] = [];
       let learningSettings = {
         version: 1,
         revision: "a".repeat(32),
@@ -102,8 +140,31 @@ for (const device of ["desktop", "mobile"])
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
+        if (path.endsWith("/learning") || path.includes("/learning/records/"))
+          learningReads.push(request.method() + " " + path);
         let json: unknown = {};
-        if (path.endsWith("/learning/policy")) {
+        if (path.endsWith(`/${learningRepository.id}/learning`))
+          json = [learningRecord, failureCandidate];
+        else if (
+          path.endsWith(`/learning/records/${learningRecord.id}/projection`)
+        )
+          json = {
+            id: "1".repeat(32),
+            record_id: learningRecord.id,
+            state: "verified",
+            workspace_id: "fixture-learning-inventory",
+            source_id: "fixture-reservation-source",
+            source_status: "ingested",
+            content_sha256: "2".repeat(64),
+            target: { revision: "3".repeat(32) },
+            citations: [
+              {
+                source_id: "fixture-reservation-source",
+                chunk_id: "fixture-reservation-chunk",
+              },
+            ],
+          };
+        else if (path.endsWith("/learning/policy")) {
           if (request.method() === "PUT") {
             learningSettings = {
               ...learningSettings,
@@ -137,7 +198,8 @@ for (const device of ["desktop", "mobile"])
             live_search_verified: false,
             result_count: 0,
           };
-        } else if (path.endsWith("/repositories")) json = [repository];
+        } else if (path.endsWith("/repositories"))
+          json = [repository, learningRepository];
         else if (path.endsWith("/providers"))
           json = [
             {
@@ -169,6 +231,18 @@ for (const device of ["desktop", "mobile"])
               state: "not_configured",
               detail: "Fixture only; retrieval has not been verified",
             },
+          };
+        else if (path.endsWith("/knowledge/explore"))
+          json = {
+            workspace_id: "fixture-inventory",
+            scope: "project",
+            sources: [],
+            knowledge: [],
+            offset: 0,
+            limit: 20,
+            totals: { sources: 0, knowledge: 0 },
+            browsing_available: true,
+            warnings: [],
           };
         else if (path.endsWith("/product")) {
           if (request.method() === "PUT")
@@ -484,5 +558,113 @@ for (const device of ["desktop", "mobile"])
       await capture(page, "learning-saved", theme, device, {
         actionSelector: ".learning-actions button.primary",
       });
+      await navigate(page, "Knowledge");
+      await expect(
+        page.locator(
+          `#explorer-project option[value="${learningRecord.envelope.context.repository_id}"]`,
+        ),
+      ).toHaveCount(1);
+      await page
+        .getByLabel("Knowledge project", { exact: true })
+        .selectOption(learningRecord.envelope.context.repository_id);
+      await page
+        .getByRole("tab", { name: "Learning records", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: learningRecord.envelope.question,
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Refresh records", exact: true })
+        .click();
+      await expect(page.locator(".learning-records-count")).toContainText(
+        "2 of 2 saved records shown",
+      );
+      await capture(page, "learning-records", theme, device, {
+        actionSelector: ".learning-records > header button",
+      });
+      const selected = page.getByRole("button", {
+        name: learningRecord.envelope.question,
+        exact: true,
+      });
+      await selected.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByRole("heading", {
+          name: learningRecord.envelope.question,
+          exact: true,
+        }),
+      ).toBeFocused();
+      await expect(page.locator(".learning-record-reuse")).toContainText(
+        "Saved verification does not establish current eligibility",
+      );
+      await expect(
+        page.getByText("Verified projection", { exact: true }),
+      ).toBeVisible();
+      await page
+        .locator(".learning-record-projection")
+        .scrollIntoViewIfNeeded();
+      await capture(page, "learning-projection", theme, device);
+      await page
+        .getByText("Identifiers and verification receipts", { exact: true })
+        .click();
+      await page
+        .getByRole("heading", {
+          name: "Native verification receipts",
+          exact: true,
+        })
+        .scrollIntoViewIfNeeded();
+      await expect(
+        page.getByText("Journal sequence 6", { exact: true }),
+      ).toBeVisible();
+      if (device === "desktop") {
+        const main = await page.locator(".workspace-main > main").boundingBox(),
+          choice = await selected.boundingBox();
+        expect(main).not.toBeNull();
+        expect(choice).not.toBeNull();
+        expect(choice!.y).toBeGreaterThanOrEqual(main!.y);
+        expect(choice!.y + choice!.height).toBeLessThanOrEqual(
+          main!.y + main!.height,
+        );
+        expect(
+          await selected.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            return (
+              document
+                .elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+                ?.closest("button") === button
+            );
+          }),
+        ).toBe(true);
+      }
+      await capture(page, "learning-provenance", theme, device);
+      await page
+        .getByRole("button", {
+          name: failureCandidate.envelope.question,
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: failureCandidate.envelope.question,
+          exact: true,
+        }),
+      ).toBeFocused();
+      await expect(page.locator(".learning-record-reuse")).toContainText(
+        "It cannot authorize reuse of a verified local outcome",
+      );
+      await expect(page.locator(".learning-record-projection")).toContainText(
+        "Candidate observations do not have a verified local-outcome projection",
+      );
+      await expect(
+        page.getByText("Verified projection", { exact: true }),
+      ).toHaveCount(0);
+      await capture(page, "learning-candidate", theme, device);
+      expect(learningReads.every((call) => call.startsWith("GET "))).toBe(true);
+      expect(
+        learningReads.some((call) => call.includes(failureCandidate.id)),
+      ).toBe(false);
     });
   }

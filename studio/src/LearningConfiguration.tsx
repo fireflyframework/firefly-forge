@@ -373,8 +373,10 @@ function LearningAdministrator({ connection }: { connection: Connection }) {
                   ))}
                 </div>
                 <p className="learning-help">
-                  The saved repeated-attempt setting is preserved. Automated
-                  repair-loop enforcement remains a separate capability.
+                  The saved repeated-attempt setting is preserved. Compatible
+                  runtimes apply it only to receipt-backed identical repair
+                  proposals; older servers retain their existing budgets.
+                  Independent checks remain required.
                 </p>
               </>
             )}

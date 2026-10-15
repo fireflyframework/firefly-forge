@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel
 
 from firefly_forge.models import RepositoryInput, RunInput
 
 if TYPE_CHECKING:
+    from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.model_profiles import ModelProfileInput
@@ -24,6 +26,12 @@ if TYPE_CHECKING:
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.task_routing import TaskRoutingInput
+    from firefly_forge.user_administration import (
+        AdministrationReconciliation,
+        AdministrationRecovery,
+        UserInviteInput,
+        UserProvisionInput,
+    )
 
 
 class ForgeClient:
@@ -463,6 +471,91 @@ class ForgeClient:
 
     def agent_roles(self) -> dict[str, Any]:
         return dict(self.request("GET", "agent-roles"))
+
+    def agent_role_lifecycle(self) -> dict[str, Any]:
+        return dict(self.request("GET", "agent-roles/lifecycle"))
+
+    def repository_role_lifecycle(self, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"repositories/{self._id(repository_id)}/agent-roles/lifecycle"))
+
+    def identity_configuration(self) -> dict[str, Any]:
+        return dict(self.request("GET", "auth/configuration"))
+
+    def identity_session(self) -> dict[str, Any]:
+        return dict(self.request("GET", "auth/session"))
+
+    def project_members(self, project_id: str) -> list[dict[str, Any]]:
+        return list(self.request("GET", f"projects/{self._id(project_id)}/members"))
+
+    def set_project_membership(
+        self, project_id: str, user_id: str, request: MembershipInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.access_controllers import MembershipInput
+
+        try:
+            body = MembershipInput.model_validate(request, strict=True).model_dump(mode="json")
+        except ValueError:
+            raise ValueError("Invalid project membership request") from None
+        return dict(self.request("PUT", f"projects/{self._id(project_id)}/members/{self._id(user_id)}", json=body))
+
+    def identity_users(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "identity/users"))
+
+    def project_eligible_users(self, project_id: str, query: str) -> list[dict[str, Any]]:
+        query = query.strip()
+        if not 3 <= len(query) <= 120:
+            raise ValueError("Enter between 3 and 120 characters to find a registered user")
+        return list(self.request("GET", f"projects/{self._id(project_id)}/eligible-users", params={"query": query}))
+
+    def identity_administration(self) -> dict[str, Any]:
+        return dict(self.request("GET", "identity/administration"))
+
+    def identity_operations(self) -> list[dict[str, Any]]:
+        return list(self.request("GET", "identity/operations"))
+
+    @staticmethod
+    def _identity_body(model: type[BaseModel], request: BaseModel | dict[str, Any]) -> dict[str, Any]:
+        try:
+            return model.model_validate(request, strict=True).model_dump(mode="json")
+        except ValueError:
+            # Validation must not reflect forbidden passwords or role shortcuts.
+            raise ValueError("Invalid identity administration request") from None
+
+    def set_identity_user_enabled(self, user_id: str, enabled: bool) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserEnabledInput
+
+        body = self._identity_body(UserEnabledInput, {"enabled": enabled})
+        return dict(self.request("PUT", f"identity/users/{self._id(user_id)}", json=body))
+
+    def provision_identity_user(self, request: UserProvisionInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserProvisionInput
+
+        body = self._identity_body(UserProvisionInput, request)
+        return dict(self.request("POST", "identity/users", json=body))
+
+    def invite_identity_user(self, user_id: str, request: UserInviteInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserInviteInput
+
+        body = self._identity_body(UserInviteInput, request)
+        return dict(self.request("POST", f"identity/users/{self._id(user_id)}/invite", json=body))
+
+    def reconcile_identity_operation(
+        self, operation_id: str, request: AdministrationReconciliation | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.user_administration import AdministrationReconciliation
+
+        body = self._identity_body(AdministrationReconciliation, request)
+        return dict(self.request("POST", f"identity/operations/{self._id(operation_id)}/reconcile", json=body))
+
+    def recover_identity_operation(
+        self, operation_id: str, request: AdministrationRecovery | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.user_administration import AdministrationRecovery
+
+        if isinstance(request, dict) and request.get("owner_stopped") is not True:
+            raise ValueError("Explicit owner-stopped confirmation is required")
+        body = self._identity_body(AdministrationRecovery, request)
+        return dict(self.request("POST", f"identity/operations/{self._id(operation_id)}/recover", json=body))
 
     def save_agent_roles(self, document: RoleDocument | dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.agent_roles import RoleDocument

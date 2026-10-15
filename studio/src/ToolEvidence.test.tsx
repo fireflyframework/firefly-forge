@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ToolEvidence } from "./ExecutionPresentation";
+import { EvidenceView, ToolEvidence } from "./ExecutionPresentation";
 
 describe("broker tool evidence", () => {
   it("keeps the exact machine identity in a collapsed disclosure with full copy", () => {
@@ -104,5 +104,34 @@ describe("broker tool evidence", () => {
     expect(abandoned).toContain("Abandoned without replay");
     expect(abandoned).toContain("operator-7");
     expect(abandoned).not.toContain("Succeeded");
+  });
+});
+
+describe("same-run repair proposal evidence", () => {
+  it("shows the actual hold and limit while keeping machine provenance in Advanced", () => {
+    const fingerprint = "f".repeat(64);
+    const payload = Object.freeze({
+      status: "held",
+      summary:
+        "Another identical repair proposal is held; failed QA remains recorded.",
+      allowed: false,
+      verified_failures: 1,
+      effective_limit: 1,
+      fingerprint,
+      context: { repository_id: "a".repeat(32), version: "26.10.6" },
+      verification_receipt: { digest: "e".repeat(64), sequence: 7 },
+    });
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="repair_proposal" value={payload} />,
+    );
+    const primary = html.split("Advanced record")[0];
+    expect(primary).toContain("Repair proposal");
+    expect(primary).toContain("Another identical repair proposal is held");
+    expect(primary).toContain("Verified failures");
+    expect(primary).toContain("Effective limit");
+    expect(primary).not.toContain(fingerprint);
+    expect(primary).not.toContain("e".repeat(64));
+    expect(html).toContain(fingerprint);
+    expect(payload.fingerprint).toBe(fingerprint);
   });
 });
