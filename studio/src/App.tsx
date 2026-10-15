@@ -509,7 +509,7 @@ export default function App() {
             navigate("overview");
           }}
         >
-          <img src={`/assets/forge-lockup-${theme}.svg`} alt="Firefly Forge" />
+          <img src={`/assets/forge-lockup-${theme}.svg`} alt="Firefly forge" />
         </a>
         <MobileNavigation
           items={nav.map((item) => ({
@@ -767,7 +767,7 @@ export default function App() {
                     body={
                       connected
                         ? "Start with a brief and a repository. The complete run history will appear here."
-                        : "Connect to your Forge API to see repositories, provider readiness and real run history."
+                        : "Connect to your forge API to see repositories, provider readiness and real run history."
                     }
                     action={
                       <button

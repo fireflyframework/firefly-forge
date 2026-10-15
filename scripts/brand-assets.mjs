@@ -8,16 +8,37 @@ import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 
 // Import authorized private sources externally; distribute only generated artwork.
-const { values } = parseArgs({options:{kit:{type:'string'},out:{type:'string'},website:{type:'string'},bridge:{type:'string'}}});
-if(!values.kit || !values.out || !values.website) throw Error('Usage: node scripts/brand-assets.mjs --kit <private-kit> --website <website-checkout> --out <forge> [--bridge <private-bridge>]');
-const root=resolve(values.out),kit=resolve(values.kit),website=resolve(values.website),bridge=values.bridge?resolve(values.bridge):null;
+const { values } = parseArgs({options:{kit:{type:'string'},out:{type:'string'},website:{type:'string'},bridge:{type:'string'},'bridge-navigation-only':{type:'boolean'}}});
+const navigationOnly=values['bridge-navigation-only'];
+if(!values.kit || (navigationOnly ? !values.bridge : !values.out || !values.website)) throw Error('Usage: node scripts/brand-assets.mjs --kit <private-kit> --website <website-checkout> --out <forge> [--bridge <private-bridge>]; or --kit <private-kit> --bridge <bridge> --bridge-navigation-only');
+const root=values.out?resolve(values.out):null,kit=resolve(values.kit),website=values.website?resolve(values.website):null,bridge=values.bridge?resolve(values.bridge):null;
 const hash=contents=>createHash('sha256').update(contents).digest('hex');
 const pinned={'scripts/logo.mjs':'0ab3aa2a78b48307bac75dc7faf7e12f84eb2d44c538b9a4740be9d18aec6f95','scripts/lib/type.mjs':'7e3aff8953a9ec863c6a7aff9870d440f640e3e9608d824ec5862059d26ba2e8'};
 for(const [file,expected] of Object.entries(pinned)) if(hash(readFileSync(join(kit,file)))!==expected) throw Error('Brand source differs from pinned source: '+file);
-const websiteRevision=execFileSync('git',['rev-parse','HEAD'],{cwd:website,encoding:'utf8'}).trim();
-if(websiteRevision!=='6a2d519ab917fb183e607bcc5b4ab13f3819748f') throw Error('Website source differs from pinned 6a2d519 factory source');
 process.chdir(kit);
 const {geometry,svg,placed,icon}=await import(pathToFileURL(join(kit,'scripts/logo.mjs')));
+function writeBridgeNavigation(bridge){
+ const inventoryPath=join(bridge,'assets/brand/inventory.json'),inventory=JSON.parse(readFileSync(inventoryPath));
+ if(inventory.source!=='firefly-oss/brand-kit' || inventory.revision!=='3fc4834068fc531dad6fcff4719af2bb5b6d5c9e') throw Error('Bridge artwork differs from pinned brand source');
+ const [left,top,parentWidth]=geometry().compact;
+ for(const [theme,ink] of [['dark','#f3f1eb'],['light','#10110f']]){
+  const source=`assets/brand/bridge-lockup-${theme}.svg`,entry=inventory.files.find(item=>item.path===source),original=readFileSync(join(bridge,source),'utf8');
+  if(!entry || hash(original)!==entry.sha256) throw Error('Bridge source inventory mismatch: '+source);
+  const parent=solid=>placed(svg({ink,slogan:false,solid,title:'',id:'bridge-parent-trail'}),left,top,parentWidth);
+  const fullParent=parent(false);
+  if(original.split(fullParent).length!==2) throw Error('Expected exactly one canonical full parent in '+source);
+  const contents=original.replace(fullParent,parent(true)),path=`assets/brand/bridge-lockup-small-${theme}.svg`;
+  writeFileSync(join(bridge,path),contents);
+  inventory.files=inventory.files.filter(item=>item.path!==path);
+  inventory.files.push({...entry,path,source,sha256:hash(contents)});
+ }
+ inventory.navigation={variant:'small-solid-parent',minimumParentWidthPx:48,generator:'External public Forge scripts/brand-assets.mjs --bridge-navigation-only'};
+ writeFileSync(inventoryPath,JSON.stringify(inventory,null,2)+'\n');
+ console.log('Generated two Bridge navigation lockups; existing product artwork and full-size assets preserved.');
+}
+if(navigationOnly){writeBridgeNavigation(bridge);process.exit(0);}
+const websiteRevision=execFileSync('git',['rev-parse','HEAD'],{cwd:website,encoding:'utf8'}).trim();
+if(websiteRevision!=='6a2d519ab917fb183e607bcc5b4ab13f3819748f') throw Error('Website source differs from pinned 6a2d519 factory source');
 const {line,measure}=await import(pathToFileURL(join(kit,'scripts/lib/type.mjs')));
 const require=createRequire(join(kit,'package.json'));
 const sharp=(await import(pathToFileURL(require.resolve('sharp')))).default;
@@ -95,5 +116,6 @@ if(bridge){
  bridgeWrite('assets/brand/NOTICE',bridgeNotice,parentOwner,'Notice; marks reserved');
  for(const name of ['assets/fonts/manrope/manrope-latin-wght-normal.woff2','assets/fonts/manrope/OFL.txt'])if(existsSync(join(bridge,name)))bridgeFiles.push({path:name,owner:'The Manrope Project Authors',license:'OFL-1.1',sha256:hash(readFileSync(join(bridge,name)))});
  writeFileSync(join(bridge,'assets/brand/inventory.json'),JSON.stringify({version:2,source:manifest.source,revision:manifest.revision,identity:manifest.identity.bridge,generator:'External public Forge scripts/brand-assets.mjs',files:bridgeFiles},null,2)+'\n');
+ writeBridgeNavigation(bridge);
 }
 console.log(`Generated Forge F, ${manifest.files.length} inventoried public assets, both factory themes${bridge?' and distinct private Bridge span artwork':''}.`);
