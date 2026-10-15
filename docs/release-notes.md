@@ -11,6 +11,8 @@ SDK, CLI and MCP clients can inspect the original commands available for a conti
 
 Health and authenticated metrics now share the native supervision service's readiness calculation. `forge_admission_ready` describes local admission, while `forge_execution_ready` describes local execution. A healthy API-only process can accept authorized requests without running local jobs, so Studio no longer tells its operator to restart execution. Degraded health and explicit diagnostics remain visible. Remote worker availability remains unknown. See [runtime roles](runtime-roles.md).
 
+The generic runner queue leaves explicitly continued commands reserved. An expired lease, a refused decision or a change of Factory ownership cannot silently restart or cancel that original command. A durable continuation event also preserves the reservation when its mutable marker is missing. Other queued commands retain their normal admission and capacity checks. This correction does not authorize another continuation or recover an interrupted worker. See [continuation boundaries](sandbox.md#continue-one-queued-command-after-a-controller-restart).
+
 ## 0.2.13
 
 Studio can request continuation of an original queued runner command. Open the run's Plan tab, choose the exact command, review its identity and acknowledge the leader's final admission check. The browser saves the original request before submitting it. After a lost response or reload, **Check original request** reads that same receipt. A missing receipt keeps the request unresolved. The local candidate preview does not claim or dispatch work. See the [illustrated continuation guide](sandbox.md#continue-one-queued-command-after-a-controller-restart).
