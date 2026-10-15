@@ -21,6 +21,7 @@ import { attemptDigest } from "./LearningObservationAttemptData";
 import {
   confirmReplyMarkers,
   readReplyMarkers,
+  replyMarkerBinding,
   retainReplyMarker,
   workerReply,
   workerThreads,
@@ -64,7 +65,7 @@ export function WorkerDialogue({
         (!run.publish || membership.permissions.includes("release"))));
   const pending = threads.find((thread) => !thread.response);
   const unresolved = markers.filter(
-    (value) => !confirmed.has(value.responseId),
+    (value) => !confirmed.has(replyMarkerBinding(value)),
   );
   const scope: ReplyContext = {
     base: new URL(
@@ -101,7 +102,7 @@ export function WorkerDialogue({
     setConfirmed(exact);
     setLoaded(true);
     setError("");
-    if (saved.some((item) => exact.has(item.responseId)))
+    if (saved.some((item) => exact.has(replyMarkerBinding(item))))
       setNotice("Answer recorded. The run stays paused until you resume it.");
     else if (saved.length)
       setNotice(
@@ -173,6 +174,22 @@ export function WorkerDialogue({
       run.status !== "paused"
     )
       return;
+    try {
+      const latest = readReplyMarkers(localStorage, scope);
+      setMarkers(latest);
+      if (latest.some((value) => !confirmed.has(replyMarkerBinding(value)))) {
+        setError(
+          "An earlier answer request is unresolved or has changed. Check its original result before reviewing another answer.",
+        );
+        return;
+      }
+    } catch {
+      setHeld(true);
+      setError(
+        "The original answer identities could not be read. Check the recorded conversation before continuing.",
+      );
+      return;
+    }
     try {
       setReview(
         workerReply(

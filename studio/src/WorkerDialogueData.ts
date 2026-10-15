@@ -282,6 +282,15 @@ function marker(value: unknown): ReplyMarker {
   prefix(row as ReplyMarker);
   return row as ReplyMarker;
 }
+export function replyMarkerBinding(value: ReplyMarker): string {
+  marker(value);
+  return (
+    prefix(value) +
+    value.responseId +
+    ":" +
+    JSON.stringify([value.requestId, value.questionDigest, value.inputDigest])
+  );
+}
 export function readReplyMarkers(
   storage: MarkerStorage,
   scope: ReplyContext,
@@ -309,7 +318,8 @@ export function retainReplyMarker(
   const value = marker(input);
   const prior = readReplyMarkers(storage, value);
   assert(
-    prior.length < 100 && prior.every((item) => confirmed.has(item.responseId)),
+    prior.length < 100 &&
+      prior.every((item) => confirmed.has(replyMarkerBinding(item))),
   );
   const key = prefix(value) + value.responseId;
   assert(storage.getItem(key) === null);
@@ -338,7 +348,7 @@ export async function confirmReplyMarkers(
     const { id, actor, answer, request_id } = thread.response.payload;
     const input = { id, actor, answer, request_id };
     assert((await attemptDigest(input)) === value.inputDigest);
-    confirmed.add(value.responseId);
+    confirmed.add(replyMarkerBinding(value));
   }
   return confirmed;
 }

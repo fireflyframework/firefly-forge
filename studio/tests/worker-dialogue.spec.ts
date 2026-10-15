@@ -265,12 +265,90 @@ test("two open tabs retain one original answer before either can dispatch", asyn
     ),
   );
   await expect.poll(() => state.posts).toBe(1);
+  await expect
+    .poll(async () =>
+      (
+        await Promise.all(
+          [page, second].map(async (tab) => {
+            const button = tab.getByRole("button", {
+              name: "Send answer",
+              exact: true,
+            });
+            return (await button.count())
+              ? (await button.isDisabled())
+                ? "held"
+                : "active"
+              : "recorded";
+          }),
+        )
+      ).sort(),
+    )
+    .toEqual(["held", "recorded"]);
+  expect(state.posts).toBe(1);
+});
+
+test("a changed confirmed marker holds the next question before review or another POST", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await page.getByLabel("Your answer", { exact: true }).fill("14 items");
+  await page
+    .getByRole("button", { name: "Review answer", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Send answer", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Answer recorded. The run stays paused until you resume it.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  state.events.push(
+    seal({
+      run_id: run.id,
+      sequence: 5,
+      task_id: "implement",
+      idempotency_key: "worker-feedback:next",
+      kind: "worker_feedback",
+      created_at: "2026-10-15T12:03:00+00:00",
+      previous_hash: state.events[1].digest,
+      payload: {
+        ...contract.feedback.payload,
+        id: "next",
+        attempt: 2,
+        request: {
+          ...contract.feedback.payload.request,
+          id: "next-question",
+          question: "How should empty reservations behave?",
+        },
+      },
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Check original answer", exact: true })
+    .click();
+  await page
+    .getByLabel("Your answer", { exact: true })
+    .fill("Reject an empty reservation.");
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((key) =>
+      key.startsWith("forge.worker-reply.v1:"),
+    )!;
+    const marker = JSON.parse(localStorage.getItem(key)!);
+    marker.inputDigest = "0".repeat(64);
+    localStorage.setItem(key, JSON.stringify(marker));
+  });
+  await page
+    .getByRole("button", { name: "Review answer", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "An earlier answer request is unresolved or has changed. Check its original result before reviewing another answer.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send answer", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    second.getByRole("button", { name: "Send answer", exact: true }),
-  ).toBeDisabled();
   expect(state.posts).toBe(1);
 });
 

@@ -6,6 +6,7 @@ import {
   confirmReplyMarkers,
   normalizeWorkerText,
   readReplyMarkers,
+  replyMarkerBinding,
   retainReplyMarker,
   workerReply,
   workerThreads,
@@ -184,7 +185,7 @@ describe("agent conversation boundaries", () => {
     ).toThrow();
     expect(
       await confirmReplyMarkers([marker], await workerThreads([q, a], run)),
-    ).toEqual(new Set(["a1"]));
+    ).toEqual(new Set([replyMarkerBinding(marker)]));
     await expect(
       confirmReplyMarkers(
         [{ ...marker, inputDigest: "0".repeat(64) }],
@@ -195,6 +196,44 @@ describe("agent conversation boundaries", () => {
       readReplyMarkers(store, { ...marker, actor: "e".repeat(32) }),
     ).toEqual([]);
   });
+  it.each(["inputDigest", "questionDigest", "requestId"] as const)(
+    "holds a changed confirmed %s before retaining another answer",
+    async (field) => {
+      const q = await question(),
+        a = await response(),
+        store = storage();
+      const marker: ReplyMarker = {
+        base: "http://127.0.0.1:8787/api/v1",
+        actor: "f".repeat(32),
+        project: null,
+        repository: "3".repeat(32),
+        run,
+        version: 1,
+        requestId: "limit",
+        responseId: "a1",
+        questionDigest: q.digest,
+        inputDigest: await attemptDigest(a.payload),
+      };
+      retainReplyMarker(store, marker, new Set());
+      const confirmed = await confirmReplyMarkers(
+        [marker],
+        await workerThreads([q, a], run),
+      );
+      const changed = {
+        ...marker,
+        [field]: field === "requestId" ? "other-question" : "0".repeat(64),
+      };
+      store.setItem(store.key(0)!, JSON.stringify(changed));
+      expect(() =>
+        retainReplyMarker(
+          store,
+          { ...marker, responseId: "a2", requestId: "next-question" },
+          confirmed,
+        ),
+      ).toThrow();
+      expect(readReplyMarkers(store, marker)).toEqual([changed]);
+    },
+  );
   it("refuses storage loss before dispatch and malformed saved marker bindings", () => {
     const broken = {
       ...storage(),
