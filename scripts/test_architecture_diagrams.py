@@ -64,6 +64,9 @@ class ArchitectureDiagramTests(unittest.TestCase):
         documented = re.search(r"\| Factory MCP \| (\d+) authenticated operator tools", architecture)
         self.assertIsNotNone(documented, "Document the authenticated factory MCP surface")
         self.assertEqual(len(tools), int(documented.group(1)), "Update the documented factory MCP surface")
+        self.assertIn(
+            f"{len(tools)} factory MCP tools", diagrams.DIAGRAMS["architecture-components"]["cards"][0][1]
+        )
 
 
 if __name__ == "__main__":
