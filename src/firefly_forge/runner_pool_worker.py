@@ -96,6 +96,11 @@ class RunnerPoolWorker:
             raise RuntimeError("Frozen Factory stage or exclusive owner changed; reconciliation required")
         return current
 
+    def _result(self, argv: list[str], exit_code: int, output: str) -> ProcessResult:
+        if contains_known_credential(output, self.artifacts.credential_registry()):
+            raise RuntimeError("Retained command output contains configured credentials; reconciliation required")
+        return ProcessResult(argv, exit_code, output)
+
     async def recover(self, row: dict[str, Any]) -> dict[str, int]:
         """Observe/cancel a retained identity after restart, without submission or source import."""
         run_id, task_id, execution_id = row["run_id"], row["task_id"], row["execution_id"]
@@ -194,7 +199,7 @@ class RunnerPoolWorker:
                 evidence = previous["effects"].get("start", {}).get("evidence", {})
                 if previous["status"] == "removed" and evidence.get("workspace_import") == "complete":
                     await self._current(run_id, task_id, scope)
-                    return ProcessResult(argv, evidence["exit_code"], evidence["output"])
+                    return self._result(argv, evidence["exit_code"], evidence["output"])
                 raise RuntimeError("Existing Factory invocation requires reconciliation; it cannot be resubmitted")
             if len(records) >= policy.command_limit:
                 raise ValueError("Frozen total command budget is exhausted")
@@ -348,4 +353,4 @@ class RunnerPoolWorker:
                 effect="cleanup",
                 evidence={"scope": "controller_observed_drain", "drained": True},
             )
-            return ProcessResult(argv, receipt["exit_code"], evidence["output"])
+            return self._result(argv, receipt["exit_code"], evidence["output"])

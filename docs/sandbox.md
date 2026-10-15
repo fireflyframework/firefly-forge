@@ -82,6 +82,8 @@ Project commands use network `none`, a read-only source volume, bounded writable
 
 Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
 
+Retained artifact reads and command-output returns check the current credential registry, including the first result and later cached results. If a retained value is now recognized as a credential, the read is refused and command-output access requires reconciliation. The private artifact and original receipts remain intact; the command is not resubmitted. This checks registered credential values and their supported escaped forms, so operators must still review source and results for unregistered secrets.
+
 Local qualification covers a trusted Factory host, mutually authenticated controller and isolated command containers. Browser pool profiles, Factory worker container placement, project database sidecars, Kubernetes and shared multi-host storage require separate qualification. Native Codex/Claude provider processes retain their own execution boundary.
 
 ## Read execution and recovery evidence

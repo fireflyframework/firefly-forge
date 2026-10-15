@@ -200,6 +200,8 @@ class RunnerPoolArtifacts:
         value = private_identity(self._folder(invocation) / (kind + ".bin"), absent, size=size)
         if hashlib.sha256(value).hexdigest() != receipt.get("sha256"):
             raise ValueError("Retained artifact digest was changed")
+        if contains_known_credential(value.decode("utf-8", errors="ignore"), self.credential_registry()):
+            raise ValueError("Retained runner artifact cannot return configured credentials")
         return value
 
     def input_archive(self, profile: RunnerPoolProfile, invocation: RunnerInvocation) -> bytes:
