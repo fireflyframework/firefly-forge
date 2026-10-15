@@ -22,6 +22,7 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `external_mcp` | An exact reviewed read tool within the project/repository/role grant. |
 | `knowledge_lookup` | Repository-scoped references and eligible local outcomes under the run's frozen learning policy. |
 | `profile_python` | Optional stdlib CPU-profile observation through the same frozen Docker command runner and retained effects. Requires both profiling and command grants. |
+| `trace_python` | Optional best-effort target Python line counts through the same isolated runner. Requires both tracing and command grants. |
 
 Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phase and provider before enabling a capability. Commands, browsers, internet search and external MCP are optional configured capabilities; the initial implementation role grants the six confined source tools.
 
@@ -46,6 +47,18 @@ The script must be a non-private, relative `.py` path within the component. forg
 The observation returns the actual workload exit, up to 16,000 output characters, a truncation flag, source hash, image, exact command and the exact retained command/start/cleanup receipt identities. A missing optional receipt binding is explicit as `receipt: null`; it does not trigger another execution. Full runner output and effect evidence retain the existing private journal contract. A timeout, uncertain effect or failed workspace publication keeps that contract's failure or reconciliation behavior and cannot be blindly replayed. Current execution authority, cancellation and credential checks still apply.
 
 Timing values and workload text are untrusted diagnostic observations, not deterministic thresholds or QA approval. `report_marker_observed` only reports whether the expected text appeared; a workload can spoof it or exit before a report is printed. A nonzero workload exit remains nonzero, and profiling alone does not satisfy the worker's source-change or verification requirements. There is no host profiler parser, debugger port, `ptrace`, Docker socket grant or host fallback. Interactive debugging, PHP profiling and application-network orchestration require separate acceptance.
+
+### Inspect which Python lines ran
+
+Grant both `trace_python` and `execute_command` before creating the run. This optional tool uses the same frozen Docker, archive-transfer and network-`none` boundary as profiling, without a pool binding. It consumes one command slot and requires the image's existing Python interpreter and project dependencies.
+
+```json
+{"request":{"recipe":"forge-python-line-trace-v1","script":"scripts/inspect.py","args":["--fixture","owned"],"max_rows":50,"timeout":30}}
+```
+
+The launcher verifies the confined target's source hash, compiles it once and counts line events from that compiled target and its nested code. Imported modules and separately compiled code are excluded. It retains at most `max_rows` distinct lines (1–100), sorts those retained lines by number and sets `rows_truncated` if others were observed. Counts saturate at the signed 64-bit maximum. The report contains line numbers and hit counts, with no source text, local variables or report files.
+
+The returned observation has `best_effort: true` and the same bounded output, actual exit and exact execution receipt fields as profiling. Counts are untrusted diagnostics, **not complete coverage, a complete execution snapshot or QA approval**: the workload can disable tracing, alter the report or terminate before it is emitted. A missing marker does not trigger another execution. Nonzero exits, timeout, output limits, cancellation and unknown effects preserve the command runner's existing outcome and reconciliation rules. There is no debugger port, attachment or host fallback.
 
 ## Configure real browser checks
 

@@ -24,10 +24,13 @@ from pyfly.kernel.lifecycle import CONSUMER_PHASE
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.diagnostic_recipes import (
     PythonProfileRequest,
+    PythonTraceRequest,
     build_profile_argv,
+    build_trace_argv,
     profile_available,
     profile_configuration,
     profile_observation,
+    trace_observation,
 )
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command
@@ -479,6 +482,9 @@ class Engine:
                 async def python_profile(request: PythonProfileRequest) -> dict[str, Any]:
                     return await self._profile_python(identifier, run, workspace, request)
 
+                async def python_trace(request: PythonTraceRequest) -> dict[str, Any]:
+                    return await self._trace_python(identifier, run, workspace, request)
+
                 async def browser_runner(path: str, width: int, height: int, theme: str) -> dict[str, Any]:
                     return cast(
                         dict[str, Any],
@@ -609,6 +615,11 @@ class Engine:
                     python_profile=python_profile
                     if self.sandbox
                     and {"execute_command", "profile_python"}.issubset(grants or ())
+                    and profile_available(run.get("sandbox_snapshot"))
+                    else None,
+                    python_trace=python_trace
+                    if self.sandbox
+                    and {"execute_command", "trace_python"}.issubset(grants or ())
                     and profile_available(run.get("sandbox_snapshot"))
                     else None,
                     browser_runner=browser_runner if self.browser and "browser_check" in (grants or ()) else None,
@@ -1425,6 +1436,36 @@ class Engine:
             _receipt_sink=binding.update,
         )
         return profile_observation(request, source_sha256, str(config.image), result, binding)
+
+    async def _trace_python(
+        self, identifier: str, run: dict[str, Any], workspace: Path, request: PythonTraceRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.agent_roles import stage_allowed_tools
+        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.workspace_tools import WorkspaceTools
+
+        request = PythonTraceRequest.model_validate(request.model_dump(mode="json"))
+        grants = stage_allowed_tools(run.get("role_snapshot") or {}, "implement", "agentic")
+        if self.sandbox is None or not {"trace_python", "execute_command"}.issubset(grants or ()):
+            raise ValueError("Python tracing requires explicit tracing and command grants and an isolated runner")
+        config = profile_configuration(run.get("sandbox_snapshot"))
+        await self.assert_ownership()
+        await ProjectAccess(self.store).authorize_execution(run)
+        scope = self.component_directory(run, workspace)
+        source = await WorkspaceTools(scope, repository_root=workspace).read_file(request.script)
+        source_sha256 = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        binding: dict[str, Any] = {}
+        result = await self._project_command(
+            identifier,
+            run,
+            workspace,
+            build_trace_argv(request, source_sha256),
+            request.timeout,
+            "implement",
+            _diagnostic_snapshot=run["sandbox_snapshot"]["digest"],
+            _receipt_sink=binding.update,
+        )
+        return trace_observation(request, source_sha256, str(config.image), result, binding)
 
     async def _test(
         self,
