@@ -845,6 +845,22 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.project_campaign(project_id, campaign_id)
 
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_project_campaign_report(project_id: str, campaign_id: str) -> dict[str, Any]:
+        """Read a local persisted-evidence snapshot with task/checkpoint receipts and a deterministic digest.
+
+        No SCM synchronization, estimated completion, milestone creation or external effect is performed.
+        Unknown evidence is not verified delivery. Current project and repository read permissions apply.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.project_campaign_report(project_id, campaign_id)
+
     @server.tool()
     def cancel_project_campaign(project_id: str, campaign_id: str, request: CampaignAction) -> dict[str, Any]:
         """Explicitly stop campaign work; unknown child effects remain reconciliation obligations."""

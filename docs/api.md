@@ -157,6 +157,10 @@ Register at least one intended repository before using this example. Queueing a
 run does not wait for completion; poll `client.get_run(run["id"])` and inspect
 verification before accepting the result.
 
+## Read campaign delivery evidence
+
+`GET /api/v1/projects/{project_id}/campaigns/{campaign_id}/report` returns a deterministic local evidence snapshot for one campaign. It requires current project and repository read permissions. SDK `project_campaign_report`, CLI `forge campaign report` and MCP `get_project_campaign_report` use this same read route. See [campaign evidence reports](project-campaigns.md#read-a-campaign-evidence-report) for states, exact task/checkpoint references, the digest contract and snapshot limits. The read performs no source-control refresh or execution.
+
 ## Give an external agent MCP access
 
 `forge mcp` runs the standard MCP stdio transport. Configure your MCP client to
