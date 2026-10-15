@@ -46,6 +46,17 @@ def exact_origin(value: str) -> str:
     return value
 
 
+def canonical_provider_id(provider: Provider, value: str) -> str:
+    if provider == "bitbucket":
+        canonical = str(UUID(value))
+        if value.lower() not in {canonical, "{" + canonical + "}"}:
+            raise ValueError("Use a provider UUID, not an account label")
+        return canonical
+    if not re.fullmatch(r"[1-9][0-9]{0,39}", value):
+        raise ValueError("Use canonical positive provider account and repository IDs")
+    return value
+
+
 class ProviderIdentity(StrictContract):
     provider: Provider
     api_origin: str = Field(max_length=500)
@@ -60,21 +71,8 @@ class ProviderIdentity(StrictContract):
 
     @model_validator(mode="after")
     def provider_identity(self) -> ProviderIdentity:
-        if self.provider == "bitbucket":
-            for name in ("remote_repository_id", "external_actor_id"):
-                value = getattr(self, name)
-                canonical = str(UUID(value))
-                if value.lower() not in {canonical, "{" + canonical + "}"}:
-                    raise ValueError("Use a provider UUID, not an account label")
-                object.__setattr__(self, name, canonical)
-        elif any(
-            not re.fullmatch(r"[1-9][0-9]{0,39}", value)
-            for value in (
-                self.remote_repository_id,
-                self.external_actor_id,
-            )
-        ):
-            raise ValueError("Use canonical positive provider account and repository IDs")
+        for name in ("remote_repository_id", "external_actor_id"):
+            object.__setattr__(self, name, canonical_provider_id(self.provider, getattr(self, name)))
         if self.provider == "github":
             if self.installation_id is None or not re.fullmatch(r"[1-9][0-9]{0,39}", self.installation_id):
                 raise ValueError("A GitHub App installation is required")
@@ -111,13 +109,21 @@ class SCMActorBindingInputV1(StrictContract):
     version: Literal[1]
     request_id: NativeID
     expected_previous_digest: Digest | None
+    expected_project_binding_digest: Digest
     verified_receipt_id: NativeID
     expected_verified_reference_digest: Digest
     native_user_id: NativeID
     component_ids: list[Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")]] = Field(min_length=1, max_length=50)
     allowed_actions: list[DelegatedAction] = Field(min_length=1, max_length=3)
     active: bool
-    acknowledge_webhook_asserted_identity: bool
+    acknowledge_webhook_asserted_identity: Literal[True]
+
+    @field_validator("acknowledge_webhook_asserted_identity", mode="before")
+    @classmethod
+    def exact_acknowledgment(cls, value: object) -> object:
+        if value is not True:
+            raise ValueError("Explicitly acknowledge the configured webhook sender trust boundary")
+        return value
 
     @model_validator(mode="after")
     def explicit_scope(self) -> SCMActorBindingInputV1:
@@ -159,3 +165,23 @@ class SCMActorBindingReceiptV1(StrictContract):
     request_digest: Digest
     verified_reference: VerifiedSCMReferenceV1
     digest: Digest
+
+
+class SCMActorBindingSummaryV1(StrictContract):
+    version: Literal[1]
+    event_id: NativeID
+    project_id: NativeID
+    repository_id: NativeID
+    project_binding_digest: Digest
+    request_id: NativeID
+    binding_key: Digest
+    revision: int = Field(ge=1, le=50)
+    digest: Digest
+    native_user_id: NativeID
+    component_ids: list[Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")]] = Field(min_length=1, max_length=50)
+    allowed_actions: list[DelegatedAction] = Field(min_length=1, max_length=3)
+    active: bool
+    provider: Provider
+    external_actor_id: str = Field(min_length=1, max_length=200)
+    prepared_at: str = Field(min_length=1, max_length=50)
+    summary_digest: Digest
