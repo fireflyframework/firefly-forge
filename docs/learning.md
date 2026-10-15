@@ -8,7 +8,7 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. A receipt-backed same-run cap also bounds identical repair proposals without replacing verification.
 
 !!! info "Implementation boundary"
-    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration and read-only record and projection inspection. Its submission, reconciliation and invalidation workflows remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration, record and projection inspection, and reviewed evidence invalidation with exact-request recovery. Studio source submission and ingestion reconciliation remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -119,7 +119,18 @@ Select a record to inspect its saved state, question, supported statement, frame
 
 The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
 
-**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request. The separate receipt read supports operator inspection; Studio write controls and their pending-request recovery remain unimplemented.
+**Refresh records** performs an authorized read. It does not submit sources or observe remote ingestion. Evidence invalidation uses the separate review below. A generic status reload cannot identify the exact receipt of a lost invalidation request.
+
+### Invalidate saved evidence
+
+Select a candidate or verified record, then choose **Invalidate evidence**. Current project review permission is required; unassigned records require a factory administrator. Enter a specific reason without credentials, choose **Review invalidation**, and acknowledge that the decision excludes the evidence from reuse while keeping its history. **Confirm invalidation** submits one decision. **Keep evidence** or closing the review before confirmation submits nothing.
+
+Before sending, Studio saves and reads back the original factory URL, actor, repository, project, origin run, record, request ID and reason in the current tab's storage. Unreadable or corrupt storage blocks submission. The marker survives navigation and reload in that tab; it is not a browser backup. Keep the original request details before closing a tab with an unresolved decision.
+
+Even a successful POST is followed by the exact authorized receipt read. If the response is lost, choose **Check original request**. That control only reads; it never resubmits, abandons or replaces the pending request. An invalidated record, another actor's event, a different reason, a mismatched request or a 404 cannot confirm the original decision. A 404 means the request has not been observed and may still be in flight. Keep the uncertainty for operator review.
+
+**Original invalidation confirmed** requires the matching record, repository, run, request, reason and original actor, with a valid event identity, timestamp, sequence and digest. Legacy unknown attribution cannot confirm a newly retained Studio request. The historical invalidation and current record state are shown separately. Reload requires a fresh authorized receipt read. A denied receipt read clears private evidence from the view while retaining the marker; changing actors or factories cannot reconcile another context's request. The CLI, SDK and MCP receipt reads remain available for authorized operator inspection.
+
 
 <figure class="forge-shot" markdown="1">
 
