@@ -7,6 +7,7 @@ import copy
 import hashlib
 import json
 import re
+import time
 import uuid
 from collections.abc import Mapping
 from typing import Any, Literal
@@ -427,7 +428,7 @@ class RepositoryChannels:
     def redaction_settings(self) -> dict[str, str]:
         with self.store.configuration.lock:
             return {
-                "CHANNEL_WEBHOOK_SECRET_" + key: value
+                "CHANNEL_WEBHOOK_SECRET_" + key: value if isinstance(value, str) else str(value.get("secret", ""))
                 for key, value in self.store.configuration._read(self.secrets_path).items()
             }
 
@@ -439,7 +440,7 @@ class RepositoryChannels:
             self.store.configuration._write(self.path, settings)
             if request.webhook_secret is not None:
                 secrets = self.store.configuration._read(self.secrets_path)
-                secrets[provider] = request.webhook_secret.get_secret_value()
+                secrets[provider] = {"secret": request.webhook_secret.get_secret_value(), "revision": uuid.uuid4().hex}
                 self.store.configuration._write(self.secrets_path, secrets)
         return self.settings(provider)
 
@@ -490,6 +491,12 @@ class RepositoryChannels:
             return repo
 
     async def receive(self, provider: str, raw: bytes, headers: Mapping[str, str]) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        from firefly_forge.scm_webhooks import verify_gitlab_signing_token
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare channel ingress outside an active caller transaction")
         settings = self.settings(provider)
         if len(raw) > 100000:
             raise ValueError("Webhook body exceeds 100 KB")
@@ -502,10 +509,49 @@ class RepositoryChannels:
         if not re.fullmatch(r"[A-Za-z0-9{}_.:-]{1,200}", delivery):
             raise ValueError("A bounded provider delivery identifier is required")
         with self.store.configuration.lock:
-            secret = str(self.store.configuration._read(self.secrets_path).get(provider, ""))
+            secret_record = self.store.configuration._read(self.secrets_path).get(provider, "")
+            configured_settings = self.store.configuration._read(self.path).get(provider, {})
+        secret = str(secret_record.get("secret", "")) if isinstance(secret_record, dict) else str(secret_record)
+        secret_revision = secret_record.get("revision") if isinstance(secret_record, dict) else None
         digest = hashlib.sha256(raw).hexdigest()
-        valid = verify_webhook(provider, raw, headers, secret)
+        valid = (
+            verify_gitlab_signing_token(raw, headers, secret, current_time=time.time())
+            if provider == "gitlab" and secret.startswith("whsec_")
+            else verify_webhook(provider, raw, headers, secret)
+        )
         key = delivery if valid else "invalid:" + digest
+        async with self.store._unit():
+            previous = await self.inbox.find_delivery(provider, key)
+            if previous:
+                if previous.digest != digest:
+                    raise ValueError("Provider delivery identifier was reused with different bytes")
+                return copy.deepcopy(previous.data)
+        prepared_event = None
+        grants: list[Data] = []
+        preflight_error = False
+        connection_revision = self.scm._record(provider).get("revision")
+        if valid and settings["enabled"]:
+            try:
+                body = json.loads(raw)
+                installed = provider == "github" and headers.get("x-github-event") in {
+                    "installation",
+                    "installation_repositories",
+                }
+                if installed:
+                    should_read_grants = (
+                        str(body["installation"]["id"]) == self.scm._values("github").get("installation_id")
+                        and body.get("action") in {"created", "added"}
+                        and settings["auto_register"]
+                    )
+                else:
+                    event = normalized_event(provider, body, headers)
+                    should_read_grants = event["actor"] in settings["trusted_actors"]
+                    if should_read_grants:
+                        prepared_event = await self.collaboration._admit_signed_event(provider, raw, headers)
+                if should_read_grants:
+                    grants = await self.scm.repositories(provider)
+            except (ValueError, KeyError, TypeError):
+                preflight_error = True
         async with self.store._unit() as session:
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -530,6 +576,14 @@ class RepositoryChannels:
             reason = None
             if not valid:
                 reason = "invalid_signature"
+            elif preflight_error:
+                reason = "unsupported_or_invalid_event"
+            elif (
+                self.store.configuration._read(self.secrets_path).get(provider, "") != secret_record
+                or self.store.configuration._read(self.path).get(provider, {}) != configured_settings
+                or self.scm._record(provider).get("revision") != connection_revision
+            ):
+                reason = "channel_scope_changed"
             elif not settings["enabled"]:
                 reason = "channel_disabled"
             else:
@@ -548,16 +602,14 @@ class RepositoryChannels:
                         elif not settings["auto_register"]:
                             reason = "auto_registration_disabled"
                         else:
-                            grants = await self.scm.repositories(provider)
                             for grant in grants:
                                 data["repository_ids"].append((await self._register(provider, grant, settings))["id"])
                     else:
                         event = normalized_event(provider, body, headers)
-                        await self.store.admit_credentials(event["text"])
+                        self.store.reject_credentials(event)
                         if event["actor"] not in settings["trusted_actors"]:
                             reason = "untrusted_actor"
                         else:
-                            grants = await self.scm.repositories(provider)
                             granted = next((item for item in grants if item["id"] == event["remote_id"]), None)
                             if granted is None:
                                 reason = "repository_not_granted"
@@ -580,7 +632,14 @@ class RepositoryChannels:
                                     repo = await self._register(provider, granted, settings)
                                     data["repository_ids"] = [repo["id"]]
                                     receipt = await self.collaboration.receive(
-                                        provider, repo["id"], raw, headers, signature_secret=secret, global_ingress=True
+                                        provider,
+                                        repo["id"],
+                                        raw,
+                                        headers,
+                                        signature_secret=secret,
+                                        signature_revision=secret_revision,
+                                        global_ingress=True,
+                                        _admitted_event=prepared_event,
                                     )
                                     data["repository_receipt_id"] = receipt["id"]
                                     data["repository_receipt_status"] = receipt["status"]

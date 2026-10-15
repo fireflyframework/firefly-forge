@@ -176,6 +176,8 @@ from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyRepositor
 from firefly_forge.runtime_roles import Role, RuntimeRoleConfig, RuntimeRoles
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
+from firefly_forge.scm_actor_authority import SCMActorAuthority
+from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
@@ -623,6 +625,10 @@ class FactoryConfiguration:
         return connections
 
     @bean
+    def scm_actor_authority(self, store: Store, connections: SCMConnections) -> SCMActorAuthority:
+        return SCMActorAuthority(store, connections)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -944,6 +950,7 @@ def create_runtime(
         ForgeWebhookInboxRepository,
         ForgeProductDefinitionRepository,
         CollaborationController,
+        SCMActorAuthorityController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,

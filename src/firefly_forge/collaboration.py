@@ -9,8 +9,10 @@ import hashlib
 import hmac
 import json
 import re
+import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote, urlsplit
 
@@ -44,6 +46,13 @@ if TYPE_CHECKING:
 Data = dict[str, Any]
 Provider = Literal["github", "gitlab", "bitbucket"]
 Action = Literal["run", "test", "maintain", "status", "deploy"]
+
+
+@dataclass(frozen=True)
+class _AdmittedSCMEvent:
+    provider: str
+    payload_digest: str
+    event_digest: str
 
 
 class ProductDefinition(BaseModel):
@@ -276,11 +285,17 @@ class Collaboration:
         self.product_assistant: Any = None
 
     def _secret(self, repository_id: str) -> str:
-        return str(self.store.configuration._read(self.secrets_path).get(repository_id, ""))
+        value = self.store.configuration._read(self.secrets_path).get(repository_id, "")
+        return str(value.get("secret", "")) if isinstance(value, dict) else str(value)
+
+    def _secret_revision(self, repository_id: str) -> str | None:
+        value = self.store.configuration._read(self.secrets_path).get(repository_id)
+        return str(value["revision"]) if isinstance(value, dict) and value.get("revision") else None
 
     def redaction_settings(self) -> dict[str, str]:
         return {
-            "WEBHOOK_SECRET_" + key: value for key, value in self.store.configuration._read(self.secrets_path).items()
+            "WEBHOOK_SECRET_" + key: str(value.get("secret", "")) if isinstance(value, dict) else str(value)
+            for key, value in self.store.configuration._read(self.secrets_path).items()
         }
 
     async def _repo_lock(self, repository_id: str) -> None:
@@ -293,6 +308,7 @@ class Collaboration:
         async with self.store._unit():
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
+            data.pop("_scm_authority_v1", None)
             return {
                 **data,
                 "repository_id": repository_id,
@@ -324,6 +340,8 @@ class Collaboration:
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = request.model_dump(exclude={"webhook_secret"})
+            if row is not None and "_scm_authority_v1" in row.data:
+                data["_scm_authority_v1"] = copy.deepcopy(row.data["_scm_authority_v1"])
             if row is None:
                 row = ForgeCollaborationSettingsEntity(
                     id=uuid.uuid4(), repository_id=identifier(repository_id), data=data
@@ -334,7 +352,10 @@ class Collaboration:
             if request.webhook_secret is not None:
                 with self.store.configuration.lock:
                     secrets = self.store.configuration._read(self.secrets_path)
-                    secrets[repository_id] = request.webhook_secret.get_secret_value()
+                    secrets[repository_id] = {
+                        "secret": request.webhook_secret.get_secret_value(),
+                        "revision": uuid.uuid4().hex,
+                    }
                     self.store.configuration._write(self.secrets_path, secrets)
         return await self.settings(repository_id)
 
@@ -388,12 +409,17 @@ class Collaboration:
                 raise KeyError("Delivery receipt not found")
             return copy.deepcopy(row.data)
 
-    def _allowed(self, repo: Data, settings: Data, event: Data, provider: str) -> str | None:
+    def _allowed(
+        self, repo: Data, settings: Data, event: Data, provider: str, *, channel_snapshot: Data | None = None
+    ) -> str | None:
         if event.get("global_ingress"):
-            with self.store.configuration.lock:
-                channel = self.store.configuration._read(
-                    self.store.configuration.directory / "channel-bootstrap.json"
-                ).get(provider, {})
+            if channel_snapshot is None:
+                with self.store.configuration.lock:
+                    channel = self.store.configuration._read(
+                        self.store.configuration.directory / "channel-bootstrap.json"
+                    ).get(provider, {})
+            else:
+                channel = channel_snapshot
             if not channel.get("enabled"):
                 return "channel_disabled"
             if event["actor"] not in channel.get("trusted_actors", []):
@@ -414,8 +440,38 @@ class Collaboration:
         headers: Mapping[str, str],
         *,
         signature_secret: str | None = None,
+        signature_revision: str | None = None,
         global_ingress: bool = False,
+        _admitted_event: _AdmittedSCMEvent | None = None,
     ) -> Data:
+        prepared = await self._prepare_receive(
+            provider,
+            repository_id,
+            raw,
+            headers,
+            signature_secret=signature_secret,
+            signature_revision=signature_revision,
+            global_ingress=global_ingress,
+            _admitted_event=_admitted_event,
+        )
+        return await self._retain_receive(prepared)
+
+    async def _prepare_receive(
+        self,
+        provider: str,
+        repository_id: str,
+        raw: bytes,
+        headers: Mapping[str, str],
+        *,
+        signature_secret: str | None = None,
+        signature_revision: str | None = None,
+        global_ingress: bool = False,
+        _admitted_event: _AdmittedSCMEvent | None = None,
+    ) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        if current_unit_of_work() is not None and _admitted_event is None:
+            raise ValueError("Prepare signed ingress outside an active caller transaction")
         if provider not in {"github", "gitlab", "bitbucket"}:
             raise ValueError("Unsupported webhook provider")
         if len(raw) > 100000:
@@ -432,9 +488,35 @@ class Collaboration:
         digest = hashlib.sha256(raw).hexdigest()
         reason: str | None = None
         event: Data = {}
-        signature_valid = verify_webhook(
-            provider, raw, headers, signature_secret if signature_secret is not None else self._secret(repository_id)
+        secret_record = self.store.configuration._read(self.secrets_path).get(repository_id, "")
+        secret = (
+            signature_secret
+            if signature_secret is not None
+            else (str(secret_record.get("secret", "")) if isinstance(secret_record, dict) else str(secret_record))
         )
+        key_revision = (
+            signature_revision
+            if signature_secret is not None
+            else (secret_record.get("revision") if isinstance(secret_record, dict) else None)
+        )
+        if signature_secret is not None and signature_revision is not None:
+            configured_key = self.store.configuration._read(
+                self.store.configuration.directory / "channel-webhook-secrets.json"
+            ).get(provider)
+            if not isinstance(configured_key, dict) or configured_key != {
+                "secret": signature_secret,
+                "revision": signature_revision,
+            }:
+                key_revision = None
+        from firefly_forge.scm_webhooks import verify_gitlab_signing_token
+
+        signing_mode = provider == "gitlab" and secret.startswith("whsec_")
+        signature_valid = (
+            verify_gitlab_signing_token(raw, headers, secret, current_time=time.time())
+            if signing_mode
+            else verify_webhook(provider, raw, headers, secret)
+        )
+        verified_reference: Data | None = None
         delivery_key = delivery_id if signature_valid else "invalid:" + digest
         if not signature_valid:
             reason = "invalid_signature"
@@ -442,11 +524,44 @@ class Collaboration:
             try:
                 body = json.loads(raw)
                 event = normalized_event(provider, body, headers)
+                if _admitted_event is not None:
+                    from firefly_forge.journal import digest as event_digest
+
+                    if _admitted_event != _AdmittedSCMEvent(provider, digest, event_digest(event)):
+                        raise ValueError("The admitted SCM event does not match the signed payload")
+                if key_revision and (provider != "gitlab" or signing_mode):
+                    from firefly_forge.scm_authority_models import VerifiedSCMReferenceV1
+
+                    try:
+                        scope = self.scm.delegation_scope(repo)
+                        installation = body.get("installation", {}).get("id") if provider == "github" else None
+                        if provider == "github" and type(installation) is not int:
+                            raise ValueError("A GitHub App installation identifier is required")
+                        verified_reference = VerifiedSCMReferenceV1.model_validate(
+                            {
+                                **scope,
+                                "version": 1,
+                                "installation_id": str(installation) if installation is not None else None,
+                                "external_actor_id": event["actor"],
+                                "webhook_key_revision": key_revision,
+                                "verification_method": "gitlab_signing_hmac_sha256"
+                                if signing_mode
+                                else "raw_body_hmac_sha256",
+                                "payload_digest": digest,
+                            }
+                        ).model_dump(mode="json")
+                        if verified_reference["installation_id"] != scope["installation_id"]:
+                            raise ValueError("The delivery belongs to a different GitHub App installation")
+                    except (ValueError, KeyError, TypeError):
+                        verified_reference = None
                 event["global_ingress"] = global_ingress
                 event["issue"]["url"] = self._ticket_url(repo, event["issue"])
                 if event["issue"]["number"] <= 0:
                     raise ValueError("invalid_issue")
-                await self.store.admit_credentials(event)
+                if _admitted_event is None:
+                    await self.store.admit_credentials(event)
+                else:
+                    self.store.reject_credentials(event)
                 reason = self._allowed(repo, settings, event, provider)
                 if not reason:
                     command = RepositoryCommand.parse(event.pop("text"))
@@ -461,8 +576,60 @@ class Collaboration:
                     "kind": event.get("issue", {}).get("kind", "issue"),
                 }
                 reason = "unsupported_or_invalid_command"
+        if _admitted_event is None:
+            await self.store.admit_credentials({"event": event, "verification": verified_reference})
+        else:
+            self.store.reject_credentials({"event": event, "verification": verified_reference})
+        return {
+            "provider": provider,
+            "repository_id": repository_id,
+            "repository": repo,
+            "settings": settings,
+            "digest": digest,
+            "delivery_id": delivery_id,
+            "delivery_key": delivery_key,
+            "event": event,
+            "reason": reason,
+            "global_ingress": global_ingress,
+            "verified_reference": verified_reference,
+        }
+
+    async def _admit_signed_event(self, provider: str, raw: bytes, headers: Mapping[str, str]) -> _AdmittedSCMEvent:
+        from pyfly.data.transaction import current_unit_of_work
+
+        from firefly_forge.journal import digest as event_digest
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Admit signed ingress credentials outside a caller transaction")
+        event = normalized_event(provider, json.loads(raw), headers)
+        await self.store.admit_credentials(event)
+        return _AdmittedSCMEvent(provider, hashlib.sha256(raw).hexdigest(), event_digest(event))
+
+    async def _retain_receive(self, prepared: Data) -> Data:
+        """Commit an admitted ingress cut without provider or vault I/O."""
+        provider, repository_id = prepared["provider"], prepared["repository_id"]
+        digest, delivery_id, delivery_key = prepared["digest"], prepared["delivery_id"], prepared["delivery_key"]
+        event, reason = prepared["event"], prepared["reason"]
+        global_ingress, verified_reference = prepared["global_ingress"], prepared["verified_reference"]
         async with self.store._unit():
             await self._repo_lock(repository_id)
+            current_repository, current_settings = (
+                await self.store.repository(repository_id),
+                await self.settings(repository_id),
+            )
+            if current_repository != prepared["repository"] or current_settings != prepared["settings"]:
+                reason = "collaboration_scope_changed"
+                verified_reference = None
+            if verified_reference is not None:
+                from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+                authority = SCMActorAuthority(self.store, self.scm)
+                current_scope = self.scm.delegation_scope(current_repository)
+                if current_scope != {
+                    key: verified_reference[key] for key in current_scope
+                } or not authority._key_current(repository_id, verified_reference):
+                    reason = "verification_scope_changed"
+                    verified_reference = None
             previous = await self.inbox.find_delivery(identifier(repository_id), provider, delivery_key)
             if previous:
                 if previous.data["digest"] != digest:
@@ -495,6 +662,9 @@ class Collaboration:
             }
             if not reason:
                 data["remote_id"] = event["remote_id"]
+            if verified_reference is not None:
+                data["verification"] = verified_reference
+            self.store.reject_credentials(data)
             await self.inbox.save(
                 ForgeWebhookInboxEntity(
                     id=identifier(str(data["id"])),
@@ -506,6 +676,7 @@ class Collaboration:
                     data=data,
                 )
             )
+            self.store.reject_credentials(data)
             return copy.deepcopy(data)
 
     async def _write_row(self, row: ForgeWebhookInboxEntity, **changes: Any) -> None:
@@ -517,6 +688,13 @@ class Collaboration:
         initial = await self.receipt(receipt_id)
         if initial["status"] != "received":
             return initial
+        from firefly_forge.scm_actor_authority import authority_state
+
+        async with self.store._unit():
+            configured = await self.settings_records.find_for_repository(identifier(initial["repository_id"]))
+            mapped_repository = bool(authority_state(configured.data if configured else {})["heads"])
+        if mapped_repository or (initial.get("command") or {}).get("action") == "respond":
+            return await self._process_delegated(receipt_id)
         if initial.get("global_ingress"):
             repo = await self.store.repository(initial["repository_id"])
             settings = await self.settings(repo["id"])
@@ -637,6 +815,165 @@ class Collaboration:
                     feedback_stage="deployment_queued",
                 )
         await self.feedback(receipt_id)
+        return await self.receipt(receipt_id)
+
+    async def _process_delegated(self, receipt_id: str) -> Data:
+        from sqlalchemy import text
+
+        from firefly_forge.agent_roles import WorkerResponse
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, Permission, ProjectAccess
+        from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+        authority = SCMActorAuthority(self.store, self.scm)
+        initial = await self.receipt(receipt_id)
+        command = initial.get("command") or {}
+        try:
+            actor = await authority.resolve(initial)
+            if command["action"] == "cancel" and self.store.execution_requests is None:
+                raise AccessDenied("SCM cancellation requires the admitted execution-request runtime")
+        except (AccessDenied, ValueError, KeyError):
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                if row.status == "received":
+                    await self._write_row(
+                        row, status="denied", reason="scm_authority_setup_required", action_status="not_dispatched"
+                    )
+                return copy.deepcopy(row.data)
+        token = CURRENT_PRINCIPAL.set(actor)
+        try:
+            context = actor.scm_delegation
+            assert context is not None
+            try:
+                async with self.store._unit() as session:
+                    if command["action"] == "cancel":
+                        await session.execute(
+                            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                            {
+                                "key": "forge:execution-request-admission:" + self.store.schema,
+                            },
+                        )
+                    await session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                        {
+                            "key": self.store.schema + ":members:" + context["project_id"],
+                        },
+                    )
+                    await ForgeIdentityUserRepository().find_by_id(actor.id, lock=LockMode.PESSIMISTIC_WRITE)
+                    await self._repo_lock(initial["repository_id"])
+                    locked = await self.store.run_records.find_by_id(
+                        identifier(context["run_id"]), lock=LockMode.PESSIMISTIC_WRITE
+                    )
+                    if locked is None:
+                        raise AccessDenied("The delegated run is unavailable")
+                    permission: Permission = "read" if command["action"] == "status" else "execute"
+                    await ProjectAccess(self.store).authorize_actor(
+                        ProjectAccess.actor_snapshot(actor), context["project_id"], permission
+                    )
+                    if locked.data.get("publish") and command["action"] != "status":
+                        await ProjectAccess(self.store).authorize_actor(
+                            ProjectAccess.actor_snapshot(actor), context["project_id"], "release"
+                        )
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    if row.status != "received":
+                        return copy.deepcopy(row.data)
+                    settings = await self.settings(initial["repository_id"])
+                    repository = await self.store.repository(initial["repository_id"])
+                    reason = self._allowed(
+                        repository,
+                        settings,
+                        row.data,
+                        row.provider,
+                        channel_snapshot=self.store.configuration._read(
+                            self.store.configuration.directory / "channel-bootstrap.json"
+                        ).get(row.provider, {}),
+                    )
+                    allowed = [*settings["allowed_commands"], *settings.get("channel_commands", [])]
+                    if reason or command["action"] not in allowed:
+                        await self._write_row(
+                            row, status="denied", reason=reason or "command_disabled", action_status="not_dispatched"
+                        )
+                        return copy.deepcopy(row.data)
+                    if CURRENT_PRINCIPAL.get() != actor:
+                        raise AccessDenied("The delegated action context changed before admission")
+                    self.store.reject_credentials(row.data)
+                    await self._write_row(
+                        row,
+                        status="needs_reconciliation",
+                        reason="channel_action_pending",
+                        action_status="writing",
+                        scm_execution_actor=ProjectAccess.actor_snapshot(actor),
+                    )
+                    if command["action"] == "cancel":
+                        assert self.store.execution_requests is not None
+                        result = await self.store.execution_requests.request_cancel(context["run_id"])
+                        await self._write_row(
+                            row,
+                            status="processed",
+                            reason=None,
+                            action_status="completed",
+                            action_result={"request_id": result["id"], "status": result["status"]},
+                            run_id=context["run_id"],
+                        )
+                        return copy.deepcopy(row.data)
+            except AccessDenied:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    if row.status == "received":
+                        await self._write_row(
+                            row, status="denied", reason="scm_authority_setup_required", action_status="not_dispatched"
+                        )
+                    return copy.deepcopy(row.data)
+            try:
+                if command["action"] == "respond":
+                    from firefly_forge.journal import Journal
+
+                    journal = self.deployments.engine.journal if self.deployments else Journal(self.store)
+                    await journal.worker_response(
+                        context["run_id"],
+                        command["request_id"],
+                        WorkerResponse(
+                            id=receipt_id,
+                            actor=initial["actor"],
+                            answer=command["answer"],
+                        ),
+                    )
+                run = await self.store.get_run(context["run_id"])
+                await ProjectAccess(self.store).authorize_actor(
+                    ProjectAccess.actor_snapshot(actor), context["project_id"], permission
+                )
+                result = {"run_id": run["id"], "status": run["status"]}
+                await self.store.admit_credentials(result)
+                await ProjectAccess(self.store).authorize_actor(
+                    ProjectAccess.actor_snapshot(actor), context["project_id"], permission
+                )
+                if CURRENT_PRINCIPAL.get() != actor:
+                    raise AccessDenied("The delegated action context changed before return")
+                self.store.reject_credentials(result)
+            except Exception:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(
+                        row, reason="channel_action_outcome_unknown", action_status="needs_reconciliation"
+                    )
+            else:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(
+                        row,
+                        status="processed",
+                        reason=None,
+                        action_status="completed",
+                        action_result=result,
+                        run_id=context["run_id"],
+                    )
+        finally:
+            CURRENT_PRINCIPAL.reset(token)
         return await self.receipt(receipt_id)
 
     async def _process_channel(self, receipt_id: str) -> Data:

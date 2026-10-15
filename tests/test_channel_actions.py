@@ -300,63 +300,73 @@ async def test_reference_intent_is_durable_before_unknown_write_and_manual_recon
 
 
 async def test_signed_configuration_actor_can_answer_worker_request_without_automatic_resume(store, monkeypatch):
-    from types import SimpleNamespace
+    from scm_actor_fixtures import map_native_delivery, native_mapped_channel
 
     from firefly_forge.agent_roles import WorkerFeedback, WorkerRequest
-    from firefly_forge.collaboration import CollaborationSettings
     from firefly_forge.journal import Journal
     from firefly_forge.models import RunInput
 
-    service, collaboration, _ = await channel(store, monkeypatch)
-    raw, headers = signed()
-    received = await service.receive("github", raw, headers)
-    repository_id = received["repository_ids"][0]
-    await collaboration.configure(
-        repository_id,
-        CollaborationSettings(
-            enabled=True, trusted_actors=["7"], configuration_actors=["7"], channel_commands=["respond"]
-        ),
-    )
-    run = await store.create_run(RunInput(repository_id=repository_id, brief="Build", backend="pyfly", frontend="none"))
-    journal = Journal(store)
-    await journal.ensure_plan(run["id"])
-    await journal.worker_feedback(
-        run["id"],
-        WorkerFeedback(
-            id="feedback-1",
-            role_id="implementer",
-            task_id="implement",
-            attempt=1,
-            disposition="clarification",
-            summary="Customer needed",
-            request=WorkerRequest(
-                id="request-1", kind="product_definition", question="Which customer?", context="No owner provided"
+    service, collaboration, repository, project, client = await native_mapped_channel(store)
+    try:
+        repository_id = repository["id"]
+        run = await store.create_run(
+            RunInput(
+                repository_id=repository_id,
+                project_id=project["id"],
+                component_id="api",
+                brief="Build",
+                backend="pyfly",
+                frontend="none",
+            )
+        )
+        journal = Journal(store)
+        await journal.ensure_plan(run["id"])
+        await journal.worker_feedback(
+            run["id"],
+            WorkerFeedback(
+                id="feedback-1",
+                role_id="implementer",
+                task_id="implement",
+                attempt=1,
+                disposition="clarification",
+                summary="Customer needed",
+                request=WorkerRequest(
+                    id="request-1", kind="product_definition", question="Which customer?", context="No owner provided"
+                ),
             ),
-        ),
-    )
-    collaboration.deployments = SimpleNamespace(engine=SimpleNamespace(poller=None, journal=journal))
-    posted = []
+        )
+        posted = []
 
-    async def comment(repo, payload, issue):
-        posted.append(payload)
-        return {"id": "comment-1"}
+        async def comment(repo, payload, issue):
+            posted.append(payload)
+            return {"id": "comment-1"}
 
-    monkeypatch.setattr(collaboration, "_remote_write", comment)
-    command = "/forge respond " + json.dumps({"run_id": run["id"], "request_id": "request-1", "answer": "Support team"})
-    raw, headers = signed(command, delivery="worker-answer")
-    body = json.loads(raw)
-    body["comment"]["id"] = 92
-    raw = json.dumps(body).encode()
-    headers["X-Hub-Signature-256"] = "sha256=" + hmac.new(b"global-webhook-secret", raw, hashlib.sha256).hexdigest()
-    receipt = await service.receive("github", raw, headers)
-    result = await collaboration.process(receipt["repository_receipt_id"])
-    assert result["status"] == "processed", result.get("reason")
-    messages = await journal.worker_messages(run["id"])
-    assert messages[-1]["payload"]["actor"] == "7"
-    assert messages[-1]["payload"]["answer"] == "Support team"
-    assert (await store.get_run(run["id"]))["status"] == "paused"
-    await collaboration.process(receipt["repository_receipt_id"])
-    assert len(await journal.worker_messages(run["id"])) == len(messages)
+        monkeypatch.setattr(collaboration, "_remote_write", comment)
+        command = "/forge respond " + json.dumps(
+            {"run_id": run["id"], "request_id": "request-1", "answer": "Support team"}
+        )
+        raw, headers = signed(command, delivery="worker-answer")
+        body = json.loads(raw)
+        body["comment"]["id"] = 92
+        body["installation"] = {"id": 34}
+        raw = json.dumps(body).encode()
+        headers["X-Hub-Signature-256"] = "sha256=" + hmac.new(b"global-webhook-secret", raw, hashlib.sha256).hexdigest()
+        receipt = await service.receive("github", raw, headers)
+        delivery = await collaboration.receipt(receipt["repository_receipt_id"])
+        mapping = await map_native_delivery(store, collaboration, project, repository, delivery)
+        result = await collaboration.process(receipt["repository_receipt_id"])
+        assert result["status"] == "processed", result.get("reason")
+        messages = await journal.worker_messages(run["id"])
+        assert messages[-1]["payload"]["actor"] == "7"
+        assert messages[-1]["payload"]["answer"] == "Support team"
+        assert messages[-1]["payload"]["responding_actor"]["version"] == 2
+        assert messages[-1]["payload"]["responding_actor"]["provenance"]["binding_digest"] == mapping["digest"]
+        assert (await store.get_run(run["id"]))["status"] == "paused"
+        await collaboration.process(receipt["repository_receipt_id"])
+        assert len(await journal.worker_messages(run["id"])) == len(messages)
+
+    finally:
+        await client.aclose()
 
 
 async def test_project_channel_configuration_requires_every_member_actor_and_grant(store, monkeypatch):
