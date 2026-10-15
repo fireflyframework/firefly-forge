@@ -30,7 +30,11 @@ from firefly_forge.journal import Journal, digest
 from firefly_forge.knowledge import KnowledgeManager, snapshot_knowledge
 from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_configuration import frozen_learning
-from firefly_forge.learning_models import LearningContext
+from firefly_forge.learning_models import (
+    LearningContext,
+    LearningProjectionCitation,
+    LearningProjectionObservationReceipt,
+)
 from firefly_forge.learning_persistence import ForgeLearningProjectionEntity, ForgeLearningRecordEntity
 from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
 from firefly_forge.store import Store, identifier
@@ -79,7 +83,60 @@ class LearningProjection:
                 "record_id": record.id.hex,
                 "state": row.state,
                 **copy.deepcopy({key: value for key, value in row.data.items() if key != "payload"}),
+                "payload_digest": row.payload_digest,
             }
+
+    async def observation_receipt(self, record_id: str, request_id: str) -> Data:
+        identifier(request_id)
+        async with self.store._unit():
+            record = await self._record(record_id, review=True)
+            event = await self.ledger.events.for_request(record.id, request_id)
+            if event is None or event.data.get("kind") != "projection_observation":
+                raise KeyError("Learning projection observation request not observed")
+            data = event.data
+            payload = data.get("payload")
+            if (
+                event.digest != data.get("digest")
+                or event.digest != digest({key: value for key, value in data.items() if key != "digest"})
+                or data.get("record_id") != record.id.hex
+                or data.get("run_id") != record.run_id.hex
+                or data.get("request_id") != request_id
+                or data.get("sequence") != event.sequence
+                or not isinstance(payload, dict)
+                or payload.get("state") != "verified"
+            ):
+                raise ValueError("Learning projection observation receipt integrity check failed")
+            projection = await self._projection(record)
+            result = {
+                "event_id": event.id.hex,
+                "record_id": record.id.hex,
+                "repository_id": record.repository_id.hex,
+                "run_id": record.run_id.hex,
+                "request_id": request_id,
+                "kind": "projection_observation",
+                "event_state": "verified",
+                "current_record_state": record.state,
+                "current_projection_state": projection.state,
+                "actor_id": data.get("actor_id"),
+                **{
+                    key: payload.get(key)
+                    for key in (
+                        "projection_id",
+                        "submission_request_id",
+                        "workspace_id",
+                        "target_revision",
+                        "payload_digest",
+                    )
+                },
+                "source_id": payload.get("source_id"),
+                "content_sha256": payload.get("content_sha256"),
+                "citations": payload.get("citations"),
+                "created_at": data["created_at"],
+                "sequence": event.sequence,
+                "digest": event.digest,
+            }
+            await self.store.admit_credentials(result)
+            return LearningProjectionObservationReceipt.model_validate(result).model_dump(mode="json")
 
     @staticmethod
     def _body(payload: Data) -> bytes:
@@ -100,6 +157,22 @@ class LearningProjection:
             "state": row.state,
             "payload_digest": row.payload_digest,
             "mapping_digest": digest(row.data),
+        }
+
+    @staticmethod
+    def _observation_identity(row: ForgeLearningProjectionEntity) -> Data:
+        payload = row.data["payload"]
+        content_sha256 = hashlib.sha256(LearningProjection._body(payload)).hexdigest()
+        if digest(payload) != row.payload_digest or row.data.get("content_sha256") != content_sha256:
+            raise ValueError("Learning projection admission identity does not match its content")
+        return {
+            "projection_id": row.id.hex,
+            "record_id": row.record_id.hex,
+            "payload_digest": row.payload_digest,
+            "target": copy.deepcopy(row.data["target"]),
+            "workspace_id": row.data["workspace_id"],
+            "submission_request_id": row.data["request_id"],
+            "content_sha256": content_sha256,
         }
 
     def _same_target(self, run: Data, target: Data | None) -> bool:
@@ -397,17 +470,18 @@ class LearningProjection:
                     raise ValueError("Learning submission may still be running; wait for its bounded lease")
             if row.data.get("source_id") and selected != row.data["source_id"]:
                 raise ValueError("Projection already belongs to another admitted source")
-            settings = self.knowledge.settings({"knowledge_snapshot": row.data["target"]})
-            body = self._body(row.data["payload"])
-            workspace = row.data["workspace_id"]
+            identity = self._observation_identity(row)
+            settings = self.knowledge.settings({"knowledge_snapshot": identity["target"]})
+            workspace = identity["workspace_id"]
         async with self.knowledge.client(settings, workspace) as client:
             source = await client.get_source(selected)
             if (
-                source.filename != "forge-learning-" + record_id + ".json"
-                or source.content_sha256 != hashlib.sha256(body).hexdigest()
+                source.id != selected
+                or source.filename != "forge-learning-" + record_id + ".json"
+                or source.content_sha256 != identity["content_sha256"]
                 or source.metadata is None
                 or source.metadata.extra.get("learning_record_id") != record_id
-                or source.metadata.extra.get("payload_digest") != row.payload_digest
+                or source.metadata.extra.get("payload_digest") != identity["payload_digest"]
                 or source.status != "ingested"
                 or source.n_chunks < 1
             ):
@@ -418,8 +492,9 @@ class LearningProjection:
                 for hit in found.hits
                 if hit.source_id == selected and hit.chunk_id
             ]
-            if not citations:
-                raise ValueError("Learning source has no admitted retrievable citations")
+            if not citations or len(citations) > 8:
+                raise ValueError("Learning source has no bounded admitted retrievable citations")
+            citations = [LearningProjectionCitation.model_validate(item).model_dump() for item in citations]
         async with self.store._unit():
             record = await self._record(record_id, review=True)
             await self.journal._run(record.run_id.hex)
@@ -427,12 +502,28 @@ class LearningProjection:
             if record.state != "verified":
                 raise ValueError("Learning evidence was invalidated before source observation")
             row = await self._projection(record)
+            if self._observation_identity(row) != identity:
+                raise ValueError("Learning projection admission identity changed during observation")
+            if row.data.get("source_id") and row.data["source_id"] != selected:
+                raise ValueError("Projection already belongs to another admitted source")
             if row.state == "verified":
                 if row.data["source_id"] != selected:
                     raise ValueError("Projection already belongs to another verified source")
                 return await self.status(record_id)
             if row.state not in {"executing", "source_admitted", "unknown"}:
                 raise ValueError("Projection has no remote outcome to reconcile")
+            observation = {
+                "projection_id": identity["projection_id"],
+                "submission_request_id": identity["submission_request_id"],
+                "workspace_id": identity["workspace_id"],
+                "target_revision": identity["target"]["revision"],
+                "payload_digest": identity["payload_digest"],
+                "source_id": selected,
+                "content_sha256": identity["content_sha256"],
+                "citations": citations,
+                "state": "verified",
+            }
+            await self.store.admit_credentials(observation)
             row.state = "verified"
             await self.knowledge._assert_ownership()
             row.data = {
@@ -443,15 +534,5 @@ class LearningProjection:
                 "reconciliation_id": request_id,
             }
             await self.ledger.projections.save(row)
-            await self.ledger._append(
-                record,
-                request_id,
-                "projection_observation",
-                {
-                    "source_id": selected,
-                    "content_sha256": source.content_sha256,
-                    "citations": citations,
-                    "state": "verified",
-                },
-            )
+            await self.ledger._append(record, request_id, "projection_observation", observation)
         return await self.status(record_id)

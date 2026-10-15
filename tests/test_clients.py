@@ -52,6 +52,7 @@ async def test_mcp_tools_have_real_input_contracts():
         "list_learning_records",
         "invalidate_learning",
         "get_learning_invalidation_receipt",
+        "get_learning_projection_observation_receipt",
         "get_learning_projection",
         "submit_learning_projection",
         "observe_learning_projection",
