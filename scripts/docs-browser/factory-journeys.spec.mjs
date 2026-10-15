@@ -10,10 +10,12 @@ const flows = [
   {
     name: "Product project and campaign relationships diagram",
     nodes: ["Product", "Project", "Component", "Campaign", "Run", "Evidence"],
+    phases: ["ContractPhase", "ScopePhase", "EvidencePhase"],
   },
   {
     name: "Source control conversation and factory feedback diagram",
     nodes: ["Comment", "Inbox", "Intent", "Action", "Receipt", "Reply"],
+    phases: ["RequestPhase", "ActionPhase", "FeedbackPhase"],
   },
 ];
 
@@ -28,7 +30,7 @@ for (const width of [1440, 390]) {
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto("/factory-journeys/");
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Understand the factory and follow a delivery",
+        /^Understand the factory and follow a delivery\s*¶?$/,
       );
       await expect
         .poll(async () => (await renderedDiagrams(page)).length)
@@ -47,9 +49,13 @@ for (const width of [1440, 390]) {
           ),
         );
         expect(nodes.every(Boolean)).toBe(true);
-        for (let position = 1; position < nodes.length; position++)
-          expect(nodes[position].left).toBeGreaterThan(
-            nodes[position - 1].right,
+        const phases = flow.phases.map((id) =>
+          diagram.phases.find((phase) => phase.id.endsWith("-" + id)),
+        );
+        expect(phases.every(Boolean)).toBe(true);
+        for (let position = 1; position < phases.length; position++)
+          expect(phases[position].left).toBeGreaterThan(
+            phases[position - 1].right,
           );
         expect(diagram.error).toBe(false);
         expect(Math.min(...diagram.labelPixels)).toBeGreaterThanOrEqual(12);

@@ -29,25 +29,35 @@ The example throughout this guide is an inventory product. Warehouse operators r
 
 The journey strings and feature IDs have different meanings. Features refer to the exact journey text; acceptance references use `acceptance-1`, `acceptance-2` and so on. A visual product can also keep journey-specific reference views and design evidence. See [product definition](product-definition.md), [feature changes](product-lifecycle.md) and [design review](design-review.md).
 
-<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Product project and campaign relationships diagram" aria-describedby="concept-flow-guide" tabindex="0" markdown="1">
+<div class="forge-flow" role="region" aria-label="Product project and campaign relationships diagram" aria-describedby="concept-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
 ---
 config:
   flowchart:
     wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
 ---
 flowchart LR
-  Product[Product definition] -->|canonical repository| Project[Product project]
-  Project --> Component[Configured components]
-  Component -->|selected scope| Campaign[Delivery campaign]
-  Campaign --> Run[Child runs]
-  Run --> Evidence[Tasks and retained evidence]
+  subgraph ContractPhase["1. Define the product"]
+    direction TB
+    Product[Product definition] --> Project[Product project]
+  end
+  subgraph ScopePhase["2. Select delivery scope"]
+    direction TB
+    Component[Configured components] --> Campaign[Delivery campaign]
+  end
+  subgraph EvidencePhase["3. Inspect execution"]
+    direction TB
+    Run[Child runs] --> Evidence[Tasks and retained evidence]
+  end
+  ContractPhase --> ScopePhase --> EvidencePhase
 ```
 
 </div>
 
-<p class="forge-flow-caption" id="concept-flow-guide">Read from the product contract to execution evidence. Each arrow describes a relationship; saving configuration does not launch the next item. On a small screen, focus the diagram and use the arrow keys to scroll.</p>
+<p class="forge-flow-caption" id="concept-flow-guide">Read the groups from left to right and their relationships from top to bottom. Saving configuration does not launch the next item. On a small screen, focus the diagram and use the arrow keys to scroll.</p>
 
 ## Decide where the source belongs
 
@@ -179,25 +189,35 @@ For a repository whose latest saved product revision is 3, these separate commen
 
 Replace the brief and revision with the actual product decision. The operator owns the provider, permitted checks and command allowlist. A comment cannot grant itself repository access, alter global credentials or bypass deployment approval.
 
-<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source control conversation and factory feedback diagram" aria-describedby="channel-flow-guide" tabindex="0" markdown="1">
+<div class="forge-flow" role="region" aria-label="Source control conversation and factory feedback diagram" aria-describedby="channel-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
 ---
 config:
   flowchart:
     wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
 ---
 flowchart LR
-  Comment[Authorized repository comment] --> Inbox[Verified webhook inbox]
-  Inbox --> Intent[Retained action intent]
-  Intent --> Action[Permitted factory action]
-  Action --> Receipt[Outcome and feedback intent]
-  Receipt --> Reply[Repository conversation reply]
+  subgraph RequestPhase["1. Receive the request"]
+    direction TB
+    Comment[Authorized repository comment] --> Inbox[Verified webhook inbox]
+  end
+  subgraph ActionPhase["2. Admit the operation"]
+    direction TB
+    Intent[Retained action intent] --> Action[Permitted factory action]
+  end
+  subgraph FeedbackPhase["3. Return the outcome"]
+    direction TB
+    Receipt[Outcome and feedback intent] --> Reply[Repository conversation reply]
+  end
+  RequestPhase --> ActionPhase --> FeedbackPhase
 ```
 
 </div>
 
-<p class="forge-flow-caption" id="channel-flow-guide">The provider carries the incoming event and outgoing feedback. forge records the operation between them. A missing reply can leave an unresolved outcome; it does not authorize repeating the action.</p>
+<p class="forge-flow-caption" id="channel-flow-guide">Follow the groups from left to right and the steps within each group from top to bottom. The provider carries incoming events and outgoing feedback; forge records the operation between them. A missing reply can leave an unresolved outcome and does not authorize repeating the action.</p>
 
 Synchronization follows explicit events and operations:
 

@@ -151,15 +151,35 @@ The snapshot allows 200 child attempts, 1,024 campaign events, 128 tasks per cur
 
 Archiving is an explicit operation. First read a report, keep its digest, and choose a stable request ID before sending `POST /api/v1/projects/{project_id}/campaigns/{campaign_id}/report-archives` with `request_id` and `expected_report_digest`. The server captures the same evidence cut and its complete historical repository manifest in one read-only transaction. A changed digest refuses the archive. A coherent `unknown`, blocked or running report may be saved with that state; an unavailable integrity or limit result with `counts: null` cannot be archived.
 
+<div class="forge-flow" role="region" aria-label="Campaign report archive and recovery diagram" aria-describedby="archive-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
+---
 flowchart LR
-  A[Selected saved-evidence cut] --> B[Current access and credential admission]
-  B --> C[Same request identity, sequence and quota checks]
-  C --> D[Immutable PostgreSQL receipt]
-  D --> E[Exact SDK, CLI or MCP read]
-  C -. Response lost .-> F[Keep the same request ID]
-  F --> E
+  subgraph SelectPhase["1. Select the evidence"]
+    direction TB
+    A[Read the selected report] --> B[Admit current access]
+  end
+  subgraph SavePhase["2. Save once"]
+    direction TB
+    C[Check identity and quotas] --> D[Immutable PostgreSQL receipt]
+  end
+  subgraph ReadPhase["3. Read the outcome"]
+    direction TB
+    F[Keep the original request ID] --> E[Read its exact receipt]
+  end
+  SelectPhase --> SavePhase --> ReadPhase
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="archive-flow-guide">Follow the groups from left to right and their steps from top to bottom. Read the exact receipt after a successful response or lost delivery. Keep the original request identity while the outcome is unresolved. Focus the diagram and use the arrow keys to scroll on a small screen.</p>
 
 Archiving requires current project execute permission and read access to every repository in the captured history, including prior attempts. Reading a saved report requires current read permissions for that same manifest. Credential admission also applies to retained reports and summaries. Losing access or registering a matching credential can therefore prevent a later read; saving a report does not grant access to it.
 
