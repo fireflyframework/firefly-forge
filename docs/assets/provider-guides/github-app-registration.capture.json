@@ -1,0 +1,16 @@
+{
+  "copyright": "Copyright 2026 Firefly Software Foundation",
+  "license": "Apache-2.0",
+  "captured_at": "2026-10-15T22:02:56.332999+00:00",
+  "source": "GitHub organization application settings",
+  "workflow": "GitHub App registration",
+  "status": "registration_confirmed_installation_not_performed",
+  "image": "github-app-registration.jpg",
+  "sha256": "787f91022b9a5a42348accc0ac0bd3c4ad75d32cbd654bd9d797ab8da5edc85f",
+  "contains_credentials": false,
+  "refresh_when": [
+    "GitHub registration UI changes",
+    "Documented setup workflow changes"
+  ],
+  "review": "Directly viewed; crop excludes personal account controls. App and client identifiers are public identifiers, not secrets."
+}
