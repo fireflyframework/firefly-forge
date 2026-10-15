@@ -47,6 +47,10 @@ async def test_mcp_tools_have_real_input_contracts():
         "handoff_run",
         "list_source_connections",
         "connect_granted_repository",
+        "list_scm_actor_binding_candidates",
+        "configure_scm_actor_binding",
+        "list_scm_actor_bindings",
+        "get_scm_actor_binding",
         "search_project_knowledge",
         "index_verified_source",
         "remember_verified_run",
@@ -181,6 +185,10 @@ async def test_mcp_tools_have_real_input_contracts():
     assert tools["get_learning_projection_observation_attempt"].input_schema["required"] == ["record_id", "attempt_id"]
     assert tools["observe_learning_projection_attempt"].annotations.read_only_hint is False
     assert tools["get_learning_projection_observation_attempt"].annotations.read_only_hint is True
+    assert tools["list_scm_actor_binding_candidates"].input_schema["required"] == ["project_id", "repository_id"]
+    assert tools["configure_scm_actor_binding"].input_schema["required"] == ["project_id", "repository_id", "request"]
+    assert tools["list_scm_actor_bindings"].input_schema["required"] == ["project_id", "repository_id"]
+    assert tools["get_scm_actor_binding"].input_schema["required"] == ["project_id", "repository_id", "request_id"]
 
 
 def test_cli_version_and_command_help():
