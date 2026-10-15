@@ -1754,6 +1754,7 @@ for (const device of ["desktop", "mobile"])
           ? { width: 1440, height: 900 }
           : { width: 390, height: 844 },
       );
+      const sourceRepository = { ...repository, id: "b".repeat(32) };
       const project = {
         id: "c".repeat(32),
         definition: {
@@ -1766,10 +1767,10 @@ for (const device of ["desktop", "mobile"])
             {
               id: "api",
               name: "Inventory API",
-              repository_id: repository.id,
+              repository_id: sourceRepository.id,
               path: "apps/api",
               kind: "api",
-              backend: "none",
+              backend: "pyfly",
               frontend: "none",
               verification: [],
               depends_on: [],
@@ -1778,7 +1779,7 @@ for (const device of ["desktop", "mobile"])
             {
               id: "portal",
               name: "Customer portal",
-              repository_id: repository.id,
+              repository_id: sourceRepository.id,
               path: "apps/portal",
               kind: "web",
               backend: "none",
@@ -1801,14 +1802,14 @@ for (const device of ["desktop", "mobile"])
       const declarations = [
         {
           kind: "http_route",
-          value: "GET /stock",
+          value: "/stock",
           path: "apps/api/app.py",
           line: 12,
-          excerpt: '@app.get("/stock")',
+          excerpt: '@get_mapping("/stock")',
         },
         {
           kind: "declared_dependency",
-          value: "react ^19.0.0",
+          value: '"react": "^19.0.0"',
           path: "apps/portal/package.json",
           line: 8,
           excerpt: '"react": "^19.0.0"',
@@ -1819,7 +1820,7 @@ for (const device of ["desktop", "mobile"])
         const request = route.request(),
           path = new URL(request.url()).pathname;
         let json: unknown = {};
-        if (path.endsWith("/repositories")) json = [repository];
+        if (path.endsWith("/repositories")) json = [sourceRepository];
         if (
           ["/runs", "/providers", "/deployment-targets"].some((suffix) =>
             path.endsWith(suffix),
@@ -1974,8 +1975,10 @@ for (const device of ["desktop", "mobile"])
         .click();
       for (const declaration of declarations) {
         await expect(
-          dialog.getByText(declaration.value, { exact: true }),
-        ).toBeAttached();
+          dialog
+            .locator(".source-fact > p")
+            .filter({ hasText: declaration.value }),
+        ).toHaveText(declaration.value);
         await expect(
           dialog.getByText(`${declaration.path}:${declaration.line}`, {
             exact: true,
