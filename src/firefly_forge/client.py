@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel
 
 from firefly_forge.models import RepositoryInput, RunInput
 
@@ -24,6 +25,12 @@ if TYPE_CHECKING:
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.task_routing import TaskRoutingInput
+    from firefly_forge.user_administration import (
+        AdministrationReconciliation,
+        AdministrationRecovery,
+        UserInviteInput,
+        UserProvisionInput,
+    )
 
 
 class ForgeClient:
@@ -484,6 +491,50 @@ class ForgeClient:
 
     def identity_operations(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "identity/operations"))
+
+    @staticmethod
+    def _identity_body(model: type[BaseModel], request: BaseModel | dict[str, Any]) -> dict[str, Any]:
+        try:
+            return model.model_validate(request, strict=True).model_dump(mode="json")
+        except ValueError:
+            # Validation must not reflect forbidden passwords or role shortcuts.
+            raise ValueError("Invalid identity administration request") from None
+
+    def set_identity_user_enabled(self, user_id: str, enabled: bool) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserEnabledInput
+
+        body = self._identity_body(UserEnabledInput, {"enabled": enabled})
+        return dict(self.request("PUT", f"identity/users/{self._id(user_id)}", json=body))
+
+    def provision_identity_user(self, request: UserProvisionInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserProvisionInput
+
+        body = self._identity_body(UserProvisionInput, request)
+        return dict(self.request("POST", "identity/users", json=body))
+
+    def invite_identity_user(self, user_id: str, request: UserInviteInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.user_administration import UserInviteInput
+
+        body = self._identity_body(UserInviteInput, request)
+        return dict(self.request("POST", f"identity/users/{self._id(user_id)}/invite", json=body))
+
+    def reconcile_identity_operation(
+        self, operation_id: str, request: AdministrationReconciliation | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.user_administration import AdministrationReconciliation
+
+        body = self._identity_body(AdministrationReconciliation, request)
+        return dict(self.request("POST", f"identity/operations/{self._id(operation_id)}/reconcile", json=body))
+
+    def recover_identity_operation(
+        self, operation_id: str, request: AdministrationRecovery | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.user_administration import AdministrationRecovery
+
+        if isinstance(request, dict) and request.get("owner_stopped") is not True:
+            raise ValueError("Explicit owner-stopped confirmation is required")
+        body = self._identity_body(AdministrationRecovery, request)
+        return dict(self.request("POST", f"identity/operations/{self._id(operation_id)}/recover", json=body))
 
     def save_agent_roles(self, document: RoleDocument | dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.agent_roles import RoleDocument

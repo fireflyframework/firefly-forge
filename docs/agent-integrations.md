@@ -113,7 +113,7 @@ Save the `document` object from the registry response, rather than the whole res
 
 ## Read role lifecycle and identity administration
 
-These clients read the existing native API. They do not create users, change membership, send invitations or reconcile an identity operation.
+The following reads use the existing native API without creating users, changing membership, sending invitations or reconciling an identity operation.
 
 | Read | Python method | CLI command | MCP tool |
 | --- | --- | --- | --- |
@@ -127,6 +127,24 @@ These clients read the existing native API. They do not create users, change mem
 Global lifecycle requires authentication. Repository lifecycle requires current repository read permission; its returned edit flags describe current authority. Finding eligible users requires project membership-administration permission, a query of 3 to 120 characters and an enabled registered identity. The server returns at most 20 matches and treats wildcard characters literally. The registered-user directory, administration readiness and operation receipts require current factory administrator authority.
 
 The clients preserve the server's bounded contact fields, permission flags and readiness distinctions. A configured administration connection does not prove user provisioning or mail delivery. Reading a retained operation preserves its status and journal evidence without retrying an unknown effect. These six reads are a bounded addition; they do not establish universal API, SDK, CLI and MCP parity.
+
+## Identity writes
+
+Five identity mutations use the existing administrator-only routes and native input models. They grant no new permissions or project memberships. Python methods accept the native request model or an equivalent dictionary; local user and operation IDs are validated before dispatch.
+
+| Write | Python method and MCP tool | CLI command |
+| --- | --- | --- |
+| Enable or suspend a local identity | `set_identity_user_enabled` | `forge identity set-enabled USER_ID --enable` or `--disable` |
+| Request provider-managed account creation | `provision_identity_user` | `forge identity provision user.json` |
+| Request a separate invitation | `invite_identity_user` | `forge identity invite USER_ID --request-id REQUEST_ID` |
+| Reconcile an inspected uncertain outcome | `reconcile_identity_operation` | `forge identity reconcile OPERATION_ID --outcome OUTCOME --note "Inspection evidence"` |
+| Confirm an interrupted owner has stopped | `recover_identity_operation` | `forge identity recover OPERATION_ID --request-id REQUEST_ID --owner-stopped --note "Owner stopped"` |
+
+`user.json` uses `UserProvisionInput`: a stable 32-character hexadecimal `request_id`, `username`, and optional `email`, `first_name` and `last_name`. Passwords, role shortcuts and caller-supplied provider results are rejected. Enable/suspend requires an actual boolean in Python or MCP and an explicit CLI flag. MCP marks all five tools as mutations.
+
+Python `invite_identity_user(user_id, request)` takes `UserInviteInput`; MCP accepts `user_id` and `request_id` directly. Reconciliation takes `AdministrationReconciliation` under the MCP `request` argument. `created` requires the exact provider `subject`, passed as `--subject` in the CLI; the server freshly checks the provider account's original request markers. The other outcomes retain the server's explicit operator-attestation labels. Recovery takes `AdministrationRecovery`: `request_id`, `owner_stopped: true` and `note`. It fences an executing operation for reconciliation and does not submit another remote effect.
+
+Each client dispatches once and preserves the returned receipt. An identical provision or invitation request returns its existing receipt without repeating the effect. After a transport failure, inspect `forge identity operations` before deciding what to do; no client retries automatically or invents an outcome. Unknown operations require inspection and explicit reconciliation. Reconciliation is not a replay-safe polling action, and mail provider acceptance still does not prove delivery. Read [user administration](user-administration.md) before using these writes. Coverage of all other API routes remains separate.
 
 ## Python client
 

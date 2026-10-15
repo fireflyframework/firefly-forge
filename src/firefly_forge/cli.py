@@ -307,7 +307,7 @@ def find_project_eligible_users(identifier: str, query: str) -> None:
 
 @main.group()
 def identity() -> None:
-    """Read administrator-only identity catalogs and retained operation receipts."""
+    """Inspect identity receipts and request explicit administrator-only changes."""
 
 
 @identity.command("users")
@@ -326,6 +326,68 @@ def identity_administration() -> None:
 def list_identity_operations() -> None:
     with client() as connection:
         display(connection.identity_operations())
+
+
+@identity.command("set-enabled")
+@click.argument("user_id")
+@click.option("--enable/--disable", "enabled", default=None, required=True)
+def set_identity_user_enabled(user_id: str, enabled: bool | None) -> None:
+    """Enable or suspend a registered local identity; revoked sessions stay revoked."""
+    if enabled is None:
+        raise click.ClickException("Choose explicit --enable or --disable")
+    with client() as connection:
+        display(connection.set_identity_user_enabled(user_id, enabled))
+
+
+@identity.command("provision")
+@click.argument("request", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def provision_identity_user(request: Path) -> None:
+    """Request provider-managed creation from nonsecret JSON with a stable request ID."""
+    with client() as connection:
+        display(connection.provision_identity_user(json_document(request)))
+
+
+@identity.command("invite")
+@click.argument("user_id")
+@click.option("--request-id", required=True)
+def invite_identity_user(user_id: str, request_id: str) -> None:
+    """Request a separate invitation; provider acceptance does not prove delivery."""
+    with client() as connection:
+        display(connection.invite_identity_user(user_id, {"request_id": request_id}))
+
+
+@identity.command("reconcile")
+@click.argument("operation_id")
+@click.option(
+    "--outcome", type=click.Choice(["created", "not_created", "provider_accepted", "not_accepted"]), required=True
+)
+@click.option("--subject", default=None, help="Exact provider subject required for a created account.")
+@click.option("--note", required=True)
+def reconcile_identity_operation(operation_id: str, outcome: str, subject: str | None, note: str) -> None:
+    """Record an inspected uncertain outcome using the server's existing checks."""
+    with client() as connection:
+        display(
+            connection.reconcile_identity_operation(
+                operation_id, {"outcome": outcome, "subject": subject, "note": note}
+            )
+        )
+
+
+@identity.command("recover")
+@click.argument("operation_id")
+@click.option("--request-id", required=True)
+@click.option("--owner-stopped", is_flag=True, help="Confirm the original execution owner has stopped.")
+@click.option("--note", required=True)
+def recover_identity_operation(operation_id: str, request_id: str, owner_stopped: bool, note: str) -> None:
+    """Fence an interrupted operation for reconciliation; never repeat its effect."""
+    if not owner_stopped:
+        raise click.ClickException("Explicit --owner-stopped confirmation is required")
+    with client() as connection:
+        display(
+            connection.recover_identity_operation(
+                operation_id, {"request_id": request_id, "owner_stopped": owner_stopped, "note": note}
+            )
+        )
 
 
 @project.command("save")

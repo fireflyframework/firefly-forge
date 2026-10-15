@@ -13,7 +13,7 @@ After actual failed QA, the captured learning policy can hold the next same-run 
 
 The runtime retains the qualified public pyfly 26.10.6, fireflyframework-agentic 26.10.1 and flycanon SDK 26.10.3 dependencies. Existing admitted runs retain their captured settings. Studio record inspection is read-only; lifecycle writes still require their reviewed operator and reconciliation contracts.
 
-SDK, CLI and factory MCP clients add six reads for global and repository role lifecycle, registered users, eligible project members, identity administration and retained identity operations. Each request uses the existing server permission and redaction boundary. The MCP catalog has 114 tools; the 108 earlier contracts remain unchanged. These additions do not introduce user-management writes or grant changes. See [operator integrations](agent-integrations.md).
+SDK, CLI and factory MCP clients add six reads for global and repository role lifecycle, registered users, eligible project members, identity administration and retained identity operations. Each request uses the existing server permission and redaction boundary. Five existing identity writes also gain client bindings for enable/suspend, provisioning, invitation, reconciliation and owner-stopped recovery. They preserve native administrator checks and durable receipts, without new grants or automatic retries. The MCP catalog has 119 tools; the 114 contracts preceding the write bindings remain unchanged. See [operator integrations](agent-integrations.md).
 
 ## 0.2.6
 
