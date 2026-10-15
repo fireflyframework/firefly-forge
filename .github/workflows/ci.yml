@@ -11,14 +11,14 @@ jobs:
   python:
     runs-on: ubuntu-24.04
     env:
-      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
-      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_USER: forge_test
-          POSTGRES_PASSWORD: forge_test
+          POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
           POSTGRES_DB: forge_test
         ports: ["5432:5432"]
         options: >-
@@ -63,14 +63,14 @@ jobs:
   container:
     runs-on: ubuntu-24.04
     env:
-      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
-      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_USER: forge_test
-          POSTGRES_PASSWORD: forge_test
+          POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
           POSTGRES_DB: forge_test
         ports: ["5432:5432"]
         options: >-
@@ -90,14 +90,14 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     env:
-      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
-      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_USER: forge_test
-          POSTGRES_PASSWORD: forge_test
+          POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
           POSTGRES_DB: forge_test
         ports: ["5432:5432"]
         options: >-
