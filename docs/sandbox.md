@@ -103,7 +103,16 @@ Send one authenticated `POST /api/v1/runs/{run_id}/runner-continuations` with a 
 }
 ```
 
-Choose new random UUID hex values for the operator request; the execution identifier must be the existing command's identifier. API replicas only record the request. This first interface is the authenticated native HTTP API; dedicated SDK, CLI, MCP and Studio actions remain separate follow-ups. The active Factory leader verifies the original actor, requesting operator, project, repository, stage attempt, source, profile, owner and WAL before sending the exact scoped request to the trusted controller. The controller checks the native Factory admission and current permissions again before effects. It can claim only that command, before its admission expires and with no external create/start intent. An expired, never-started lease may be claimed with a new controller epoch. Normal resource and project limits still apply. A capacity refusal does not schedule a later wake or select another queued command.
+Choose a new random UUID hex value for the operator request and save it before sending. The execution identifier must be the existing command's identifier. API replicas only record the request. The active Factory leader verifies the original actor, requesting operator, project, repository, stage attempt, source, profile, owner and WAL before sending the exact scoped request to the trusted controller. The controller checks the native Factory admission and current permissions again before effects. It can claim only that command, before its admission expires and with no external create/start intent. An expired, never-started lease may be claimed with a new controller epoch. Normal resource and project limits still apply. A capacity refusal does not schedule a later wake or select another queued command.
+
+The Python client, CLI and factory MCP expose the same request and exact read. The CLI requires both identifiers; none of these adapters generates a replacement identity or retries a failed request. Dedicated Studio controls remain a separate follow-up.
+
+```bash
+forge request-runner-continuation RUN_ID --request-id SAVED_REQUEST_ID --execution-id ORIGINAL_EXECUTION_ID
+forge runner-continuation RUN_ID SAVED_REQUEST_ID
+```
+
+In Python, call `client.request_runner_continuation(run_id, {"request_id": saved_request_id, "execution_id": original_execution_id})` once, then use `client.runner_continuation(run_id, saved_request_id)` to inspect that operation. External agents use `request_runner_continuation(identifier, request)` and the read-only `get_runner_continuation(identifier, request_id)` MCP tools. Retain the request identity in the agent's task record before calling the write tool. If delivery is uncertain, use the read tool rather than allocating another request.
 
 Read `GET /api/v1/runs/{run_id}/runner-continuations/{request_id}` for the retained operation. Neither that read, repeating the same Factory request, nor controller startup dispatches work. The original command's result must still pass its existing credential, authority and workspace-publication checks. An operation marked `completed` with `result.disposition=accepted` confirms continuation admission; it does not prove that the command succeeded or that source was published. Use the original command and run receipts for those outcomes.
 

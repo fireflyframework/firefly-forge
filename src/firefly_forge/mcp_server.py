@@ -20,6 +20,7 @@ from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
+from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.task_routing import TaskRoutingInput
 from firefly_forge.tool_broker import ToolPolicyInput
@@ -42,6 +43,7 @@ IdentityProvisionRequest = Annotated[Any, WithJsonSchema(UserProvisionInput.mode
 IdentityReconciliationRequest = Annotated[Any, WithJsonSchema(AdministrationReconciliation.model_json_schema())]
 IdentityRecoveryRequest = Annotated[Any, WithJsonSchema(AdministrationRecovery.model_json_schema())]
 ObservationAttemptRequest = Annotated[Any, WithJsonSchema(LearningObservationAttemptInput.model_json_schema())]
+RunnerContinuationRequest = Annotated[Any, WithJsonSchema(RunnerContinuationInput.model_json_schema())]
 
 
 def create_server() -> MCPServer:
@@ -124,6 +126,34 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.execution_requests(identifier)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        )
+    )
+    def request_runner_continuation(identifier: str, request: RunnerContinuationRequest) -> dict[str, Any]:
+        """Explicitly admit one original queued command after controller replacement.
+
+        Retain the request ID before calling. Do not retry an uncertain outcome; read that
+        exact operation. Admission acceptance is not command success or source publication.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_runner_continuation(identifier, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_runner_continuation(identifier: str, request_id: str) -> dict[str, Any]:
+        """Read one exact local continuation receipt; missing or unknown never permits replay."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.runner_continuation(identifier, request_id)
 
     @server.tool()
     def reconcile_execution_request(identifier: str, request_id: str, reconciliation_id: str) -> dict[str, Any]:

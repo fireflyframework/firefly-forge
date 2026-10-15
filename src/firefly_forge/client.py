@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.reverse_engineering import AnalysisReview
+    from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
@@ -83,6 +84,20 @@ class ForgeClient:
 
     def execution_requests(self, identifier: str) -> list[dict[str, Any]]:
         return [dict(item) for item in self.request("GET", f"runs/{self._id(identifier)}/execution-requests")]
+
+    def request_runner_continuation(
+        self, identifier: str, request: RunnerContinuationInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.runner_continuations import RunnerContinuationInput
+
+        try:
+            body = RunnerContinuationInput.model_validate(request)
+        except ValueError:
+            raise ValueError("Use exact 32-character request and execution identifiers; no additional fields") from None
+        return dict(self.request("POST", f"runs/{self._id(identifier)}/runner-continuations", json=body.model_dump()))
+
+    def runner_continuation(self, identifier: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(identifier)}/runner-continuations/{self._id(request_id)}"))
 
     def reconcile_execution_request(self, identifier: str, request_id: str, reconciliation_id: str) -> dict[str, Any]:
         from firefly_forge.execution_requests import ExecutionRequestReconciliation

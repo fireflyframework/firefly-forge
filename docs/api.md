@@ -34,6 +34,8 @@ running application's OpenAPI document is the authoritative schema.
 | GET | `/runs/{id}/plan`, `/runs/{id}/journal` | Inspect durable tasks and receipts |
 | GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
 | POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
+| POST | `/runs/{id}/runner-continuations` | Admit one explicit continuation of the original eligible queued pool command |
+| GET | `/runs/{id}/runner-continuations/{request_id}` | Read that exact retained continuation without dispatching work |
 | POST | `/runs/{id}/resume`, `/runs/{id}/handoff` | Continue retained source; optionally select a new worker |
 | GET | `/deployment-targets` | List delivery targets |
 | PUT | `/deployment-targets/{id}` | Configure a delivery target |
@@ -163,6 +165,12 @@ The tools list repositories, register a source, create a local run, inspect
 evidence, cancel work and explicitly publish a verified run. MCP uses the same
 authenticated API and its identity and project permission checks. Keep
 publication within the authorized user's explicit intent.
+
+For an eligible queued command after controller replacement, use the
+[explicit runner continuation](sandbox.md#continue-one-queued-command-after-a-controller-restart).
+Its request ID must be saved before submission. SDK, CLI and MCP do not retry
+an uncertain response. A completed continuation admission does not establish
+command success; inspect the original command and run receipts.
 
 ## Configure connections and project defaults
 

@@ -238,6 +238,27 @@ def reconcile_execution_request(identifier: str, request_id: str, reconciliation
         display(connection.reconcile_execution_request(identifier, request_id, reconciliation_id))
 
 
+@main.command("request-runner-continuation")
+@click.argument("identifier")
+@click.option("--request-id", required=True)
+@click.option("--execution-id", required=True)
+def request_runner_continuation(identifier: str, request_id: str, execution_id: str) -> None:
+    """Explicitly admit one original queued command; acceptance does not mean command success."""
+    with client() as connection:
+        display(
+            connection.request_runner_continuation(identifier, {"request_id": request_id, "execution_id": execution_id})
+        )
+
+
+@main.command("runner-continuation")
+@click.argument("identifier")
+@click.argument("request_id")
+def runner_continuation(identifier: str, request_id: str) -> None:
+    """Read the exact retained operation; this command never dispatches work."""
+    with client() as connection:
+        display(connection.runner_continuation(identifier, request_id))
+
+
 @main.command()
 @click.argument("identifier")
 @click.option("--target", required=True)
