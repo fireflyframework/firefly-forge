@@ -1086,6 +1086,10 @@ for (const device of ["desktop", "mobile"])
           json = {
             ...projection,
             state: receiptReady ? "verified" : "source_admitted",
+            source_status: receiptReady ? "ingested" : "queued",
+            citations: receiptReady
+              ? [{ source_id: source, chunk_id: "fixture-reservation-chunk:1" }]
+              : [],
           };
         else if (
           [
@@ -1294,6 +1298,22 @@ for (const device of ["desktop", "mobile"])
           exact: true,
         }),
       ).toBeVisible();
+      const projectionContractError = page.getByText(
+        "Learning records could not be read. The response does not match this repository's evidence contract.",
+        { exact: true },
+      );
+      const verifiedProjection = page
+        .locator(".learning-record-projection")
+        .getByText("Verified projection", { exact: true });
+      await expect
+        .poll(
+          async () =>
+            (await projectionContractError.isVisible()) ||
+            (await verifiedProjection.isVisible()),
+        )
+        .toBe(true);
+      await expect(projectionContractError).toHaveCount(0);
+      await expect(verifiedProjection).toBeVisible();
       await expect(retained).toContainText(
         "Historical observation: verified. Current record state: invalidated. Current projection state: verified.",
       );

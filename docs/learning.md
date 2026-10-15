@@ -205,6 +205,8 @@ Before the single observation request, Studio saves and reads back its original 
 
 If the response is lost, keep the retained request. After navigation or reload, select the same record and choose **Check original verification**. This only reads the exact receipt. A generic verified projection, another actor or request, a different source or target, and a 404 cannot confirm the original observation or permit replay. A 404 means the event has not been observed and may still be in flight. Legacy receipts with incomplete original provenance remain unresolved. A denied read clears private evidence while retaining the request marker.
 
+If the factory refuses verification before recording an observation, no receipt may exist. Studio currently keeps that request pending and cannot clear or replace it to correct the source. Preserve its original context for review; a 404 does not authorize another request.
+
 Authorized operators can also inspect the event through the receipt command above, Python `learning_projection_observation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/projection/observations/{request_id}`. The receipt preserves the original event identity, actor, timestamp, sequence, digest, source and citation references. No receipt read submits, ingests, promotes or shares knowledge.
 
 These illustrations follow one fictional source verification whose response is lost. The first exact receipt read returns 404; the next returns the matching historical observation. The fixture also represents a later invalidation, so the current record is excluded from the active filter while its confirmation remains available. The later invalidation is separate from source verification. No provider or knowledge service is called.
