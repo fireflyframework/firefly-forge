@@ -1430,3 +1430,21 @@ def learning_submit(record_id: str, request_id: str) -> None:
 def learning_observe(record_id: str, request_id: str, source_id: str | None) -> None:
     with client() as connection:
         display(connection.observe_learning_projection(record_id, request_id, source_id))
+
+
+@learning.command("observe-attempt")
+@click.argument("record_id")
+@click.argument("request", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def learning_observe_attempt(record_id: str, request: Path) -> None:
+    """Send one nonsecret v2 JSON request. Read its exact receipt after any uncertain response."""
+    with client() as connection:
+        display(connection.observe_learning_projection_attempt(record_id, json_document(request)))
+
+
+@learning.command("observation-attempt")
+@click.argument("record_id")
+@click.option("--attempt-id", required=True)
+def learning_observation_attempt(record_id: str, attempt_id: str) -> None:
+    """Read exact local evidence. Only not_dispatched permits an explicit fresh request."""
+    with client() as connection:
+        display(connection.learning_projection_observation_attempt(record_id, attempt_id))
