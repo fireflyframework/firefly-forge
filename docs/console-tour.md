@@ -473,6 +473,20 @@ In a run's **Plan** tab, choose **Request continuation** under **Original runner
 
 Open **Product projects**, select the product and choose **Load campaigns**. Select a campaign, then **View report**. Compare its recorded status with the retained evidence state. Select a component for its tasks, checks, source and journal references. The [campaign walkthrough](project-campaigns.md#read-a-report-in-studio) shows the summary and component details; its fixtures do not establish a live campaign run.
 
+## 10. Delegate specific source-control requests
+
+Open Administration → Project access, choose the product project, then find **Source-control delegation**. Choose the repository that contains the relevant components. **Read current delegations** loads the server's current head records. The displayed state distinguishes a recorded active setting, revocation, a changed project and a changed application connection. An active setting does not establish current provider grants or the delegated person's permissions.
+
+A factory administrator can select **Review a delegation** and complete three steps:
+
+1. **Account:** choose a retained signed delivery. The factory verified the configured webhook sender's signature; the account was asserted by that sender. This is separate from a personal OAuth login. If no current delivery is available, open Connections and check the application setup before continuing.
+2. **Scope:** find an existing registered person, then select components in this repository and the allowed requests: answer an agent question, read run status or request cancellation. Clear the active setting to record revocation. This form creates no user or project membership.
+3. **Review:** check the person, component scope and actions, review the application trust, then acknowledge the webhook assertion and select **Save delegation**. The request includes the reviewed project cut and previous revision; the server can refuse a changed cut. Saving does not answer a question, resume a run or cancel work.
+
+Studio retains the request identity and input digest before sending once. It confirms the result through the exact receipt read, including after a successful save response. If delivery is lost, return to the same project and repository and select **Check original delegation**. A receipt records the original administrator and revision; authorized readers can inspect that historical evidence even when the current head is revoked or stale. Later actions still require current native permissions and application access.
+
+A conflict may be refused before a receipt is inserted, leaving the exact read unavailable. Studio preserves that original request and holds further saves. Keep the reference and ask an administrator to check the current project and delegation. A missing receipt, access error or timeout does not authorize a replacement request or an automatic retry. The retained list contains this browser's references, not the complete server history.
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).

@@ -12,6 +12,7 @@ import { request, type Connection, type ProjectSnapshot } from "./api";
 import { type IdentitySession, type ProjectRole } from "./Identity";
 import { Wizard } from "./Wizard";
 import "./ProjectAccess.css";
+import { ScmDelegation } from "./ScmDelegation";
 
 type Member = {
   user_id: string;
@@ -236,6 +237,26 @@ export function ProjectAccess({
                 />
               ))}
             </section>
+          )}
+          {current && Array.isArray(current.definition.components) && (
+            <ScmDelegation
+              key={JSON.stringify([
+                connection.base,
+                connection.token,
+                session.user.id,
+                session.global_admin,
+                session.memberships,
+                current.id,
+                current.revision,
+                current.digest,
+              ])}
+              connection={connection}
+              session={session}
+              project={current}
+              people={users}
+              onConfigure={onConfigure}
+              onProjectRefresh={onUpdated}
+            />
           )}
           <section className="access-role-guide">
             <h2>What each role can do</h2>

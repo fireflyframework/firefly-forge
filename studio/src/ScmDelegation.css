@@ -1,0 +1,148 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.scm-delegation {
+  margin-top: 28px;
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.scm-delegation h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scm-delegation p {
+  line-height: 1.7;
+  margin: 12px 0;
+}
+.scm-delegation .field {
+  max-width: 640px;
+}
+.scm-delegation-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.scm-delegation-record,
+.scm-delegation-receipt,
+.scm-delegation-recovery {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+}
+.scm-delegation code,
+.scm-delegation dd,
+.scm-delegation-dialog code,
+.scm-delegation-dialog dd {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  margin-left: 0;
+}
+.scm-delegation details,
+.scm-delegation-dialog details {
+  margin: 16px 0;
+}
+.scm-delegation-dialog.access-member-dialog {
+  inset: 0;
+  width: min(760px, calc(100vw / var(--delegation-zoom, 1) - 24px));
+  height: max-content;
+  max-height: calc(100dvh / var(--delegation-zoom, 1) - 24px);
+}
+.scm-delegation-dialog .wizard,
+.scm-delegation-dialog .wizard-form {
+  flex: 1 1 auto;
+}
+.scm-delegation-dialog .field {
+  margin: 16px 0;
+}
+.scm-delegation-dialog input:not([type="checkbox"]),
+.scm-delegation-dialog select {
+  width: 100%;
+  min-width: 0;
+}
+.scm-delegation-dialog fieldset {
+  border: 1px solid var(--line);
+  padding: 16px;
+  margin: 16px 0;
+  min-width: 0;
+  border-radius: 8px;
+}
+.scm-delegation-check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  line-height: 1.4;
+  margin: 12px 0;
+}
+.scm-delegation-check input {
+  accent-color: var(--amber);
+  margin-top: 3px;
+}
+.scm-delegation-dialog p {
+  line-height: 1.7;
+  margin: 12px 0;
+}
+@media (max-width: 640px) {
+  .scm-delegation-actions,
+  .scm-delegation-dialog .wizard-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.scm-delegation-dialog[data-compact="true"] {
+  padding: 12px;
+}
+.scm-delegation-dialog[data-compact="true"] .access-dialog-heading {
+  margin-bottom: 8px;
+}
+.scm-delegation-dialog[data-compact="true"] .access-dialog-heading h2,
+.scm-delegation-dialog[data-compact="true"] .wizard-heading h2 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-steps {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-content {
+  padding: 12px;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-heading {
+  margin-bottom: 8px;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-heading p {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 4px 0 0;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-actions button {
+  width: 100%;
+}
+.scm-delegation-dialog[data-compact="true"] .wizard-field-scroll {
+  scroll-padding-block: 0;
+}
+
+.scm-delegation-dialog .wizard-field-scroll {
+  gap: 12px;
+}
+.scm-delegation-dialog .wizard-field-scroll > p {
+  margin: 0;
+}
+.scm-delegation-dialog .wizard-actions {
+  padding-right: 8px;
+  padding-bottom: 8px;
+  padding-left: 8px;
+}
+.scm-delegation-dialog .wizard-actions button {
+  min-width: 0;
+  white-space: normal;
+}
