@@ -44,7 +44,11 @@ it("retains each identity before dispatch and never overwrites an unresolved or 
   };
   expect(() => api!.retainArchiveMarker(storage, next, new Set())).toThrow();
   expect(
-    api!.retainArchiveMarker(storage, next, new Set([marker.requestId])),
+    api!.retainArchiveMarker(
+      storage,
+      next,
+      new Set([api!.archiveMarkerBinding(marker)]),
+    ),
   ).toEqual(next);
   expect(storage.getItem(api!.archiveMarkerKey(marker))).toBe(original);
   expect(api!.readArchiveMarkers(storage, context)).toEqual([marker, next]);
@@ -52,7 +56,10 @@ it("retains each identity before dispatch and never overwrites an unresolved or 
     api!.retainArchiveMarker(
       storage,
       marker,
-      new Set([marker.requestId, next.requestId]),
+      new Set([
+        api!.archiveMarkerBinding(marker),
+        api!.archiveMarkerBinding(next),
+      ]),
     ),
   ).toThrow();
 });
@@ -93,4 +100,23 @@ it("does not treat an identity stored under this context as foreign ignorable da
   );
   expect(() => api!.readArchiveMarkers(storage, context)).toThrow();
   expect(storage.length).toBe(1);
+});
+it("does not reuse a confirmation after its persisted digest changes", async () => {
+  const modulePath = "./CampaignReportArchiveMarker";
+  const api = await import(/* @vite-ignore */ modulePath);
+  const storage = new StorageFixture();
+  api.retainArchiveMarker(storage, marker, new Set());
+  const confirmed = new Set([api.archiveMarkerBinding(marker)]);
+  const changed = { ...marker, reportDigest: "9".repeat(64) };
+  const raw = JSON.stringify(changed);
+  storage.setItem(api.archiveMarkerKey(marker), raw);
+  expect(() =>
+    api.retainArchiveMarker(
+      storage,
+      { ...marker, requestId: "f".repeat(32) },
+      confirmed,
+    ),
+  ).toThrow();
+  expect(storage.length).toBe(1);
+  expect(storage.getItem(api.archiveMarkerKey(marker))).toBe(raw);
 });

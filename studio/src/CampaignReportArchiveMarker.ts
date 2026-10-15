@@ -59,6 +59,9 @@ export function archiveMarkerKey(marker: ArchiveMarker): string {
   read(marker);
   return context(marker) + marker.requestId;
 }
+export function archiveMarkerBinding(marker: ArchiveMarker): string {
+  return archiveMarkerKey(marker) + ":" + marker.reportDigest;
+}
 export function readArchiveMarkers(
   storage: MarkerStorage,
   scope: ArchiveContext,
@@ -86,14 +89,16 @@ export function readArchiveMarkers(
 export function retainArchiveMarker(
   storage: MarkerStorage,
   value: ArchiveMarker,
-  confirmedIds: ReadonlySet<string>,
+  confirmedBindings: ReadonlySet<string>,
 ): ArchiveMarker {
   const marker = read(value);
   const existing = readArchiveMarkers(storage, marker);
   const key = archiveMarkerKey(marker);
   if (
     existing.length >= 100 ||
-    existing.some((item) => !confirmedIds.has(item.requestId)) ||
+    existing.some(
+      (item) => !confirmedBindings.has(archiveMarkerBinding(item)),
+    ) ||
     storage.getItem(key) !== null
   )
     throw error();

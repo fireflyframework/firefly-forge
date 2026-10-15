@@ -14,6 +14,7 @@ import {
   type ArchiveExpected,
 } from "./CampaignReportArchiveData";
 import {
+  archiveMarkerBinding,
   readArchiveMarkers,
   retainArchiveMarker,
   type ArchiveMarker,
@@ -84,7 +85,9 @@ export function CampaignReportHistory({
     session.memberships.some(
       (m) => m.project_id === project && m.permissions.includes("execute"),
     );
-  const unresolved = markers.filter((m) => !confirmed.has(m.requestId));
+  const unresolved = markers.filter(
+    (m) => !confirmed.has(archiveMarkerBinding(m)),
+  );
   const pendingIdentity = unresolved.map((item) => item.requestId).join(":");
   const endpoint = `/projects/${project}/campaigns/${campaign}/report-archives`;
   useEffect(() => {
@@ -214,7 +217,9 @@ export function CampaignReportHistory({
     if (!op.current()) return;
     setReceipt(parsed);
     try {
-      const marker = readArchiveMarkers(localStorage, context).find(
+      const stored = readArchiveMarkers(localStorage, context);
+      setMarkers(stored);
+      const marker = stored.find(
         (item) => item.requestId === parsed.request_id,
       );
       if (
@@ -222,7 +227,7 @@ export function CampaignReportHistory({
         marker.actor === parsed.actor_id &&
         marker.reportDigest === parsed.report.digest
       )
-        setConfirmed((old) => new Set([...old, parsed.request_id]));
+        setConfirmed((old) => new Set([...old, archiveMarkerBinding(marker)]));
     } catch {
       setBlocked(true);
     }
@@ -282,7 +287,9 @@ export function CampaignReportHistory({
         campaign,
       });
       const stored = readArchiveMarkers(localStorage, context);
-      if (stored.some((m) => !confirmed.has(m.requestId)))
+      if (!op.current()) return;
+      setMarkers(stored);
+      if (stored.some((m) => !confirmed.has(archiveMarkerBinding(m))))
         throw new Error("Unresolved request");
       if (op.current()) {
         setReview(parsed);
@@ -349,7 +356,10 @@ export function CampaignReportHistory({
         );
     } catch (cause) {
       if (op.current()) {
-        if (!marker) setBlocked(true);
+        if (!marker) {
+          setBlocked(true);
+          setReview(null);
+        }
         failure(cause);
       }
     } finally {

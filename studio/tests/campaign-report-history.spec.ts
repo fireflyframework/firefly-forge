@@ -584,3 +584,113 @@ test("a supported origin-root API base can save with an isolated canonical ident
     ),
   ).toEqual([new URL(page.url()).origin]);
 });
+for (const drift of ["before review", "before dispatch"])
+  test(`changed confirmed storage stays held ${drift} while its original receipt remains readable`, async ({
+    page,
+  }) => {
+    const state = await setup(page);
+    state.postMode = "success";
+    await selectCampaign(page, state);
+    await (
+      await reviewSave(page)
+    )
+      .getByRole("button", { name: "Save report", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Saved campaign report", exact: true }),
+    ).toBeVisible();
+    const original = state.postBodies[0];
+    if (drift === "before dispatch") {
+      await page
+        .getByRole("button", { name: "Save this report", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Save campaign report",
+        exact: true,
+      });
+      await dialog
+        .getByRole("button", { name: "Review save", exact: true })
+        .click();
+      await dialog.getByRole("checkbox").check();
+    }
+    const changedRaw = await page.evaluate((id) => {
+      const [key, raw] = Object.entries(localStorage).find(
+        ([key, raw]) =>
+          key.startsWith("forge.campaign-report-archive.v1:") &&
+          JSON.parse(raw).requestId === id,
+      )!;
+      const updated = JSON.stringify({
+        ...JSON.parse(raw),
+        reportDigest: "9".repeat(64),
+      });
+      localStorage.setItem(key, updated);
+      return updated;
+    }, original.request_id);
+    if (drift === "before review") {
+      await page
+        .getByRole("button", { name: "Save this report", exact: true })
+        .click();
+      await expect(
+        page.getByRole("dialog", { name: "Save campaign report", exact: true }),
+      ).toHaveCount(0);
+    } else {
+      await page
+        .getByRole("dialog", { name: "Save campaign report", exact: true })
+        .getByRole("button", { name: "Save report", exact: true })
+        .click();
+      await expect.poll(() => state.archivePosts).toBe(1);
+      await expect(
+        page.getByRole("dialog", { name: "Save campaign report", exact: true }),
+      ).toHaveCount(0);
+    }
+    expect(state.archivePosts).toBe(1);
+    expect(
+      await page.evaluate(
+        () =>
+          Object.keys(localStorage).filter((k) =>
+            k.startsWith("forge.campaign-report-archive.v1:"),
+          ).length,
+      ),
+    ).toBe(1);
+    const receipt = state.archiveReceipt as typeof native.receipt;
+    const summary = {
+      ...native.page.items[0],
+      request_id: receipt.request_id,
+      actor_id: receipt.actor_id,
+      receipt_digest: receipt.digest,
+      digest: "",
+    };
+    summary.digest = digest(
+      Object.fromEntries(
+        Object.entries(summary).filter(([k]) => k !== "digest"),
+      ),
+    );
+    state.archivePage = { ...native.page, items: [summary] };
+    await page
+      .getByRole("button", { name: "Load saved reports", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Open saved report 1", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Saved campaign report", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Saved request unresolved", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Save this report", exact: true }),
+    ).toBeDisabled();
+    expect(
+      await page.evaluate(
+        (id) =>
+          Object.entries(localStorage).find(
+            ([key, raw]) =>
+              key.startsWith("forge.campaign-report-archive.v1:") &&
+              JSON.parse(raw).requestId === id,
+          )![1],
+        original.request_id,
+      ),
+    ).toBe(changedRaw);
+    expect(state.archivePosts).toBe(1);
+  });

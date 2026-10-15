@@ -151,3 +151,9 @@
   padding-bottom: 8px;
   padding-left: 8px;
 }
+
+.campaign-report-history [aria-label="Exact saved report"] > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
