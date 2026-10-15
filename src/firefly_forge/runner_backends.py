@@ -12,6 +12,7 @@ from typing import Protocol
 
 from pyfly.container import service
 
+from firefly_forge.execution_environment import execution_environment
 from firefly_forge.process import ProcessResult
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.secrets import runtime_environment
@@ -26,50 +27,51 @@ async def _bounded_process(
     input_data: bytes | None = None,
     environment: dict[str, str] | None = None,
 ) -> tuple[int, bytes]:
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        stdin=asyncio.subprocess.PIPE if input_data is not None else asyncio.subprocess.DEVNULL,
-        start_new_session=True,
-        env=runtime_environment() if environment is None else environment,
-    )
-    output = bytearray()
+    with execution_environment(runtime_environment() if environment is None else environment) as child_environment:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.PIPE if input_data is not None else asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+            env=child_environment,
+        )
+        output = bytearray()
 
-    async def send_input() -> None:
-        if input_data is not None:
-            assert process.stdin is not None
-            try:
-                process.stdin.write(input_data)
-                await process.stdin.drain()
-            finally:
-                process.stdin.close()
+        async def send_input() -> None:
+            if input_data is not None:
+                assert process.stdin is not None
+                try:
+                    process.stdin.write(input_data)
+                    await process.stdin.drain()
+                finally:
+                    process.stdin.close()
 
-    async def consume() -> None:
-        assert process.stdout is not None
-        while data := await process.stdout.read(65536):
-            if len(output) + len(data) > max_output_bytes:
-                raise RuntimeError("Runner output exceeded the frozen output limit")
-            output.extend(data)
-        await process.wait()
+        async def consume() -> None:
+            assert process.stdout is not None
+            while data := await process.stdout.read(65536):
+                if len(output) + len(data) > max_output_bytes:
+                    raise RuntimeError("Runner output exceeded the frozen output limit")
+                output.extend(data)
+            await process.wait()
 
-    streams = [asyncio.create_task(send_input()), asyncio.create_task(consume())]
-    try:
-        await asyncio.wait_for(asyncio.gather(*streams), timeout)
-    except BaseException:
-        for stream in streams:
-            stream.cancel()
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGTERM)
-        with suppress(TimeoutError):
-            await asyncio.wait_for(process.wait(), 2)
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()
-        await asyncio.gather(*streams, return_exceptions=True)
-        raise
-    return process.returncode or 0, bytes(output)
+        streams = [asyncio.create_task(send_input()), asyncio.create_task(consume())]
+        try:
+            await asyncio.wait_for(asyncio.gather(*streams), timeout)
+        except BaseException:
+            for stream in streams:
+                stream.cancel()
+            with suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGTERM)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(process.wait(), 2)
+            with suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGKILL)
+            await process.wait()
+            await asyncio.gather(*streams, return_exceptions=True)
+            raise
+        return process.returncode or 0, bytes(output)
 
 
 async def bounded_process(

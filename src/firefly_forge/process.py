@@ -10,6 +10,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from firefly_forge.execution_environment import execution_environment
 from firefly_forge.secrets import runtime_environment
 
 
@@ -23,40 +24,41 @@ class ProcessResult:
 async def execute(
     argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None
 ) -> ProcessResult:
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        start_new_session=True,
-        env=runtime_environment(env),
-    )
-    chunks: list[bytes] = []
-    size = 0
+    with execution_environment(runtime_environment(env)) as environment:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
+            env=environment,
+        )
+        chunks: list[bytes] = []
+        size = 0
 
-    async def consume() -> None:
-        nonlocal size
-        assert process.stdout is not None
-        while chunk := await process.stdout.read(65536):
-            size += len(chunk)
-            if size > 2_000_000:
-                raise RuntimeError("Command output exceeded 2 MB")
-            chunks.append(chunk)
-        await process.wait()
+        async def consume() -> None:
+            nonlocal size
+            assert process.stdout is not None
+            while chunk := await process.stdout.read(65536):
+                size += len(chunk)
+                if size > 2_000_000:
+                    raise RuntimeError("Command output exceeded 2 MB")
+                chunks.append(chunk)
+            await process.wait()
 
-    try:
-        await asyncio.wait_for(consume(), timeout)
-    except BaseException:
-        # A child can keep the pipes open after the original process has exited.
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGTERM)
-        with suppress(TimeoutError):
-            await asyncio.wait_for(process.wait(), 2)
-        with suppress(ProcessLookupError, PermissionError):
-            os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()
-        raise
-    return ProcessResult(argv, process.returncode or 0, b"".join(chunks).decode("utf-8", errors="replace"))
+        try:
+            await asyncio.wait_for(consume(), timeout)
+        except BaseException:
+            # A child can keep the pipes open after the original process has exited.
+            with suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGTERM)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(process.wait(), 2)
+            with suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGKILL)
+            await process.wait()
+            raise
+        return ProcessResult(argv, process.returncode or 0, b"".join(chunks).decode("utf-8", errors="replace"))
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
