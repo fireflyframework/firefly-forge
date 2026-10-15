@@ -247,6 +247,30 @@ describe("execution evidence presentation", () => {
 });
 
 describe("long nested command disclosure", () => {
+  it("shows real argument line breaks as readable spacing while keeping the original available", () => {
+    const argv = ["php", "-r", "\n$payload = 1;\nprint($payload);\t"];
+    for (const value of [
+      { argv },
+      { command: "php -r\n$payload = 1;\nprint($payload);\t" },
+    ]) {
+      const html = renderToStaticMarkup(<EvidenceView value={value} />);
+      const heading = html.match(
+        /class="record-command-heading"[\s\S]*?<\/code>/,
+      )?.[0];
+      expect(heading).toContain("php -r $payload = 1; print($payload);");
+      expect(heading).not.toContain("\\n");
+      expect(html).toContain("<summary>Full command</summary>");
+      expect(html).toContain("Copy full command");
+    }
+    expect(argv).toEqual(["php", "-r", "\n$payload = 1;\nprint($payload);\t"]);
+  });
+  it("preserves an intentional literal backslash-n argument", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceView value={{ argv: ["printf", "\\n"] }} />,
+    );
+    expect(html).toContain("printf \\n");
+    expect(html).not.toContain("<summary>Full command</summary>");
+  });
   it("keeps the actual escaped PHP launcher outside the compact heading and retains its original", () => {
     const value = {
       execution_id: "1".repeat(32),

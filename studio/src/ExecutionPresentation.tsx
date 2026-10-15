@@ -264,7 +264,13 @@ export function EvidenceView({
     (typeof record.command === "string" ? record.command : undefined);
   const exit =
     typeof record.exit_code === "number" ? record.exit_code : undefined;
-  const commandPreview = command ? boundedText(command, 80, 4) : undefined;
+  const commandPreview = command
+    ? boundedText(
+        (args?.join(" ") || command).replace(/\s+/g, " ").trim(),
+        80,
+        4,
+      )
+    : undefined;
   const status =
     exit !== undefined
       ? exit === 0
@@ -323,7 +329,7 @@ export function EvidenceView({
               />
             </span>
           </div>
-          {commandPreview && commandPreview.omitted > 0 && (
+          {commandPreview && commandPreview.text !== command && (
             <details className="record-advanced">
               <summary>Full command</summary>
               <OutputView

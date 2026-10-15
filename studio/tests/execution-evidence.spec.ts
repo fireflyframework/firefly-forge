@@ -691,6 +691,10 @@ for (const commandCase of [
           .locator(".journal-entries .record-command")
           .first();
         const heading = command.locator(".record-command-heading").first();
+        if (commandCase.label === "actual nested PHP")
+          await expect(heading.locator("code")).toContainText(
+            "memory_limit=64M -r $payload =",
+          );
         await heading.scrollIntoViewIfNeeded();
         await expect
           .poll(() =>
