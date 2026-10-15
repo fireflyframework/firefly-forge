@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tasks/review
+version: 1.0.0
+description: Forge tasks review instructions.
+system_template: ''
+user_template: Use a fresh source-copy context and retain a strict review verdict before delivery.
+required_variables: []
+metadata:
+  defaults: {}

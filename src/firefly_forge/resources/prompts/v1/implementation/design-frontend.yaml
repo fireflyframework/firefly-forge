@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/design-frontend
+version: 1.0.0
+description: Forge implementation design frontend instructions.
+system_template: ''
+user_template: |2-
+
+
+  The reviewed journey wireframes are materialized under docs/design/. Read the docs/design/interaction-contract.json, docs/design/layout-contract.json, docs/design/grid.svg, docs/design/functional-contract.json and desktop/mobile light/dark SVG references. Implement working, accessible product screens and behavioral journey tests from these references; SVG wireframes do not replace the application's functional UI.
+required_variables: []
+metadata:
+  defaults: {}

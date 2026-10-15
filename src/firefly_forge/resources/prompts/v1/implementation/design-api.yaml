@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/design-api
+version: 1.0.0
+description: Forge implementation design api instructions.
+system_template: ''
+user_template: |2-
+
+
+  Read docs/design/functional-contract.json for mapped features, expected behavior and failure paths. For process-map references, also read docs/design/processes.md. The full product's UI references are context for service integration. Implement the documented service contracts and process behavior with meaningful tests. Do not generate a browser frontend.
+required_variables: []
+metadata:
+  defaults: {}

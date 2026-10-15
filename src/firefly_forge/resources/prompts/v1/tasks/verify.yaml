@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tasks/verify
+version: 1.0.0
+description: Forge tasks verify instructions.
+system_template: ''
+user_template: |-
+  Run the configured behavioral tests, build, lint and type checks; retain each real exit code and output. Repair within the configured attempt limit.
+required_variables: []
+metadata:
+  defaults: {}

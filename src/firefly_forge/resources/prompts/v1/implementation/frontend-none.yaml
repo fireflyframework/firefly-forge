@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/frontend-none
+version: 1.0.0
+description: Forge implementation frontend none instructions.
+system_template: ''
+user_template: |-
+  Do not generate a browser frontend. Deliver the requested service or library with runnable entry points and documented API contracts.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/browser_journey
+version: 1.0.0
+description: Forge tools browser_journey instructions.
+system_template: ''
+user_template: Perform a declared isolated user journey with bounded DOM and optional image evidence.
+required_variables: []
+metadata:
+  defaults: {}

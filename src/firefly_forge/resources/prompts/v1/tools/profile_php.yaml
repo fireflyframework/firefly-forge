@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/profile_php
+version: 1.0.0
+description: Forge tools profile_php instructions.
+system_template: ''
+user_template: Observe PHP runtime metrics or optional Xdebug data; diagnostics never approve QA.
+required_variables: []
+metadata:
+  defaults: {}

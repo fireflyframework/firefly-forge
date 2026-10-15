@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/image-unavailable
+version: 1.0.0
+description: Forge tools image unavailable instructions.
+system_template: ''
+user_template: 'Image bytes are not attached: provider image input has not been verified.'
+required_variables: []
+metadata:
+  defaults: {}

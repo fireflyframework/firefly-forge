@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-java
+version: 1.0.0
+description: Forge implementation backend java instructions.
+system_template: ''
+user_template: |-
+  Use Java 25 and Firefly Framework parent 26.07.06 (org.fireflyframework:fireflyframework-parent), Spring Boot 3.5.10, reactive WebFlux and appropriate Firefly starters. Reuse flywork core/domain/application/library archetypes after inspecting their templates; disable git initialization. Write JUnit behavioral tests and use Maven verify. Do not invent Firefly artifact coordinates; inspect upstream starter POMs.
+required_variables: []
+metadata:
+  defaults: {}

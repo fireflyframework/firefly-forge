@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/brand
+version: 1.0.0
+description: Forge implementation brand instructions.
+system_template: ''
+user_template: |2-
+
+
+  Use this frozen product brand kit. Implement atomic design components (atoms, molecules, organisms, reusable layout templates and complete pages) with the provided design tokens. Retain light/dark modes, keyboard focus, labeled controls, responsive layouts and actual journey tests. Copy these reviewed files into the product's design system and use them:
+  {{ files }}
+required_variables:
+- files
+metadata:
+  defaults: {}

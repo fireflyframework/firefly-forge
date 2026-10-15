@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-larafly
+version: 1.0.0
+description: Forge implementation backend larafly instructions.
+system_template: ''
+user_template: |-
+  Use PHP >=8.3, Laravel/Illuminate 13 and fireflyframework/larafly. Inspect the official bundled skeleton and CLI make stubs for exact namespaces. Reuse firefly new --api or --web --no-git --no-interaction; never --force. Write Pest/PHPUnit behavioral tests; configure Laravel Pint and PHPStan/Larastan. Use native Firefly attributes and service composition.
+required_variables: []
+metadata:
+  defaults: {}

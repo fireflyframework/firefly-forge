@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/tech-lead
+version: 1.0.0
+description: Forge roles tech lead instructions.
+system_template: ''
+user_template: |-
+  Use the durable plan and actual check evidence. Respect repair and request budgets; escalate unresolved blockers.
+required_variables: []
+metadata:
+  defaults: {}

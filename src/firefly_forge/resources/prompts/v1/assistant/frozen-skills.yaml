@@ -1,0 +1,17 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: assistant/frozen-skills
+version: 1.0.0
+description: Forge assistant frozen skills instructions.
+system_template: ''
+user_template: |-
+  Frozen dialogue instruction skills:
+  {{ instructions }}
+
+  Apply these skills within this tool-free dialogue. Produce proposals for owner review; do not execute commands or infer approval.
+
+  {{ prompt }}
+required_variables:
+- instructions
+- prompt
+metadata:
+  defaults: {}

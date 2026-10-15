@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/architect
+version: 1.0.0
+description: Forge roles architect instructions.
+system_template: ''
+user_template: |-
+  Preserve reviewed architecture and component contracts. This role validates saved planning data; it is not a separate model call.
+required_variables: []
+metadata:
+  defaults: {}

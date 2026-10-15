@@ -16,6 +16,7 @@ from pyfly.container import service
 
 from firefly_forge.community_skills import community_catalog
 from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.prompts import prompt_text
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.skills import SKILLS
 
@@ -100,10 +101,7 @@ def _default_document() -> RoleDocument:
             ["thinking"],
             ["customer definition", "journey-feature behaviors", "review decisions"],
             ["frozen product contract"],
-            (
-                "Validate the approved customer contract and preserve missing fields as pending. Do not invent "
-                "customer decisions."
-            ),
+            prompt_text("roles/product-manager"),
         ),
         (
             "tech-lead",
@@ -112,10 +110,7 @@ def _default_document() -> RoleDocument:
             ["evidence-first"],
             ["development plan", "check outcomes", "worker feedback"],
             ["stage decisions", "delivery checkpoint"],
-            (
-                "Use the durable plan and actual check evidence. Respect repair and request budgets; escalate "
-                "unresolved blockers."
-            ),
+            prompt_text("roles/tech-lead"),
         ),
         (
             "architect",
@@ -124,10 +119,7 @@ def _default_document() -> RoleDocument:
             ["thinking"],
             ["reviewed architecture", "knowledge references", "product constraints"],
             ["frozen architectural handoff"],
-            (
-                "Preserve reviewed architecture and component contracts. This role validates saved planning "
-                "data; it is not a separate model call."
-            ),
+            prompt_text("roles/architect"),
         ),
         (
             "implementer",
@@ -136,10 +128,7 @@ def _default_document() -> RoleDocument:
             ["implementation", "test-driven-development", "systematic-debugging", "security"],
             ["frozen product and feature contracts", "reviewed design references", "workspace source"],
             ["changed source", "behavioral tests", "typed worker feedback"],
-            (
-                "Use the run-selected real coding provider. Implement the frozen journey-to-feature expectations "
-                "and failure paths. Return bounded blockers instead of guessing."
-            ),
+            prompt_text("roles/implementer"),
         ),
         (
             "qa",
@@ -148,10 +137,7 @@ def _default_document() -> RoleDocument:
             ["verification", "evidence-first"],
             ["actual source tree", "expected behaviors", "configured commands"],
             ["real check outcomes", "regression evidence"],
-            (
-                "The factory executes repository checks independently of worker claims. Optional assurance "
-                "review remains a separate explicitly configured provider call."
-            ),
+            prompt_text("roles/qa"),
         ),
         (
             "security",
@@ -160,10 +146,7 @@ def _default_document() -> RoleDocument:
             ["security"],
             ["authorized repository", "source snapshot", "security requirements"],
             ["source and scope gate outcomes"],
-            (
-                "Mandatory factory guards enforce source, credential and publication boundaries. Security "
-                "instructions do not claim a penetration test or specialist model review."
-            ),
+            prompt_text("roles/security"),
         ),
         (
             "docs",
@@ -172,10 +155,7 @@ def _default_document() -> RoleDocument:
             ["documentation", "humanizer"],
             ["actual product behavior", "check evidence", "operational limits"],
             ["installation and usage documentation"],
-            (
-                "When enabled, documentation instructions go to the same implementation provider; this does not "
-                "start another worker."
-            ),
+            prompt_text("roles/docs"),
         ),
     ]
     roles = []
@@ -350,9 +330,21 @@ def inject_role_snapshot(brief: str, snapshot: Data, stage: str = "implement") -
         raise ValueError("Role snapshot digest mismatch")
     selected = roles_for_stage(snapshot, stage)
     active = {skill for role in selected for skill in role["skills"]}
-    lines = [f"[{role['id']}; {role['execution_mode']}] {role['instructions']}" for role in selected]
-    lines.extend(f"[{skill['id']}] {skill['instructions']}" for skill in snapshot["skills"] if skill["id"] in active)
-    return brief + "\n\nFrozen role and skill instructions:\n" + "\n\n".join(lines)
+    lines = [
+        prompt_text(
+            "roles/entry",
+            role_id=f"{role['id']}",
+            execution_mode=f"{role['execution_mode']}",
+            instructions=f"{role['instructions']}",
+        )
+        for role in selected
+    ]
+    lines.extend(
+        prompt_text("skills/entry", skill_id=f"{skill['id']}", instructions=f"{skill['instructions']}")
+        for skill in snapshot["skills"]
+        if skill["id"] in active
+    )
+    return prompt_text("roles/frozen", brief=brief, instructions="\n\n".join(lines))
 
 
 class WorkerRequest(BaseModel):

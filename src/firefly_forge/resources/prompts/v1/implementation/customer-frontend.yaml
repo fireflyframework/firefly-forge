@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/customer-frontend
+version: 1.0.0
+description: Forge implementation customer frontend instructions.
+system_template: ''
+user_template: |
+  Use the frozen reference grid and design guidance for the frontend implementation.
+required_variables: []
+metadata:
+  defaults: {}

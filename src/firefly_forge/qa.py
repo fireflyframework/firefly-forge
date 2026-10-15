@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from firefly_forge.prompts import prompt_text
 from firefly_forge.workspace_tools import _private_name
 
 
@@ -236,15 +237,4 @@ def bounded_image_history(messages: list[Any]) -> list[Any]:
 
 
 def qa_instructions() -> str:
-    return (
-        "Browser QA requires a declared journey plan before execution: name the user goal, initial route, "
-        "expected states, bounded DOM locators and assertions. Exercise navigation and real JavaScript interactions, "
-        "keyboard focus, validation errors, loading behavior, mobile layouts, both themes and zoom when applicable. "
-        "Capture the actual DOM, focus and screenshots for observed states. Compare only a matching approved "
-        "reference with its SHA256, state, viewport, theme and zoom; report reference_not_reviewed otherwise. "
-        "When actual images are attached, inspect their visual content and tie every finding to an evidence ID, "
-        "severity, path, expected result and observed result. DOM-only evidence must remain labeled dom_only. "
-        "Record states not reviewed and remaining uncertainty. A visual judgment cannot override failing tests, "
-        "source boundaries, independent review or delivery guards. "
-        "Do not assert pixel perfection or universal approval."
-    )
+    return prompt_text("implementation/browser-qa")

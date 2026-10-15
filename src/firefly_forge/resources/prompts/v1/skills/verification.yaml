@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/verification
+version: 1.0.0
+description: Forge skills verification instructions.
+system_template: ''
+user_template: |-
+  Add meaningful behavioral tests before fixing behavior. Cover valid input, validation, conflicts and regression cases. Provide executable checks for tests, lint, types and build where configured. Never disable checks, fake passing output or use no-op tests.
+required_variables: []
+metadata:
+  defaults: {}

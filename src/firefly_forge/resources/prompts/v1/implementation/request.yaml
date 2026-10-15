@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/request
+version: 1.0.0
+description: Forge implementation request instructions.
+system_template: ''
+user_template: |-
+  PRODUCT BRIEF:
+  {{ brief }}
+required_variables:
+- brief
+metadata:
+  defaults: {}
