@@ -392,6 +392,51 @@ def test_duplicate_yaml_keys_and_aliases_are_refused_before_loading(tmp_path):
             PromptCatalog(tmp_path)
 
 
+def test_catalog_rejects_scalar_key_aliases_before_native_loading(tmp_path):
+    import hashlib
+
+    import pytest
+
+    from firefly_forge.prompts import PromptCatalog
+
+    manifest, _ = _resource(tmp_path)
+    raw = b"""name: test/greeting
+version: 1.0.0
+&label description: Fixture only
+system_template: ''
+user_template: *label
+required_variables: []
+metadata:
+  defaults: {}
+"""
+    (tmp_path / "greeting.yaml").write_bytes(raw)
+    manifest["templates"][0].update(sha256=hashlib.sha256(raw).hexdigest(), variables={})
+    _write_manifest(tmp_path, manifest)
+    with pytest.raises(ValueError, match="aliases"):
+        PromptCatalog(tmp_path)
+
+
+def test_catalog_accepts_equal_text_in_distinct_scalar_nodes(tmp_path):
+    import hashlib
+
+    from firefly_forge.prompts import PromptCatalog
+
+    manifest, _ = _resource(tmp_path)
+    raw = b"""name: test/greeting
+version: 1.0.0
+description: description
+system_template: ''
+user_template: description
+required_variables: []
+metadata:
+  defaults: {}
+"""
+    (tmp_path / "greeting.yaml").write_bytes(raw)
+    manifest["templates"][0].update(sha256=hashlib.sha256(raw).hexdigest(), variables={})
+    _write_manifest(tmp_path, manifest)
+    assert PromptCatalog(tmp_path).text("test/greeting") == "description"
+
+
 def test_catalog_refuses_a_symlinked_resource_even_with_matching_bytes(tmp_path):
     import pytest
 

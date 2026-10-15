@@ -113,7 +113,7 @@ def _document(raw: bytes) -> _Document:
             keys = [key.value for key, _ in node.value if isinstance(key, yaml.ScalarNode)]
             if len(keys) != len(node.value) or len(set(keys)) != len(keys):
                 raise ValueError("Prompt YAML keys must be unique strings")
-            pending.extend(value for _, value in node.value)
+            pending.extend(child for pair in node.value for child in pair)
         elif isinstance(node, yaml.SequenceNode):
             pending.extend(node.value)
     return _Document.model_validate(yaml.safe_load(raw))
