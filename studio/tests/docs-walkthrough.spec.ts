@@ -721,12 +721,79 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Invalidate evidence", exact: true })
         .click();
-      const reason =
-        "The inventory dependency changed after this verification.";
+      const reason = "Inventory dependency changed.";
       await page
         .getByLabel("Reason for invalidation", { exact: true })
         .fill(reason);
+      const dialogHeading = page.getByRole("dialog").getByRole("heading", {
+        name: "Invalidate saved evidence",
+        exact: true,
+      });
+      const assertHeadingHit = async (selector: string) => {
+        await expect
+          .poll(() =>
+            page.locator(selector).evaluate((element) => {
+              const box = element.getBoundingClientRect();
+              return (
+                box.top >= 0 &&
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ) === element
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await expect(dialogHeading).toBeVisible();
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
+      const assertLifecycle = async (completeReceipt = false) => {
+        await expect
+          .poll(() =>
+            page
+              .locator(".learning-record-invalidation > h4")
+              .evaluate((heading, complete) => {
+                const box = heading.getBoundingClientRect();
+                const shell = document
+                  .querySelector(".workspace-main > header")!
+                  .getBoundingClientRect();
+                const footer = document
+                  .querySelector(".workspace-main > footer")!
+                  .getBoundingClientRect();
+                const result = document
+                  .querySelector(".learning-invalidation-result")!
+                  .getBoundingClientRect();
+                return (
+                  box.top >= shell.bottom + 16 &&
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ) === heading &&
+                  (!complete || result.bottom <= footer.top)
+                );
+              }, completeReceipt),
+          )
+          .toBe(true);
+      };
+      const alignLifecycle = async (completeReceipt = false) => {
+        await page
+          .locator(".learning-record-invalidation > h4")
+          .evaluate((heading) => {
+            const shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+            const main = heading.closest("main")!;
+            main.scrollTop +=
+              heading.getBoundingClientRect().top - shell.bottom - 20;
+          });
+        await assertLifecycle(completeReceipt);
+      };
       await capture(page, "learning-invalidation-reason", theme, device);
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
       await page
         .getByRole("button", { name: "Review invalidation", exact: true })
         .click();
@@ -740,6 +807,7 @@ for (const device of ["desktop", "mobile"])
         )
         .check();
       for (const value of [
+        new URL("/api/v1", page.url()).href,
         learningRepository.id,
         learningRecord.id,
         "f".repeat(32),
@@ -752,7 +820,39 @@ for (const device of ["desktop", "mobile"])
             })
             .getByText(value, { exact: true }),
         ).toBeVisible();
-      await capture(page, "learning-invalidation-review", theme, device);
+      await page.locator(".learning-invalidation-ack").scrollIntoViewIfNeeded();
+      const readReviewBounds = () =>
+        page.locator(".learning-invalidation-dialog").evaluate((dialog) => {
+          const field = dialog
+            .querySelector(".wizard-field-scroll")!
+            .getBoundingClientRect();
+          return [
+            ".learning-invalidation-reason",
+            ".learning-invalidation-ack",
+          ].map((selector) => {
+            const box = dialog.querySelector(selector)!.getBoundingClientRect();
+            return {
+              selector,
+              top: box.top,
+              bottom: box.bottom,
+              fieldTop: field.top,
+              fieldBottom: field.bottom,
+              inside: box.top >= field.top && box.bottom <= field.bottom,
+            };
+          });
+        });
+      await expect
+        .poll(async () => (await readReviewBounds()).every((row) => row.inside))
+        .toBe(true);
+      await capture(page, "learning-invalidation-review", theme, device, {
+        resetFields: false,
+      });
+      await expect
+        .poll(async () => (await readReviewBounds()).every((row) => row.inside))
+        .toBe(true);
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
       await page
         .getByRole("button", { name: "Confirm invalidation", exact: true })
         .click();
@@ -789,9 +889,11 @@ for (const device of ["desktop", "mobile"])
       ).toBeVisible();
       expect(invalidationWrites).toBe(1);
       expect(invalidationReads).toHaveLength(1);
+      await alignLifecycle();
       await capture(page, "learning-invalidation-unresolved", theme, device, {
         actionSelector: ".learning-record-invalidation button.secondary",
       });
+      await assertLifecycle();
       receiptReady = true;
       await page
         .getByRole("button", { name: "Check original request", exact: true })
@@ -828,8 +930,9 @@ for (const device of ["desktop", "mobile"])
         `/api/v1/learning/records/${learningRecord.id}/invalidations/${original.request_id}`,
       ]);
       expect(invalidation).toEqual(original);
-      await confirmed.scrollIntoViewIfNeeded();
+      await alignLifecycle(device === "desktop");
       await expect(confirmed).toBeInViewport();
       await capture(page, "learning-invalidation-confirmed", theme, device);
+      await assertLifecycle(device === "desktop");
     });
   }
