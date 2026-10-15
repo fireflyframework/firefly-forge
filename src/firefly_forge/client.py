@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from firefly_forge.models import RepositoryInput, RunInput
 
 if TYPE_CHECKING:
+    from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.model_profiles import ModelProfileInput
@@ -476,6 +477,26 @@ class ForgeClient:
 
     def repository_role_lifecycle(self, repository_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"repositories/{self._id(repository_id)}/agent-roles/lifecycle"))
+
+    def identity_configuration(self) -> dict[str, Any]:
+        return dict(self.request("GET", "auth/configuration"))
+
+    def identity_session(self) -> dict[str, Any]:
+        return dict(self.request("GET", "auth/session"))
+
+    def project_members(self, project_id: str) -> list[dict[str, Any]]:
+        return list(self.request("GET", f"projects/{self._id(project_id)}/members"))
+
+    def set_project_membership(
+        self, project_id: str, user_id: str, request: MembershipInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.access_controllers import MembershipInput
+
+        try:
+            body = MembershipInput.model_validate(request, strict=True).model_dump(mode="json")
+        except ValueError:
+            raise ValueError("Invalid project membership request") from None
+        return dict(self.request("PUT", f"projects/{self._id(project_id)}/members/{self._id(user_id)}", json=body))
 
     def identity_users(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "identity/users"))

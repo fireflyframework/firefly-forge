@@ -10,7 +10,9 @@ from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import ToolAnnotations
 from pydantic import WithJsonSchema
 
+from firefly_forge.access_controllers import MembershipInput
 from firefly_forge.assistant_attachments import AttachmentInput
+from firefly_forge.connection_oauth_models import OAuthConnectionInput
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
 from firefly_forge.model_profiles import ModelProfileInput
@@ -30,6 +32,10 @@ from firefly_forge.user_administration import (
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
 EligibleUserQuery = Annotated[str, WithJsonSchema({"type": "string", "minLength": 3, "maxLength": 120})]
+MembershipRequest = Annotated[Any, WithJsonSchema(MembershipInput.model_json_schema())]
+OAuthExpectedRevision = Annotated[
+    Any, WithJsonSchema(OAuthConnectionInput.model_json_schema()["properties"]["expected_revision"])
+]
 IdentityEnabled = Annotated[Any, WithJsonSchema(UserEnabledInput.model_json_schema()["properties"]["enabled"])]
 IdentityProvisionRequest = Annotated[Any, WithJsonSchema(UserProvisionInput.model_json_schema())]
 IdentityReconciliationRequest = Annotated[Any, WithJsonSchema(AdministrationReconciliation.model_json_schema())]
@@ -628,6 +634,41 @@ def create_server() -> MCPServer:
             return connection.repository_role_lifecycle(repository_id)
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def get_identity_configuration() -> dict[str, Any]:
+        """Read public authentication configuration; no credentials or cookies are returned."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.identity_configuration()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def get_identity_session() -> dict[str, Any]:
+        """Read the authenticated caller's current identity and project memberships."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.identity_session()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def list_project_members(project_id: str) -> list[dict[str, Any]]:
+        """Read project members with current owner or administrator permission."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.project_members(project_id)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def set_project_membership(project_id: str, user_id: str, request: MembershipRequest) -> dict[str, Any]:
+        """Set a registered user's role or explicitly revoke it with role=null.
+
+        Current owner/admin authority and the last-owner safeguard remain server-owned.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.set_project_membership(project_id, user_id, request)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
     def list_identity_users() -> list[dict[str, Any]]:
         """Read the bounded registered-user directory; requires factory administrator authority."""
         from firefly_forge.cli import client
@@ -1028,6 +1069,7 @@ def create_server() -> MCPServer:
         public_client: bool | None = None,
         project_id: str | None = None,
         authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
+        expected_revision: OAuthExpectedRevision = None,
     ) -> dict[str, Any]:
         """Configure an admitted provider as admin; use an owner-private secret file.
 
@@ -1045,6 +1087,8 @@ def create_server() -> MCPServer:
             "project_id": project_id,
             "authentication": authentication,
         }
+        if expected_revision is not None:
+            request["expected_revision"] = expected_revision
         if client_secret_file:
             request["client_secret"] = private_secret_file(Path(client_secret_file))
         with client() as connection:
