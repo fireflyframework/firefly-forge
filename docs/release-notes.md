@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.8
+
+Local command-pool supervisors reap adopted children while a command runs. After the command exits, they terminate and reap remaining descendants before returning a completion receipt, including processes that started a separate session. The original deadline and command exit status remain in force. This prevents a successful result from racing a still-running project writer; it does not undo external effects. See [local command pools](sandbox.md#administrator-opt-in-local-command-pools).
+
+Retained pool artifacts and command output are checked against the current credential registry before being returned. A value newly recognized as a credential blocks the read and requires reconciliation without altering the original artifact or receipt or resubmitting the command. Unregistered secrets still require review.
+
+Runner admission rechecks current execution authority and cancellation after capacity waits and at the host/Docker dispatch boundaries. Revocation or cancellation observed at these checks refuses dispatch. Retained reads use the same admission, and owned-resource cleanup remains available under its existing ownership checks. See [dispatch admission](sandbox.md#recheck-authority-after-waiting-for-a-runner).
+
+The existing-product, feature-change and proposed analytics diagrams read from left to right. Long sequences use phases; narrow screens retain readable labels in keyboard-accessible scroll regions. Existing-product review explicitly precedes frozen assistant context, and admission to flycanon remains optional. Compact navigation also keeps the forge name lowercase and preserves canonical Firefly artwork for the bridge.
+
+These changes retain the trusted local command-pool boundary. Kubernetes, multi-host placement, browser pools and complete coding-provider isolation require separate qualification.
+
 ## 0.2.7
 
 **Knowledge > Learning records** lists saved evidence for the selected authorized repository. Operators can inspect its source, verification receipts, dates and saved flycanon projection without submitting or replaying a write. The desktop selector stays reachable while long provenance scrolls; narrow windows use the normal vertical flow. A saved verified state does not establish current reuse eligibility. See [record inspection](learning.md#review-saved-records-in-studio).

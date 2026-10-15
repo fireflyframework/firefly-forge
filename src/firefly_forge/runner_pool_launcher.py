@@ -20,9 +20,21 @@ os.unlink('/tmp/forge-start')
 signal.alarm(config['timeout']+3)
 stdin=open('/forge-input/stdin.bin','rb')
 process=subprocess.Popen(['/usr/bin/timeout','--signal=TERM','--kill-after=2s',str(config['timeout']),*config['argv']],cwd='/workspace/'+config['cwd'],stdin=stdin,start_new_session=True)
-code=process.wait()
+while True:
+ child,wait_status=os.waitpid(-1,0)
+ if child==process.pid:
+  code=process.returncode=os.waitstatus_to_exitcode(wait_status)
+  break
 try: os.killpg(process.pid,signal.SIGKILL)
 except ProcessLookupError: pass
+# PID1 alone reaps these children, preventing PID reuse between listing and kill.
+while True:
+ with open('/proc/self/task/1/children') as children: adopted=children.read().split()
+ for child in adopted:
+  try: os.kill(int(child),signal.SIGKILL)
+  except ProcessLookupError: pass
+ try: os.waitpid(-1,0)
+ except ChildProcessError: break
 signal.alarm(60)
 status=json.dumps({'protocol':'forge-runner-exit-v1','execution_id':config['execution_id'],'exit_code':code}).encode()
 server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)

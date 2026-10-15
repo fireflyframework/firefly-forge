@@ -776,6 +776,16 @@ class SandboxExecutor:
                 run_id, task_id, execution_id, effect="cleanup", evidence={"mode": "host", "container": False}
             )
 
+    async def _admit_execution(self, run_id: str) -> dict[str, Any]:
+        from firefly_forge.project_access import ProjectAccess
+
+        await self.store.assert_ownership()
+        run = await self.store.get_run(run_id)
+        if (run.get("cancel_request") or {}).get("status") == "requested":
+            raise asyncio.CancelledError()
+        await ProjectAccess(self.store).authorize_execution(run)
+        return run
+
     async def execute(
         self,
         run_id: str,
@@ -808,8 +818,7 @@ class SandboxExecutor:
         if not directory.is_relative_to(workspace) or not workspace.is_dir() or not directory.is_dir():
             raise ValueError("Runner working directory must be confined to the component workspace")
         async with self._run_locks[run_id], self._capacity:
-            await self.store.assert_ownership()
-            run = await self.store.get_run(run_id)
+            run = await self._admit_execution(run_id)
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
             if snapshot.get("mode") == "pool":
                 if self.pool_worker is None:
@@ -912,6 +921,7 @@ class SandboxExecutor:
                     raise SandboxReconciliationRequired(
                         "Interrupted runner invocation requires explicit stage recovery"
                     )
+            await self._admit_execution(run_id)
             created = await self.journal.sandbox_effect_intent(
                 run_id, task_id, execution_id, effect="create", payload=payload
             )
@@ -927,8 +937,8 @@ class SandboxExecutor:
                 )
                 if started["disposition"] != "execute":
                     raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
-                await self.store.assert_ownership()
                 try:
+                    await self._admit_execution(run_id)
                     result = await backend.run(
                         config, argv, directory, min(timeout, config.timeout), config.max_output_bytes
                     )
@@ -957,8 +967,8 @@ class SandboxExecutor:
                     outcome="completed",
                 )
             elif created["disposition"] == "execute":
-                await self.store.assert_ownership()
                 try:
+                    await self._admit_execution(run_id)
                     volumes = (
                         await self._archive_prepare(config, workspace, git_root, payload["container_name"], labels)
                         if config.workspace_transport == "archive"
@@ -1047,7 +1057,7 @@ class SandboxExecutor:
                     if import_failure is not None:
                         raise import_failure
                 elif started["disposition"] == "execute":
-                    await self.store.assert_ownership()
+                    await self._admit_execution(run_id)
                     start_argv = ["start", "--attach", payload["container_name"]]
                     if _browser_input is not None:
                         start_argv.insert(1, "--interactive")

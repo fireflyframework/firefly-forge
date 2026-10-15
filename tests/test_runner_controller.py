@@ -108,6 +108,63 @@ def test_invocation_scope_signature_cannot_be_used_for_another_request(tmp_path,
     assert one != module.invocation_scope(SecretStr("other-test-token-32-characters-long"), first)
 
 
+@pytest.mark.parametrize("kind", ["output", "result"])
+async def test_authenticated_retained_artifact_rechecks_credentials_without_changing_receipts(
+    tmp_path, store, postgres_schema, controller_schema, monkeypatch, kind
+):
+    import base64
+    import os
+
+    from test_runner_pools import invocation
+
+    from firefly_forge.journal import Journal
+    from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
+    from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
+
+    module = controller_module()
+    monkeypatch.setenv("FORGE_RUNNER_DATABASE_URL", os.environ["FORGE_DATABASE_URL"])
+    cfg = settings(tmp_path, postgres_schema)
+    profile = cfg.authority.profile
+    pools = RunnerPools(store.session_provider, cfg.runner_schema, factory_schema=postgres_schema)
+    await pools.initialize()
+    await store.acquire_ownership()
+    fence = await RunnerFactoryAuthority(store, Journal(store)).exclusive_fence()
+    request = invocation(profile)
+    await pools.submit(profile, request)
+    claimed = await pools.claim(profile, "owned-read-fixture", fence)
+    artifacts = RunnerPoolArtifacts(cfg.authority.state_directory)
+    canary = "newly-registered-controller-read-canary"
+    receipt = artifacts.retain(profile, request, kind, canary.encode())
+    await pools.finish(
+        profile, claimed["id"], "owned-read-fixture", claimed["epoch"], fence, {"drained": True, kind: receipt}
+    )
+    before = await pools.history(profile, request.execution_id)
+    app = module.create_runner_application(cfg)
+    with TestClient(app, base_url="https://testserver") as client:
+        current = client.app.state.runtime.context.get_bean(RunnerPoolArtifacts)
+        original_registry = current.credential_registry
+        credentials = {}
+        current.credential_registry = lambda: {**original_registry(), **credentials}
+        body = {
+            "execution_id": request.execution_id,
+            "scope": module.invocation_scope(cfg.token, request.model_dump(mode="json")),
+            "kind": kind,
+        }
+        headers = {"Authorization": "Bearer " + TOKEN}
+        assert client.post("/runner/v1/artifact", json=body).status_code == 401
+        assert client.post("/runner/v1/artifact", headers=headers, json={**body, "scope": "0" * 64}).status_code == 403
+        response = client.post("/runner/v1/artifact", headers=headers, json=body)
+        assert response.status_code == 200
+        assert response.json() == {"receipt": receipt, "data_base64": base64.b64encode(canary.encode()).decode()}
+        credentials["FORGE_TEST_API_TOKEN"] = canary
+        response = client.post("/runner/v1/artifact", headers=headers, json=body)
+        assert response.status_code == 409
+        assert response.json() == {"detail": "Runner request violates its frozen policy"}
+        assert canary not in response.text and TOKEN not in response.text and str(tmp_path) not in response.text
+    assert await pools.history(profile, request.execution_id) == before
+    assert (cfg.authority.state_directory / request.execution_id / (kind + ".bin")).read_bytes() == canary.encode()
+
+
 @pytest.fixture
 async def controller_schema(postgres_schema):
     import os

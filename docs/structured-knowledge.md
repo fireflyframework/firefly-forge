@@ -43,17 +43,36 @@ The proposed native pyfly services would have these responsibilities:
 
 These names describe responsibilities to implement. They are not registered beans in `ForgeBeans`. The adapter should follow the existing native knowledge pattern: inject private configuration and typed repositories, centralize transport, and keep authority checks in server code.
 
+<div class="forge-flow" role="region" aria-label="Proposed analytics lifecycle diagram" aria-describedby="analytics-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
-flowchart TD
+---
+config:
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart LR
+  subgraph PreparePhase["1. Prepare the snapshot"]
+    direction TB
     A[Authorized project request] --> B[Bounded immutable snapshot]
     B --> C[Retained export intent]
-    C --> D[Scoped flyquery dataset]
-    D --> E[Observe admission receipt]
+  end
+  subgraph QueryPhase["2. Admit and query"]
+    direction TB
+    D[Scoped flyquery dataset] --> E[Observe admission receipt]
     E --> F[Authorized snapshot query]
-    F --> G[SQL validation and isolated execution]
-    G --> H[Retained query and result evidence]
+  end
+  subgraph EvidencePhase["3. Verify and retain"]
+    direction TB
+    G[SQL validation and isolated execution] --> H[Retained query and result evidence]
     H --> I[Analytical answer with provenance]
+  end
+  PreparePhase --> QueryPhase --> EvidencePhase
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="analytics-flow-guide">Follow the phases from left to right and the steps within each phase from top to bottom. Scroll horizontally on small screens; keyboard users can focus the diagram and use the arrow keys.</p>
 
 This is the proposed analytics sequence. Current flycanon retrieval and memory operate through the [implemented knowledge lifecycle](knowledge.md).
 

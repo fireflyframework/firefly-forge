@@ -9,20 +9,27 @@ Inspect the existing repositories before proposing changes. firefly forge reads 
 
 Use the logical project's component graph to select the repositories and paths to inspect. The project's `product_repository_id` owns the product definition and assistant conversation. Component repositories remain separate scopes.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Existing-product review and definition diagram" aria-describedby="asis-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
 ---
 config:
   flowchart:
-    wrappingWidth: 120
+    wrappingWidth: 96
 ---
-flowchart TD
-  Source[Committed component source] --> Inspect[Source inspection]
-  Inspect --> Review[Owner reviews exact evidence digest]
+flowchart LR
+  Source[Inspect committed component source] --> Review[Owner reviews exact evidence digest]
   Review --> Context[Frozen assistant context]
   Context --> Proposal[AI proposes journeys and expected behavior]
   Proposal --> Confirm[Owner confirms functional definition]
   Review -. Explicit admission .-> Canon[Product-scoped flycanon source]
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="asis-flow-guide">Follow the reviewed source from left to right. Scroll horizontally on small screens; keyboard users can focus the diagram and use the arrow keys.</p>
+
+The exact owner-reviewed evidence becomes frozen assistant context. The dashed flycanon branch is optional and requires explicit admission; reviewed context can be used without uploading it.
 
 ## Inspect and review the source
 

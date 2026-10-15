@@ -10,14 +10,33 @@ A product can contain several customer journeys, features and integrations. Each
 
 Incremental changes preserve the existing product definition. A request names its base revision and digest, upserts or removes specific contract IDs, and optionally appends journeys, acceptance criteria or user stories. Existing acceptance numbers and untouched features remain unchanged.
 
+<div class="forge-flow" role="region" aria-label="Product change lifecycle diagram" aria-describedby="product-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
-flowchart TD
-  A[Current product revision] --> B[Preview feature change]
-  B --> C[Save immutable definition revision]
-  C --> D[Review function, design and architecture]
-  D --> E[Start scoped implementation run]
-  E --> F[Verify source and review evidence]
+---
+config:
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart LR
+  subgraph ChangePhase["1. Describe the change"]
+    direction TB
+    A[Current product revision] --> B[Preview feature change]
+  end
+  subgraph ReviewPhase["2. Review the revision"]
+    direction TB
+    C[Save immutable definition revision] --> D[Review function, design and architecture]
+  end
+  subgraph BuildPhase["3. Build and verify"]
+    direction TB
+    E[Start scoped implementation run] --> F[Verify source and review evidence]
+  end
+  ChangePhase --> ReviewPhase --> BuildPhase
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="product-flow-guide">Follow the phases from left to right and the steps within each phase from top to bottom. Scroll horizontally on small screens; keyboard users can focus the diagram and use the arrow keys.</p>
 
 Saving a definition does not modify product source, run tests, contact an integration or deploy software. Its receipt reports `implementation_status: "not_started"`. Implementation, verification and delivery have their own run receipts.
 

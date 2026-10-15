@@ -19,6 +19,12 @@ The runner applies to independent verification and the native Firefly Agentic `e
 
 Cloud provisioning and deployment commands use the separately configured [deployment target and credentials](deployment.md). Their credential workflows are outside this code runner.
 
+## Recheck authority after waiting for a runner
+
+After acquiring its run lock and execution capacity, the runner rechecks coordinator ownership, cancellation and the recorded actor's current execution authority. It checks again before a new create intent and before host execution or Docker preparation and start. Revocation or cancellation observed at these checks prevents dispatch. These are point-in-time checks: they do not lock permissions through process launch or undo effects already performed. Legacy and internal executions without a recorded actor retain their existing admission contract. Returning a retained result also requires admission; the original result and journal remain intact when access is refused.
+
+Cleanup can still remove the invocation's owned containers and volumes after revocation or cancellation, with the existing ownership-label and coordinator checks. Removing execution permission must not prevent those resources from draining. Effects a command already performed remain part of its retained history and recovery process.
+
 ## Keep Python verification tied to current source
 
 Factory commands receive a fresh execution-owned Python cache namespace and `PYTHONDONTWRITEBYTECODE=1`. The namespace replaces inherited or caller-supplied `PYTHONPYCACHEPREFIX` values. This prevents normal Python imports from accepting an earlier timestamp-and-size cache after a same-size source edit. Disabling bytecode writes alone would still allow an existing stale cache to be read.
@@ -80,7 +86,11 @@ Factory transfers sanitized component source and a synthesized parentless Git sn
 
 Project commands use network `none`, a read-only source volume, bounded writable workspace tmpfs, a non-root user and an independent PID1 deadline. Workspace tmpfs consumes the container memory budget. Export has a separate bounded grace period; a lost export leaves an unknown outcome. One profile identity owns each physical engine, with capacity and project quotas shared across its immutable revisions. Quarantined resources continue reserving capacity until exact backend observations establish drain.
 
+The pool supervisor reaps adopted child processes while the command runs. Before publishing its authenticated completion status, it terminates and reaps remaining descendants, including children that started a separate session. The original supervisor deadline remains active during this drain; an incomplete drain cannot produce a completion receipt. This controls processes inside the local command container. External services and effects already performed by the command remain outside this lifecycle boundary.
+
 Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
+
+Retained artifact reads and command-output returns check the current credential registry, including the first result and later cached results. If a retained value is now recognized as a credential, the read is refused and command-output access requires reconciliation. The private artifact and original receipts remain intact; the command is not resubmitted. This checks registered credential values and their supported escaped forms, so operators must still review source and results for unregistered secrets.
 
 Local qualification covers a trusted Factory host, mutually authenticated controller and isolated command containers. Browser pool profiles, Factory worker container placement, project database sidecars, Kubernetes and shared multi-host storage require separate qualification. Native Codex/Claude provider processes retain their own execution boundary.
 
