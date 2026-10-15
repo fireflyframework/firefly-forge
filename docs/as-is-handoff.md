@@ -31,6 +31,62 @@ flowchart LR
 
 The exact owner-reviewed evidence becomes frozen assistant context. The dashed flycanon branch is optional and requires explicit admission; reviewed context can be used without uploading it.
 
+## Follow source inspection in Studio
+
+Select the product in **Product projects**, then choose **Open source inspection**. Its wizard has four steps. This walkthrough uses controlled responses for a monorepo with two distinct component roots, the same source commit and numeric skipped-file counts. It demonstrates presentation and explicit review; it runs no source inspection, model, provider or test command.
+
+1. In **Scope**, select the configured roots to inspect, then choose **Inspect configured source**. On your factory this starts source inspection; simply opening the wizard does not.
+2. In **Receipt**, select the returned report and inspect its recorded state, component/declaration counts and digest. **Refresh reports** reads retained reports. Continue to its evidence.
+3. In **Evidence**, check each component's root, source commit, declarations and skipped-file count. Expand **Exact source excerpt** to inspect a declaration's line and blob reference. Missing declarations require a coverage check before you infer anything about the product.
+4. In **Review**, read the open questions and download the source documents if needed. Acknowledge the source evidence explicitly, then choose **Acknowledge this report digest**. This confirms that report's source review; it leaves customer journeys and runtime behavior unconfirmed. **Done** closes the wizard.
+
+<figure class="forge-shot" markdown="1">
+
+![Scope step with two separate source roots selected in a monorepo.](assets/screenshots/source-analysis-scope-desktop-light.png)
+
+<figcaption>Scope: choose the configured components before inspecting. Both fixture roots belong to one repository; a multi-repository product retains each member's own repository and commit.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Receipt step with a retained inspection report, counts and digest.](assets/screenshots/source-analysis-receipt-desktop-light.png)
+
+<figcaption>Receipt: the controlled report is ready for review. Its identity and digest remain separate from an approved product definition.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Evidence step showing component roots, source commits and declaration references.](assets/screenshots/source-analysis-evidence-desktop-light.png)
+
+<figcaption>Evidence: inspect the source boundary and omitted-file count for each component. The fixture uses the same commit for both monorepo roots; it does not prove that their services integrate correctly.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Review step with owner questions and explicit source-evidence acknowledgment.](assets/screenshots/source-analysis-review-desktop-light.png)
+
+<figcaption>Review: the acknowledgment applies to source evidence. Confirm the proposed behavior separately with the product owner before requesting implementation.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect source evidence and review on a phone</summary>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Source declarations and component references within the phone evidence step.](assets/screenshots/source-analysis-evidence-mobile-light.png)
+
+<figcaption>Evidence: scroll the declaration content while retaining the wizard controls. Expand the exact source excerpt when checking a citation.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Explicit source review and acknowledgment within the phone wizard.](assets/screenshots/source-analysis-review-mobile-light.png)
+
+<figcaption>Review: read the questions and acknowledgment before confirming. These controlled captures follow the same current-source inventory and maintenance procedure as the <a href="../console-tour/#keep-captures-current">Studio tour</a>.</figcaption>
+</figure>
+
+</details>
+
 ## Choose the product scope before inspection
 
 Create or select the [product project](factory-journeys.md#2-configure-the-product-project) before opening source inspection. For a monorepo, configure distinct, nonoverlapping component roots in one registered repository. For a multi-repository product, configure each member repository, its component roots and the intended dependencies. Select all components for a product overview, or an explicit subset for a focused question.
