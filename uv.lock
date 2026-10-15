@@ -1042,7 +1042,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2,<51" },
     { name = "filelock", specifier = ">=3.20,<5" },
     { name = "fireflyframework-agentic", url = "https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl" },
-    { name = "flycanon-sdk", url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.3/flycanon_sdk-26.10.3-py3-none-any.whl" },
+    { name = "flycanon-sdk", url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.4/flycanon_sdk-26.10.4-py3-none-any.whl" },
     { name = "fonttools", extras = ["woff"], specifier = ">=4.62,<5" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "httpx2", specifier = ">=2.13.1,<3" },
@@ -1154,14 +1154,14 @@ provides-extras = ["all", "azure-embeddings", "bedrock-embeddings", "binary", "c
 
 [[package]]
 name = "flycanon-sdk"
-version = "26.10.3"
-source = { url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.3/flycanon_sdk-26.10.3-py3-none-any.whl" }
+version = "26.10.4"
+source = { url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.4/flycanon_sdk-26.10.4-py3-none-any.whl" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
 wheels = [
-    { url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.3/flycanon_sdk-26.10.3-py3-none-any.whl", hash = "sha256:764ac87a983e040bbadf88f458894e15aacf4c2f14b549a2c1075fecc14b9b6a" },
+    { url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.4/flycanon_sdk-26.10.4-py3-none-any.whl", hash = "sha256:1c9664b1db4ef08bd18fd34c68c55b95addb6cb447f761fd45a1f6029d0dd33a" },
 ]
 
 [package.metadata]
