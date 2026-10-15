@@ -836,6 +836,40 @@ class ForgeClient:
             self.request("POST", f"learning/records/{self._id(record_id)}/projection/observe", json=body.model_dump())
         )
 
+    def observe_learning_projection_attempt(self, record_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Send one v2 observation attempt. Recover its exact receipt instead of retrying."""
+        from pydantic import ValidationError
+
+        from firefly_forge.learning_observation_attempt_models import (
+            LearningObservationAttemptInput,
+            LearningObservationAttemptReceipt,
+        )
+
+        try:
+            body = LearningObservationAttemptInput.model_validate(request)
+        except ValidationError:
+            raise ValueError("A bounded v2 observation request with exact projection anchors is required") from None
+        result = self.request(
+            "POST", f"learning/records/{self._id(record_id)}/projection/observation-attempts", json=body.model_dump()
+        )
+        return LearningObservationAttemptReceipt.model_validate(result).model_dump(mode="json")
+
+    def learning_projection_observation_attempt(self, record_id: str, attempt_id: str) -> dict[str, Any]:
+        """Read a local attempt; absence or an unresolved state never authorizes replay."""
+        from firefly_forge.learning_observation_attempt_models import (
+            LearningObservationAttemptReceipt,
+            observation_attempt_id,
+        )
+
+        result = self.request(
+            "GET",
+            "learning/records/"
+            + self._id(record_id)
+            + "/projection/observation-attempts/"
+            + observation_attempt_id(attempt_id),
+        )
+        return LearningObservationAttemptReceipt.model_validate(result).model_dump(mode="json")
+
     def configure_tool_policy(self, request: dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.tool_broker import ToolPolicyInput
 

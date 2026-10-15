@@ -248,7 +248,7 @@ Pinned community skills are instruction adaptations with retained source, hash a
 | Official Codex / Claude Code | The official CLI's native tools and permission controls | A Python role tool list is advisory; it is not the CLI sandbox. |
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 125 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 127 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 
@@ -268,11 +268,41 @@ After failed QA, `Engine._repair_proposal` inspects the owned workspace and chec
 | --- | --- | --- |
 | `LearningLedger` | Capture verified outcomes and evaluate exact local reuse | Question, scope, source, versions, checks and review receipts |
 | `LearningProjection` | Submit or observe a separate flycanon projection; read an exact eligible citation | Captured target, source identity, content digest and citation |
+| `LearningObservationAttempts` | Admit one existing-source verification and distinguish a local refusal from uncertainty | Original actor and target, input/source fingerprints, dispatch state and exact observation event |
 | Repair proposal admission | Permit or hold the next same-run coding proposal after actual QA | Native verification receipt, matching round count, policy digest and decision |
 
 The proposal cap leaves verification commands, diagnostic checks, intentional RED tests and test-only runs available. It does not classify an approach as invalid across runs. Cross-run negative learning, reviewed sharing between projects, Studio source submission and ingestion reconciliation remain separate work.
 
-Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning.py), [`learning_projection.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning_projection.py), [`repair_proposals.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/repair_proposals.py). The [learning guide](learning.md#review-saved-records-in-studio) explains record inspection, guarded invalidation and exact-request recovery.
+### Existing-source verification transactions
+
+`LearningObservationAttempts` is a native pyfly `@service`, explicitly registered by `create_runtime`. `LearningController` receives that same service through constructor injection, sharing the runtime's projection, store and learning ledger.
+
+Each v2 attempt has a separate `obs2_` identity and a PostgreSQL row unique to its record and request. Admission locks the run, record and existing attempt in that order. A fresh identity is refused unless every earlier v2 attempt for the record has an intact `not_dispatched` receipt. A duplicate identity returns its retained outcome without another remote read.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source verification attempt lifecycle diagram" aria-describedby="observation-attempt-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    P[Preparing: committed local claim] -->|Local admission refused| N[Not dispatched]
+    P -->|Commit dispatch admission| D[Dispatched]
+    D -->|Source and citation match; commit event| V[Verified]
+    D -->|Read or verification fails| U[Unknown]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="observation-attempt-flow-guide">Follow each committed state from left to right. On a small screen, scroll horizontally or focus the diagram and use the arrow keys. A new reviewed request has a different identity; terminal receipts stay unchanged.</p>
+
+The claim commits before local preflight. Dispatch admission commits before the flycanon client opens; no database lock is held across the remote source and citation reads. Verification then locks and checks current authority and the original projection again, committing the observation event, projection update and terminal receipt together. Remote reads and the local commit are separate boundaries. Cancellation or an interrupted acknowledgement can leave `preparing` or `dispatched` unresolved; neither state authorizes another request.
+
+Native PostgreSQL guards preserve the attempt's origin and terminal outcome. An exact receipt read checks the current actor and scope, credential admission, retained digest and, for a verified attempt, the original observation event. It does not contact flycanon. Only a confirmed `not_dispatched` outcome can enter Studio's explicit correction flow; that flow preserves the old receipt and reviews a different request identity. The [operator contract](agent-integrations.md#exact-observation-attempts) defines its fields, digest encoding and recovery limits.
+
+Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning.py), [`learning_projection.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning_projection.py), [`learning_observation_attempts.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning_observation_attempts.py), [`repair_proposals.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/repair_proposals.py). The [learning guide](learning.md#review-saved-records-in-studio) explains record inspection, guarded invalidation and exact-request recovery.
 
 ### Structured analytics boundary
 

@@ -8,11 +8,24 @@ import type {
   LearningProjection,
   LearningRecord,
 } from "./LearningRecordData";
+import { readLearningProjection } from "./LearningRecordData";
+import {
+  archiveRefusedAttempt,
+  attemptDigest,
+  attemptInput,
+  attemptKey,
+  exactAttemptMarker,
+  legacyShape,
+  readAttemptMarker,
+  readAttemptReceipt,
+  retainAttempt,
+  type AttemptReceipt,
+  type AttemptMarker,
+} from "./LearningObservationAttemptData";
 import {
   observationKey,
   readObservationMarker,
   readLearningObservation,
-  retainObservation,
   type ObservationMarker,
   type LearningObservationReceipt,
 } from "./LearningObservationData";
@@ -21,7 +34,7 @@ import "./ProjectAccess.css";
 export function LearningObservation({
   connection,
   record,
-  projection,
+  projection: suppliedProjection,
   session,
   onDenied,
   onConfirmed,
@@ -43,34 +56,42 @@ export function LearningObservation({
   };
   const [retained] = useState(() => {
     try {
+      const legacy = sessionStorage.getItem(observationKey(context));
+      const current = sessionStorage.getItem(attemptKey(context));
+      if (legacy !== null && current !== null)
+        throw new Error("Conflicting request identities");
+      const attempt = readAttemptMarker(current, context);
       return {
-        pending: readObservationMarker(
-          sessionStorage.getItem(observationKey(context)),
-          context,
-        ),
+        pending:
+          legacy !== null ? readObservationMarker(legacy, context) : attempt,
         blocked: false,
       };
     } catch {
       return { pending: null, blocked: true };
     }
   });
-  const [pending, setPending] = useState<ObservationMarker | null>(
-      retained.pending,
-    ),
+  const [pending, setPending] = useState<
+      ObservationMarker | AttemptMarker | null
+    >(retained.pending),
     [blocked, setBlocked] = useState(retained.blocked),
     [receipt, setReceipt] = useState<LearningObservationReceipt | null>(null),
+    [refusal, setRefusal] = useState<AttemptReceipt | null>(null),
+    [refreshedProjection, setRefreshedProjection] =
+      useState<LearningProjection | null>(null),
     [editing, setEditing] = useState(false),
     [step, setStep] = useState(0),
     [source, setSource] = useState(""),
     [acknowledged, setAcknowledged] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const projection = refreshedProjection ?? suppliedProjection;
   const live = useRef(true),
     inflight = useRef(false),
     active = useRef<AbortController | null>(null),
     dialog = useRef<HTMLDialogElement>(null),
     opener = useRef<HTMLButtonElement>(null),
-    result = useRef<HTMLDivElement>(null);
+    result = useRef<HTMLDivElement>(null),
+    restoreFocus = useRef(false);
   const canReview =
     session.global_admin ||
     Boolean(
@@ -107,8 +128,14 @@ export function LearningObservation({
     return () => node?.close();
   }, [editing]);
   useEffect(() => {
-    if (pending || receipt) result.current?.focus();
-  }, [pending, receipt]);
+    if (pending || receipt || refusal) result.current?.focus();
+  }, [pending, receipt, refusal]);
+  useEffect(() => {
+    if (!pending && restoreFocus.current) {
+      restoreFocus.current = false;
+      opener.current?.focus();
+    }
+  }, [pending]);
   function closeReview() {
     dialog.current?.close();
     setEditing(false);
@@ -134,19 +161,71 @@ export function LearningObservation({
         "The original observation could not be confirmed. Its identity is retained; no request was repeated.",
       );
   }
-  async function readReceipt(marker: ObservationMarker) {
+  async function readReceipt(
+    marker: ObservationMarker | AttemptMarker,
+    expectedRefusal?: string,
+  ) {
     const controller = new AbortController();
     active.current = controller;
+    let eventRequest = marker.requestId;
+    let exact: AttemptReceipt | null = null;
+    if (marker.version === 2) {
+      const saved = await exactAttemptMarker(sessionStorage, marker);
+      const value = await request<unknown>(
+        connection,
+        `/learning/records/${marker.record}/projection/observation-attempts/obs2_${marker.requestId}`,
+        { signal: controller.signal },
+      );
+      exact = await readAttemptReceipt(value, saved);
+      if (!live.current || controller.signal.aborted) return;
+      if (
+        expectedRefusal &&
+        (exact.state !== "not_dispatched" || exact.digest !== expectedRefusal)
+      )
+        throw new Error("Original terminal receipt changed");
+      if (exact.state === "not_dispatched") {
+        setRefusal(exact);
+        setError("");
+        return exact;
+      }
+      if (exact.state !== "verified" || !exact.observation)
+        throw new Error("Original attempt remains unresolved");
+      eventRequest = exact.observation.request_id;
+    }
     const value = await request<unknown>(
       connection,
-      `/learning/records/${marker.record}/projection/observations/${marker.requestId}`,
+      `/learning/records/${marker.record}/projection/observations/${eventRequest}`,
       { signal: controller.signal },
     );
-    const confirmed = readLearningObservation(value, marker);
+    let eventMarker: ObservationMarker;
+    if (marker.version === 2) {
+      const sourceId =
+        value && typeof value === "object" && "source_id" in value
+          ? value.source_id
+          : null;
+      if (
+        typeof sourceId !== "string" ||
+        !/^[A-Za-z0-9._-]{1,200}$/.test(sourceId) ||
+        (await attemptDigest({ source_id: sourceId })) !== marker.sourceDigest
+      )
+        throw new Error("Original source does not match the attempt");
+      const original = legacyShape(marker, sourceId);
+      if ((await attemptDigest(attemptInput(original))) !== marker.inputDigest)
+        throw new Error("Original input does not match the attempt");
+      eventMarker = { ...original, requestId: eventRequest };
+    } else eventMarker = marker;
+    const confirmed = readLearningObservation(value, eventMarker);
+    if (
+      exact &&
+      (exact.observation?.event_id !== confirmed.event_id ||
+        exact.observation.digest !== confirmed.digest)
+    )
+      throw new Error("Original event does not match the attempt");
     if (!live.current || controller.signal.aborted) return;
     setReceipt(confirmed);
     setError("");
     onConfirmed(confirmed);
+    return exact;
   }
   async function check() {
     if (!pending || inflight.current || !canReview) return;
@@ -154,13 +233,71 @@ export function LearningObservation({
     setBusy(true);
     setError("");
     try {
-      const stored = readObservationMarker(
-        sessionStorage.getItem(observationKey(context)),
-        context,
-      );
+      const stored =
+        pending.version === 1
+          ? readObservationMarker(
+              sessionStorage.getItem(observationKey(context)),
+              context,
+            )
+          : await exactAttemptMarker(sessionStorage, pending);
       if (!stored || JSON.stringify(stored) !== JSON.stringify(pending))
         throw new Error("Pending identity changed");
       await readReceipt(pending);
+    } catch (cause) {
+      failure(cause);
+    } finally {
+      inflight.current = false;
+      if (live.current) setBusy(false);
+    }
+  }
+  async function correctRefusal() {
+    if (
+      !pending ||
+      !refusal ||
+      pending.version !== 2 ||
+      inflight.current ||
+      !canReview
+    )
+      return;
+    inflight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const confirmed = await readReceipt(pending, refusal.digest);
+      if (!confirmed || confirmed.state !== "not_dispatched" || !live.current)
+        return;
+      const controller = new AbortController();
+      active.current = controller;
+      const value = await request<unknown>(
+        connection,
+        `/learning/records/${record.id}/projection`,
+        { signal: controller.signal },
+      );
+      const current = readLearningProjection(value, record.id);
+      if (!live.current || controller.signal.aborted) return;
+      if (
+        record.state !== "verified" ||
+        !["source_admitted", "unknown"].includes(current.state) ||
+        current.id !== pending.projection ||
+        current.submission_request_id !== pending.submissionRequest ||
+        current.workspace_id !== pending.workspace ||
+        current.target_revision !== pending.targetRevision ||
+        current.payload_digest !== pending.payloadDigest ||
+        current.content_sha256 !== pending.contentHash
+      )
+        throw new Error(
+          "Current projection no longer matches the original review",
+        );
+      await archiveRefusedAttempt(sessionStorage, pending, confirmed);
+      if (!live.current || controller.signal.aborted) return;
+      restoreFocus.current = true;
+      setSource("");
+      setRefreshedProjection(current);
+      setPending(null);
+      setRefusal(null);
+      setReceipt(null);
+      setAcknowledged(false);
+      setStep(0);
     } catch (cause) {
       failure(cause);
     } finally {
@@ -195,8 +332,9 @@ export function LearningObservation({
     inflight.current = true;
     setBusy(true);
     setError("");
+    let saved: AttemptMarker;
     try {
-      retainObservation(sessionStorage, marker);
+      saved = await retainAttempt(sessionStorage, marker);
     } catch {
       setBlocked(true);
       setError(
@@ -206,21 +344,20 @@ export function LearningObservation({
       setBusy(false);
       return;
     }
-    setPending(marker);
+    if (!live.current) return;
+    setPending(saved);
+    setSource("");
     setEditing(false);
     try {
       await request<unknown>(
         connection,
-        `/learning/records/${record.id}/projection/observe`,
+        `/learning/records/${record.id}/projection/observation-attempts`,
         {
           method: "POST",
-          body: JSON.stringify({
-            request_id: marker.requestId,
-            source_id: marker.source,
-          }),
+          body: JSON.stringify(attemptInput(marker)),
         },
       );
-      if (live.current) await readReceipt(marker);
+      if (live.current) await readReceipt(saved);
     } catch (cause) {
       failure(cause);
     } finally {
@@ -251,17 +388,25 @@ export function LearningObservation({
       {pending ? (
         <div ref={result} tabIndex={-1} className="learning-observation-result">
           <h4>
-            {receipt
-              ? "Original source verification confirmed"
-              : "Original source verification unresolved"}
+            {refusal
+              ? "Original request was not dispatched"
+              : receipt
+                ? "Original source verification confirmed"
+                : "Original source verification unresolved"}
           </h4>
           <p>
-            {receipt
-              ? "The exact observation event was read with your current review authority. No request was repeated."
-              : "A saved projection state cannot confirm this request. Read its exact receipt before treating the observation as confirmed."}
+            {refusal
+              ? "The exact server receipt confirms this request was refused before contacting flycanon. Review current access and the source before explicitly starting a different request."
+              : receipt
+                ? "The exact observation event was read with your current review authority. No request was repeated."
+                : "A saved projection state cannot confirm this request. Read its exact receipt before treating the observation as confirmed."}
           </p>
           <p className="learning-observation-source">
-            Source: {pending.source}
+            {pending.version === 1
+              ? `Source: ${pending.source}`
+              : receipt
+                ? `Source: ${receipt.source_id}`
+                : "The original request is retained. Unconfirmed source text is not saved."}
           </p>
           <details>
             <summary>Retained request details</summary>
@@ -280,12 +425,22 @@ export function LearningObservation({
               </div>
               <div>
                 <dt>Request</dt>
-                <dd>{pending.requestId}</dd>
+                <dd>
+                  {pending.version === 2
+                    ? `obs2_${pending.requestId}`
+                    : pending.requestId}
+                </dd>
               </div>
               <div>
                 <dt>Record</dt>
                 <dd>{pending.record}</dd>
               </div>
+              {pending.version === 2 && (
+                <div>
+                  <dt>Source fingerprint</dt>
+                  <dd>{pending.sourceDigest}</dd>
+                </div>
+              )}
               <div>
                 <dt>Target revision</dt>
                 <dd>{pending.targetRevision}</dd>
@@ -360,7 +515,39 @@ export function LearningObservation({
               </details>
             </>
           )}
-          {!receipt && (
+          {refusal && (
+            <details>
+              <summary>Original attempt receipt</summary>
+              <dl className="learning-record-summary">
+                <div>
+                  <dt>Recorded outcome</dt>
+                  <dd>Not dispatched</dd>
+                </div>
+                <div>
+                  <dt>Finished at</dt>
+                  <dd>
+                    <time dateTime={refusal.finished_at!}>
+                      {new Date(refusal.finished_at!).toLocaleString()}
+                    </time>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Receipt digest</dt>
+                  <dd>{refusal.digest}</dd>
+                </div>
+              </dl>
+            </details>
+          )}
+          {refusal && (
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => void correctRefusal()}
+            >
+              Review and start a new verification
+            </button>
+          )}
+          {!receipt && !refusal && (
             <button
               className="secondary"
               disabled={busy}

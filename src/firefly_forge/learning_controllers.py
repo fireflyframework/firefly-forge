@@ -14,6 +14,11 @@ from firefly_forge.learning_models import (
     LearningPolicy,
     LearningProjectionObservationReceipt,
 )
+from firefly_forge.learning_observation_attempt_models import (
+    LearningObservationAttemptInput,
+    LearningObservationAttemptReceipt,
+)
+from firefly_forge.learning_observation_attempts import LearningObservationAttempts
 from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.store import Store
 
@@ -34,8 +39,14 @@ class LearningObservation(LearningAction):
 @rest_controller
 @request_mapping("/api/v1")
 class LearningController:
-    def __init__(self, ledger: LearningLedger, projection: LearningProjection, store: Store) -> None:
-        self.ledger, self.projection, self.store = ledger, projection, store
+    def __init__(
+        self,
+        ledger: LearningLedger,
+        projection: LearningProjection,
+        store: Store,
+        attempts: LearningObservationAttempts,
+    ) -> None:
+        self.ledger, self.projection, self.store, self.attempts = ledger, projection, store, attempts
 
     @get_mapping("/learning/policy")
     def policy(self) -> dict[str, Any]:
@@ -76,3 +87,15 @@ class LearningController:
     @post_mapping("/learning/records/{id}/projection/observe")
     async def observe(self, id: PathVar[str], body: Body[LearningObservation]) -> dict[str, Any]:
         return await self.projection.observe(id, source_id=body.source_id, request_id=body.request_id)
+
+    @post_mapping("/learning/records/{id}/projection/observation-attempts")
+    async def observe_attempt(
+        self, id: PathVar[str], body: Body[LearningObservationAttemptInput]
+    ) -> LearningObservationAttemptReceipt:
+        return LearningObservationAttemptReceipt.model_validate(await self.attempts.observe(id, body))
+
+    @get_mapping("/learning/records/{id}/projection/observation-attempts/{attempt_id}")
+    async def observation_attempt(
+        self, id: PathVar[str], attempt_id: PathVar[str]
+    ) -> LearningObservationAttemptReceipt:
+        return LearningObservationAttemptReceipt.model_validate(await self.attempts.receipt(id, attempt_id))

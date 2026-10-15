@@ -42,6 +42,35 @@ Publication and cancellation are worker-mediated requests. Python `execution_req
 
 Python `reconcile_execution_request(run_id, request_id, reconciliation_id)`, MCP `reconcile_execution_request`, and CLI `forge reconcile-execution-request` ask the server to match existing evidence. They accept a stable 32-character hexadecimal reconciliation ID and no caller-supplied outcome. They do not dispatch delivery or repeat an uncertain effect. Read [delivery request recovery](recovery.md#reconcile-worker-delivery-requests) for authority checks, idempotency and unknown-result handling.
 
+## Exact observation attempts
+
+V2 source-verification attempts can distinguish an immutable local refusal from an uncertain operation. They read an existing flycanon source and its citations; they do not create or ingest a source. The original observation and verified-receipt APIs remain available with their existing UUID request identifiers.
+
+`observe_learning_projection_attempt(record_id, request)` accepts an `obs2_` prefix followed by 32 lowercase hexadecimal characters. Its strict request includes `source_id` and the expected `projection_id`, `submission_request_id`, `workspace_id`, `target_revision`, `payload_digest` and `content_sha256` from the saved projection. `source_id` can be omitted to select the projection's admitted source. A recorded source cannot be replaced. Enter a source identifier, never a token, URL or credential.
+
+Send a request once, then read its exact local receipt:
+
+```sh
+forge learning observe-attempt RECORD_ID observation.json
+forge learning observation-attempt RECORD_ID --attempt-id obs2_0123456789abcdef0123456789abcdef
+```
+
+The Python read method is `learning_projection_observation_attempt(record_id, attempt_id)`. Factory MCP exposes `observe_learning_projection_attempt` and the read-only `get_learning_projection_observation_attempt`. The API routes are `POST /api/v1/learning/records/{id}/projection/observation-attempts` and `GET /api/v1/learning/records/{id}/projection/observation-attempts/{attempt_id}`. A successful POST response still needs exact GET readback before a client treats the request as confirmed or correctable.
+
+| Retained state | What it establishes | Permitted recovery |
+| --- | --- | --- |
+| `not_dispatched` | This exact request was refused locally before Canon dispatch | After a matching, authorized receipt read and current status read, explicitly review a fresh request with a different attempt ID |
+| `verified` | The exact attempt is associated with an immutable observation event | Read the referenced observation receipt and verify its identity, digest, actor and scope |
+| `preparing`, `dispatched`, `unknown` | No terminal refusal or exact verification is established | Keep the original identity and use readback; never replay or infer an outcome from elapsed time |
+
+The server commits a request claim before preflight and commits dispatch admission before opening the Canon client. The attempt's origin and terminal receipt are protected by native PostgreSQL guards. Unadmitted selected input is retained only as digests. `input_digest` hashes the complete declared request, including the default `source_id: null`; `source_digest` hashes `{"source_id": INPUT_VALUE}`. Both use SHA-256 over UTF-8 JSON with sorted keys, comma/colon separators and no ASCII escaping.
+
+The fixed refusal reason, `local_admission_refused`, does not classify an engineering failure or prove the input was wrong. Credential-admission unavailability can also refuse a local request. Current review authority and credential admission are required to read a receipt. No receipt read contacts Canon.
+
+A fresh v2 identity is admitted only when every prior v2 attempt for the record has an intact `not_dispatched` receipt. The server checks this under the same record lock as request admission. Changing the request ID cannot bypass an in-flight, unknown or already verified attempt.
+
+An HTTP 400 or 404 response, malformed receipt, generic verified projection or legacy marker cannot authorize another request. Validation, authorization, storage or the 100-attempt history bound can refuse a request without creating a recoverable claim; absence remains unresolved. Cancellation, a lost commit acknowledgement and failure after dispatch do not authorize replay. There is no abandonment or retry operation in this contract.
+
 ## Product conversations
 
 ```sh

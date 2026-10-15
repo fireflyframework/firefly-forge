@@ -53,9 +53,11 @@ async def test_mcp_tools_have_real_input_contracts():
         "invalidate_learning",
         "get_learning_invalidation_receipt",
         "get_learning_projection_observation_receipt",
+        "get_learning_projection_observation_attempt",
         "get_learning_projection",
         "submit_learning_projection",
         "observe_learning_projection",
+        "observe_learning_projection_attempt",
         "list_deployment_targets",
         "deploy_verified_run",
         "rollback_deployment",
@@ -164,6 +166,10 @@ async def test_mcp_tools_have_real_input_contracts():
     assert tools["submit_learning_projection"].input_schema["required"] == ["record_id", "request_id"]
     assert tools["observe_learning_projection"].input_schema["required"] == ["record_id", "request_id"]
     assert "source_id" in tools["observe_learning_projection"].input_schema["properties"]
+    assert tools["observe_learning_projection_attempt"].input_schema["required"] == ["record_id", "request"]
+    assert tools["get_learning_projection_observation_attempt"].input_schema["required"] == ["record_id", "attempt_id"]
+    assert tools["observe_learning_projection_attempt"].annotations.read_only_hint is False
+    assert tools["get_learning_projection_observation_attempt"].annotations.read_only_hint is True
 
 
 def test_cli_version_and_command_help():

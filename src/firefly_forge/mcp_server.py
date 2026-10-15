@@ -14,6 +14,7 @@ from firefly_forge.access_controllers import MembershipInput
 from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
 from firefly_forge.learning_models import LearningPolicy
+from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
 from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
@@ -40,6 +41,7 @@ IdentityEnabled = Annotated[Any, WithJsonSchema(UserEnabledInput.model_json_sche
 IdentityProvisionRequest = Annotated[Any, WithJsonSchema(UserProvisionInput.model_json_schema())]
 IdentityReconciliationRequest = Annotated[Any, WithJsonSchema(AdministrationReconciliation.model_json_schema())]
 IdentityRecoveryRequest = Annotated[Any, WithJsonSchema(AdministrationRecovery.model_json_schema())]
+ObservationAttemptRequest = Annotated[Any, WithJsonSchema(LearningObservationAttemptInput.model_json_schema())]
 
 
 def create_server() -> MCPServer:
@@ -1305,6 +1307,30 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.observe_learning_projection(record_id, request_id, source_id)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        )
+    )
+    def observe_learning_projection_attempt(record_id: str, request: ObservationAttemptRequest) -> dict[str, Any]:
+        """Send one v2 observation request. Do not retry; read the exact local attempt receipt."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.observe_learning_projection_attempt(record_id, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_learning_projection_observation_attempt(record_id: str, attempt_id: str) -> dict[str, Any]:
+        """Read a local v2 attempt; missing, unknown and in-flight receipts never permit replay."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.learning_projection_observation_attempt(record_id, attempt_id)
 
     return server
 

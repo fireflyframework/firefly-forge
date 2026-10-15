@@ -38,6 +38,10 @@ from firefly_forge.identity_persistence import (
     ForgeIdentityUserEntity,
 )
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadEntity
+from firefly_forge.learning_observation_attempt_persistence import (
+    ForgeLearningObservationAttemptEntity,
+    observation_attempt_guards,
+)
 from firefly_forge.learning_persistence import (
     ForgeLearningEventEntity,
     ForgeLearningProjectionEntity,
@@ -71,7 +75,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 23
+SCHEMA_REVISION = 24
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -133,6 +137,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeLearningRecordEntity,
                 ForgeLearningEventEntity,
                 ForgeLearningProjectionEntity,
+                ForgeLearningObservationAttemptEntity,
                 OAuthConnectionEntity,
                 OAuthRegistrationEntity,
                 OAuthAttemptEntity,
@@ -345,6 +350,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
 
     await _oauth_history_guards(session)
     await _oauth_provider_policy_guards(session)
+    await observation_attempt_guards(session)
 
 
 async def _oauth_history_guards(session: AsyncSession) -> None:
