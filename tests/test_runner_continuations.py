@@ -722,3 +722,94 @@ async def test_exact_read_rechecks_authority_after_async_credential_fence(store,
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         CURRENT_PRINCIPAL.reset(context)
+
+
+async def test_global_pending_bound_serializes_different_run_admissions(store, tmp_path):
+    from sqlalchemy import text
+
+    from firefly_forge.execution_request_persistence import (
+        ForgeExecutionRequestEntity,
+        ForgeExecutionRequestRepository,
+    )
+    from firefly_forge.project_access import CURRENT_PRINCIPAL
+
+    (tmp_path / "first").mkdir()
+    (tmp_path / "second").mkdir()
+    first = await waiting(store, tmp_path / "first")
+    second = await waiting(store, tmp_path / "second")
+    first_count, release_count, second_count = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    requests = []
+    try:
+        async with store._unit():
+            for _ in range(499):
+                identity = uuid4()
+                await first[0].requests.records.save(
+                    ForgeExecutionRequestEntity(
+                        id=identity,
+                        run_id=UUID(first[2]["id"]),
+                        kind="cancel",
+                        request_key=identity.hex,
+                        status="queued",
+                        data={"fixture": "owned pending request"},
+                    )
+                )
+        observed = []
+        original = first[0].requests.records.pending_count
+
+        async def hold_first_count():
+            count = await original()
+            observed.append(count)
+            first_count.set()
+            await release_count.wait()
+            return count
+
+        other_count = second[0].requests.records.pending_count
+
+        async def observe_second_count():
+            count = await other_count()
+            observed.append(count)
+            second_count.set()
+            return count
+
+        first[0].requests.records.pending_count = hold_first_count
+        second[0].requests.records.pending_count = observe_second_count
+        bodies = []
+        for fixture in (first, second):
+            wal = (await fixture[3].sandbox_executions(fixture[2]["id"]))[0]
+            bodies.append(module().RunnerContinuationInput(request_id=uuid4().hex, execution_id=wal["execution_id"]))
+        requests.append(asyncio.create_task(first[0].request(first[2]["id"], bodies[0])))
+        await asyncio.wait_for(first_count.wait(), 5)
+        requests.append(asyncio.create_task(second[0].request(second[2]["id"], bodies[1])))
+        # Observe either the old unprotected count or an actual waiter on the shared native lock.
+        async with asyncio.timeout(5):
+            while not second_count.is_set():
+                async with store._unit() as session:
+                    blocked = await session.scalar(
+                        text(
+                            "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted "
+                            "AND classid::bigint=((hashtextextended(:key,0)>>32)&4294967295) "
+                            "AND objid::bigint=(hashtextextended(:key,0)&4294967295))"
+                        ),
+                        {"key": "forge:execution-request-admission:" + store.schema},
+                    )
+                if blocked:
+                    break
+                await asyncio.sleep(0)
+        release_count.set()
+        results = await asyncio.gather(*requests, return_exceptions=True)
+        async with store._unit():
+            actual = await ForgeExecutionRequestRepository().pending_count()
+        assert actual == 500
+        assert sorted(observed) == [499, 500]
+        assert sum(isinstance(result, dict) for result in results) == 1
+        assert sum(isinstance(result, ValueError) for result in results) == 1
+    finally:
+        release_count.set()
+        for request in requests:
+            request.cancel()
+        await asyncio.gather(*requests, return_exceptions=True)
+        for fixture in (second, first):
+            fixture[5].set()
+            fixture[4].cancel()
+            await asyncio.gather(fixture[4], return_exceptions=True)
+            CURRENT_PRINCIPAL.reset(fixture[6])

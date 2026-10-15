@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.data.relational.sqlalchemy import LockMode
+from sqlalchemy import text
 
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity
 from firefly_forge.execution_requests import ExecutionRequests, digest
@@ -128,7 +129,11 @@ class RunnerContinuations:
             return await self.get(run_id, body.request_id)
         admitted = {**await self.binding(run_id, body.execution_id), "actor": actor}
         await self.store.admit_credentials(admitted)
-        async with self.store._unit():
+        async with self.store._unit() as session:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                {"key": "forge:execution-request-admission:" + self.store.schema},
+            )
             locked = await self.store.run_records.find_by_id(identifier(run_id), lock=LockMode.PESSIMISTIC_WRITE)
             if locked is None:
                 raise KeyError("Run not found")
