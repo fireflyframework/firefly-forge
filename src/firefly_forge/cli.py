@@ -334,6 +334,51 @@ def find_project_eligible_users(identifier: str, query: str) -> None:
         display(connection.project_eligible_users(identifier, query))
 
 
+@project.group("scm-actors")
+def scm_actors() -> None:
+    """Review verified repository accounts and explicitly delegate their project actions."""
+
+
+@scm_actors.command("candidates")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.option("--cursor", help="Continue from the exact retained event cursor.")
+def scm_actor_candidates(project_id: str, repository_id: str, cursor: str | None) -> None:
+    """Read retained verified accounts without contacting the provider."""
+    with client() as connection:
+        display(connection.scm_actor_binding_candidates(project_id, repository_id, cursor))
+
+
+@scm_actors.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_actor(project_id: str, repository_id: str, document: Path) -> None:
+    """Submit one explicit delegation JSON; preserve its request ID after any uncertain result."""
+    with client() as connection:
+        display(connection.configure_scm_actor_binding(project_id, repository_id, json_document(document)))
+
+
+@scm_actors.command("list")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.option("--cursor", help="Continue from the exact retained event cursor.")
+def list_scm_actors(project_id: str, repository_id: str, cursor: str | None) -> None:
+    """Read immutable delegation summaries, including revoked revisions."""
+    with client() as connection:
+        display(connection.scm_actor_bindings(project_id, repository_id, cursor))
+
+
+@scm_actors.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_actor(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the original receipt; a missing result never authorizes another write."""
+    with client() as connection:
+        display(connection.scm_actor_binding(project_id, repository_id, request_id))
+
+
 @main.group()
 def identity() -> None:
     """Inspect identity receipts and request explicit administrator-only changes."""

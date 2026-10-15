@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.scm_authority_models import SCMActorBindingInputV1
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
         AdministrationReconciliation,
@@ -292,6 +293,50 @@ class ForgeClient:
 
     def projects(self) -> list[dict[str, Any]]:
         return list(self.request("GET", "projects"))
+
+    @staticmethod
+    def _scm_actor_identifier(value: str) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{32}", value):
+            raise ValueError("Use an exact factory identity for SCM delegation")
+        return value
+
+    def _scm_actor_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-actor-bindings"
+
+    def scm_actor_binding_candidates(
+        self, project_id: str, repository_id: str, cursor: str | None = None
+    ) -> dict[str, Any]:
+        """Read at most fifty retained verified account references without provider discovery."""
+        path = self._scm_actor_path(project_id, repository_id)
+        params = {} if cursor is None else {"cursor": self._scm_actor_identifier(cursor)}
+        return dict(self.request("GET", path + "/candidates", params=params))
+
+    def configure_scm_actor_binding(
+        self, project_id: str, repository_id: str, request: SCMActorBindingInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Explicitly delegate or revoke scoped actions using a stable request ID and prior digest."""
+        from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+
+        path = self._scm_actor_path(project_id, repository_id)
+        try:
+            value = request.model_dump(warnings=False) if isinstance(request, SCMActorBindingInputV1) else request
+            body = SCMActorBindingInputV1.model_validate(value)
+        except ValueError:
+            raise ValueError("Use a bounded SCM delegation with exact scope and request identities") from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_actor_bindings(self, project_id: str, repository_id: str, cursor: str | None = None) -> dict[str, Any]:
+        """Read bounded immutable delegation summaries; no grants or remote lookup are performed."""
+        path = self._scm_actor_path(project_id, repository_id)
+        params = {} if cursor is None else {"cursor": self._scm_actor_identifier(cursor)}
+        return dict(self.request("GET", path, params=params))
+
+    def scm_actor_binding(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact original administrative receipt after an uncertain response."""
+        path = self._scm_actor_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
 
     def configure_project(
         self, definition: ProjectDefinition | dict[str, Any], project_id: str | None = None
