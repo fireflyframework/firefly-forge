@@ -255,7 +255,7 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
               ...project.definition.components[0],
               commit: "f".repeat(40),
               execution: "source_only",
-              skipped_files: [],
+              skipped_files: 2,
               facts: [
                 {
                   kind: "http_route",
@@ -305,6 +305,11 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("GET /stock", { exact: true })).toBeVisible();
   await expect(page.getByText("app/api.py:12", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("1 observed declarations · 2 skipped files · source only", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
     page.getByRole("button", {

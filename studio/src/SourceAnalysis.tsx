@@ -29,7 +29,7 @@ type Report = {
     path: string;
     commit: string;
     facts: Fact[];
-    skipped_files: unknown[];
+    skipped_files: number;
     execution: "source_only";
   }[];
   documents: Record<string, string>;
@@ -365,7 +365,7 @@ export function SourceAnalysis({
                       </p>
                       <p>
                         {item.facts.length} observed declarations ·{" "}
-                        {item.skipped_files.length} skipped files · source only
+                        {item.skipped_files} skipped files · source only
                       </p>
                       <details open>
                         <summary>Inspect source declarations</summary>
