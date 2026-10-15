@@ -1,13 +1,16 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 .PHONY: check php-fixture-check python-check studio-check docs docs-check docs-pages-check package serve
 
-export FORGE_TEST_PHP_FIXTURE ?= php
+FORGE_TEST_PHP_FIXTURE ?= php
+# Preserve literal dollar signs before Make exports an executable path.
+override FORGE_TEST_PHP_FIXTURE := $(value FORGE_TEST_PHP_FIXTURE)
+export FORGE_TEST_PHP_FIXTURE
 
 check: python-check studio-check docs-check
 
 php-fixture-check:
-	@command -v "$(FORGE_TEST_PHP_FIXTURE)" >/dev/null || { echo "PHP fixture missing: prepare an existing PHP 8.3+ CLI or set FORGE_TEST_PHP_FIXTURE to its executable." >&2; exit 78; }
-	@"$(FORGE_TEST_PHP_FIXTURE)" -n -r 'if (PHP_SAPI !== "cli" || PHP_VERSION_ID < 80300 || !function_exists("proc_open") || !function_exists("hrtime") || !function_exists("getrusage") || !function_exists("memory_get_peak_usage")) { fwrite(STDERR, "PHP fixture requires PHP 8.3+ CLI with process and resource observation functions.\n"); exit(78); } echo "Prepared PHP fixture ", PHP_VERSION, "\n";'
+	@command -v "$${FORGE_TEST_PHP_FIXTURE}" >/dev/null || { echo "PHP fixture missing: prepare an existing PHP 8.3+ CLI or set FORGE_TEST_PHP_FIXTURE to its executable." >&2; exit 78; }
+	@"$${FORGE_TEST_PHP_FIXTURE}" -n -r 'if (PHP_SAPI !== "cli" || PHP_VERSION_ID < 80300 || !function_exists("proc_open") || !function_exists("hrtime") || !function_exists("getrusage") || !function_exists("memory_get_peak_usage")) { fwrite(STDERR, "PHP fixture requires PHP 8.3+ CLI with process and resource observation functions.\n"); exit(78); } echo "Prepared PHP fixture ", PHP_VERSION, "\n";'
 
 python-check: php-fixture-check
 	uv run python -m compileall -q src
