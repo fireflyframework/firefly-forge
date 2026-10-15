@@ -1,240 +1,14 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
 import { writeFileSync } from "node:fs";
 import { record } from "./learning-record-fixture";
-const actor = "9".repeat(32),
-  source = "owned-procedure-source";
-const projection = {
-  id: "1".repeat(32),
-  record_id: record.id,
-  state: "source_admitted",
-  request_id: "2".repeat(32),
-  workspace_id: "forge-learning-owned-inventory",
-  source_id: source,
-  source_status: "queued",
-  payload_digest: "3".repeat(64),
-  content_sha256: "4".repeat(64),
-  target: { revision: "5".repeat(32) },
-  citations: [],
-};
-async function fixture(
-  page: Page,
-  options: {
-    lost?: boolean;
-    receipt?: string;
-    viewer?: boolean;
-    storage?: boolean;
-    projectionState?: string;
-    holdReceipt?: boolean;
-    denyProjectionAfterReceipt?: boolean;
-    currentRecordState?: "verified" | "invalidated";
-  } = {},
-) {
-  let releaseReceipt = () => {};
-  const heldReceipt = new Promise<void>((done) => {
-    releaseReceipt = done;
-  });
-  let denialStatus = 403;
-  let writes = 0,
-    reads = 0,
-    denied = false,
-    currentActor = actor,
-    body: { request_id: string; source_id: string } | null = null;
-  if (options.storage)
-    await page.addInitScript(() => {
-      const set = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (key, value) {
-        if (key.startsWith("forge.learning-observation"))
-          throw new Error("Storage unavailable");
-        return set.call(this, key, value);
-      };
-    });
-  await page.route("**/api/v1/**", async (route) => {
-    const req = route.request(),
-      path = new URL(req.url()).pathname;
-    if (path.endsWith("/auth/configuration"))
-      return route.fulfill({ json: { mode: "local_bootstrap" } });
-    if (path.endsWith("/auth/session"))
-      return route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: currentActor,
-            display_name: "Owned reviewer",
-            email: null,
-            authentication_method: "local_bootstrap",
-          },
-          global_admin: false,
-          memberships: [
-            {
-              project_id: record.envelope.context.project_id,
-              role: options.viewer ? "viewer" : "reviewer",
-              revision: 1,
-              permissions: options.viewer ? ["read"] : ["read", "review"],
-            },
-          ],
-          roles: {},
-        },
-      });
-    if (path.endsWith("/repositories"))
-      return route.fulfill({
-        json: [
-          {
-            id: record.envelope.context.repository_id,
-            name: "Owned inventory",
-            url: "/owned/inventory",
-            provider: "local",
-            default_branch: "main",
-          },
-        ],
-      });
-    if (path.endsWith("/learning") && path.includes("/repositories/"))
-      return route.fulfill({
-        json: [
-          {
-            ...record,
-            state: writes
-              ? (options.currentRecordState ?? "verified")
-              : "verified",
-          },
-        ],
-      });
-    if (
-      path.endsWith("/projection") &&
-      options.denyProjectionAfterReceipt &&
-      reads
-    )
-      return route.fulfill({
-        status: 403,
-        json: { detail: "Projection read denied" },
-      });
-    if (path.endsWith("/projection"))
-      return route.fulfill({
-        json: {
-          ...projection,
-          state: writes
-            ? "verified"
-            : (options.projectionState ?? "source_admitted"),
-          citations:
-            writes || options.projectionState === "verified"
-              ? [{ source_id: source, chunk_id: "owned-chunk:1" }]
-              : [],
-        },
-      });
-    if (path.endsWith("/projection/observe")) {
-      writes++;
-      body = req.postDataJSON();
-      if (options.lost) return route.abort("failed");
-      return route.fulfill({ json: { ...projection, state: "verified" } });
-    }
-    if (path.includes("/projection/observations/")) {
-      reads++;
-      if (options.holdReceipt) await heldReceipt;
-      if (denied)
-        return route.fulfill({
-          status: denialStatus,
-          json: { detail: "Review authority revoked" },
-        });
-      if (options.receipt === "absent")
-        return route.fulfill({
-          status: 404,
-          json: { detail: "Exact observation request not observed" },
-        });
-      const receipt = {
-        event_id: "6".repeat(32),
-        record_id: record.id,
-        repository_id: record.envelope.context.repository_id,
-        run_id: record.envelope.run_id,
-        request_id: body!.request_id,
-        kind: "projection_observation",
-        event_state: "verified",
-        current_record_state: options.currentRecordState ?? "verified",
-        current_projection_state: "verified",
-        actor_id: actor,
-        projection_id: projection.id,
-        submission_request_id: projection.request_id,
-        workspace_id: projection.workspace_id,
-        source_id: body!.source_id,
-        target_revision: projection.target.revision,
-        payload_digest: projection.payload_digest,
-        content_sha256: projection.content_sha256,
-        citations: [{ source_id: body!.source_id, chunk_id: "owned-chunk:1" }],
-        created_at: "2026-10-15T06:00:00Z",
-        sequence: 4,
-        digest: "7".repeat(64),
-      };
-      if (options.receipt === "request") receipt.request_id = "8".repeat(32);
-      if (options.receipt === "source") receipt.source_id = "different-source";
-      if (options.receipt === "actor") receipt.actor_id = "8".repeat(32);
-      if (options.receipt === "target")
-        receipt.target_revision = "8".repeat(32);
-      return route.fulfill({
-        json:
-          options.receipt === "legacy"
-            ? { ...receipt, actor_id: null }
-            : receipt,
-      });
-    }
-    return route.fulfill({
-      json: [
-        "/runs",
-        "/projects",
-        "/providers",
-        "/deployment-targets",
-        "/assistant/conversations",
-      ].some((s) => path.endsWith(s))
-        ? []
-        : {},
-    });
-  });
-  return {
-    writes: () => writes,
-    reads: () => reads,
-    body: () => body,
-    deny: (status = 403) => {
-      denied = true;
-      denialStatus = status;
-    },
-    releaseReceipt: () => releaseReceipt(),
-    changeActor: () => {
-      currentActor = "8".repeat(32);
-    },
-  };
-}
-async function select(page: Page, reload = true) {
-  if (reload) await page.goto("/");
-  await navigate(page, "Knowledge");
-  await page
-    .getByRole("tab", { name: "Learning records", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: record.envelope.question, exact: true })
-    .click();
-}
-async function review(page: Page) {
-  await page
-    .getByRole("button", { name: "Verify existing source", exact: true })
-    .click();
-  await page
-    .getByLabel("Existing source identifier", { exact: true })
-    .fill(source);
-  await page
-    .getByRole("button", { name: "Review source", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", {
-      name: "Verify source",
-      exact: true,
-    }),
-  ).toBeDisabled();
-  await page
-    .getByLabel(
-      "I understand this reads the existing source and records a local verification; it does not submit or ingest a source.",
-      { exact: true },
-    )
-    .check();
-}
+import {
+  fixture,
+  select,
+  review,
+  source,
+  projection,
+} from "./observation-attempt-fixture";
 test("one observation requires its exact receipt even after a successful POST", async ({
   page,
 }) => {
@@ -250,8 +24,14 @@ test("one observation requires its exact receipt even after a successful POST", 
   expect(state.writes()).toBe(1);
   expect(state.reads()).toBe(1);
   expect(state.body()).toEqual({
-    request_id: expect.stringMatching(/^[a-f0-9]{32}$/),
+    attempt_id: expect.stringMatching(/^obs2_[a-f0-9]{32}$/),
     source_id: source,
+    projection_id: projection.id,
+    submission_request_id: projection.request_id,
+    workspace_id: projection.workspace_id,
+    target_revision: projection.target.revision,
+    payload_digest: projection.payload_digest,
+    content_sha256: projection.content_sha256,
   });
   await expect(
     page.getByText(`Source: ${source}`, { exact: true }).first(),
