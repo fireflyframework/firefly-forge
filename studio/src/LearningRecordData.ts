@@ -248,3 +248,135 @@ export function readLearningProjection(
     throw invalid();
   return result;
 }
+
+export type InvalidationContext = {
+  base: string;
+  actor: string;
+  repository: string;
+  project: string | null;
+  run: string;
+  record: string;
+};
+export type InvalidationMarker = InvalidationContext & {
+  version: 1;
+  requestId: string;
+  reason: string;
+};
+export type LearningInvalidationReceipt = {
+  event_id: string;
+  record_id: string;
+  repository_id: string;
+  run_id: string;
+  request_id: string;
+  kind: "invalidation";
+  event_state: "invalidated";
+  current_record_state: LearningRecord["state"];
+  reason: string;
+  actor_id: string;
+  created_at: string;
+  sequence: number;
+  digest: string;
+};
+const invalidationProblem = () =>
+  new Error(
+    "The original invalidation request could not be confirmed. Its identity is retained; no request was repeated.",
+  );
+export function invalidationKey(context: InvalidationContext): string {
+  return `forge.learning-invalidation.v1:${encodeURIComponent(context.base)}:${context.actor}:${context.repository}:${context.record}`;
+}
+export function readInvalidationMarker(
+  value: string | null,
+  context: InvalidationContext,
+): InvalidationMarker | null {
+  if (value === null) return null;
+  try {
+    if (value.length > 10000) throw invalidationProblem();
+    const marker = object(JSON.parse(value));
+    if (
+      Object.keys(marker).sort().join(",") !==
+        "actor,base,project,reason,record,repository,requestId,run,version" ||
+      marker.version !== 1
+    )
+      throw invalidationProblem();
+    for (const field of [
+      "base",
+      "actor",
+      "repository",
+      "project",
+      "run",
+      "record",
+    ] as const) {
+      if (marker[field] !== context[field]) throw invalidationProblem();
+      if (field !== "base" && field !== "project") text(marker[field], 32, id);
+    }
+    if (context.project !== null) text(context.project, 32, id);
+    if (!/^https?:\/\//.test(context.base)) throw invalidationProblem();
+    const reason = text(marker.reason, 2000);
+    if (!reason.trim()) throw invalidationProblem();
+    return {
+      ...context,
+      version: 1,
+      requestId: text(marker.requestId, 32, id),
+      reason,
+    };
+  } catch {
+    throw invalidationProblem();
+  }
+}
+export function retainInvalidation(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  marker: InvalidationMarker,
+): void {
+  const key = invalidationKey(marker);
+  if (storage.getItem(key) !== null) throw invalidationProblem();
+  const packet = JSON.stringify(marker);
+  readInvalidationMarker(packet, marker);
+  storage.setItem(key, packet);
+  if (storage.getItem(key) !== packet) throw invalidationProblem();
+}
+export function readLearningInvalidation(
+  value: unknown,
+  pending: InvalidationMarker,
+): LearningInvalidationReceipt {
+  const row = object(value);
+  if (row.actor_id === null)
+    throw new Error(
+      "Receipt attribution is unknown. The original request remains unresolved.",
+    );
+  if (
+    Object.keys(row).sort().join(",") !==
+      "actor_id,created_at,current_record_state,digest,event_id,event_state,kind,reason,record_id,repository_id,request_id,run_id,sequence" ||
+    row.record_id !== pending.record ||
+    row.repository_id !== pending.repository ||
+    row.run_id !== pending.run ||
+    row.request_id !== pending.requestId ||
+    row.actor_id !== pending.actor ||
+    row.reason !== pending.reason ||
+    row.kind !== "invalidation" ||
+    row.event_state !== "invalidated" ||
+    typeof row.sequence !== "number" ||
+    !Number.isSafeInteger(row.sequence) ||
+    row.sequence < 1
+  )
+    throw invalidationProblem();
+  return {
+    event_id: text(row.event_id, 32, id),
+    record_id: pending.record,
+    repository_id: pending.repository,
+    run_id: pending.run,
+    request_id: pending.requestId,
+    kind: "invalidation",
+    event_state: "invalidated",
+    current_record_state: choice(row.current_record_state, [
+      "candidate",
+      "verified",
+      "invalidated",
+      "superseded",
+    ]),
+    reason: pending.reason,
+    actor_id: pending.actor,
+    created_at: timestamp(text(row.created_at, 64)),
+    sequence: row.sequence,
+    digest: text(row.digest, 64, hash),
+  };
+}

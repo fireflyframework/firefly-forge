@@ -282,3 +282,69 @@
     max-height: 210px;
   }
 }
+
+.learning-record-invalidation {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.learning-record-invalidation h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.learning-invalidation-result,
+.learning-invalidation-reason {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.learning-invalidation-ack {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.learning-invalidation-ack input {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  accent-color: var(--accent);
+}
+.learning-invalidation-dialog textarea {
+  min-height: 120px;
+}
+
+@media (max-height: 600px) {
+  .learning-invalidation-dialog {
+    inset: 12px;
+    height: calc(100dvh - 24px);
+    padding: 12px;
+  }
+  .learning-invalidation-dialog .access-dialog-heading {
+    margin-bottom: 8px;
+  }
+  .learning-invalidation-dialog .access-dialog-heading h2,
+  .learning-invalidation-dialog .wizard-heading h2 {
+    font-size: 18px;
+    line-height: 1.4;
+  }
+  .learning-invalidation-dialog .wizard-steps {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  .learning-invalidation-dialog .wizard-content {
+    padding: 12px;
+  }
+  .learning-invalidation-dialog .wizard-heading {
+    margin-bottom: 8px;
+  }
+  .learning-invalidation-dialog .wizard-heading p {
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 4px 0 0;
+  }
+  .learning-invalidation-dialog .wizard-actions {
+    min-height: 48px;
+    padding: 8px 0 2px;
+  }
+}

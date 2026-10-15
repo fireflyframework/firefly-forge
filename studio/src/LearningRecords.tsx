@@ -15,6 +15,7 @@ import {
   type LearningRecord,
   type LearningProjection,
 } from "./LearningRecordData";
+import { LearningInvalidation } from "./LearningInvalidation";
 import "./LearningRecords.css";
 const problem = (cause: unknown) =>
   (cause instanceof Error
@@ -53,6 +54,7 @@ export function LearningRecords({
 }) {
   const [saved, setSaved] = useState<{
       repository: string;
+      scope: string;
       items: LearningRecord[];
     } | null>(null),
     [selected, setSelected] = useState(""),
@@ -61,6 +63,13 @@ export function LearningRecords({
     [revision, setRevision] = useState(0),
     [query, setQuery] = useState(""),
     [state, setState] = useState("all");
+  const scope = `${connection.base}:${session?.user.id ?? ""}`;
+  const denied = () => {
+    setSaved(null);
+    setError(
+      "Current review permission is required. Private evidence has been cleared. Sign in again or ask a project owner to review your access.",
+    );
+  };
   const alert = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -82,7 +91,11 @@ export function LearningRecords({
     )
       .then((value) => {
         if (controller.signal.aborted) return;
-        setSaved({ repository, items: readLearningRecords(value, repository) });
+        setSaved({
+          repository,
+          scope,
+          items: readLearningRecords(value, repository),
+        });
       })
       .catch((cause) => {
         if (!controller.signal.aborted) {
@@ -94,12 +107,17 @@ export function LearningRecords({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [connection, repository, revision, session]);
+  }, [connection, repository, revision, session, scope]);
   useEffect(() => {
     if (error) alert.current?.focus();
   }, [error]);
   const items =
-    !loading && saved && saved.repository === repository ? saved.items : [];
+    !loading &&
+    saved &&
+    saved.repository === repository &&
+    saved.scope === scope
+      ? saved.items
+      : [];
   const filtered = items.filter(
     (item) =>
       (state === "all" || item.state === state) &&
@@ -133,7 +151,8 @@ export function LearningRecords({
       <p className="learning-records-boundary">
         <ShieldCheck size={18} />
         <span>
-          Read-only project evidence. Access follows your current permissions.
+          Project evidence and its lifecycle. Access follows your current
+          permissions.
         </span>
       </p>
       {error && (
@@ -227,9 +246,25 @@ export function LearningRecords({
                 <div className="learning-records-detail">
                   {record ? (
                     <RecordDetail
-                      key={record.id}
+                      key={`${scope}:${record.id}`}
                       connection={connection}
                       record={record}
+                      session={session}
+                      onDenied={denied}
+                      onConfirmed={(state) =>
+                        setSaved((previous) =>
+                          previous
+                            ? {
+                                ...previous,
+                                items: previous.items.map((item) =>
+                                  item.id === record.id
+                                    ? { ...item, state }
+                                    : item,
+                                ),
+                              }
+                            : null,
+                        )
+                      }
                     />
                   ) : (
                     <div className="learning-records-empty">
@@ -253,9 +288,15 @@ export function LearningRecords({
 function RecordDetail({
   connection,
   record,
+  session,
+  onDenied,
+  onConfirmed,
 }: {
   connection: Connection;
   record: LearningRecord;
+  session?: IdentitySession | null;
+  onDenied: () => void;
+  onConfirmed: (state: LearningRecord["state"]) => void;
 }) {
   const [projection, setProjection] = useState<LearningProjection | null>(null),
     [error, setError] = useState(""),
@@ -356,6 +397,15 @@ function RecordDetail({
               : "Saved verification does not establish current eligibility. The lookup checks project and repository scope, framework and dependency versions, question, source tree, freshness and native receipts."}
         </p>
       </section>
+      {session && (
+        <LearningInvalidation
+          connection={connection}
+          record={record}
+          session={session}
+          onDenied={onDenied}
+          onConfirmed={onConfirmed}
+        />
+      )}
       <section className="learning-record-projection">
         <h4>
           <Database size={18} />
@@ -410,9 +460,8 @@ function RecordDetail({
                 </dl>
               )}
               <p className="subtle">
-                This explorer provides read-only review. Lifecycle writes
-                require a separate authorized review and exact request
-                reconciliation.
+                This projection panel reads status only. Source submission and
+                ingestion observation use separate authorized operator controls.
               </p>
             </>
           )
