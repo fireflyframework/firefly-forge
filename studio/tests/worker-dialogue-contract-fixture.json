@@ -1,0 +1,44 @@
+{
+  "feedback": {
+    "run_id": "22222222222222222222222222222222",
+    "sequence": 2,
+    "task_id": "implement",
+    "idempotency_key": "worker-feedback:stock-rule",
+    "kind": "worker_feedback",
+    "created_at": "2026-10-15T12:00:00+00:00",
+    "previous_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "payload": {
+      "id": "stock-rule",
+      "role_id": "implementer",
+      "task_id": "implement",
+      "attempt": 1,
+      "disposition": "clarification",
+      "summary": "Confirm the reservation rule before implementation.",
+      "evidence_paths": [],
+      "request": {
+        "id": "reservation-limit",
+        "kind": "product_definition",
+        "question": "What is the maximum reservation?",
+        "context": "The inventory API needs an explicit upper bound.",
+        "choices": ["14 items", "20 items"]
+      }
+    },
+    "digest": "8dfb8a739f1c2bda11b48a9f5de1768b4cf117fd431e0899b00ee14cc22d2c80"
+  },
+  "legacy_response": {
+    "run_id": "22222222222222222222222222222222",
+    "sequence": 4,
+    "task_id": "implement",
+    "idempotency_key": "worker-response:fixture-answer",
+    "kind": "worker_response",
+    "created_at": "2026-10-15T12:02:00+00:00",
+    "previous_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "payload": {
+      "id": "fixture-answer",
+      "actor": "Test operator",
+      "answer": "14 items",
+      "request_id": "reservation-limit"
+    },
+    "digest": "c45156a09f4de54690c13502c6ac16d56ee60750d31e764dd6069ce1ece54ec0"
+  }
+}
