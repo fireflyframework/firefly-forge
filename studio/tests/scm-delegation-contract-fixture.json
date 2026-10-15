@@ -1,0 +1,132 @@
+{
+  "copyright": "Copyright 2026 Firefly Software Foundation",
+  "license": "Apache-2.0",
+  "provenance": "Constructed Python model-validated SCM delegation vectors from e9e884cc9ade195ec747d8567ad096bc41a44344; no native provider execution or authenticated delivery is established by fixture replay.",
+  "scope": "Constructed model-validated fixtures, not native evidence",
+  "model_commit": "e9e884cc9ade195ec747d8567ad096bc41a44344",
+  "canonical_digest": {
+    "encoding": "UTF-8",
+    "ensure_ascii": false,
+    "sort_keys": true,
+    "separators": [",", ":"],
+    "exclude": "only the top-level digest field for receipt; summary_digest for summary"
+  },
+  "request": {
+    "version": 1,
+    "request_id": "11111111111111111111111111111111",
+    "expected_previous_digest": null,
+    "expected_project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "verified_receipt_id": "22222222222222222222222222222222",
+    "expected_verified_reference_digest": "d771c583b8f6445495c4b1c106a743d8419870ea4af0c24f58015c87b358c970",
+    "native_user_id": "33333333333333333333333333333333",
+    "component_ids": ["api"],
+    "allowed_actions": ["respond", "status", "cancel"],
+    "active": true,
+    "acknowledge_webhook_asserted_identity": true
+  },
+  "receipt": {
+    "version": 1,
+    "event_id": "44444444444444444444444444444444",
+    "project_id": "55555555555555555555555555555555",
+    "repository_id": "66666666666666666666666666666666",
+    "project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "binding_key": "837bb32a804984da41c8f20099cc7ad6591747fd3c929e08fa7172dfe7873654",
+    "revision": 1,
+    "previous_digest": null,
+    "prepared_at": "2026-10-15T19:00:00+00:00",
+    "administering_user_id": "77777777777777777777777777777777",
+    "request": {
+      "version": 1,
+      "request_id": "11111111111111111111111111111111",
+      "expected_previous_digest": null,
+      "expected_project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "verified_receipt_id": "22222222222222222222222222222222",
+      "expected_verified_reference_digest": "d771c583b8f6445495c4b1c106a743d8419870ea4af0c24f58015c87b358c970",
+      "native_user_id": "33333333333333333333333333333333",
+      "component_ids": ["api"],
+      "allowed_actions": ["respond", "status", "cancel"],
+      "active": true,
+      "acknowledge_webhook_asserted_identity": true
+    },
+    "request_digest": "190d797fd3dd1cee6737e0986c584d0232130c5bfc7f5ccfa2304bdfc085153f",
+    "verified_reference": {
+      "provider": "github",
+      "api_origin": "https://api.github.com",
+      "installation_id": "17",
+      "remote_repository_id": "42",
+      "external_actor_id": "7",
+      "version": 1,
+      "web_origin": "https://github.com",
+      "connection_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "connection_scope_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "webhook_key_revision": "cccccccccccccccccccccccccccccccc",
+      "verification_method": "raw_body_hmac_sha256",
+      "payload_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "digest": "bef11dd9932d0a47ad82069df4846914d1d7c78bcc9212a61fb63b8f6af77093"
+  },
+  "candidates": {
+    "version": 1,
+    "project_id": "55555555555555555555555555555555",
+    "repository_id": "66666666666666666666666666666666",
+    "project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "items": [
+      {
+        "verified_receipt_id": "22222222222222222222222222222222",
+        "verified_reference": {
+          "provider": "github",
+          "api_origin": "https://api.github.com",
+          "installation_id": "17",
+          "remote_repository_id": "42",
+          "external_actor_id": "7",
+          "version": 1,
+          "web_origin": "https://github.com",
+          "connection_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "connection_scope_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "webhook_key_revision": "cccccccccccccccccccccccccccccccc",
+          "verification_method": "raw_body_hmac_sha256",
+          "payload_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "verified_reference_digest": "d771c583b8f6445495c4b1c106a743d8419870ea4af0c24f58015c87b358c970"
+      }
+    ],
+    "next_cursor": null
+  },
+  "current_heads": {
+    "version": 1,
+    "project_id": "55555555555555555555555555555555",
+    "repository_id": "66666666666666666666666666666666",
+    "project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "heads_only": true,
+    "items": [
+      {
+        "version": 1,
+        "event_id": "44444444444444444444444444444444",
+        "project_id": "55555555555555555555555555555555",
+        "repository_id": "66666666666666666666666666666666",
+        "project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "request_id": "11111111111111111111111111111111",
+        "binding_key": "837bb32a804984da41c8f20099cc7ad6591747fd3c929e08fa7172dfe7873654",
+        "revision": 1,
+        "digest": "bef11dd9932d0a47ad82069df4846914d1d7c78bcc9212a61fb63b8f6af77093",
+        "native_user_id": "33333333333333333333333333333333",
+        "component_ids": ["api"],
+        "allowed_actions": ["respond", "status", "cancel"],
+        "active": true,
+        "provider": "github",
+        "external_actor_id": "7",
+        "prepared_at": "2026-10-15T19:00:00+00:00",
+        "summary_digest": "1129a4fe716edbd3da31247bfaa6d3094bf075958e228ad102dc65133b5c6420",
+        "current_head": true,
+        "head_status": "active"
+      }
+    ],
+    "next_cursor": null
+  },
+  "unicode_vector": {
+    "input": {
+      "name": "Café 雪"
+    },
+    "digest": "271a85da9c7df2376d3cb060d97713667a5507571fd6b98147a9109a197554a4"
+  }
+}
