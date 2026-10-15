@@ -2,6 +2,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { readFileSync } from "node:fs";
+const launcherFixture = JSON.parse(
+  readFileSync(new URL("./php-launcher-fixture.json", import.meta.url), "utf8"),
+) as { argv: string[] };
 
 // Controlled API fixtures verify presentation only; they are not execution evidence.
 const output = "Reservation rejected\n" + "check output\n".repeat(300);
@@ -627,4 +631,182 @@ for (const width of [320, 1440])
             .locator("..")
             .getByRole("region", { name: "Output", exact: true }),
         ).toBeVisible();
+      });
+
+// The argv is exported from a real fictional cached-PHP command. API responses
+// here remain controlled presentation fixtures, never native execution proof.
+for (const commandCase of [
+  {
+    label: "actual nested PHP",
+    argv: launcherFixture.argv,
+    viewports: [
+      { width: 320, height: 600 },
+      { width: 390, height: 844 },
+      { width: 1440, height: 700 },
+      { width: 844, height: 390 },
+      { width: 320, height: 400 },
+    ],
+  },
+  {
+    label: "wide-character nested",
+    argv: ["php", "界".repeat(152)],
+    viewports: [
+      { width: 320, height: 400 },
+      { width: 844, height: 390 },
+    ],
+  },
+])
+  for (const viewport of commandCase.viewports)
+    for (const theme of ["light", "dark"])
+      test(`${commandCase.label} command stays compact and fully recoverable at ${viewport.width}x${viewport.height}px ${theme}`, async ({
+        page,
+        context,
+      }) => {
+        await page.setViewportSize(viewport);
+        await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+        await openRun(page, [
+          {
+            sequence: 1,
+            task_id: "implement",
+            kind: "sandbox_intent",
+            created_at: "2026-10-15T15:00:00Z",
+            digest: "a".repeat(64),
+            previous_hash: "0".repeat(64),
+            idempotency_key: "1".repeat(32) + ":start",
+            payload: {
+              execution_id: "1".repeat(32),
+              effect: "start",
+              request: { request: { argv: commandCase.argv }, ordinal: 1 },
+            },
+          },
+        ]);
+        await page
+          .getByLabel("Appearance", { exact: true })
+          .selectOption(theme);
+        await expect(
+          page.getByRole("img", { name: "Firefly forge", exact: true }).first(),
+        ).toHaveAttribute("src", `/assets/forge-lockup-${theme}.svg`);
+        await page.getByRole("tab", { name: "Plan", exact: true }).click();
+        const command = page
+          .locator(".journal-entries .record-command")
+          .first();
+        const heading = command.locator(".record-command-heading").first();
+        await heading.scrollIntoViewIfNeeded();
+        await expect
+          .poll(() =>
+            heading.evaluate(
+              (element) => element.getBoundingClientRect().height,
+            ),
+          )
+          .toBeLessThanOrEqual(240);
+        const visible = async (target: typeof heading) => {
+          await target.scrollIntoViewIfNeeded();
+          await expect
+            .poll(() =>
+              target.evaluate((element) => {
+                const r = element.getBoundingClientRect();
+                const top = document
+                  .querySelector(".workspace-main > .topbar")!
+                  .getBoundingClientRect().bottom;
+                const bottom = document
+                  .querySelector(".workspace-main > footer")!
+                  .getBoundingClientRect().top;
+                return (
+                  r.top >= top + 3 &&
+                  r.bottom <= bottom - 3 &&
+                  [
+                    [r.left + 2, r.top + 2],
+                    [r.right - 2, r.top + 2],
+                    [r.left + 2, r.bottom - 2],
+                    [r.right - 2, r.bottom - 2],
+                  ].every(([x, y]) => {
+                    const hit = document.elementFromPoint(x, y);
+                    return hit === element || element.contains(hit);
+                  })
+                );
+              }),
+            )
+            .toBe(true);
+        };
+        await visible(heading);
+        await expect(
+          command.getByText("Outcome not recorded", { exact: true }).first(),
+        ).toBeVisible();
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          )
+          .toBe(true);
+        await page.screenshot({
+          path: test
+            .info()
+            .outputPath(`command-compact-${viewport.width}-${theme}.png`),
+        });
+        const summary = command
+          .getByText("Full command", { exact: true })
+          .first();
+        const details = summary.locator("..");
+        expect(await details.getAttribute("open")).toBeNull();
+        await summary.focus();
+        await visible(summary);
+        await summary.press("Enter");
+        const full = details.getByRole("region", {
+          name: "Command",
+          exact: true,
+        });
+        const copy = full.getByRole("button", {
+          name: "Copy full command",
+          exact: true,
+        });
+        await copy.focus();
+        await visible(copy);
+        await copy.press("Enter");
+        const expected = commandCase.argv
+          .map((arg) => (/\s/.test(arg) ? JSON.stringify(arg) : arg))
+          .join(" ");
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe(expected);
+        const text = full.getByLabel("Command text", { exact: true });
+        await text.focus();
+        await visible(text);
+        expect(
+          await text.evaluate(
+            (element) => element.getBoundingClientRect().height,
+          ),
+        ).toBeLessThanOrEqual(320);
+        if (expected.length > 10000) {
+          expect(
+            await text.evaluate(
+              (element) => element.scrollHeight > element.clientHeight,
+            ),
+          ).toBe(true);
+          await page.keyboard.press("ArrowDown");
+          await expect
+            .poll(() => text.evaluate((element) => element.scrollTop))
+            .toBeGreaterThan(0);
+        }
+        if (expected.length > 10000) {
+          const more = full.getByRole("button", {
+            name: "Show more",
+            exact: true,
+          });
+          await more.focus();
+          await visible(more);
+          await more.press("Enter");
+        }
+        await expect(text).toHaveText(expected);
+        await text.focus();
+        await visible(text);
+        await page.screenshot({
+          path: test
+            .info()
+            .outputPath(`command-full-${viewport.width}-${theme}.png`),
+        });
+        await summary.focus();
+        await summary.press("Enter");
+        expect(await details.getAttribute("open")).toBeNull();
+        await visible(heading);
       });
