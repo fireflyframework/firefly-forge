@@ -190,7 +190,8 @@ def test_every_packaged_resource_matches_its_original_text_vector():
 
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v1.json").read_text())
     catalog = prompt_catalog()
-    assert len(catalog.registry) == len(fixture["vectors"])
+    assert len(fixture["vectors"]) == 77
+    assert len(catalog.registry) == 219
     for vector in fixture["vectors"]:
         assert catalog.text(vector["id"], **vector["variables"]) == vector["text"], vector["id"]
 
@@ -438,10 +439,10 @@ def test_catalog_limits_entries_manifest_and_aggregate_bytes(tmp_path):
 
     manifest, document = _resource(tmp_path)
     entry = manifest["templates"][0]
-    _write_manifest(tmp_path, {**manifest, "templates": [entry] * 129})
+    _write_manifest(tmp_path, {**manifest, "templates": [entry] * 257})
     with pytest.raises(ValueError):
         PromptCatalog(tmp_path)
-    (tmp_path / "manifest.json").write_bytes(b" " * 65537)
+    (tmp_path / "manifest.json").write_bytes(b" " * 262145)
     with pytest.raises(ValueError, match="limit"):
         PromptCatalog(tmp_path)
     entries = []
@@ -469,3 +470,61 @@ def test_catalog_allows_a_location_alias_but_not_a_symlink_inside_its_resource_r
     alias = tmp_path / "alias"
     alias.symlink_to(owned, target_is_directory=True)
     assert PromptCatalog(alias / "resources").text("test/greeting", value="valid") == "Hello valid"
+
+
+def test_catalog_loads_256_unique_native_templates(tmp_path):
+    import hashlib
+
+    import pytest
+    import yaml
+
+    from firefly_forge.prompts import PromptCatalog
+
+    entries = []
+    for index in range(256):
+        name = f"test/entry-{index}"
+        document = {
+            "name": name,
+            "version": "1.0.0",
+            "description": "Bounded capacity fixture",
+            "system_template": "",
+            "user_template": str(index),
+            "required_variables": [],
+            "metadata": {"defaults": {}},
+        }
+        raw = yaml.safe_dump(document).encode()
+        path = f"entry-{index}.yaml"
+        (tmp_path / path).write_bytes(raw)
+        entries.append(
+            {
+                "id": name,
+                "version": "1.0.0",
+                "path": path,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "field": "user",
+                "variables": {},
+            }
+        )
+    _write_manifest(tmp_path, {"schema_version": 1, "templates": entries})
+    catalog = PromptCatalog(tmp_path)
+    assert len(catalog.registry) == 256
+    assert catalog.text("test/entry-255") == "255"
+    entries.append({**entries[-1], "id": "test/entry-256", "path": "entry-256.yaml"})
+    _write_manifest(tmp_path, {"schema_version": 1, "templates": entries})
+    with pytest.raises(ValueError, match="at most 256"):
+        PromptCatalog(tmp_path)
+
+
+def test_manifest_has_a_separate_256_kib_read_bound(tmp_path):
+    import pytest
+
+    from firefly_forge.prompts import PromptCatalog
+
+    _resource(tmp_path)
+    path = tmp_path / "manifest.json"
+    raw = path.read_bytes()
+    path.write_bytes(raw + b" " * (262144 - len(raw)))
+    assert PromptCatalog(tmp_path).text("test/greeting", value="bounded") == "Hello bounded"
+    path.write_bytes(path.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="limit"):
+        PromptCatalog(tmp_path)

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/save_task_routing
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Explicitly bind supported task/profile pairs for future invocations,
+  without silent fallback.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/resume_project_campaign
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Request explicit campaign recovery; pending worker answers and unknown
+  effects still block resume.
+required_variables: []
+metadata:
+  defaults: {}

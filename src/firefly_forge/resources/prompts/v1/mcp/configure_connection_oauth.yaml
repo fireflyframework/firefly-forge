@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_connection_oauth
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Configure an admitted provider as admin; use an owner-private secret file.
+
+  Configuration does not complete browser consent or approve agent tool access.
+  Endpoint, issuer, resource and scope URLs are not accepted as tool arguments.
+required_variables: []
+metadata:
+  defaults: {}

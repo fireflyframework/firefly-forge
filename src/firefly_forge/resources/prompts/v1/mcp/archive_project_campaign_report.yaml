@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/archive_project_campaign_report
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly save a selected coherent report using a stable caller request ID and report digest.
+
+  Current execute and historical repository read permissions apply. No work is dispatched.
+  A lost response, missing read or refusal never authorizes a new identity or automatic retry.
+required_variables: []
+metadata:
+  defaults: {}

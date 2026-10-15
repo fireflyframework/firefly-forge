@@ -17,6 +17,7 @@ from jinja2 import Environment, meta, nodes
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 _MAX_FILE = 65536
+_MAX_MANIFEST = 262144
 _MAX_CATALOG = 1048576
 
 
@@ -48,7 +49,7 @@ class _Entry(_Strict):
 
 class _Manifest(_Strict):
     schema_version: StrictInt
-    templates: list[_Entry] = Field(min_length=1, max_length=128)
+    templates: list[_Entry] = Field(min_length=1, max_length=256)
 
     @model_validator(mode="after")
     def unique_templates(self) -> _Manifest:
@@ -82,7 +83,7 @@ def _unique_json(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _read(resource: Traversable, root: Traversable) -> bytes:
+def _read(resource: Traversable, root: Traversable, *, limit: int = _MAX_FILE) -> bytes:
     if isinstance(resource, Path) and isinstance(root, Path):
         current = root
         for part in ("", *resource.relative_to(root).parts):
@@ -90,8 +91,8 @@ def _read(resource: Traversable, root: Traversable) -> bytes:
             if current.is_symlink():
                 raise ValueError("Prompt resources cannot use symlinks")
     with resource.open("rb") as stream:
-        data = stream.read(_MAX_FILE + 1)
-    if len(data) > _MAX_FILE:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
         raise ValueError("Prompt resource exceeds its byte limit")
     return data
 
@@ -122,7 +123,7 @@ class PromptCatalog:
     """A private native registry for a bounded, digest-bound packaged catalog."""
 
     def __init__(self, root: Traversable) -> None:
-        raw_manifest = _read(root.joinpath("manifest.json"), root)
+        raw_manifest = _read(root.joinpath("manifest.json"), root, limit=_MAX_MANIFEST)
         manifest = _Manifest.model_validate(json.loads(raw_manifest, object_pairs_hook=_unique_json))
         self.digest = hashlib.sha256(raw_manifest).hexdigest()
         self.registry = PromptRegistry()

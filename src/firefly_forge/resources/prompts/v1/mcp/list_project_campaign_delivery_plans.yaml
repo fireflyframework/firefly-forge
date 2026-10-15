@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_project_campaign_delivery_plans
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read at most fifty immutable post-admission reporting-plan summaries;
+  no execution effects.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_connection_oauth_effect
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Observe an exact OAuth request receipt without replaying or exposing
+  its token data.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/reconcile_identity_operation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Reconcile an uncertain identity receipt using native provider checks
+  or labelled attestation.
+required_variables: []
+metadata:
+  defaults: {}

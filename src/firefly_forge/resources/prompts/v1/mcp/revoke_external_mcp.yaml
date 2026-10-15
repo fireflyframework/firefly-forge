@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/revoke_external_mcp
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Revoke a project's external tool grant, including future calls by already
+  queued runs.
+required_variables: []
+metadata:
+  defaults: {}

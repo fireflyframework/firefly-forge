@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_product_attachments
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read saved conversation-file metadata without invoking a model or indexing
+  knowledge.
+required_variables: []
+metadata:
+  defaults: {}
