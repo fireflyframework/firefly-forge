@@ -124,7 +124,7 @@ Save the `document` object from the registry response, rather than the whole res
 
 Membership reads and writes require current project-owner or factory-administrator authority. The target user must already be registered. The native `MembershipInput` requires `role`: `owner`, `maintainer`, `developer`, `reviewer`, `viewer`, or explicit `null` to revoke. CLI requires exactly one of `--role` and `--revoke`; MCP accepts the same closed native body under `request`. The server preserves its last-owner safeguard and records the actor and membership revision. Revocation applies at the next authorization boundary, including subsequent member reads and writes.
 
-A membership write has no request-ID or compare-and-swap field in the native contract. Each explicit write is a new revision. The clients dispatch once; after a lost response, inspect current membership before making another decision.
+A membership write has no request-ID or compare-and-swap field in the native contract. Writes to an existing membership advance its revision. Revoking a registered user who has no membership leaves it absent. The clients dispatch once; after a lost response, inspect current membership before making another decision.
 
 Connection OAuth configuration now also accepts optional CLI `--expected-revision` and MCP `expected_revision`. Read the current connection revision, then supply it to reject a stale edit. `0` asserts that the registration does not yet exist. Omitting the field preserves existing no-revision behavior; it does not make a write idempotent or grant consent. The existing tool schema adds only this optional bounded integer field.
 
