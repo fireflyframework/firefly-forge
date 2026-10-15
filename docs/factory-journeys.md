@@ -84,30 +84,11 @@ Dependencies control when work is eligible to continue. They do not merge branch
 <figcaption>Connections, Repositories step. The controlled Studio fixture contains Inventory API. Follow the same navigation on your installation, then establish access through its actual provider grant.</figcaption>
 </figure>
 
-## 2. Understand existing source or define a new product
+## 2. Configure the product project
 
-**Start with:** the registered member repositories and a named product owner.
+**Start with:** the registered member repositories, intended topology and a named product owner.
 
-For an existing system, [inspect its committed component source](as-is-handoff.md) and review the exact analysis digest. Routes, declarations and file references describe the observed source. Ask the product owner to confirm the actual business behavior before accepting an AS-IS definition. Optional admission of reviewed observations to flycanon has its own upload and indexing evidence.
-
-For a new product, open **Product definition** and follow **Context → Journeys → Features → Integrations → Review**. In the inventory case, map Reserve stock to `reserve-stock`, its sufficient-stock behavior, its insufficient-stock failure and the acceptance check that proves stock remains unchanged after refusal.
-
-Use **Ask AI** to prepare step context, review the message and send it through the assistant. Include notes or reference files when needed. Review a proposal before applying it, then review the definition before saving. Preparing a message, calling the assistant, applying a proposal and saving a revision are separate actions. The [illustrated editor tour](console-tour.md#2-define-the-reservation-contract) follows each step.
-
-**You can continue when:** the saved revision describes every relevant journey, expected behavior and failure path; architecture and any visual references have their required review. API-only products use system processes and contracts without inventing a frontend.
-
-<figure class="forge-shot" markdown="1">
-
-![Journey step mapping the inventory reservation process.](assets/screenshots/product-journeys-desktop-light.png)
-
-<figcaption>Journeys step. Start with the customer's reservation process, then map its behavior and acceptance in Features. The controlled fixture supplies these form values; it does not show a live model generating them.</figcaption>
-</figure>
-
-## 3. Configure components and choose the delivery scope
-
-**Start with:** the reviewed product contract and the intended repository topology.
-
-Save the product project with its owners, component IDs, paths, stacks, checks and dependencies. **Product projects** shows the configured components and their associated run references. Configuration is available through `POST /api/v1/projects` and revisioned updates through `PUT /api/v1/projects/{project_id}`. An authorized repository conversation can also manage that project through the [project commands](repository-workflow.md#coordinate-a-logical-product-from-signed-comments).
+Open **Product projects → Create product project** and follow **Product → Components → Dependencies → Review**. Set its owners, component IDs, paths, stacks, checks and dependencies, then save. The overview shows those configured components and their associated run references. Use **Edit component contracts** for later topology changes. Configuration is available through `POST /api/v1/projects` and revisioned updates through `PUT /api/v1/projects/{project_id}`. An authorized repository conversation can also manage that project through the [project commands](repository-workflow.md#coordinate-a-logical-product-from-signed-comments).
 
 <details markdown="1">
 <summary>Example: configure two components in one repository</summary>
@@ -153,9 +134,30 @@ The returned project ID identifies later campaign requests; it is different from
 
 </details>
 
+**You can continue when:** the saved project identifies its member repositories, nonoverlapping component roots, canonical product repository and intended dependencies. Select **Product and design system** from its overview to define the product contract.
+
+## 3. Understand existing source and define the product
+
+**Start with:** the configured product project and its named product owner.
+
+For an existing system, [inspect its committed component source](as-is-handoff.md) and review the exact analysis digest. Routes, declarations and file references describe the observed source. Ask the product owner to confirm the actual business behavior before accepting an AS-IS definition. Optional admission of reviewed observations to flycanon has its own upload and indexing evidence.
+
+For a new product, open **Product definition** and follow **Context → Journeys → Features → Integrations → Review**. In the inventory case, map Reserve stock to `reserve-stock`, its sufficient-stock behavior, its insufficient-stock failure and the acceptance check that proves stock remains unchanged after refusal.
+
+Use **Ask AI** to prepare step context, review the message and send it through the assistant. Include notes or reference files when needed. Review a proposal before applying it, then review the definition before saving. Preparing a message, calling the assistant, applying a proposal and saving a revision are separate actions. The [illustrated editor tour](console-tour.md#2-define-the-reservation-contract) follows each step.
+
+**You can continue when:** the saved revision describes every relevant journey, expected behavior and failure path; architecture and any visual references have their required review. API-only products use system processes and contracts without inventing a frontend.
+
+<figure class="forge-shot" markdown="1">
+
+![Journey step mapping the inventory reservation process.](assets/screenshots/product-journeys-desktop-light.png)
+
+<figcaption>Journeys step. Start with the customer's reservation process, then map its behavior and acceptance in Features. The controlled fixture supplies these form values; it does not show a live model generating them.</figcaption>
+</figure>
+
 Choose one run for a bounded repository change, or a [campaign](project-campaigns.md) when the change spans configured components. A campaign's `component_ids` selection includes upstream dependencies. It admits its child runs together with frozen project, product, source and execution settings. The default dependency gate requires verified upstream evidence.
 
-**You can continue when:** the admitted campaign identifies the intended project revision, component selection and child runs, or the single run identifies the intended repository and frozen product revision. A later project edit does not rewrite those inputs.
+After admission, inspect the intended project revision, component selection and child runs, or the single run's repository and frozen product revision. A later project edit does not rewrite those inputs. **Start component run** starts one component; campaign launch uses its explicit API, SDK, CLI or MCP operation described in the campaign guide.
 
 Milestones and waves are not configured in the current campaign report. Use the current component, task and attempt evidence to describe progress; do not infer a completion percentage or a release schedule from the illustration or workflow status.
 
