@@ -286,18 +286,22 @@
   }
 }
 
-.learning-record-invalidation {
+.learning-record-invalidation,
+.learning-record-observation {
   border-top: 1px solid var(--line);
   margin-top: 24px;
   padding-top: 20px;
 }
-.learning-record-invalidation h4 {
+.learning-record-invalidation h4,
+.learning-record-observation h4 {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .learning-invalidation-result,
-.learning-invalidation-reason {
+.learning-invalidation-reason,
+.learning-observation-result,
+.learning-observation-source {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -349,5 +353,25 @@
   .learning-invalidation-dialog .wizard-actions {
     min-height: 48px;
     padding: 8px 0 2px;
+  }
+}
+
+.learning-observation-dialog {
+  height: max-content;
+  max-height: calc(100dvh - 32px);
+}
+.learning-observation-dialog .wizard {
+  flex: 1 1 auto;
+  height: auto;
+}
+.learning-observation-dialog .wizard-form {
+  flex: 1 1 auto;
+}
+.learning-observation-dialog input[type="checkbox"] {
+  accent-color: var(--amber);
+}
+@media (max-width: 600px) {
+  .learning-observation-dialog .wizard-actions > button {
+    width: 100%;
   }
 }

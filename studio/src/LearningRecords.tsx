@@ -1,5 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Database,
   FileCheck2,
@@ -7,7 +7,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { request, type Connection } from "./api";
+import { ApiError, request, type Connection } from "./api";
 import type { IdentitySession } from "./Identity";
 import {
   readLearningRecords,
@@ -16,6 +16,7 @@ import {
   type LearningProjection,
 } from "./LearningRecordData";
 import { LearningInvalidation } from "./LearningInvalidation";
+import { LearningObservation } from "./LearningObservation";
 import "./LearningRecords.css";
 const problem = (cause: unknown) =>
   (cause instanceof Error
@@ -39,6 +40,7 @@ const projections = {
   source_admitted: "Source admitted",
   verified: "Verified projection",
   unknown: "Outcome unknown",
+  abandoned: "Submission abandoned",
 };
 const date = (value: string) => new Date(value).toLocaleString();
 export function LearningRecords({
@@ -64,12 +66,12 @@ export function LearningRecords({
     [query, setQuery] = useState(""),
     [state, setState] = useState("all");
   const scope = `${connection.base}:${session?.user.id ?? ""}`;
-  const denied = () => {
+  const denied = useCallback(() => {
     setSaved(null);
     setError(
       "Current review permission is required. Private evidence has been cleared. Sign in again or ask a project owner to review your access.",
     );
-  };
+  }, []);
   const alert = useRef<HTMLDivElement>(null);
   const filterControl = useRef<HTMLElement>(null);
   const frame = useRef<HTMLElement>(null);
@@ -324,7 +326,8 @@ function RecordDetail({
 }) {
   const [projection, setProjection] = useState<LearningProjection | null>(null),
     [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [projectionRevision, setProjectionRevision] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -345,13 +348,21 @@ function RecordDetail({
           setProjection(readLearningProjection(value, record.id));
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(problem(cause));
+        if (!controller.signal.aborted) {
+          if (
+            projectionRevision > 0 &&
+            cause instanceof ApiError &&
+            [401, 403].includes(cause.status)
+          )
+            onDenied();
+          else setError(problem(cause));
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [connection, record.id, record.kind]);
+  }, [connection, record.id, record.kind, projectionRevision, onDenied]);
   const envelope = record.envelope,
     context = envelope.context;
   return (
@@ -484,13 +495,27 @@ function RecordDetail({
                 </dl>
               )}
               <p className="subtle">
-                This projection panel reads status only. Source submission and
-                ingestion observation use separate authorized operator controls.
+                This panel shows saved status. Existing-source verification has
+                a separate review below. Source submission remains an authorized
+                CLI, SDK or MCP operation.
               </p>
             </>
           )
         )}
       </section>
+      {session && record.kind === "local_outcome" && (
+        <LearningObservation
+          connection={connection}
+          record={record}
+          projection={projection}
+          session={session}
+          onDenied={onDenied}
+          onConfirmed={(receipt) => {
+            onConfirmed(receipt.current_record_state);
+            setProjectionRevision((value) => value + 1);
+          }}
+        />
+      )}
       <details className="learning-record-provenance">
         <summary>Identifiers and verification receipts</summary>
         <dl className="learning-record-summary">

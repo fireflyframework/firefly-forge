@@ -190,10 +190,18 @@ export function readLearningRecords(
 export type LearningProjection = {
   id: string;
   record_id: string;
-  state: "pending" | "executing" | "source_admitted" | "verified" | "unknown";
+  state:
+    | "pending"
+    | "executing"
+    | "source_admitted"
+    | "verified"
+    | "unknown"
+    | "abandoned";
   workspace_id?: string;
   source_id?: string;
   source_status?: string;
+  submission_request_id?: string;
+  payload_digest?: string;
   content_sha256?: string;
   target_revision?: string;
   citations: { source_id: string; chunk_id: string }[];
@@ -213,6 +221,7 @@ export function readLearningProjection(
       "source_admitted",
       "verified",
       "unknown",
+      "abandoned",
     ] as const),
     citations:
       row.citations == null
@@ -227,6 +236,10 @@ export function readLearningProjection(
   };
   for (const field of ["workspace_id", "source_id", "source_status"] as const)
     if (row[field] != null) result[field] = text(row[field], 200);
+  if (row.request_id != null)
+    result.submission_request_id = text(row.request_id, 32, id);
+  if (row.payload_digest != null)
+    result.payload_digest = text(row.payload_digest, 64, hash);
   if (row.content_sha256 != null)
     result.content_sha256 = text(row.content_sha256, 64, hash);
   if (row.target != null) {
