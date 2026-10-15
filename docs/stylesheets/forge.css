@@ -208,6 +208,25 @@
   font-style: normal;
   text-align: left;
 }
+.md-typeset .forge-flow {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin-block: 1.25rem .5rem;
+}
+.md-typeset .forge-flow:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 4px;
+}
+.md-typeset .forge-flow .mermaid {
+  min-width: 720px;
+  text-align: center;
+}
+.md-typeset .forge-flow-caption {
+  color: var(--md-default-fg-color--light);
+  font-size: 14px;
+  line-height: 1.65;
+}
 .md-typeset .forge-architecture-diagram {
   display: block;
   width: 100%;
