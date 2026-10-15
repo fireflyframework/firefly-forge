@@ -481,7 +481,7 @@ export function CampaignReportHistory({
         <>
           <p role="status">
             {page.items.length
-              ? `${page.items.length} saved report${page.items.length === 1 ? "" : "s"} in this page.`
+              ? `${page.items.length} saved report${page.items.length === 1 ? "" : "s"} on this page.`
               : "No saved reports were returned for this page."}
           </p>
           <ol className="campaign-history-list">
