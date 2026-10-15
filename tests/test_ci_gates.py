@@ -2,9 +2,13 @@
 """A required aggregate check must fail when any prerequisite did not succeed."""
 
 import json
+import runpy
 import unittest
+from pathlib import Path
 
-from scripts.check_ci_gates import require_success
+require_success = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts/check_ci_gates.py"))[
+    "require_success"
+]
 
 
 class RequiredGateTests(unittest.TestCase):

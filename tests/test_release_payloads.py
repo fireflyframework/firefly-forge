@@ -5,6 +5,7 @@ import base64
 import csv
 import hashlib
 import io
+import runpy
 import subprocess
 import tarfile
 import tempfile
@@ -13,7 +14,9 @@ import warnings
 import zipfile
 from pathlib import Path
 
-from scripts.check_release_payloads import verify_payloads
+verify_payloads = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts/check_release_payloads.py"))[
+    "verify_payloads"
+]
 
 
 class ReleasePayloadTests(unittest.TestCase):
