@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
-from firefly_forge.diagnostic_recipes import PythonProfileRequest
+from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
 from firefly_forge.profiles import build_instruction
 from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
 from firefly_forge.search_tools import SearchProviderError
@@ -154,6 +154,12 @@ async def execute_agentic(
         if context.python_profile is None or context.command_executor is None:
             raise ValueError("Isolated Python profiling is not configured")
         return await context.python_profile(request)
+
+    async def trace_python(request: PythonTraceRequest) -> dict[str, Any]:
+        """Observe best-effort target line counts, not trusted coverage or QA approval."""
+        if context.python_trace is None or context.command_executor is None:
+            raise ValueError("Isolated Python tracing is not configured")
+        return await context.python_trace(request)
 
     async def browser_journey(plan: BrowserJourney) -> Any:
         """Perform a declared isolated user journey with bounded DOM and optional image evidence."""
@@ -318,6 +324,12 @@ async def execute_agentic(
         and {"execute_command", "profile_python"}.issubset(context.allowed_tools or ())
     ):
         handlers["profile_python"] = profile_python
+    if (
+        context.python_trace is not None
+        and context.command_executor is not None
+        and {"execute_command", "trace_python"}.issubset(context.allowed_tools or ())
+    ):
+        handlers["trace_python"] = trace_python
     unknown = (context.allowed_tools or frozenset()) - {
         "list_files",
         "read_file",
@@ -332,6 +344,7 @@ async def execute_agentic(
         "external_mcp",
         "knowledge_lookup",
         "profile_python",
+        "trace_python",
     }
     if unknown:
         raise ValueError("Native tool grant contains an unknown tool")

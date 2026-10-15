@@ -8,7 +8,7 @@ description: Check which tools a factory phase can use, prepare each provider's 
 
 Start with the task, then enable the tools it needs. A product conversation, an implementation worker and an application health probe have different permissions. Adding a provider to the catalog does not authorize an account, grant a project or prove that a tool call worked.
 
-The native agent registry has thirteen handlers. The factory's own MCP server has 123 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
+The native agent registry has fourteen handlers. The factory's own MCP server has 125 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
 
 ## Follow the phase boundary
 
@@ -38,6 +38,7 @@ The implementer starts with `list_files`, `read_file`, `write_file`, `search_tex
 | Files, line edits and diffs | A confined component workspace and the frozen role grant. | Paths, current file hashes and the component diff are readable; credential paths remain excluded. |
 | Commands and tests | A frozen [runner profile](sandbox.md), explicit tool grant and the required dependencies. | The exact image or trusted host can execute the project's declared checks. Docker selection never falls back to host execution. |
 | Python CPU profiling | Both `profile_python` and `execute_command` grants; a pinned Docker image with Python 3, archive transfer and network `none`, without a pool binding. | Run the [versioned native recipe](agent-tools.md#observe-a-python-workload) and inspect its source-bound command receipts. Timings and text are observations, not QA approval. |
+| Python line tracing | Both `trace_python` and `execute_command` grants; the same isolated Python runner as profiling. | Inspect the [best-effort line observation](agent-tools.md#inspect-which-python-lines-ran) and exact command receipt. Counts do not establish complete coverage or QA approval. |
 | Visual QA | A native browser image, matching Playwright binaries, a declared container-loopback application and browser role grants. | Test the actual [journey](browser-qa.md), viewport, theme and approved reference. Screenshot attachment also requires verified model image input. |
 | Internet research | An authorized [Brave or Tavily key](search-providers.md), domain restrictions, repository search capability and role grant. | Review the explicit connection-test result and retained citations. Testing consumes that provider's allowance. |
 | Knowledge and memory | The managed flycanon services, authenticated tenant/workspaces, embeddings and admitted sources. | Inspect [cited retrieval and memory](knowledge.md). Missing required knowledge blocks generation. |
@@ -45,7 +46,7 @@ The implementer starts with `list_files`, `read_file`, `write_file`, `search_tex
 
 Flycanon retrieval and verified per-repository memory are factory services. Native `knowledge_lookup` also checks repository-scoped references and eligible local outcomes when its role grant and frozen learning policy permit it. Semantic similarity supplies candidates; source, version, freshness and verified receipts determine reuse. The [learning guide](learning.md) separates this local path from projected-namespace retrieval and future sharing between projects.
 
-The optional native Python CPU recipe uses the standard library inside the isolated project runner. Other debugging and profiling still use configured command arguments and the systematic-debugging instructions. A product image may include its chosen debugger, profiler or scanner, but forge does not supply a dedicated interactive debugger, host profiler report parser or universal security-scanner adapter. Keep diagnostic dependencies, time limits and outputs explicit. Opening a host debugger port is not part of this setup.
+The optional native Python CPU and line-tracing recipes use the standard library inside the isolated project runner. Other debugging and profiling still use configured command arguments and the systematic-debugging instructions. A product image may include its chosen debugger, profiler or scanner, but forge does not supply a dedicated interactive debugger, host profiler report parser or universal security-scanner adapter. Keep diagnostic dependencies, time limits and outputs explicit. Opening a host debugger port is not part of this setup.
 
 ## Sign-in and provider authorization are separate
 

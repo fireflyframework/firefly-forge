@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from firefly_forge.process import ProcessResult, execute
 
 if TYPE_CHECKING:
-    from firefly_forge.diagnostic_recipes import PythonProfileRequest
+    from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
     from firefly_forge.qa import BrowserJourney, EvidenceImage, JourneyEvidence, QAReference
 
 
@@ -38,6 +38,7 @@ class ToolRuntimeContext:
     reference_loader: Callable[[str], Awaitable[EvidenceImage]] | None = None
     reference_resolver: Callable[[BrowserJourney], Awaitable[tuple[QAReference, EvidenceImage] | None]] | None = None
     python_profile: Callable[[PythonProfileRequest], Awaitable[dict[str, Any]]] | None = None
+    python_trace: Callable[[PythonTraceRequest], Awaitable[dict[str, Any]]] | None = None
 
 
 def _private_name(name: str) -> bool:
@@ -286,6 +287,7 @@ _TOOL_DESCRIPTIONS = {
     "external_mcp": "Read an exact reviewed external tool within a project and repository grant",
     "knowledge_lookup": "Inspect scoped references and exact verified local outcomes without a web-search key",
     "profile_python": "Observe bounded Python CPU profiling through the frozen isolated command runner",
+    "trace_python": "Observe best-effort target Python line counts through the frozen isolated command runner",
 }
 
 
@@ -301,9 +303,10 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
             "external_mcp",
             "knowledge_lookup",
             "profile_python",
+            "trace_python",
         }
         available = not optional or bool(snapshot.get(identifier, False))
-        if identifier == "profile_python":
+        if identifier in {"profile_python", "trace_python"}:
             available = available and bool(snapshot.get("execute_command", False))
         supported = provider in {"agentic", "bridge", "api"}
         result.append(
@@ -320,8 +323,8 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
                     else "An explicit execution, browser or search configuration is required"
                 ),
                 "providers": ["agentic", "bridge"],
-                "requires": ["execute_command", "profile_python"]
-                if identifier == "profile_python"
+                "requires": ["execute_command", identifier]
+                if identifier in {"profile_python", "trace_python"}
                 else [identifier]
                 if optional
                 else [],

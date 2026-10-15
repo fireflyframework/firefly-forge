@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.10
+
+Studio can verify an existing indexed flycanon source through a source-and-review wizard. The factory checks the source and its citations against the saved projection, then retains the original actor, request and immutable observation event. It does not create a source or trigger ingestion. A lost response keeps the original request; reload and explicit recovery read that exact receipt without repeating the observation. Current project authority and credential checks also apply to receipt readback. See [existing-source verification](learning.md#verify-an-existing-indexed-source).
+
+The SDK, CLI and factory MCP expose the same exact observation receipt. Source identifiers are checked against the current credential registry before any flycanon request. Verification checks the returned source, content and admitted projection again before recording the event. Remote indexing and the local transaction remain separate operations.
+
+The optional `trace_python` tool reports bounded line-hit counts for one admitted Python file in a network-isolated Docker runner. It requires explicit tracing and command grants, verifies the selected source bytes and preserves execution and cleanup receipts. Imported and dynamically compiled code are outside its observation scope. Project code can disable or spoof tracing; these reports are diagnostic evidence, not a coverage or acceptance gate. See [agent tools](agent-tools.md) and [tool prerequisites](tooling-prerequisites.md).
+
 ## 0.2.9
 
 Knowledge invalidation retains an exact receipt with its original actor, reason, request and journal event. SDK, CLI and the factory MCP can read that receipt under current project review authority. A missing receipt means the operation has not been observed; it does not permit replay. Legacy records without actor evidence remain explicitly unknown. See [learning invalidation](learning.md).

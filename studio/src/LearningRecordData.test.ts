@@ -96,3 +96,27 @@ it("preserves only safe matching projection provenance", () => {
     ),
   ).toThrow();
 });
+
+it("retains bounded original projection anchors for an explicit observation review", () => {
+  const value = {
+    id: "1".repeat(32),
+    record_id: record.id,
+    state: "source_admitted",
+    request_id: "4".repeat(32),
+    payload_digest: "5".repeat(64),
+    content_sha256: "6".repeat(64),
+    workspace_id: "owned-learning",
+    source_id: "owned-source",
+    target: { revision: "7".repeat(32), api_key: "forbidden" },
+  };
+  expect(readLearningProjection(value, record.id)).toMatchObject({
+    submission_request_id: value.request_id,
+    payload_digest: value.payload_digest,
+    content_sha256: value.content_sha256,
+    target_revision: value.target.revision,
+  });
+  for (const field of ["request_id", "payload_digest"] as const)
+    expect(() =>
+      readLearningProjection({ ...value, [field]: "broken" }, record.id),
+    ).toThrow();
+});

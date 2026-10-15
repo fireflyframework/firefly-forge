@@ -159,3 +159,129 @@ def build_profile_argv(request: PythonProfileRequest, source_sha256: str) -> lis
         raise ValueError("Profiling requires the observed source SHA256")
     payload = {**request.model_dump(mode="json"), "source_sha256": source_sha256}
     return ["python3", "-I", "-c", _PROFILE_LAUNCHER, json.dumps(payload, separators=(",", ":"))]
+
+
+class PythonTraceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    recipe: Literal["forge-python-line-trace-v1"] = "forge-python-line-trace-v1"
+    script: str = Field(min_length=1, max_length=300)
+    args: list[str] = Field(default_factory=list, max_length=16)
+    max_rows: int = Field(default=50, ge=1, le=100, strict=True)
+    timeout: int = Field(default=30, ge=1, le=120, strict=True)
+
+    @field_validator("script")
+    @classmethod
+    def confined_script(cls, value: str) -> str:
+        return PythonProfileRequest.confined_script(value)
+
+    @field_validator("args")
+    @classmethod
+    def bounded_arguments(cls, value: list[str]) -> list[str]:
+        return PythonProfileRequest.bounded_arguments(value)
+
+
+class PythonTraceObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    recipe: Literal["forge-python-line-trace-v1"] = "forge-python-line-trace-v1"
+    observation_only: Literal[True] = True
+    best_effort: Literal[True] = True
+    script: str
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    image: str
+    argv: list[str]
+    exit_code: int
+    output: str = Field(max_length=16000)
+    output_truncated: bool
+    report_marker_observed: bool
+    receipt: ProfileReceipt | None
+
+
+def trace_observation(
+    request: PythonTraceRequest, source_sha256: str, image: str, result: Any, binding: dict[str, Any]
+) -> dict[str, Any]:
+    # The common receipt validation never infers an execution from report text.
+    observation = profile_observation(
+        PythonProfileRequest(script=request.script, args=request.args, timeout=request.timeout),
+        source_sha256,
+        image,
+        result,
+        binding,
+    )
+    observation.update(
+        recipe=request.recipe,
+        best_effort=True,
+        report_marker_observed="FORGE_PYTHON_TRACE_V1" in result.output,
+    )
+    return PythonTraceObservation.model_validate(observation).model_dump(mode="json")
+
+
+_TRACE_LAUNCHER = """import hashlib,json,os,stat,sys,types
+request=json.loads(sys.argv[1])
+parts=request['script'].split('/')
+directory=os.open('.',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+try:
+ for part in parts[:-1]:
+  child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory)
+  os.close(directory)
+  directory=child
+ descriptor=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+ with os.fdopen(descriptor,'rb') as source:
+  info=os.fstat(source.fileno())
+  if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:
+   raise ValueError('Tracing requires regular source without links')
+  data=source.read(1000001)
+finally:
+ os.close(directory)
+if len(data)>1000000 or hashlib.sha256(data).hexdigest()!=request['source_sha256']:
+ raise ValueError('Tracing source changed before execution')
+code=compile(data,request['script'],'exec')
+codes=set()
+pending=[code]
+while pending:
+ current=pending.pop()
+ codes.add(id(current))
+ pending.extend(item for item in current.co_consts if isinstance(item,types.CodeType))
+counts={}
+truncated=False
+def observe(frame,event,arg):
+ global truncated
+ if id(frame.f_code) not in codes:
+  return None
+ if event=='line':
+  line=frame.f_lineno
+  if line in counts:
+   counts[line]=min(counts[line]+1,9223372036854775807)
+  elif len(counts)<request['max_rows']:
+   counts[line]=1
+  else:
+   truncated=True
+ return observe
+sys.dont_write_bytecode=True
+sys.argv=[request['script'],*request['args']]
+sys.path.insert(0,os.path.dirname(os.path.abspath(request['script'])))
+namespace={'__name__':'__main__','__file__':request['script'],'__package__':None,'__spec__':None,'__cached__':None}
+stream=sys.stdout
+set_trace=sys.settrace
+try:
+ set_trace(observe)
+ exec(code,namespace)
+finally:
+ try:
+  set_trace(None)
+ except BaseException:
+  pass
+ try:
+  print('\\nFORGE_PYTHON_TRACE_V1',file=stream)
+  lines=[{'line':line,'hits':hits} for line,hits in sorted(counts.items())]
+  print(json.dumps({'best_effort':True,'rows_truncated':truncated,'lines':lines}),file=stream)
+ except BaseException:
+  pass
+"""
+
+
+def build_trace_argv(request: PythonTraceRequest, source_sha256: str) -> list[str]:
+    request = PythonTraceRequest.model_validate(request.model_dump(mode="json"))
+    if re.fullmatch(r"[a-f0-9]{64}", source_sha256) is None:
+        raise ValueError("Tracing requires the observed source SHA256")
+    payload = {**request.model_dump(mode="json"), "source_sha256": source_sha256}
+    return ["python3", "-I", "-c", _TRACE_LAUNCHER, json.dumps(payload, separators=(",", ":"))]

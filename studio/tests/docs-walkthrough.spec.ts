@@ -952,3 +952,392 @@ for (const device of ["desktop", "mobile"])
       await assertLifecycle(device === "desktop");
     });
   }
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"]) {
+    test(`guided fixture journey existing source ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const source = "fixture-reservation-source";
+      const projection = {
+        id: "1".repeat(32),
+        record_id: learningRecord.id,
+        state: "source_admitted",
+        request_id: "2".repeat(32),
+        workspace_id: "fixture-learning-inventory",
+        source_id: source,
+        source_status: "queued",
+        content_sha256: "3".repeat(64),
+        payload_digest: "4".repeat(64),
+        target: { revision: "5".repeat(32) },
+        citations: [],
+      };
+      let observation: { request_id: string; source_id: string } | null = null;
+      let writes = 0;
+      let receiptReady = false;
+      const reads: string[] = [];
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        if (
+          path.endsWith(
+            `/learning/records/${learningRecord.id}/projection/observe`,
+          )
+        ) {
+          expect(request.method()).toBe("POST");
+          writes++;
+          expect(writes).toBe(1);
+          observation = request.postDataJSON();
+          expect(observation!.source_id).toBe(source);
+          expect(observation!.request_id).toMatch(/^[a-f0-9]{32}$/);
+          const marker = await page.evaluate(() => {
+            const keys = Object.keys(sessionStorage).filter((key) =>
+              key.startsWith("forge.learning-observation.v1:"),
+            );
+            if (keys.length !== 1)
+              throw new Error(
+                "Original source request must be retained before dispatch",
+              );
+            return JSON.parse(sessionStorage.getItem(keys[0])!);
+          });
+          expect(marker).toMatchObject({
+            base: new URL("/api/v1", page.url()).href,
+            actor: "f".repeat(32),
+            repository: learningRepository.id,
+            project: learningRecord.envelope.context.project_id,
+            run: learningRecord.envelope.run_id,
+            record: learningRecord.id,
+            requestId: observation!.request_id,
+            source,
+            projection: projection.id,
+            submissionRequest: projection.request_id,
+            workspace: projection.workspace_id,
+            targetRevision: projection.target.revision,
+            payloadDigest: projection.payload_digest,
+            contentHash: projection.content_sha256,
+          });
+          return route.abort("failed");
+        }
+        if (
+          path.includes(
+            `/learning/records/${learningRecord.id}/projection/observations/`,
+          )
+        ) {
+          expect(request.method()).toBe("GET");
+          expect(observation).not.toBeNull();
+          expect(path).toBe(
+            `/api/v1/learning/records/${learningRecord.id}/projection/observations/${observation!.request_id}`,
+          );
+          reads.push(path);
+          if (!receiptReady)
+            return route.fulfill({
+              status: 404,
+              json: {
+                detail: "Learning source observation request not observed",
+              },
+            });
+          return route.fulfill({
+            json: {
+              event_id: "6".repeat(32),
+              record_id: learningRecord.id,
+              repository_id: learningRepository.id,
+              run_id: learningRecord.envelope.run_id,
+              request_id: observation!.request_id,
+              kind: "projection_observation",
+              event_state: "verified",
+              current_record_state: "invalidated",
+              current_projection_state: "verified",
+              actor_id: "f".repeat(32),
+              projection_id: projection.id,
+              submission_request_id: projection.request_id,
+              workspace_id: projection.workspace_id,
+              source_id: source,
+              target_revision: projection.target.revision,
+              payload_digest: projection.payload_digest,
+              content_sha256: projection.content_sha256,
+              citations: [
+                { source_id: source, chunk_id: "fixture-reservation-chunk:1" },
+              ],
+              created_at: "2026-10-15T01:40:00Z",
+              sequence: 7,
+              digest: "7".repeat(64),
+            },
+          });
+        }
+        expect(request.method()).toBe("GET");
+        let json: unknown = {};
+        if (path.endsWith("/repositories")) json = [learningRepository];
+        else if (path.endsWith(`/${learningRepository.id}/learning`))
+          json = [
+            {
+              ...learningRecord,
+              state: receiptReady ? "invalidated" : "verified",
+            },
+          ];
+        else if (
+          path.endsWith(`/learning/records/${learningRecord.id}/projection`)
+        )
+          json = {
+            ...projection,
+            state: receiptReady ? "verified" : "source_admitted",
+            source_status: receiptReady ? "ingested" : "queued",
+            citations: receiptReady
+              ? [{ source_id: source, chunk_id: "fixture-reservation-chunk:1" }]
+              : [],
+          };
+        else if (
+          [
+            "/runs",
+            "/projects",
+            "/providers",
+            "/deployment-targets",
+            "/assistant/conversations",
+          ].some((suffix) => path.endsWith(suffix))
+        )
+          json = [];
+        else if (path.endsWith("/knowledge/explore"))
+          json = {
+            workspace_id: "fixture-learning-inventory",
+            scope: "project",
+            sources: [],
+            knowledge: [],
+            offset: 0,
+            limit: 20,
+            totals: { sources: 0, knowledge: 0 },
+            browsing_available: true,
+            warnings: [],
+          };
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("fixture-bootstrap-token-at-least-24-chars");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      const selectRecord = async () => {
+        await navigate(page, "Knowledge");
+        await page
+          .getByLabel("Knowledge project", { exact: true })
+          .selectOption(learningRepository.id);
+        await page
+          .getByRole("tab", { name: "Learning records", exact: true })
+          .click();
+        await page
+          .getByRole("button", {
+            name: learningRecord.envelope.question,
+            exact: true,
+          })
+          .click();
+      };
+      await selectRecord();
+      await page.locator(".learning-records-filter-toggle > summary").click();
+      await page
+        .getByLabel("Saved state", { exact: true })
+        .selectOption("verified");
+      await page
+        .getByRole("button", { name: "Verify existing source", exact: true })
+        .click();
+      await expect(
+        page.getByLabel("Existing source identifier", { exact: true }),
+      ).toHaveValue(source);
+      const assertDialogHeading = async () => {
+        await expect
+          .poll(() =>
+            page
+              .locator(".learning-observation-dialog .access-dialog-heading h2")
+              .evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return (
+                  box.top >= 0 &&
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ) === element
+                );
+              }),
+          )
+          .toBe(true);
+      };
+      await capture(page, "learning-observation-source", theme, device);
+      await assertDialogHeading();
+      await page
+        .getByRole("button", { name: "Review source", exact: true })
+        .click();
+      const confirmation = page.getByRole("button", {
+        name: "Verify source",
+        exact: true,
+      });
+      await expect(confirmation).toBeDisabled();
+      const details = page.getByRole("dialog").locator("details");
+      for (const value of [
+        new URL("/api/v1", page.url()).href,
+        "f".repeat(32),
+        learningRepository.id,
+        learningRecord.id,
+        projection.workspace_id,
+        projection.target.revision,
+      ])
+        await expect(details).toContainText(value);
+      const acknowledgment = page.getByLabel(
+        "I understand this reads the existing source and records a local verification; it does not submit or ingest a source.",
+        { exact: true },
+      );
+      await acknowledgment.check();
+      await acknowledgment.scrollIntoViewIfNeeded();
+      const assertAcknowledgment = async () => {
+        await expect
+          .poll(() =>
+            acknowledgment.evaluate((element) => {
+              const box = element.getBoundingClientRect(),
+                field = element
+                  .closest(".wizard-field-scroll")!
+                  .getBoundingClientRect();
+              return box.top >= field.top && box.bottom <= field.bottom;
+            }),
+          )
+          .toBe(true);
+      };
+      await assertAcknowledgment();
+      await capture(page, "learning-observation-review", theme, device, {
+        resetFields: false,
+      });
+      await assertAcknowledgment();
+      await assertDialogHeading();
+      await confirmation.click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The original observation could not be confirmed",
+      );
+      const original = { ...observation! };
+      expect(writes).toBe(1);
+      expect(reads).toHaveLength(0);
+      await navigate(page, "Factory");
+      await selectRecord();
+      await page.locator(".learning-records-filter-toggle > summary").click();
+      await page
+        .getByLabel("Saved state", { exact: true })
+        .selectOption("verified");
+      await page
+        .getByRole("button", {
+          name: "Check original verification",
+          exact: true,
+        })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The exact observation has not been observed",
+      );
+      expect(writes).toBe(1);
+      expect(reads).toHaveLength(1);
+      const alignObservation = async (complete = false) => {
+        await page
+          .locator(".learning-record-observation > h4")
+          .evaluate((heading) => {
+            const shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+            const main = heading.closest("main")!;
+            main.scrollTop +=
+              heading.getBoundingClientRect().top - shell.bottom - 20;
+          });
+        await assertObservation(complete);
+      };
+      const assertObservation = async (complete = false) => {
+        await expect
+          .poll(() =>
+            page
+              .locator(".learning-record-observation > h4")
+              .evaluate((heading, complete) => {
+                const box = heading.getBoundingClientRect(),
+                  shell = document
+                    .querySelector(".workspace-main > header")!
+                    .getBoundingClientRect(),
+                  footer = document
+                    .querySelector(".workspace-main > footer")!
+                    .getBoundingClientRect();
+                const result = document
+                  .querySelector(".learning-observation-result")!
+                  .getBoundingClientRect();
+                return (
+                  box.top >= shell.bottom + 16 &&
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ) === heading &&
+                  (!complete || result.bottom <= footer.top)
+                );
+              }, complete),
+          )
+          .toBe(true);
+      };
+      const retained = page.locator(".learning-observation-result");
+      await expect(retained).toContainText(source);
+      await expect(retained).toContainText(original.request_id);
+      await alignObservation();
+      await capture(page, "learning-observation-unresolved", theme, device, {
+        actionSelector: ".learning-record-observation button.secondary",
+      });
+      await assertObservation();
+      receiptReady = true;
+      await page
+        .getByRole("button", {
+          name: "Check original verification",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText("Original source verification confirmed", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      const projectionContractError = page.getByText(
+        "Learning records could not be read. The response does not match this repository's evidence contract.",
+        { exact: true },
+      );
+      const verifiedProjection = page
+        .locator(".learning-record-projection")
+        .getByText("Verified projection", { exact: true });
+      await expect
+        .poll(
+          async () =>
+            (await projectionContractError.isVisible()) ||
+            (await verifiedProjection.isVisible()),
+        )
+        .toBe(true);
+      await expect(projectionContractError).toHaveCount(0);
+      await expect(verifiedProjection).toBeVisible();
+      await expect(retained).toContainText(
+        "Historical observation: verified. Current record state: invalidated. Current projection state: verified.",
+      );
+      await expect(page.locator(".learning-records-count")).toHaveText(
+        "0 of 1 saved records shown",
+      );
+      await expect(
+        page.locator(".learning-record-filter-context"),
+      ).toContainText("The selected record no longer matches this filter");
+      for (const value of [
+        original.request_id,
+        "f".repeat(32),
+        "6".repeat(32),
+        "7".repeat(64),
+      ])
+        await expect(retained).toContainText(value);
+      expect(writes).toBe(1);
+      expect(reads).toEqual([
+        `/api/v1/learning/records/${learningRecord.id}/projection/observations/${original.request_id}`,
+        `/api/v1/learning/records/${learningRecord.id}/projection/observations/${original.request_id}`,
+      ]);
+      expect(observation).toEqual(original);
+      await alignObservation(device === "desktop");
+      await capture(page, "learning-observation-confirmed", theme, device);
+      await assertObservation(device === "desktop");
+    });
+  }

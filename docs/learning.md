@@ -8,7 +8,8 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. A receipt-backed same-run cap also bounds identical repair proposals without replacing verification.
 
 !!! info "Implementation boundary"
-    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration, record and projection inspection, and reviewed evidence invalidation with exact-request recovery. Studio source submission and ingestion reconciliation remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+
+    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration, record and projection inspection, reviewed evidence invalidation, and verification of an existing indexed source with exact-request recovery. Source submission in Studio and triggering ingestion remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -79,6 +80,7 @@ The selected projection must be verified and match the current project/repositor
 | Read projection state | `forge learning projection RECORD_ID` | `get_learning_projection` |
 | Submit once | `forge learning submit RECORD_ID --request-id REQUEST_ID` | `submit_learning_projection` |
 | Observe an admitted source | `forge learning observe RECORD_ID --request-id REQUEST_ID --source-id SOURCE_ID` | `observe_learning_projection` |
+| Read an exact source observation | `forge learning observation-receipt RECORD_ID --request-id REQUEST_ID` | `get_learning_projection_observation_receipt` |
 
 Record, repository and request IDs use 32 lowercase hexadecimal characters; the source ID is the actual flycanon identifier. Each new action needs an explicit request identity. Inspect the record's source, checks and scope before submitting it. Submission requires verified local outcome evidence and current review authority. If its effect is unknown, observe the known source or retain the unresolved state; another submission must not replay it. The API and SDK expose the same actions. These commands do not create a cross-project grant or a new model session.
 
@@ -117,9 +119,9 @@ Select a record to inspect its saved state, question, supported statement, frame
 
 **Verified evidence** describes a saved observation. Current reuse also requires matching scope, framework and dependency versions, question, source, freshness and intact receipts. A candidate failure cannot authorize a verified solution. Invalidated and superseded evidence remains available for review and is excluded from reuse.
 
-The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
+The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by refreshing this view. Verifying a known existing source uses the separate reviewed action below. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
 
-**Refresh records** performs an authorized read. It does not submit sources or observe remote ingestion. Evidence invalidation uses the separate review below. A generic status reload cannot identify the exact receipt of a lost invalidation request.
+**Refresh records** performs an authorized read. It does not submit a source or record a new source observation. Evidence invalidation uses the separate review below. A generic status reload cannot identify the exact receipt of a lost invalidation request.
 
 <figure class="forge-shot" markdown="1">
 
@@ -188,6 +190,94 @@ The projection panel reads the selected local outcome's saved flycanon status an
 ![Failure candidate on a phone](assets/screenshots/learning-candidate-mobile-dark.png)
 
 <figcaption>The candidate retains its observed purpose and date. Reviewing it performs reads without replaying a submission.</figcaption>
+</figure>
+
+</div>
+</details>
+
+### Verify an existing indexed source
+
+Select a verified local outcome whose projection is **Source admitted** or **Outcome unknown**, then choose **Verify existing source**. Current project review permission is required; unassigned records require a factory administrator. A recorded source identifier is filled in for you. If no source was recorded, enter the actual identifier from the original learning workspace. Do not guess an identifier or enter a URL, token or private credential.
+
+Choose **Review source** and check the source and record. **Source and request details** holds the factory, actor and exact target references. Acknowledge the operation, then choose **Verify source**. The factory reads the existing source and its citations using the saved target. It checks the admitted content, metadata and indexed evidence before recording a local observation. This action does not create a source or start ingestion. Unsubmitted, running, abandoned and already verified projections do not offer another observation here.
+
+Before the single observation request, Studio saves and reads back its original actor, factory, project, repository, run, record, source, projection and target references in the current tab's storage. A storage failure blocks the request. Even a successful response is followed by an exact authorized observation-receipt read. The confirmation describes the historical observation separately from the current record and projection states; it does not grant reuse eligibility.
+
+If the response is lost, keep the retained request. After navigation or reload, select the same record and choose **Check original verification**. This only reads the exact receipt. A generic verified projection, another actor or request, a different source or target, and a 404 cannot confirm the original observation or permit replay. A 404 means the event has not been observed and may still be in flight. Legacy receipts with incomplete original provenance remain unresolved. A denied read clears private evidence while retaining the request marker.
+
+If the factory refuses verification before recording an observation, no receipt may exist. Studio currently keeps that request pending and cannot clear or replace it to correct the source. Preserve its original context for review; a 404 does not authorize another request.
+
+Authorized operators can also inspect the event through the receipt command above, Python `learning_projection_observation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/projection/observations/{request_id}`. The receipt preserves the original event identity, actor, timestamp, sequence, digest, source and citation references. No receipt read submits, ingests, promotes or shares knowledge.
+
+These illustrations follow one fictional source verification whose response is lost. The first exact receipt read returns 404; the next returns the matching historical observation. The fixture also represents a later invalidation, so the current record is excluded from the active filter while its confirmation remains available. The later invalidation is separate from source verification. No provider or knowledge service is called.
+
+<figure class="forge-shot" markdown="1">
+
+![Choose the existing source to verify](assets/screenshots/learning-observation-source-desktop-light.png)
+
+<figcaption>Source: review the saved record and its workspace purpose. The recorded source identifier is filled in. This action verifies existing indexed content without creating or ingesting a source.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review the source and recover its exact observation</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Review an existing source verification](assets/screenshots/learning-observation-review-desktop-light.png)
+
+<figcaption>Review: read the source and acknowledge the local observation. Factory, actor and target references are available in Source and request details. Verify source sends one request after its identity has been retained.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Unresolved source verification after a missing exact receipt](assets/screenshots/learning-observation-unresolved-desktop-dark.png)
+
+<figcaption>Unresolved: the response is lost and the first exact receipt read returns 404. Check original verification reads the same request again; it cannot repeat the observation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Matching historical observation and separate current evidence state](assets/screenshots/learning-observation-confirmed-desktop-dark.png)
+
+<figcaption>Confirmed: the later receipt matches the original actor, source and target. The historical observation stays visible when a later invalidation excludes the current record from the Verified evidence filter. Reuse still requires eligible evidence.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Verify an existing source and recover its receipt on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Check an existing source identifier on a phone](assets/screenshots/learning-observation-source-mobile-light.png)
+
+<figcaption>Source: use the actual identifier from the admitted workspace. Leave URLs and credentials out of this field.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Acknowledge an existing source verification on a phone](assets/screenshots/learning-observation-review-mobile-light.png)
+
+<figcaption>Review: the acknowledgment and Verify source action stay reachable. Expand the technical details when you need the exact original references.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read an unresolved source observation on a phone](assets/screenshots/learning-observation-unresolved-mobile-dark.png)
+
+<figcaption>Unresolved: keep the retained identity and read its exact receipt. A missing event cannot confirm the observation or permit another write.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the matching source observation on a phone](assets/screenshots/learning-observation-confirmed-mobile-dark.png)
+
+<figcaption>Confirmed: inspect the historical observation separately from current record and projection states. This fictional journey sends one write and two exact receipt reads.</figcaption>
 </figure>
 
 </div>
