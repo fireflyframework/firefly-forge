@@ -288,29 +288,42 @@ class Journal:
     async def entries(self, run_id: str) -> list[Data]:
         from pyfly.data.transaction import Propagation, TransactionTemplate, current_unit_of_work
 
-        from firefly_forge.project_access import CURRENT_PRINCIPAL
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 
         reader = CURRENT_PRINCIPAL.get()
+        caller = current_unit_of_work()
         async with self.store._unit():
-            unit = current_unit_of_work()
-            assert unit is not None
-            manager = unit.manager
             run = await self.store.get_run(run_id)
+            scope = self._worker_scope(run)
             entries = [
                 {**copy.deepcopy(entry.data), "digest": entry.digest}
                 for entry in await self.records.find_for_run(identifier(run_id))
             ]
-            diagnostics = [entry["payload"] for entry in entries if entry["kind"] == "diagnostic_observation"]
-            if diagnostics:
+            protected = [
+                entry["payload"]
+                for entry in entries
+                if entry["kind"] in {"diagnostic_observation", "worker_feedback", "worker_response"}
+            ]
+            if protected:
                 await self._diagnostic_reader(run, reader)
-        if not diagnostics:
+        if not protected:
             return entries
-        # Internal consumers can own a unit; suspend its binding without committing it or releasing its locks.
-        async with TransactionTemplate(manager, propagation=Propagation.NOT_SUPPORTED).transaction():
-            await self.store.admit_credentials(diagnostics)
+
+        async def admitted() -> None:
+            await self.store.admit_credentials(protected)
             async with self.store._unit():
-                await self._diagnostic_reader(await self.store.get_run(run_id), reader)
-                self.store.reject_credentials(diagnostics)
+                current = await self.store.get_run(run_id)
+                if self._worker_scope(current) != scope:
+                    raise AccessDenied("Journal run scope changed during credential admission")
+                await self._diagnostic_reader(current, reader)
+                self.store.reject_credentials(protected)
+
+        if caller is None:
+            await admitted()
+        else:
+            # Suspend the caller binding; its physical locks remain held.
+            async with TransactionTemplate(caller.manager, propagation=Propagation.NOT_SUPPORTED).transaction():
+                await admitted()
         return entries
 
     async def _diagnostic_reader(self, run: Data, reader: Any) -> None:
@@ -325,6 +338,8 @@ class Journal:
                 await access.require_project(principal, run["project_id"], "read")
             else:
                 await access.require_repository(principal, run["repository_id"], "read")
+        if CURRENT_PRINCIPAL.get() != reader:
+            raise AccessDenied("Journal reader changed during authorization")
 
     async def php_diagnostic(self, run_id: str, request: Any, observation: Data) -> Data:
         from firefly_forge.php_diagnostics import PHPProfileObservation, PHPProfileRequest
@@ -686,6 +701,31 @@ class Journal:
             raise ValueError("Worker response contains a configured credential; provide decisions without secrets")
         return safe
 
+    @staticmethod
+    def _worker_scope(run: Data) -> tuple[Any, ...]:
+        return (run.get("id"), run.get("project_id"), run.get("repository_id"), bool(run.get("publish")))
+
+    async def _worker_authority(self, run: Data, actor: Any, *, writing: bool) -> None:
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, Permission, ProjectAccess
+
+        if CURRENT_PRINCIPAL.get() != actor or (writing and actor is None):
+            raise AccessDenied("The authenticated worker response actor changed or is unavailable")
+        if actor is None:
+            return
+        access = ProjectAccess(self.store)
+        permission: Permission = "execute" if writing else "read"
+        if run.get("project_id"):
+            await access.authorize_actor(access.actor_snapshot(actor), run["project_id"], permission)
+            if writing and run.get("publish"):
+                await access.authorize_actor(access.actor_snapshot(actor), run["project_id"], "release")
+        elif writing:
+            if not await access.current_administrator(actor):
+                raise AccessDenied("An unassigned run requires current factory administrator authority")
+        else:
+            await access.require_repository(actor, run["repository_id"], "read")
+        if CURRENT_PRINCIPAL.get() != actor:
+            raise AccessDenied("The authenticated worker response actor changed during authorization")
+
     async def worker_messages(self, run_id: str) -> list[Data]:
         entries = await self.entries(run_id)
         return [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
@@ -756,40 +796,97 @@ class Journal:
             return record
 
     async def worker_response(self, run_id: str, request_id: str, response: Any) -> Data:
-        from firefly_forge.agent_roles import WorkerResponse
+        from pyfly.data.transaction import current_unit_of_work
+        from sqlalchemy import text
 
+        from firefly_forge.agent_roles import WorkerResponse
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
+
+        actor = CURRENT_PRINCIPAL.get()
+        if actor is None:
+            raise AccessDenied("An authenticated operator is required to answer a worker request")
+        if current_unit_of_work() is not None:
+            raise ValueError("Answer worker requests outside an active caller transaction")
         response = WorkerResponse.model_validate(response)
+        payload = {**response.model_dump(mode="json"), "request_id": request_id}
+        responding_actor = {
+            "version": 1,
+            "user_id": actor.id.hex,
+            "authentication_method": actor.authentication_method,
+        }
         async with self.store._unit():
+            initial = await self.store.get_run(run_id)
+            scope = self._worker_scope(initial)
+            await self._worker_authority(initial, actor, writing=True)
+        await self.store.admit_credentials(payload)
+        async with self.store._unit() as session:
+            if initial.get("project_id"):
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": self.store.schema + ":members:" + initial["project_id"]},
+                )
+            identity = await ForgeIdentityUserRepository().find_by_id(actor.id, lock=LockMode.PESSIMISTIC_WRITE)
+            identity_matches = (
+                identity is not None
+                and identity.enabled
+                and identity.issuer == actor.issuer
+                and identity.subject == actor.subject
+            )
             run = await self._run(run_id)
-            payload = WorkerResponse.model_validate_json(
-                self._worker_payload(run, response.model_dump_json(), reject_credentials=True)
-            ).model_dump(mode="json")
-            payload["request_id"] = request_id
+            if (
+                self._worker_scope(run.data) != scope
+                or run.id != identifier(run_id)
+                or run.repository_id != identifier(initial["repository_id"])
+            ):
+                raise AccessDenied("Worker response run scope changed during admission")
+            await self._worker_authority(run.data, actor, writing=True)
+            self._worker_payload(run, json.dumps(payload), reject_credentials=True)
+            self.store.reject_credentials(payload)
             entries = await self.records.find_for_run(run.id)
             key = "worker-response:" + response.id
             existing = next(
                 (entry for entry in entries if entry.kind == "worker_response" and entry.idempotency_key == key), None
             )
             if existing:
-                if existing.data["payload"] != payload:
+                retained = copy.deepcopy(existing.data["payload"])
+                recorded_actor = retained.pop("responding_actor", None)
+                if retained != payload:
                     raise ValueError("Response identifier already contains different content")
-                return copy.deepcopy(existing.data)
-            request = run.data.get("worker_request", {})
-            if request.get("id") != request_id:
-                raise ValueError("Worker request does not belong to this run")
-            if request.get("status") != "pending":
-                raise ValueError("Worker request is already resolved")
-            if run.status != "paused":
-                raise ValueError("Only a paused run can receive a worker response")
-            record = await self._append(run_id, request["task_id"], key, "worker_response", payload)
-            run.data = {
-                **run.data,
-                "worker_request": {**request, "status": "answered"},
-                "worker_response": payload,
-                "updated_at": now(),
-            }
-            await self.store.run_records.save(run)
-            return record
+                if recorded_actor is not None and (not identity_matches or recorded_actor != responding_actor):
+                    raise AccessDenied("Response identity belongs to another authenticated actor")
+                record = copy.deepcopy(existing.data)
+            else:
+                if not identity_matches:
+                    raise AccessDenied("The authenticated response identity is unavailable or inconsistent")
+                request = run.data.get("worker_request", {})
+                if request.get("id") != request_id:
+                    raise ValueError("Worker request does not belong to this run")
+                if request.get("status") != "pending":
+                    raise ValueError("Worker request is already resolved")
+                if run.status != "paused" or (run.data.get("cancel_request") or {}).get("status") == "requested":
+                    raise ValueError("Only a paused, uncancelled run can receive a new worker response")
+                payload["responding_actor"] = responding_actor
+                record = await self._append(run_id, request["task_id"], key, "worker_response", payload)
+                run.data = {
+                    **run.data,
+                    "worker_request": {**request, "status": "answered"},
+                    "worker_response": payload,
+                    "updated_at": now(),
+                }
+                await self.store.run_records.save(run)
+            await self._worker_authority(run.data, actor, writing=True)
+            self.store.reject_credentials(record)
+            self._worker_payload(run, json.dumps(record), reject_credentials=True)
+        # A refusal here does not undo an already committed immutable response.
+        await self.store.admit_credentials(record)
+        async with self.store._unit():
+            current = await self.store.get_run(run_id)
+            if self._worker_scope(current) != scope:
+                raise AccessDenied("Worker response run scope changed before return")
+            await self._worker_authority(current, actor, writing=True)
+            self.store.reject_credentials(record)
+        return record
 
     async def recover(self) -> int:
         async with self.store._unit():
