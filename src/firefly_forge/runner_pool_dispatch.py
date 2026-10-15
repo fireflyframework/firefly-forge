@@ -14,6 +14,7 @@ from typing import Any
 
 from pyfly.container import service
 
+from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.runner_backends import _bounded_process
 from firefly_forge.runner_pool_launcher import LAUNCHER, RESULT_READER
 from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile
@@ -144,6 +145,8 @@ class DockerPoolDispatcher:
             "--workdir",
             "/",
         ]
+        for key, value in container_python_environment().items():
+            command += ["--env=" + key + "=" + value]
         for key, value in self.labels(invocation).items():
             command += ["--label", key + "=" + value]
         return [*command, "--entrypoint", "/app/.venv/bin/python", invocation.image, "-I", "-S", "-c", LAUNCHER]

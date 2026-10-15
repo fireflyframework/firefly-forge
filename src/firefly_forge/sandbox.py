@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from pyfly.container import service
 
 from firefly_forge.configuration import redact_secrets
+from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.journal import Journal, digest
 from firefly_forge.process import ProcessResult
 from firefly_forge.runner_backends import RunnerBackends
@@ -687,6 +688,8 @@ class SandboxExecutor:
             "--workdir",
             "/workspace" + ("/" + relative if relative != "." else ""),
         ]
+        for key, value in container_python_environment().items():
+            command += ["--env", key + "=" + value]
         if git_root is not None:
             metadata = git_root / ".git"
             if metadata.is_symlink() or not metadata.is_dir() or "," in str(metadata):
