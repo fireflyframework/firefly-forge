@@ -310,6 +310,41 @@ def identity() -> None:
     """Inspect identity receipts and request explicit administrator-only changes."""
 
 
+@identity.command("configuration")
+def identity_configuration() -> None:
+    """Read public authentication configuration; no credentials are returned."""
+    with client() as connection:
+        display(connection.identity_configuration())
+
+
+@identity.command("session")
+def identity_session() -> None:
+    """Read the authenticated caller's current identity and memberships."""
+    with client() as connection:
+        display(connection.identity_session())
+
+
+@project.command("members")
+@click.argument("project_id")
+def project_members(project_id: str) -> None:
+    """Read members with current owner or administrator permission."""
+    with client() as connection:
+        display(connection.project_members(project_id))
+
+
+@project.command("member")
+@click.argument("project_id")
+@click.argument("user_id")
+@click.option("--role", type=click.Choice(["owner", "maintainer", "developer", "reviewer", "viewer"]))
+@click.option("--revoke", is_flag=True)
+def set_project_membership(project_id: str, user_id: str, role: str | None, revoke: bool) -> None:
+    """Set an existing user's project role or explicitly revoke membership."""
+    if (role is None) == (not revoke):
+        raise click.ClickException("Choose exactly one of --role or --revoke")
+    with client() as connection:
+        display(connection.set_project_membership(project_id, user_id, {"role": role}))
+
+
 @identity.command("users")
 def list_identity_users() -> None:
     with client() as connection:
@@ -998,6 +1033,7 @@ def connection_oauth_effect(name: str, request_id: str) -> None:
 @click.option("--project-id")
 @click.option("--public-client", is_flag=True, default=None)
 @click.option("--client-secret-file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--expected-revision", type=click.IntRange(0, 2147483647), default=None)
 def connection_oauth_configure(
     name: str,
     provider: str,
@@ -1006,14 +1042,17 @@ def connection_oauth_configure(
     project_id: str | None,
     public_client: bool | None,
     client_secret_file: Path | None,
+    expected_revision: int | None,
 ) -> None:
-    request = {
+    request: dict[str, Any] = {
         "provider": provider,
         "client_id": client_id,
         "authentication": authentication,
         "project_id": project_id,
         "public_client": public_client,
     }
+    if expected_revision is not None:
+        request["expected_revision"] = expected_revision
     if client_secret_file:
         request["client_secret"] = private_secret_file(client_secret_file)
     with client() as connection:

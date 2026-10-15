@@ -111,6 +111,23 @@ forge resume RUN_ID
 
 Save the `document` object from the registry response, rather than the whole response envelope. Registry edits affect future runs. Binding fields and mandatory platform checks remain enforced. Answers are journaled and leave the run paused until explicit resume; they do not grant publication or deployment approval.
 
+## Current identity and project membership
+
+`identity_configuration()` reads the public `/api/v1/auth/configuration` response. `identity_session()` reads the authenticated caller's current identity, memberships and server role permissions. The native session route accepts a verified API bearer or a valid browser session cookie; it returns neither credential. The SDK constructor still requires an operator token, and CLI/MCP use the configured bearer. These read bindings do not perform browser sign-in, exchange codes or export a cookie.
+
+| Action | Python method | CLI command | MCP tool |
+| --- | --- | --- | --- |
+| Public authentication configuration | `identity_configuration()` | `forge identity configuration` | `get_identity_configuration` |
+| Current authenticated caller | `identity_session()` | `forge identity session` | `get_identity_session` |
+| Project membership list | `project_members(project_id)` | `forge project members PROJECT_ID` | `list_project_members` |
+| Set or revoke membership | `set_project_membership(project_id, user_id, request)` | `forge project member PROJECT_ID USER_ID --role viewer` or `--revoke` | `set_project_membership` |
+
+Membership reads and writes require current project-owner or factory-administrator authority. The target user must already be registered. The native `MembershipInput` requires `role`: `owner`, `maintainer`, `developer`, `reviewer`, `viewer`, or explicit `null` to revoke. CLI requires exactly one of `--role` and `--revoke`; MCP accepts the same closed native body under `request`. The server preserves its last-owner safeguard and records the actor and membership revision. Revocation applies at the next authorization boundary, including subsequent member reads and writes.
+
+A membership write has no request-ID or compare-and-swap field in the native contract. Each explicit write is a new revision. The clients dispatch once; after a lost response, inspect current membership before making another decision.
+
+Connection OAuth configuration now also accepts optional CLI `--expected-revision` and MCP `expected_revision`. Read the current connection revision, then supply it to reject a stale edit. `0` asserts that the registration does not yet exist. Omitting the field preserves existing no-revision behavior; it does not make a write idempotent or grant consent. The existing tool schema adds only this optional bounded integer field.
+
 ## Read role lifecycle and identity administration
 
 The following reads use the existing native API without creating users, changing membership, sending invitations or reconciling an identity operation.
