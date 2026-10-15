@@ -94,7 +94,9 @@ Factory records a local preparation receipt and durable start intent before its 
 
 A currently authorized operator may request continuation of one original pool command while its Factory worker is still waiting. The Factory run and stage must remain active under the original database owner. This does not resume an interrupted run or submit a replacement command.
 
-<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Explicit queued command continuation diagram" aria-describedby="runner-continuation-flow-guide" tabindex="0" markdown="1">
+**1. Record the operator's request**
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Record an explicit continuation request diagram" aria-describedby="runner-continuation-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
 ---
@@ -105,14 +107,32 @@ config:
 flowchart LR
     O[Operator saves request identity] -->|Explicit POST| A[API checks current authority]
     A --> P[PostgreSQL retains request and original WAL binding]
-    P --> L[Current Factory leader rechecks active command]
+
+```
+
+</div>
+
+<p class="forge-flow-caption" id="runner-continuation-flow-guide">The API records admission. Exact receipt reads observe this saved request without dispatching work. On a narrow screen, focus the diagram and scroll horizontally.</p>
+
+**2. Continue the original command**
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Continue the original queued command diagram" aria-describedby="runner-continuation-dispatch-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    L[Current Factory leader rechecks active command]
     L --> C[Replacement controller rechecks admission and quotas]
     C --> E[Continue only the original queued execution]
 ```
 
 </div>
 
-<p class="forge-flow-caption" id="runner-continuation-flow-guide">Follow admission from left to right; on a narrow screen, focus the diagram and scroll horizontally. Exact receipt reads observe the saved request without following the dispatch path. Command success still needs the original execution receipt.</p>
+<p class="forge-flow-caption" id="runner-continuation-dispatch-guide">The leader follows the retained admission through the controller. Command success still needs the original execution receipt; an accepted continuation alone does not establish it.</p>
 
 Send one authenticated `POST /api/v1/runs/{run_id}/runner-continuations` with a retained request identity and the original `execution_id` from that run's sandbox intent in its journal:
 
