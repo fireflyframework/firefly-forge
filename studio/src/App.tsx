@@ -30,6 +30,7 @@ import {
   Hammer,
   Layers3,
   Loader2,
+  MessageSquare,
   Monitor,
   Moon,
   Play,
@@ -61,6 +62,7 @@ import { SourceControl } from "./SourceControl";
 import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
+import { WorkerDialogue } from "./WorkerDialogue";
 import { EvidenceView, UnifiedDiff } from "./ExecutionPresentation";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
@@ -2201,10 +2203,12 @@ function RunDetail({
     | "plan"
     | "deployment"
     | "review"
+    | "questions"
   >("timeline");
   const tabs = [
     { id: "timeline" as const, icon: Activity, label: "Timeline" },
     { id: "plan" as const, icon: BookOpen, label: "Plan" },
+    { id: "questions" as const, icon: MessageSquare, label: "Agent questions" },
     { id: "diff" as const, icon: FileDiff, label: "Changes" },
     { id: "verification" as const, icon: ShieldCheck, label: "Verification" },
     { id: "review" as const, icon: ShieldCheck, label: "Independent review" },
@@ -2241,6 +2245,20 @@ function RunDetail({
   }
   return (
     <section className="panel run-detail">
+      {run.pause?.kind === "worker_request" && (
+        <div className="worker-run-question">
+          <MessageSquare size={20} />
+          <div>
+            <strong>Review the agent’s question</strong>
+            <p>
+              The conversation records the decision needed to continue this run.
+            </p>
+          </div>
+          <button className="secondary" onClick={() => setTab("questions")}>
+            Open agent questions
+          </button>
+        </div>
+      )}
       <div className="detail-tabs" role="tablist" aria-label="Run evidence">
         {tabs.map((item) => (
           <button
@@ -2284,6 +2302,19 @@ function RunDetail({
         className="evidence-content"
       >
         {busy && <Loading />}
+        {tab === "questions" && session && (
+          <WorkerDialogue
+            key={JSON.stringify([
+              connection.base,
+              connection.token,
+              session.user.id,
+              run.id,
+            ])}
+            run={run}
+            connection={connection}
+            session={session}
+          />
+        )}
         {tab === "review" && (
           <section>
             <h3>Independent review</h3>
