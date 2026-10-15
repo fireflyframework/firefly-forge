@@ -32,6 +32,7 @@ async function setup(page: Page, mode = "lost") {
     reads: 0,
     request: "",
     candidate: "requires_leader_confirmation",
+    commands: [command],
     readStatus: 404,
   };
   await page.route("**/api/v1/**", async (route) => {
@@ -48,7 +49,9 @@ async function setup(page: Page, mode = "lost") {
           state: state.candidate,
           reason: "Fixture local checks only.",
           commands:
-            state.candidate === "requires_leader_confirmation" ? [command] : [],
+            state.candidate === "requires_leader_confirmation"
+              ? state.commands
+              : [],
         },
       });
     if (path.endsWith("/runner-continuations")) {
@@ -323,12 +326,27 @@ for (const viewport of [
       page,
     }, testInfo) => {
       await page.setViewportSize(viewport);
-      await setup(page);
+      const state = await setup(page);
+      state.commands = [
+        command,
+        {
+          ...command,
+          execution_id: command.execution_id.slice(0, 12) + "5".repeat(20),
+          argument_count: 3,
+        },
+      ];
+      await page
+        .getByRole("button", { name: "Refresh local checks", exact: true })
+        .click();
       await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
       await page
         .getByRole("button", { name: "Request continuation", exact: true })
         .click();
-      await page.getByLabel("Git command · verify · attempt 1").check();
+      await page
+        .getByRole("radio", {
+          name: new RegExp("Command 1.*" + command.execution_id),
+        })
+        .check();
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
       await page.screenshot({
         path: testInfo.outputPath(`selection-${viewport.width}-${theme}.png`),
@@ -475,5 +493,46 @@ test("exhausted local inspection budget offers exact saved reads without a fresh
   await expect(
     page.getByRole("button", { name: "Request continuation", exact: true }),
   ).toHaveCount(0);
+  expect(s.posts).toBe(0);
+});
+
+test("same-family commands retain distinct complete identities in a natural-height review", async ({
+  page,
+}) => {
+  const s = await setup(page);
+  const second = {
+    ...command,
+    execution_id: command.execution_id.slice(0, 12) + "5".repeat(20),
+    argument_count: 3,
+  };
+  s.commands = [command, second];
+  await page
+    .getByRole("button", { name: "Refresh local checks", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Request continuation", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  const first = dialog.getByRole("radio", {
+    name: new RegExp("Command 1.*" + command.execution_id),
+  });
+  const next = dialog.getByRole("radio", {
+    name: new RegExp("Command 2.*" + second.execution_id),
+  });
+  await expect(first).toHaveCount(1);
+  await expect(next).toHaveCount(1);
+  await next.check();
+  await expect(first).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Review original command", exact: true })
+    .click();
+  await dialog.getByText("Original command identity", { exact: true }).click();
+  await expect(
+    dialog.getByText(second.execution_id, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("Argument count: 3", { exact: true }),
+  ).toBeVisible();
+  expect((await dialog.boundingBox())!.height).toBeLessThan(700);
   expect(s.posts).toBe(0);
 });

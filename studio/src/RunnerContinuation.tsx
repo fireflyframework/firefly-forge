@@ -20,6 +20,7 @@ import {
 } from "./RunnerContinuationData";
 import { Wizard } from "./Wizard";
 import "./ProjectAccess.css";
+import "./RunnerContinuation.css";
 const reasons: Record<string, string> = {
   read_budget_exceeded:
     "Bounded local inspection is unavailable. No continuation is offered; exact saved requests remain readable.",
@@ -383,7 +384,7 @@ export function RunnerContinuation({
       {editing && (
         <dialog
           ref={dialog}
-          className="access-member-dialog learning-invalidation-dialog"
+          className="access-member-dialog learning-invalidation-dialog runner-continuation-dialog"
           aria-label="Request original command continuation"
           onCancel={(event) => {
             event.preventDefault();
@@ -429,16 +430,21 @@ export function RunnerContinuation({
               {step === 0 ? (
                 <fieldset>
                   <legend>Commands awaiting leader confirmation</legend>
-                  {commands.map((c) => (
+                  {commands.map((c, index) => (
                     <label key={c.execution_id}>
                       <input
                         type="radio"
                         name="continuation-command"
+                        aria-label={`${c.command_label} · ${c.task_id} · attempt ${c.attempt} · Command ${index + 1} · execution ${c.execution_id} · argument count ${c.argument_count}`}
                         value={c.execution_id}
                         checked={selected === c.execution_id}
                         onChange={() => setSelected(c.execution_id)}
                       />
                       {c.command_label} · {c.task_id} · attempt {c.attempt}
+                      <span className="runner-command-reference">
+                        Command {index + 1} · {c.execution_id.slice(0, 12)} ·{" "}
+                        arguments: {c.argument_count}
+                      </span>
                     </label>
                   ))}
                 </fieldset>
