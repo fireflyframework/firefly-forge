@@ -57,6 +57,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/navigation.ts": "fixture navigation",
                 "studio/tests/auth-fixture.ts": "fixture identity",
                 "studio/tests/learning-record-fixture.ts": "fixture learning record",
+                "studio/tests/campaign-report-fixture.ts": "fixture campaign report",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -88,6 +89,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/navigation.ts",
                     "studio/tests/auth-fixture.ts",
                     "studio/tests/learning-record-fixture.ts",
+                    "studio/tests/campaign-report-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -130,6 +132,7 @@ class WalkthroughTests(unittest.TestCase):
             for name, error in [
                 ("studio/tests/walkthrough-capture.ts", "capture helper"),
                 ("studio/tests/learning-record-fixture.ts", "capture helper"),
+                ("studio/tests/campaign-report-fixture.ts", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/playwright.docs.config.ts", "capture config"),
             ]:
@@ -282,6 +285,8 @@ class WalkthroughTests(unittest.TestCase):
             identity.write_text("fixture identity")
             learning_fixture = root / "studio/tests/learning-record-fixture.ts"
             learning_fixture.write_text("fixture learning record")
+            campaign_fixture = root / "studio/tests/campaign-report-fixture.ts"
+            campaign_fixture.write_text("fixture campaign report")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")
             capture_config = root / "studio/playwright.docs.config.ts"
@@ -308,6 +313,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/navigation.ts": sha(navigation),
                     "studio/tests/auth-fixture.ts": sha(identity),
                     "studio/tests/learning-record-fixture.ts": sha(learning_fixture),
+                    "studio/tests/campaign-report-fixture.ts": sha(campaign_fixture),
                 },
                 "capture_config": {"path": "studio/playwright.docs.config.ts", "sha256": sha(capture_config)},
                 "captures": {

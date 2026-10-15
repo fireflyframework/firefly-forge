@@ -42,6 +42,33 @@ The report separates the server's evidence state from recorded workflow status. 
 
 The digest is displayed as a server reference; Studio does not independently verify it. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
 
+The guide below uses controlled API fixtures: the product overview, campaign and component show the same successful recorded state with verified evidence. These screenshots illustrate reading a report; they do not establish live campaign execution or external SCM activity.
+
+<figure class="forge-shot" markdown="1">
+![Controlled campaign summary with component counts and recorded workflow status.](assets/screenshots/campaign-report-summary-desktop-light.png)
+<figcaption>Load existing campaigns, select one by its date and status, then choose View report. Evidence state and workflow status remain separate fields.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect component references and the phone layout</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled component detail showing saved run and journal references.](assets/screenshots/campaign-report-references-desktop-light.png)
+<figcaption>Select a component, then open References. Other sections show its tasks, checks, recorded source and prior attempts.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled campaign summary on a phone.](assets/screenshots/campaign-report-summary-mobile-dark.png)
+<figcaption>The summary uses the available width; component evidence opens only when selected.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled saved component references on a phone.](assets/screenshots/campaign-report-references-mobile-dark.png)
+<figcaption>Reference values wrap within the page. The evidence sections remain reachable by keyboard and a local horizontal tab strip.</figcaption>
+</figure>
+
+</details>
+
 ## Understand the dependency gate
 
 The default `verified` gate requires an upstream run to succeed with nonempty passing executable checks, matching source/checkpoint receipts, and an approved matching independent-review receipt when review was requested. A successful status alone is insufficient.

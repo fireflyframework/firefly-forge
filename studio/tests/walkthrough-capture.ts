@@ -79,6 +79,8 @@ export async function captureWalkthrough(
     "learning-invalidation-review": "Review",
     "learning-observation-source": "Source",
     "learning-observation-review": "Review",
+    "runner-continuation-selection": "Original command",
+    "runner-continuation-review": "Review",
   };
   if (expectedStep[stage])
     await expect(
@@ -198,6 +200,7 @@ export async function captureWalkthrough(
     "studio/tests/navigation.ts",
     "studio/tests/auth-fixture.ts",
     "studio/tests/learning-record-fixture.ts",
+    "studio/tests/campaign-report-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",
