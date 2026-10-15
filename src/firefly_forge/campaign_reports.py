@@ -418,31 +418,31 @@ class CampaignReports:
                     )
                 )
                 receipt = None
+                key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:{task.task_id}:{task.attempt}").hex
+                causal = [
+                    entry
+                    for entry in entries
+                    if entry["task_id"] == task.task_id
+                    and entry["idempotency_key"] == key
+                    and entry["kind"] == "intent"
+                ]
+                completed = [
+                    entry
+                    for entry in entries
+                    if entry["task_id"] == task.task_id
+                    and entry["idempotency_key"] == key
+                    and entry["kind"] == "receipt"
+                ]
+                require(len(causal) <= 1 and len(completed) <= 1)
+                if completed:
+                    require(causal and causal[0]["sequence"] < completed[0]["sequence"])
+                unclosed = bool(causal and not completed)
                 if task.status in {"done", "running", "needs_reconciliation"}:
-                    key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:{task.task_id}:{task.attempt}").hex
-                    require(task.data.get("idempotency_key") == key)
-                    causal = [
-                        entry
-                        for entry in entries
-                        if entry["task_id"] == task.task_id
-                        and entry["idempotency_key"] == key
-                        and entry["kind"] == "intent"
-                    ]
-                    require(len(causal) == 1)
+                    require(task.data.get("idempotency_key") == key and len(causal) == 1)
                     if task.status == "done":
-                        completed = [
-                            entry
-                            for entry in entries
-                            if entry["task_id"] == task.task_id
-                            and entry["idempotency_key"] == key
-                            and entry["kind"] == "receipt"
-                        ]
                         require(len(completed) == 1)
                         receipt = completed[0]
-                        require(
-                            causal[0]["sequence"] < receipt["sequence"]
-                            and receipt["payload"] == task.data.get("evidence")
-                        )
+                        require(receipt["payload"] == task.data.get("evidence"))
                         receipts[task.task_id] = receipt
                 task_reports.append(
                     {
@@ -452,6 +452,8 @@ class CampaignReports:
                         if task.status == "done"
                         else "in_progress"
                         if task.status == "running"
+                        else "unknown"
+                        if unclosed
                         else "not_started"
                         if task.status == "queued"
                         else "unknown"
@@ -503,6 +505,7 @@ class CampaignReports:
             incomplete_plan = any(task.task_id in planned and task.status != "done" for task in tasks)
             if (
                 run["status"] == "needs_reconciliation"
+                or any(task["state"] == "unknown" for task in task_reports)
                 or run.get("publication_status") == "publishing"
                 or (run["status"] in {"succeeded", "failed", "cancelled", "interrupted"} and pending)
                 or (run["status"] == "succeeded" and incomplete_plan)

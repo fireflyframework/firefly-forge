@@ -554,3 +554,86 @@ async def test_task_from_another_plan_is_not_mixed_into_the_current_snapshot(sto
         assert report["state"] == "unknown" and report["counts"] is None
     finally:
         CURRENT_PRINCIPAL.reset(context)
+
+
+@pytest.mark.parametrize("status", ["queued", "failed"])
+@pytest.mark.parametrize("clear_metadata", [False, True])
+async def test_current_unclosed_intent_cannot_be_hidden_by_mutable_state(store, tmp_path, clear_metadata, status):
+    from uuid import UUID
+
+    project, manager, journal, campaign, context = await synthetic_delivery(store, tmp_path)
+    try:
+        reports = service(store, manager, journal)
+        assert (await reports.report(project["id"], campaign["id"]))["state"] == "verified"
+        run_id = campaign["children"][0]["run_id"]
+        intent = await journal.intent(run_id, "memory:owned-unresolved")
+        history = await journal.entries(run_id)
+        assert any(row["kind"] == "intent" and row["idempotency_key"] == intent["idempotency_key"] for row in history)
+        assert not any(
+            row["kind"] == "receipt" and row["idempotency_key"] == intent["idempotency_key"] for row in history
+        )
+        async with store._unit():
+            task = next(
+                row
+                for row in await journal.tasks.find_for_run(UUID(run_id))
+                if row.task_id == "memory:owned-unresolved"
+            )
+            task.status = status
+            if clear_metadata:
+                task.data = {"kind": "remote"}
+            await journal.tasks.save(task)
+        report = await reports.report(project["id"], campaign["id"])
+        assert report["state"] == "unknown"
+        assert await journal.entries(run_id) == history
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+
+
+async def test_queued_optional_attempt_can_retain_an_older_closed_receipt(store, tmp_path):
+    from uuid import UUID
+
+    project, manager, journal, campaign, context = await synthetic_delivery(store, tmp_path)
+    try:
+        run_id = campaign["children"][0]["run_id"]
+        intent = await journal.intent(run_id, "memory:closed-previous-attempt")
+        await journal.receipt(run_id, intent["idempotency_key"], {"outcome": "owned prior observation"})
+        history = await journal.entries(run_id)
+        async with store._unit():
+            task = next(
+                row
+                for row in await journal.tasks.find_for_run(UUID(run_id))
+                if row.task_id == "memory:closed-previous-attempt"
+            )
+            task.status, task.attempt = "queued", 2
+            await journal.tasks.save(task)
+        report = await service(store, manager, journal).report(project["id"], campaign["id"])
+        assert report["state"] == "verified"
+        previous = next(
+            task for task in report["components"][0]["tasks"] if task["id"] == "memory:closed-previous-attempt"
+        )
+        assert previous["attempt"] == 2 and previous["state"] == "not_started" and previous["receipt"] is None
+        assert await journal.entries(run_id) == history
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
+
+
+async def test_native_failed_remote_intent_holds_verification_without_a_receipt(store, tmp_path):
+    project, manager, journal, campaign, context = await synthetic_delivery(store, tmp_path)
+    try:
+        reports = service(store, manager, journal)
+        assert (await reports.report(project["id"], campaign["id"]))["state"] == "verified"
+        run_id = campaign["children"][0]["run_id"]
+        intent = await journal.intent(run_id, "memory:owned-failed")
+        await journal.fail(run_id, intent["idempotency_key"], "source_invalid", "Fictional remote result unavailable")
+        assert (await store.get_run(run_id))["status"] == "succeeded"
+        history = await journal.entries(run_id)
+        assert not any(
+            row["kind"] == "receipt" and row["idempotency_key"] == intent["idempotency_key"] for row in history
+        )
+        report = await reports.report(project["id"], campaign["id"])
+        assert report["state"] == "unknown" and report["counts"] == {"unknown": 1}
+        task = next(task for task in report["components"][0]["tasks"] if task["id"] == "memory:owned-failed")
+        assert task["state"] == "unknown" and task["receipt"] is None
+        assert await journal.entries(run_id) == history
+    finally:
+        CURRENT_PRINCIPAL.reset(context)
