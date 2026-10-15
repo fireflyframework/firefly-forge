@@ -163,8 +163,9 @@ export function CampaignDeliveryPlans({
     };
   }
   function finish(op: NonNullable<ReturnType<typeof begin>>) {
+    if (!op.current()) return;
     inflight.current = false;
-    if (op.current()) setBusy(false);
+    setBusy(false);
   }
   function stored() {
     try {
