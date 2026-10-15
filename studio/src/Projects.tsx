@@ -25,6 +25,8 @@ import { SourceAnalysis } from "./SourceAnalysis";
 import { Wizard } from "./Wizard";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
+import { CampaignReports } from "./CampaignReports";
+import type { IdentitySession } from "./Identity";
 type ComponentOverview = ProjectComponent & {
   latest_status: string;
   repository_run_count: number;
@@ -57,7 +59,9 @@ export function Projects({
   onStart,
   onOpen,
   onProduct,
+  session,
 }: {
+  session: IdentitySession | null;
   connection: Connection;
   connected: boolean;
   repositories: Repository[];
@@ -276,6 +280,22 @@ export function Projects({
                   ]),
                 )}
               />
+              {session && (
+                <CampaignReports
+                  key={JSON.stringify([
+                    connection.base,
+                    connection.token,
+                    session.user.id,
+                    session.global_admin,
+                    session.memberships,
+                    current.id,
+                    current.digest,
+                  ])}
+                  connection={connection}
+                  project={current}
+                  session={session}
+                />
+              )}
               <SourceAnalysis
                 key={current.id}
                 connection={connection}
