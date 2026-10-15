@@ -51,7 +51,7 @@ Select [agent roles](docs/agent-roles.md), project policies and the configured r
 
 Project policies can use the public [central policy catalog](https://github.com/fireflyframework/firefly-forge-policies). Teams can connect a separately installed [Firefly Agent Bridge](docs/bridge.md). Studio, the CLI, SDK and the factory's own MCP tools operate the authenticated application contracts; [agent integrations](docs/agent-integrations.md) explains those entry points.
 
-Repository-scoped [learning](docs/learning.md) binds exact questions to verified local outcomes and current applicability. Invalidated or expired evidence cannot supply a cached answer. Explicit flycanon projection retains one submission identity and preserves uncertain outcomes. Automatic projected-namespace retrieval, classified repair circuits and sharing lessons between projects remain open.
+Repository-scoped [learning](docs/learning.md) binds exact questions to verified local outcomes and current applicability. Invalidated or expired evidence cannot supply a cached answer. Explicit flycanon projection retains one submission identity and preserves uncertain outcomes. Opt-in retrieval can read the verified projection of an exact eligible local record. Automatic discovery of other projected lessons, cross-run failure classification and sharing lessons between projects remain open.
 
 ## Development
 
