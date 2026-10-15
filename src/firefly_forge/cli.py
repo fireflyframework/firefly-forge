@@ -905,6 +905,46 @@ def report_campaign(project_id: str, campaign_id: str) -> None:
         display(connection.project_campaign_report(project_id, campaign_id))
 
 
+@campaign.command("archive-report")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.option("--request-id", required=True)
+@click.option("--expected-digest", required=True)
+def archive_campaign_report(project_id: str, campaign_id: str, request_id: str, expected_digest: str) -> None:
+    """Save a selected report; keep the request ID after any uncertain response."""
+    with client() as connection:
+        display(
+            connection.archive_campaign_report(
+                project_id,
+                campaign_id,
+                {
+                    "request_id": request_id,
+                    "expected_report_digest": expected_digest,
+                },
+            )
+        )
+
+
+@campaign.command("report-history")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.option("--after", type=click.IntRange(0, 100), default=0)
+def campaign_report_history(project_id: str, campaign_id: str, after: int) -> None:
+    """Read bounded saved-report metadata without regenerating live evidence."""
+    with client() as connection:
+        display(connection.campaign_report_archives(project_id, campaign_id, after))
+
+
+@campaign.command("report-archive")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.argument("request_id")
+def campaign_report_archive(project_id: str, campaign_id: str, request_id: str) -> None:
+    """Read the exact immutable report receipt for the original request ID."""
+    with client() as connection:
+        display(connection.campaign_report_archive(project_id, campaign_id, request_id))
+
+
 @campaign.command("cancel")
 @click.argument("project_id")
 @click.argument("campaign_id")

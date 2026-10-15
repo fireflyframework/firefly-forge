@@ -12,6 +12,7 @@ from pydantic import WithJsonSchema
 
 from firefly_forge.access_controllers import MembershipInput
 from firefly_forge.assistant_attachments import AttachmentInput
+from firefly_forge.campaign_report_history import CampaignReportArchiveInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
@@ -44,6 +45,8 @@ IdentityReconciliationRequest = Annotated[Any, WithJsonSchema(AdministrationReco
 IdentityRecoveryRequest = Annotated[Any, WithJsonSchema(AdministrationRecovery.model_json_schema())]
 ObservationAttemptRequest = Annotated[Any, WithJsonSchema(LearningObservationAttemptInput.model_json_schema())]
 RunnerContinuationRequest = Annotated[Any, WithJsonSchema(RunnerContinuationInput.model_json_schema())]
+CampaignReportArchiveRequest = Annotated[Any, WithJsonSchema(CampaignReportArchiveInput.model_json_schema())]
+CampaignReportArchiveCursor = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 0, "maximum": 100})]
 
 
 def create_server() -> MCPServer:
@@ -875,6 +878,50 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.project_campaign_report(project_id, campaign_id)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def archive_project_campaign_report(
+        project_id: str, campaign_id: str, request: CampaignReportArchiveRequest
+    ) -> dict[str, Any]:
+        """Explicitly save a selected coherent report using a stable caller request ID and report digest.
+
+        Current execute and historical repository read permissions apply. No work is dispatched.
+        A lost response, missing read or refusal never authorizes a new identity or automatic retry.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.archive_campaign_report(project_id, campaign_id, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_project_campaign_report_archive(project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
+        """Read an exact immutable saved-report receipt with current access and credential admission."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.campaign_report_archive(project_id, campaign_id, request_id)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def list_project_campaign_report_archives(
+        project_id: str, campaign_id: str, after: CampaignReportArchiveCursor = 0
+    ) -> dict[str, Any]:
+        """Read at most fifty saved-report summaries after a sequence cursor; no report regeneration."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.campaign_report_archives(project_id, campaign_id, after)
 
     @server.tool()
     def cancel_project_campaign(project_id: str, campaign_id: str, request: CampaignAction) -> dict[str, Any]:

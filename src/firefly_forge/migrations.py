@@ -16,6 +16,7 @@ from firefly_forge.assistant_persistence import (
     ForgeAssistantSessionEntity,
     ForgeAssistantTurnEntity,
 )
+from firefly_forge.campaign_report_history_persistence import ForgeCampaignReportArchiveEntity
 from firefly_forge.collaboration_persistence import (
     ForgeChannelInboxEntity,
     ForgeCollaborationSettingsEntity,
@@ -75,7 +76,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 24
+SCHEMA_REVISION = 25
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -126,6 +127,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeCampaignEntity,
                 ForgeCampaignChildEntity,
                 ForgeCampaignEventEntity,
+                ForgeCampaignReportArchiveEntity,
                 ForgeIdentityUserEntity,
                 ForgeIdentitySessionEntity,
                 ForgeIdentityAttemptEntity,
@@ -216,6 +218,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             "forge_assistant_attachments",
             "forge_campaign_children",
             "forge_campaign_events",
+            "forge_campaign_report_archives",
             "forge_access_events",
             "forge_identity_admin_events",
             "forge_learning_events",

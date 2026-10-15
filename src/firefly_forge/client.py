@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
     from firefly_forge.assistant_attachments import AttachmentInput
+    from firefly_forge.campaign_report_history import CampaignReportArchiveInput
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
@@ -629,6 +630,45 @@ class ForgeClient:
     def project_campaign_report(self, project_id: str, campaign_id: str) -> dict[str, Any]:
         """Read one local campaign evidence snapshot; this does not contact source control."""
         return dict(self.request("GET", f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report"))
+
+    def archive_campaign_report(
+        self, project_id: str, campaign_id: str, request: CampaignReportArchiveInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Explicitly retain the selected report digest under the caller's stable request identity."""
+        from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+
+        try:
+            body = CampaignReportArchiveInput.model_validate(request)
+        except ValueError:
+            raise ValueError(
+                "Use an exact request identifier and selected report digest; no additional fields"
+            ) from None
+        return dict(
+            self.request(
+                "POST",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report-archives",
+                json=body.model_dump(),
+            )
+        )
+
+    def campaign_report_archive(self, project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report-archives/{self._id(request_id)}",
+            )
+        )
+
+    def campaign_report_archives(self, project_id: str, campaign_id: str, after: int = 0) -> dict[str, Any]:
+        if type(after) is not int or not 0 <= after <= 100:
+            raise ValueError("Archive history cursor must be an integer between 0 and 100")
+        return dict(
+            self.request(
+                "GET",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report-archives",
+                params={"after": after},
+            )
+        )
 
     def _campaign_action(self, project_id: str, campaign_id: str, operation: str, request: Any) -> dict[str, Any]:
         from firefly_forge.project_campaigns import CampaignAction, CampaignRetry
