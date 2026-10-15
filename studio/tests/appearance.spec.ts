@@ -15,7 +15,7 @@ test("appearance follows the system, persists an explicit choice, and keeps both
   await page.reload();
   await expect(appearance).toHaveValue("dark");
   await expect(
-    page.getByRole("img", { name: "Firefly Forge", exact: true }),
+    page.getByRole("img", { name: "Firefly forge", exact: true }),
   ).toHaveAttribute("src", /dark/);
   for (const theme of ["light", "dark"]) {
     await appearance.selectOption(theme);
