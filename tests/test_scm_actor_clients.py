@@ -23,6 +23,7 @@ def binding():
         "version": 1,
         "request_id": REQUEST,
         "expected_previous_digest": None,
+        "expected_project_binding_digest": "3" * 64,
         "verified_receipt_id": "e" * 32,
         "expected_verified_reference_digest": "f" * 64,
         "native_user_id": "1" * 32,
@@ -114,7 +115,15 @@ def test_sdk_does_not_retry_or_replace_an_uncertain_or_refused_write(outcome):
 
 
 @pytest.mark.parametrize(
-    "change", [{"version": True}, {"active": 1}, {"native_user_id": "do-not-reflect-this"}, {"allowed_actions": ["*"]}]
+    "change",
+    [
+        {"version": True},
+        {"active": 1},
+        {"native_user_id": "do-not-reflect-this"},
+        {"allowed_actions": ["*"]},
+        {"expected_project_binding_digest": "do-not-reflect-this"},
+        {"expected_project_binding_digest": 3},
+    ],
 )
 def test_sdk_refuses_invalid_authority_input_without_dispatch_or_reflection(change, monkeypatch):
     calls = []
@@ -124,6 +133,37 @@ def test_sdk_refuses_invalid_authority_input_without_dispatch_or_reflection(chan
         with pytest.raises(ValueError) as failure:
             connection.configure_scm_actor_binding(PROJECT, REPOSITORY, body)
         assert "do-not-reflect-this" not in str(failure.value)
+    assert calls == []
+
+
+@pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
+def test_clients_require_the_reviewed_project_cut_before_dispatch(monkeypatch, tmp_path, interface):
+    from mcp.server.mcpserver.exceptions import UnexpectedToolError
+
+    calls = []
+    body = binding()
+    body.pop("expected_project_binding_digest")
+    with ForgeClient("https://forge.invalid", "fictional-local-token") as connection:
+        monkeypatch.setattr(connection, "request", lambda *a, **k: calls.append((a, k)))
+        monkeypatch.setattr(cli, "client", lambda: contextlib.nullcontext(connection))
+        if interface == "sdk":
+            with pytest.raises(ValueError):
+                connection.configure_scm_actor_binding(PROJECT, REPOSITORY, body)
+        elif interface == "cli":
+            document = tmp_path / "delegation.json"
+            document.write_text(json.dumps(body))
+            result = CliRunner().invoke(
+                cli.main, ["project", "scm-actors", "configure", PROJECT, REPOSITORY, str(document)]
+            )
+            assert result.exit_code != 0
+        else:
+            with pytest.raises(UnexpectedToolError):
+                asyncio.run(
+                    create_server().call_tool(
+                        "configure_scm_actor_binding",
+                        {"project_id": PROJECT, "repository_id": REPOSITORY, "request": body},
+                    )
+                )
     assert calls == []
 
 

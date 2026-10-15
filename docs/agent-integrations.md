@@ -49,7 +49,7 @@ forge project scm-actors configure PROJECT_ID REPOSITORY_ID reviewed-delegation.
 forge project scm-actors get PROJECT_ID REPOSITORY_ID ORIGINAL_REQUEST_ID
 ```
 
-The JSON document uses the native `SCMActorBindingInputV1` contract. Keep its stable `request_id`, exact verified receipt and reference digest, existing `native_user_id`, explicit `component_ids` and `allowed_actions`. Supply the expected previous digest when revising a mapping. The administrator must explicitly acknowledge that the account identity is asserted through the configured webhook. Set `active` to `false` to request a revoked revision; old receipts remain readable under current access.
+The JSON document uses the native `SCMActorBindingInputV1` contract. Keep its stable `request_id`, exact verified receipt and reference digest, existing `native_user_id`, explicit `component_ids` and `allowed_actions`. Copy the candidate page's `project_binding_digest` into `expected_project_binding_digest` to bind approval to the reviewed project configuration. Supply the expected previous digest when revising a mapping. The administrator must explicitly acknowledge that the account identity is asserted through the configured webhook. Set `active` to `false` to request a revoked revision; old receipts remain readable under current access.
 
 The initial delegated actions are `respond`, `status` and `cancel`. A mapping does not approve generated work, authorize publication or substitute for an adoption decision. Other actions require their own admitted native path. Provider origin, installation or workspace scope, repository grants and current mapping are checked by the server.
 
@@ -57,10 +57,10 @@ The initial delegated actions are `respond`, `status` and `cancel`. A mapping do
 | --- | --- | --- |
 | Read verified accounts | `scm_actor_binding_candidates` | `list_scm_actor_binding_candidates` |
 | Delegate or revoke | `configure_scm_actor_binding` | `configure_scm_actor_binding` |
-| Read revision summaries | `scm_actor_bindings` | `list_scm_actor_bindings` |
+| Read current mapping heads | `scm_actor_bindings` | `list_scm_actor_bindings` |
 | Read the original receipt | `scm_actor_binding` | `get_scm_actor_binding` |
 
-All methods take the project and repository IDs. Candidate and history reads accept an optional cursor and return at most fifty entries. Pass the returned `next_cursor` unchanged to read another page. Exact reads also take the original request ID.
+All methods take the project and repository IDs. Candidate and current-head reads accept an optional cursor and return at most fifty entries. Pass the returned `next_cursor` unchanged to read another page. A head page lists the current revision of each mapping; it is not a complete revision history. Exact reads take the original request ID and can retrieve an older receipt under current access.
 
 Retain that request ID before configuring a mapping. A timeout, conflict or permission refusal does not establish whether a write committed. Use the exact receipt read to recover the original result; these clients never retry a write, invent another identity or reset the previous digest automatically. MCP marks configuration as an explicit authority-changing operation. Its three reads do not change mappings or invoke provider discovery.
 
