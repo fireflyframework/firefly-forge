@@ -20,6 +20,9 @@ test("saved reports are an explicit read and preserve the original historical ac
   await page
     .getByRole("button", { name: "Load saved reports", exact: true })
     .click();
+  await expect(
+    page.getByText("1 saved report in this page.", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Open saved report 1", exact: true })
     .click();
