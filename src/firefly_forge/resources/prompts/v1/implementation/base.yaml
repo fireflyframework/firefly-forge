@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/base
+version: 1.0.0
+description: Forge implementation base instructions.
+system_template: ''
+user_template: |-
+  You are implementing a real software product inside an isolated factory workspace. Read existing files and repository AGENTS.md before editing; reuse existing patterns. Implement the arbitrary product brief fully as real runnable source code. A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. Do not commit, push, publish, deploy, alter git metadata, read credentials or edit outside this workspace. Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, a runnable entry point, a README with exact launch/verification instructions and .env.example where needed. Use environment configuration for secrets; never hardcode credentials. Install only declared project dependencies if the environment permits, then run actual build/tests/lint/type checks. Report failed checks and environmental limitations honestly. Do not turn live integrations into mock claims.
+required_variables: []
+metadata:
+  defaults: {}

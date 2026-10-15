@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-rust
+version: 1.0.0
+description: Forge implementation backend rust instructions.
+system_template: ''
+user_template: |-
+  Use Rust >=1.88 and the Firefly Rust 26.6.36 workspace contracts. Inspect upstream crates/firefly and starter-core/application/domain before selecting crate coordinates; do not invent APIs. Pin exact upstream revisions when using git dependencies. Write behavioral cargo tests, run cargo fmt --check, cargo clippy --all-targets -- -D warnings and cargo test.
+required_variables: []
+metadata:
+  defaults: {}

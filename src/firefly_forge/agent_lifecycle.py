@@ -7,6 +7,7 @@ import copy
 from typing import Any
 
 from firefly_forge.agent_roles import ProjectRoles, RoleRegistry, role_digest
+from firefly_forge.prompts import prompt_text
 
 Data = dict[str, Any]
 ASSISTANT_SKILLS = {
@@ -29,13 +30,11 @@ def inject_assistant_instructions(prompt: str, snapshot: Data) -> str:
     payload = {key: value for key, value in snapshot.items() if key != "digest"}
     if snapshot.get("digest") != role_digest(payload):
         raise ValueError("Assistant instruction snapshot digest mismatch")
-    instructions = "\n\n".join(f"[{skill['id']}] {skill['instructions']}" for skill in snapshot["skills"])
-    return (
-        "Frozen dialogue instruction skills:\n"
-        + instructions
-        + "\n\nApply these skills within this tool-free dialogue. Produce proposals for owner review; "
-        "do not execute commands or infer approval.\n\n" + prompt
+    instructions = "\n\n".join(
+        prompt_text("skills/entry", skill_id=f"{skill['id']}", instructions=f"{skill['instructions']}")
+        for skill in snapshot["skills"]
     )
+    return prompt_text("assistant/frozen-skills", instructions=instructions, prompt=prompt)
 
 
 PHASES = [

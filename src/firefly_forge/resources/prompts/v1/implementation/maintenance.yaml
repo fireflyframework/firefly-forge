@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/maintenance
+version: 1.0.0
+description: Forge implementation maintenance instructions.
+system_template: ''
+user_template: |2-
+
+
+  Maintenance operation: inspect the existing implementation, preserve public behavior, fix the requested issue or dependencies, and add focused regression tests. Do not replace the product with a new scaffold.
+required_variables: []
+metadata:
+  defaults: {}

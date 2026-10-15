@@ -1,0 +1,681 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "id": "assistant/frozen-skills",
+      "version": "1.0.0",
+      "path": "assistant/frozen-skills.yaml",
+      "sha256": "417f04274a7a46a4c87ea7bf0071d36966ca8aa1e39b469ef2ab79afd9aecd35",
+      "field": "user",
+      "variables": {
+        "instructions": "string",
+        "prompt": "string"
+      }
+    },
+    {
+      "id": "assistant/request",
+      "version": "1.0.0",
+      "path": "assistant/request.yaml",
+      "sha256": "f76226ba42f5fe6cea409da52deba3dbc13fd43f199f5a5c685857d753db2fb9",
+      "field": "user",
+      "variables": {
+        "task": "string",
+        "context": "string",
+        "message": "string"
+      }
+    },
+    {
+      "id": "assistant/system",
+      "version": "1.0.0",
+      "path": "assistant/system.yaml",
+      "sha256": "1218996faeffe98209eb3a328a3f06f48377c7cdc36f6080d2b42a8ed113b3d0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "assurance/review",
+      "version": "1.0.0",
+      "path": "assurance/review.yaml",
+      "sha256": "b35256e2bf844e589ad449c809a09565ad9dfc92571953d6b7451693c8789123",
+      "field": "user",
+      "variables": {
+        "schema": "string",
+        "brief": "string",
+        "definition": "string",
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/backend-dotnet",
+      "version": "1.0.0",
+      "path": "implementation/backend-dotnet.yaml",
+      "sha256": "3b4c525ebff4741d4475ed69814f63cd25ef95f1a954e76f9487c56fd5cdb13d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-java",
+      "version": "1.0.0",
+      "path": "implementation/backend-java.yaml",
+      "sha256": "562fa4bfddeb7e353cae62521e280a166d19da34b8e0c40e6a798bdf3c9ac8b8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-larafly",
+      "version": "1.0.0",
+      "path": "implementation/backend-larafly.yaml",
+      "sha256": "481e85b439cf6c82db2a1ec7f5389e0060c5d31d9099ba9b31121c7f60185aaf",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-none",
+      "version": "1.0.0",
+      "path": "implementation/backend-none.yaml",
+      "sha256": "09d01afde1590579a37afdff0b6164fe493b61b3fb479338222e4c7f46f674d3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-pyfly",
+      "version": "1.0.0",
+      "path": "implementation/backend-pyfly.yaml",
+      "sha256": "eb36f8eb3cebcf936852f56d5a595859b4395a5fd7b7f53e3a263ced1bb7f4f1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-rust",
+      "version": "1.0.0",
+      "path": "implementation/backend-rust.yaml",
+      "sha256": "1b0964b0e5228e64783285e7e2f6b43522fc50c47d568950ae231cb0de1984c6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/base",
+      "version": "1.0.0",
+      "path": "implementation/base.yaml",
+      "sha256": "4760ab87bf2abe2bf7019d86d3031f20db8c541369282d59252265dc5deebb3a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/brand",
+      "version": "1.0.0",
+      "path": "implementation/brand.yaml",
+      "sha256": "b5f39bf9f758f32936886ae94f7858b4b723209cd4114a3c73259cd779bf70d0",
+      "field": "user",
+      "variables": {
+        "files": "string"
+      }
+    },
+    {
+      "id": "implementation/browser-qa",
+      "version": "1.0.0",
+      "path": "implementation/browser-qa.yaml",
+      "sha256": "e0a769b1b1df8dc6c1891338b9df7bd2368eaae80944459b3af6cb758deda678",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/campaign",
+      "version": "1.0.0",
+      "path": "implementation/campaign.yaml",
+      "sha256": "e22e1347c87c42a209e0c245f38545afd5884e90513445a36c52920fad444f6e",
+      "field": "user",
+      "variables": {
+        "context": "string"
+      }
+    },
+    {
+      "id": "implementation/component",
+      "version": "1.0.0",
+      "path": "implementation/component.yaml",
+      "sha256": "592c71e511a5abb214ef515ae6f770f8aa5fce64bd2904f568dcf1c52bd49d1f",
+      "field": "user",
+      "variables": {
+        "component_id": "string",
+        "path": "string",
+        "responsibility": "string"
+      }
+    },
+    {
+      "id": "implementation/customer",
+      "version": "1.0.0",
+      "path": "implementation/customer.yaml",
+      "sha256": "a9048a48a28396169f055a7390b2de7032d0404d2afe31a7d11fc07919e7c2b0",
+      "field": "user",
+      "variables": {
+        "revision": "string",
+        "definition": "string",
+        "surface": "string"
+      }
+    },
+    {
+      "id": "implementation/customer-api",
+      "version": "1.0.0",
+      "path": "implementation/customer-api.yaml",
+      "sha256": "a3d6c36ff8b2835588ffe252991c1eb1694d432072ed64572ea7ef9ff3dfa509",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/customer-frontend",
+      "version": "1.0.0",
+      "path": "implementation/customer-frontend.yaml",
+      "sha256": "e148a796467ddef45b475825378940312345f849af0ccb92112e68b33d64ecb0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/design-api",
+      "version": "1.0.0",
+      "path": "implementation/design-api.yaml",
+      "sha256": "990b3428422e21a0ce970a36b7d0c2fe72bd3a5338474dabb9dd1fc88f89d5e5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/design-frontend",
+      "version": "1.0.0",
+      "path": "implementation/design-frontend.yaml",
+      "sha256": "e26f03c445937dbcdd807e9a0a7394e772e29ca4581051c4ec66fe2b42117267",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/external-tools",
+      "version": "1.0.0",
+      "path": "implementation/external-tools.yaml",
+      "sha256": "307b72ce75092e798881f7e4ed897a377446c87e2dd20145f26dfef12e518161",
+      "field": "user",
+      "variables": {
+        "schemas": "string"
+      }
+    },
+    {
+      "id": "implementation/frontend-angular",
+      "version": "1.0.0",
+      "path": "implementation/frontend-angular.yaml",
+      "sha256": "19391b1f20202b5cc3b35d01b7e199c60eff41679cfb7d1150c041f3026393e6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-nextjs",
+      "version": "1.0.0",
+      "path": "implementation/frontend-nextjs.yaml",
+      "sha256": "8af0963edc3bc225f1e911ddf27b586f78f2cd2e37aecf4cf1426c04346f6540",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-none",
+      "version": "1.0.0",
+      "path": "implementation/frontend-none.yaml",
+      "sha256": "0cdfab4fb535cf71b9fda5a1ef3c5e618557ac259c3eaf6f5cb5133338b36256",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-react",
+      "version": "1.0.0",
+      "path": "implementation/frontend-react.yaml",
+      "sha256": "14d500691724a3e003b2f0b4299c3499c5af9e943ae592abcc8c3b6376a77e3b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-vue",
+      "version": "1.0.0",
+      "path": "implementation/frontend-vue.yaml",
+      "sha256": "dbbb033a4490e5a457d3232602c614a54304fd2aff1cd51dd990296cab7edcd0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/maintenance",
+      "version": "1.0.0",
+      "path": "implementation/maintenance.yaml",
+      "sha256": "15a649cb383aef1b04bae2207df7b63c40c3980f4014e4c1fe170ca218b03b65",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/maintenance-request",
+      "version": "1.0.0",
+      "path": "implementation/maintenance-request.yaml",
+      "sha256": "202e4693f25e8c086813dbf678da04ce2f2ec82c94aebb6bbb0bd83d845bf551",
+      "field": "user",
+      "variables": {
+        "application": "string",
+        "incident": "string",
+        "request": "string"
+      }
+    },
+    {
+      "id": "implementation/operator-response",
+      "version": "1.0.0",
+      "path": "implementation/operator-response.yaml",
+      "sha256": "1711377c42a3831f6a2ffdfde7c44ef1035789dc1a67969568e0cd1e47a71989",
+      "field": "user",
+      "variables": {
+        "response": "string"
+      }
+    },
+    {
+      "id": "implementation/previous-checks",
+      "version": "1.0.0",
+      "path": "implementation/previous-checks.yaml",
+      "sha256": "eb44641d410ba8f856627c1538f5d1ef380fdd0acf17bf13e9fa742b8d47698d",
+      "field": "user",
+      "variables": {
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/reference-descriptors",
+      "version": "1.0.0",
+      "path": "implementation/reference-descriptors.yaml",
+      "sha256": "e11a8e14bc5c22c064ff7ca2995ea30a88d399af04675fba355ab046a6d5a5ef",
+      "field": "user",
+      "variables": {
+        "references": "string"
+      }
+    },
+    {
+      "id": "implementation/repair",
+      "version": "1.0.0",
+      "path": "implementation/repair.yaml",
+      "sha256": "f6afc4c927bf15e98d603d04074a9a53bd09384914607c8c35b3bfd0db8fd9b6",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/request",
+      "version": "1.0.0",
+      "path": "implementation/request.yaml",
+      "sha256": "5586b36fc03744ba24fc31e36800ceed83edbef76c4cc44aa6105733d7e6e468",
+      "field": "user",
+      "variables": {
+        "brief": "string"
+      }
+    },
+    {
+      "id": "implementation/resume",
+      "version": "1.0.0",
+      "path": "implementation/resume.yaml",
+      "sha256": "c08af0376cbfe214169644514c60a7f4f7600bf24fc9995dca541135384bd4aa",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/tool-rules",
+      "version": "1.0.0",
+      "path": "implementation/tool-rules.yaml",
+      "sha256": "761e0dcadd0a2b2bbe83770d5e1b7a043b290ff1e87d4ba1a8492773e5e10852",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/verification-request",
+      "version": "1.0.0",
+      "path": "implementation/verification-request.yaml",
+      "sha256": "f263825370c4c37e998ec17d64a765293e7b5200e6aac5c486fba37ceda36b1f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/worker-feedback",
+      "version": "1.0.0",
+      "path": "implementation/worker-feedback.yaml",
+      "sha256": "4da95e9f23b407efe73b03dd0c8ffe73b805e69331e29d193fc7dad014a9f5f0",
+      "field": "user",
+      "variables": {
+        "schema": "string"
+      }
+    },
+    {
+      "id": "roles/architect",
+      "version": "1.0.0",
+      "path": "roles/architect.yaml",
+      "sha256": "d0e59be98b9c0fb82e0f7eaebd0f0ce1a3c62ca30123bf9b4c41a58c28e6e9a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/docs",
+      "version": "1.0.0",
+      "path": "roles/docs.yaml",
+      "sha256": "e9bf2faffe7a6ac09014f3567721a1053045cca129e1dd64eb9543a27dfbdffb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/entry",
+      "version": "1.0.0",
+      "path": "roles/entry.yaml",
+      "sha256": "52c7eecd44e07fbe39e9d3b3daefdb9b90fd76dcc9c72d56c2d2295debdcf4ea",
+      "field": "user",
+      "variables": {
+        "role_id": "string",
+        "execution_mode": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "roles/frozen",
+      "version": "1.0.0",
+      "path": "roles/frozen.yaml",
+      "sha256": "374fe355ff80773aa1a4486e8948533136257674eb1280ae251222a902b91301",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "roles/implementer",
+      "version": "1.0.0",
+      "path": "roles/implementer.yaml",
+      "sha256": "ed13f3be5f1db20c515324c108bb48de02651fc44594d7449a9fdf8cbb932e50",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/product-manager",
+      "version": "1.0.0",
+      "path": "roles/product-manager.yaml",
+      "sha256": "1228278c09136cd9d6affeade39a1032ae40fbd9bf4eb46ce379c202d8e7f74b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/qa",
+      "version": "1.0.0",
+      "path": "roles/qa.yaml",
+      "sha256": "a71354843cd63d1cd73872e029ae5e3052e1250c5812f7905a30fd323a851f6d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/security",
+      "version": "1.0.0",
+      "path": "roles/security.yaml",
+      "sha256": "81a1618518ad1186aee6cc12b6c44f349a6fd1acfd22864d2e3555894ed5967b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/tech-lead",
+      "version": "1.0.0",
+      "path": "roles/tech-lead.yaml",
+      "sha256": "16ff4948f11d8e2f36f2dfd369964e94e668dce272f849486b8bbaedb440f2f9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/accessibility",
+      "version": "1.0.0",
+      "path": "skills/accessibility.yaml",
+      "sha256": "9826c7da79e9d688d998fc3a3dcb2ff4cade276ac5753fad9feca31a61e1a4c5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/documentation",
+      "version": "1.0.0",
+      "path": "skills/documentation.yaml",
+      "sha256": "e0d545b3626de139f5dca5c41faac861778a3cee9b85a48a29c3e316ccf3fce0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/entry",
+      "version": "1.0.0",
+      "path": "skills/entry.yaml",
+      "sha256": "cae9b0f557ae8b9c59c1327310475c500acf045702daa3e17d1264c40567dca9",
+      "field": "user",
+      "variables": {
+        "skill_id": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "skills/implementation",
+      "version": "1.0.0",
+      "path": "skills/implementation.yaml",
+      "sha256": "462c17b903c1fd9a236766335aa513adc2d74bc34ae32295ee92edc18180be43",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/security",
+      "version": "1.0.0",
+      "path": "skills/security.yaml",
+      "sha256": "f52628a3aa65e3035ee1b5c8ebd35c101775b0cd19be149ac1d363b5d73bebc5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/selected",
+      "version": "1.0.0",
+      "path": "skills/selected.yaml",
+      "sha256": "c75fe18d51b6aac0e654f0424aa7a596972a9ffb18297292eb40ea432e8326e7",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "skills/verification",
+      "version": "1.0.0",
+      "path": "skills/verification.yaml",
+      "sha256": "34625d742115f445d55eca519f1ae75313ff166d462489c54754d0c63574bade",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/checkpoint",
+      "version": "1.0.0",
+      "path": "tasks/checkpoint.yaml",
+      "sha256": "8347d46e3ed60c93224a248725195d67a5a19dce4a58efd51526c6ee9e09fb3e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/prepare",
+      "version": "1.0.0",
+      "path": "tasks/prepare.yaml",
+      "sha256": "bb96bb1ba23f9065aa70241a6e44b3a112cedc7917c27393b31a39a2db531c11",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/reconcile",
+      "version": "1.0.0",
+      "path": "tasks/reconcile.yaml",
+      "sha256": "ae6b23463bfb1dea0f7f7fd7104f6f7f689c4399b69fbb8d3813c14073caffca",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/review",
+      "version": "1.0.0",
+      "path": "tasks/review.yaml",
+      "sha256": "50f45d64c4e9adfaef5810488aa6b11b2083e156873366a6e39597812b648feb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/verify",
+      "version": "1.0.0",
+      "path": "tasks/verify.yaml",
+      "sha256": "541aed307952d0fec30a7e02047999349c93c23332a3335667deb127c74715b1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/browser_check",
+      "version": "1.0.0",
+      "path": "tools/browser_check.yaml",
+      "sha256": "37c2b4eb9c4400e22ba3c486325a3c1b8960782a4aa5b808d217236e22a39d62",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/browser_journey",
+      "version": "1.0.0",
+      "path": "tools/browser_journey.yaml",
+      "sha256": "ae6e8b1e04456595d87a619551a71f0b78fc9541d619603239b7623923abfffd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/edit_lines",
+      "version": "1.0.0",
+      "path": "tools/edit_lines.yaml",
+      "sha256": "d6c18fc0c2803815e702bb86d75c2667520b69d825e4f1ceece9814b3034822f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/execute_command",
+      "version": "1.0.0",
+      "path": "tools/execute_command.yaml",
+      "sha256": "5d5e5fcef8e06b79ce2a1f29bc115b7179b569fb6ab94be415d1d5b032e2cb3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/external_mcp",
+      "version": "1.0.0",
+      "path": "tools/external_mcp.yaml",
+      "sha256": "162b8df289dc184c0e62154d0693ad3ea82b5f09317f47c0cbd126752a36ef13",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/git_diff",
+      "version": "1.0.0",
+      "path": "tools/git_diff.yaml",
+      "sha256": "cffd1a9764312e3b889912fec50819c6f72b41b81a9eba377ee9f136b7a119a5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/image-evidence",
+      "version": "1.0.0",
+      "path": "tools/image-evidence.yaml",
+      "sha256": "4092f540740fe52cdb8779b9dff944559ad07eb20f63320cc09b912c5111e174",
+      "field": "user",
+      "variables": {
+        "metadata": "string"
+      }
+    },
+    {
+      "id": "tools/image-unavailable",
+      "version": "1.0.0",
+      "path": "tools/image-unavailable.yaml",
+      "sha256": "643e6724be370510d551be2d272041a8c8ac8e48ac26f6d2525906fdbf5a90f8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/internet_search",
+      "version": "1.0.0",
+      "path": "tools/internet_search.yaml",
+      "sha256": "14c3fbca4266867631643c6f8943b49a2088a2fdb6422e9db8215db7a78460be",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/knowledge-evidence",
+      "version": "1.0.0",
+      "path": "tools/knowledge-evidence.yaml",
+      "sha256": "a6479268ba6c19f4458d3e9c1310a6f6a04d2ec46243c23b1d03f7037ae0ff0e",
+      "field": "user",
+      "variables": {
+        "hits": "string"
+      }
+    },
+    {
+      "id": "tools/knowledge_lookup",
+      "version": "1.0.0",
+      "path": "tools/knowledge_lookup.yaml",
+      "sha256": "3c02a2f0dfc67e04f8d1361121fa1a24fbf7fdb33599b5d325ef3ed59d0611ea",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/list_files",
+      "version": "1.0.0",
+      "path": "tools/list_files.yaml",
+      "sha256": "d354ab9b91be3726cde8536e44d9e6c94a52f2abae2f23b7d37ebf245021ecc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/profile_php",
+      "version": "1.0.0",
+      "path": "tools/profile_php.yaml",
+      "sha256": "781f92884ba73206b2e54ca2ea3bbc6c6f4fd4b60f9598c3391fa3208a2a10aa",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/profile_python",
+      "version": "1.0.0",
+      "path": "tools/profile_python.yaml",
+      "sha256": "e0290597ca5efd786ad3b69057bea33ff5f15473deaca52b76397ced332ba80b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/read_file",
+      "version": "1.0.0",
+      "path": "tools/read_file.yaml",
+      "sha256": "a3a9044c7ba4fdbdc5ae1070a322f34d3f593ec8741c0ca55b696fa5ae422ca4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/search-evidence",
+      "version": "1.0.0",
+      "path": "tools/search-evidence.yaml",
+      "sha256": "20f17e1be501f5163b77f11a71c8966c84aad7f653f49f1fe742539ef006c3c6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/search_text",
+      "version": "1.0.0",
+      "path": "tools/search_text.yaml",
+      "sha256": "a1d7cf25467d99124e56b3ebc18555800e54ef7db813c1f0efb235248e7fae1b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/trace_python",
+      "version": "1.0.0",
+      "path": "tools/trace_python.yaml",
+      "sha256": "cdad7806a7bb0aa81f5c7ff46f38432ace70f5fbed0fe1f0394865ad2d3e64b9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/write_file",
+      "version": "1.0.0",
+      "path": "tools/write_file.yaml",
+      "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
+      "field": "user",
+      "variables": {}
+    }
+  ]
+}

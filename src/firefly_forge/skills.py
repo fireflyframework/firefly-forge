@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from firefly_forge.community_skills import community_catalog
+from firefly_forge.prompts import prompt_text
 
 SKILLS = [
     {
@@ -13,56 +14,35 @@ SKILLS = [
         "name": "Framework implementation",
         "description": "Build maintainable source using the selected Firefly framework.",
         "default": True,
-        "instructions": (
-            "Inspect existing code and repository instructions first. Implement the brief u"
-            "sing real framework imports, dependency injection and service boundaries. Keep"
-            " the change bounded and avoid unrelated refactors."
-        ),
+        "instructions": prompt_text("skills/implementation"),
     },
     {
         "id": "verification",
         "name": "Meaningful verification",
         "description": "Exercise product behavior, errors and executable checks.",
         "default": True,
-        "instructions": (
-            "Add meaningful behavioral tests before fixing behavior. Cover valid input, val"
-            "idation, conflicts and regression cases. Provide executable checks for tests, "
-            "lint, types and build where configured. Never disable checks, fake passing out"
-            "put or use no-op tests."
-        ),
+        "instructions": prompt_text("skills/verification"),
     },
     {
         "id": "security",
         "name": "Secure application boundaries",
         "description": "Preserve authentication, validation and credential safety.",
         "default": True,
-        "instructions": (
-            "Preserve authentication, CSRF and authorization boundaries. Validate input and"
-            " constrain file access. Never read, generate or print private credentials. Use"
-            " environment examples with placeholders and preserve safe error handling."
-        ),
+        "instructions": prompt_text("skills/security"),
     },
     {
         "id": "accessibility",
         "name": "Accessible product experience",
         "description": "Build usable forms, navigation and status feedback.",
         "default": False,
-        "instructions": (
-            "Use semantic controls with labels, visible keyboard focus, accessible errors a"
-            "nd status announcements. Check narrow screens, keyboard navigation and loading"
-            "/error states. Test actual user actions rather than component existence."
-        ),
+        "instructions": prompt_text("skills/accessibility"),
     },
     {
         "id": "documentation",
         "name": "Product handoff",
         "description": "Explain installation, use, checks and operational limits.",
         "default": False,
-        "instructions": (
-            "Write a concise product README with reproducible installation, configuration, "
-            "usage and verification steps. Describe actual behavior and limitations. Keep s"
-            "ecrets and absolute local machine paths out of source."
-        ),
+        "instructions": prompt_text("skills/documentation"),
     },
 ]
 SKILLS.extend(
@@ -93,8 +73,12 @@ def inject_skills(brief: str, selected: list[str]) -> str:
     validate_skills(selected)
     if not selected:
         return brief
-    instructions = [f"[{item['id']}] {item['instructions']}" for item in SKILLS if item["id"] in selected]
-    return brief + "\n\nSelected reusable skills:\n" + "\n\n".join(instructions)
+    instructions = [
+        prompt_text("skills/entry", skill_id=f"{item['id']}", instructions=f"{item['instructions']}")
+        for item in SKILLS
+        if item["id"] in selected
+    ]
+    return prompt_text("skills/selected", brief=brief, instructions="\n\n".join(instructions))
 
 
 def workflow_catalog() -> dict[str, Any]:

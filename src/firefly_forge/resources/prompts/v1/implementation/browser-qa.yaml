@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/browser-qa
+version: 1.0.0
+description: Forge implementation browser qa instructions.
+system_template: ''
+user_template: |-
+  Browser QA requires a declared journey plan before execution: name the user goal, initial route, expected states, bounded DOM locators and assertions. Exercise navigation and real JavaScript interactions, keyboard focus, validation errors, loading behavior, mobile layouts, both themes and zoom when applicable. Capture the actual DOM, focus and screenshots for observed states. Compare only a matching approved reference with its SHA256, state, viewport, theme and zoom; report reference_not_reviewed otherwise. When actual images are attached, inspect their visual content and tie every finding to an evidence ID, severity, path, expected result and observed result. DOM-only evidence must remain labeled dom_only. Record states not reviewed and remaining uncertainty. A visual judgment cannot override failing tests, source boundaries, independent review or delivery guards. Do not assert pixel perfection or universal approval.
+required_variables: []
+metadata:
+  defaults: {}

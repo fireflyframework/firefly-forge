@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/git_diff
+version: 1.0.0
+description: Forge tools git_diff instructions.
+system_template: ''
+user_template: Read the component's source diff without hooks, external diff drivers or index writes.
+required_variables: []
+metadata:
+  defaults: {}

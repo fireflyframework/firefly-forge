@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/write_file
+version: 1.0.0
+description: Forge tools write_file instructions.
+system_template: ''
+user_template: Write the complete content of a project source file inside the isolated workspace.
+required_variables: []
+metadata:
+  defaults: {}

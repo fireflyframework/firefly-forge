@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/frontend-angular
+version: 1.0.0
+description: Forge implementation frontend angular instructions.
+system_template: ''
+user_template: |-
+  Follow the current firefly-frontend-playbook main doctrine and firefly-product-template develop v0.3.0. Use Angular ^22.0.4, TypeScript ~6.0.3, and ng-hub-ui hub-* components; ff-* components are deprecated. Inspect the Hub component catalog and Angular checklist before coding. Use standalone components, lazy feature routes, typed services, accessible semantics, tokens, page/section composition and the matching PageBase. Preserve the core/layout, shared/ui, features/<name>/ui convention. Pin and record the template revision. Do not run init.sh unchanged: it creates an initial commit. Explicitly materialize self-contained or detached topology as requested. Embedded mode is not implemented; auth provider flags are metadata only and require real implementation. Add behavioral Vitest tests, lint/type checks, production build, and Playwright user-flow checks.
+required_variables: []
+metadata:
+  defaults: {}

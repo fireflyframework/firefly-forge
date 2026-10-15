@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/previous-checks
+version: 1.0.0
+description: Forge implementation previous checks instructions.
+system_template: ''
+user_template: |2-
+
+  Previous failed checks:
+  {{ checks }}
+required_variables:
+- checks
+metadata:
+  defaults: {}

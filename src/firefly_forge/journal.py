@@ -24,6 +24,7 @@ from firefly_forge.persistence import (
     ForgeTaskRepository,
 )
 from firefly_forge.profiles import build_instruction
+from firefly_forge.prompts import prompt_text
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.store import TERMINAL, Store, identifier, now
 
@@ -124,10 +125,7 @@ class Journal:
                         "id": "prepare",
                         "kind": "local",
                         "title": "Prepare the authorized workspace",
-                        "instructions": (
-                            "Clone the selected repository and record its authorized origin, "
-                            "original HEAD and isolated workspace."
-                        ),
+                        "instructions": prompt_text("tasks/prepare"),
                     }
                 ]
                 if data.get("operation", "build") != "test":
@@ -145,20 +143,13 @@ class Journal:
                             "id": "verify",
                             "kind": "local",
                             "title": "Run independent verification",
-                            "instructions": (
-                                "Run the configured behavioral tests, build, lint and type checks; "
-                                "retain each real exit code and output. Repair within the configured attempt limit."
-                            ),
+                            "instructions": prompt_text("tasks/verify"),
                         },
                         {
                             "id": "checkpoint",
                             "kind": "local",
                             "title": "Retain the verified source checkpoint",
-                            "instructions": (
-                                "Record the actual source tree, original base revision, current HEAD "
-                                "and verification evidence. Record a commit reference only if that commit exists; "
-                                "retain artifacts."
-                            ),
+                            "instructions": prompt_text("tasks/checkpoint"),
                         },
                     ]
                 )
@@ -169,9 +160,7 @@ class Journal:
                             "id": "review",
                             "kind": "remote",
                             "title": "Review the verified source independently",
-                            "instructions": (
-                                "Use a fresh source-copy context and retain a strict review verdict before delivery."
-                            ),
+                            "instructions": prompt_text("tasks/review"),
                         },
                     )
                 design_reference = None
@@ -273,7 +262,7 @@ class Journal:
                     "id": task.task_id,
                     "title": task.task_id,
                     "kind": "remote",
-                    "instructions": "Record the external effect's actual outcome before retrying it.",
+                    "instructions": prompt_text("tasks/reconcile"),
                     "status": task.status,
                     "attempt": task.attempt,
                     **copy.deepcopy(task.data),

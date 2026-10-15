@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/frontend-nextjs
+version: 1.0.0
+description: Forge implementation frontend nextjs instructions.
+system_template: ''
+user_template: |-
+  Use Next.js 16.4, React 19.3 and TypeScript. Use the App Router; make server/client boundaries explicit and keep secrets on the server. Build accessible, responsive components with loading/error states. Configure behavioral unit tests, ESLint, tsc --noEmit, production next build and Playwright critical-path tests.
+required_variables: []
+metadata:
+  defaults: {}

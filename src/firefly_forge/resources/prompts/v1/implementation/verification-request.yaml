@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/verification-request
+version: 1.0.0
+description: Forge implementation verification request instructions.
+system_template: ''
+user_template: Run the configured verification checks and report failures.
+required_variables: []
+metadata:
+  defaults: {}

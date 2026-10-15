@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/worker-feedback
+version: 1.0.0
+description: Forge implementation worker feedback instructions.
+system_template: ''
+user_template: |2-
+
+  If a missing decision blocks implementation, return a final JSON report with keys summary and feedback. feedback must follow this schema and identify role implementer, task implement and the actual current attempt. Do not guess or claim completion.
+  {{ schema }}
+required_variables:
+- schema
+metadata:
+  defaults: {}

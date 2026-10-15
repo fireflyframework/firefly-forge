@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/trace_python
+version: 1.0.0
+description: Forge tools trace_python instructions.
+system_template: ''
+user_template: Observe best-effort target line counts, not trusted coverage or QA approval.
+required_variables: []
+metadata:
+  defaults: {}

@@ -17,6 +17,7 @@ from pyfly.container import service
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.models import Command, RepositoryInput
 from firefly_forge.process import checked
+from firefly_forge.prompts import prompt_text
 from firefly_forge.skills import SKILLS
 
 
@@ -219,10 +220,13 @@ def inject_policy_snapshot(brief: str, snapshot: dict[str, Any]) -> str:
     skills = snapshot.get("skills", [])
     if not skills:
         return brief
-    return (
-        brief
-        + "\n\nSelected reusable skills:\n"
-        + "\n\n".join(f"[{item['id']}] {item['instructions']}" for item in skills)
+    return prompt_text(
+        "skills/selected",
+        brief=brief,
+        instructions="\n\n".join(
+            prompt_text("skills/entry", skill_id=f"{item['id']}", instructions=f"{item['instructions']}")
+            for item in skills
+        ),
     )
 
 

@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/profile_python
+version: 1.0.0
+description: Forge tools profile_python instructions.
+system_template: ''
+user_template: Observe a versioned Python CPU recipe; its timings are not QA approval.
+required_variables: []
+metadata:
+  defaults: {}

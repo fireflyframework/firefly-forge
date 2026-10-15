@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/maintenance-request
+version: 1.0.0
+description: Forge implementation maintenance request instructions.
+system_template: ''
+user_template: |-
+  Application: {{ application }}
+  Incident: {{ incident }}
+  Requested maintenance: {{ request }}
+required_variables:
+- application
+- incident
+- request
+metadata:
+  defaults: {}

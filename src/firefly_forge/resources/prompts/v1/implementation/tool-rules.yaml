@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/tool-rules
+version: 1.0.0
+description: Forge implementation tool rules instructions.
+system_template: ''
+user_template: |2-
+
+  Use only the available granted tools to implement the product. Write actual source and tests before returning the summary; the factory runs independent verification afterwards. If blocked or requiring a product decision, return typed worker_feedback with disposition blocked or clarification and an explicit request; do not claim that implementation is complete.
+required_variables: []
+metadata:
+  defaults: {}
