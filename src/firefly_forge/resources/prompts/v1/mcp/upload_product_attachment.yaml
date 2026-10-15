@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/upload_product_attachment
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Upload explicit bounded base64 content, never a factory-host file path.
+
+  Reuse request_id only for the exact same filename/content. The result is metadata;
+  asking a later turn with its saved ID is a separate model action. No automatic indexing.
+required_variables: []
+metadata:
+  defaults: {}

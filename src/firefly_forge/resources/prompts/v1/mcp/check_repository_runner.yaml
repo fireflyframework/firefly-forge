@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/check_repository_runner
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Probe configured execution availability and actual tool readiness, without generating source.
+
+  Image presence alone does not prove a project server or Playwright installation works.
+required_variables: []
+metadata:
+  defaults: {}

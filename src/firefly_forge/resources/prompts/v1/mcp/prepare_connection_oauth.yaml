@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/prepare_connection_oauth
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Prepare a short-lived link for the actor's authenticated factory browser.
+
+  Tools cannot exchange authorization codes or complete a user's consent.
+required_variables: []
+metadata:
+  defaults: {}

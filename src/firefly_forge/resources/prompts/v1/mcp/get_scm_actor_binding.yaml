@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_actor_binding
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the exact original mapping receipt with current access; a missing
+  result never permits a retry.
+required_variables: []
+metadata:
+  defaults: {}

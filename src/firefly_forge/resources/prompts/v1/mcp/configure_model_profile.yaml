@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_model_profile
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save profile metadata and an optional private 0600 credential file on this MCP host.
+
+  Never put api_key or token in request.values. This write does not invoke generation.
+required_variables: []
+metadata:
+  defaults: {}

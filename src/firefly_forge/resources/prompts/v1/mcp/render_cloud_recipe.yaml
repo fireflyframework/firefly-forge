@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/render_cloud_recipe
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Render reviewable immutable-image infrastructure files; this cannot
+  provision or deploy.
+required_variables: []
+metadata:
+  defaults: {}

@@ -22,6 +22,7 @@ from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
+from firefly_forge.prompts import prompt_text
 from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.scm_authority_models import SCMActorBindingInputV1
@@ -56,17 +57,15 @@ SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 def create_server() -> MCPServer:
     server = MCPServer("firefly forge")
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_repositories"))
     def list_repositories() -> list[dict[str, Any]]:
-        """List connected factory repositories."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repositories()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/connect_repository"))
     def connect_repository(name: str, url: str, provider: str = "git", branch: str = "main") -> dict[str, Any]:
-        """Connect a Git repository; credentials use server-side environment configuration."""
         from firefly_forge.cli import client
 
         request = RepositoryInput.model_validate(
@@ -75,7 +74,7 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.add_repository(request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/create_run"))
     def create_run(
         repository_id: str,
         brief: str,
@@ -91,7 +90,6 @@ def create_server() -> MCPServer:
         model_profile_id: str | None = None,
         review_model_profile_id: str | None = None,
     ) -> dict[str, Any]:
-        """Queue a product implementation. Publication requires a separate explicit tool call."""
         from firefly_forge.cli import client
 
         request = RunInput.model_validate(
@@ -118,241 +116,204 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.create_run(request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_run"))
     def get_run(identifier: str) -> dict[str, Any]:
-        """Read run status, diff and verification evidence."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.get_run(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_execution_requests"))
     def get_execution_requests(identifier: str) -> list[dict[str, Any]]:
-        """Read durable publication/cancellation requests and their worker receipts; no execution occurs."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.execution_requests(identifier)
 
     @server.tool(
+        description=prompt_text("mcp/request_runner_continuation"),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
-        )
+        ),
     )
     def request_runner_continuation(identifier: str, request: RunnerContinuationRequest) -> dict[str, Any]:
-        """Explicitly admit one original queued command after controller replacement.
-
-        Retain the request ID before calling. Do not retry an uncertain outcome; read that
-        exact operation. Admission acceptance is not command success or source publication.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.request_runner_continuation(identifier, request)
 
     @server.tool(
+        description=prompt_text("mcp/get_runner_continuation"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_runner_continuation(identifier: str, request_id: str) -> dict[str, Any]:
-        """Read one exact local continuation receipt; missing or unknown never permits replay."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.runner_continuation(identifier, request_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_runner_continuation_candidates"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_runner_continuation_candidates(identifier: str) -> dict[str, Any]:
-        """Inspect local original-command candidates; leader confirmation is still required.
-
-        This read never admits a continuation, creates an identity or dispatches work.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.runner_continuation_candidates(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/reconcile_execution_request"))
     def reconcile_execution_request(identifier: str, request_id: str, reconciliation_id: str) -> dict[str, Any]:
-        """Reconcile an uncertain delivery request using retained server proof and a stable ID.
-
-        The server verifies authority and immutable receipts; this tool cannot assert an outcome
-        or trigger a remote effect. Truly unknown results remain blocked for investigation.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.reconcile_execution_request(identifier, request_id, reconciliation_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/cancel_run"))
     def cancel_run(identifier: str) -> dict[str, Any]:
-        """Request cancellation; inspect status and worker acknowledgment before assuming execution stopped."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.action(identifier, "cancel")
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/publish_run"))
     def publish_run(identifier: str) -> dict[str, Any]:
-        """Request publication of verified source; inspect worker receipts for completion. Never merge it."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.action(identifier, "publish")
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_development_plan"))
     def get_development_plan(identifier: str) -> dict[str, Any]:
-        """Read the immutable development plan, task attempts and source checkpoint."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.plan(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_execution_journal"))
     def get_execution_journal(identifier: str) -> dict[str, Any]:
-        """Read durable intents, receipts, errors and the journal chain validation."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.journal(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/resume_run"))
     def resume_run(identifier: str) -> dict[str, Any]:
-        """Explicitly resume paused or interrupted work in its retained workspace."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.action(identifier, "resume")
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/handoff_run"))
     def handoff_run(
         identifier: str,
         agent: Literal["codex", "claude", "bridge", "agentic"] | None = None,
         model_profile_id: str | None = None,
     ) -> dict[str, Any]:
-        """Hand paused work to a configured provider while retaining its source and policy snapshot."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.handoff(identifier, agent, model_profile_id=model_profile_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_source_connections"))
     def list_source_connections() -> list[dict[str, Any]]:
-        """Read provider application setup and granted connection status without secrets."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.source_connections()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/connect_granted_repository"))
     def connect_granted_repository(provider: str, remote_id: str) -> dict[str, Any]:
-        """Connect a repository already granted to an installed GitHub/GitLab/Bitbucket application."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.connect_granted_repository(provider, remote_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/search_project_knowledge"))
     def search_project_knowledge(repository_id: str, query: str) -> dict[str, Any]:
-        """Retrieve cited project/framework references in the repository's flycanon scopes."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.search_knowledge(repository_id, query)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/index_verified_source"))
     def index_verified_source(identifier: str, paths: list[str]) -> dict[str, Any]:
-        """Explicitly index selected verified tracked files; paths are bounded and checked for secrets."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.index_source(identifier, paths)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/remember_verified_run"))
     def remember_verified_run(identifier: str) -> dict[str, Any]:
-        """Save verified run evidence as cited, retrievable project memory."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.remember(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_deployment_targets"))
     def list_deployment_targets() -> list[dict[str, Any]]:
-        """Read operator-configured target commands and verification requirements."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.deployment_targets()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/deploy_verified_run"))
     def deploy_verified_run(identifier: str, target_id: str) -> dict[str, Any]:
-        """Explicitly deploy unchanged verified source to its project's configured target."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.deploy(identifier, target_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/rollback_deployment"))
     def rollback_deployment(identifier: str) -> dict[str, Any]:
-        """Explicitly execute a deployment's frozen rollback commands and health checks."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.rollback(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_product_definition"))
     def get_product_definition(repository_id: str) -> dict[str, Any] | None:
-        """Read the project's customer journey and versioned acceptance requirements."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.product_definition(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/save_product_definition"))
     def save_product_definition(repository_id: str, definition: dict[str, Any]) -> dict[str, Any]:
-        """Save a new customer definition revision; queued runs keep their original revision."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_product_definition(repository_id, definition)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/preview_product_change"))
     def preview_product_change(repository_id: str, request: FeatureChangeInput) -> dict[str, Any]:
-        """Preview a feature/integration contract change against its exact base revision and digest."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.preview_product_change(repository_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/apply_product_change"))
     def apply_product_change(repository_id: str, request: FeatureChangeInput) -> dict[str, Any]:
-        """Explicitly save the reviewed change as an immutable product revision; no source is built or approved."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.apply_product_change(repository_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_model_profiles"))
     def list_model_profiles() -> list[dict[str, Any]]:
-        """Read administrator-visible provider profiles and redacted configuration; never reveal credentials."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.model_profiles()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_model_profile"))
     def configure_model_profile(
         profile_id: str, request: ModelProfileInput, credential_file: str | None = None
     ) -> dict[str, Any]:
-        """Save profile metadata and an optional private 0600 credential file on this MCP host.
-
-        Never put api_key or token in request.values. This write does not invoke generation.
-        """
         from pathlib import Path
 
         from firefly_forge.cli import client, model_profile_request
@@ -361,185 +322,163 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.save_model_profile(profile_id, model)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/test_model_profile"))
     def test_model_profile(profile_id: str) -> dict[str, Any]:
-        """Make the existing configured-profile connection test; readiness is distinct from generation proof."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.test_model_profile(profile_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_task_routing"))
     def get_task_routing() -> dict[str, Any]:
-        """Read explicit task defaults; existing queued invocation snapshots remain unchanged."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.task_routing()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/save_task_routing"))
     def save_task_routing(request: TaskRoutingInput) -> dict[str, Any]:
-        """Explicitly bind supported task/profile pairs for future invocations, without silent fallback."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_task_routing(request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_repository_workflow"))
     def get_repository_workflow(repository_id: str) -> dict[str, Any]:
-        """Read enabled repository commands, trusted actors and setup status without webhook secrets."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repository_workflow(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_repository_receipts"))
     def list_repository_receipts(repository_id: str | None = None) -> list[dict[str, Any]]:
-        """Read signed event receipt outcomes, queued runs and feedback reconciliation states."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repository_receipts(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_cloud_providers"))
     def list_cloud_providers() -> list[dict[str, Any]]:
-        """Read supported VM providers, configuration fields and deployment prerequisites."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.cloud_providers()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/render_cloud_recipe"))
     def render_cloud_recipe(recipe: dict[str, Any]) -> dict[str, Any]:
-        """Render reviewable immutable-image infrastructure files; this cannot provision or deploy."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.render_cloud_recipe(recipe)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_applications"))
     def list_applications() -> list[dict[str, Any]]:
-        """Read configured deployed applications and actual health freshness."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.applications()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_application"))
     def get_application(identifier: str) -> dict[str, Any]:
-        """Read deployment, metric observations and incident evidence for an application."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.application(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/check_application"))
     def check_application(identifier: str) -> dict[str, Any]:
-        """Perform a bounded read-only HTTP health and metrics probe and record its actual result."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.check_application(identifier)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_incidents"))
     def list_incidents() -> list[dict[str, Any]]:
-        """Read operational incidents and their maintenance run references."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.incidents()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/request_incident_maintenance"))
     def request_incident_maintenance(
         identifier: str, brief: str, checks: list[list[str]], agent: str = "codex"
     ) -> dict[str, Any]:
-        """Explicitly queue maintenance with real checks; publication and deployment remain separate."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.maintain_incident(identifier, brief, checks, agent)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/resolve_incident"))
     def resolve_incident(identifier: str, resolution: str) -> dict[str, Any]:
-        """Record incident resolution only after a recent healthy application observation."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.resolve_incident(identifier, resolution)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_projects"))
     def list_projects() -> list[dict[str, Any]]:
-        """List logical products and their saved topology."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.projects()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_project"))
     def configure_project(definition: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
-        """Explicitly create or revise a product topology with registered repository components."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.configure_project(definition, project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_project"))
     def get_project(project_id: str) -> dict[str, Any]:
-        """Read the product topology, all component scopes and actual run outcomes."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project(project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_project_revision"))
     def get_project_revision(project_id: str, revision: int) -> dict[str, Any]:
-        """Read an immutable product topology revision."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_revision(project_id, revision)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_source_analyses"))
     def list_source_analyses(project_id: str) -> list[dict[str, Any]]:
-        """Read recorded AS-IS source inspections for this product."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_analyses(project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/analyze_project"))
     def analyze_project(project_id: str, component_ids: list[str] | None = None) -> dict[str, Any]:
-        """Explicitly inspect authorized component source without running the inspected project code."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.analyze_project(project_id, component_ids)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_source_analysis"))
     def get_source_analysis(project_id: str, analysis_id: str) -> dict[str, Any]:
-        """Read observed source facts and the functional definitions still needed."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_analysis(project_id, analysis_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/review_source_analysis"))
     def review_source_analysis(project_id: str, analysis_id: str, digest: str) -> dict[str, Any]:
-        """Explicitly acknowledge the exact AS-IS evidence digest; this is not functional approval."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.review_project_analysis(project_id, analysis_id, {"digest": digest, "reviewed": True})
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_product_conversations"))
     def list_product_conversations(repository_id: str) -> list[dict[str, Any]]:
-        """Read product-design conversations without invoking a model."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.assistant_conversations(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/start_product_conversation"))
     def start_product_conversation(
         repository_id: str,
         agent: Literal["bridge", "agentic"] | None = None,
@@ -550,7 +489,6 @@ def create_server() -> MCPServer:
         analysis_digest: str | None = None,
         analysis_component_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Create a scoped dialogue with frozen provider settings; no model request occurs yet."""
         from firefly_forge.cli import client
 
         with client() as connection:
@@ -565,23 +503,21 @@ def create_server() -> MCPServer:
                 analysis_component_ids=analysis_component_ids,
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_product_conversation"))
     def get_product_conversation(repository_id: str, conversation_id: str) -> dict[str, Any]:
-        """Read retained dialogue, proposals and journal verification."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.assistant_conversation(repository_id, conversation_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_product_conversation_capabilities"))
     def get_product_conversation_capabilities(repository_id: str, conversation_id: str) -> dict[str, Any]:
-        """Read the frozen conversation provider's capabilities without invoking AI."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.assistant_capabilities(repository_id, conversation_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/recover_product_design_turn"))
     def recover_product_design_turn(
         repository_id: str,
         conversation_id: str,
@@ -590,11 +526,6 @@ def create_server() -> MCPServer:
         expected_epoch: int,
         legacy_confirmed_stopped: bool = False,
     ) -> dict[str, Any]:
-        """Fence an expired turn using its current epoch and a stable recovery ID.
-
-        This records reconciliation, never an automatic model retry. Legacy turns require
-        explicit confirmation that their original process has stopped.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
@@ -609,7 +540,7 @@ def create_server() -> MCPServer:
                 },
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/request_product_design_turn"))
     def request_product_design_turn(
         repository_id: str,
         conversation_id: str,
@@ -617,11 +548,6 @@ def create_server() -> MCPServer:
         message: str,
         attachment_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Invoke bounded AI product design using a stable ID for this exact message.
-
-        Proposals do not change source or approve product reviews. Omit attachment_ids to inherit
-        the preceding selection, use [] to detach, or select up to eight saved conversation files.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
@@ -631,509 +557,451 @@ def create_server() -> MCPServer:
                 {"request_id": request_id, "message": message, "attachment_ids": attachment_ids},
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_product_attachments"))
     def list_product_attachments(repository_id: str, conversation_id: str) -> list[dict[str, Any]]:
-        """Read saved conversation-file metadata without invoking a model or indexing knowledge."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.assistant_attachments(repository_id, conversation_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_product_attachment"))
     def get_product_attachment(repository_id: str, conversation_id: str, attachment_id: str) -> dict[str, Any]:
-        """Read one scoped conversation-file receipt; file bytes and extracted text are excluded."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.assistant_attachment(repository_id, conversation_id, attachment_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/upload_product_attachment"))
     def upload_product_attachment(
         repository_id: str,
         conversation_id: str,
         request: AttachmentUploadRequest,
     ) -> dict[str, Any]:
-        """Upload explicit bounded base64 content, never a factory-host file path.
-
-        Reuse request_id only for the exact same filename/content. The result is metadata;
-        asking a later turn with its saved ID is a separate model action. No automatic indexing.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.upload_assistant_attachment(repository_id, conversation_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_agent_roles"))
     def get_agent_roles() -> dict[str, Any]:
-        """Read the versioned role registry, licensed skill provenance and actual tool availability."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.agent_roles()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/get_agent_role_lifecycle"), annotations=ToolAnnotations(read_only_hint=True)
+    )
     def get_agent_role_lifecycle() -> dict[str, Any]:
-        """Read the authenticated global role lifecycle and actual permission flags."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.agent_role_lifecycle()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/get_repository_agent_role_lifecycle"),
+        annotations=ToolAnnotations(read_only_hint=True),
+    )
     def get_repository_agent_role_lifecycle(repository_id: str) -> dict[str, Any]:
-        """Read the lifecycle of a repository visible to the current caller."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repository_role_lifecycle(repository_id)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/get_identity_configuration"), annotations=ToolAnnotations(read_only_hint=True)
+    )
     def get_identity_configuration() -> dict[str, Any]:
-        """Read public authentication configuration; no credentials or cookies are returned."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.identity_configuration()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(description=prompt_text("mcp/get_identity_session"), annotations=ToolAnnotations(read_only_hint=True))
     def get_identity_session() -> dict[str, Any]:
-        """Read the authenticated caller's current identity and project memberships."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.identity_session()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(description=prompt_text("mcp/list_project_members"), annotations=ToolAnnotations(read_only_hint=True))
     def list_project_members(project_id: str) -> list[dict[str, Any]]:
-        """Read project members with current owner or administrator permission."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_members(project_id)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/set_project_membership"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def set_project_membership(project_id: str, user_id: str, request: MembershipRequest) -> dict[str, Any]:
-        """Set a registered user's role or explicitly revoke it with role=null.
-
-        Current owner/admin authority and the last-owner safeguard remain server-owned.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.set_project_membership(project_id, user_id, request)
 
     @server.tool(
+        description=prompt_text("mcp/list_scm_actor_binding_candidates"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def list_scm_actor_binding_candidates(
         project_id: str, repository_id: str, cursor: str | None = None
     ) -> dict[str, Any]:
-        """Read at most fifty retained verified SCM account references under current project authority.
-
-        This does not discover accounts remotely, create users or grant project membership.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.scm_actor_binding_candidates(project_id, repository_id, cursor)
 
     @server.tool(
+        description=prompt_text("mcp/configure_scm_actor_binding"),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=True
-        )
+        ),
     )
     def configure_scm_actor_binding(
         project_id: str, repository_id: str, request: SCMActorBindingRequest
     ) -> dict[str, Any]:
-        """Explicitly delegate or revoke qualified repository actions for an existing enabled Forge user.
-
-        Requires current administrator authority, exact verified scope and acknowledgment of webhook identity
-        trust. The configured provider's repository grant may be rechecked. This does not grant membership or
-        authenticate a personal provider login. Retain the caller's
-        request ID before dispatch; uncertain results require an exact receipt read, never an automatic retry.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.configure_scm_actor_binding(project_id, repository_id, request)
 
     @server.tool(
+        description=prompt_text("mcp/list_scm_actor_bindings"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def list_scm_actor_bindings(project_id: str, repository_id: str, cursor: str | None = None) -> dict[str, Any]:
-        """Read bounded immutable SCM delegation summaries; never contact a provider or change authority."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.scm_actor_bindings(project_id, repository_id, cursor)
 
     @server.tool(
+        description=prompt_text("mcp/get_scm_actor_binding"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_scm_actor_binding(project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
-        """Read the exact original mapping receipt with current access; a missing result never permits a retry."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.scm_actor_binding(project_id, repository_id, request_id)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(description=prompt_text("mcp/list_identity_users"), annotations=ToolAnnotations(read_only_hint=True))
     def list_identity_users() -> list[dict[str, Any]]:
-        """Read the bounded registered-user directory; requires factory administrator authority."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.identity_users()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/find_project_eligible_users"), annotations=ToolAnnotations(read_only_hint=True)
+    )
     def find_project_eligible_users(project_id: str, query: EligibleUserQuery) -> list[dict[str, Any]]:
-        """Find enabled registered users using existing project membership-administration permission."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_eligible_users(project_id, query)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/get_identity_administration"), annotations=ToolAnnotations(read_only_hint=True)
+    )
     def get_identity_administration() -> dict[str, Any]:
-        """Read administrator-only identity readiness; no credentials or remote verification are inferred."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.identity_administration()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/list_identity_operations"), annotations=ToolAnnotations(read_only_hint=True)
+    )
     def list_identity_operations() -> list[dict[str, Any]]:
-        """Read administrator-only operation receipts, preserving unknown outcomes without replay."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.identity_operations()
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/set_identity_user_enabled"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def set_identity_user_enabled(user_id: str, enabled: IdentityEnabled) -> dict[str, Any]:
-        """Enable or suspend a local identity using current factory-administrator authority."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.set_identity_user_enabled(user_id, enabled)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/provision_identity_user"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def provision_identity_user(request: IdentityProvisionRequest) -> dict[str, Any]:
-        """Request an account with a stable request ID; no passwords, roles or automatic replay."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.provision_identity_user(request)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/invite_identity_user"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def invite_identity_user(user_id: str, request_id: str) -> dict[str, Any]:
-        """Request a separate invitation; neither provider acceptance nor this tool proves delivery."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.invite_identity_user(user_id, {"request_id": request_id})
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/reconcile_identity_operation"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def reconcile_identity_operation(operation_id: str, request: IdentityReconciliationRequest) -> dict[str, Any]:
-        """Reconcile an uncertain identity receipt using native provider checks or labelled attestation."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.reconcile_identity_operation(operation_id, request)
 
-    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @server.tool(
+        description=prompt_text("mcp/recover_identity_operation"),
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     def recover_identity_operation(operation_id: str, request: IdentityRecoveryRequest) -> dict[str, Any]:
-        """Confirm the original owner stopped; retain the unknown outcome without repeating it."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.recover_identity_operation(operation_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/save_agent_roles"))
     def save_agent_roles(document: dict[str, Any]) -> dict[str, Any]:
-        """Update global role instructions for future runs.
-
-        Fixed execution bindings and mandatory gates remain enforced.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_agent_roles(document)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_repository_agent_roles"))
     def get_repository_agent_roles(repository_id: str) -> dict[str, Any]:
-        """Read the repository's persisted role selection and inheritance state."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repository_roles(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/save_repository_agent_roles"))
     def save_repository_agent_roles(repository_id: str, roles: dict[str, Any]) -> dict[str, Any]:
-        """Save validated future-run repository role defaults; existing run snapshots remain frozen."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_repository_roles(repository_id, roles)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_worker_messages"))
     def get_worker_messages(run_id: str) -> list[dict[str, Any]]:
-        """Read durable worker feedback, questions and operator answers."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.worker_messages(run_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/respond_worker_request"))
     def respond_worker_request(
         run_id: str, request_id: str, response_id: str, answer: str, actor: str = "operator"
     ) -> dict[str, Any]:
-        """Record an explicit answer to a pending worker question; resume is a separate action."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.respond_worker(run_id, request_id, {"id": response_id, "actor": actor, "answer": answer})
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_project_campaigns"))
     def list_project_campaigns(project_id: str) -> list[dict[str, Any]]:
-        """List persisted campaigns and their current dependency/reconciliation state."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_campaigns(project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/launch_project_campaign"))
     def launch_project_campaign(project_id: str, request: CampaignLaunch) -> dict[str, Any]:
-        """Admit the scoped component DAG once under a stable request_id.
-
-        Source commits, product settings and role/runner snapshots freeze on admission.
-        Admission is not completion or permission to merge/deploy. Unknown effects require reconciliation.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.launch_campaign(project_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_project_campaign"))
     def get_project_campaign(project_id: str, campaign_id: str) -> dict[str, Any]:
-        """Read campaign child statuses, frozen source handoffs and verified write-ahead events."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_campaign(project_id, campaign_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_project_campaign_report"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_project_campaign_report(project_id: str, campaign_id: str) -> dict[str, Any]:
-        """Read a local persisted-evidence snapshot with task/checkpoint receipts and a deterministic digest.
-
-        No SCM synchronization, estimated completion, milestone creation or external effect is performed.
-        Unknown evidence is not verified delivery. Current project and repository read permissions apply.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.project_campaign_report(project_id, campaign_id)
 
     @server.tool(
+        description=prompt_text("mcp/archive_project_campaign_report"),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def archive_project_campaign_report(
         project_id: str, campaign_id: str, request: CampaignReportArchiveRequest
     ) -> dict[str, Any]:
-        """Explicitly save a selected coherent report using a stable caller request ID and report digest.
-
-        Current execute and historical repository read permissions apply. No work is dispatched.
-        A lost response, missing read or refusal never authorizes a new identity or automatic retry.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.archive_campaign_report(project_id, campaign_id, request)
 
     @server.tool(
+        description=prompt_text("mcp/get_project_campaign_report_archive"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_project_campaign_report_archive(project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
-        """Read an exact immutable saved-report receipt with current access and credential admission."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.campaign_report_archive(project_id, campaign_id, request_id)
 
     @server.tool(
+        description=prompt_text("mcp/list_project_campaign_report_archives"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def list_project_campaign_report_archives(
         project_id: str, campaign_id: str, after: CampaignReportArchiveCursor = 0
     ) -> dict[str, Any]:
-        """Read at most fifty saved-report summaries after a sequence cursor; no report regeneration."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.campaign_report_archives(project_id, campaign_id, after)
 
     @server.tool(
+        description=prompt_text("mcp/save_project_campaign_delivery_plan"),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def save_project_campaign_delivery_plan(
         project_id: str, campaign_id: str, request: CampaignDeliveryPlanRequest
     ) -> dict[str, Any]:
-        """Save explicit reporting criteria after campaign admission; this never changes or starts execution.
-
-        The caller retains a stable request ID and expected prior revision digest. Unknown responses do not
-        authorize a new identity. Current execute and historical repository read permissions apply.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_campaign_delivery_plan(project_id, campaign_id, request)
 
     @server.tool(
+        description=prompt_text("mcp/list_project_campaign_delivery_plans"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def list_project_campaign_delivery_plans(project_id: str, campaign_id: str) -> dict[str, Any]:
-        """Read at most fifty immutable post-admission reporting-plan summaries; no execution effects."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.campaign_delivery_plans(project_id, campaign_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_project_campaign_delivery_plan"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_project_campaign_delivery_plan(project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
-        """Read the original immutable reporting-plan receipt with current authorization."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.campaign_delivery_plan(project_id, campaign_id, request_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_project_campaign_delivery_progress"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_project_campaign_delivery_progress(
         project_id: str, campaign_id: str, request_id: str, report_request_id: str
     ) -> dict[str, Any]:
-        """Read reproducible milestone/wave states from one plan and saved report, never live SCM or estimates.
-
-        Criteria are reporting_only_post_admission and enforced_at_admission is false. A satisfied condition
-        is not retrospective QA or a claim that the criteria controlled execution. No implicit archiving.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.campaign_delivery_progress(project_id, campaign_id, request_id, report_request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/cancel_project_campaign"))
     def cancel_project_campaign(project_id: str, campaign_id: str, request: CampaignAction) -> dict[str, Any]:
-        """Explicitly stop campaign work; unknown child effects remain reconciliation obligations."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.cancel_campaign(project_id, campaign_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/resume_project_campaign"))
     def resume_project_campaign(project_id: str, campaign_id: str, request: CampaignAction) -> dict[str, Any]:
-        """Request explicit campaign recovery; pending worker answers and unknown effects still block resume."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.resume_campaign(project_id, campaign_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/retry_project_campaign"))
     def retry_project_campaign(project_id: str, campaign_id: str, request: CampaignRetry) -> dict[str, Any]:
-        """Explicitly retry selected stopped components from frozen admissions within the server retry budget.
-
-        Unknown effects and active downstream work cannot be replayed through this tool.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.retry_campaign(project_id, campaign_id, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_repository_runner"))
     def get_repository_runner(repository_id: str) -> dict[str, Any]:
-        """Read future-run repository execution defaults; existing runs retain their frozen profiles."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.repository_runner(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/save_repository_runner"))
     def save_repository_runner(repository_id: str, sandbox: SandboxInput) -> dict[str, Any]:
-        """Save explicit host/Docker execution defaults, including bounded optional browser/search policies.
-
-        Host mode trusts the service account. Docker selection requires an immutable image and has no host fallback.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.save_repository_runner(repository_id, sandbox)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/check_repository_runner"))
     def check_repository_runner(repository_id: str) -> dict[str, Any]:
-        """Probe configured execution availability and actual tool readiness, without generating source.
-
-        Image presence alone does not prove a project server or Playwright installation works.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.runner_readiness(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/probe_runner"))
     def probe_runner(sandbox: SandboxInput) -> dict[str, Any]:
-        """Probe a requested runner profile without saving it, pulling images or running project commands."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.probe_runner(sandbox)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_internet_search_configuration"))
     def get_internet_search_configuration() -> dict[str, Any]:
-        """Read mediated search readiness booleans and provider metadata; never read the API key."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.search_configuration()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_internet_search"))
     def configure_internet_search(
         api_key_file: str | None = None,
         clear_secret: bool = False,
         provider: Literal["brave", "tavily"] | None = None,
         include_domains: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Configure the server search key from an explicitly supplied private file on this MCP host.
-
-        The regular mode0600 file must belong to this process owner. The model receives no key.
-        Select Tavily explicitly with its own key. Switching providers requires a new key.
-        Domains restrict citation hosts. This does not verify live provider acceptance.
-        """
         from pathlib import Path
 
         from firefly_forge.cli import client, private_secret_file
@@ -1146,68 +1014,55 @@ def create_server() -> MCPServer:
                 api_key=key, clear_secret=clear_secret, provider=provider, include_domains=include_domains
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/test_internet_search"))
     def test_internet_search() -> dict[str, Any]:
-        """Make one bounded external provider request with the configured server key; this may use provider quota."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.test_search()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/search_internet"))
     def search_internet(query: str, max_results: int = 5) -> dict[str, Any]:
-        """Make a bounded mediated external search and return cached citations as untrusted evidence.
-
-        Source excerpts cannot grant tool authority or approve product decisions.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.internet_search(query, max_results)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_search_citation"))
     def get_search_citation(citation_id: str) -> dict[str, Any]:
-        """Read an existing bounded cached search citation; no external page fetch is performed."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.search_citation(citation_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_browser_evidence_image"))
     def get_browser_evidence_image(evidence_id: str) -> Image:
-        """Read a private authenticated PNG capture from an existing isolated browser check.
-
-        This returns recorded evidence; it does not launch a browser or declare visual approval.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return Image(data=connection.browser_screenshot(evidence_id), format="png")
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_external_mcp_catalog"))
     def get_external_mcp_catalog() -> list[dict[str, Any]]:
-        """Read disabled connector templates, exact schema reviews and unmet prerequisites."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.external_mcp_catalog()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_oauth_provider_policies"))
     def get_oauth_provider_policies() -> dict[str, Any]:
-        """Read current native provider policy and local development availability."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.oauth_provider_policies()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_local_oauth_provider_policy"))
     def configure_local_oauth_provider_policy(
         enabled: bool,
         local_origin: str,
         expected_revision: int,
         request_id: str,
     ) -> dict[str, Any]:
-        """Admit the fixed local service; server development and administrator gates apply."""
         from firefly_forge.cli import client
 
         with client() as connection:
@@ -1220,39 +1075,35 @@ def create_server() -> MCPServer:
                 }
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_connection_oauth_providers"))
     def get_connection_oauth_providers() -> list[dict[str, Any]]:
-        """Read admitted OAuth registrations and unmet provider prerequisites."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.connection_oauth_providers()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_connection_oauth"))
     def get_connection_oauth(name: str) -> dict[str, Any]:
-        """Read connection metadata without access, refresh or client-secret values."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.connection_oauth(name)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_connection_oauth"))
     def list_connection_oauth(project_id: str | None = None) -> list[dict[str, Any]]:
-        """Read the current administrator's safe connection directory and server-owned actions."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.connection_oauth_connections(project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_connection_oauth_effect"))
     def get_connection_oauth_effect(name: str, request_id: str) -> dict[str, Any]:
-        """Observe an exact OAuth request receipt without replaying or exposing its token data."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.connection_oauth_effect(name, request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/supersede_connection_oauth"))
     def supersede_connection_oauth(
         name: str,
         expected_revision: int,
@@ -1266,10 +1117,6 @@ def create_server() -> MCPServer:
         project_id: str | None = None,
         authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
     ) -> dict[str, Any]:
-        """Explicitly acknowledge exact unknown effects and admit a new registration as admin.
-
-        Old effects remain unknown. This does not replay them or complete browser consent.
-        """
         from pathlib import Path
 
         from firefly_forge.cli import client, private_secret_file
@@ -1295,7 +1142,7 @@ def create_server() -> MCPServer:
                 },
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_connection_oauth"))
     def configure_connection_oauth(
         name: str,
         provider: str,
@@ -1306,11 +1153,6 @@ def create_server() -> MCPServer:
         authentication: Literal["client_secret_post", "client_secret_basic"] = "client_secret_post",
         expected_revision: OAuthExpectedRevision = None,
     ) -> dict[str, Any]:
-        """Configure an admitted provider as admin; use an owner-private secret file.
-
-        Configuration does not complete browser consent or approve agent tool access.
-        Endpoint, issuer, resource and scope URLs are not accepted as tool arguments.
-        """
         from pathlib import Path
 
         from firefly_forge.cli import client, private_secret_file
@@ -1329,41 +1171,31 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.configure_connection_oauth(name, request)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/prepare_connection_oauth"))
     def prepare_connection_oauth(name: str) -> dict[str, Any]:
-        """Prepare a short-lived link for the actor's authenticated factory browser.
-
-        Tools cannot exchange authorization codes or complete a user's consent.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.prepare_connection_oauth(name)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/refresh_connection_oauth"))
     def refresh_connection_oauth(name: str, request_id: str) -> dict[str, Any]:
-        """Request one recorded refresh; reuse its request ID and never retry unknown rotation."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.refresh_connection_oauth(name, request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/disconnect_connection_oauth"))
     def disconnect_connection_oauth(name: str) -> dict[str, Any]:
-        """Revoke local connection access immediately; remote revocation is separate."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.disconnect_connection_oauth(name)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_external_mcp"))
     def configure_external_mcp(
         connector: str, enabled: bool = False, api_key_file: str | None = None, clear_secret: bool = False
     ) -> dict[str, Any]:
-        """Configure a fixed connector as factory admin using an owner-private key file.
-
-        No arbitrary endpoint or stdio launcher is admitted. Enabling is not a schema review or grant.
-        """
         from pathlib import Path
 
         from firefly_forge.cli import client, private_secret_file
@@ -1374,11 +1206,10 @@ def create_server() -> MCPServer:
                 connector, {"enabled": enabled, "api_key": key, "clear_secret": clear_secret}
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/link_external_mcp_oauth"))
     def link_external_mcp_oauth(
         connector: str, connection_name: str, project_id: str, enabled: bool = True
     ) -> dict[str, Any]:
-        """Link a currently authorized project connection; schema review and tool grants remain explicit."""
         from firefly_forge.cli import client
 
         with client() as connection:
@@ -1386,180 +1217,161 @@ def create_server() -> MCPServer:
                 connector, {"connection_name": connection_name, "project_id": project_id, "enabled": enabled}
             )
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/discover_external_mcp"))
     def discover_external_mcp(connector: str) -> dict[str, Any]:
-        """Make an explicit bounded remote schema discovery; do not claim tool execution from discovery."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.discover_external_mcp(connector)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/review_external_mcp"))
     def review_external_mcp(connector: str, request: MCPReviewInput) -> dict[str, Any]:
-        """Pin the exact discovery digest and known readonly tool allowlist as factory administrator."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.review_external_mcp(connector, request.model_dump())
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_external_mcp_grants"))
     def get_external_mcp_grants(project_id: str) -> list[dict[str, Any]]:
-        """Read project-bound grants without exposing control-plane credentials."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.external_mcp_grants(project_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/grant_external_mcp"))
     def grant_external_mcp(project_id: str, connector: str, request: MCPGrantInput) -> dict[str, Any]:
-        """Grant exact reviewed tools to a registered project repository and implementation role."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.grant_external_mcp(project_id, connector, request.model_dump())
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/revoke_external_mcp"))
     def revoke_external_mcp(project_id: str, grant_id: str) -> dict[str, Any]:
-        """Revoke a project's external tool grant, including future calls by already queued runs."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.revoke_external_mcp(project_id, grant_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_tool_policy"))
     def get_tool_policy() -> dict[str, Any]:
-        """Read factory-admin tool-call limits. Existing runs retain their frozen policy."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.tool_policy()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_tool_policy"))
     def configure_tool_policy(request: ToolPolicyInput) -> dict[str, Any]:
-        """Replace factory-admin mediated tool limits for new runs; this does not grant a tool."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.configure_tool_policy(request.model_dump())
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_run_tool_invocations"))
     def get_run_tool_invocations(run_id: str) -> list[dict[str, Any]]:
-        """Read source-associated intent and outcome evidence for an authorized run."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.tool_invocations(run_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/abandon_tool_invocation"))
     def abandon_tool_invocation(run_id: str, correlation_id: str, request_id: str) -> dict[str, Any]:
-        """Record an explicit operator decision to abandon an unknown outcome without replay.
-
-        This cannot claim successful execution. An active call must finish or its lease expire.
-        """
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.abandon_tool_invocation(run_id, correlation_id, request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_learning_policy"))
     def get_learning_policy() -> dict[str, Any]:
-        """Read bounded factory learning policy; existing runs retain captured settings."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.learning_policy()
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/configure_learning_policy"))
     def configure_learning_policy(request: LearningPolicy) -> dict[str, Any]:
-        """Configure learning for new runs as factory administrator; never grants cross-project sharing."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.configure_learning_policy(request.model_dump())
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/list_learning_records"))
     def list_learning_records(repository_id: str) -> list[dict[str, Any]]:
-        """List authorized scoped evidence. Candidate records cannot authorize solution reuse."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.learning_records(repository_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/invalidate_learning"))
     def invalidate_learning(record_id: str, reason: str, request_id: str) -> dict[str, Any]:
-        """Invalidate scoped evidence with a durable review identity and reason."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.invalidate_learning(record_id, reason, request_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_learning_invalidation_receipt"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_learning_invalidation_receipt(record_id: str, request_id: str) -> dict[str, Any]:
-        """Read an exact committed invalidation. Missing evidence never authorizes replay."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.learning_invalidation_receipt(record_id, request_id)
 
     @server.tool(
+        description=prompt_text("mcp/get_learning_projection_observation_receipt"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_learning_projection_observation_receipt(record_id: str, request_id: str) -> dict[str, Any]:
-        """Read an exact immutable observation; current verified state never confirms another request."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.learning_projection_observation_receipt(record_id, request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/get_learning_projection"))
     def get_learning_projection(record_id: str) -> dict[str, Any]:
-        """Read projection state without secret credentials or remote source creation."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.learning_projection(record_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/submit_learning_projection"))
     def submit_learning_projection(record_id: str, request_id: str) -> dict[str, Any]:
-        """Submit a verified local outcome once; unknown effects cannot be automatically replayed."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.submit_learning_projection(record_id, request_id)
 
-    @server.tool()
+    @server.tool(description=prompt_text("mcp/observe_learning_projection"))
     def observe_learning_projection(record_id: str, request_id: str, source_id: str | None = None) -> dict[str, Any]:
-        """Verify admitted source content and retrievable citations without creating another source."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.observe_learning_projection(record_id, request_id, source_id)
 
     @server.tool(
+        description=prompt_text("mcp/observe_learning_projection_attempt"),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
-        )
+        ),
     )
     def observe_learning_projection_attempt(record_id: str, request: ObservationAttemptRequest) -> dict[str, Any]:
-        """Send one v2 observation request. Do not retry; read the exact local attempt receipt."""
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.observe_learning_projection_attempt(record_id, request)
 
     @server.tool(
+        description=prompt_text("mcp/get_learning_projection_observation_attempt"),
         annotations=ToolAnnotations(
             read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-        )
+        ),
     )
     def get_learning_projection_observation_attempt(record_id: str, attempt_id: str) -> dict[str, Any]:
-        """Read a local v2 attempt; missing, unknown and in-flight receipts never permit replay."""
         from firefly_forge.cli import client
 
         with client() as connection:

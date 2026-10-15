@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_run_tool_invocations
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read source-associated intent and outcome evidence for an authorized
+  run.
+required_variables: []
+metadata:
+  defaults: {}

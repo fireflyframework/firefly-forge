@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_repository_workflow
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read enabled repository commands, trusted actors and setup status without
+  webhook secrets.
+required_variables: []
+metadata:
+  defaults: {}

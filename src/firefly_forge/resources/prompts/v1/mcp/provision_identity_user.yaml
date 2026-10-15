@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/provision_identity_user
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Request an account with a stable request ID; no passwords, roles or
+  automatic replay.
+required_variables: []
+metadata:
+  defaults: {}

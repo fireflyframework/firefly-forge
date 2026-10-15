@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_project_campaign
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read campaign child statuses, frozen source handoffs and verified write-ahead
+  events.
+required_variables: []
+metadata:
+  defaults: {}

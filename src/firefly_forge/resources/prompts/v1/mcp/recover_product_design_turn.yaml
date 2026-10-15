@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/recover_product_design_turn
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Fence an expired turn using its current epoch and a stable recovery ID.
+
+  This records reconciliation, never an automatic model retry. Legacy turns require
+  explicit confirmation that their original process has stopped.
+required_variables: []
+metadata:
+  defaults: {}

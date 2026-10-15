@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_identity_operations
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read administrator-only operation receipts, preserving unknown outcomes
+  without replay.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_project_campaign_delivery_progress
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read reproducible milestone/wave states from one plan and saved report, never live SCM or estimates.
+
+  Criteria are reporting_only_post_admission and enforced_at_admission is false. A satisfied condition
+  is not retrospective QA or a claim that the criteria controlled execution. No implicit archiving.
+required_variables: []
+metadata:
+  defaults: {}

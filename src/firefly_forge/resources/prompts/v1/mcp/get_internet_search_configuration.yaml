@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_internet_search_configuration
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read mediated search readiness booleans and provider metadata; never
+  read the API key.
+required_variables: []
+metadata:
+  defaults: {}

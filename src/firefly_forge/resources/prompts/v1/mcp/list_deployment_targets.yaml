@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_deployment_targets
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read operator-configured target commands and verification requirements.
+required_variables: []
+metadata:
+  defaults: {}

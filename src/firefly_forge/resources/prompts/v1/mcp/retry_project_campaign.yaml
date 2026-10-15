@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/retry_project_campaign
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly retry selected stopped components from frozen admissions within the server retry budget.
+
+  Unknown effects and active downstream work cannot be replayed through this tool.
+required_variables: []
+metadata:
+  defaults: {}

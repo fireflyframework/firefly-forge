@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/connect_granted_repository
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Connect a repository already granted to an installed GitHub/GitLab/Bitbucket
+  application.
+required_variables: []
+metadata:
+  defaults: {}

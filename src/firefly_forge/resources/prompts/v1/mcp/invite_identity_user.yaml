@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/invite_identity_user
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Request a separate invitation; neither provider acceptance nor this
+  tool proves delivery.
+required_variables: []
+metadata:
+  defaults: {}

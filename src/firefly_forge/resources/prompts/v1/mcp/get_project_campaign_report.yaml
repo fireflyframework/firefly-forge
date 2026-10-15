@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_project_campaign_report
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read a local persisted-evidence snapshot with task/checkpoint receipts and a deterministic digest.
+
+  No SCM synchronization, estimated completion, milestone creation or external effect is performed.
+  Unknown evidence is not verified delivery. Current project and repository read permissions apply.
+required_variables: []
+metadata:
+  defaults: {}

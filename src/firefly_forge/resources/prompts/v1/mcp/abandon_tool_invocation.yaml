@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/abandon_tool_invocation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Record an explicit operator decision to abandon an unknown outcome without replay.
+
+  This cannot claim successful execution. An active call must finish or its lease expire.
+required_variables: []
+metadata:
+  defaults: {}

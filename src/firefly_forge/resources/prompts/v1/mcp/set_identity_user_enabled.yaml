@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/set_identity_user_enabled
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Enable or suspend a local identity using current factory-administrator
+  authority.
+required_variables: []
+metadata:
+  defaults: {}

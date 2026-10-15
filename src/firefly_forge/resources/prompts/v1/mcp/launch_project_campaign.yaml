@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/launch_project_campaign
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Admit the scoped component DAG once under a stable request_id.
+
+  Source commits, product settings and role/runner snapshots freeze on admission.
+  Admission is not completion or permission to merge/deploy. Unknown effects require reconciliation.
+required_variables: []
+metadata:
+  defaults: {}
