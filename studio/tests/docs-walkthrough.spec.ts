@@ -6,6 +6,8 @@ import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
+import { setupDelivery } from "./campaign-delivery-browser-fixture";
+import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 import {
   setup as setupCampaignHistory,
   selectCampaign as selectCampaignHistory,
@@ -2191,4 +2193,474 @@ for (const device of ["desktop", "mobile"])
       expect(state.archiveReads).toBe(3);
       expect(state.archiveLists).toBe(1);
       expect(state.postBodies).toEqual([original]);
+    });
+
+// These operator guides replay constructed API evidence; no agent, command or campaign executes.
+async function alignOperatorGuide(
+  page: import("@playwright/test").Page,
+  selector: string,
+) {
+  await page.locator(selector).evaluate((element) => {
+    const main = element.closest("main")!,
+      shell = document
+        .querySelector(".workspace-main > header")!
+        .getBoundingClientRect();
+    main.scrollTop += element.getBoundingClientRect().top - shell.bottom - 16;
+  });
+  await expect
+    .poll(() =>
+      page.locator(selector).evaluate((element) => {
+        const box = element.getBoundingClientRect(),
+          shell = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect();
+        return (
+          box.top >= shell.bottom + 8 &&
+          element.contains(
+            document.elementFromPoint(
+              box.x + box.width / 2,
+              box.y + box.height / 2,
+            ),
+          )
+        );
+      }),
+    )
+    .toBe(true);
+}
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey agent answers ${device} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const question = structuredClone(workerContract.feedback),
+        guideRun = {
+          id: question.run_id,
+          repository_id: "3".repeat(32),
+          project_id: null,
+          brief: "Fixture inventory decision",
+          status: "paused",
+          publish: false,
+          pause: {
+            kind: "worker_request",
+            automatic: false,
+            message: question.payload.summary,
+          },
+        };
+      let response: Record<string, unknown> | null = null,
+        original: Record<string, string> | null = null,
+        readStatus = 200,
+        includeAnswer = false;
+      const posts: Record<string, string>[] = [],
+        reads: string[] = [];
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        if (path.endsWith("/respond")) {
+          expect(request.method()).toBe("POST");
+          expect(path).toBe(
+            `/api/v1/runs/${guideRun.id}/worker-requests/${question.payload.request.id}/respond`,
+          );
+          original = request.postDataJSON();
+          posts.push(original!);
+          expect(Object.keys(original!).sort()).toEqual([
+            "actor",
+            "answer",
+            "id",
+          ]);
+          expect(original!.answer).toBe(
+            "Reserve up to **14 items**.\n\nKeep the reservation atomic.",
+          );
+          const stored = await page.evaluate(() =>
+            Object.entries(localStorage).filter(([key]) =>
+              key.startsWith("forge.worker-reply.v1:"),
+            ),
+          );
+          expect(stored).toHaveLength(1);
+          expect(stored[0][1]).toContain(original!.id);
+          expect(stored[0][1]).not.toContain(original!.answer);
+          const body = {
+            ...workerContract.legacy_response,
+            idempotency_key: `worker-response:${original!.id}`,
+            payload: {
+              ...original!,
+              request_id: question.payload.request.id,
+              responding_actor: {
+                version: 1,
+                user_id: "f".repeat(32),
+                authentication_method: "local_bootstrap",
+              },
+            },
+          };
+          response = {
+            ...body,
+            digest: archiveFixtureDigest(
+              Object.fromEntries(
+                Object.entries(body).filter(([key]) => key !== "digest"),
+              ),
+            ),
+          };
+          return route.abort("failed");
+        }
+        expect(request.method()).toBe("GET");
+        if (path.endsWith("/worker-messages")) {
+          reads.push(path);
+          return route.fulfill({
+            status: readStatus,
+            json:
+              readStatus === 200
+                ? includeAnswer
+                  ? [question, response]
+                  : [question]
+                : { detail: "Conversation not observed" },
+          });
+        }
+        const json = path.endsWith("/repositories")
+          ? [
+              {
+                id: guideRun.repository_id,
+                name: "Fixture inventory",
+                provider: "git",
+                url: "/local/fixture-inventory",
+                default_branch: "main",
+              },
+            ]
+          : path.endsWith("/runs")
+            ? [guideRun]
+            : path.endsWith(`/runs/${guideRun.id}`)
+              ? guideRun
+              : path.endsWith("/health")
+                ? {
+                    status: "ok",
+                    service_role: "api",
+                    admission_ready: true,
+                    execution_ready: false,
+                    execution: { local_enabled: false },
+                  }
+                : [];
+        return route.fulfill({ json });
+      });
+      const openConversation = async () => {
+        await navigate(page, "Factory");
+        await page
+          .getByRole("button", { name: /Fixture inventory decision/ })
+          .click();
+        await page
+          .getByRole("tab", { name: "Agent questions", exact: true })
+          .click();
+      };
+      const shot = async (
+        stage: string,
+        selector: string,
+        actionSelector?: string,
+      ) => {
+        await alignOperatorGuide(page, selector);
+        await capture(page, stage, theme, device, { actionSelector });
+        await page.screenshot({ path: testInfo.outputPath(stage + ".png") });
+      };
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("guide-operator-token-at-least-24-characters");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await openConversation();
+      await expect(
+        page.getByRole("heading", {
+          name: question.payload.request.question,
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByText("Why the agent is asking", { exact: true }).click();
+      await expect(
+        page.getByText(question.payload.request.context, { exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "14 items", exact: true }).click();
+      await page
+        .getByLabel("Your answer", { exact: true })
+        .fill("Reserve up to **14 items**.\n\nKeep the reservation atomic.");
+      await shot(
+        "agent-question",
+        ".worker-thread h3",
+        ".worker-answer-form button.primary",
+      );
+      expect(posts).toHaveLength(0);
+      await page
+        .getByRole("button", { name: "Review answer", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Review your answer", exact: true }),
+      ).toBeFocused();
+      await shot(
+        "agent-answer-review",
+        ".worker-answer-review h4",
+        ".worker-answer-review button.primary",
+      );
+      await page
+        .getByRole("button", { name: "Send answer", exact: true })
+        .click();
+      await expect(
+        page.getByText(
+          "Delivery is unconfirmed. Check the original answer; another answer will not be sent automatically.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      expect(posts).toHaveLength(1);
+      readStatus = 404;
+      const beforeMissingRead = reads.length;
+      await page
+        .getByRole("button", { name: "Check original answer", exact: true })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The conversation could not be confirmed",
+      );
+      expect(reads).toHaveLength(beforeMissingRead + 1);
+      const marker = await page.evaluate(() =>
+        Object.entries(localStorage).filter(([key]) =>
+          key.startsWith("forge.worker-reply.v1:"),
+        ),
+      );
+      readStatus = 200;
+      await page.reload();
+      await openConversation();
+      await expect(
+        page.getByText(
+          "No matching answer is currently available. Keep the original request; this does not prove it was not sent.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(page.getByLabel("Your answer", { exact: true })).toHaveCount(
+        0,
+      );
+      await shot(
+        "agent-answer-unresolved",
+        ".worker-dialogue h2",
+        ".worker-dialogue-heading button",
+      );
+      expect(
+        await page.evaluate(() =>
+          Object.entries(localStorage).filter(([key]) =>
+            key.startsWith("forge.worker-reply.v1:"),
+          ),
+        ),
+      ).toEqual(marker);
+      includeAnswer = true;
+      const beforeConfirmedRead = reads.length;
+      await page
+        .getByRole("button", { name: "Check original answer", exact: true })
+        .click();
+      await expect(
+        page.getByText(
+          "Answer recorded. The run stays paused until you resume it.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: "Recorded answer", exact: true }),
+      ).toContainText("14 items");
+      await expect(
+        page.getByText(
+          "The server also recorded the authenticated user identity.",
+          { exact: false },
+        ),
+      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await shot("agent-answer-confirmed", ".worker-recorded-answer h4");
+      expect(posts).toEqual([original]);
+      expect(reads).toHaveLength(beforeConfirmedRead + 1);
+      expect(new Set(reads).size).toBe(1);
+      await expect(
+        page.getByRole("button", { name: "Send answer", exact: true }),
+      ).toHaveCount(0);
+    });
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey reporting plans ${device} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupDelivery(page);
+      await page.route("**/api/v1/health", (route) =>
+        route.fulfill({
+          json: {
+            status: "ok",
+            service_role: "api",
+            admission_ready: true,
+            execution_ready: false,
+            execution: { local_enabled: false },
+          },
+        }),
+      );
+      await page.reload();
+      await navigate(page, "Product projects");
+      await selectCampaignHistory(page, state.base);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      state.postMode = "lost";
+      state.readStatus = 404;
+      const shot = async (
+        stage: string,
+        resetFields = true,
+        actionSelector?: string,
+      ) => {
+        await capture(page, stage, theme, device, {
+          resetFields,
+          actionSelector,
+        });
+        await page.screenshot({ path: testInfo.outputPath(stage + ".png") });
+      };
+      await page
+        .getByRole("button", { name: "View report", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Review a reporting plan", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Review reporting plan",
+        exact: true,
+      });
+      await dialog
+        .getByLabel("Plan name", { exact: true })
+        .fill("Inventory delivery");
+      await dialog
+        .getByRole("button", { name: "Add wave", exact: true })
+        .click();
+      await dialog.getByLabel("Wave 1 name", { exact: true }).fill("Core API");
+      await dialog
+        .getByRole("checkbox", { name: "Frozen inventory API", exact: true })
+        .check();
+      await shot("campaign-plan-waves");
+      await dialog
+        .getByRole("button", { name: "Continue to milestones", exact: true })
+        .click();
+      await dialog
+        .getByRole("button", { name: "Add milestone to Core API", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Milestone 1 name in Core API", { exact: true })
+        .fill("Inventory checked");
+      await expect(
+        dialog.getByRole("combobox", {
+          name: "Evidence required",
+          exact: true,
+        }),
+      ).toHaveValue("component_verified");
+      await shot("campaign-plan-milestones");
+      await dialog
+        .getByRole("button", { name: "Review reporting criteria", exact: true })
+        .click();
+      await dialog
+        .getByRole("checkbox", {
+          name: "I understand: reporting only.",
+          exact: true,
+        })
+        .check();
+      await shot("campaign-plan-review", false);
+      expect(state.posts).toHaveLength(0);
+      await dialog
+        .getByRole("button", { name: "Save reporting plan", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Original reporting-plan request retained",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(state.posts).toHaveLength(1);
+      expect(state.markerBefore).toBe(true);
+      const original = structuredClone(state.posts[0]);
+      await page.reload();
+      await navigate(page, "Product projects");
+      await selectCampaignHistory(page, state.base);
+      await page
+        .getByRole("button", {
+          name: "Check original reporting plan",
+          exact: true,
+        })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The reporting plan or progress could not be confirmed",
+      );
+      await alignOperatorGuide(
+        page,
+        ".campaign-delivery-plans .campaign-history-pending h4",
+      );
+      await shot(
+        "campaign-plan-unresolved",
+        true,
+        ".campaign-delivery-plans .campaign-history-pending button",
+      );
+      state.readStatus = 200;
+      await page
+        .getByRole("button", {
+          name: "Check original reporting plan",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Reporting plan confirmed",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Read reporting plans", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Open reporting plan 1", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Load saved reports", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Open saved report 1", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Read delivery progress", exact: true })
+        .click();
+      const progress = page.getByRole("region", {
+        name: "Saved-cut delivery progress",
+        exact: true,
+      });
+      await expect(
+        progress.getByRole("heading", {
+          name: "Delivery progress: in progress",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await progress
+        .getByText("Core API · in progress", { exact: true })
+        .click();
+      await progress
+        .getByText("Inventory checked · in progress", { exact: true })
+        .click();
+      await expect(
+        progress.getByText("Component verified", { exact: false }).first(),
+      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await alignOperatorGuide(
+        page,
+        '.campaign-delivery-plans [aria-label="Saved-cut delivery progress"] > h4',
+      );
+      await shot("campaign-plan-progress");
+      expect(state.posts).toEqual([original]);
+      expect(state.reads).toBe(3);
+      expect(state.progressReads).toBe(1);
+      expect(state.base.archivePosts).toBe(0);
+      expect(state.base.writes).toBe(0);
+      expect(
+        state.receipts.get(original.request_id as string)?.request_digest,
+      ).toBe(archiveFixtureDigest(original));
     });
