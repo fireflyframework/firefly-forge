@@ -47,6 +47,8 @@ SDK, CLI and MCP clients can inspect those original-command candidates through t
 
 For a product spanning components, open **Product projects > Campaign reports** to read saved task, check and source evidence. Evidence state is separate from recorded workflow status; unresolved operations prevent verified delivery. The [campaign guide](docs/project-campaigns.md#read-a-report-in-studio) explains unavailable counts, component references and the SDK, CLI and MCP entry points. Studio's [report-and-review wizard](docs/project-campaigns.md#save-and-recover-in-studio) can save the selected report under a retained request identity and read that same historical result later. Saved history retains its original evidence boundary; it does not refresh source control or approve delivery.
 
+After admitting a campaign, use the SDK, CLI or factory MCP to save [reporting milestones and waves](docs/project-campaigns.md#define-reporting-milestones-and-waves). Compare an exact saved report against those criteria to inspect component and task-receipt progress. These criteria support post-admission reporting; execution-wave orchestration and Studio plan editing remain separate work.
+
 Administrators can explicitly configure a mutually authenticated local command controller with frozen execution profiles and project quotas. Its isolated containers receive sanitized component source and return bounded command receipts and artifacts. This adapter has local qualification on a trusted Factory host; browser pools, full coding-provider isolation, Kubernetes and multi-host placement remain separate work. Follow the [local pool setup](docs/sandbox.md#administrator-opt-in-local-command-pools) before selecting it.
 
 ## Give agents scoped context and tools
