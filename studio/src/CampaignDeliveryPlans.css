@@ -72,3 +72,9 @@
   height: max-content;
   max-height: calc(100dvh / var(--delivery-zoom, 1) - 24px);
 }
+
+@media (max-height: 600px) {
+  .campaign-delivery-dialog .wizard-field-scroll {
+    scroll-padding-block: 0;
+  }
+}
