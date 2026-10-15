@@ -86,8 +86,14 @@ describe("agent conversation boundaries", () => {
     expect(threads[0].question.id).toBe("reservation-limit");
     expect(threads[0].response?.payload.answer).toBe("14 items");
   });
-  it("normalizes exactly like Python strip while preserving FEFF, emoji and real newlines", () => {
-    expect(normalizeWorkerText("\u001c\u0085 A\nB \u001f")).toBe("A\nB");
+  it.each(contract.normalization)(
+    "matches the actual backend normalization for $input",
+    (vector) => {
+      expect(normalizeWorkerText(vector.input)).toBe(vector.answer);
+    },
+  );
+  it("preserves FEFF, emoji and real newlines within the model bounds", () => {
+    expect(normalizeWorkerText("\u0085 A\nB \u0085")).toBe("A\nB");
     expect(normalizeWorkerText("\ufeffA\ufeff")).toBe("\ufeffA\ufeff");
     expect(
       workerReply("a1", "Operator", "😀".repeat(8000)).answer,

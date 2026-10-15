@@ -40,5 +40,31 @@
       "request_id": "reservation-limit"
     },
     "digest": "c45156a09f4de54690c13502c6ac16d56ee60750d31e764dd6069ce1ece54ec0"
-  }
+  },
+  "normalization": [
+    {
+      "input": "\u001c A \u001f",
+      "answer": "\u001c A \u001f"
+    },
+    {
+      "input": " A ",
+      "answer": "A"
+    },
+    {
+      "input": "﻿A﻿",
+      "answer": "﻿A﻿"
+    },
+    {
+      "input": "\u001c A\nB \u001f",
+      "answer": "\u001c A\nB \u001f"
+    },
+    {
+      "input": "  A\nB 　",
+      "answer": "A\nB"
+    },
+    {
+      "input": "\tA\r\nB\n",
+      "answer": "A\r\nB"
+    }
+  ]
 }

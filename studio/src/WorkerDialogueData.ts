@@ -90,10 +90,10 @@ function matches(value: unknown, pattern: RegExp): string {
   return result;
 }
 export function normalizeWorkerText(value: string): string {
-  // Python str.strip also removes U+001C–U+001F and U+0085, but preserves U+FEFF.
+  // Match the Pydantic model's Unicode whitespace; U+001C–U+001F and U+FEFF are retained.
   return value.replace(
     // eslint-disable-next-line no-control-regex
-    /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g,
+    /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g,
     "",
   );
 }
