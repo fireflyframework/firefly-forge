@@ -206,9 +206,10 @@ async def test_artifacts_use_immutable_verified_tree_not_live_working_files(stor
     run = await generated_run(store, tmp_path, review_agent=None)
     engine = Engine(store, tmp_path / "jobs", lambda _: Builder())
     await engine.execute_run(run["id"])
+    saved = await store.get_run(run["id"])
+    assert saved["status"] == "succeeded", saved.get("error")
     workspace = engine.workspaces / run["id"]
     (workspace / "product.py").write_text("value = 99\n")
-    saved = await store.get_run(run["id"])
     await engine._artifact(run["id"], workspace, saved["changed_files"], saved["diff"])
     with zipfile.ZipFile(engine.workspaces / (run["id"] + ".zip")) as archive:
         assert archive.read("product.py") == b"value = 7\n"
