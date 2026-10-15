@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from flycanon_sdk import CanonError  # type: ignore[import-untyped]
 from pydantic import ValidationError
+from pyfly.container import service
 
 from firefly_forge.journal import digest
 from firefly_forge.learning_models import LearningProjectionCitation
@@ -25,16 +26,17 @@ from firefly_forge.learning_observation_attempt_persistence import (
     ForgeLearningObservationAttemptEntity,
     ForgeLearningObservationAttemptRepository,
 )
+from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 from firefly_forge.store import identifier
 
 if TYPE_CHECKING:
     from firefly_forge.learning_persistence import ForgeLearningRecordEntity
-    from firefly_forge.learning_projection import LearningProjection
 
 Data = dict[str, Any]
 
 
+@service
 class LearningObservationAttempts:
     def __init__(self, projection: LearningProjection) -> None:
         self.projection = projection

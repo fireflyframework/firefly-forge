@@ -39,8 +39,14 @@ class LearningObservation(LearningAction):
 @rest_controller
 @request_mapping("/api/v1")
 class LearningController:
-    def __init__(self, ledger: LearningLedger, projection: LearningProjection, store: Store) -> None:
-        self.ledger, self.projection, self.store = ledger, projection, store
+    def __init__(
+        self,
+        ledger: LearningLedger,
+        projection: LearningProjection,
+        store: Store,
+        attempts: LearningObservationAttempts,
+    ) -> None:
+        self.ledger, self.projection, self.store, self.attempts = ledger, projection, store, attempts
 
     @get_mapping("/learning/policy")
     def policy(self) -> dict[str, Any]:
@@ -86,14 +92,10 @@ class LearningController:
     async def observe_attempt(
         self, id: PathVar[str], body: Body[LearningObservationAttemptInput]
     ) -> LearningObservationAttemptReceipt:
-        return LearningObservationAttemptReceipt.model_validate(
-            await LearningObservationAttempts(self.projection).observe(id, body)
-        )
+        return LearningObservationAttemptReceipt.model_validate(await self.attempts.observe(id, body))
 
     @get_mapping("/learning/records/{id}/projection/observation-attempts/{attempt_id}")
     async def observation_attempt(
         self, id: PathVar[str], attempt_id: PathVar[str]
     ) -> LearningObservationAttemptReceipt:
-        return LearningObservationAttemptReceipt.model_validate(
-            await LearningObservationAttempts(self.projection).receipt(id, attempt_id)
-        )
+        return LearningObservationAttemptReceipt.model_validate(await self.attempts.receipt(id, attempt_id))

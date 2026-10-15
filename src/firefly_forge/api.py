@@ -103,6 +103,7 @@ from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
 from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_controllers import LearningController
+from firefly_forge.learning_observation_attempts import LearningObservationAttempts
 from firefly_forge.learning_persistence import (
     ForgeLearningEventRepository,
     ForgeLearningProjectionRepository,
@@ -899,6 +900,7 @@ def create_runtime(
         SCMController,
         KnowledgeController,
         LearningController,
+        LearningObservationAttempts,
         JournalController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
