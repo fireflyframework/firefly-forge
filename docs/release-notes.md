@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.13
+
+Studio can request continuation of an original queued runner command. Open the run's Plan tab, choose the exact command, review its identity and acknowledge the leader's final admission check. The browser saves the original request before submitting it. After a lost response or reload, **Check original request** reads that same receipt. A missing receipt keeps the request unresolved. The local candidate preview does not claim or dispatch work. See the [illustrated continuation guide](sandbox.md#continue-one-queued-command-after-a-controller-restart).
+
+Product projects now include a campaign report with component states, task and check receipts, recorded source, checkpoints and prior attempts. **Load campaigns** and **View report** perform explicit reads. The backend uses one bounded, read-only PostgreSQL snapshot and checks current access to the product and its repositories. It examines the current task attempt's durable intent and receipt even when mutable task state says queued or failed. An unresolved or failed remote operation cannot establish verified delivery. When the snapshot cannot establish bounded evidence, counts remain unavailable. See [campaign reports](project-campaigns.md#read-a-report-in-studio).
+
+The SDK, CLI and factory MCP expose the same campaign report. Its digest identifies the returned snapshot; it does not create persisted report history. SCM freshness is not observed, and milestones and waves remain unconfigured. The existing continuation boundary still covers one controller replacement while the original Factory worker waits. Multi-host placement, repeated controller losses and interrupted-worker recovery require separate work.
+
+Container acceptance also tolerates a process disappearing while its procfs record is read. Permission and other I/O errors still fail the check, and a persistent zombie still fails the bounded reaping test.
+
 ## 0.2.12
 
 An authorized operator can explicitly continue one original queued pool command after replacing its controller, while the Factory worker still owns and waits for that command. The persisted request retains the original execution identity, actor, stage, source, admission and WAL fence. API replicas record the request; only the current Factory leader can deliver it. The replacement controller checks current authority and quotas before claiming that exact command. Reads, repeated request identities and startup do not start other queued work.
