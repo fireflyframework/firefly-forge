@@ -1,12 +1,14 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Fail-closed project authorization, separate from agent execution roles."""
 
+from contextlib import AbstractAsyncContextManager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pyfly.data.relational.sqlalchemy import LockMode
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from firefly_forge.access_persistence import (
     ForgeAccessEventEntity,
@@ -17,7 +19,7 @@ from firefly_forge.access_persistence import (
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
 from firefly_forge.project_persistence import ForgeProjectRepository
-from firefly_forge.store import Store, identifier, now
+from firefly_forge.store import identifier, now
 
 Permission = Literal["read", "edit", "execute", "review", "release", "members"]
 Role = Literal["owner", "maintainer", "developer", "reviewer", "viewer"]
@@ -35,8 +37,14 @@ class AccessDenied(Exception):
     pass
 
 
+class AccessTransactions(Protocol):
+    schema: str
+
+    def _unit(self) -> AbstractAsyncContextManager[AsyncSession]: ...
+
+
 class ProjectAccess:
-    def __init__(self, store: Store, records: ForgeMembershipRepository | None = None) -> None:
+    def __init__(self, store: AccessTransactions, records: ForgeMembershipRepository | None = None) -> None:
         self.store, self.records = store, records or ForgeMembershipRepository()
 
     @staticmethod
