@@ -67,6 +67,10 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check native image acceptance guards
+        run: python3 -m unittest scripts.test_container_supervision
       - run: docker build --tag firefly-forge:ci .
       - name: Exercise the non-root runtime image
-        run: docker run --rm --network host -e FORGE_DATABASE_URL -e FORGE_DATABASE_SCHEMA=forge_container_ci -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" --entrypoint /app/.venv/bin/python firefly-forge:ci /tmp/container_smoke.py
+        run: docker run --rm --network host -e FORGE_DATABASE_URL -e FORGE_DATABASE_SCHEMA=forge_container_ci -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" firefly-forge:ci /app/.venv/bin/python /tmp/container_smoke.py
+      - name: Exercise default command and image-owned process supervision
+        run: python3 scripts/container_default_command_smoke.py firefly-forge:ci
