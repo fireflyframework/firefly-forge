@@ -155,6 +155,21 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.runner_continuation(identifier, request_id)
 
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_runner_continuation_candidates(identifier: str) -> dict[str, Any]:
+        """Inspect local original-command candidates; leader confirmation is still required.
+
+        This read never admits a continuation, creates an identity or dispatches work.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.runner_continuation_candidates(identifier)
+
     @server.tool()
     def reconcile_execution_request(identifier: str, request_id: str, reconciliation_id: str) -> dict[str, Any]:
         """Reconcile an uncertain delivery request using retained server proof and a stable ID.

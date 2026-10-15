@@ -259,6 +259,14 @@ def runner_continuation(identifier: str, request_id: str) -> None:
         display(connection.runner_continuation(identifier, request_id))
 
 
+@main.command("runner-continuation-candidates")
+@click.argument("identifier")
+def runner_continuation_candidates(identifier: str) -> None:
+    """Inspect original commands; local candidates still require leader confirmation."""
+    with client() as connection:
+        display(connection.runner_continuation_candidates(identifier))
+
+
 @main.command()
 @click.argument("identifier")
 @click.option("--target", required=True)
