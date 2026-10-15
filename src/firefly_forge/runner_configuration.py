@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.diagnostic_recipes import profile_available
 from firefly_forge.runner_backends import require_available_runner
 from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox import SandboxExecutor
@@ -134,6 +135,7 @@ class RunnerConfiguration:
             tools = tool_catalog(
                 {
                     "execute_command": True,
+                    "profile_python": profile_available(sandbox),
                     "browser_check": bool(configuration.get("browser")),
                     "browser_journey": bool(configuration.get("browser")),
                     "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
@@ -166,6 +168,7 @@ class RunnerConfiguration:
         return tool_catalog(
             {
                 "execute_command": command["available"],
+                "profile_python": profile_available(sandbox),
                 "browser_check": browser_available,
                 "browser_journey": browser_available,
                 "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),

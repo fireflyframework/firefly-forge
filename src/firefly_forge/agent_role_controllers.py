@@ -11,10 +11,12 @@ from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, req
 from firefly_forge.agent_lifecycle import lifecycle_catalog
 from firefly_forge.agent_roles import ProjectRoles, RoleDocument, RoleRegistry, WorkerResponse
 from firefly_forge.community_skills import community_catalog
+from firefly_forge.diagnostic_recipes import profile_available
 from firefly_forge.journal import Journal
 from firefly_forge.knowledge import KnowledgeManager
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.runner_configuration import RunnerConfiguration
+from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.store import Store
 from firefly_forge.workspace_tools import tool_catalog
 
@@ -48,6 +50,9 @@ class AgentRoleController:
             tools = tool_catalog(
                 {
                     "execute_command": True,
+                    "profile_python": profile_available(capture_sandbox(configuration))
+                    if configuration.get("mode") != "pool"
+                    else False,
                     "browser_check": bool(configuration.get("browser")),
                     "browser_journey": bool(configuration.get("browser")),
                     "internet_search": bool(
