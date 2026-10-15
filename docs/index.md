@@ -109,7 +109,7 @@ Prepare identity, storage and delivery access. Keep execution, recovery and appl
 
 A completed agent response, a passing test, a visual review and a successful deployment establish different things. Use the [capabilities guide](capabilities.md) to understand those boundaries and the [API reference](api.md) to automate supported actions.
 
-New to the factory? [Find your next step](guide.md) connects the guides by role and shows where to check each result.
+New to the factory? [Understand the concepts and journeys](factory-journeys.md), then [find your next step](guide.md) for the work in front of you.
 
 </div>
 

@@ -6,6 +6,8 @@ description: Follow a product definition and execution through the forge console
 
 # Follow a change through Studio
 
+For the meaning of project, component, campaign and run, start with [concepts and factory journeys](factory-journeys.md). It also explains the repository conversation path and how publication, deployment and support follow execution.
+
 Follow an inventory API change from connection and product definition through run review, verification and recovery. The run case ends with a failed check and an unresolved intent. Separate learning examples review an invalidation and verify an existing indexed source, each with exact-request recovery.
 
 Screenshots use controlled fixtures.[^captures] Select an image to open its full capture; light and dark variants follow the page appearance.
