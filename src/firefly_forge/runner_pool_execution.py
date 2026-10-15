@@ -64,6 +64,36 @@ class RunnerPoolExecutions:
         await self.pump()
         return result
 
+    async def continue_invocation(
+        self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str
+    ) -> dict[str, Any]:
+        from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
+
+        async with self.admission_lock:
+            if self.stopping:
+                raise RuntimeError("Runner controller is stopping")
+            await self.pools.check_factory_fence(fence)
+            await RunnerContinuationAuthority(self.pools).authorize(invocation, fence, request_id, request_digest)
+            self.artifacts.input_archive(self.profile, invocation)
+            if isinstance(invocation, RunnerProjectInvocation):
+                if self.git_snapshot is None:
+                    raise RuntimeError("Project Git capability is unavailable")
+                await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
+            decision = await self.pools.claim_continuation(
+                self.profile, self.owner, fence, invocation.execution_id, request_id, request_digest
+            )
+            claim = decision.pop("claim", None)
+            if claim is not None:
+                self.tasks[invocation.execution_id] = asyncio.create_task(
+                    self.execute_claim(
+                        claim,
+                        fence,
+                        continuation={"request_id": request_id, "request_digest": request_digest},
+                        pump_after=False,
+                    )
+                )
+            return decision
+
     async def pump(self) -> None:
         async with self.admission_lock:
             if self.fence is None or self.stopping:
@@ -92,7 +122,14 @@ class RunnerPoolExecutions:
             if not await self.pools.renew(self.profile, claim["id"], self.owner, claim["epoch"]):
                 raise RuntimeError("Runner lease or factory owner was lost")
 
-    async def execute_claim(self, claim: dict[str, Any], fence: FactoryFence) -> None:
+    async def execute_claim(
+        self,
+        claim: dict[str, Any],
+        fence: FactoryFence,
+        *,
+        continuation: dict[str, str] | None = None,
+        pump_after: bool = True,
+    ) -> None:
         invocation = parse_invocation(claim["request"])
         current = await self.pools.observe(self.profile, invocation.execution_id)
         if current["status"] != "leased" or current["owner_id"] != self.owner or current["epoch"] != claim["epoch"]:
@@ -100,7 +137,11 @@ class RunnerPoolExecutions:
         if current["request"] != invocation.model_dump(mode="json"):
             raise ValueError("Invocation claim changed its immutable request")
         heartbeat = asyncio.create_task(self._renew(claim))
-        work = asyncio.create_task(self._execute(invocation, claim, fence))
+        work = asyncio.create_task(
+            self._execute(invocation, claim, fence)
+            if continuation is None
+            else self._execute(invocation, claim, fence, continuation)
+        )
         try:
             completed, _ = await asyncio.wait((heartbeat, work), return_when=asyncio.FIRST_COMPLETED)
             if heartbeat in completed:
@@ -119,13 +160,27 @@ class RunnerPoolExecutions:
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
         self.tasks.pop(invocation.execution_id, None)
-        if self.fence is not None:
+        if pump_after and self.fence is not None:
             with suppress(Exception):
                 await self.pump()
 
-    async def _execute(self, invocation: RunnerInvocation, claim: dict[str, Any], fence: FactoryFence) -> None:
+    async def _execute(
+        self,
+        invocation: RunnerInvocation,
+        claim: dict[str, Any],
+        fence: FactoryFence,
+        continuation: dict[str, str] | None = None,
+    ) -> None:
+        cleaning = False
+
         async def guard() -> None:
             await self.pools.authorize(self.profile, claim["id"], self.owner, claim["epoch"], fence)
+            if continuation is not None and not cleaning:
+                from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
+
+                await RunnerContinuationAuthority(self.pools).authorize(
+                    invocation, fence, continuation["request_id"], continuation["request_digest"]
+                )
 
         async def control(
             argv: list[str], *, timeout: int = 30, limit: int = 500_000, input_data: bytes | None = None
@@ -137,6 +192,7 @@ class RunnerPoolExecutions:
                 raise RuntimeError("Owned runner operation failed or requires reconciliation")
             return output
 
+        await guard()
         carrier = self.artifacts.input_archive(self.profile, invocation)
         metadata = None
         if isinstance(invocation, RunnerProjectInvocation):
@@ -151,6 +207,7 @@ class RunnerPoolExecutions:
             "transfer_name": name + "-transfer",
             "labels": self.dispatcher.labels(invocation),
         }
+        await guard()
         await self.pools.effect_intent(
             self.profile, claim["id"], self.owner, claim["epoch"], fence, "create", payload=target
         )
@@ -204,6 +261,7 @@ class RunnerPoolExecutions:
             "create",
             {"container_id": cid, "transfer_id": helper, "volumes": volumes},
         )
+        await guard()
         await self.pools.effect_intent(self.profile, claim["id"], self.owner, claim["epoch"], fence, "start")
         await control(["start", cid])
         async with asyncio.timeout(15):
@@ -267,6 +325,7 @@ class RunnerPoolExecutions:
             "artifacts_retained",
             {"exit_code": status["exit_code"], "output": output_receipt, "result": result_receipt},
         )
+        cleaning = True
         await self.pools.effect_intent(self.profile, claim["id"], self.owner, claim["epoch"], fence, "cleanup")
         for resource in (cid, helper):
             observed = await self.dispatcher.inspect(invocation, resource)
@@ -366,8 +425,9 @@ class RunnerPoolExecutions:
                 raise RuntimeError("Reconciliation did not observe exact resource drain")
         await guard()
         await self.pools.reconcile(self.profile, execution_id, fence, receipt)
-        self.fence = fence
-        await self.pump()
+        if not any(event["kind"] == "explicit_continuation" for event in history):
+            self.fence = fence
+            await self.pump()
         return await self.pools.observe(self.profile, execution_id)
 
     async def cancel(self, execution_id: str, fence: FactoryFence) -> dict[str, Any]:
