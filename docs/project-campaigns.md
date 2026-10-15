@@ -220,17 +220,33 @@ Saving requires current project execute permission and access to every repositor
 
 A permission loss can refuse a POST's return after its immutable insert committed. A transport error or permission error therefore does not prove that no plan was saved. Preserve the request identity and use an authorized exact read. `prepared_at` is database time when the receipt was prepared, before final admission; it is neither source freshness nor the insertion instant.
 
+<div class="forge-flow" role="region" aria-label="Campaign reporting plan and progress diagram" aria-describedby="delivery-plan-flow-guide" tabindex="0" markdown="1">
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
+---
 flowchart LR
-  A[Admitted campaign and frozen product] --> B[Explicit reporting plan]
-  B --> C[Current authority and credential checks]
-  C --> D[Prior digest and revision quota]
-  D --> E[Immutable plan receipt]
-  E --> F[Select an exact saved report]
-  F --> G[Reproducible evidence progress]
-  D -. lost response .-> H[Exact GET with the same request ID]
-  H --> E
+  subgraph SelectPhase["1. Select reporting scope"]
+    direction TB
+    A[Frozen campaign and product] --> B[Explicit reporting plan]
+  end
+  subgraph SavePhase["2. Save a revision"]
+    direction TB
+    C[Current access and credentials] --> D[Prior digest and quota]
+    D --> E[Immutable plan receipt]
+  end
+  subgraph ReadPhase["3. Read evidence progress"]
+    direction TB
+    F[Select an exact saved report] --> G[Evaluate reporting criteria]
+  end
+  SelectPhase --> SavePhase --> ReadPhase
 ```
+</div>
+<p class="forge-flow-caption" id="delivery-plan-flow-guide">Read the phases from left to right and the steps within each phase from top to bottom. After a lost response, keep the original request ID and read its exact plan receipt. A missing receipt leaves the outcome unknown; it does not authorize another save. On a narrow screen, focus the diagram and use the arrow keys to scroll across the phases.</p>
 
 Progress never creates a report archive or starts work. A milestone is satisfied only by all its conditions. A wave also requires every assigned component to be verified; a later completed wave remains `dependency_blocked` while an earlier wave is unsatisfied. Unknown evidence remains unknown. Progress includes counts, exact run/task attempts and retained receipt references, without estimated percentages or a live SCM claim. Repeating it for the same immutable plan and report returns the same digest.
 
