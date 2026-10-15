@@ -71,6 +71,8 @@ Repository-scoped [learning](docs/learning.md) binds exact questions to verified
 
 Follow the [source-development setup](docs/installation.md#source-development), then install Chromium with `npx --prefix studio playwright install chromium` before the first browser gate. Set `FORGE_TEST_DATABASE_URL` to an isolated PostgreSQL test database and prepare an existing PHP 8.3+ CLI for the recipe fixtures with `make php-fixture-check`. `make check` runs Python tests, lint and types, Studio checks/tests/browser journeys/build, and the strict documentation build. `make docs-pages-check` also checks every built local link and exercises navigation, search and screenshots under the published repository path.
 
+Built-in model instructions and MCP descriptions live in versioned YAML resources and use Firefly Agentic's native template loader and registry. Follow [maintain model instructions](docs/prompt-templates.md) for variable contracts, source digests and golden tests.
+
 `make package` creates installable distributions with Studio included. Agent bridge source is maintained separately and is never included in forge distributions. See the [release notes](docs/release-notes.md) for recorded validation and remaining live-acceptance boundaries. A fixture walkthrough demonstrates presentation; it does not establish provider authentication, generated-product correctness or a successful external deployment.
 
 Apache 2.0 for code. Firefly names and generated brand assets retain their separate trademark and asset rights notices.

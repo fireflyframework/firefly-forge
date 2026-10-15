@@ -10,6 +10,7 @@
 - Preserve complete confirmed-marker bindings before accepting later operator decisions.
 - Add administrator-reviewed SCM account delegation to an existing Forge user, component scope and allowed actions, with retained-request and exact-receipt recovery.
 - Verify historical delegation before attributing signed source-control answers; preserve current action permission checks and explicit resume.
+- Maintain built-in model instructions and MCP descriptions as versioned native Firefly Agentic YAML templates, preserving rendered text and message priority.
 
 ## 0.1.0 — 2026-10-11
 
