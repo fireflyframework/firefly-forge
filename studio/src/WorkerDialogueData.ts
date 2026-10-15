@@ -275,6 +275,7 @@ export async function workerThreads(
               receiptDigest: provenance.binding_digest as string,
             },
           );
+          assert(receipt.request.active === true);
           assert(receipt.request.native_user_id === identity.user_id);
           assert(receipt.request.component_ids.includes(delegation.component));
           assert(receipt.request.allowed_actions.includes("respond"));

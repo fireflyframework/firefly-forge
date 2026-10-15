@@ -184,6 +184,7 @@ describe("agent conversation boundaries", () => {
     { native_user_id: "9".repeat(32) },
     { component_ids: ["web"] },
     { allowed_actions: ["cancel"] },
+    { active: false },
   ])(
     "refuses a valid immutable mapping for another user, component or action %j",
     async (changes) => {
@@ -207,6 +208,43 @@ describe("agent conversation boundaries", () => {
       ).rejects.toThrow();
     },
   );
+  it("keeps an active historical admission readable after a later revocation", async () => {
+    const original = structuredClone(delegation.receipt);
+    const request = {
+      ...original.request,
+      request_id: "9".repeat(32),
+      expected_previous_digest: original.digest,
+      active: false,
+    };
+    const { digest: _digest, ...body } = original;
+    void _digest;
+    const revoked = await seal({
+      ...body,
+      event_id: "8".repeat(32),
+      revision: 2,
+      previous_digest: original.digest,
+      request,
+      request_digest: await attemptDigest(request),
+    });
+    const receipts = new Map<string, unknown>([
+      [original.request.request_id, original],
+      [revoked.request.request_id, revoked],
+    ]);
+    const reads: string[] = [];
+    const threads = await workerThreads(
+      [await question(), await delegatedResponse()],
+      run,
+      {
+        ...delegatedScope,
+        readBinding: async (requestId) => {
+          reads.push(requestId);
+          return receipts.get(requestId);
+        },
+      },
+    );
+    expect(threads[0].response).not.toBeNull();
+    expect(reads).toEqual([original.request.request_id]);
+  });
   it.each([
     { api_origin: "not-an-origin" },
     { installation_id: null },
