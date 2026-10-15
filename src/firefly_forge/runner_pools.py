@@ -216,8 +216,12 @@ class RunnerPools:
             pool = await self._pool(profile, admission=True)
             await self._owned(fence)
             rows = await self.invocations.daemon_rows(pool.daemon_id)
+            continued = await self.events.continued_invocations([row.id for row in rows])
+            reserved = continued | {row.id for row in rows if "continuation" in row.data}
             now = await self.invocations.database_time()
             for row in rows:
+                if row.id in reserved:
+                    continue
                 if (
                     row.status in HELD
                     and row.status != "quarantined"
@@ -230,6 +234,8 @@ class RunnerPools:
                     row.status = "cancelled"
                     await self._event(row, "admission_expired", {})
             for row in rows:
+                if row.id in reserved:
+                    continue
                 bound = row.data.get("submission_fence")
                 if row.status == "queued" and bound is not None and bound != fence.model_dump(mode="json"):
                     row.status = "cancelled"
@@ -240,7 +246,9 @@ class RunnerPools:
             requests = [parse_invocation(row.data["request"]) for row in active]
             daemon = await self.daemons.identity(profile.daemon_id)
             assert daemon is not None
-            queue = [row for row in rows if row.status == "queued" and row.pool_id == pool.id]
+            queue = [
+                row for row in rows if row.status == "queued" and row.pool_id == pool.id and row.id not in reserved
+            ]
             queue.sort(key=lambda row: parse_invocation(row.data["request"]).project_key == daemon.data["last_project"])
             for row in queue:
                 value = parse_invocation(row.data["request"])

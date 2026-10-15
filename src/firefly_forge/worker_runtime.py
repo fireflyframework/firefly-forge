@@ -30,6 +30,29 @@ class WorkerSupervision:
     async def stop(self) -> None:
         self.engine.prepare_shutdown()
 
+    def health(self) -> dict[str, Any]:
+        detail = self.engine.ownership_failure
+        if not detail and self.engine.poller and self.engine.poller.done() and not self.engine.stopping:
+            detail = "Execution scheduler stopped; inspect interrupted work before restarting"
+        requests = self.engine.store.execution_requests
+        if not detail and requests and requests.poller and requests.poller.done():
+            detail = "Delivery request scheduler stopped; inspect retained execution requests before restarting"
+        detail = detail or self.detail()
+        role_health = (
+            self.engine.store.runtime_roles.health(
+                execution_state="degraded" if detail else self.engine.execution_state,
+                max_parallel_jobs=self.engine.concurrency,
+            )
+            if self.engine.store.runtime_roles
+            else {}
+        )
+        return {
+            "status": "degraded" if detail else "ok",
+            "detail": detail,
+            "execution_ready": not bool(detail),
+            **role_health,
+        }
+
     def tasks(self) -> dict[str, asyncio.Task[None] | None]:
         return {name: consumer.poller for name, consumer in self.consumers.items()}
 
