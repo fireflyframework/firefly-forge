@@ -1451,7 +1451,7 @@ class Engine:
         self, identifier: str, run: dict[str, Any], workspace: Path, request: PHPProfileRequest
     ) -> dict[str, Any]:
         from firefly_forge.agent_roles import stage_allowed_tools
-        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.project_access import AccessDenied, ProjectAccess
         from firefly_forge.workspace_tools import WorkspaceTools
 
         request = PHPProfileRequest.model_validate(request.model_dump(mode="json"))
@@ -1475,7 +1475,44 @@ class Engine:
             _diagnostic_snapshot=run["sandbox_snapshot"]["digest"],
             _receipt_sink=binding.update,
         )
-        return php_profile_observation(request, source_sha256, str(config.image), result, binding)
+        observation = php_profile_observation(request, source_sha256, str(config.image), result, binding)
+        retention: dict[str, Any] = {"status": "not_retained"}
+        if observation["receipt"] is not None:
+            try:
+                entry = await self.journal.php_diagnostic(identifier, request, observation)
+                retention = {"status": "recorded", "sequence": entry["sequence"], "digest": entry["digest"]}
+            except AccessDenied:
+                raise
+            except Exception:
+                # The command already completed; failed observation retention never authorizes replay.
+                retention = {"status": "unknown"}
+        response = {**observation, "retention": retention}
+        unavailable = False
+        try:
+            await self.store.admit_credentials(response)
+        except AccessDenied:
+            raise
+        except Exception:
+            unavailable = True
+        await self.assert_ownership()
+        current_run = await self.store.get_run(identifier)
+        if (current_run.get("cancel_request") or {}).get("status") == "requested":
+            raise asyncio.CancelledError()
+        await ProjectAccess(self.store).authorize_execution(current_run)
+        try:
+            self.store.reject_credentials(response)
+        except ValueError:
+            unavailable = True
+        if unavailable:
+            return {
+                "recipe": request.recipe,
+                "observation_only": True,
+                "best_effort": True,
+                "exit_code": result.exit_code,
+                "diagnostic_unavailable": True,
+                "retention": {"status": retention["status"]},
+            }
+        return response
 
     async def _trace_python(
         self, identifier: str, run: dict[str, Any], workspace: Path, request: PythonTraceRequest
