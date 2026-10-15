@@ -9,7 +9,7 @@ from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, req
 
 from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_configuration import configure_learning, learning_snapshot
-from firefly_forge.learning_models import LearningPolicy
+from firefly_forge.learning_models import LearningInvalidationReceipt, LearningPolicy
 from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.store import Store
 
@@ -48,6 +48,10 @@ class LearningController:
     @post_mapping("/learning/records/{id}/invalidate")
     async def invalidate(self, id: PathVar[str], body: Body[LearningInvalidation]) -> dict[str, Any]:
         return await self.ledger.invalidate(id, reason=body.reason, request_id=body.request_id)
+
+    @get_mapping("/learning/records/{id}/invalidations/{request_id}")
+    async def invalidation_receipt(self, id: PathVar[str], request_id: PathVar[str]) -> LearningInvalidationReceipt:
+        return LearningInvalidationReceipt.model_validate(await self.ledger.invalidation_receipt(id, request_id))
 
     @get_mapping("/learning/records/{id}/projection")
     async def projection_status(self, id: PathVar[str]) -> dict[str, Any]:

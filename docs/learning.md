@@ -75,11 +75,20 @@ The selected projection must be verified and match the current project/repositor
 | Save policy | `forge learning configure policy.json` | `configure_learning_policy` |
 | List authorized records | `forge learning records REPOSITORY_ID` | `list_learning_records` |
 | Invalidate evidence | `forge learning invalidate RECORD_ID --reason REASON --request-id REQUEST_ID` | `invalidate_learning` |
+| Read an exact invalidation receipt | `forge learning invalidation-receipt RECORD_ID --request-id REQUEST_ID` | `get_learning_invalidation_receipt` |
 | Read projection state | `forge learning projection RECORD_ID` | `get_learning_projection` |
 | Submit once | `forge learning submit RECORD_ID --request-id REQUEST_ID` | `submit_learning_projection` |
 | Observe an admitted source | `forge learning observe RECORD_ID --request-id REQUEST_ID --source-id SOURCE_ID` | `observe_learning_projection` |
 
 Record, repository and request IDs use 32 lowercase hexadecimal characters; the source ID is the actual flycanon identifier. Each new action needs an explicit request identity. Inspect the record's source, checks and scope before submitting it. Submission requires verified local outcome evidence and current review authority. If its effect is unknown, observe the known source or retain the unresolved state; another submission must not replay it. The API and SDK expose the same actions. These commands do not create a cross-project grant or a new model session.
+
+### Inspect an uncertain invalidation
+
+Keep the factory URL, actor, record ID, request ID and reason with a pending invalidation. If the response is lost, use the receipt command above, Python `learning_invalidation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/invalidations/{request_id}`. These reads require current project review authority; unassigned records require a factory administrator.
+
+A receipt identifies the exact committed event, record, repository, origin run, request, reason, sequence, original timestamp and event digest. `event_state` describes that historical invalidation; `current_record_state` describes the record when read. New invalidation events retain their original `actor_id`. Legacy events without attribution return `null`; reading or repeating an existing request does not replace its actor or rewrite its bytes or digest.
+
+Compare the receipt with the retained request identity and reason. A record invalidated by another request does not establish the pending request's outcome. A 404 means that exact invalidation has not been observed; it does not prove an in-flight writer cannot commit. Retain the uncertainty for operator review. The receipt read never submits, repeats, abandons or promotes a decision. A retained reason that has since become a registered credential is refused by the current read fence while the original private event remains intact.
 
 ## Decide whether a search is needed
 
@@ -110,7 +119,7 @@ Select a record to inspect its saved state, question, supported statement, frame
 
 The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
 
-**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request; Studio write controls remain pending until that reconciliation contract is available.
+**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request. The separate receipt read supports operator inspection; Studio write controls and their pending-request recovery remain unimplemented.
 
 <figure class="forge-shot" markdown="1">
 
