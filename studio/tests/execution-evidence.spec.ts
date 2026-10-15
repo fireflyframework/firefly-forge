@@ -493,7 +493,14 @@ for (const width of [320, 1440])
           exit_code: 7,
           output_truncated: false,
           report_marker_observed: true,
-          receipt: null,
+          receipt: {
+            execution_id: "1".repeat(32),
+            request_digest: "2".repeat(64),
+            snapshot_digest: "3".repeat(64),
+            workspace_digest: "4".repeat(64),
+            start_key: "1".repeat(32) + ":start",
+            cleanup_key: "1".repeat(32) + ":cleanup",
+          },
           output:
             "Workload output\nFORGE_PHP_PROFILE_V1\n" +
             JSON.stringify({
@@ -531,18 +538,13 @@ for (const width of [320, 1440])
         await openRun(page, [
           {
             sequence: 1,
-            task_id: "verify",
-            kind: "tool_receipt",
+            task_id: "implement",
+            kind: "diagnostic_observation",
             created_at: "2026-10-15T15:00:00Z",
             digest: "b".repeat(64),
             previous_hash: "0".repeat(64),
-            idempotency_key: "1".repeat(32),
-            payload: {
-              tool: "profile_php",
-              correlation_id: "1".repeat(32),
-              status: "succeeded",
-              result,
-            },
+            idempotency_key: "1".repeat(32) + ":php_profile",
+            payload: result,
           },
         ]);
         await page
