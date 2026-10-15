@@ -128,6 +128,7 @@ def binding(**changes):
         "version": 1,
         "request_id": "a" * 32,
         "expected_previous_digest": None,
+        "expected_project_binding_digest": "e" * 64,
         "verified_receipt_id": "b" * 32,
         "expected_verified_reference_digest": "c" * 64,
         "native_user_id": "d" * 32,
@@ -137,6 +138,15 @@ def binding(**changes):
         "acknowledge_webhook_asserted_identity": True,
         **changes,
     }
+
+
+def test_new_mapping_requires_the_exact_reviewed_project_cut():
+    from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+
+    without_cut = binding()
+    without_cut.pop("expected_project_binding_digest", None)
+    with pytest.raises(ValidationError):
+        SCMActorBindingInputV1.model_validate(without_cut)
 
 
 @pytest.mark.parametrize(
