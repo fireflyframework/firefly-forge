@@ -23,6 +23,8 @@ CAPTURE_HELPERS = {
     "studio/tests/auth-fixture.ts",
     "studio/tests/learning-record-fixture.ts",
     "studio/tests/campaign-report-fixture.ts",
+    "studio/tests/campaign-report-history-fixture.ts",
+    "studio/tests/campaign-report-archive-fixture.json",
 }
 CAPTURE_PRODUCERS = {"studio/tests/docs-walkthrough.spec.ts", "studio/tests/external-tools.spec.ts"}
 

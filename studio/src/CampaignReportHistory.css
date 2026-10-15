@@ -1,0 +1,159 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.campaign-report-history {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  margin-top: 24px;
+  min-width: 0;
+}
+.campaign-report-history .section-heading {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.campaign-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.campaign-history-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.campaign-history-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.campaign-history-list li > div {
+  display: grid;
+  gap: 6px;
+}
+.campaign-history-list span,
+.campaign-history-list time {
+  color: var(--muted);
+  font-size: 13px;
+}
+.campaign-history-pending {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+}
+.campaign-history-pending > div {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+}
+.campaign-report-history code,
+.campaign-report-history dd {
+  overflow-wrap: anywhere;
+}
+.campaign-report-history dd {
+  margin-left: 0;
+  margin-bottom: 12px;
+}
+.campaign-archive-dialog.access-member-dialog {
+  height: max-content;
+  max-height: calc(100dvh - 48px);
+}
+.campaign-archive-dialog .wizard {
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+.campaign-archive-dialog .wizard-form {
+  flex: 1 1 auto;
+}
+.campaign-archive-dialog .wizard-body {
+  overflow: auto;
+  min-height: 0;
+}
+.campaign-archive-ack {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin: 24px 0 8px;
+}
+.campaign-archive-ack input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--amber);
+}
+@media (max-width: 600px) {
+  .campaign-history-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .campaign-history-actions,
+  .campaign-history-actions button {
+    width: 100%;
+  }
+  .campaign-archive-dialog.access-member-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+  .campaign-archive-dialog .wizard-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .campaign-archive-dialog .wizard-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-height: 600px) {
+  .campaign-archive-dialog .access-dialog-heading {
+    margin-bottom: 8px;
+  }
+  .campaign-archive-dialog .access-dialog-heading h2 {
+    font-size: 20px;
+  }
+  .campaign-archive-dialog .wizard-steps {
+    min-height: 44px;
+    padding: 8px 16px;
+  }
+  .campaign-archive-dialog .wizard-content {
+    padding: 12px 16px;
+  }
+  .campaign-archive-dialog .wizard-heading {
+    margin-bottom: 8px;
+  }
+  .campaign-archive-dialog .wizard-heading h2 {
+    font-size: 18px;
+  }
+  .campaign-archive-dialog .wizard-heading p {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .campaign-archive-dialog .wizard-actions {
+    min-height: 48px;
+    padding-top: 8px;
+  }
+}
+@media (max-height: 600px) and (min-width: 540px) {
+  .campaign-archive-dialog .wizard-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .campaign-archive-dialog .wizard-actions button {
+    width: 100%;
+  }
+}
+.campaign-archive-dialog .wizard-actions {
+  padding-right: 8px;
+  padding-bottom: 8px;
+  padding-left: 8px;
+}
+
+.campaign-report-history [aria-label="Exact saved report"] > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

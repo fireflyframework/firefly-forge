@@ -40,7 +40,7 @@ In **Product projects**, select a product and choose **Load campaigns**. Select 
 
 The report separates the server's evidence state from recorded workflow status. Its compact summary counts components; select one component to inspect its tasks, executable check receipts, recorded source and checkpoint references, prior attempts and journal references. Lists show at most 20 items per page. An unavailable snapshot has unknown counts, rather than reporting zero components or verified completion.
 
-The digest is displayed as a server reference; Studio does not independently verify it. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
+The live report displays its server digest. Studio verifies the canonical report digest before offering **Save this report**, and checks the complete saved receipt when reading history. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
 
 The guide below uses controlled API fixtures: the product overview, campaign and component show the same successful recorded state with verified evidence. These screenshots illustrate reading a report; they do not establish live campaign execution or external SCM activity.
 
@@ -68,6 +68,41 @@ The guide below uses controlled API fixtures: the product overview, campaign and
 </figure>
 
 </details>
+
+## Save and recover in Studio
+
+After **View report**, an operator with project execution permission can choose **Save this report**. Review the evidence state, continue with **Review save**, and acknowledge that saving does not approve or run work. **Save report** stores a snapshot only if the server still observes the same evidence cut. Readers without execution permission can inspect authorized history but cannot save.
+
+Studio retains a small request reference before sending one save request. It contains the server, original operator, project, campaign, request ID and selected report digest. Tokens and report bodies are excluded. A successful response is followed by an exact receipt read. If delivery is lost, reload the same campaign and choose **Check saved request**. A missing receipt, conflict or permission error keeps the original identity unresolved; Studio does not repeat the write or replace its request ID.
+
+<figure class="forge-shot" markdown="1">
+![Controlled save review showing the evidence state and explicit acknowledgment.](assets/screenshots/campaign-report-save-review-desktop-light.png)
+<figcaption>Review the selected report before saving. This guide uses controlled API fixtures; it does not establish native campaign execution.</figcaption>
+</figure>
+
+Choose **Load saved reports** to read a page of up to 50 summaries, then **Open saved report** to retrieve its exact evidence. **Next saved reports** follows the server's sequence cursor. The saved sequence and server preparation time describe that receipt; they do not establish current SCM freshness. A historical report can belong to another authorized operator. Its original actor and source references remain available under **Original receipt references**.
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow an unresolved save and read its retained history</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view retaining an unresolved save request after reload.](assets/screenshots/campaign-report-save-unresolved-mobile-dark.png)
+<figcaption>The original request survives reload. Check its exact receipt without sending another save.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled list of saved campaign reports with sequence and preparation time.](assets/screenshots/campaign-report-saved-history-desktop-light.png)
+<figcaption>Loading history reads metadata. Opening a saved report reads its exact body with current permissions.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view of an exact saved report and its historical evidence state.](assets/screenshots/campaign-report-saved-receipt-mobile-dark.png)
+<figcaption>The historical snapshot remains separate from a later live report. Preparation time is not a commit or freshness timestamp.</figcaption>
+</figure>
+
+</details>
+
+A confirmed identity stays recoverable in browser storage. After reloading, check each retained request before starting another explicit save. Other tabs may also save; browser storage does not provide a global lock. If storage cannot be verified, saving is unavailable. An access refusal clears private report views while keeping the request reference for an authorized exact read.
 
 ## Understand the dependency gate
 
@@ -142,4 +177,4 @@ The list route is `GET .../report-archives?after=0`; exact readback is `GET .../
 
 The write commits one immutable receipt atomically. Reusing the same ID, actor and selected digest returns that exact receipt; changing its binding refuses. Concurrent different requests can prepare the same next sequence: only one is admitted and the other receives an explicit history-advanced conflict with no insert. Keep the original request identity. A lost response, timeout, cancellation, 404 or conflict text does not prove that an earlier write cannot still commit, and does not authorize automatic resubmission or a new ID. A late loss of execute permission can also refuse the POST response after its receipt has committed; an authorized reader can still read that exact receipt. Read the exact receipt first. Saving a report records evidence; it does not approve delivery or configure milestones, waves or live SCM observation.
 
-The report follows the campaign's frozen component graph. The current project model has no milestone or wave configuration, so both are reported as `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Milestone definitions, wave grouping, reports across campaigns and a Studio report view remain separate work.
+The report follows the campaign's frozen component graph. The current project model has no milestone or wave configuration, so both are reported as `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Milestone definitions, wave grouping and reports across campaigns remain separate work.
