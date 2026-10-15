@@ -30,6 +30,23 @@ Reason = Literal[
 ]
 
 
+class LearningInvalidationReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    event_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    record_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    repository_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    run_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    kind: Literal["invalidation"] = "invalidation"
+    event_state: Literal["invalidated"] = "invalidated"
+    current_record_state: State
+    reason: str = Field(min_length=1, max_length=2000)
+    actor_id: str | None = Field(pattern=r"^[a-f0-9]{32}$")
+    created_at: str = Field(min_length=1, max_length=64)
+    sequence: int = Field(ge=1, strict=True)
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class LearningPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     enabled: bool = Field(default=True, strict=True)

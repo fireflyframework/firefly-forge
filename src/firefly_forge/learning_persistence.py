@@ -76,6 +76,13 @@ class ForgeLearningRepository(Repository[ForgeLearningRecordEntity, UUID]):
 
 @repository
 class ForgeLearningEventRepository(Repository[ForgeLearningEventEntity, UUID]):
+    async def for_request(self, record_id: UUID, request_id: str) -> ForgeLearningEventEntity | None:
+        return await self._require_session().scalar(
+            select(ForgeLearningEventEntity).where(
+                ForgeLearningEventEntity.record_id == record_id, ForgeLearningEventEntity.request_id == request_id
+            )
+        )
+
     async def for_record(self, record_id: UUID) -> list[ForgeLearningEventEntity]:
         return list(
             await self._require_session().scalars(

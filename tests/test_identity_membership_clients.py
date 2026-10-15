@@ -449,7 +449,7 @@ async def test_mcp_membership_has_native_required_strict_body_and_read_annotatio
     from firefly_forge.connection_oauth_models import OAuthConnectionInput
 
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 123
+    assert len(tools) == 124
     for name in ["get_identity_configuration", "get_identity_session", "list_project_members"]:
         assert tools[name].annotations.read_only_hint is True
     membership = tools["set_project_membership"]

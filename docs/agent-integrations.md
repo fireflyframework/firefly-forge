@@ -202,6 +202,8 @@ Python exposes `model_profiles`, `save_model_profile`, `test_model_profile`, `ta
 
 ## MCP
 
+Operators can inspect an uncertain learning invalidation through Python `learning_invalidation_receipt(record_id, request_id)`, `forge learning invalidation-receipt RECORD_ID --request-id REQUEST_ID`, or `get_learning_invalidation_receipt`. Each performs the same authorized GET for the exact committed request. The returned historical decision does not replace the current record state. A 404 remains unobserved evidence and never triggers a second write. Keep the original request identity and reason; see [invalidation receipts](learning.md#inspect-an-uncertain-invalidation).
+
 Run `forge mcp` from a compatible MCP client with `FORGE_URL` and `FORGE_API_TOKEN` supplied to that process. The transport is stdio. The tool catalog includes:
 
 | Task | Tools |
