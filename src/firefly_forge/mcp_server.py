@@ -20,10 +20,20 @@ from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, Camp
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.task_routing import TaskRoutingInput
 from firefly_forge.tool_broker import ToolPolicyInput
+from firefly_forge.user_administration import (
+    AdministrationReconciliation,
+    AdministrationRecovery,
+    UserEnabledInput,
+    UserProvisionInput,
+)
 
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
 EligibleUserQuery = Annotated[str, WithJsonSchema({"type": "string", "minLength": 3, "maxLength": 120})]
+IdentityEnabled = Annotated[Any, WithJsonSchema(UserEnabledInput.model_json_schema()["properties"]["enabled"])]
+IdentityProvisionRequest = Annotated[Any, WithJsonSchema(UserProvisionInput.model_json_schema())]
+IdentityReconciliationRequest = Annotated[Any, WithJsonSchema(AdministrationReconciliation.model_json_schema())]
+IdentityRecoveryRequest = Annotated[Any, WithJsonSchema(AdministrationRecovery.model_json_schema())]
 
 
 def create_server() -> MCPServer:
@@ -648,6 +658,46 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.identity_operations()
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def set_identity_user_enabled(user_id: str, enabled: IdentityEnabled) -> dict[str, Any]:
+        """Enable or suspend a local identity using current factory-administrator authority."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.set_identity_user_enabled(user_id, enabled)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def provision_identity_user(request: IdentityProvisionRequest) -> dict[str, Any]:
+        """Request an account with a stable request ID; no passwords, roles or automatic replay."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.provision_identity_user(request)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def invite_identity_user(user_id: str, request_id: str) -> dict[str, Any]:
+        """Request a separate invitation; neither provider acceptance nor this tool proves delivery."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.invite_identity_user(user_id, {"request_id": request_id})
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def reconcile_identity_operation(operation_id: str, request: IdentityReconciliationRequest) -> dict[str, Any]:
+        """Reconcile an uncertain identity receipt using native provider checks or labelled attestation."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.reconcile_identity_operation(operation_id, request)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def recover_identity_operation(operation_id: str, request: IdentityRecoveryRequest) -> dict[str, Any]:
+        """Confirm the original owner stopped; retain the unknown outcome without repeating it."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.recover_identity_operation(operation_id, request)
 
     @server.tool()
     def save_agent_roles(document: dict[str, Any]) -> dict[str, Any]:
