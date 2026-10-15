@@ -821,6 +821,22 @@ for (const device of ["desktop", "mobile"])
             .getByText(value, { exact: true }),
         ).toBeVisible();
       await page.locator(".learning-invalidation-ack").scrollIntoViewIfNeeded();
+      await page
+        .locator(".learning-invalidation-dialog .wizard-field-scroll")
+        .evaluate((field) => {
+          const viewport = field.getBoundingClientRect();
+          const reason = field
+            .querySelector(".learning-invalidation-reason")!
+            .getBoundingClientRect();
+          const acknowledgment = field
+            .querySelector(".learning-invalidation-ack")!
+            .getBoundingClientRect();
+          const margin = Math.max(
+            0,
+            (viewport.height - (acknowledgment.bottom - reason.top)) / 2,
+          );
+          field.scrollTop += reason.top - viewport.top - margin;
+        });
       const readReviewBounds = () =>
         page.locator(".learning-invalidation-dialog").evaluate((dialog) => {
           const field = dialog
