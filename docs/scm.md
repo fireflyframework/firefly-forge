@@ -86,6 +86,7 @@ Complete setup in this order:
    reports. Supply it only to forge's write-only private-key field. If the
    download is interrupted, check the browser's downloads and the application's
    existing key list before creating another key.
+   [Verify the downloaded key](#verify-the-downloaded-key) before supplying it to forge.
 2. Open **Install App**, select the intended account and choose **Only select
    repositories**. Select the test repository and inspect the permission summary
    before confirming the installation. Record its installation ID.
@@ -97,6 +98,19 @@ Complete setup in this order:
    webhooks to it. Registration and repository discovery do not establish webhook
    delivery. Keep the webhook inactive during a staged setup until its receiving
    route and signature secret are ready.
+
+### Verify the downloaded key
+
+In the GitHub App's **Credentials → Key pairs**, find the public SHA256 fingerprint for the key pair. On your own machine, run this in Bash or Zsh with the path to the downloaded PEM file:
+
+```bash
+set -o pipefail
+openssl rsa -in "/path/to/downloaded-key.pem" -pubout -outform DER |
+  openssl sha256 -binary |
+  openssl base64
+```
+
+This fingerprints the public key's DER SubjectPublicKeyInfo bytes; it does not print the private key. Compare the base64 result with GitHub's displayed fingerprint. If any command fails or the values differ, stop and check the file, application and selected key pair. Do not retry authentication or generate another key to work around a mismatch. A matching fingerprint identifies the key pair; installation and repository access still require their own checks. See [GitHub's private-key verification instructions](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps#verifying-private-keys).
 
 <figure class="forge-shot" markdown="1">
 ![The installed GitHub App has read and write permissions on one selected private acceptance repository.](assets/provider-guides/github-app-installed.jpg)

@@ -487,6 +487,72 @@ Studio retains the request identity and input digest before sending once. It con
 
 A conflict may be refused before a receipt is inserted, leaving the exact read unavailable. Studio preserves that original request and holds further saves. Keep the reference and ask an administrator to check the current project and delegation. A missing receipt, access error or timeout does not authorize a replacement request or an automatic retry. The retained list contains this browser's references, not the complete server history.
 
+The following screenshots use constructed, model-bound fixtures. They demonstrate the Studio forms and exact readback, without establishing a live provider delivery or a provider account grant.
+
+<figure class="forge-shot" markdown="1">
+
+![Select the reported account](assets/screenshots/scm-delegation-account-desktop-light.png)
+
+<figcaption>Choose an account from a retained signed delivery. The configured sender asserted the account; this is separate from personal OAuth.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Choose the person and scope](assets/screenshots/scm-delegation-scope-desktop-light.png)
+
+<figcaption>Find an existing registered person and select repository components and allowed requests. No project membership is created.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Review the delegation](assets/screenshots/scm-delegation-review-desktop-light.png)
+
+<figcaption>Check the person, actions and application trust, then acknowledge the assertion before saving once.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Read the exact receipt](assets/screenshots/scm-delegation-confirmed-desktop-light.png)
+
+<figcaption>The exact request read confirms this recorded revision. Its historical receipt does not establish current permissions or provider grants.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow delegation review on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Select the reported account](assets/screenshots/scm-delegation-account-mobile-light.png)
+
+<figcaption>Choose an account from a retained signed delivery. The configured sender asserted the account; this is separate from personal OAuth.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Choose the person and scope](assets/screenshots/scm-delegation-scope-mobile-light.png)
+
+<figcaption>Find an existing registered person and select repository components and allowed requests. No project membership is created.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Review the delegation](assets/screenshots/scm-delegation-review-mobile-light.png)
+
+<figcaption>Check the person, actions and application trust, then acknowledge the assertion before saving once.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the exact receipt](assets/screenshots/scm-delegation-confirmed-mobile-light.png)
+
+<figcaption>The exact request read confirms this recorded revision. Its historical receipt does not establish current permissions or provider grants.</figcaption>
+</figure>
+
+</div>
+</details>
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).

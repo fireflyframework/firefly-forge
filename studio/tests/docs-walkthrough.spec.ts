@@ -2664,3 +2664,302 @@ for (const device of ["desktop", "mobile"])
         state.receipts.get(original.request_id as string)?.request_digest,
       ).toBe(archiveFixtureDigest(original));
     });
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey SCM delegation ${device} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      // Constructed from the strict e9 SCM models; this guide performs no provider delivery or grant check.
+      const projectId = "5".repeat(32),
+        repositoryId = "6".repeat(32),
+        nativeUser = "3".repeat(32);
+      const definition = {
+        name: "Inventory product",
+        description: "Controlled delegation walkthrough",
+        owners: ["Fixture owner"],
+        topology: "monorepo",
+        roles: null,
+        product_repository_id: repositoryId,
+        components: [
+          {
+            id: "api",
+            name: "Inventory API",
+            repository_id: repositoryId,
+            path: ".",
+            kind: "api",
+            backend: "pyfly",
+            frontend: "none",
+            verification: [],
+            depends_on: [],
+            responsibility: "Inventory requests",
+          },
+        ],
+      };
+      const project = {
+        id: projectId,
+        revision: 1,
+        definition,
+        digest: archiveFixtureDigest(definition),
+        created_at: "2026-10-15T00:00:00Z",
+        updated_at: "2026-10-15T00:00:00Z",
+      };
+      const cut = archiveFixtureDigest(project),
+        candidateId = "2".repeat(32);
+      const reference = {
+        version: 1,
+        provider: "github",
+        api_origin: "https://api.github.com",
+        installation_id: "17",
+        remote_repository_id: "42",
+        external_actor_id: "7",
+        web_origin: "https://github.com",
+        connection_revision: "a".repeat(32),
+        connection_scope_digest: "b".repeat(64),
+        webhook_key_revision: "c".repeat(32),
+        verification_method: "raw_body_hmac_sha256",
+        payload_digest: "d".repeat(64),
+      };
+      const referenceDigest = archiveFixtureDigest(reference);
+      let receipt: Record<string, unknown> | null = null,
+        original: Record<string, unknown> | null = null;
+      const posts: Record<string, unknown>[] = [],
+        exactReads: string[] = [];
+      const base = `/api/v1/projects/${projectId}/repositories/${repositoryId}/scm-actor-bindings`;
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const request = route.request(),
+          url = new URL(request.url()),
+          path = url.pathname;
+        if (path === base && request.method() === "POST") {
+          original = request.postDataJSON();
+          posts.push(original!);
+          expect(original).toEqual({
+            version: 1,
+            request_id: expect.stringMatching(/^[a-f0-9]{32}$/),
+            expected_previous_digest: null,
+            expected_project_binding_digest: cut,
+            verified_receipt_id: candidateId,
+            expected_verified_reference_digest: referenceDigest,
+            native_user_id: nativeUser,
+            component_ids: ["api"],
+            allowed_actions: ["respond"],
+            active: true,
+            acknowledge_webhook_asserted_identity: true,
+          });
+          const retained = await page.evaluate(() =>
+            Object.entries(localStorage)
+              .filter(([key]) => key.startsWith("forge.scm-delegation.v1:"))
+              .map(([, value]) => JSON.parse(value)),
+          );
+          expect(retained).toEqual([
+            {
+              version: 1,
+              base: new URL("/api/v1", page.url()).href,
+              actor: "f".repeat(32),
+              project: projectId,
+              repository: repositoryId,
+              requestId: original!.request_id,
+              inputDigest: archiveFixtureDigest(original),
+            },
+          ]);
+          const body = {
+            version: 1,
+            event_id: "4".repeat(32),
+            project_id: projectId,
+            repository_id: repositoryId,
+            project_binding_digest: cut,
+            binding_key: archiveFixtureDigest({
+              project_id: projectId,
+              provider: reference.provider,
+              api_origin: reference.api_origin,
+              installation_id: reference.installation_id,
+              remote_repository_id: reference.remote_repository_id,
+              external_actor_id: reference.external_actor_id,
+            }),
+            revision: 1,
+            previous_digest: null,
+            prepared_at: "2026-10-15T19:00:00+00:00",
+            administering_user_id: "f".repeat(32),
+            request: original,
+            request_digest: archiveFixtureDigest(original),
+            verified_reference: reference,
+          };
+          receipt = { ...body, digest: archiveFixtureDigest(body) };
+          return route.fulfill({ status: 201, json: receipt });
+        }
+        if (path.startsWith(base + "/requests/")) {
+          expect(request.method()).toBe("GET");
+          const id = path.split("/").at(-1)!;
+          exactReads.push(id);
+          expect(id).toBe(original?.request_id);
+          return route.fulfill({
+            status: receipt ? 200 : 404,
+            json: receipt ?? { detail: "Original receipt is unavailable" },
+          });
+        }
+        expect(request.method()).toBe("GET");
+        if (path === base + "/candidates")
+          return route.fulfill({
+            json: {
+              version: 1,
+              project_id: projectId,
+              repository_id: repositoryId,
+              project_binding_digest: cut,
+              items: [
+                {
+                  verified_receipt_id: candidateId,
+                  verified_reference: reference,
+                  verified_reference_digest: referenceDigest,
+                },
+              ],
+              next_cursor: null,
+            },
+          });
+        if (path === base)
+          return route.fulfill({
+            json: {
+              version: 1,
+              project_id: projectId,
+              repository_id: repositoryId,
+              project_binding_digest: cut,
+              heads_only: true,
+              items: [],
+              next_cursor: null,
+            },
+          });
+        if (path.endsWith("/eligible-users"))
+          return route.fulfill({
+            json: [
+              {
+                id: nativeUser,
+                display_name: "Warehouse reviewer",
+                enabled: true,
+                email: null,
+                contact_email: null,
+              },
+            ],
+          });
+        return route.fulfill({
+          json: path.endsWith("/projects")
+            ? [project]
+            : path.endsWith("/repositories")
+              ? [
+                  {
+                    id: repositoryId,
+                    name: "Inventory repository",
+                    url: "https://github.example.test/fixture/inventory",
+                  },
+                ]
+              : path.endsWith("/health")
+                ? {
+                    status: "ok",
+                    service_role: "api",
+                    admission_ready: true,
+                    execution_ready: false,
+                    detail: "",
+                    execution: { local_enabled: false },
+                  }
+                : path.endsWith("/profiles")
+                  ? {}
+                  : [],
+        });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("guide-operator-token-at-least-24-characters");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await navigate(page, "Project access");
+      await page
+        .getByRole("button", { name: "Review a delegation", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Review SCM delegation",
+        exact: true,
+      });
+      const shot = async (
+        stage: string,
+        resetFields = true,
+        actionSelector?: string,
+      ) => {
+        await capture(page, stage, theme, device, {
+          resetFields,
+          actionSelector,
+        });
+        await page.screenshot({ path: testInfo.outputPath(stage + ".png") });
+      };
+      await dialog
+        .getByLabel("Webhook-reported account", { exact: true })
+        .selectOption(candidateId);
+      await expect(
+        dialog.getByText(/not a personal OAuth login/),
+      ).toBeVisible();
+      await shot("scm-delegation-account");
+      await dialog
+        .getByRole("button", { name: "Continue to scope", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Find a registered person", { exact: true })
+        .fill("Warehouse");
+      await dialog
+        .getByRole("button", { name: "Find person", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Registered person", { exact: true })
+        .selectOption(nativeUser);
+      await dialog
+        .getByRole("checkbox", { name: "Inventory API", exact: true })
+        .check();
+      await dialog
+        .getByRole("checkbox", { name: "Answer agent questions", exact: true })
+        .check();
+      await dialog
+        .getByLabel("Registered person", { exact: true })
+        .locator("..")
+        .evaluate((node) => node.scrollIntoView({ block: "start" }));
+      await shot("scm-delegation-scope", false);
+      await dialog
+        .getByRole("button", { name: "Review delegation", exact: true })
+        .click();
+      await dialog
+        .getByRole("checkbox", {
+          name: "I trust this webhook assertion.",
+          exact: true,
+        })
+        .check();
+      expect(posts).toHaveLength(0);
+      await shot("scm-delegation-review", false);
+      await dialog
+        .getByRole("button", { name: "Save delegation", exact: true })
+        .click();
+      const confirmed = page.getByRole("region", {
+        name: "Exact delegation receipt",
+        exact: true,
+      });
+      await expect(confirmed).toBeVisible();
+      await expect(
+        page.getByText("Exact receipt confirmed", { exact: true }),
+      ).toBeVisible();
+      expect(posts).toHaveLength(1);
+      expect(exactReads).toEqual([original!.request_id]);
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await alignOperatorGuide(page, ".scm-delegation-receipt > h3");
+      await shot(
+        "scm-delegation-confirmed",
+        true,
+        ".scm-delegation-receipt > button",
+      );
+      expect(posts).toEqual([original]);
+      expect(exactReads).toHaveLength(1);
+      expect(receipt?.request_digest).toBe(archiveFixtureDigest(original));
+    });
