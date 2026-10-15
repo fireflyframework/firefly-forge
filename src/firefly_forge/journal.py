@@ -713,6 +713,19 @@ class Journal:
         if actor is None:
             return
         access = ProjectAccess(self.store)
+        if actor.authentication_method == "scm_mapping":
+            delegated = actor.scm_delegation or {}
+            if (
+                (delegated.get("run_id"), delegated.get("repository_id"), delegated.get("component_id"))
+                != (
+                    run.get("id"),
+                    run.get("repository_id"),
+                    run.get("component_id"),
+                )
+                or writing
+                and delegated.get("action") != "respond"
+            ):
+                raise AccessDenied("The SCM delegation does not bind this worker response")
         permission: Permission = "execute" if writing else "read"
         if run.get("project_id"):
             await access.authorize_actor(access.actor_snapshot(actor), run["project_id"], permission)
@@ -815,6 +828,34 @@ class Journal:
             "user_id": actor.id.hex,
             "authentication_method": actor.authentication_method,
         }
+        if actor.authentication_method == "scm_mapping":
+            from firefly_forge.scm_authority_models import SCMRespondingActorV2
+
+            delegation = actor.scm_delegation or {}
+            reference = delegation.get("verified_reference", {})
+            responding_actor = SCMRespondingActorV2.model_validate(
+                {
+                    "version": 2,
+                    "user_id": actor.id.hex,
+                    "authentication_method": "scm_mapping",
+                    "provenance": {
+                        "binding_request_id": delegation.get("binding_request_id"),
+                        "binding_digest": delegation.get("binding_digest"),
+                        "verified_receipt_id": delegation.get("verified_receipt_id"),
+                        **{
+                            key: reference.get(key)
+                            for key in (
+                                "provider",
+                                "api_origin",
+                                "connection_revision",
+                                "installation_id",
+                                "remote_repository_id",
+                                "external_actor_id",
+                            )
+                        },
+                    },
+                }
+            ).model_dump(mode="json")
         async with self.store._unit():
             initial = await self.store.get_run(run_id)
             scope = self._worker_scope(initial)

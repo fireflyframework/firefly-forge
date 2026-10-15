@@ -192,3 +192,59 @@ provider paths and Host headers to the local fixture; it does not test provider
 DNS, TLS, organizational installation, or consent on a real provider account.
 Live acceptance requires the real application registration, provider consent,
 repository grant and successful remote operation for each account.
+
+## Explicit SCM delegation
+
+Signed comments identify a configured channel; they do not sign a user into Forge.
+A factory administrator can explicitly map a verified provider account to an existing,
+enabled Forge user for selected components and actions in one project and repository.
+The mapping grants no project membership or global administrator privileges.
+
+The first scoped adapters support answering a paused worker question, reading a specific
+run's status, and requesting cancellation through the existing delivery-request runtime.
+Answering leaves the run paused. It does not resume work. Cancellation is admission of a
+request, not proof that the worker has drained. Other actions in a repository with SCM
+delegation configured report setup required until their native authorization adapter is
+available. Creating a new project from an unmapped provider account is separate work.
+
+Use `GET /api/v1/projects/{project_id}/repositories/{repository_id}/scm-actor-bindings/candidates`
+to select an already retained, verified account reference. This read does not contact the
+provider. Submit the reviewed `version: 1` mapping to the same path without `/candidates`.
+Include one durable request ID, the reviewed project-binding digest, the verified-reference
+digest, the existing native user, explicit component IDs, allowed actions, and the previous
+mapping digest for an update.
+The webhook trust acknowledgment must be `true`: anyone holding that channel's webhook
+credential can construct a sender claim. The mapping does not establish personal OAuth
+authentication.
+
+After a lost response, read `/scm-actor-bindings/requests/{request_id}` using the original
+project, repository and request ID. A timeout, denial or missing receipt does not authorize
+another write identity. Permission to return a receipt is checked after commit; denial
+can therefore leave a committed mapping. The base GET lists current-head summaries with
+an optional `cursor` and pages of at most 50 items, rather than a partial revision history.
+Each item reports active, revoked, stale-project or stale-connection status. Active means
+a saved mapping head; it does not establish current provider grants or native permissions.
+Historical requests remain available through their exact request GET. Mapping revisions are immutable; limits are 100 bindings
+per repository, 50 revisions per binding, 5,000 requests and 16 MiB of retained mapping
+history. Each receipt envelope is limited to 64 KiB. Limits refuse rather than prune.
+
+Connection or webhook-key rotation invalidates the mapping's pinned verification cut.
+Review a fresh signed candidate and explicitly update the mapping. Legacy receipts remain
+readable, but cannot be promoted into verification evidence. Legacy actor-label-only worker
+responses are refused as `scm_authority_setup_required` before an action intent is recorded.
+An uncertain outcome after an admitted action remains uncertain and is not replayed.
+
+SCM worker answers carry `responding_actor` version 2 and a mapping/delivery reference.
+Ordinary authenticated answers retain version 1; historical answers without attribution
+retain their original bytes. A delegated answer cannot confirm a pending manual version-1
+answer marker. Historical delegation is recorded evidence, not a statement that the
+mapping remains active or that provider grants were freshly checked by the reader.
+
+Provider verification follows the documented raw-body contracts:
+[GitHub delivery signatures](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries),
+[GitHub App issue-comment installations](https://docs.github.com/en/webhooks/webhook-events-and-payloads#issue_comment),
+[GitLab signing tokens](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens),
+and [Bitbucket Cloud signatures](https://support.atlassian.com/bitbucket-cloud/docs/manage-webhooks/).
+New GitLab delegation requires its timestamped signing-token signature; the legacy shared
+token remains supported for old ingress but does not qualify a new delegation candidate.
+Local signed-fixture tests are separate from live provider installation acceptance.
