@@ -394,3 +394,16 @@ async def test_engine_supplies_the_optional_profile_hook_to_the_native_worker(st
     actual = await store.get_run(run["id"])
     assert actual["status"] == "paused", actual.get("error")
     assert len(observed) == int(enabled)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["revoke", "cancel"])
+async def test_profile_rechecks_authority_and_cancellation_after_capacity_wait(store, tmp_path, change):
+    from test_sandbox_admission_authority import queued_admission
+
+    async def dispatch(engine, run, workspace):
+        return await engine._profile_python(
+            run["id"], run, workspace, recipes.PythonProfileRequest(script="workload.py")
+        )
+
+    await queued_admission(store, tmp_path, change, dispatch=dispatch, extra_grants=("profile_python",))
