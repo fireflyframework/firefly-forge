@@ -1,0 +1,74 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.campaign-delivery-plans {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 24px;
+  min-width: 0;
+}
+.campaign-delivery-plans .section-heading {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.campaign-delivery-plans dd,
+.campaign-delivery-plans code {
+  overflow-wrap: anywhere;
+  margin-left: 0;
+}
+.campaign-delivery-plans details {
+  margin: 16px 0;
+}
+.campaign-delivery-dialog fieldset {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+.campaign-delivery-dialog select,
+.campaign-delivery-dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+}
+.campaign-delivery-dialog label {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.campaign-delivery-dialog .delivery-check {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.campaign-delivery-dialog input[type="checkbox"] {
+  accent-color: var(--amber);
+  flex-shrink: 0;
+}
+.campaign-delivery-dialog .delivery-milestone {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.campaign-delivery-dialog dd {
+  margin-left: 0;
+  overflow-wrap: anywhere;
+}
+.delivery-result {
+  margin-top: 24px;
+}
+@media (max-width: 640px) {
+  .campaign-delivery-plans .campaign-history-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .campaign-delivery-dialog .campaign-history-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.campaign-delivery-dialog.access-member-dialog {
+  inset: 0;
+  width: min(760px, calc(100vw / var(--delivery-zoom, 1) - 24px));
+  height: max-content;
+  max-height: calc(100dvh / var(--delivery-zoom, 1) - 24px);
+}

@@ -31,6 +31,7 @@ export function CampaignReportHistory({
   report,
   onDenied,
   renderReport,
+  onArchiveSelected,
 }: {
   connection: Connection;
   session: IdentitySession;
@@ -39,6 +40,7 @@ export function CampaignReportHistory({
   report: CampaignReport | null;
   onDenied: () => void;
   renderReport: (report: CampaignReport) => ReactNode;
+  onArchiveSelected?: (receipt: CampaignArchiveReceipt | null) => void;
 }) {
   const context = {
     base: new URL(
@@ -80,6 +82,10 @@ export function CampaignReportHistory({
     heading = useRef<HTMLHeadingElement>(null),
     pendingHeading = useRef<HTMLHeadingElement>(null),
     restoreFocus = useRef(false);
+  useEffect(() => {
+    onArchiveSelected?.(receipt);
+    return () => onArchiveSelected?.(null);
+  }, [receipt, onArchiveSelected]);
   const canSave =
     session.global_admin ||
     session.memberships.some(
