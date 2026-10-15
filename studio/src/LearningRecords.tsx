@@ -71,6 +71,7 @@ export function LearningRecords({
     );
   };
   const alert = useRef<HTMLDivElement>(null);
+  const filterControl = useRef<HTMLElement>(null);
   const frame = useRef<HTMLElement>(null);
   useEffect(() => {
     frame.current?.scrollIntoView({ block: "start" });
@@ -125,7 +126,9 @@ export function LearningRecords({
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase()),
   );
-  const record = filtered.find((item) => item.id === selected);
+  const record = items.find((item) => item.id === selected);
+  const outsideFilter =
+    record && !filtered.some((item) => item.id === selected);
   return (
     <section
       className="feature-record learning-records"
@@ -177,7 +180,7 @@ export function LearningRecords({
         !error && (
           <>
             <details className="learning-records-filter-toggle">
-              <summary>Filter saved records</summary>
+              <summary ref={filterControl}>Filter saved records</summary>
               <div className="learning-records-filters">
                 <div className="field">
                   <label htmlFor="learning-record-filter">
@@ -210,11 +213,14 @@ export function LearningRecords({
             <p className="learning-records-count" role="status">
               {filtered.length} of {items.length} saved records shown
             </p>
-            {!filtered.length ? (
+            {!filtered.length && !record ? (
               <p>No saved records match this filter.</p>
             ) : (
               <div className="learning-records-grid">
                 <aside aria-label="Saved evidence">
+                  {!filtered.length && (
+                    <p>No saved records match this filter.</p>
+                  )}
                   <ul className="learning-records-list">
                     {filtered.map((item) => (
                       <li key={item.id}>
@@ -244,6 +250,24 @@ export function LearningRecords({
                   </ul>
                 </aside>
                 <div className="learning-records-detail">
+                  {outsideFilter && (
+                    <div className="learning-record-filter-context">
+                      <p className="subtle">
+                        The selected record no longer matches this filter. Its
+                        decision remains visible until you close it or select
+                        another record.
+                      </p>
+                      <button
+                        className="secondary"
+                        onClick={() => {
+                          setSelected("");
+                          filterControl.current?.focus();
+                        }}
+                      >
+                        Close selected record
+                      </button>
+                    </div>
+                  )}
                   {record ? (
                     <RecordDetail
                       key={`${scope}:${record.id}`}

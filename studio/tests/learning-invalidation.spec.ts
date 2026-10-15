@@ -402,3 +402,88 @@ for (const [width, height] of [
     ).toBeFocused();
   });
 }
+
+for (const [theme, width, height] of [
+  ["light", 1440, 1000],
+  ["dark", 390, 844],
+] as const) {
+  test(`confirmed invalidation remains visible outside the verified filter: ${theme}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ colorScheme: theme });
+    const state = await fixture(page);
+    await select(page);
+    await page
+      .getByText("Filter saved records", { exact: true })
+      .first()
+      .click();
+    await page
+      .getByLabel("Saved state", { exact: true })
+      .selectOption("verified");
+    await review(page);
+    await page
+      .getByRole("button", { name: "Confirm invalidation", exact: true })
+      .click();
+    await expect(
+      page.getByText("Original invalidation confirmed", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("0 of 1 saved records shown", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No saved records match this filter.", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "The selected record no longer matches this filter. Its decision remains visible until you close it or select another record.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: record.envelope.question, exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText(reason, { exact: true })).toBeVisible();
+    expect(state.writes()).toBe(1);
+    expect(state.reads()).toBe(1);
+    const original = state.body();
+    await page.screenshot({
+      path: testInfo.outputPath(`confirmed-filter-${theme}.png`),
+      fullPage: true,
+    });
+    const confirmation = page.getByText("Original invalidation confirmed", {
+      exact: true,
+    });
+    await confirmation.scrollIntoViewIfNeeded();
+    await expect(confirmation).toBeInViewport();
+    await page.screenshot({
+      path: testInfo.outputPath(`confirmed-receipt-${theme}.png`),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Close selected record", exact: true })
+      .click();
+    await expect(
+      page.locator(".learning-records-filter-toggle > summary"),
+    ).toBeFocused();
+    await expect(
+      page.getByText("Original invalidation confirmed", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("No saved records match this filter.", { exact: true }),
+    ).toBeVisible();
+    await page.getByLabel("Saved state", { exact: true }).selectOption("all");
+    await page
+      .getByRole("button", { name: record.envelope.question, exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Check original request", exact: true })
+      .click();
+    await expect(
+      page.getByText("Original invalidation confirmed", { exact: true }),
+    ).toBeVisible();
+    expect(state.writes()).toBe(1);
+    expect(state.reads()).toBe(2);
+    expect(state.body()).toEqual(original);
+  });
+}
