@@ -45,6 +45,9 @@ from firefly_forge.assistant_persistence import (
 )
 from firefly_forge.assurance import Assurance
 from firefly_forge.browser_runner import BrowserRunner
+from firefly_forge.campaign_report_history import CampaignReportHistory
+from firefly_forge.campaign_report_history_controllers import CampaignReportHistoryController
+from firefly_forge.campaign_report_history_persistence import ForgeCampaignReportArchiveRepository
 from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
@@ -741,6 +744,12 @@ class FactoryConfiguration:
         return CampaignReports(store, campaigns, journal)
 
     @bean
+    def campaign_report_history(
+        self, store: Store, reports: CampaignReports, records: ForgeCampaignReportArchiveRepository
+    ) -> CampaignReportHistory:
+        return CampaignReportHistory(store, reports, records)
+
+    @bean
     def provider_configuration(self, store: Store) -> ConfigurationStore:
         return store.configuration
 
@@ -959,6 +968,8 @@ def create_runtime(
         ForgeCampaignRepository,
         ForgeCampaignChildRepository,
         ForgeCampaignEventRepository,
+        ForgeCampaignReportArchiveRepository,
+        CampaignReportHistoryController,
         ProjectCampaignController,
     ]:
         container.register(component)
