@@ -58,6 +58,8 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/auth-fixture.ts": "fixture identity",
                 "studio/tests/learning-record-fixture.ts": "fixture learning record",
                 "studio/tests/campaign-report-fixture.ts": "fixture campaign report",
+                "studio/tests/campaign-report-history-fixture.ts": "fixture history routes",
+                "studio/tests/campaign-report-archive-fixture.json": "fixture archive data",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -90,6 +92,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/auth-fixture.ts",
                     "studio/tests/learning-record-fixture.ts",
                     "studio/tests/campaign-report-fixture.ts",
+                    "studio/tests/campaign-report-history-fixture.ts",
+                    "studio/tests/campaign-report-archive-fixture.json",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -287,6 +291,10 @@ class WalkthroughTests(unittest.TestCase):
             learning_fixture.write_text("fixture learning record")
             campaign_fixture = root / "studio/tests/campaign-report-fixture.ts"
             campaign_fixture.write_text("fixture campaign report")
+            history_fixture = root / "studio/tests/campaign-report-history-fixture.ts"
+            history_fixture.write_text("fixture history routes")
+            archive_fixture = root / "studio/tests/campaign-report-archive-fixture.json"
+            archive_fixture.write_text("fixture archive data")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")
             capture_config = root / "studio/playwright.docs.config.ts"
@@ -314,6 +322,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/auth-fixture.ts": sha(identity),
                     "studio/tests/learning-record-fixture.ts": sha(learning_fixture),
                     "studio/tests/campaign-report-fixture.ts": sha(campaign_fixture),
+                    "studio/tests/campaign-report-history-fixture.ts": sha(history_fixture),
+                    "studio/tests/campaign-report-archive-fixture.json": sha(archive_fixture),
                 },
                 "capture_config": {"path": "studio/playwright.docs.config.ts", "sha256": sha(capture_config)},
                 "captures": {

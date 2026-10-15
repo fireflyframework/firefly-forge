@@ -6,6 +6,13 @@ import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
+import {
+  setup as setupCampaignHistory,
+  selectCampaign as selectCampaignHistory,
+  reviewSave as reviewCampaignSave,
+  native as campaignArchiveFixture,
+  digest as archiveFixtureDigest,
+} from "./campaign-report-history-fixture";
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
@@ -1735,3 +1742,142 @@ for (const device of ["desktop", "mobile"])
       expect(calls.every((call) => call.startsWith("GET "))).toBe(true);
     });
   }
+
+// Controlled archive responses demonstrate identity retention, not native PostgreSQL acceptance.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey campaign archives ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupCampaignHistory(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      state.postMode = "lost";
+      state.archiveReadStatus = 404;
+      await selectCampaignHistory(page, state);
+      const dialog = await reviewCampaignSave(page);
+      await expect(
+        dialog.getByRole("button", { name: "Save report", exact: true }),
+      ).toBeEnabled();
+      await capture(page, "campaign-report-save-review", theme, device, {
+        resetFields: false,
+      });
+      expect(state.archivePosts).toBe(0);
+      await dialog
+        .getByRole("button", { name: "Save report", exact: true })
+        .click();
+      await expect(
+        page.getByText("Saved request unresolved", { exact: true }),
+      ).toBeVisible();
+      expect(state.archivePosts).toBe(1);
+      expect(state.markerBeforePost).toBe(true);
+      const original = { ...state.postBodies[0] };
+      await page.reload();
+      await navigate(page, "Product projects");
+      await selectCampaignHistory(page, state);
+      await page
+        .getByRole("button", { name: "Check saved request 1", exact: true })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "No exact saved report was observed",
+      );
+      const align = async (selector: string) => {
+        await page.locator(selector).evaluate((element) => {
+          const main = element.closest("main")!,
+            shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+          main.scrollTop +=
+            element.getBoundingClientRect().top - shell.bottom - 16;
+        });
+        await expect
+          .poll(() =>
+            page.locator(selector).evaluate((element) => {
+              const box = element.getBoundingClientRect(),
+                shell = document
+                  .querySelector(".workspace-main > header")!
+                  .getBoundingClientRect();
+              return (
+                box.top >= shell.bottom + 12 &&
+                element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                )
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await align(".campaign-history-pending h4");
+      await capture(page, "campaign-report-save-unresolved", theme, device, {
+        actionSelector: ".campaign-history-pending button",
+      });
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(1);
+      state.archiveReadStatus = 200;
+      await page
+        .getByRole("button", { name: "Check saved request 1", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Saved campaign report",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(2);
+      const receipt =
+        state.archiveReceipt as typeof campaignArchiveFixture.receipt;
+      expect(receipt.request_id).toBe(original.request_id);
+      expect(receipt.report.digest).toBe(original.expected_report_digest);
+      expect(receipt.actor_id).toBe("f".repeat(32));
+      const summary = {
+        ...campaignArchiveFixture.page.items[0],
+        request_id: receipt.request_id,
+        actor_id: receipt.actor_id,
+        receipt_digest: receipt.digest,
+        digest: "",
+      };
+      summary.digest = archiveFixtureDigest(
+        Object.fromEntries(
+          Object.entries(summary).filter(([key]) => key !== "digest"),
+        ),
+      );
+      state.archivePage = { ...campaignArchiveFixture.page, items: [summary] };
+      await page
+        .getByRole("button", { name: "Load saved reports", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Open saved report 1", exact: true }),
+      ).toBeVisible();
+      await align(".campaign-report-history > .section-heading h3");
+      await capture(page, "campaign-report-saved-history", theme, device, {
+        actionSelector: ".campaign-history-list button",
+      });
+      await page
+        .getByRole("button", { name: "Open saved report 1", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Saved campaign report",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await align(
+        '.campaign-report-history [aria-label="Exact saved report"] > h3',
+      );
+      await capture(page, "campaign-report-saved-receipt", theme, device, {
+        actionSelector:
+          '.campaign-report-history [aria-label="Exact saved report"] .campaign-report-components button',
+      });
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(3);
+      expect(state.archiveLists).toBe(1);
+      expect(state.postBodies).toEqual([original]);
+    });
