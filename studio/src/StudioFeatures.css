@@ -1653,6 +1653,15 @@
 .source-analysis > .feature-meta {
   margin: 0;
 }
+.source-analysis-dialog .feature-meta {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.source-analysis-dialog .feature-actions button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .source-analysis-dialog {
   height: calc(100dvh - 48px);
   max-height: calc(100dvh - 48px);

@@ -1992,7 +1992,7 @@ for (const device of ["desktop", "mobile"])
       ).toHaveCount(2);
       await expect(
         dialog.getByText(
-          "1 observed declarations · 2 skipped files · source only",
+          "1 observed declaration · 2 skipped files · source only",
           { exact: true },
         ),
       ).toHaveCount(2);

@@ -181,6 +181,9 @@ export function SourceAnalysis({
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
   const current = report && report.id === id ? report : null;
+  const declarations =
+    current?.components.reduce((total, item) => total + item.facts.length, 0) ??
+    0;
   return (
     <section className="source-analysis feature-record">
       <header>
@@ -327,11 +330,8 @@ export function SourceAnalysis({
                       <p>
                         {current.components.length} inspected component
                         {current.components.length === 1 ? "" : "s"} ·{" "}
-                        {current.components.reduce(
-                          (total, item) => total + item.facts.length,
-                          0,
-                        )}{" "}
-                        observed declarations
+                        {declarations} observed declaration
+                        {declarations === 1 ? "" : "s"}
                       </p>
                       <p className="feature-meta">
                         Report digest: <code>{current.digest}</code>
@@ -364,8 +364,10 @@ export function SourceAnalysis({
                         Commit: <code>{item.commit}</code>
                       </p>
                       <p>
-                        {item.facts.length} observed declarations ·{" "}
-                        {item.skipped_files} skipped files · source only
+                        {item.facts.length} observed declaration
+                        {item.facts.length === 1 ? "" : "s"} ·{" "}
+                        {item.skipped_files} skipped file
+                        {item.skipped_files === 1 ? "" : "s"} · source only
                       </p>
                       <details open>
                         <summary>Inspect source declarations</summary>
