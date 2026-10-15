@@ -19,6 +19,8 @@ import {
 } from "./CampaignReportData";
 import "./CampaignReports.css";
 import { CampaignReportHistory } from "./CampaignReportHistory";
+import { CampaignDeliveryPlans } from "./CampaignDeliveryPlans";
+import type { CampaignArchiveReceipt } from "./CampaignReportArchiveData";
 const label = (value: string) => {
   const words = value.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -33,6 +35,7 @@ export function CampaignReports({
   project: ProjectSnapshot;
   session: IdentitySession;
 }) {
+  const [archive, setArchive] = useState<CampaignArchiveReceipt | null>(null);
   const [items, setItems] = useState<CampaignSummary[] | null>(null),
     [selected, setSelected] = useState(""),
     [report, setReport] = useState<CampaignReport | null>(null),
@@ -219,6 +222,20 @@ export function CampaignReports({
         </details>
       )}
       {selected && (
+        <CampaignDeliveryPlans
+          key={"delivery:" + selected}
+          connection={connection}
+          session={session}
+          project={project.id}
+          campaign={selected}
+          report={report}
+          archive={archive}
+          onDenied={() =>
+            failure(new ApiError("Project evidence access denied", 403))
+          }
+        />
+      )}
+      {selected && (
         <CampaignReportHistory
           key={selected + (report?.digest ?? "")}
           connection={connection}
@@ -226,6 +243,7 @@ export function CampaignReports({
           project={project.id}
           campaign={selected}
           report={report}
+          onArchiveSelected={setArchive}
           onDenied={() =>
             failure(new ApiError("Project evidence access denied", 403))
           }
@@ -350,7 +368,8 @@ function ReportSnapshot({
       <details className="campaign-report-references">
         <summary>About this report</summary>
         <p className="subtle">
-          SCM freshness: not observed. Milestones and waves are not configured.
+          SCM freshness: not observed. This report format does not include the
+          separate reporting-plan criteria.
         </p>
         <p className="subtle">
           This snapshot summarizes retained evidence. Server evidence state is
