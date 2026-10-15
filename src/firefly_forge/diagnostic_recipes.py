@@ -14,12 +14,16 @@ from firefly_forge.sandbox_models import SandboxInput, validate_sandbox_snapshot
 from firefly_forge.workspace_tools import _private_name
 
 
-def profile_configuration(snapshot: dict[str, Any] | None) -> SandboxInput:
+def profile_configuration(
+    snapshot: dict[str, Any] | None, language: Literal["Python", "PHP"] = "Python"
+) -> SandboxInput:
     if not snapshot or snapshot.get("mode") != "docker":
-        raise ValueError("Python profiling requires a frozen isolated Docker runner")
+        raise ValueError(f"{language} profiling requires a frozen isolated Docker runner")
     config = validate_sandbox_snapshot(snapshot)
     if config.workspace_transport != "archive" or config.network != "none" or config.pool_binding is not None:
-        raise ValueError("Python profiling requires Docker archive transfer and network none without a pool binding")
+        raise ValueError(
+            f"{language} profiling requires Docker archive transfer and network none without a pool binding"
+        )
     return config
 
 

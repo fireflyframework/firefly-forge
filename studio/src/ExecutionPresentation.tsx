@@ -16,6 +16,7 @@ import {
   tokenizeCode,
 } from "./ExecutionFormat";
 import "./ExecutionPresentation.css";
+import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [state, setState] = useState("");
@@ -213,6 +214,28 @@ export function EvidenceView({
     ];
   }
   const record = asRecord(value);
+  if (record && isPHPProfile(record))
+    return (
+      <div className="record-evidence">
+        {title && (
+          <h4>
+            <BoundedLabel value={title} />
+          </h4>
+        )}
+        <PHPProfileEvidence record={record} />
+        <details className="record-advanced">
+          <summary>Original workload output and report</summary>
+          <OutputView
+            value={
+              typeof record.output === "string"
+                ? record.output
+                : "No output recorded."
+            }
+          />
+        </details>
+        {advanced && <AdvancedRecord value={value} />}
+      </div>
+    );
   if (!record)
     return (
       <div className="record-evidence">

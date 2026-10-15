@@ -1,0 +1,95 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.php-profile {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.php-profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.php-profile-heading h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.php-profile-heading svg {
+  flex: none;
+  color: var(--accent-ink);
+}
+.php-profile > p {
+  max-width: 75ch;
+  line-height: 1.7;
+}
+.php-profile-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 16px;
+  padding-block: 16px;
+  border-block: 1px solid var(--line-soft);
+}
+.php-profile-metrics dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.php-profile-metrics dd {
+  margin: 6px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.php-profile-table {
+  max-width: 100%;
+  max-height: 24rem;
+  overflow-x: auto;
+}
+.php-profile-table table {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+}
+.php-profile-cost-heading {
+  margin: 16px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.php-profile-scroll-hint {
+  display: none;
+}
+.php-profile-table th,
+.php-profile-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+  font-size: 13px;
+}
+.php-profile-table tbody th {
+  max-width: 280px;
+  font-weight: 500;
+}
+.php-profile-table tbody th span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.php-profile-table td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .php-profile-scroll-hint {
+    display: block;
+  }
+  .php-profile-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .php-profile-metrics dt {
+    min-height: 2.8em;
+    line-height: 1.4;
+  }
+}

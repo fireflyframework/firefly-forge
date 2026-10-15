@@ -33,6 +33,12 @@ Host execution uses a private temporary directory and removes only that owned di
 
 These settings govern Python interpreters that honor their environment. `-E` or `-I` ignores them; an explicit interpreter cache-prefix option or a custom loader can select other behavior. Source-less `.pyc` modules remain explicit project artifacts, and this policy does not establish their source equivalence. Keep source available and avoid those overrides when a verification check must evaluate current Python source. Native coding CLIs retain their separate execution boundary.
 
+## Admit optional PHP diagnostics
+
+The native `profile_php` tool requires both its own role grant and `execute_command`, plus a frozen Docker profile with archive transfer, network `none` and no pool binding. It uses the same authority checks, command budget and sandbox start/cleanup receipts as other commands. It cannot fall back to a host PHP binary. Runner readiness describes configuration, not interpreter, extension or application readiness.
+
+Prepare the PHP interpreter and the application's existing dependencies before admission. A [larafly](https://fireflyframework.org/frameworks/php/) `artisan` command needs its normal bootstrap and Composer/vendor files within the image or archive budget; the diagnostic tool does not install them. The runtime recipe observes wall/CPU/memory. The separately selected Xdebug recipe requires its already installed extension and POSIX file limits, disables debugger connections and caps each child-written file at 8 MiB. Missing prerequisites refuse the workload, while a missing or invalid report remains incomplete evidence. See [PHP profiling](agent-tools.md#observe-a-php-or-larafly-workload) for recipe requests, units and outcome limits.
+
 ## Prepare an image and context
 
 Use a dedicated Docker context and a non-root development service account. Prepare an image containing the project's actual Python/PHP/Node runtimes, package tools and dependencies. Copy its immutable `repository@sha256:...` reference from the image inventory. Runtime commands use `--pull=never`; image preparation belongs to the operator.

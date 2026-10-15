@@ -16,6 +16,7 @@ from firefly_forge.process import ProcessResult, execute
 
 if TYPE_CHECKING:
     from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
+    from firefly_forge.php_diagnostics import PHPProfileRequest
     from firefly_forge.qa import BrowserJourney, EvidenceImage, JourneyEvidence, QAReference
 
 
@@ -39,6 +40,7 @@ class ToolRuntimeContext:
     reference_resolver: Callable[[BrowserJourney], Awaitable[tuple[QAReference, EvidenceImage] | None]] | None = None
     python_profile: Callable[[PythonProfileRequest], Awaitable[dict[str, Any]]] | None = None
     python_trace: Callable[[PythonTraceRequest], Awaitable[dict[str, Any]]] | None = None
+    php_profile: Callable[[PHPProfileRequest], Awaitable[dict[str, Any]]] | None = None
 
 
 def _private_name(name: str) -> bool:
@@ -288,6 +290,7 @@ _TOOL_DESCRIPTIONS = {
     "knowledge_lookup": "Inspect scoped references and exact verified local outcomes without a web-search key",
     "profile_python": "Observe bounded Python CPU profiling through the frozen isolated command runner",
     "trace_python": "Observe best-effort target Python line counts through the frozen isolated command runner",
+    "profile_php": "Observe bounded PHP runtime metrics or an explicitly selected preinstalled Xdebug profile",
 }
 
 
@@ -304,9 +307,10 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
             "knowledge_lookup",
             "profile_python",
             "trace_python",
+            "profile_php",
         }
         available = not optional or bool(snapshot.get(identifier, False))
-        if identifier in {"profile_python", "trace_python"}:
+        if identifier in {"profile_python", "trace_python", "profile_php"}:
             available = available and bool(snapshot.get("execute_command", False))
         supported = provider in {"agentic", "bridge", "api"}
         result.append(
@@ -324,7 +328,7 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
                 ),
                 "providers": ["agentic", "bridge"],
                 "requires": ["execute_command", identifier]
-                if identifier in {"profile_python", "trace_python"}
+                if identifier in {"profile_python", "trace_python", "profile_php"}
                 else [identifier]
                 if optional
                 else [],

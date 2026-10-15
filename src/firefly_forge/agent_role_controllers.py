@@ -56,6 +56,9 @@ class AgentRoleController:
                     "trace_python": profile_available(capture_sandbox(configuration))
                     if configuration.get("mode") != "pool"
                     else False,
+                    "profile_php": profile_available(capture_sandbox(configuration))
+                    if configuration.get("mode") != "pool"
+                    else False,
                     "browser_check": bool(configuration.get("browser")),
                     "browser_journey": bool(configuration.get("browser")),
                     "internet_search": bool(
