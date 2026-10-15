@@ -16,6 +16,7 @@ import {
   tokenizeCode,
 } from "./ExecutionFormat";
 import "./ExecutionPresentation.css";
+import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [state, setState] = useState("");
@@ -73,10 +74,12 @@ export function OutputView({
   value,
   label = "Output",
   path,
+  copyLabel = "Copy full output",
 }: {
   value: string;
   label?: string;
   path?: string;
+  copyLabel?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const preview = boundedText(
@@ -89,7 +92,7 @@ export function OutputView({
     <section className="record-output" aria-label={label}>
       <div className="record-output-heading">
         <strong>{label}</strong>
-        <CopyButton value={value} label="Copy full output" />
+        <CopyButton value={value} label={copyLabel} />
       </div>
       <pre tabIndex={0} aria-label={`${label} text`}>
         <code>
@@ -213,6 +216,28 @@ export function EvidenceView({
     ];
   }
   const record = asRecord(value);
+  if (record && isPHPProfile(record))
+    return (
+      <div className="record-evidence">
+        {title && (
+          <h4>
+            <BoundedLabel value={title} />
+          </h4>
+        )}
+        <PHPProfileEvidence record={record} />
+        <details className="record-advanced">
+          <summary>Original workload output and report</summary>
+          <OutputView
+            value={
+              typeof record.output === "string"
+                ? record.output
+                : "No output recorded."
+            }
+          />
+        </details>
+        {advanced && <AdvancedRecord value={value} />}
+      </div>
+    );
   if (!record)
     return (
       <div className="record-evidence">
@@ -239,6 +264,13 @@ export function EvidenceView({
     (typeof record.command === "string" ? record.command : undefined);
   const exit =
     typeof record.exit_code === "number" ? record.exit_code : undefined;
+  const commandPreview = command
+    ? boundedText(
+        (args?.join(" ") || command).replace(/\s+/g, " ").trim(),
+        80,
+        4,
+      )
+    : undefined;
   const status =
     exit !== undefined
       ? exit === 0
@@ -282,7 +314,8 @@ export function EvidenceView({
           <div className="record-command-heading">
             <Terminal size={17} />
             <code>
-              <BoundedLabel value={command} limit={1000} />
+              {commandPreview?.text}
+              {commandPreview && commandPreview.omitted > 0 && "…"}
             </code>
             <span
               className={`record-outcome ${exit !== undefined ? (exit === 0 ? "passed" : "failed") : ""}`}
@@ -296,6 +329,16 @@ export function EvidenceView({
               />
             </span>
           </div>
+          {commandPreview && commandPreview.text !== command && (
+            <details className="record-advanced">
+              <summary>Full command</summary>
+              <OutputView
+                value={command}
+                label="Command"
+                copyLabel="Copy full command"
+              />
+            </details>
+          )}
           <div className="record-command-meta">
             {exit !== undefined && <span>Exit {exit}</span>}
             {typeof record.duration_ms === "number" && (

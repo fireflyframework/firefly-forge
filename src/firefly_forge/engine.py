@@ -34,6 +34,8 @@ from firefly_forge.diagnostic_recipes import (
 )
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command
+from firefly_forge.php_diagnostics import PHPProfileRequest, build_php_profile_argv, php_profile_observation
+from firefly_forge.php_diagnostics import profile_configuration as php_profile_configuration
 from firefly_forge.policies import inject_policy_snapshot, policy_commands
 from firefly_forge.process import checked as process_checked
 from firefly_forge.process import execute as process_execute
@@ -485,6 +487,9 @@ class Engine:
                 async def python_trace(request: PythonTraceRequest) -> dict[str, Any]:
                     return await self._trace_python(identifier, run, workspace, request)
 
+                async def php_profile(request: PHPProfileRequest) -> dict[str, Any]:
+                    return await self._profile_php(identifier, run, workspace, request)
+
                 async def browser_runner(path: str, width: int, height: int, theme: str) -> dict[str, Any]:
                     return cast(
                         dict[str, Any],
@@ -620,6 +625,11 @@ class Engine:
                     python_trace=python_trace
                     if self.sandbox
                     and {"execute_command", "trace_python"}.issubset(grants or ())
+                    and profile_available(run.get("sandbox_snapshot"))
+                    else None,
+                    php_profile=php_profile
+                    if self.sandbox
+                    and {"execute_command", "profile_php"}.issubset(grants or ())
                     and profile_available(run.get("sandbox_snapshot"))
                     else None,
                     browser_runner=browser_runner if self.browser and "browser_check" in (grants or ()) else None,
@@ -1402,7 +1412,7 @@ class Engine:
                 **diagnostic,
             )
         if _diagnostic_snapshot is not None:
-            raise ValueError("Python profiling cannot execute without its isolated runner")
+            raise ValueError("Isolated diagnostics cannot execute without their runner")
         if run.get("sandbox_snapshot", {}).get("mode") in {"docker", "pool"}:
             raise ValueError("The selected Docker runner is unavailable; execution cannot fall back to the host")
         return await execute(argv, directory, timeout)
@@ -1436,6 +1446,73 @@ class Engine:
             _receipt_sink=binding.update,
         )
         return profile_observation(request, source_sha256, str(config.image), result, binding)
+
+    async def _profile_php(
+        self, identifier: str, run: dict[str, Any], workspace: Path, request: PHPProfileRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.agent_roles import stage_allowed_tools
+        from firefly_forge.project_access import AccessDenied, ProjectAccess
+        from firefly_forge.workspace_tools import WorkspaceTools
+
+        request = PHPProfileRequest.model_validate(request.model_dump(mode="json"))
+        grants = stage_allowed_tools(run.get("role_snapshot") or {}, "implement", "agentic")
+        if self.sandbox is None or not {"profile_php", "execute_command"}.issubset(grants or ()):
+            raise ValueError("PHP profiling requires explicit profiling and command grants and an isolated runner")
+        config = php_profile_configuration(run.get("sandbox_snapshot"))
+        await self.assert_ownership()
+        await ProjectAccess(self.store).authorize_execution(run)
+        scope = self.component_directory(run, workspace)
+        source = await WorkspaceTools(scope, repository_root=workspace).read_file(request.script)
+        source_sha256 = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        binding: dict[str, Any] = {}
+        result = await self._project_command(
+            identifier,
+            run,
+            workspace,
+            build_php_profile_argv(request, source_sha256),
+            request.timeout,
+            "implement",
+            _diagnostic_snapshot=run["sandbox_snapshot"]["digest"],
+            _receipt_sink=binding.update,
+        )
+        observation = php_profile_observation(request, source_sha256, str(config.image), result, binding)
+        retention: dict[str, Any] = {"status": "not_retained"}
+        if observation["receipt"] is not None:
+            try:
+                entry = await self.journal.php_diagnostic(identifier, request, observation)
+                retention = {"status": "recorded", "sequence": entry["sequence"], "digest": entry["digest"]}
+            except AccessDenied:
+                raise
+            except Exception:
+                # The command already completed; failed observation retention never authorizes replay.
+                retention = {"status": "unknown"}
+        response = {**observation, "retention": retention}
+        unavailable = False
+        try:
+            await self.store.admit_credentials(response)
+        except AccessDenied:
+            raise
+        except Exception:
+            unavailable = True
+        await self.assert_ownership()
+        current_run = await self.store.get_run(identifier)
+        if (current_run.get("cancel_request") or {}).get("status") == "requested":
+            raise asyncio.CancelledError()
+        await ProjectAccess(self.store).authorize_execution(current_run)
+        try:
+            self.store.reject_credentials(response)
+        except ValueError:
+            unavailable = True
+        if unavailable:
+            return {
+                "recipe": request.recipe,
+                "observation_only": True,
+                "best_effort": True,
+                "exit_code": result.exit_code,
+                "diagnostic_unavailable": True,
+                "retention": {"status": retention["status"]},
+            }
+        return response
 
     async def _trace_python(
         self, identifier: str, run: dict[str, Any], workspace: Path, request: PythonTraceRequest

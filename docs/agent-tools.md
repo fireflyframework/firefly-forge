@@ -23,6 +23,7 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `knowledge_lookup` | Repository-scoped references and eligible local outcomes under the run's frozen learning policy. |
 | `profile_python` | Optional stdlib CPU-profile observation through the same frozen Docker command runner and retained effects. Requires both profiling and command grants. |
 | `trace_python` | Optional best-effort target Python line counts through the same isolated runner. Requires both tracing and command grants. |
+| `profile_php` | Optional PHP runtime metrics or a preinstalled Xdebug profile through the same isolated command runner. Requires both profiling and command grants. |
 
 Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phase and provider before enabling a capability. Commands, browsers, internet search and external MCP are optional configured capabilities; the initial implementation role grants the six confined source tools.
 
@@ -46,7 +47,7 @@ The script must be a non-private, relative `.py` path within the component. forg
 
 The observation returns the actual workload exit, up to 16,000 output characters, a truncation flag, source hash, image, exact command and the exact retained command/start/cleanup receipt identities. A missing optional receipt binding is explicit as `receipt: null`; it does not trigger another execution. Full runner output and effect evidence retain the existing private journal contract. A timeout, uncertain effect or failed workspace publication keeps that contract's failure or reconciliation behavior and cannot be blindly replayed. Current execution authority, cancellation and credential checks still apply.
 
-Timing values and workload text are untrusted diagnostic observations, not deterministic thresholds or QA approval. `report_marker_observed` only reports whether the expected text appeared; a workload can spoof it or exit before a report is printed. A nonzero workload exit remains nonzero, and profiling alone does not satisfy the worker's source-change or verification requirements. There is no host profiler parser, debugger port, `ptrace`, Docker socket grant or host fallback. Interactive debugging, PHP profiling and application-network orchestration require separate acceptance.
+Timing values and workload text are untrusted diagnostic observations, not deterministic thresholds or QA approval. `report_marker_observed` only reports whether the expected text appeared; a workload can spoof it or exit before a report is printed. A nonzero workload exit remains nonzero, and profiling alone does not satisfy the worker's source-change or verification requirements. There is no host profiler parser, debugger port, `ptrace`, Docker socket grant or host fallback. Interactive debugging and application-network orchestration require separate acceptance.
 
 ### Inspect which Python lines ran
 
@@ -59,6 +60,36 @@ Grant both `trace_python` and `execute_command` before creating the run. This op
 The launcher verifies the confined target's source hash, compiles it once and counts line events from that compiled target and its nested code. Imported modules and separately compiled code are excluded. It retains at most `max_rows` distinct lines (1–100), sorts those retained lines by number and sets `rows_truncated` if others were observed. Counts saturate at the signed 64-bit maximum. The report contains line numbers and hit counts, with no source text, local variables or report files.
 
 The returned observation has `best_effort: true` and the same bounded output, actual exit and exact execution receipt fields as profiling. Counts are untrusted diagnostics, **not complete coverage, a complete execution snapshot or QA approval**: the workload can disable tracing, alter the report or terminate before it is emitted. A missing marker does not trigger another execution. Nonzero exits, timeout, output limits, cancellation and unknown effects preserve the command runner's existing outcome and reconciliation rules. There is no debugger port, attachment or host fallback.
+
+## Observe a PHP or larafly workload
+
+Grant both `profile_php` and `execute_command` before admitting the run. Choose a digest-pinned Docker image, archive workspace transfer and network `none`, without a pool binding. Readiness confirms that boundary is configured; it does not prove that PHP, Xdebug or the application's dependencies are available. The default six source grants remain unchanged.
+
+For [larafly](https://fireflyframework.org/frameworks/php/) and other PHP applications, prepare PHP and the normal application bootstrap first. An existing `vendor/autoload.php` and its Composer dependencies must already be available in the image or admitted regular workspace files within its archive budget. Profiling never runs Composer, downloads dependencies or enables a network. An `artisan` entrypoint is supported, but a small PHP or framework-module fixture does not establish that a complete Laravel application bootstraps successfully.
+
+Choose one of two recipes explicitly:
+
+```json
+{"request":{"recipe":"forge-php-runtime-v1","script":"artisan","args":["list"],"timeout":30}}
+```
+
+The runtime recipe uses PHP's `hrtime`, `getrusage` and `memory_get_peak_usage(true)`. Its summary reports wall time in nanoseconds, user and system CPU time in microseconds, and peak allocated memory in bytes. The shutdown collector covers the entrypoint through its first collector callback; the separate process wall time also includes process startup and shutdown. These are best-effort observations, not benchmark thresholds, coverage or evidence of a speedup.
+
+```json
+{"request":{"recipe":"forge-php-xdebug-v1","script":"scripts/measure.php","args":[],"rows":20,"timeout":30}}
+```
+
+The Xdebug recipe requires an image that already has Xdebug and PHP's POSIX file-limit functions. Missing prerequisites refuse execution **before the application starts**, without installing an extension or falling back to another recipe. Xdebug runs only in `profile` mode, with profiling enabled at request start and compression disabled. It writes a private Cachegrind file that is parsed after the child process exits; debugger connections and inherited Xdebug triggers are disabled. See the [official Xdebug profiler settings](https://xdebug.org/docs/profiler).
+
+The child applies an 8 MiB hard per-file limit before application code runs. This also limits files the application writes during that diagnostic invocation. The bounded parser accepts `Time_(10ns)` and `Memory_(bytes)` costs, resolves at most 4,096 file and function references, and returns up to `rows` functions ordered by self time. Call-edge costs are not added to self time. An unsupported or incomplete profile is reported as incomplete, never as a successful call graph. Actual Xdebug call-graph operation requires separate qualification with that extension present.
+
+Both recipes accept a confined non-private `.php` file or an entrypoint named `artisan`, with at most 1,000,000 source bytes. The parent and the child's private prepend recheck its SHA256 and refuse symbolic or hard links. The child invokes the real file with explicit PHP file and argument boundaries, preserving normal `__FILE__`, `__DIR__`, includes, bootstrap, `argv`, `argc` and `$_SERVER` behavior. The application is not evaluated or copied to a replacement entrypoint. The child uses the image's standard CLI ini configuration with recipe overrides; inherited `PHPRC` and `PHP_INI_SCAN_DIR` paths are cleared. Required extensions must be available in that standard configuration. Inherited prepend/append hooks are replaced by the diagnostic collector, and runtime-only profiling explicitly disables Xdebug.
+
+Arguments are limited to sixteen bounded strings, rows to 1–100 and time to 1–120 seconds, subject to the run's stricter frozen limits. Each call consumes a command slot. The supervising process bounds forwarded application output to 1,000,000 bytes; the runner can enforce a smaller limit. The returned observation retains at most 16,000 characters plus truncation and marker flags, source hash, frozen image, exact command and optional exact start/cleanup receipt identities. Inspect the native tool result and Plan → Execution journal in Studio for the metric summary, workload outcome and execution receipts; the original command and output remain available in the collapsed raw details. `receipt: null` never authorizes another execution.
+
+After the original command and cleanup complete, forge can retain a `diagnostic_observation` bound to their exact immutable intents and receipts. Read it through the existing run journal API or reload the run's Plan view in Studio. The tool returns a separate `retention` status: `recorded` includes the journal sequence and digest, `unknown` means the save could not be confirmed, and `not_retained` means the command binding was unavailable. A retention failure preserves the known command exit and never authorizes replay. If current credential admission refuses the result, `diagnostic_unavailable: true` preserves that exit without returning the diagnostic text or command details. A complete report does not mean the workload succeeded.
+
+A missing interpreter or extension is a prerequisite refusal. A workload that exits with 7 or a PHP fatal error keeps that outcome. Report-writing or parser failures cannot replace a known workload exit; they produce incomplete diagnostics. A deadline, signal or cap that prevents observing the application's exit leaves `workload_exit_code: null` and cannot establish success. Temporary collectors and reports are removed only after the direct child has stopped; the normal isolated-runner cleanup and reconciliation rules still apply. Current actor, role, cancellation and credential checks remain in force. A report is untrusted text, including any apparent marker or metrics, and never substitutes for source changes, executable verification or QA approval.
 
 ## Configure real browser checks
 

@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.16
+
+Campaign operators can save immutable reporting plans with ordered waves, named milestones and explicit conditions against the admitted component graph. A progress read compares one selected plan with one exact saved report, retaining current run/task attempts and their receipts. Unknown evidence remains unknown. Plans declare `criteria_binding: reporting_only_post_admission` and `enforced_at_admission: false`; they organize retained evidence after admission. Execution-wave orchestration and Studio plan editing remain separate work. The SDK, CLI and factory MCP expose save, history, exact read and progress through the authenticated API. See [reporting milestones and waves](project-campaigns.md#define-reporting-milestones-and-waves).
+
+The optional `profile_php` tool measures a PHP or [larafly](https://fireflyframework.org/frameworks/php/) workload inside the frozen, network-isolated Docker runner. It requires explicit profiling and command grants, rechecks the selected source bytes and retains exact execution and cleanup references. The runtime recipe reports wall time, user/system CPU and peak PHP memory. A separate Xdebug recipe requires its extension and POSIX file-limit support to be present before execution; missing prerequisites refuse the workload. Neither recipe installs a runtime or application dependencies. See [PHP profiling](agent-tools.md#observe-a-php-or-larafly-workload).
+
+Activity and WAL views show PHP metrics with their units, the workload exit and the diagnostic report's completion state. Original output and command details remain available in disclosures. The optional Xdebug table shows bounded exclusive function costs, with keyboard scrolling on narrow screens. Diagnostics remain project-reported observations and do not establish delivery acceptance. A complete Laravel application still needs its normal bootstrap and dependencies; framework-module profiling alone does not prove that application starts.
+
+The full development gate now checks for an existing PHP 8.3+ CLI before executing PHP recipe fixtures. `FORGE_TEST_PHP_FIXTURE` selects an executable, including paths containing spaces or literal dollar signs. The prerequisite check never installs PHP or Xdebug. Follow the [development gate](installation.md#run-the-development-gate).
+
 ## 0.2.15
 
 An authorized product operator can save a selected campaign report and read its exact result later. The immutable receipt retains the report, source boundary, historical repository scope and original actor. Saving requires the displayed report digest and a caller-retained request identity. Reusing that identity reads its original outcome; a lost response, missing receipt or conflict does not authorize another request. Later campaign changes leave the saved report intact. See [saved report history](project-campaigns.md#save-an-exact-report).

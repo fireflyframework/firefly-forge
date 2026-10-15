@@ -5,7 +5,7 @@ description: Install firefly forge and initialize its managed local knowledge st
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Install and start firefly forge
 
-For a fresh managed installation, use Docker Compose, Git and a configured Keycloak identity provider. The stack includes the factory database and Flycanon dependencies. Source development on the host also needs Python 3.13+, [uv](https://docs.astral.sh/uv/), a dedicated PostgreSQL database and Node.js 22.12+ for Studio. Use macOS or Linux; worker cancellation uses POSIX process groups.
+For a fresh managed installation, use Docker Compose, Git and a configured Keycloak identity provider. The stack includes the factory database and Flycanon dependencies. Source development on the host also needs Python 3.13+, [uv](https://docs.astral.sh/uv/), a dedicated PostgreSQL database and Node.js 22.12+ for Studio. The full development test gate also requires an existing PHP 8.3+ CLI for its explicit recipe fixtures; it does not require Xdebug. Use macOS or Linux; worker cancellation uses POSIX process groups.
 
 Choose the managed stack below or the [source-development path](#source-development). Install the product toolchains in the selected execution environment: Python for [pyfly](https://fireflyframework.org/frameworks/python/), PHP 8.3+ and Composer for [larafly](https://fireflyframework.org/frameworks/php/), and Node.js for browser products.
 
@@ -130,6 +130,8 @@ uv run forge doctor
 This command checks the environment where it runs. A host CLI check does not establish that the container has the same tools or subscription login. It does not probe Flycanon. Use the managed knowledge initialization result, the Knowledge authentication test and a scoped search with real citations to check that dependency. A provider login, an available embedding model and an actual coding response have separate readiness evidence.
 
 ## Run the development gate
+
+Run `make php-fixture-check` to check the existing PHP interpreter before the full gate. Set `FORGE_TEST_PHP_FIXTURE` to an executable path if it is not named `php` on your `PATH`. The check never installs a runtime or extension; fixture subprocesses are not a product host fallback. Missing-Xdebug refusal is tested separately against an explicitly prepared isolated image.
 
 Use an explicitly isolated PostgreSQL test database. Set `FORGE_TEST_DATABASE_URL` to its async connection URL. Tests create uniquely named schemas and remove those test schemas during cleanup; they fail when the test database is not configured.
 

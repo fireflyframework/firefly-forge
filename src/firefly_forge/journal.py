@@ -286,12 +286,201 @@ class Journal:
             return result
 
     async def entries(self, run_id: str) -> list[Data]:
+        from pyfly.data.transaction import Propagation, TransactionTemplate, current_unit_of_work
+
+        from firefly_forge.project_access import CURRENT_PRINCIPAL
+
+        reader = CURRENT_PRINCIPAL.get()
         async with self.store._unit():
-            await self.store.get_run(run_id)
-            return [
+            unit = current_unit_of_work()
+            assert unit is not None
+            manager = unit.manager
+            run = await self.store.get_run(run_id)
+            entries = [
                 {**copy.deepcopy(entry.data), "digest": entry.digest}
                 for entry in await self.records.find_for_run(identifier(run_id))
             ]
+            diagnostics = [entry["payload"] for entry in entries if entry["kind"] == "diagnostic_observation"]
+            if diagnostics:
+                await self._diagnostic_reader(run, reader)
+        if not diagnostics:
+            return entries
+        # Internal consumers can own a unit; suspend its binding without committing it or releasing its locks.
+        async with TransactionTemplate(manager, propagation=Propagation.NOT_SUPPORTED).transaction():
+            await self.store.admit_credentials(diagnostics)
+            async with self.store._unit():
+                await self._diagnostic_reader(await self.store.get_run(run_id), reader)
+                self.store.reject_credentials(diagnostics)
+        return entries
+
+    async def _diagnostic_reader(self, run: Data, reader: Any) -> None:
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+        principal = CURRENT_PRINCIPAL.get()
+        if principal != reader:
+            raise AccessDenied("Diagnostic reader changed during credential admission")
+        if principal is not None:
+            access = ProjectAccess(self.store)
+            if run.get("project_id"):
+                await access.require_project(principal, run["project_id"], "read")
+            else:
+                await access.require_repository(principal, run["repository_id"], "read")
+
+    async def php_diagnostic(self, run_id: str, request: Any, observation: Data) -> Data:
+        from firefly_forge.php_diagnostics import PHPProfileObservation, PHPProfileRequest
+        from firefly_forge.project_access import ProjectAccess
+
+        request = PHPProfileRequest.model_validate(request.model_dump(mode="json"))
+        observation = PHPProfileObservation.model_validate(observation, strict=True).model_dump(mode="json")
+        if len(json.dumps(observation, ensure_ascii=False).encode()) > 131_072:
+            raise ValueError("PHP diagnostic observation exceeds 128 KiB")
+        await self.store.assert_ownership()
+        async with self.store._unit():
+            run = await self.store.get_run(run_id)
+            await ProjectAccess(self.store).authorize_execution(run)
+            if (run.get("cancel_request") or {}).get("status") == "requested":
+                raise ValueError("Cancelled runs cannot retain a new diagnostic observation")
+        await self.store.admit_credentials(observation)
+        await self.store.assert_ownership()
+        async with self.store._unit():
+            run_row = await self._run(run_id)
+            await self._diagnostic_writer_fence(run_row.data)
+            await ProjectAccess(self.store).authorize_execution(run_row.data)
+            if (run_row.data.get("cancel_request") or {}).get("status") == "requested":
+                raise ValueError("Cancelled runs cannot retain a new diagnostic observation")
+            self.store.reject_credentials(observation)
+            execution_id = await self._php_diagnostic_binding(run_id, run_row.data, request, observation)
+            key = execution_id + ":php_profile"
+            existing = next(
+                (
+                    entry
+                    for entry in await self.records.find_for_run(run_row.id)
+                    if entry.kind == "diagnostic_observation" and entry.idempotency_key == key
+                ),
+                None,
+            )
+            self.store.reject_credentials(observation)
+            if existing is not None:
+                if existing.task_id != "implement" or existing.data["payload"] != observation:
+                    raise ValueError("Retained PHP diagnostic payload changed")
+                return {**copy.deepcopy(existing.data), "digest": existing.digest}
+            entry = await self._append(run_id, "implement", key, "diagnostic_observation", observation)
+            self.store.reject_credentials(observation)
+            return entry
+
+    async def _diagnostic_writer_fence(self, run: Data) -> None:
+        from sqlalchemy import text
+
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+
+        actor = run.get("execution_actor")
+        if actor is None:
+            return
+        async with self.store._unit() as session:
+            if run.get("project_id"):
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": self.store.schema + ":members:" + run["project_id"]},
+                )
+            await ForgeIdentityUserRepository().find_by_id(
+                identifier(actor["user_id"]), lock=LockMode.PESSIMISTIC_WRITE
+            )
+
+    async def _php_diagnostic_binding(self, run_id: str, run: Data, request: Any, observation: Data) -> str:
+        from firefly_forge.agent_roles import stage_allowed_tools
+        from firefly_forge.php_diagnostics import build_php_profile_argv, php_profile_observation, profile_configuration
+        from firefly_forge.process import ProcessResult
+
+        receipt = observation["receipt"]
+        if receipt is None:
+            raise ValueError("PHP diagnostic requires retained command receipts")
+        execution_id = str(receipt["execution_id"])
+        row = await self.sandboxes.find_by_id(identifier(execution_id))
+        task = await self._task(run_id, "implement")
+        config = profile_configuration(run.get("sandbox_snapshot"))
+        grants = stage_allowed_tools(run.get("role_snapshot") or {}, "implement", "agentic")
+        if not {"profile_php", "execute_command"}.issubset(grants or ()):
+            raise ValueError("PHP diagnostic grants are no longer admitted")
+        if (
+            row is None
+            or row.run_id != identifier(run_id)
+            or row.task_id != "implement"
+            or row.parent_attempt != task.attempt
+            or row.status != "removed"
+        ):
+            raise ValueError("PHP diagnostic command does not belong to the current completed stage")
+        retained = row.data["request"]
+        command = retained["request"]
+        effects = row.data["effects"]
+        start = effects.get("start", {})
+        cleanup = effects.get("cleanup", {})
+        if (
+            start.get("status") != "done"
+            or cleanup.get("status") != "done"
+            or cleanup.get("evidence", {}).get("container_absent") is not True
+            or "exit_code" not in start.get("evidence", {})
+            or start["evidence"].get("outcome") == "interrupted"
+            or start["evidence"].get("workspace_import") == "requires_reconciliation"
+        ):
+            raise ValueError("PHP diagnostic requires completed start and cleanup receipts")
+        expected_binding = {
+            "execution_id": execution_id,
+            "request_digest": retained["request_digest"],
+            "snapshot_digest": retained["snapshot_digest"],
+            "workspace_digest": command.get("workspace_digest"),
+            "start_key": execution_id + ":start",
+            "cleanup_key": execution_id + ":cleanup",
+        }
+        if (
+            receipt != expected_binding
+            or retained["request_digest"] != digest(command)
+            or retained["snapshot_digest"] != run["sandbox_snapshot"]["digest"]
+            or command["configuration"] != run["sandbox_snapshot"]["configuration"]
+            or command["argv"] != build_php_profile_argv(request, observation["source_sha256"])
+        ):
+            raise ValueError("PHP diagnostic request differs from its frozen command")
+        evidence = start["evidence"]
+        expected = php_profile_observation(
+            request,
+            observation["source_sha256"],
+            str(config.image),
+            ProcessResult(command["argv"], evidence["exit_code"], evidence["output"]),
+            expected_binding,
+        )
+        if observation != expected:
+            raise ValueError("PHP diagnostic observation differs from its retained command result")
+        records = await self.records.find_for_run(identifier(run_id))
+        if not self.verify_chain([{**copy.deepcopy(entry.data), "digest": entry.digest} for entry in records]):
+            raise ValueError("PHP diagnostic requires an intact command journal")
+        for effect in ("create", "start", "cleanup"):
+            if not any(
+                entry.kind == "sandbox_intent"
+                and entry.task_id == "implement"
+                and entry.idempotency_key == execution_id + ":" + effect
+                and entry.data["payload"] == {"execution_id": execution_id, "effect": effect, "request": retained}
+                for entry in records
+            ):
+                raise ValueError("PHP diagnostic request differs from its immutable command intent")
+        for effect in ("start", "cleanup"):
+            journal_evidence = copy.deepcopy(effects[effect]["evidence"])
+            if isinstance(journal_evidence.get("output"), str):
+                output = journal_evidence.pop("output")
+                journal_evidence.update(
+                    output_sha256=hashlib.sha256(output.encode()).hexdigest(),
+                    output_bytes=len(output.encode()),
+                    output_excerpt=output[:2000],
+                )
+            if not any(
+                entry.kind in {"sandbox_receipt", "sandbox_reconcile"}
+                and entry.task_id == "implement"
+                and entry.idempotency_key == receipt[effect + "_key"]
+                and entry.data["payload"].get("execution_id") == execution_id
+                and entry.data["payload"].get("effect") == effect
+                and entry.data["payload"].get("evidence") == journal_evidence
+                for entry in records
+            ):
+                raise ValueError("PHP diagnostic requires its exact journal command receipts")
+        return execution_id
 
     @staticmethod
     def verify_chain(entries: list[Data]) -> bool:

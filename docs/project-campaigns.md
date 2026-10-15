@@ -40,7 +40,7 @@ In **Product projects**, select a product and choose **Load campaigns**. Select 
 
 The report separates the server's evidence state from recorded workflow status. Its compact summary counts components; select one component to inspect its tasks, executable check receipts, recorded source and checkpoint references, prior attempts and journal references. Lists show at most 20 items per page. An unavailable snapshot has unknown counts, rather than reporting zero components or verified completion.
 
-The live report displays its server digest. Studio verifies the canonical report digest before offering **Save this report**, and checks the complete saved receipt when reading history. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
+The live report displays its server digest. Studio verifies the canonical report digest before offering **Save this report**, and checks the complete saved receipt when reading history. SCM freshness remains **not observed**. The original report format does not represent milestone or wave plans; its `not_configured` fields do not describe the separate reporting-plan API below. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
 
 The guide below uses controlled API fixtures: the product overview, campaign and component show the same successful recorded state with verified evidence. These screenshots illustrate reading a report; they do not establish live campaign execution or external SCM activity.
 
@@ -197,4 +197,61 @@ The list route is `GET .../report-archives?after=0`; exact readback is `GET .../
 
 The write commits one immutable receipt atomically. Reusing the same ID, actor and selected digest returns that exact receipt; changing its binding refuses. Concurrent different requests can prepare the same next sequence: only one is admitted and the other receives an explicit history-advanced conflict with no insert. Keep the original request identity. A lost response, timeout, cancellation, 404 or conflict text does not prove that an earlier write cannot still commit, and does not authorize automatic resubmission or a new ID. A late loss of execute permission can also refuse the POST response after its receipt has committed; an authorized reader can still read that exact receipt. Read the exact receipt first. Saving a report records evidence; it does not approve delivery or configure milestones, waves or live SCM observation.
 
-The report follows the campaign's frozen component graph. The current project model has no milestone or wave configuration, so both are reported as `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Milestone definitions, wave grouping and reports across campaigns remain separate work.
+The report follows the campaign's frozen component graph. Its original format represents neither the separate reporting plans below nor execution-wave orchestration, so its milestone and wave fields remain `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Project planning before admission, execution-wave orchestration, reports across campaigns and Studio planning controls remain separate work.
+
+## Define reporting milestones and waves
+
+After a campaign has been admitted, operators can save explicit reporting criteria for its frozen component graph. These plans organize saved evidence; they do not change execution, launch waves or establish that the criteria governed earlier QA. Every receipt and progress response declares `criteria_binding: reporting_only_post_admission` and `enforced_at_admission: false`.
+
+Choose named waves in order, assigning each selected component exactly once. A dependency must be in the same wave or an earlier one. Give each wave at least one milestone. A milestone can require a verified component (`component_verified`) or an exact current task receipt (`task_receipted`, with `prepare`, `implement`, `verify`, `checkpoint` or `review`). The phase must exist in the frozen admission: a test-only run cannot require implementation, and a run without independent review cannot require a review receipt.
+
+Optional feature IDs, exact journey strings and one-based `acceptance-N` references must resolve against the product definition frozen in the campaign admission. Editing the current product does not rewrite those references. A task attempt and a component retry attempt are different counters. A valid current prepare receipt can satisfy its condition even if a later publication effect is unknown; the component and wave remain unknown until their required evidence is established.
+
+The authenticated API uses `/api/v1/projects/{project_id}/campaigns/{campaign_id}/delivery-plan-revisions`:
+
+| Action | Method and suffix | Result |
+| --- | --- | --- |
+| Save a revision | `POST` | Immutable plan receipt with the caller's request ID, actor, source cut and prior digest. |
+| List revisions | `GET` | Bounded metadata for the immutable revision chain. |
+| Read an exact revision | `GET /{request_id}` | Original receipt, subject to current read authority and credential admission. |
+| Read progress | `GET /{request_id}/progress?report_request_id={archive_request_id}` | Deterministic evaluation against one explicitly selected saved report. |
+
+Saving requires current project execute permission and access to every repository in the captured campaign and plan history. Reads require current project and historical repository read access. A save uses `expected_campaign_request_digest` and `expected_project_digest` from the frozen campaign, plus `expected_previous_digest` (`null` for the first revision). Keep the same `request_id` and body after an uncertain response, then read that exact identity. Reusing it with another actor or input is refused. Concurrent different requests can produce an explicit revision conflict; the server does not retry them automatically.
+
+A permission loss can refuse a POST's return after its immutable insert committed. A transport error or permission error therefore does not prove that no plan was saved. Preserve the request identity and use an authorized exact read. `prepared_at` is database time when the receipt was prepared, before final admission; it is neither source freshness nor the insertion instant.
+
+<div class="forge-flow" role="region" aria-label="Campaign reporting plan and progress diagram" aria-describedby="delivery-plan-flow-guide" tabindex="0" markdown="1">
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
+---
+flowchart LR
+  subgraph SelectPhase["1. Select reporting scope"]
+    direction TB
+    A[Frozen campaign and product] --> B[Explicit reporting plan]
+  end
+  subgraph SavePhase["2. Save a revision"]
+    direction TB
+    C[Current access and credentials] --> D[Prior digest and quota]
+    D --> E[Immutable plan receipt]
+  end
+  subgraph ReadPhase["3. Read evidence progress"]
+    direction TB
+    F[Select an exact saved report] --> G[Evaluate reporting criteria]
+  end
+  SelectPhase --> SavePhase --> ReadPhase
+```
+</div>
+<p class="forge-flow-caption" id="delivery-plan-flow-guide">Read the phases from left to right and the steps within each phase from top to bottom. After a lost response, keep the original request ID and read its exact plan receipt. A missing receipt leaves the outcome unknown; it does not authorize another save. On a narrow screen, focus the diagram and use the arrow keys to scroll across the phases.</p>
+
+Progress never creates a report archive or starts work. A milestone is satisfied only by all its conditions. A wave also requires every assigned component to be verified; a later completed wave remains `dependency_blocked` while an earlier wave is unsatisfied. Unknown evidence remains unknown. Progress includes counts, exact run/task attempts and retained receipt references, without estimated percentages or a live SCM claim. Repeating it for the same immutable plan and report returns the same digest.
+
+Use `ForgeClient.save_campaign_delivery_plan`, `campaign_delivery_plans`, `campaign_delivery_plan` and `campaign_delivery_progress`, or the corresponding `forge campaign plan-save`, `plan-list`, `plan-get` and `plan-progress --report-request-id` commands. `plan-save` reads a JSON document containing the stable request ID and explicit criteria. MCP exposes `save_project_campaign_delivery_plan`, `list_project_campaign_delivery_plans`, `get_project_campaign_delivery_plan` and `get_project_campaign_delivery_progress` through the same authenticated API.
+
+Limits are 20 waves, 20 milestones, 200 total conditions and 50 immutable revisions per campaign. Each receipt with its summary and the bounded summary history must fit 1 MiB. Selected plan and report bodies with their summaries, and the resulting progress, must fit the 16 MiB aggregate bound before materialization. Existing report row and time limits still apply; an unavailable or integrity-limited report cannot establish a plan's source. A coherent report with unknown component evidence can be selected without inventing completion.
+
+This API does not yet configure project or product plans before campaign launch, orchestrate execution waves, or add a Studio planning flow. Those remain separate delivery requirements. The original campaign report and its digest remain unchanged; use this separate progress response for explicit reporting criteria.
