@@ -7,7 +7,10 @@ const { test, expect } = createRequire(
 )("@playwright/test");
 
 const flows = [
-  { path: "as-is-handoff/", phases: ["InspectPhase", "DefinePhase"] },
+  {
+    path: "as-is-handoff/",
+    nodes: ["Source", "Review", "Context", "Proposal", "Confirm"],
+  },
   {
     path: "product-lifecycle/",
     phases: ["ChangePhase", "ReviewPhase", "BuildPhase"],
@@ -39,12 +42,26 @@ for (const flow of flows) {
         await expect
           .poll(async () => {
             [diagram] = await renderedDiagrams(page);
-            return diagram?.phases.length;
+            return flow.phases
+              ? diagram?.phases.length
+              : diagram?.nodes.filter((node) =>
+                  flow.nodes.some(
+                    (id) =>
+                      node.source === id || node.id.includes("-" + id + "-"),
+                  ),
+                ).length;
           })
-          .toBe(flow.phases.length);
-        const phases = flow.phases.map((id) =>
-          diagram.phases.find((phase) => phase.id.endsWith("-" + id)),
-        );
+          .toBe((flow.phases ?? flow.nodes).length);
+        const phases = flow.phases
+          ? flow.phases.map((id) =>
+              diagram.phases.find((phase) => phase.id.endsWith("-" + id)),
+            )
+          : flow.nodes.map((id) =>
+              diagram.nodes.find(
+                (node) =>
+                  node.source === id || node.id.includes("-" + id + "-"),
+              ),
+            );
         expect(phases.every(Boolean)).toBe(true);
         for (let index = 1; index < phases.length; index++) {
           expect(phases[index].left).toBeGreaterThan(phases[index - 1].right);

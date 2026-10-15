@@ -222,6 +222,9 @@
   min-width: 720px;
   text-align: center;
 }
+.md-typeset .forge-flow--dependencies .mermaid {
+  min-width: 900px;
+}
 .md-typeset .forge-flow-caption {
   color: var(--md-default-fg-color--light);
   font-size: 14px;
