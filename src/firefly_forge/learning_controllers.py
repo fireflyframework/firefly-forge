@@ -9,7 +9,11 @@ from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, req
 
 from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_configuration import configure_learning, learning_snapshot
-from firefly_forge.learning_models import LearningInvalidationReceipt, LearningPolicy
+from firefly_forge.learning_models import (
+    LearningInvalidationReceipt,
+    LearningPolicy,
+    LearningProjectionObservationReceipt,
+)
 from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.store import Store
 
@@ -56,6 +60,14 @@ class LearningController:
     @get_mapping("/learning/records/{id}/projection")
     async def projection_status(self, id: PathVar[str]) -> dict[str, Any]:
         return await self.projection.status(id)
+
+    @get_mapping("/learning/records/{id}/projection/observations/{request_id}")
+    async def observation_receipt(
+        self, id: PathVar[str], request_id: PathVar[str]
+    ) -> LearningProjectionObservationReceipt:
+        return LearningProjectionObservationReceipt.model_validate(
+            await self.projection.observation_receipt(id, request_id)
+        )
 
     @post_mapping("/learning/records/{id}/projection/submit")
     async def submit(self, id: PathVar[str], body: Body[LearningAction]) -> dict[str, Any]:
