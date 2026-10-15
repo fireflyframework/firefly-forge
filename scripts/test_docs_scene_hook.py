@@ -60,6 +60,9 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/campaign-report-fixture.ts": "fixture campaign report",
                 "studio/tests/campaign-report-history-fixture.ts": "fixture history routes",
                 "studio/tests/campaign-report-archive-fixture.json": "fixture archive data",
+                "studio/tests/campaign-delivery-plan-fixture.ts": "fixture operator guide input",
+                "studio/tests/campaign-delivery-browser-fixture.ts": "fixture operator guide input",
+                "studio/tests/worker-dialogue-contract-fixture.json": "fixture operator guide input",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -94,6 +97,9 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/campaign-report-fixture.ts",
                     "studio/tests/campaign-report-history-fixture.ts",
                     "studio/tests/campaign-report-archive-fixture.json",
+                    "studio/tests/campaign-delivery-plan-fixture.ts",
+                    "studio/tests/campaign-delivery-browser-fixture.ts",
+                    "studio/tests/worker-dialogue-contract-fixture.json",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -137,6 +143,9 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/walkthrough-capture.ts", "capture helper"),
                 ("studio/tests/learning-record-fixture.ts", "capture helper"),
                 ("studio/tests/campaign-report-fixture.ts", "capture helper"),
+                ("studio/tests/campaign-delivery-plan-fixture.ts", "capture helper"),
+                ("studio/tests/campaign-delivery-browser-fixture.ts", "capture helper"),
+                ("studio/tests/worker-dialogue-contract-fixture.json", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/playwright.docs.config.ts", "capture config"),
             ]:
@@ -295,6 +304,13 @@ class WalkthroughTests(unittest.TestCase):
             history_fixture.write_text("fixture history routes")
             archive_fixture = root / "studio/tests/campaign-report-archive-fixture.json"
             archive_fixture.write_text("fixture archive data")
+            operator_inputs = [
+                "studio/tests/campaign-delivery-plan-fixture.ts",
+                "studio/tests/campaign-delivery-browser-fixture.ts",
+                "studio/tests/worker-dialogue-contract-fixture.json",
+            ]
+            for name in operator_inputs:
+                (root / name).write_text("fixture operator guide input")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")
             capture_config = root / "studio/playwright.docs.config.ts"
@@ -324,6 +340,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/campaign-report-fixture.ts": sha(campaign_fixture),
                     "studio/tests/campaign-report-history-fixture.ts": sha(history_fixture),
                     "studio/tests/campaign-report-archive-fixture.json": sha(archive_fixture),
+                    **{name: sha(root / name) for name in operator_inputs},
                 },
                 "capture_config": {"path": "studio/playwright.docs.config.ts", "sha256": sha(capture_config)},
                 "captures": {
