@@ -157,6 +157,20 @@ class ForgeRunnerInvocationRepository(Repository[ForgeRunnerInvocationEntity, UU
 
 @repository
 class ForgeRunnerEventRepository(Repository[ForgeRunnerEventEntity, UUID]):
+    async def continued_invocations(self, invocation_ids: list[UUID]) -> set[UUID]:
+        if not invocation_ids:
+            return set()
+        return set(
+            await self._require_session().scalars(
+                select(ForgeRunnerEventEntity.invocation_id)
+                .where(
+                    ForgeRunnerEventEntity.invocation_id.in_(invocation_ids),
+                    ForgeRunnerEventEntity.data["kind"].astext == "explicit_continuation",
+                )
+                .distinct()
+            )
+        )
+
     async def events(self, invocation_id: UUID) -> list[ForgeRunnerEventEntity]:
         return list(
             await self._require_session().scalars(
