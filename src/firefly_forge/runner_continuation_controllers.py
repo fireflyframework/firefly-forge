@@ -19,6 +19,10 @@ class RunnerContinuationController:
     async def request(self, run_id: PathVar[str], body: Body[RunnerContinuationInput]) -> dict[str, Any]:
         return await self.continuations.request(run_id, body)
 
+    @get_mapping("/candidates")
+    async def candidates(self, run_id: PathVar[str]) -> dict[str, Any]:
+        return await self.continuations.candidates(run_id)
+
     @get_mapping("/{request_id}")
     async def get(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self.continuations.get(run_id, request_id)
