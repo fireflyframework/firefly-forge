@@ -790,6 +790,7 @@ export default function App() {
           )}
           {page === "projects" && (
             <Projects
+              session={identity.session}
               connection={connection}
               connected={connected}
               repositories={repositories}

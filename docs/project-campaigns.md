@@ -34,6 +34,14 @@ All admissions commit in one PostgreSQL transaction. The factory freezes the com
 
 Source-control application identity is retained separately. Repository grants are checked afresh for each action, expiring credentials refresh, and revoked access is honored. A campaign does not freeze source-control permissions.
 
+## Read a report in Studio
+
+In **Product projects**, select a product and choose **Load campaigns**. Select an existing campaign, then choose **View report**. Both actions read retained records; they do not launch, resume or retry work. The server checks current project and repository read permissions.
+
+The report separates the server's evidence state from recorded workflow status. Its compact summary counts components; select one component to inspect its tasks, executable check receipts, recorded source and checkpoint references, prior attempts and journal references. Lists show at most 20 items per page. An unavailable snapshot has unknown counts, rather than reporting zero components or verified completion.
+
+The digest is displayed as a server reference; Studio does not independently verify it. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
+
 ## Understand the dependency gate
 
 The default `verified` gate requires an upstream run to succeed with nonempty passing executable checks, matching source/checkpoint receipts, and an approved matching independent-review receipt when review was requested. A successful status alone is insufficient.
