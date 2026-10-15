@@ -9,6 +9,8 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 Knowledge invalidation retains an exact receipt with its original actor, reason, request and journal event. SDK, CLI and the factory MCP can read that receipt under current project review authority. A missing receipt means the operation has not been observed; it does not permit replay. Legacy records without actor evidence remain explicitly unknown. See [learning invalidation](learning.md).
 
+Studio adds a reason-and-review flow for invalidating saved evidence, with its original request retained in the current tab before submission. A response, record refresh or missing receipt cannot clear an uncertain decision or authorize replay. The exact receipt must match the original context and actor. Confirmation stays available when the active filter excludes the updated record, with an explicit close action. Follow the [illustrated learning journey](learning.md#invalidate-saved-evidence).
+
 The optional `profile_python` agent tool runs bounded stdlib cProfile in an admitted, network-isolated Docker workspace. It requires both command and profiling grants, verifies the selected Python source bytes inside the container and returns a bounded report with execution and cleanup receipts. Profiling does not approve the code, retry an uncertain execution or enable host/pool fallback. See [agent tools](agent-tools.md) and [tool prerequisites](tooling-prerequisites.md).
 
 ## 0.2.8

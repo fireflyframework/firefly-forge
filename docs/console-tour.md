@@ -6,7 +6,7 @@ description: Follow a product definition and execution through the forge console
 
 # Follow a change through Studio
 
-Follow an inventory API change from connection and product definition through run review, verification and recovery. This case ends with a failed check and an unresolved intent.
+Follow an inventory API change from connection and product definition through run review, verification and recovery. The run case ends with a failed check and an unresolved intent. A separate learning example reviews an invalidation and reads its exact receipt.
 
 Screenshots use controlled fixtures.[^captures] Select an image to open its full capture; light and dark variants follow the page appearance.
 
@@ -436,6 +436,19 @@ Inspect the actual workspace or external service for the unresolved effect, then
 </details>
 
 Follow [recovery and handoff](recovery.md) for the accepted state and request contract. Review the exact diff and passing checks before [publication or deployment](deployment.md). Verified memory is written only after final verification; this failed fixture cannot establish a successful memory write.
+
+## 6. Review saved evidence and its decision
+
+Open **Knowledge > Learning records** and inspect a record in its current scope. A saved verified state does not establish current reuse eligibility. When its evidence no longer applies, a current reviewer can enter a reason, inspect the scoped decision and explicitly confirm invalidation.
+
+<figure class="forge-shot" markdown="1">
+
+![Review a saved evidence invalidation](assets/screenshots/learning-invalidation-review-desktop-light.png)
+
+<figcaption>The separate learning fixture reviews one decision. Its original request identity is retained before the browser sends the intercepted write.</figcaption>
+</figure>
+
+If the response is lost, use **Check original request**. A missing event retains uncertainty; it cannot authorize another write. The [illustrated learning guide](learning.md#invalidate-saved-evidence) follows the same request from reason and review through an initial 404 and a later matching receipt, including filter retention and the phone layout. These are controlled fixtures with no external service writes.
 
 ## Keep captures current
 
