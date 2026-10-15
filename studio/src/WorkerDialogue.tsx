@@ -23,6 +23,7 @@ import {
   readReplyMarkers,
   replyMarkerBinding,
   retainReplyMarker,
+  workerAttributionSummary,
   workerReply,
   workerThreads,
   type ReplyContext,
@@ -84,6 +85,7 @@ export function WorkerDialogue({
     canReply,
     run.status,
     run.publish,
+    run.component_id ?? null,
   ]);
   const currentScope = useRef(scopeKey);
   currentScope.current = scopeKey;
@@ -93,7 +95,22 @@ export function WorkerDialogue({
       connection,
       `/runs/${encodeURIComponent(run.id)}/worker-messages`,
     );
-    const parsed = await workerThreads(value, run.id);
+    const parsed = await workerThreads(value, run.id, {
+      project: scope.project,
+      repository: scope.repository,
+      component: run.component_id ?? null,
+      readBinding: async (requestId) => {
+        if (generation.current !== cycle || currentScope.current !== binding)
+          throw new Error("The conversation context changed.");
+        const receipt = await request<unknown>(
+          connection,
+          `/projects/${encodeURIComponent(scope.project!)}/repositories/${encodeURIComponent(scope.repository)}/scm-actor-bindings/requests/${encodeURIComponent(requestId)}`,
+        );
+        if (generation.current !== cycle || currentScope.current !== binding)
+          throw new Error("The conversation context changed.");
+        return receipt;
+      },
+    });
     const exact = await confirmReplyMarkers(saved, parsed);
     if (generation.current !== cycle || currentScope.current !== binding)
       return;
@@ -343,9 +360,7 @@ export function WorkerDialogue({
               <RichMarkdown value={String(thread.response.payload.answer)} />
               <p className="subtle">
                 Recorded label: {String(thread.response.payload.actor)}.{" "}
-                {thread.response.payload.responding_actor
-                  ? "The server also recorded the authenticated user identity."
-                  : "This label does not establish authenticated authorship."}
+                {workerAttributionSummary(thread.response)}
               </p>
             </section>
           ) : !canReply ? (

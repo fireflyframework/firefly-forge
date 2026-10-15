@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import contract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
+import delegation from "./scm-delegation-contract-fixture.json" with { type: "json" };
 
 const run = {
   id: "2".repeat(32),
@@ -29,16 +30,80 @@ function seal(body: Record<string, unknown>) {
   };
 }
 const feedback = contract.feedback;
-async function setup(page: Page, lost = false) {
+async function setup(
+  page: Page,
+  lost = false,
+  delegated?: { deny?: boolean; delay?: boolean },
+) {
+  const viewedRun = delegated
+    ? {
+        ...run,
+        project_id: delegation.receipt.project_id,
+        repository_id: delegation.receipt.repository_id,
+        component_id: "api",
+      }
+    : run;
+  let releaseBinding = () => {};
+  const bindingGate = delegated?.delay
+    ? new Promise<void>((resolve) => {
+        releaseBinding = resolve;
+      })
+    : Promise.resolve();
   const state = {
     posts: 0,
     reads: 0,
     events: [feedback] as Record<string, unknown>[],
     deny: false,
+    bindingReads: 0,
+    bindingDenied: delegated?.deny ?? false,
+    releaseBinding,
   };
+  if (delegated) {
+    const { digest: _digest, ...event } = contract.legacy_response;
+    void _digest;
+    const reference = delegation.receipt.verified_reference;
+    state.events.push(
+      seal({
+        ...event,
+        payload: {
+          ...event.payload,
+          actor: "7",
+          responding_actor: {
+            version: 2,
+            user_id: delegation.request.native_user_id,
+            authentication_method: "scm_mapping",
+            provenance: {
+              binding_request_id: delegation.request.request_id,
+              binding_digest: delegation.receipt.digest,
+              verified_receipt_id: "3".repeat(32),
+              provider: reference.provider,
+              api_origin: reference.api_origin,
+              connection_revision: reference.connection_revision,
+              installation_id: reference.installation_id,
+              remote_repository_id: reference.remote_repository_id,
+              external_actor_id: reference.external_actor_id,
+            },
+          },
+        },
+      }),
+    );
+  }
   await page.context().route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
+    if (path.includes("/scm-actor-bindings/requests/")) {
+      expect(route.request().method()).toBe("GET");
+      expect(path).toBe(
+        `/api/v1/projects/${delegation.receipt.project_id}/repositories/${delegation.receipt.repository_id}/scm-actor-bindings/requests/${delegation.request.request_id}`,
+      );
+      state.bindingReads++;
+      await bindingGate;
+      return route.fulfill(
+        state.bindingDenied
+          ? { status: 403, json: { detail: "private-mapping-denial-canary" } }
+          : { json: delegation.receipt },
+      );
+    }
     if (path.endsWith("/respond")) {
       state.posts++;
       const body = route.request().postDataJSON();
@@ -77,7 +142,7 @@ async function setup(page: Page, lost = false) {
     const json = path.endsWith("/repositories")
       ? [
           {
-            id: run.repository_id,
+            id: viewedRun.repository_id,
             name: "Inventory",
             url: "https://example.test/inventory.git",
             provider: "git",
@@ -85,9 +150,9 @@ async function setup(page: Page, lost = false) {
           },
         ]
       : path.endsWith("/runs")
-        ? [run]
+        ? [viewedRun]
         : path.endsWith(`/runs/${run.id}`)
-          ? run
+          ? viewedRun
           : path.endsWith("/health")
             ? { status: "ok", execution_ready: false }
             : [];
@@ -109,12 +174,13 @@ async function setup(page: Page, lost = false) {
     .getByRole("button", { name: /Inventory decision fixture/ })
     .click();
   await page.getByRole("tab", { name: "Agent questions", exact: true }).click();
-  await expect(
-    page.getByRole("heading", {
-      name: "What is the maximum reservation?",
-      exact: true,
-    }),
-  ).toBeVisible();
+  if (!delegated)
+    await expect(
+      page.getByRole("heading", {
+        name: "What is the maximum reservation?",
+        exact: true,
+      }),
+    ).toBeVisible();
   return state;
 }
 test("review, retain one identity, send once and confirm the recorded answer without resuming", async ({
@@ -394,3 +460,87 @@ for (const viewport of [
     });
   }
 }
+
+test("delegated historical answers read one exact mapping without a write or personal-login claim", async ({
+  page,
+}) => {
+  const state = await setup(page, false, {});
+  await expect(
+    page.getByText("Delegated via GitHub to a mapped Forge user.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recorded answer", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "The server also recorded the authenticated user identity.",
+      { exact: false },
+    ),
+  ).toHaveCount(0);
+  expect(state.bindingReads).toBe(1);
+  expect(state.posts).toBe(0);
+  const attribution = page.getByText(
+    "Delegated via GitHub to a mapped Forge user.",
+    { exact: false },
+  );
+  await attribution.scrollIntoViewIfNeeded();
+  const bounds = await attribution.boundingBox();
+  const footer = await page.getByRole("contentinfo").boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(footer).not.toBeNull();
+  expect(bounds!.y).toBeGreaterThanOrEqual(120);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footer!.y);
+  await page.screenshot({
+    path: test.info().outputPath("delegated-answer.png"),
+    fullPage: true,
+  });
+  await expect(
+    page.getByRole("button", { name: "Review answer", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("denied exact delegation reads clear private conversation without another answer", async ({
+  page,
+}) => {
+  const state = await setup(page, false, { deny: true });
+  await expect(
+    page.getByText(
+      "Your current session cannot read this conversation. Sign in or ask the project owner to review your access.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recorded answer", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("private-mapping-denial-canary")).toHaveCount(0);
+  expect(state.bindingReads).toBe(1);
+  expect(state.posts).toBe(0);
+});
+
+test("late historical mapping responses cannot repaint a different view", async ({
+  page,
+}) => {
+  const state = await setup(page, false, { delay: true });
+  await expect.poll(() => state.bindingReads).toBe(1);
+  await navigate(page, "Connections");
+  await expect(
+    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+  ).toBeVisible();
+  const delivery = page.waitForResponse((response) =>
+    response.url().includes("/scm-actor-bindings/requests/"),
+  );
+  state.releaseBinding();
+  await (await delivery).finished();
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
+  );
+  await expect(
+    page.getByText("Delegated via GitHub", { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Recorded answer", exact: true }),
+  ).toHaveCount(0);
+  expect(state.posts).toBe(0);
+});

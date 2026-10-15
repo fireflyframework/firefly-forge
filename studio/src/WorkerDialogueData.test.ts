@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
+import delegation from "../tests/scm-delegation-contract-fixture.json";
 import { attemptDigest } from "./LearningObservationAttemptData";
 import contract from "../tests/worker-dialogue-contract-fixture.json";
 import {
@@ -8,6 +9,7 @@ import {
   readReplyMarkers,
   replyMarkerBinding,
   retainReplyMarker,
+  workerAttributionSummary,
   workerReply,
   workerThreads,
   type ReplyMarker,
@@ -49,7 +51,7 @@ async function response() {
     sequence: 5,
     task_id: "implement",
     idempotency_key: "worker-response:a1",
-    kind: "worker_response",
+    kind: "worker_response" as const,
     created_at: "2026-10-15T12:01:00+00:00",
     previous_hash: "b".repeat(64),
     payload: {
@@ -78,6 +80,166 @@ function storage() {
   };
 }
 describe("agent conversation boundaries", () => {
+  const delegatedScope = {
+    project: delegation.receipt.project_id,
+    repository: delegation.receipt.repository_id,
+    component: "api",
+    readBinding: async () => structuredClone(delegation.receipt),
+  };
+  async function delegatedResponse(changes: Record<string, unknown> = {}) {
+    const original = await response();
+    const { digest: _digest, ...body } = original;
+    void _digest;
+    const reference = delegation.receipt.verified_reference;
+    return seal({
+      ...body,
+      payload: {
+        ...body.payload,
+        responding_actor: {
+          version: 2,
+          user_id: delegation.request.native_user_id,
+          authentication_method: "scm_mapping",
+          provenance: {
+            binding_request_id: delegation.request.request_id,
+            binding_digest: delegation.receipt.digest,
+            // The signed answer delivery is distinct from the mapping's original candidate delivery.
+            verified_receipt_id: "3".repeat(32),
+            provider: reference.provider,
+            api_origin: reference.api_origin,
+            connection_revision: reference.connection_revision,
+            installation_id: reference.installation_id,
+            remote_repository_id: reference.remote_repository_id,
+            external_actor_id: reference.external_actor_id,
+          },
+          ...changes,
+        },
+      },
+    });
+  }
+  it("reads a strict delegated historical answer without treating it as a manual marker confirmation", async () => {
+    const q = await question(),
+      a = await delegatedResponse();
+    const threads = await workerThreads([q, a], run, delegatedScope);
+    expect(threads[0].response?.payload.responding_actor).toEqual(
+      a.payload.responding_actor,
+    );
+    const { responding_actor: _attribution, ...input } = a.payload;
+    void _attribution;
+    const marker: ReplyMarker = {
+      version: 1,
+      base: "http://127.0.0.1:8787/api/v1",
+      actor: delegation.request.native_user_id,
+      project: delegatedScope.project,
+      repository: delegatedScope.repository,
+      run,
+      requestId: "limit",
+      responseId: "a1",
+      questionDigest: q.digest,
+      inputDigest: await attemptDigest(input),
+    };
+    await expect(confirmReplyMarkers([marker], threads)).rejects.toThrow();
+  });
+  it.each([
+    { version: true },
+    { version: 3 },
+    { global_admin: true },
+    { authentication_method: "oidc_bearer" },
+    { user_id: "label" },
+    { provenance: { provider: "github" } },
+  ])(
+    "refuses malformed or privileged delegated attribution %j",
+    async (changes) => {
+      await expect(
+        workerThreads(
+          [await question(), await delegatedResponse(changes)],
+          run,
+          delegatedScope,
+        ),
+      ).rejects.toThrow();
+    },
+  );
+  it("requires an exact authorized mapping read only for delegated replies", async () => {
+    let reads = 0;
+    const scope = {
+      ...delegatedScope,
+      readBinding: async (requestId: string) => {
+        reads++;
+        expect(requestId).toBe(delegation.request.request_id);
+        return structuredClone(delegation.receipt);
+      },
+    };
+    await workerThreads([await question(), await response()], run, scope);
+    expect(reads).toBe(0);
+    await expect(
+      workerThreads([await question(), await delegatedResponse()], run),
+    ).rejects.toThrow();
+    await workerThreads(
+      [await question(), await delegatedResponse()],
+      run,
+      scope,
+    );
+    expect(reads).toBe(1);
+  });
+  it.each([
+    { native_user_id: "9".repeat(32) },
+    { component_ids: ["web"] },
+    { allowed_actions: ["cancel"] },
+  ])(
+    "refuses a valid immutable mapping for another user, component or action %j",
+    async (changes) => {
+      const request = { ...delegation.request, ...changes };
+      const { digest: _digest, ...prior } = delegation.receipt;
+      void _digest;
+      const receipt = await seal({
+        ...prior,
+        request,
+        request_digest: await attemptDigest(request),
+      });
+      const a = await delegatedResponse();
+      a.payload.responding_actor.provenance.binding_digest = receipt.digest;
+      const { digest: _eventDigest, ...event } = a;
+      void _eventDigest;
+      await expect(
+        workerThreads([await question(), await seal(event)], run, {
+          ...delegatedScope,
+          readBinding: async () => receipt,
+        }),
+      ).rejects.toThrow();
+    },
+  );
+  it.each([
+    { api_origin: "not-an-origin" },
+    { installation_id: null },
+    { installation_id: "999" },
+    { external_actor_id: "label" },
+    { remote_repository_id: "999" },
+    { connection_revision: "9".repeat(32) },
+    { additional: true },
+  ])("refuses malformed or swapped signed provenance %j", async (changes) => {
+    const a = await delegatedResponse();
+    const attribution = a.payload.responding_actor;
+    const forged = await delegatedResponse({
+      ...attribution,
+      provenance: { ...attribution.provenance, ...changes },
+    });
+    await expect(
+      workerThreads([await question(), forged], run, delegatedScope),
+    ).rejects.toThrow();
+  });
+  it.each([
+    ["github", "GitHub"],
+    ["gitlab", "GitLab"],
+    ["bitbucket", "Bitbucket"],
+  ])(
+    "labels recorded %s delegation without claiming a personal login",
+    async (provider, label) => {
+      const event = await delegatedResponse();
+      event.payload.responding_actor.provenance.provider = provider;
+      expect(workerAttributionSummary(event)).toBe(
+        `Delegated via ${label} to a mapped Forge user.`,
+      );
+    },
+  );
   it("accepts the actual Python model and UTF-8 journal digest vectors", async () => {
     const threads = await workerThreads(
       [contract.feedback, contract.legacy_response],
