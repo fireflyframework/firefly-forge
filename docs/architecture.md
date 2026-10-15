@@ -275,6 +275,8 @@ The proposal cap leaves verification commands, diagnostic checks, intentional RE
 
 ### Existing-source verification transactions
 
+`LearningObservationAttempts` is a native pyfly `@service`, explicitly registered by `create_runtime`. `LearningController` receives that same service through constructor injection, sharing the runtime's projection, store and learning ledger.
+
 Each v2 attempt has a separate `obs2_` identity and a PostgreSQL row unique to its record and request. Admission locks the run, record and existing attempt in that order. A fresh identity is refused unless every earlier v2 attempt for the record has an intact `not_dispatched` receipt. A duplicate identity returns its retained outcome without another remote read.
 
 ```mermaid
