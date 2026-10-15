@@ -8,10 +8,11 @@ from typing import Annotated, Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import ToolAnnotations
-from pydantic import WithJsonSchema
+from pydantic import SkipValidation, WithJsonSchema
 
 from firefly_forge.access_controllers import MembershipInput
 from firefly_forge.assistant_attachments import AttachmentInput
+from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
 from firefly_forge.campaign_report_history import CampaignReportArchiveInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
 from firefly_forge.learning_models import LearningPolicy
@@ -47,6 +48,7 @@ ObservationAttemptRequest = Annotated[Any, WithJsonSchema(LearningObservationAtt
 RunnerContinuationRequest = Annotated[Any, WithJsonSchema(RunnerContinuationInput.model_json_schema())]
 CampaignReportArchiveRequest = Annotated[Any, WithJsonSchema(CampaignReportArchiveInput.model_json_schema())]
 CampaignReportArchiveCursor = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 0, "maximum": 100})]
+CampaignDeliveryPlanRequest = SkipValidation[CampaignDeliveryPlanInput]
 
 
 def create_server() -> MCPServer:
@@ -922,6 +924,66 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.campaign_report_archives(project_id, campaign_id, after)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def save_project_campaign_delivery_plan(
+        project_id: str, campaign_id: str, request: CampaignDeliveryPlanRequest
+    ) -> dict[str, Any]:
+        """Save explicit reporting criteria after campaign admission; this never changes or starts execution.
+
+        The caller retains a stable request ID and expected prior revision digest. Unknown responses do not
+        authorize a new identity. Current execute and historical repository read permissions apply.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.save_campaign_delivery_plan(project_id, campaign_id, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def list_project_campaign_delivery_plans(project_id: str, campaign_id: str) -> dict[str, Any]:
+        """Read at most fifty immutable post-admission reporting-plan summaries; no execution effects."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.campaign_delivery_plans(project_id, campaign_id)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_project_campaign_delivery_plan(project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
+        """Read the original immutable reporting-plan receipt with current authorization."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.campaign_delivery_plan(project_id, campaign_id, request_id)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_project_campaign_delivery_progress(
+        project_id: str, campaign_id: str, request_id: str, report_request_id: str
+    ) -> dict[str, Any]:
+        """Read reproducible milestone/wave states from one plan and saved report, never live SCM or estimates.
+
+        Criteria are reporting_only_post_admission and enforced_at_admission is false. A satisfied condition
+        is not retrospective QA or a claim that the criteria controlled execution. No implicit archiving.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.campaign_delivery_progress(project_id, campaign_id, request_id, report_request_id)
 
     @server.tool()
     def cancel_project_campaign(project_id: str, campaign_id: str, request: CampaignAction) -> dict[str, Any]:

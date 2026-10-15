@@ -45,6 +45,9 @@ from firefly_forge.assistant_persistence import (
 )
 from firefly_forge.assurance import Assurance
 from firefly_forge.browser_runner import BrowserRunner
+from firefly_forge.campaign_delivery_plan_controllers import CampaignDeliveryPlanController
+from firefly_forge.campaign_delivery_plan_persistence import ForgeCampaignDeliveryPlanRepository
+from firefly_forge.campaign_delivery_plans import CampaignDeliveryPlans
 from firefly_forge.campaign_report_history import CampaignReportHistory
 from firefly_forge.campaign_report_history_controllers import CampaignReportHistoryController
 from firefly_forge.campaign_report_history_persistence import ForgeCampaignReportArchiveRepository
@@ -750,6 +753,16 @@ class FactoryConfiguration:
         return CampaignReportHistory(store, reports, records)
 
     @bean
+    def campaign_delivery_plans(
+        self,
+        store: Store,
+        reports: CampaignReports,
+        history: CampaignReportHistory,
+        records: ForgeCampaignDeliveryPlanRepository,
+    ) -> CampaignDeliveryPlans:
+        return CampaignDeliveryPlans(store, reports, history, records)
+
+    @bean
     def provider_configuration(self, store: Store) -> ConfigurationStore:
         return store.configuration
 
@@ -970,6 +983,8 @@ def create_runtime(
         ForgeCampaignEventRepository,
         ForgeCampaignReportArchiveRepository,
         CampaignReportHistoryController,
+        ForgeCampaignDeliveryPlanRepository,
+        CampaignDeliveryPlanController,
         ProjectCampaignController,
     ]:
         container.register(component)

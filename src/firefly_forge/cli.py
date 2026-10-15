@@ -945,6 +945,46 @@ def campaign_report_archive(project_id: str, campaign_id: str, request_id: str) 
         display(connection.campaign_report_archive(project_id, campaign_id, request_id))
 
 
+@campaign.command("plan-save")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def save_campaign_delivery_plan(project_id: str, campaign_id: str, document: Path) -> None:
+    """Save a reporting plan JSON with its stable request ID and expected previous digest."""
+    with client() as connection:
+        display(connection.save_campaign_delivery_plan(project_id, campaign_id, json_document(document)))
+
+
+@campaign.command("plan-list")
+@click.argument("project_id")
+@click.argument("campaign_id")
+def list_campaign_delivery_plans(project_id: str, campaign_id: str) -> None:
+    """Read bounded immutable reporting-plan revision summaries."""
+    with client() as connection:
+        display(connection.campaign_delivery_plans(project_id, campaign_id))
+
+
+@campaign.command("plan-get")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.argument("request_id")
+def get_campaign_delivery_plan(project_id: str, campaign_id: str, request_id: str) -> None:
+    """Read the exact post-admission plan receipt for the original request."""
+    with client() as connection:
+        display(connection.campaign_delivery_plan(project_id, campaign_id, request_id))
+
+
+@campaign.command("plan-progress")
+@click.argument("project_id")
+@click.argument("campaign_id")
+@click.argument("request_id")
+@click.option("--report-request-id", required=True)
+def get_campaign_delivery_progress(project_id: str, campaign_id: str, request_id: str, report_request_id: str) -> None:
+    """Read deterministic criteria states from one explicitly selected saved report."""
+    with client() as connection:
+        display(connection.campaign_delivery_progress(project_id, campaign_id, request_id, report_request_id))
+
+
 @campaign.command("cancel")
 @click.argument("project_id")
 @click.argument("campaign_id")

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
     from firefly_forge.assistant_attachments import AttachmentInput
+    from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -667,6 +668,48 @@ class ForgeClient:
                 "GET",
                 f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report-archives",
                 params={"after": after},
+            )
+        )
+
+    def save_campaign_delivery_plan(
+        self, project_id: str, campaign_id: str, request: CampaignDeliveryPlanInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Save explicit post-admission reporting criteria, never execution instructions."""
+        from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
+
+        try:
+            body = CampaignDeliveryPlanInput.model_validate(request)
+        except ValueError:
+            raise ValueError("Use a bounded reporting plan with exact request and source identities") from None
+        return dict(
+            self.request(
+                "POST",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/delivery-plan-revisions",
+                json=body.model_dump(),
+            )
+        )
+
+    def campaign_delivery_plans(self, project_id: str, campaign_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/delivery-plan-revisions",
+            )
+        )
+
+    def campaign_delivery_plan(self, project_id: str, campaign_id: str, request_id: str) -> dict[str, Any]:
+        path = f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/delivery-plan-revisions"
+        return dict(self.request("GET", f"{path}/{self._id(request_id)}"))
+
+    def campaign_delivery_progress(
+        self, project_id: str, campaign_id: str, request_id: str, report_request_id: str
+    ) -> dict[str, Any]:
+        path = f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/delivery-plan-revisions"
+        return dict(
+            self.request(
+                "GET",
+                f"{path}/{self._id(request_id)}/progress",
+                params={"report_request_id": self._id(report_request_id)},
             )
         )
 
