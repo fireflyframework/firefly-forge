@@ -279,13 +279,24 @@ The proposal cap leaves verification commands, diagnostic checks, intentional RE
 
 Each v2 attempt has a separate `obs2_` identity and a PostgreSQL row unique to its record and request. Admission locks the run, record and existing attempt in that order. A fresh identity is refused unless every earlier v2 attempt for the record has an intact `not_dispatched` receipt. A duplicate identity returns its retained outcome without another remote read.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source verification attempt lifecycle diagram" aria-describedby="observation-attempt-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
 flowchart LR
     P[Preparing: committed local claim] -->|Local admission refused| N[Not dispatched]
     P -->|Commit dispatch admission| D[Dispatched]
     D -->|Source and citation match; commit event| V[Verified]
     D -->|Read or verification fails| U[Unknown]
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="observation-attempt-flow-guide">Follow each committed state from left to right. On a small screen, scroll horizontally or focus the diagram and use the arrow keys. A new reviewed request has a different identity; terminal receipts stay unchanged.</p>
 
 The claim commits before local preflight. Dispatch admission commits before the flycanon client opens; no database lock is held across the remote source and citation reads. Verification then locks and checks current authority and the original projection again, committing the observation event, projection update and terminal receipt together. Remote reads and the local commit are separate boundaries. Cancellation or an interrupted acknowledgement can leave `preparing` or `dispatched` unresolved; neither state authorizes another request.
 
