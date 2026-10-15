@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.17
+
+Studio connects an agent’s pending question to a Markdown answer editor, review and recorded-response recovery. It retains the full API, user, project, repository, run, question and normalized answer binding before sending. A changed or unresolved marker blocks another answer. Reload and missing readback preserve the original identity without resubmitting it. Sending an answer leaves the run paused; resume remains a separate decision. See [answer an agent’s question](agent-lifecycle.md#answer-an-agents-question).
+
+New worker replies require a current authenticated operator with an enabled matching identity, execute access and release access when the run publishes. Membership, identity and run locks protect admission through commit. Journal and conversation reads check current access and credentials again before returning the initial immutable snapshot. New events retain the authenticated `responding_actor` separately from the caller’s `actor` label; legacy events remain unchanged. Internal calls must run outside an active caller transaction. A signed source-control actor label alone cannot create a new reply; external-to-Forge identity mapping remains separate work. See [worker feedback](agent-roles.md).
+
+The reporting-plan wizard organizes an admitted campaign into waves and milestones, validates its frozen component graph and saves an explicit revision. Progress uses a selected immutable report archive and the exact plan receipt. Lost delivery, denied access and missing receipts retain the original request. Reporting criteria do not schedule execution or enforce prelaunch admission. Follow the [reporting-plan guide](project-campaigns.md#define-reporting-milestones-and-waves).
+
 ## 0.2.16
 
 Campaign operators can save immutable reporting plans with ordered waves, named milestones and explicit conditions against the admitted component graph. A progress read compares one selected plan with one exact saved report, retaining current run/task attempts and their receipts. Unknown evidence remains unknown. Plans declare `criteria_binding: reporting_only_post_admission` and `enforced_at_admission: false`; they organize retained evidence after admission. Execution-wave orchestration and Studio plan editing remain separate work. The SDK, CLI and factory MCP expose save, history, exact read and progress through the authenticated API. See [reporting milestones and waves](project-campaigns.md#define-reporting-milestones-and-waves).
