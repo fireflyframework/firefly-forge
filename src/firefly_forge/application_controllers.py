@@ -18,13 +18,15 @@ from firefly_forge.application_operations import (
 )
 from firefly_forge.deployment_credentials import CredentialInput
 from firefly_forge.persistence import ForgeDeploymentEntity, ForgeRunEntity
+from firefly_forge.worker_runtime import WorkerSupervision
 
 
 @rest_controller
 @request_mapping("/api/v1")
 class ApplicationController:
-    def __init__(self, applications: ApplicationOperations) -> None:
+    def __init__(self, applications: ApplicationOperations, supervision: WorkerSupervision) -> None:
         self.applications = applications
+        self.supervision = supervision
 
     @get_mapping("/applications")
     async def list_applications(self) -> list[dict[str, Any]]:
@@ -64,9 +66,14 @@ class ApplicationController:
 
     @get_mapping("/metrics")
     async def metrics(self) -> PlainTextResponse:
+        health = self.supervision.health()
         lines = [
+            "# HELP forge_execution_ready Local project execution readiness; does not attest to a remote worker.",
             "# TYPE forge_execution_ready gauge",
-            f"forge_execution_ready {int(not bool(self.applications.engine.ownership_failure))}",
+            f"forge_execution_ready {int(health['execution_ready'])}",
+            "# HELP forge_admission_ready Local runtime admission readiness; does not attest to command execution.",
+            "# TYPE forge_admission_ready gauge",
+            f"forge_admission_ready {int(health.get('admission_ready', health['status'] == 'ok'))}",
         ]
         async with self.applications.store._unit() as session:
             for name, entity in (("forge_runs", ForgeRunEntity), ("forge_deployments", ForgeDeploymentEntity)):

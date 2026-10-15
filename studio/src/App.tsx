@@ -92,6 +92,15 @@ import {
   type Policy,
 } from "./Configuration";
 
+type ExecutionHealth = {
+  status?: string;
+  service_role?: string;
+  admission_ready?: boolean;
+  execution_ready?: boolean;
+  detail?: string | null;
+  execution?: { local_enabled?: boolean };
+};
+
 type Page =
   | "overview"
   | "new"
@@ -256,10 +265,8 @@ export default function App() {
     "overview",
   );
   const [setupStep, setSetupStep] = useState<number | null>(null);
-  const [executionHealth, setExecutionHealth] = useState<{
-    execution_ready?: boolean;
-    detail?: string;
-  } | null>(null);
+  const [executionHealth, setExecutionHealth] =
+    useState<ExecutionHealth | null>(null);
   const navigation = useRef<HTMLElement>(null);
   useEffect(() => {
     const rail = navigation.current;
@@ -335,11 +342,7 @@ export default function App() {
             },
           ),
           request<unknown>(connection, "/profiles", { signal }),
-          request<{ execution_ready?: boolean; detail?: string }>(
-            connection,
-            "/health",
-            { signal },
-          ),
+          request<ExecutionHealth>(connection, "/health", { signal }),
         ]);
         setRepositories(repositoryResult);
         setRuns(runResult);
@@ -623,12 +626,20 @@ export default function App() {
           </div>
         </header>
         <main id="main" tabIndex={-1}>
-          {connected && executionHealth?.execution_ready === false && (
-            <div className="alert" role="alert">
-              {executionHealth.detail ||
-                "Execution is unavailable. Inspect interrupted work before restarting the factory."}
-            </div>
-          )}
+          {connected &&
+            executionHealth?.execution_ready === false &&
+            !(
+              executionHealth.service_role === "api" &&
+              executionHealth.status === "ok" &&
+              executionHealth.admission_ready === true &&
+              executionHealth.execution?.local_enabled === false &&
+              !executionHealth.detail
+            ) && (
+              <div className="alert" role="alert">
+                {executionHealth.detail ||
+                  "Execution is unavailable. Inspect interrupted work before restarting the factory."}
+              </div>
+            )}
           {error && (
             <div className="alert" role="alert">
               <Unplug size={18} />
