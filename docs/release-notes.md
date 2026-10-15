@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.15
+
+An authorized product operator can save a selected campaign report and read its exact result later. The immutable receipt retains the report, source boundary, historical repository scope and original actor. Saving requires the displayed report digest and a caller-retained request identity. Reusing that identity reads its original outcome; a lost response, missing receipt or conflict does not authorize another request. Later campaign changes leave the saved report intact. See [saved report history](project-campaigns.md#save-an-exact-report).
+
+The SDK, CLI and factory MCP expose explicit save, bounded history and exact readback. Every return checks current project and historical repository access; a stored receipt does not grant access. History is limited to 100 reports per campaign and 50 metadata entries per page, with byte limits checked before loading bodies. `prepared_at` records database preparation time, not commit time or live evidence freshness. The native PostgreSQL migration adds immutable archive storage without rewriting campaign execution journals or changing the existing report contract.
+
 ## 0.2.14
 
 SDK, CLI and MCP clients can inspect the original commands available for a continuation review. Use `ForgeClient.runner_continuation_candidates(run_id)`, `forge runner-continuation-candidates RUN_ID` or `get_runner_continuation_candidates(identifier)`. Each performs one authenticated read and preserves the server's unavailable or empty result. Inspection does not allocate a request, claim a command or dispatch work; the original leader still authorizes a separate explicit continuation. See [runner continuation](sandbox.md#request-continuation-in-studio).
