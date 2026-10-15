@@ -14,6 +14,11 @@ from firefly_forge.learning_models import (
     LearningPolicy,
     LearningProjectionObservationReceipt,
 )
+from firefly_forge.learning_observation_attempt_models import (
+    LearningObservationAttemptInput,
+    LearningObservationAttemptReceipt,
+)
+from firefly_forge.learning_observation_attempts import LearningObservationAttempts
 from firefly_forge.learning_projection import LearningProjection
 from firefly_forge.store import Store
 
@@ -76,3 +81,19 @@ class LearningController:
     @post_mapping("/learning/records/{id}/projection/observe")
     async def observe(self, id: PathVar[str], body: Body[LearningObservation]) -> dict[str, Any]:
         return await self.projection.observe(id, source_id=body.source_id, request_id=body.request_id)
+
+    @post_mapping("/learning/records/{id}/projection/observation-attempts")
+    async def observe_attempt(
+        self, id: PathVar[str], body: Body[LearningObservationAttemptInput]
+    ) -> LearningObservationAttemptReceipt:
+        return LearningObservationAttemptReceipt.model_validate(
+            await LearningObservationAttempts(self.projection).observe(id, body)
+        )
+
+    @get_mapping("/learning/records/{id}/projection/observation-attempts/{attempt_id}")
+    async def observation_attempt(
+        self, id: PathVar[str], attempt_id: PathVar[str]
+    ) -> LearningObservationAttemptReceipt:
+        return LearningObservationAttemptReceipt.model_validate(
+            await LearningObservationAttempts(self.projection).receipt(id, attempt_id)
+        )
