@@ -8,7 +8,7 @@ description: Check which tools a factory phase can use, prepare each provider's 
 
 Start with the task, then enable the tools it needs. A product conversation, an implementation worker and an application health probe have different permissions. Adding a provider to the catalog does not authorize an account, grant a project or prove that a tool call worked.
 
-The native agent registry has fourteen handlers. The factory's own MCP server has 134 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
+The native agent registry has fourteen handlers. The factory's own MCP server has 138 operator tools for the authenticated API. Those operator tools manage factory resources; they are not automatically available inside an implementation worker.
 
 ## Follow the phase boundary
 
