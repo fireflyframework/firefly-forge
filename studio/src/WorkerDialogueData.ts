@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { attemptDigest } from "./LearningObservationAttemptData";
+import { readDelegationReceipt } from "./ScmDelegationData";
 
 export type WorkerQuestion = {
   id: string;
@@ -18,6 +19,12 @@ export type WorkerEvent = {
   previous_hash: string;
   digest: string;
   payload: Record<string, unknown>;
+};
+export type WorkerDelegationRead = {
+  project: string | null;
+  repository: string;
+  component: string | null;
+  readBinding: (requestId: string) => Promise<unknown>;
 };
 export type WorkerReply = { id: string; actor: string; answer: string };
 export type WorkerThread = {
@@ -111,6 +118,7 @@ export function workerReply(
 export async function workerThreads(
   value: unknown,
   run: string,
+  delegation?: WorkerDelegationRead,
 ): Promise<WorkerThread[]> {
   assert(id.test(run) && Array.isArray(value) && value.length <= 512);
   assert(
@@ -148,6 +156,7 @@ export async function workerThreads(
   }
   const threads: WorkerThread[] = [];
   const responseIds = new Set<string>();
+  const mappingReads = new Map<string, Promise<unknown>>();
   for (const event of events) {
     const payload = event.payload;
     if (event.kind === "worker_feedback") {
@@ -224,17 +233,74 @@ export async function workerThreads(
       matches(answer.request_id, identifier);
       if (attribution !== undefined) {
         const identity = object(attribution);
-        assert(
-          Object.keys(identity).sort().join(",") ===
-            "authentication_method,user_id,version",
-        );
-        assert(
-          identity.version === 1 &&
-            ["oidc_session", "oidc_bearer", "local_bootstrap"].includes(
-              identity.authentication_method as string,
-            ),
-        );
         matches(identity.user_id, id);
+        if (identity.version === 2) {
+          assert(
+            Object.keys(identity).sort().join(",") ===
+              "authentication_method,provenance,user_id,version",
+          );
+          assert(identity.authentication_method === "scm_mapping");
+          assert(
+            delegation &&
+              delegation.project &&
+              id.test(delegation.project) &&
+              id.test(delegation.repository),
+          );
+          assert(
+            delegation.component &&
+              /^[a-z][a-z0-9-]{0,63}$/.test(delegation.component),
+          );
+          const provenance = object(identity.provenance);
+          assert(
+            Object.keys(provenance).sort().join(",") ===
+              "api_origin,binding_digest,binding_request_id,connection_revision,external_actor_id,installation_id,provider,remote_repository_id,verified_receipt_id",
+          );
+          const requestId = matches(provenance.binding_request_id, id);
+          matches(provenance.binding_digest, hash);
+          matches(provenance.verified_receipt_id, id);
+          matches(provenance.connection_revision, id);
+          assert(
+            ["github", "gitlab", "bitbucket"].includes(
+              provenance.provider as string,
+            ),
+          );
+          if (!mappingReads.has(requestId))
+            mappingReads.set(requestId, delegation.readBinding(requestId));
+          const receipt = await readDelegationReceipt(
+            await mappingReads.get(requestId),
+            {
+              project: delegation.project,
+              repository: delegation.repository,
+              requestId,
+              receiptDigest: provenance.binding_digest as string,
+            },
+          );
+          assert(receipt.request.active === true);
+          assert(receipt.request.native_user_id === identity.user_id);
+          assert(receipt.request.component_ids.includes(delegation.component));
+          assert(receipt.request.allowed_actions.includes("respond"));
+          for (const key of [
+            "provider",
+            "api_origin",
+            "connection_revision",
+            "installation_id",
+            "remote_repository_id",
+            "external_actor_id",
+          ] as const) {
+            assert(provenance[key] === receipt.verified_reference[key]);
+          }
+        } else {
+          assert(
+            Object.keys(identity).sort().join(",") ===
+              "authentication_method,user_id,version",
+          );
+          assert(
+            identity.version === 1 &&
+              ["oidc_session", "oidc_bearer", "local_bootstrap"].includes(
+                identity.authentication_method as string,
+              ),
+          );
+        }
       }
       const thread = threads.find(
         (item) => item.question.id === answer.request_id,
@@ -343,12 +409,33 @@ export async function confirmReplyMarkers(
     if (!thread.response || thread.response.payload.id !== value.responseId)
       continue;
     const attribution = thread.response.payload.responding_actor;
-    if (attribution !== undefined)
-      assert(object(attribution).user_id === value.actor);
+    if (attribution !== undefined) {
+      const identity = object(attribution);
+      assert(identity.version === 1 && identity.user_id === value.actor);
+    }
     const { id, actor, answer, request_id } = thread.response.payload;
     const input = { id, actor, answer, request_id };
     assert((await attemptDigest(input)) === value.inputDigest);
     confirmed.add(replyMarkerBinding(value));
   }
   return confirmed;
+}
+
+export function workerAttributionSummary(event: WorkerEvent): string {
+  const attribution = event.payload.responding_actor;
+  if (attribution === undefined)
+    return "This label does not establish authenticated authorship.";
+  const identity = object(attribution);
+  if (identity.version === 2) {
+    const names = {
+      github: "GitHub",
+      gitlab: "GitLab",
+      bitbucket: "Bitbucket",
+    };
+    const provider = object(identity.provenance).provider as keyof typeof names;
+    assert(names[provider]);
+    return `Delegated via ${names[provider]} to a mapped Forge user.`;
+  }
+  assert(identity.version === 1);
+  return "The server also recorded the authenticated user identity.";
 }
