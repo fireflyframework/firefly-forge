@@ -2953,12 +2953,71 @@ for (const device of ["desktop", "mobile"])
       expect(posts).toHaveLength(1);
       expect(exactReads).toEqual([original!.request_id]);
       await expect(page.getByRole("alert")).toHaveCount(0);
-      await alignOperatorGuide(page, ".scm-delegation-receipt > h3");
+      await alignOperatorGuide(
+        page,
+        device === "desktop"
+          ? ".scm-delegation-recovery > h3"
+          : ".scm-delegation-recovery > div > p",
+      );
       await shot(
         "scm-delegation-confirmed",
         true,
         ".scm-delegation-receipt > button",
       );
+      const confirmedGeometry = await confirmed.evaluate((region) => {
+        const shell = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect(),
+          footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect(),
+          confirmation = document.querySelector(
+            ".scm-delegation-recovery > div > p",
+          )!,
+          button = region.querySelector("button")!;
+        const painted = (element: Element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            top: box.top,
+            bottom: box.bottom,
+            hit: element.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            ),
+          };
+        };
+        return {
+          shellBottom: shell.bottom,
+          footerTop: footer.top,
+          confirmation: painted(confirmation),
+          recoveryHeading: painted(
+            document.querySelector(".scm-delegation-recovery > h3")!,
+          ),
+          receipt: painted(region),
+          close: painted(button),
+        };
+      });
+      await testInfo.attach("confirmed-geometry", {
+        body: JSON.stringify(confirmedGeometry, null, 2),
+        contentType: "application/json",
+      });
+      expect(confirmedGeometry.confirmation.top).toBeGreaterThanOrEqual(
+        confirmedGeometry.shellBottom + 8,
+      );
+      expect(confirmedGeometry.receipt.top).toBeGreaterThanOrEqual(
+        confirmedGeometry.shellBottom + 8,
+      );
+      expect(confirmedGeometry.receipt.bottom).toBeLessThanOrEqual(
+        confirmedGeometry.footerTop - 8,
+      );
+      expect(confirmedGeometry.confirmation.hit).toBe(true);
+      expect(confirmedGeometry.close.hit).toBe(true);
+      if (device === "desktop")
+        expect(confirmedGeometry.recoveryHeading.top).toBeGreaterThanOrEqual(
+          confirmedGeometry.shellBottom + 8,
+        );
       expect(posts).toEqual([original]);
       expect(exactReads).toHaveLength(1);
       expect(receipt?.request_digest).toBe(archiveFixtureDigest(original));
