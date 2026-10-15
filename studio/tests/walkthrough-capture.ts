@@ -77,6 +77,8 @@ export async function captureWalkthrough(
     "learning-review": "Review",
     "learning-invalidation-reason": "Reason",
     "learning-invalidation-review": "Review",
+    "learning-observation-source": "Source",
+    "learning-observation-review": "Review",
   };
   if (expectedStep[stage])
     await expect(

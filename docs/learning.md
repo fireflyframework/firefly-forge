@@ -207,6 +207,80 @@ If the response is lost, keep the retained request. After navigation or reload, 
 
 Authorized operators can also inspect the event through the receipt command above, Python `learning_projection_observation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/projection/observations/{request_id}`. The receipt preserves the original event identity, actor, timestamp, sequence, digest, source and citation references. No receipt read submits, ingests, promotes or shares knowledge.
 
+These illustrations follow one fictional source verification whose response is lost. The first exact receipt read returns 404; the next returns the matching historical observation. The fixture also represents a later invalidation, so the current record is excluded from the active filter while its confirmation remains available. The later invalidation is separate from source verification. No provider or knowledge service is called.
+
+<figure class="forge-shot" markdown="1">
+
+![Choose the existing source to verify](assets/screenshots/learning-observation-source-desktop-light.png)
+
+<figcaption>Source: review the saved record and its workspace purpose. The recorded source identifier is filled in. This action verifies existing indexed content without creating or ingesting a source.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review the source and recover its exact observation</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Review an existing source verification](assets/screenshots/learning-observation-review-desktop-light.png)
+
+<figcaption>Review: read the source and acknowledge the local observation. Factory, actor and target references are available in Source and request details. Verify source sends one request after its identity has been retained.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Unresolved source verification after a missing exact receipt](assets/screenshots/learning-observation-unresolved-desktop-dark.png)
+
+<figcaption>Unresolved: the response is lost and the first exact receipt read returns 404. Check original verification reads the same request again; it cannot repeat the observation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Matching historical observation and separate current evidence state](assets/screenshots/learning-observation-confirmed-desktop-dark.png)
+
+<figcaption>Confirmed: the later receipt matches the original actor, source and target. The historical observation stays visible when a later invalidation excludes the current record from the Verified evidence filter. Reuse still requires eligible evidence.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Verify an existing source and recover its receipt on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Check an existing source identifier on a phone](assets/screenshots/learning-observation-source-mobile-light.png)
+
+<figcaption>Source: use the actual identifier from the admitted workspace. Leave URLs and credentials out of this field.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Acknowledge an existing source verification on a phone](assets/screenshots/learning-observation-review-mobile-light.png)
+
+<figcaption>Review: the acknowledgment and Verify source action stay reachable. Expand the technical details when you need the exact original references.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read an unresolved source observation on a phone](assets/screenshots/learning-observation-unresolved-mobile-dark.png)
+
+<figcaption>Unresolved: keep the retained identity and read its exact receipt. A missing event cannot confirm the observation or permit another write.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the matching source observation on a phone](assets/screenshots/learning-observation-confirmed-mobile-dark.png)
+
+<figcaption>Confirmed: inspect the historical observation separately from current record and projection states. This fictional journey sends one write and two exact receipt reads.</figcaption>
+</figure>
+
+</div>
+</details>
+
 ### Invalidate saved evidence
 
 Select a candidate or verified record, then choose **Invalidate evidence**. Current project review permission is required; unassigned records require a factory administrator. Enter a specific reason without credentials, choose **Review invalidation**, and acknowledge that the decision excludes the evidence from reuse while keeping its history. **Confirm invalidation** submits one decision. **Keep evidence** or closing the review before confirmation submits nothing.
