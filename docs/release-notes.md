@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.12
+
+An authorized operator can explicitly continue one original queued pool command after replacing its controller, while the Factory worker still owns and waits for that command. The persisted request retains the original execution identity, actor, stage, source, admission and WAL fence. API replicas record the request; only the current Factory leader can deliver it. The replacement controller checks current authority and quotas before claiming that exact command. Reads, repeated request identities and startup do not start other queued work.
+
+The SDK, CLI and factory MCP expose admission and exact readback. Save the request identity before submitting it; after a lost response, inspect that same request. An accepted continuation is not evidence of command success or publication. The shared pending-request limit uses the same database admission lock as other worker requests, including concurrent admissions from different runs. See [queued command continuation](sandbox.md#continue-one-queued-command-after-a-controller-restart).
+
+This flow covers one controller replacement before any uncertain create/start effect. It does not recover a second controller loss, revive an interrupted Factory worker, add a command budget, automatically replay unknown work or provide Kubernetes/multi-host execution. Studio continuation controls remain a separate follow-up.
+
 ## 0.2.11
 
 Existing-source verification now retains a durable attempt before checking local admission. When an exact server receipt proves that no flycanon request was dispatched, Studio offers **Review and start a new verification**. It rechecks current access and the saved target, preserves the refusal history, and requires confirmation of a fresh request. Unconfirmed source text is replaced by a fingerprint in pending browser storage and the local attempt record.

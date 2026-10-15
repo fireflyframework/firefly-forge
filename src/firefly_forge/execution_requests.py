@@ -9,7 +9,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
@@ -26,6 +26,9 @@ from firefly_forge.execution_request_persistence import (
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.runtime_roles import RuntimeRoles
 from firefly_forge.store import TERMINAL, Store, identifier, now
+
+if TYPE_CHECKING:
+    from firefly_forge.runner_continuations import RunnerContinuations
 
 Data = dict[str, Any]
 
@@ -53,6 +56,7 @@ class ExecutionRequests:
         self.store, self.runtime = store, runtime
         self.records = records or ForgeExecutionRequestRepository()
         self.journal = journal or ForgeExecutionRequestEventRepository()
+        self.runner_continuations: RunnerContinuations | None = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
         self.poller: asyncio.Task[None] | None = None
@@ -549,7 +553,11 @@ class ExecutionRequests:
         count = 0
         for _ in range(10):
             async with self.store._unit():
-                identifiers = [row.id.hex for row in await self.records.state("executing")]
+                identifiers = [
+                    row.id.hex
+                    for kind in ("cancel", "publish")
+                    for row in await self.records.state("executing", kind=kind)
+                ]
             if not identifiers:
                 return count
             for request_id in identifiers:
@@ -565,6 +573,8 @@ class ExecutionRequests:
         if not self.runtime.executes_jobs or self.poller is not None:
             return
         await self.recover()
+        if self.runner_continuations is not None:
+            await self.runner_continuations.recover()
         self.poller = asyncio.create_task(self._poll())
 
     async def stop(self) -> None:
@@ -582,9 +592,19 @@ class ExecutionRequests:
             async with self.store._unit():
                 queued = [copy.deepcopy(row.data) for row in await self.records.state("queued", kind="cancel")]
                 queued += [copy.deepcopy(row.data) for row in await self.records.state("queued", kind="publish")]
+                if self.runner_continuations is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="runner_continue")
+                    ]
             for row in queued:
                 if row["kind"] == "cancel":
                     await self.execute(row["id"])
                 elif not self.active:
-                    self.active[row["id"]] = asyncio.create_task(self.execute(row["id"]))
+                    if row["kind"] == "runner_continue":
+                        if self.runner_continuations is None:
+                            continue
+                        action = self.runner_continuations.execute
+                    else:
+                        action = self.execute
+                    self.active[row["id"]] = asyncio.create_task(action(row["id"]))
             await asyncio.sleep(0.2)

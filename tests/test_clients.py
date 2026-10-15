@@ -39,6 +39,8 @@ async def test_mcp_tools_have_real_input_contracts():
         "get_development_plan",
         "get_execution_journal",
         "get_execution_requests",
+        "request_runner_continuation",
+        "get_runner_continuation",
         "reconcile_execution_request",
         "resume_run",
         "handoff_run",

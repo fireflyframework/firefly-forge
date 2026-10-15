@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections import defaultdict
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+import httpx
 from pyfly.container import service
 
 from firefly_forge.journal import Journal
@@ -50,6 +52,7 @@ class RunnerPoolWorker:
             "FORGE_RUNNER_CONTROLLER_TOKEN": client.transport.token.get_secret_value(),
         }
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self.waiting: dict[str, dict[str, Any]] = {}
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         policy = validate_factory_pool(snapshot)
@@ -100,6 +103,59 @@ class RunnerPoolWorker:
         if contains_known_credential(output, self.artifacts.credential_registry()):
             raise RuntimeError("Retained command output contains configured credentials; reconciliation required")
         return ProcessResult(argv, exit_code, output)
+
+    async def continuation_scope(self, request: dict[str, Any]) -> tuple[RunnerProjectInvocation, dict[str, Any]]:
+        active = self.waiting.get(request["execution_id"])
+        if active is None:
+            raise ValueError("Original Factory command is no longer actively waiting")
+        scope, invocation = active["scope"], active["invocation"]
+        if (
+            request["run_id"] != invocation.run_id.hex
+            or request["task_id"] != active["task_id"]
+            or request["attempt"] != scope["attempt"]
+            or request["fence"] != scope["fence"].model_dump(mode="json")
+            or request["invocation_digest"] != pool_digest(invocation.model_dump(mode="json"))
+            or request["wal_digest"] != pool_digest(active["payload"])
+        ):
+            raise ValueError("Continuation differs from the original waiting command")
+        await self._current(request["run_id"], request["task_id"], scope)
+        policy = validate_factory_pool(scope["run"]["sandbox_snapshot"])
+        self._workspace(scope["run"], active["workspace"], active["cwd"])
+        source, _ = pack_workspace(
+            active["workspace"], policy.workspace_max_bytes, registry=self.artifacts.credential_registry()
+        )
+        if invocation.bundle.source_archive_digest != hashlib.sha256(source).hexdigest():
+            raise ValueError("The original command source changed; reconciliation required")
+        self.artifacts.read(
+            policy.profile,
+            invocation,
+            "source",
+            {"kind": "source", "sha256": invocation.archive_digest, "bytes": invocation.source_bytes},
+        )
+        await self.probe(scope["run"]["sandbox_snapshot"])
+        await self._current(request["run_id"], request["task_id"], scope)
+        return invocation, scope
+
+    async def continue_invocation(
+        self, request_id: str, request_digest: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.project_access import ProjectAccess
+
+        invocation, scope = await self.continuation_scope(request)
+        await self.store.admit_credentials(invocation.model_dump(mode="json"))
+        await ProjectAccess(self.store).authorize_actor(
+            request["actor"], scope["run"].get("project_id"), "release" if scope["run"].get("publish") else "execute"
+        )
+        await self._current(request["run_id"], request["task_id"], scope)
+        result = await self.client.continue_invocation(invocation, scope["fence"], request_id, request_digest)
+        if (
+            result.get("execution_id") != invocation.execution_id
+            or result.get("request_id") != request_id
+            or result.get("request_digest") != request_digest
+            or result.get("disposition") not in {"accepted", "refused"}
+        ):
+            raise RuntimeError("Controller continuation returned an unbound outcome")
+        return result
 
     async def recover(self, row: dict[str, Any]) -> dict[str, int]:
         """Observe/cancel a retained identity after restart, without submission or source import."""
@@ -233,6 +289,7 @@ class RunnerPoolWorker:
             self.artifacts.retain(policy.profile, invocation, "source", archive)
             payload = {
                 "parent_attempt": attempt,
+                "factory_fence": scope["fence"].model_dump(mode="json"),
                 "ordinal": ordinal,
                 "container_name": "pool-" + execution_id,
                 "snapshot_digest": snapshot["digest"],
@@ -260,12 +317,25 @@ class RunnerPoolWorker:
             if started["disposition"] != "execute":
                 raise RuntimeError("Factory submission already exists; reconciliation required")
             await self._current(run_id, task_id, scope)
+            self.waiting[execution_id] = {
+                "scope": scope,
+                "invocation": invocation,
+                "task_id": task_id,
+                "payload": payload,
+                "workspace": workspace,
+                "cwd": cwd,
+            }
             try:
                 await self.client.submit(invocation, scope["fence"], archive)
                 async with asyncio.timeout(policy.profile.admission_seconds + invocation.timeout + 120):
                     while True:
                         await self._current(run_id, task_id, scope)
-                        observed = await self.client.observe(invocation)
+                        try:
+                            observed = await self.client.observe(invocation)
+                        except (httpx.TransportError, TimeoutError):
+                            # Read-only observation may span a controller restart; submission is never retried.
+                            await asyncio.sleep(0.1)
+                            continue
                         if observed.get("request") != invocation.model_dump(mode="json"):
                             raise RuntimeError("Controller changed the immutable invocation")
                         if (
@@ -315,6 +385,8 @@ class RunnerPoolWorker:
                 raise RuntimeError(
                     "Factory submission or observation requires reconciliation; no automatic replay"
                 ) from None
+            finally:
+                self.waiting.pop(execution_id, None)
             evidence = {
                 "exit_code": receipt["exit_code"],
                 "output": output.decode("utf-8", errors="replace"),

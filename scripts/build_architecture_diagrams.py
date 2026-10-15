@@ -29,7 +29,7 @@ DIAGRAMS = {
         "title": "Native services behind the factory",
         "subtitle": "Clients submit contracts; the execution leader owns effects.",
         "cards": [
-            ("Operator surfaces", "Studio, CLI, ForgeClient and 127 factory MCP tools use authenticated contracts."),
+            ("Operator surfaces", "Studio, CLI, ForgeClient and 129 factory MCP tools use authenticated contracts."),
             (
                 "Identity and project access",
                 "OperatorAuth validates identity. AccessRoutes checks the requested resource and operation.",

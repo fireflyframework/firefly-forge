@@ -158,6 +158,8 @@ from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
 from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
+from firefly_forge.runner_continuation_controllers import RunnerContinuationController
+from firefly_forge.runner_continuations import RunnerContinuations
 from firefly_forge.runner_controller_client import RunnerControllerClient
 from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
 from firefly_forge.runner_factory_models import load_factory_worker_configuration
@@ -189,9 +191,9 @@ from firefly_forge.worker_runtime import WorkerSupervision
 class OperatorAuth(OncePerRequestFilter):
     __pyfly_order__ = -1_000_000
 
-    def __init__(self, token: str, identity: IdentityService, access: ProjectAccess) -> None:
+    def __init__(self, token: str, identity: IdentityService, access: ProjectAccess, store: Store) -> None:
         self.token, self.identity, self.access = token, identity, access
-        self.routes = AccessRoutes(access, access.store)
+        self.routes = AccessRoutes(access, store)
 
     def redaction_settings(self) -> dict[str, str]:
         return {"FORGE_API_TOKEN": self.token, **self.identity.redaction_settings()}
@@ -384,6 +386,14 @@ class FactoryConfiguration:
         return requests
 
     @bean
+    def runner_continuations(
+        self, store: Store, roles: RuntimeRoles, requests: ExecutionRequests, sandbox: SandboxExecutor
+    ) -> RunnerContinuations:
+        continuations = RunnerContinuations(store, roles, sandbox.pool_worker)
+        requests.runner_continuations = continuations
+        return continuations
+
+    @bean
     def worker_supervision(
         self,
         engine: Engine,
@@ -406,8 +416,8 @@ class FactoryConfiguration:
         )
 
     @bean
-    def operator_filter(self, identity: IdentityService, access: ProjectAccess) -> OperatorAuth:
-        return OperatorAuth(self.token, identity, access)
+    def operator_filter(self, identity: IdentityService, access: ProjectAccess, store: Store) -> OperatorAuth:
+        return OperatorAuth(self.token, identity, access, store)
 
     @bean
     def identity_service(
@@ -896,6 +906,7 @@ def create_runtime(
         CatalogController,
         RepositoryController,
         RunController,
+        RunnerContinuationController,
         DeploymentController,
         SCMController,
         KnowledgeController,

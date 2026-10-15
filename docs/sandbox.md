@@ -90,6 +90,74 @@ The pool supervisor reaps adopted child processes while the command runs. Before
 
 Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
 
+### Continue one queued command after a controller restart
+
+A currently authorized operator may request continuation of one original pool command while its Factory worker is still waiting. The Factory run and stage must remain active under the original database owner. This does not resume an interrupted run or submit a replacement command.
+
+**1. Record the operator's request**
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Record an explicit continuation request diagram" aria-describedby="runner-continuation-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    O[Operator saves request identity] -->|Explicit POST| A[API checks current authority]
+    A --> P[PostgreSQL retains request and original WAL binding]
+
+```
+
+</div>
+
+<p class="forge-flow-caption" id="runner-continuation-flow-guide">The API records admission. Exact receipt reads observe this saved request without dispatching work. On a narrow screen, focus the diagram and scroll horizontally.</p>
+
+**2. Continue the original command**
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Continue the original queued command diagram" aria-describedby="runner-continuation-dispatch-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    L[Current Factory leader rechecks active command]
+    L --> C[Replacement controller rechecks admission and quotas]
+    C --> E[Continue only the original queued execution]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="runner-continuation-dispatch-guide">The leader follows the retained admission through the controller. Command success still needs the original execution receipt; an accepted continuation alone does not establish it.</p>
+
+Send one authenticated `POST /api/v1/runs/{run_id}/runner-continuations` with a retained request identity and the original `execution_id` from that run's sandbox intent in its journal:
+
+```json
+{
+  "request_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "execution_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}
+```
+
+Choose a new random UUID hex value for the operator request and save it before sending. The execution identifier must be the existing command's identifier. API replicas only record the request. The active Factory leader verifies the original actor, requesting operator, project, repository, stage attempt, source, profile, owner and WAL before sending the exact scoped request to the trusted controller. The controller checks the native Factory admission and current permissions again before effects. It can claim only that command, before its admission expires and with no external create/start intent. An expired, never-started lease may be claimed with a new controller epoch. Normal resource and project limits still apply. A capacity refusal does not schedule a later wake or select another queued command.
+
+The Python client, CLI and factory MCP expose the same request and exact read. The CLI requires both identifiers; none of these adapters generates a replacement identity or retries a failed request. Dedicated Studio controls remain a separate follow-up.
+
+```bash
+forge request-runner-continuation RUN_ID --request-id SAVED_REQUEST_ID --execution-id ORIGINAL_EXECUTION_ID
+forge runner-continuation RUN_ID SAVED_REQUEST_ID
+```
+
+In Python, call `client.request_runner_continuation(run_id, {"request_id": saved_request_id, "execution_id": original_execution_id})` once, then use `client.runner_continuation(run_id, saved_request_id)` to inspect that operation. External agents use `request_runner_continuation(identifier, request)` and the read-only `get_runner_continuation(identifier, request_id)` MCP tools. Retain the request identity in the agent's task record before calling the write tool. If delivery is uncertain, use the read tool rather than allocating another request.
+
+Read `GET /api/v1/runs/{run_id}/runner-continuations/{request_id}` for the retained operation. Neither that read, repeating the same Factory request, nor controller startup dispatches work. The original command's result must still pass its existing credential, authority and workspace-publication checks. An operation marked `completed` with `result.disposition=accepted` confirms continuation admission; it does not prove that the command succeeded or that source was published. Use the original command and run receipts for those outcomes.
+
+There is one explicit continuation identity per command, with at most 50 such admissions per run and the existing bounded worker queue. Commands admitted before their original Factory fence was retained are ineligible. Cancellation, revoked access, a changed stage or source, an expired admission, a stale owner and any uncertain create/start effect are refused. If the continuation response is lost, or the replacement controller also stops, keep the exact operation unresolved and use the existing observation/cancellation/reconciliation path. This first continuation flow does not retry an unknown operation or authorize another controller restart. It adds no command budget, automatic queue recovery, Kubernetes execution or multi-host storage.
+
 Retained artifact reads and command-output returns check the current credential registry, including the first result and later cached results. If a retained value is now recognized as a credential, the read is refused and command-output access requires reconciliation. The private artifact and original receipts remain intact; the command is not resubmitted. This checks registered credential values and their supported escaped forms, so operators must still review source and results for unregistered secrets.
 
 Local qualification covers a trusted Factory host, mutually authenticated controller and isolated command containers. Browser pool profiles, Factory worker container placement, project database sidecars, Kubernetes and shared multi-host storage require separate qualification. Native Codex/Claude provider processes retain their own execution boundary.

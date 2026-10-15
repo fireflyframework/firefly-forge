@@ -95,6 +95,11 @@ class PoolControl(PoolLookup):
     fence: FactoryFence
 
 
+class PoolContinuation(PoolControl):
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$", strict=True)
+    request_digest: str = Field(pattern=r"^[a-f0-9]{64}$", strict=True)
+
+
 class PoolArtifact(PoolLookup):
     kind: Literal["output", "result"]
 
@@ -226,6 +231,15 @@ class RunnerControllerService:
         data = self.artifacts.read(self.settings.authority.profile, invocation, request.kind, receipt)
         return {"receipt": receipt, "data_base64": base64.b64encode(data).decode()}
 
+    async def continue_invocation(self, request: PoolContinuation) -> dict[str, Any]:
+        if not self.settings.active or not self.ready:
+            raise RuntimeError("Administrator runner profile is inactive or runtime unverified")
+        observed = await self.observe(request)
+        invocation = parse_invocation(observed["request"])
+        return await self.executions.continue_invocation(
+            invocation, request.fence, request.request_id, request.request_digest
+        )
+
     async def reconcile(self, request: PoolControl) -> dict[str, Any]:
         await self.observe(request)
         return await self.executions.reconcile(request.execution_id, request.fence)
@@ -256,6 +270,10 @@ class PoolController:
     @post_mapping("/artifact")
     async def artifact(self, request: Body[PoolArtifact]) -> dict[str, Any]:
         return await self.service.artifact(request)
+
+    @post_mapping("/continue")
+    async def continue_invocation(self, request: Body[PoolContinuation]) -> dict[str, Any]:
+        return await self.service.continue_invocation(request)
 
     @post_mapping("/reconcile")
     async def reconcile(self, request: Body[PoolControl]) -> dict[str, Any]:

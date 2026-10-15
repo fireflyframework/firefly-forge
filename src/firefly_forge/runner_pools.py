@@ -262,6 +262,76 @@ class RunnerPools:
                 return self._public(row)
             return None
 
+    async def claim_continuation(
+        self,
+        profile: RunnerPoolProfile,
+        owner: str,
+        fence: FactoryFence,
+        execution_id: str,
+        request_id: str,
+        request_digest: str,
+    ) -> dict[str, Any]:
+        from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
+
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", owner):
+            raise ValueError("Invalid controller owner identity")
+        if not re.fullmatch(r"[a-f0-9]{32}", execution_id) or not re.fullmatch(r"[a-f0-9]{32}", request_id):
+            raise ValueError("Exact continuation identities are required")
+        async with self._unit():
+            pool = await self._pool(profile, admission=True)
+            await self._owned(fence)
+            row = await self.invocations.execution(execution_id)
+            if row is None or row.pool_id != pool.id:
+                raise KeyError("Original invocation not found in this profile")
+            invocation = parse_invocation(row.data["request"])
+            authority = RunnerContinuationAuthority(self)
+            await authority.authorize(invocation, fence, request_id, request_digest)
+            original = row.data.get("continuation")
+            if original:
+                if original["request_id"] != request_id or original["request_digest"] != request_digest:
+                    raise ValueError("Invocation continuation identity is immutable")
+                return copy.deepcopy(original)
+            now = await self.invocations.database_time()
+            events = await self.history(profile, execution_id)
+            if (
+                row.data.get("submission_fence") != fence.model_dump(mode="json")
+                or row.admission_expires_at <= now
+                or row.status not in {"queued", "leased"}
+                or (row.status == "leased" and (row.lease_expires_at is None or row.lease_expires_at > now))
+                or any(event["kind"].endswith("_intent") for event in events)
+            ):
+                raise ValueError("Original invocation cannot establish a pre-effect continuation")
+            rows = await self.invocations.daemon_rows(pool.daemon_id)
+            active = [other for other in rows if other.id != row.id and other.status in HELD]
+            requests = [parse_invocation(other.data["request"]) for other in active]
+            same = [other for other in requests if other.project_key == invocation.project_key]
+            busy = (
+                len(active) >= profile.slots
+                or len(same) >= profile.project_slots
+                or any(other.repository_id == invocation.repository_id for other in requests)
+                or sum(other.cpus for other in requests) + invocation.cpus > profile.cpu_budget
+                or sum(other.memory_mb for other in requests) + invocation.memory_mb > profile.memory_budget_mb
+                or sum(other.cpus for other in same) + invocation.cpus > profile.project_cpu_budget
+                or sum(other.memory_mb for other in same) + invocation.memory_mb > profile.project_memory_budget_mb
+            )
+            decision = {
+                "execution_id": execution_id,
+                "request_id": request_id,
+                "request_digest": request_digest,
+                "disposition": "refused" if busy else "accepted",
+                "epoch": row.epoch if busy else row.epoch + 1,
+            }
+            row.data = {**row.data, "continuation": decision}
+            if not busy:
+                row.owner_id, row.epoch, row.status = owner, row.epoch + 1, "leased"
+                row.lease_expires_at = now + timedelta(seconds=profile.lease_seconds)
+                row.data = {**row.data, "fence": fence.model_dump(mode="json")}
+            await self._event(
+                row, "explicit_continuation", {**decision, "owner": owner, "fence": fence.model_dump(mode="json")}
+            )
+            await self.invocations.save(row)
+            return {**copy.deepcopy(decision), **({"claim": self._public(row)} if not busy else {})}
+
     async def _claimed(
         self, profile: RunnerPoolProfile, row_id: str, owner: str, epoch: int, fence: FactoryFence
     ) -> ForgeRunnerInvocationEntity:

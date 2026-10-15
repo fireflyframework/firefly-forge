@@ -106,6 +106,19 @@ class RunnerControllerClient:
             raise RuntimeError("Observed invocation differs from frozen worker request")
         return value
 
+    async def continue_invocation(
+        self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "continue",
+            {
+                **self._scope(invocation),
+                "fence": fence.model_dump(mode="json"),
+                "request_id": request_id,
+                "request_digest": request_digest,
+            },
+        )
+
     async def reconcile(self, invocation: RunnerInvocation, fence: FactoryFence) -> dict[str, Any]:
         return await self._request("reconcile", {**self._scope(invocation), "fence": fence.model_dump(mode="json")})
 
