@@ -24,6 +24,7 @@ from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
 from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
+from firefly_forge.scm_authority_models import SCMActorBindingInputV1
 from firefly_forge.task_routing import TaskRoutingInput
 from firefly_forge.tool_broker import ToolPolicyInput
 from firefly_forge.user_administration import (
@@ -49,6 +50,7 @@ RunnerContinuationRequest = Annotated[Any, WithJsonSchema(RunnerContinuationInpu
 CampaignReportArchiveRequest = Annotated[Any, WithJsonSchema(CampaignReportArchiveInput.model_json_schema())]
 CampaignReportArchiveCursor = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 0, "maximum": 100})]
 CampaignDeliveryPlanRequest = SkipValidation[CampaignDeliveryPlanInput]
+SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 
 
 def create_server() -> MCPServer:
@@ -719,6 +721,67 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.set_project_membership(project_id, user_id, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def list_scm_actor_binding_candidates(
+        project_id: str, repository_id: str, cursor: str | None = None
+    ) -> dict[str, Any]:
+        """Read at most fifty retained verified SCM account references under current project authority.
+
+        This does not discover accounts remotely, create users or grant project membership.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.scm_actor_binding_candidates(project_id, repository_id, cursor)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=True
+        )
+    )
+    def configure_scm_actor_binding(
+        project_id: str, repository_id: str, request: SCMActorBindingRequest
+    ) -> dict[str, Any]:
+        """Explicitly delegate or revoke qualified repository actions for an existing enabled Forge user.
+
+        Requires current administrator authority, exact verified scope and acknowledgment of webhook identity
+        trust. The configured provider's repository grant may be rechecked. This does not grant membership or
+        authenticate a personal provider login. Retain the caller's
+        request ID before dispatch; uncertain results require an exact receipt read, never an automatic retry.
+        """
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_scm_actor_binding(project_id, repository_id, request)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def list_scm_actor_bindings(project_id: str, repository_id: str, cursor: str | None = None) -> dict[str, Any]:
+        """Read bounded immutable SCM delegation summaries; never contact a provider or change authority."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.scm_actor_bindings(project_id, repository_id, cursor)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        )
+    )
+    def get_scm_actor_binding(project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact original mapping receipt with current access; a missing result never permits a retry."""
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.scm_actor_binding(project_id, repository_id, request_id)
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True))
     def list_identity_users() -> list[dict[str, Any]]:
