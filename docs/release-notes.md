@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.11
+
+Existing-source verification now retains a durable attempt before checking local admission. When an exact server receipt proves that no flycanon request was dispatched, Studio offers **Review and start a new verification**. It rechecks current access and the saved target, preserves the refusal history, and requires confirmation of a fresh request. Unconfirmed source text is replaced by a fingerprint in pending browser storage and the local attempt record.
+
+An unknown, preparing or dispatched attempt blocks a fresh identity for the same learning record. Repeated calls with the original identity only read its outcome. A verified attempt must match its immutable observation event and original scope. Legacy pending requests keep their original recovery flow; a missing receipt or an error message cannot authorize correction. The SDK, CLI and factory MCP expose the same strict attempt and readback contracts. See [source verification](learning.md#verify-an-existing-indexed-source) and [operator integrations](agent-integrations.md#exact-observation-attempts).
+
+Verification jobs run concurrently while the required aggregate still blocks packaging unless Python, Studio, documentation and container acceptance all succeed. Tag publication reuses those checks, then binds its downloaded distributions to the publishing source and rebuilt Studio before release.
+
 ## 0.2.10
 
 Studio can verify an existing indexed flycanon source through a source-and-review wizard. The factory checks the source and its citations against the saved projection, then retains the original actor, request and immutable observation event. It does not create a source or trigger ingestion. A lost response keeps the original request; reload and explicit recovery read that exact receipt without repeating the observation. Current project authority and credential checks also apply to receipt readback. See [existing-source verification](learning.md#verify-an-existing-indexed-source).

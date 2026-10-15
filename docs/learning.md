@@ -211,7 +211,7 @@ A missing receipt, an unknown outcome or a request still being prepared or dispa
 
 Authorized operators can also inspect the event through the receipt command above, Python `learning_projection_observation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/projection/observations/{request_id}`. The receipt preserves the original event identity, actor, timestamp, sequence, digest, source and citation references. No receipt read submits, ingests, promotes or shares knowledge.
 
-These version 0.2.10 illustrations follow one fictional source verification whose response is lost. The first exact receipt read returns 404; the next returns the matching historical observation. The fixture also represents a later invalidation, so the current record is excluded from the active filter while its confirmation remains available. The later invalidation is separate from source verification. No provider or knowledge service is called.
+These version 0.2.11 illustrations follow one fictional source verification whose response is lost. The first exact receipt read returns 404; the next returns the matching historical observation. The fixture also represents a later invalidation, so the current record is excluded from the active filter while its confirmation remains available. The later invalidation is separate from source verification. No provider or knowledge service is called.
 
 <figure class="forge-shot" markdown="1">
 
@@ -279,7 +279,7 @@ These version 0.2.10 illustrations follow one fictional source verification whos
 
 ![Read the matching source observation on a phone](assets/screenshots/learning-observation-confirmed-mobile-dark.png)
 
-<figcaption>Confirmed: inspect the historical observation separately from current record and projection states. This fictional journey sends one write and two exact receipt reads.</figcaption>
+<figcaption>Confirmed: inspect the historical observation separately from current record and projection states. This fictional journey sends one write, reads the same exact attempt twice and then reads its matching observation event.</figcaption>
 </figure>
 
 </div>

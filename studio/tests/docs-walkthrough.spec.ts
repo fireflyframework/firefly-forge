@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
@@ -977,17 +978,36 @@ for (const device of ["desktop", "mobile"])
         target: { revision: "5".repeat(32) },
         citations: [],
       };
-      let observation: { request_id: string; source_id: string } | null = null;
+      const eventRequest = "8".repeat(32);
+      function canonical(value: unknown): string {
+        if (value === null || typeof value !== "object")
+          return JSON.stringify(value);
+        if (Array.isArray(value))
+          return "[" + value.map(canonical).join(",") + "]";
+        const row = value as Record<string, unknown>;
+        return (
+          "{" +
+          Object.keys(row)
+            .sort()
+            .map((key) => JSON.stringify(key) + ":" + canonical(row[key]))
+            .join(",") +
+          "}"
+        );
+      }
+      const hash = (value: unknown) =>
+        createHash("sha256").update(canonical(value)).digest("hex");
+      let observation: Record<string, string> | null = null;
       let writes = 0;
       let receiptReady = false;
       const reads: string[] = [];
+      const attemptReads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
         if (
           path.endsWith(
-            `/learning/records/${learningRecord.id}/projection/observe`,
+            `/learning/records/${learningRecord.id}/projection/observation-attempts`,
           )
         ) {
           expect(request.method()).toBe("POST");
@@ -995,10 +1015,10 @@ for (const device of ["desktop", "mobile"])
           expect(writes).toBe(1);
           observation = request.postDataJSON();
           expect(observation!.source_id).toBe(source);
-          expect(observation!.request_id).toMatch(/^[a-f0-9]{32}$/);
+          expect(observation!.attempt_id).toMatch(/^obs2_[a-f0-9]{32}$/);
           const marker = await page.evaluate(() => {
             const keys = Object.keys(sessionStorage).filter((key) =>
-              key.startsWith("forge.learning-observation.v1:"),
+              key.startsWith("forge.learning-observation.v2:"),
             );
             if (keys.length !== 1)
               throw new Error(
@@ -1013,8 +1033,10 @@ for (const device of ["desktop", "mobile"])
             project: learningRecord.envelope.context.project_id,
             run: learningRecord.envelope.run_id,
             record: learningRecord.id,
-            requestId: observation!.request_id,
-            source,
+            requestId: observation!.attempt_id.slice(5),
+            version: 2,
+            sourceDigest: hash({ source_id: source }),
+            inputDigest: hash(observation),
             projection: projection.id,
             submissionRequest: projection.request_id,
             workspace: projection.workspace_id,
@@ -1022,7 +1044,47 @@ for (const device of ["desktop", "mobile"])
             payloadDigest: projection.payload_digest,
             contentHash: projection.content_sha256,
           });
+          expect(marker).not.toHaveProperty("source");
           return route.abort("failed");
+        }
+        if (
+          path.includes(
+            `/learning/records/${learningRecord.id}/projection/observation-attempts/`,
+          )
+        ) {
+          expect(request.method()).toBe("GET");
+          expect(observation).not.toBeNull();
+          expect(path).toBe(
+            `/api/v1/learning/records/${learningRecord.id}/projection/observation-attempts/${observation!.attempt_id}`,
+          );
+          attemptReads.push(path);
+          if (!receiptReady)
+            return route.fulfill({
+              status: 404,
+              json: { detail: "Exact attempt not observed" },
+            });
+          const packet = {
+            version: 2,
+            ...observation!,
+            record_id: learningRecord.id,
+            repository_id: learningRepository.id,
+            project_id: learningRecord.envelope.context.project_id,
+            run_id: learningRecord.envelope.run_id,
+            actor_id: "f".repeat(32),
+            input_digest: hash(observation),
+            source_digest: hash({ source_id: source }),
+            state: "verified",
+            disposition: "verified",
+            created_at: "2026-10-15T01:39:00Z",
+            finished_at: "2026-10-15T01:40:00Z",
+            observation: {
+              event_id: "6".repeat(32),
+              request_id: eventRequest,
+              digest: "7".repeat(64),
+            },
+          };
+          Reflect.deleteProperty(packet, "source_id");
+          return route.fulfill({ json: { ...packet, digest: hash(packet) } });
         }
         if (
           path.includes(
@@ -1032,7 +1094,7 @@ for (const device of ["desktop", "mobile"])
           expect(request.method()).toBe("GET");
           expect(observation).not.toBeNull();
           expect(path).toBe(
-            `/api/v1/learning/records/${learningRecord.id}/projection/observations/${observation!.request_id}`,
+            `/api/v1/learning/records/${learningRecord.id}/projection/observations/${eventRequest}`,
           );
           reads.push(path);
           if (!receiptReady)
@@ -1048,7 +1110,7 @@ for (const device of ["desktop", "mobile"])
               record_id: learningRecord.id,
               repository_id: learningRepository.id,
               run_id: learningRecord.envelope.run_id,
-              request_id: observation!.request_id,
+              request_id: eventRequest,
               kind: "projection_observation",
               event_state: "verified",
               current_record_state: "invalidated",
@@ -1236,7 +1298,8 @@ for (const device of ["desktop", "mobile"])
         "The exact observation has not been observed",
       );
       expect(writes).toBe(1);
-      expect(reads).toHaveLength(1);
+      expect(attemptReads).toHaveLength(1);
+      expect(reads).toHaveLength(0);
       const alignObservation = async (complete = false) => {
         await page
           .locator(".learning-record-observation > h4")
@@ -1279,8 +1342,11 @@ for (const device of ["desktop", "mobile"])
           .toBe(true);
       };
       const retained = page.locator(".learning-observation-result");
-      await expect(retained).toContainText(source);
-      await expect(retained).toContainText(original.request_id);
+      await expect(retained).not.toContainText(source);
+      await expect(retained).toContainText(
+        "Unconfirmed source text is not saved",
+      );
+      await expect(retained).toContainText(original.attempt_id);
       await alignObservation();
       await capture(page, "learning-observation-unresolved", theme, device, {
         actionSelector: ".learning-record-observation button.secondary",
@@ -1324,16 +1390,19 @@ for (const device of ["desktop", "mobile"])
         page.locator(".learning-record-filter-context"),
       ).toContainText("The selected record no longer matches this filter");
       for (const value of [
-        original.request_id,
+        original.attempt_id,
         "f".repeat(32),
         "6".repeat(32),
         "7".repeat(64),
       ])
         await expect(retained).toContainText(value);
       expect(writes).toBe(1);
+      expect(attemptReads).toEqual([
+        `/api/v1/learning/records/${learningRecord.id}/projection/observation-attempts/${original.attempt_id}`,
+        `/api/v1/learning/records/${learningRecord.id}/projection/observation-attempts/${original.attempt_id}`,
+      ]);
       expect(reads).toEqual([
-        `/api/v1/learning/records/${learningRecord.id}/projection/observations/${original.request_id}`,
-        `/api/v1/learning/records/${learningRecord.id}/projection/observations/${original.request_id}`,
+        `/api/v1/learning/records/${learningRecord.id}/projection/observations/${eventRequest}`,
       ]);
       expect(observation).toEqual(original);
       await alignObservation(device === "desktop");
