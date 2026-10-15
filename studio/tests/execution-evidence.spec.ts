@@ -343,10 +343,7 @@ for (const viewport of [
     }) => {
       await page.setViewportSize(viewport);
       await openRun(page);
-      await page.evaluate(
-        (value) => (document.documentElement.dataset.theme = value),
-        theme,
-      );
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
       const panel = page.getByRole("tabpanel");
       await page
         .getByRole("tab", { name: "Verification", exact: true })
@@ -477,3 +474,155 @@ test("copy preserves the entire bounded output and patch", async ({ page }) => {
     )
     .toBe(run.diff);
 });
+
+for (const width of [320, 1440])
+  for (const theme of ["light", "dark"])
+    for (const recipe of ["runtime", "xdebug"])
+      test(`PHP profile observations ${recipe} remain readable at ${width}px ${theme}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 700 });
+        const result = {
+          recipe: `forge-php-${recipe}-v1`,
+          observation_only: true,
+          best_effort: true,
+          script: "bin/larafly-workload.php",
+          source_sha256: "a".repeat(64),
+          image: "example@sha256:" + "b".repeat(64),
+          argv: ["php", "-r", "TRUSTED_LAUNCHER"],
+          exit_code: 7,
+          output_truncated: false,
+          report_marker_observed: true,
+          receipt: null,
+          output:
+            "Workload output\nFORGE_PHP_PROFILE_V1\n" +
+            JSON.stringify({
+              recipe: `forge-php-${recipe}-v1`,
+              observation_only: true,
+              best_effort: true,
+              complete: true,
+              incomplete_reason: null,
+              workload_exit_code: 7,
+              metrics: {
+                wall_ns: 1500000,
+                cpu_user_us: 750,
+                cpu_system_us: 250,
+                peak_memory_bytes: 2097152,
+              },
+              callgraph:
+                recipe === "xdebug"
+                  ? {
+                      events: ["Time_(10ns)", "Memory_(bytes)"],
+                      rows_truncated: false,
+                      rows: [
+                        {
+                          file: "src/Workload.php",
+                          function: "measureWorkload",
+                          self_time: 100000,
+                          self_memory: 32,
+                          calls: 2,
+                        },
+                      ],
+                    }
+                  : null,
+            }) +
+            "\n",
+        };
+        await openRun(page, [
+          {
+            sequence: 1,
+            task_id: "verify",
+            kind: "tool_receipt",
+            created_at: "2026-10-15T15:00:00Z",
+            digest: "b".repeat(64),
+            previous_hash: "0".repeat(64),
+            idempotency_key: "1".repeat(32),
+            payload: {
+              tool: "profile_php",
+              correlation_id: "1".repeat(32),
+              status: "succeeded",
+              result,
+            },
+          },
+        ]);
+        await page
+          .getByLabel("Appearance", { exact: true })
+          .selectOption(theme);
+        await page.getByRole("tab", { name: "Plan", exact: true }).click();
+        const profile = page.getByRole("region", {
+          name: "PHP profiling observation",
+          exact: true,
+        });
+        await expect(
+          profile.getByText("Report complete", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          profile.getByText("1.5 ms", { exact: true }),
+        ).toBeVisible();
+        await expect(profile.getByText("2 MiB", { exact: true })).toBeVisible();
+        await expect(profile.getByText("7", { exact: true })).toBeVisible();
+        await expect(
+          page.getByText("TRUSTED_LAUNCHER", { exact: true }),
+        ).not.toBeVisible();
+        const heading = profile.getByRole("heading", {
+          name:
+            recipe === "xdebug" ? "PHP Xdebug profile" : "PHP runtime profile",
+          exact: true,
+        });
+        await heading.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: test
+            .info()
+            .outputPath(`php-profile-heading-${recipe}-${width}-${theme}.png`),
+        });
+        const summary = page.getByText("Original workload output and report", {
+          exact: true,
+        });
+        await summary.focus();
+        const bounds = await summary.boundingBox(),
+          footer = await page.locator(".workspace-main > footer").boundingBox();
+        expect(bounds && footer && bounds.y + bounds.height <= footer.y).toBe(
+          true,
+        );
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          )
+          .toBe(true);
+        await page.screenshot({
+          path: test
+            .info()
+            .outputPath(`php-profile-${recipe}-${width}-${theme}.png`),
+        });
+        if (recipe === "xdebug") {
+          const costs = profile.getByRole("region", {
+            name: "Function costs",
+            exact: true,
+          });
+          await costs.focus();
+          await expect(costs.getByText("1 ms", { exact: true })).toBeVisible();
+          if (width === 320) {
+            await costs.evaluate((element) => {
+              element.scrollLeft = 0;
+            });
+            await page.keyboard.press("ArrowRight");
+            await expect
+              .poll(() => costs.evaluate((element) => element.scrollLeft))
+              .toBeGreaterThan(0);
+          }
+          await page.screenshot({
+            path: test
+              .info()
+              .outputPath(`php-profile-functions-${width}-${theme}.png`),
+          });
+        }
+        await summary.focus();
+        await page.keyboard.press("Enter");
+        await expect(
+          summary
+            .locator("..")
+            .getByRole("region", { name: "Output", exact: true }),
+        ).toBeVisible();
+      });

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
+from firefly_forge.php_diagnostics import PHPProfileRequest
 from firefly_forge.profiles import build_instruction
 from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
 from firefly_forge.search_tools import SearchProviderError
@@ -160,6 +161,12 @@ async def execute_agentic(
         if context.python_trace is None or context.command_executor is None:
             raise ValueError("Isolated Python tracing is not configured")
         return await context.python_trace(request)
+
+    async def profile_php(request: PHPProfileRequest) -> dict[str, Any]:
+        """Observe PHP runtime metrics or optional Xdebug data; diagnostics never approve QA."""
+        if context.php_profile is None or context.command_executor is None:
+            raise ValueError("Isolated PHP profiling is not configured")
+        return await context.php_profile(request)
 
     async def browser_journey(plan: BrowserJourney) -> Any:
         """Perform a declared isolated user journey with bounded DOM and optional image evidence."""
@@ -330,6 +337,12 @@ async def execute_agentic(
         and {"execute_command", "trace_python"}.issubset(context.allowed_tools or ())
     ):
         handlers["trace_python"] = trace_python
+    if (
+        context.php_profile is not None
+        and context.command_executor is not None
+        and {"execute_command", "profile_php"}.issubset(context.allowed_tools or ())
+    ):
+        handlers["profile_php"] = profile_php
     unknown = (context.allowed_tools or frozenset()) - {
         "list_files",
         "read_file",
@@ -345,6 +358,7 @@ async def execute_agentic(
         "knowledge_lookup",
         "profile_python",
         "trace_python",
+        "profile_php",
     }
     if unknown:
         raise ValueError("Native tool grant contains an unknown tool")

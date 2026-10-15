@@ -29,6 +29,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
+      - name: Check the existing PHP recipe fixture
+        run: make php-fixture-check
       - run: uv sync --locked --group dev --group docs
       - run: make python-check
   studio:
