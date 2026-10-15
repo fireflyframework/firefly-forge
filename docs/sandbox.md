@@ -21,9 +21,9 @@ Cloud provisioning and deployment commands use the separately configured [deploy
 
 ## Recheck authority after waiting for a runner
 
-After acquiring its run lock and execution capacity, the runner reads the current ownership, cancellation request and project execution authority. It checks again before recording a new create intent and before host execution or Docker preparation and start. A revocation or cancellation received while a command waits prevents that command from starting. Returning a retained result also requires current admission; the original result and journal remain intact when access is refused.
+After acquiring its run lock and execution capacity, the runner rechecks coordinator ownership, cancellation and the recorded actor's current execution authority. It checks again before a new create intent and before host execution or Docker preparation and start. Revocation or cancellation observed at these checks prevents dispatch. These are point-in-time checks: they do not lock permissions through process launch or undo effects already performed. Legacy and internal executions without a recorded actor retain their existing admission contract. Returning a retained result also requires admission; the original result and journal remain intact when access is refused.
 
-Cleanup can still remove the invocation's owned containers and volumes after revocation or cancellation. Removing execution permission must not prevent those resources from draining. Effects a command already performed remain part of its retained history and recovery process.
+Cleanup can still remove the invocation's owned containers and volumes after revocation or cancellation, with the existing ownership-label and coordinator checks. Removing execution permission must not prevent those resources from draining. Effects a command already performed remain part of its retained history and recovery process.
 
 ## Keep Python verification tied to current source
 
