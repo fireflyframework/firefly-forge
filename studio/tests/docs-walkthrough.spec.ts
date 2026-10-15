@@ -5,6 +5,7 @@ import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
+import { verifiedReport } from "./campaign-report-fixture";
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
@@ -1408,5 +1409,329 @@ for (const device of ["desktop", "mobile"])
       await alignObservation(device === "desktop");
       await capture(page, "learning-observation-confirmed", theme, device);
       await assertObservation(device === "desktop");
+    });
+  }
+
+// Controlled guide snapshots qualify presentation, not live campaign or runner activity.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"]) {
+    test(`guided fixture journey continuation and campaign ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const report = structuredClone(verifiedReport);
+      report.campaign.recorded_status = "succeeded";
+      function canonical(value: unknown): string {
+        if (value === null || typeof value !== "object")
+          return JSON.stringify(value);
+        if (Array.isArray(value))
+          return "[" + value.map(canonical).join(",") + "]";
+        const row = value as Record<string, unknown>;
+        return (
+          "{" +
+          Object.keys(row)
+            .sort()
+            .map((key) => JSON.stringify(key) + ":" + canonical(row[key]))
+            .join(",") +
+          "}"
+        );
+      }
+      report.digest = createHash("sha256")
+        .update(
+          canonical(
+            Object.fromEntries(
+              Object.entries(report).filter(([key]) => key !== "digest"),
+            ),
+          ),
+        )
+        .digest("hex");
+      const member = report.components[0];
+      const guideRepository = {
+        id: member.repository_id,
+        name: "Fixture Campaign Inventory",
+        provider: "git",
+        url: "/local/fixture-campaign-inventory",
+        default_branch: "main",
+      };
+      const component = {
+        id: member.component_id,
+        name: "Inventory API",
+        repository_id: guideRepository.id,
+        path: ".",
+        responsibility: "Fictional inventory checks",
+        kind: "api",
+        backend: "pyfly",
+        frontend: "none",
+        verification: [],
+        depends_on: [],
+      };
+      const product = {
+        id: report.project_id,
+        revision: 1,
+        digest: report.campaign.project_digest,
+        created_at: "2026-10-15T12:00:00Z",
+        updated_at: "2026-10-15T12:00:00Z",
+        definition: {
+          name: "Fixture inventory campaign",
+          description: "Controlled guide for saved campaign evidence",
+          owners: ["Guide fixture"],
+          topology: "monorepo",
+          product_repository_id: guideRepository.id,
+          components: [component],
+        },
+      };
+      const queued = {
+        id: "6".repeat(32),
+        repository_id: guideRepository.id,
+        project_id: null,
+        brief: "Fixture original queued command",
+        status: "running",
+        agent: "agentic",
+        publish: false,
+      };
+      const commands = [
+        {
+          execution_id: "4".repeat(32),
+          task_id: "verify",
+          attempt: 1,
+          command_label: "Python command",
+          argument_count: 2,
+          source_digest: "a".repeat(64),
+          invocation_digest: "b".repeat(64),
+          wal_digest: "c".repeat(64),
+          binding_digest: "d".repeat(64),
+        },
+        {
+          execution_id: "4".repeat(12) + "5".repeat(20),
+          task_id: "verify",
+          attempt: 1,
+          command_label: "Python command",
+          argument_count: 3,
+          source_digest: "a".repeat(64),
+          invocation_digest: "e".repeat(64),
+          wal_digest: "f".repeat(64),
+          binding_digest: "1".repeat(64),
+        },
+      ];
+      const calls: string[] = [];
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        calls.push(request.method() + " " + path);
+        expect(request.method()).toBe("GET");
+        const json = path.endsWith("/runner-continuations/candidates")
+          ? {
+              version: 1,
+              run_id: queued.id,
+              repository_id: guideRepository.id,
+              project_id: null,
+              actor_id: "f".repeat(32),
+              state: "requires_leader_confirmation",
+              reason:
+                "Controlled guide: leader confirmation is still required.",
+              commands,
+            }
+          : path.endsWith(`/campaigns/${report.campaign.id}/report`)
+            ? report
+            : path.endsWith("/campaigns")
+              ? [
+                  {
+                    id: report.campaign.id,
+                    project_id: product.id,
+                    status: "succeeded",
+                    created_at: "2026-10-15T12:00:00Z",
+                  },
+                ]
+              : path.endsWith("/repositories")
+                ? [guideRepository]
+                : path.endsWith("/projects")
+                  ? [product]
+                  : path.endsWith("/projects/" + product.id)
+                    ? {
+                        ...product,
+                        components: [
+                          {
+                            ...component,
+                            latest_status: "succeeded",
+                            repository_run_count: 1,
+                            runs: [
+                              {
+                                id: member.run_id,
+                                status: "succeeded",
+                                branch: member.branch,
+                                created_at: "2026-10-15T12:00:00Z",
+                              },
+                            ],
+                          },
+                        ],
+                        counts: { succeeded: 1 },
+                      }
+                    : path.endsWith("/runs")
+                      ? [queued]
+                      : path.endsWith("/runs/" + queued.id)
+                        ? queued
+                        : path.endsWith("/plan")
+                          ? { revision: 1, tasks: [] }
+                          : path.endsWith("/journal")
+                            ? { valid: true, entries: [] }
+                            : path.endsWith("/health")
+                              ? { status: "ok", execution_ready: false }
+                              : [];
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("fixture-bootstrap-token-at-least-24-chars");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "API connected", exact: true }),
+      ).toBeVisible();
+      await navigate(page, "Factory");
+      await page
+        .getByRole("button", { name: /Fixture original queued command/ })
+        .click();
+      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Request continuation", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Request original command continuation",
+        exact: true,
+      });
+      const first = dialog.getByRole("radio", {
+        name: new RegExp("Command 1.*" + commands[0].execution_id),
+      });
+      await first.check();
+      await expect(dialog.getByRole("radio")).toHaveCount(2);
+      await capture(page, "runner-continuation-selection", theme, device);
+      await dialog
+        .getByRole("button", { name: "Review original command", exact: true })
+        .click();
+      await dialog
+        .getByLabel(
+          "I understand the leader must confirm this original command.",
+          { exact: true },
+        )
+        .check();
+      await expect(
+        dialog.getByRole("button", {
+          name: "Send continuation request",
+          exact: true,
+        }),
+      ).toBeEnabled();
+      await capture(page, "runner-continuation-review", theme, device);
+      await dialog
+        .getByRole("button", { name: "Cancel review", exact: true })
+        .click();
+      expect(
+        await page.evaluate(() =>
+          Object.keys(sessionStorage).filter((key) =>
+            key.startsWith("forge.runner-continuation.v1:"),
+          ),
+        ),
+      ).toHaveLength(0);
+      await navigate(page, "Product projects");
+      await expect(
+        page.getByRole("heading", {
+          name: product.definition.name,
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", {
+            name: "Product component topology",
+            exact: true,
+          })
+          .getByText("succeeded", { exact: true }),
+      ).toBeVisible();
+      expect(calls.some((call) => call.includes("/campaigns"))).toBe(false);
+      await page
+        .getByRole("button", { name: "Load campaigns", exact: true })
+        .click();
+      await page
+        .getByLabel("Campaign", { exact: true })
+        .selectOption(report.campaign.id);
+      expect(calls.some((call) => call.endsWith("/report"))).toBe(false);
+      await page
+        .getByRole("button", { name: "View report", exact: true })
+        .click();
+      const snapshot = page.getByRole("region", {
+        name: "Campaign report snapshot",
+        exact: true,
+      });
+      const align = async (selector: string) => {
+        await page.locator(selector).evaluate((element) => {
+          const main = element.closest("main")!,
+            shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+          main.scrollTop +=
+            element.getBoundingClientRect().top - shell.bottom - 16;
+        });
+        await expect
+          .poll(() =>
+            page.locator(selector).evaluate((element) => {
+              const box = element.getBoundingClientRect(),
+                shell = document
+                  .querySelector(".workspace-main > header")!
+                  .getBoundingClientRect();
+              return (
+                box.top >= shell.bottom &&
+                element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                )
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await expect(
+        snapshot.getByText("Succeeded", { exact: true }).first(),
+      ).toBeVisible();
+      await expect(
+        snapshot.getByText("Verified", { exact: true }).first(),
+      ).toBeVisible();
+      await align(".campaign-report-snapshot > h3");
+      await capture(page, "campaign-report-summary", theme, device, {
+        actionSelector: ".campaign-report-components button",
+      });
+      await snapshot
+        .getByRole("button", { name: "Inspect component api", exact: true })
+        .click();
+      await snapshot
+        .getByRole("tab", { name: "References", exact: true })
+        .click();
+      await align(".campaign-report-detail > h4");
+      await expect(
+        snapshot.getByRole("heading", {
+          name: "Component journal references",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        snapshot.getByText(member.run_id, { exact: true }),
+      ).toBeVisible();
+      await capture(page, "campaign-report-references", theme, device, {
+        actionSelector: '.campaign-report-tabs [aria-selected="true"]',
+      });
+      expect(calls.filter((call) => call.endsWith("/campaigns"))).toHaveLength(
+        1,
+      );
+      expect(calls.filter((call) => call.endsWith("/report"))).toHaveLength(1);
+      expect(calls.every((call) => call.startsWith("GET "))).toBe(true);
     });
   }

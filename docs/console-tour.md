@@ -463,6 +463,14 @@ For an admitted source whose indexing needs verification, choose **Verify existi
 
 A lost response leaves the original verification unresolved. **Check original verification** only reads its exact receipt. The [illustrated source-verification guide](learning.md#verify-an-existing-indexed-source) follows one write, an initial 404 and a later matching event. The confirmation distinguishes historical verification from current evidence eligibility and stays open when the record leaves the active filter. These controlled fixtures make no provider or knowledge-service call.
 
+## 8. Review an original queued command
+
+In a run's **Plan** tab, choose **Request continuation** under **Original runner command**. Select the command, review its saved identity and acknowledge the leader's final check. The [illustrated continuation guide](sandbox.md#continue-one-queued-command-after-a-controller-restart) shows both steps on desktop and phone. Its fixtures stop before sending a request. Only the live leader and controller can establish admission and execution.
+
+## 9. Inspect a product campaign
+
+Open **Product projects**, select the product and choose **Load campaigns**. Select a campaign, then **View report**. Compare its recorded status with the retained evidence state. Select a component for its tasks, checks, source and journal references. The [campaign walkthrough](project-campaigns.md#read-a-report-in-studio) shows the summary and component details; its fixtures do not establish a live campaign run.
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).
@@ -477,7 +485,7 @@ UPDATE_DOC_SCREENSHOTS=1 FORGE_DOCS_PORT=5227 \
   --config studio/playwright.docs.config.ts
 ```
 
-The configuration captures the product journey, learning decisions and source recovery, and external tool setup. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
+The configuration captures the product journey, learning decisions and source recovery, external tool setup, queued-command review and campaign evidence. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
 
 Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Native scrollbar painting stays enabled. Review the actual images and rendered guides after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
 

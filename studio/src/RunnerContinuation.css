@@ -1,0 +1,16 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.runner-continuation-dialog {
+  height: max-content;
+  max-height: calc(100dvh - 32px);
+}
+.runner-continuation-dialog .wizard,
+.runner-continuation-dialog .wizard-form {
+  flex: 1 1 auto;
+}
+.runner-command-reference {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}

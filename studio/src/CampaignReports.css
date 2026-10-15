@@ -1,0 +1,135 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.campaign-reports {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+.campaign-report-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+.campaign-report-toolbar .field {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.campaign-report-toolbar select {
+  width: 100%;
+  min-width: 0;
+}
+.campaign-report-snapshot {
+  min-width: 0;
+  margin-top: 24px;
+}
+.campaign-report-snapshot h3,
+.campaign-report-detail h4 {
+  scroll-margin: 12px;
+}
+.campaign-report-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 24px;
+  margin: 20px 0;
+}
+.campaign-report-summary dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.campaign-report-summary dd {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.campaign-report-components {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.campaign-report-components button {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(100px, 0.5fr) minmax(
+      180px,
+      1fr
+    );
+  align-items: center;
+  gap: 12px;
+  white-space: normal;
+}
+.campaign-report-components button[aria-pressed="true"] {
+  border-color: var(--amber);
+}
+.campaign-report-components span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.campaign-report-detail {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+  min-width: 0;
+}
+.campaign-report-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 16px 0;
+  padding: 2px 2px 8px;
+}
+.campaign-report-tabs button[aria-selected="true"] {
+  border-color: var(--amber);
+  color: var(--text);
+}
+.campaign-report-detail [role="tabpanel"] {
+  min-width: 0;
+}
+.campaign-report-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+.campaign-report-pagination span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.campaign-report-references {
+  margin: 24px 0;
+}
+.campaign-report-references summary {
+  cursor: pointer;
+}
+.campaign-report-digest {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.campaign-report-digest code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.campaign-report-digest small {
+  max-width: 80ch;
+}
+@media (max-width: 700px) {
+  .campaign-report-components button {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .campaign-report-components button span:last-child {
+    grid-column: 1 / -1;
+  }
+  .campaign-reports > .section-heading {
+    flex-wrap: wrap;
+  }
+}

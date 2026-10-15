@@ -623,6 +623,10 @@ class ForgeClient:
     def project_campaign(self, project_id: str, campaign_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}"))
 
+    def project_campaign_report(self, project_id: str, campaign_id: str) -> dict[str, Any]:
+        """Read one local campaign evidence snapshot; this does not contact source control."""
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/report"))
+
     def _campaign_action(self, project_id: str, campaign_id: str, operation: str, request: Any) -> dict[str, Any]:
         from firefly_forge.project_campaigns import CampaignAction, CampaignRetry
 

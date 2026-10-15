@@ -14,6 +14,8 @@ export type Repository = {
   remote_repository_id?: string;
 };
 export type ForgeRun = {
+  project_id?: string | null;
+  publish?: boolean;
   id: string;
   repository_id: string;
   brief: string;

@@ -2,6 +2,7 @@
 """Exercise the actual non-root image, packaged UI and primary language runtimes."""
 
 import asyncio
+import errno
 import os
 import secrets
 import subprocess
@@ -13,6 +14,15 @@ import httpx
 
 from firefly_forge.api import create_application
 from firefly_forge.product_fonts import manrope_license, manrope_style, manrope_wordmark
+
+
+def _read_process_stat(state: Path) -> str | None:
+    try:
+        return state.read_text()
+    except OSError as failure:
+        if failure.errno not in {errno.ENOENT, errno.ESRCH}:
+            raise
+        return None
 
 
 def check_process_supervision() -> None:
@@ -35,9 +45,9 @@ def check_process_supervision() -> None:
     pid = int(orphan.stdout.strip())
     deadline = time.monotonic() + 5
     state = Path(f"/proc/{pid}/stat")
-    while state.exists() and time.monotonic() < deadline:
+    while (snapshot := _read_process_stat(state)) is not None and time.monotonic() < deadline:
         time.sleep(0.01)
-    assert not state.exists(), f"Exited orphan {pid} was not reaped: {state.read_text() if state.exists() else ''}"
+    assert snapshot is None, f"Exited orphan {pid} was not reaped: {snapshot}"
     assert Path("/proc/1/comm").read_text().strip() == "tini", "Image must provide its own PID1 init"
     print("Image supervision passed: non-root command and orphan PID removal")
 
