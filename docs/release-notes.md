@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.9
+
+Knowledge invalidation retains an exact receipt with its original actor, reason, request and journal event. SDK, CLI and the factory MCP can read that receipt under current project review authority. A missing receipt means the operation has not been observed; it does not permit replay. Legacy records without actor evidence remain explicitly unknown. See [learning invalidation](learning.md).
+
+The optional `profile_python` agent tool runs bounded stdlib cProfile in an admitted, network-isolated Docker workspace. It requires both command and profiling grants, verifies the selected Python source bytes inside the container and returns a bounded report with execution and cleanup receipts. Profiling does not approve the code, retry an uncertain execution or enable host/pool fallback. See [agent tools](agent-tools.md) and [tool prerequisites](tooling-prerequisites.md).
+
 ## 0.2.8
 
 Local command-pool supervisors reap adopted children while a command runs. After the command exits, they terminate and reap remaining descendants before returning a completion receipt, including processes that started a separate session. The original deadline and command exit status remain in force. This prevents a successful result from racing a still-running project writer; it does not undo external effects. See [local command pools](sandbox.md#administrator-opt-in-local-command-pools).
