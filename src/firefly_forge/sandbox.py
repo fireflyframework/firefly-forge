@@ -71,7 +71,9 @@ def _directory_fd(name: str | Path, *, parent: int | None = None) -> int:
         raise ValueError("Workspace contains a link or changed directory") from exc
 
 
-def _regular_data(parent: int, name: str, limit: int, *, private: bool = False) -> tuple[bytes, os.stat_result]:
+def _regular_data(
+    parent: int, name: str, limit: int, *, private: bool = False, _checkpoint: Callable[[], None] | None = None
+) -> tuple[bytes, os.stat_result]:
     try:
         descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     except OSError as exc:
@@ -80,7 +82,19 @@ def _regular_data(parent: int, name: str, limit: int, *, private: bool = False) 
         before = os.fstat(source.fileno())
         if not stat.S_ISREG(before.st_mode) or (not private and before.st_nlink != 1):
             raise ValueError("Archive workspace permits only regular files without links")
-        data = source.read(limit + 1)
+        if _checkpoint is None:
+            data = source.read(limit + 1)
+        else:
+            chunks, size = [], 0
+            while size <= limit:
+                _checkpoint()
+                chunk = source.read(min(65_536, limit + 1 - size))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+            data = b"".join(chunks)
+            _checkpoint()
         after = os.fstat(source.fileno())
         if len(data) > limit:
             raise ValueError("Workspace exceeds the archive byte limit")
@@ -116,7 +130,10 @@ def pack_workspace(
     metadata: bool = False,
     registry: dict[str, str] | None = None,
     _root_fd: int | None = None,
+    _checkpoint: Callable[[], None] | None = None,
 ) -> tuple[bytes, str]:
+    if _checkpoint is not None:
+        _checkpoint()
     output = io.BytesIO()
     total = 0
     root_fd = os.dup(_root_fd) if _root_fd is not None else _directory_fd(workspace)
@@ -128,7 +145,17 @@ def pack_workspace(
 
             def visit(directory: int, parts: tuple[str, ...]) -> None:
                 nonlocal total
-                for name in sorted(os.listdir(directory)):
+                if _checkpoint is None:
+                    names = os.listdir(directory)
+                else:
+                    names = []
+                    with os.scandir(directory) as entries:
+                        for entry in entries:
+                            _checkpoint()
+                            names.append(entry.name)
+                for name in sorted(names):
+                    if _checkpoint is not None:
+                        _checkpoint()
                     path = (*parts, name)
                     if not metadata and _private_path(path):
                         continue
@@ -148,7 +175,10 @@ def pack_workspace(
                         finally:
                             os.close(child)
                     elif stat.S_ISREG(observed.st_mode):
-                        data, actual = _regular_data(directory, name, limit - total)
+                        if _checkpoint is None:
+                            data, actual = _regular_data(directory, name, limit - total)
+                        else:
+                            data, actual = _regular_data(directory, name, limit - total, _checkpoint=_checkpoint)
                         if (observed.st_dev, observed.st_ino) != (actual.st_dev, actual.st_ino):
                             raise ValueError("Workspace changed before reading a regular file")
                         total += len(data)
