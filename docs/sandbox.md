@@ -145,7 +145,7 @@ Send one authenticated `POST /api/v1/runs/{run_id}/runner-continuations` with a 
 
 Choose a new random UUID hex value for the operator request and save it before sending. The execution identifier must be the existing command's identifier. API replicas only record the request. The active Factory leader verifies the original actor, requesting operator, project, repository, stage attempt, source, profile, owner and WAL before sending the exact scoped request to the trusted controller. The controller checks the native Factory admission and current permissions again before effects. It can claim only that command, before its admission expires and with no external create/start intent. An expired, never-started lease may be claimed with a new controller epoch. Normal resource and project limits still apply. A capacity refusal does not schedule a later wake or select another queued command.
 
-The Python client, CLI and factory MCP expose the same request and exact read. The CLI requires both identifiers; none of these adapters generates a replacement identity or retries a failed request. Dedicated Studio controls remain a separate follow-up.
+The Python client, CLI and factory MCP expose the same request and exact read. The CLI requires both identifiers; none of these adapters generates a replacement identity or retries a failed request. Studio offers a separate selection and review flow described below.
 
 ```bash
 forge request-runner-continuation RUN_ID --request-id SAVED_REQUEST_ID --execution-id ORIGINAL_EXECUTION_ID
@@ -163,6 +163,35 @@ There is one explicit continuation identity per command, with at most 50 such ad
 Open a run's **Plan** tab and inspect **Original runner command**. **Request continuation** appears only when current local checks find an original pending command and your current role permits execution (or release for a publishing run). Select the original command, review its identity, and acknowledge that the leader must confirm it is still waiting. Studio saves one request identity before sending **Send continuation request**. The leader and controller perform the final checks; an accepted admission does not establish command success.
 
 The local `GET /api/v1/runs/{run_id}/runner-continuations/candidates` reads retained authority and command evidence without controller RPC, lease claims, work dispatch or subprocesses. Its candidates explicitly require leader confirmation. A separate API process needs access to the original shared workspace for the confined source check. If that source is unavailable, Studio displays that condition rather than presenting an empty eligible list. The preview contains a fixed command-family label and argument count, not command arguments or paths; the original evidence remains in the run's journal. Inspection examines at most 16 active original commands. Each source pass reads at most 16 MiB plus bounded archive overhead, shared across commands; one final pass rechecks the source after credential admission. Each API service admits one source reader at a time, outside the event loop, with a three-second cooperative processing deadline and at most 4,096 traversal/read checkpoints. Exhaustion offers no continuation; the existing exact POST contract and saved receipt reads are unchanged. Cancellation retains the reader until it exits cooperatively. These checks do not promise to interrupt a blocked filesystem syscall. This read has no SDK, CLI or MCP adapter in this slice.
+
+The selection shows a command number, a short execution reference and argument count. Its accessible name retains the complete execution identifier, so commands with the same label or reference prefix remain distinguishable. The review keeps that original identity; it cannot replace the command or its budgets.
+
+The following guide uses controlled API fixtures. It stops before **Send continuation request**; no runner dispatch, command result or native recovery is established by these images.
+
+<figure class="forge-shot" markdown="1">
+![Controlled selection of an original command, with distinct command numbers and references.](assets/screenshots/runner-continuation-selection-desktop-light.png)
+<figcaption>Select the exact original execution. Local checks still require the leader's confirmation.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect the continuation review and phone layout</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled continuation review before any request is sent.](assets/screenshots/runner-continuation-review-desktop-light.png)
+<figcaption>Review the original identity and acknowledge the leader's final check. The guide does not send the request.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled command selection on a phone.](assets/screenshots/runner-continuation-selection-mobile-dark.png)
+<figcaption>The same numbered choices remain available on a narrow screen.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled continuation review on a phone.](assets/screenshots/runner-continuation-review-mobile-dark.png)
+<figcaption>The review keeps its action footer while longer fields scroll within the dialog.</figcaption>
+</figure>
+
+</details>
 
 After an uncertain response or page reload, use **Check original request**. A successful POST also requires this exact receipt read before Studio shows admission acceptance. A missing receipt, denied access or unknown outcome never clears the saved identity or enables another POST. Even a refusal before server admission cannot be inferred from an HTTP error: retain the request and inspect authorized run evidence or cancellation/reconciliation controls. The browser marker contains only the API/scope identity and binding digests; it does not retain command arguments, workspace paths, credentials or private receipt payloads. Changing operator or API scope does not transfer a saved request to the new session.
 
