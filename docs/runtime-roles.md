@@ -51,6 +51,8 @@ Product conversations and identity administration can run on an API process. The
 
 `GET /api/v1/health` reports the process role, `admission_ready` and `execution_ready`. A healthy API replica reports `execution.state = api_only` and local execution disabled. It can accept authorized work without claiming that a remote worker is available; `remote_worker_state` remains `unknown`.
 
+Studio does not show an execution-restart warning for that healthy API-only state. It still shows degraded health, an explicit diagnostic or an unavailable execution process. The authenticated metrics endpoint uses the same health calculation: `forge_admission_ready` reports local admission readiness, while `forge_execution_ready` reports local execution readiness. Neither gauge establishes remote worker availability or confirms a command's outcome.
+
 On an execution process, `execution.state` distinguishes `standby`, `recovering`, `ready`, `stopped` and `degraded`. Only `ready` reports `execution_ready = true` and a nonzero `max_parallel_jobs`. A standby has admitted its topology but has no execution consumers or capacity; headless workers expose no HTTP listener, so their supervisors must also track process state and the retained ledger. An API replica continues to report remote worker availability as unknown.
 
 Every required leader consumer is supervised: coding, delivery requests, deployments, campaigns, repository-channel work and application observations. A stopped consumer degrades health; a headless worker drains its lifecycle and exits so its supervisor can handle the failure. Inspect retained work before restarting. Neither a successful health response nor an automatic restart resolves an unknown external effect.
