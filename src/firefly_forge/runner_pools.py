@@ -234,6 +234,8 @@ class RunnerPools:
                     row.status = "cancelled"
                     await self._event(row, "admission_expired", {})
             for row in rows:
+                if row.id in reserved:
+                    continue
                 bound = row.data.get("submission_fence")
                 if row.status == "queued" and bound is not None and bound != fence.model_dump(mode="json"):
                     row.status = "cancelled"
