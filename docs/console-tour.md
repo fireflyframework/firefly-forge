@@ -6,7 +6,7 @@ description: Follow a product definition and execution through the forge console
 
 # Follow a change through Studio
 
-Follow an inventory API change from connection and product definition through run review, verification and recovery. The run case ends with a failed check and an unresolved intent. A separate learning example reviews an invalidation and reads its exact receipt.
+Follow an inventory API change from connection and product definition through run review, verification and recovery. The run case ends with a failed check and an unresolved intent. Separate learning examples review an invalidation and verify an existing indexed source, each with exact-request recovery.
 
 Screenshots use controlled fixtures.[^captures] Select an image to open its full capture; light and dark variants follow the page appearance.
 
@@ -450,6 +450,19 @@ Open **Knowledge > Learning records** and inspect a record in its current scope.
 
 If the response is lost, use **Check original request**. A missing event retains uncertainty; it cannot authorize another write. The [illustrated learning guide](learning.md#invalidate-saved-evidence) follows the same request from reason and review through an initial 404 and a later matching receipt, including filter retention and the phone layout. These are controlled fixtures with no external service writes.
 
+## 7. Verify an existing indexed source
+
+For an admitted source whose indexing needs verification, choose **Verify existing source**. Choose **Review source**, check the record and source, then acknowledge the operation before **Verify source**. This reads the existing content and citations and records a local observation; it does not create a source or trigger ingestion.
+
+<figure class="forge-shot" markdown="1">
+
+![Review verification of an existing indexed source](assets/screenshots/learning-observation-review-desktop-light.png)
+
+<figcaption>The separate source fixture reviews one observation. Exact factory, actor and target references remain available in expandable details. Its pending identity is retained before the intercepted request.</figcaption>
+</figure>
+
+A lost response leaves the original verification unresolved. **Check original verification** only reads its exact receipt. The [illustrated source-verification guide](learning.md#verify-an-existing-indexed-source) follows one write, an initial 404 and a later matching event. The confirmation distinguishes historical verification from current evidence eligibility and stays open when the record leaves the active filter. These controlled fixtures make no provider or knowledge-service call.
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).
@@ -464,7 +477,7 @@ UPDATE_DOC_SCREENSHOTS=1 FORGE_DOCS_PORT=5227 \
   --config studio/playwright.docs.config.ts
 ```
 
-The configuration captures both the product journey and external tool setup. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh both complete journeys.
+The configuration captures the product journey, learning decisions and source recovery, and external tool setup. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
 
 Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Native scrollbar painting stays enabled. Review the actual images and rendered guides after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
 
