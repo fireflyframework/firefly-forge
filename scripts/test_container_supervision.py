@@ -1,13 +1,19 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Host-only behavior checks for the native container acceptance guards."""
 
+import ast
+import contextlib
 import copy
+import errno
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch as mock_patch
 
 from scripts.container_default_command_smoke import (
     cleanup_program,
@@ -193,6 +199,101 @@ class ContainerCleanupBoundary(unittest.TestCase):
             [line for line in process.stderr.splitlines() if line.startswith("subprocess.CalledProcessError:")][-1],
         )
         self.assertIn("exit status 19", process.stderr)
+
+
+class ContainerProcessState(unittest.TestCase):
+    def probe(self, snapshots, *, pid1="tini"):
+        # Execute the real probe without importing its API/HTTP dependencies in this stdlib-only CI gate.
+        path = Path(__file__).with_name("container_smoke.py")
+        tree = ast.parse(path.read_text())
+        functions = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name in {"_read_process_stat", "check_process_supervision"}
+        ]
+        clock = SimpleNamespace(now=0.0)
+
+        def sleep(seconds):
+            clock.now += seconds
+
+        samples = iter(snapshots)
+        latest = None
+
+        def sample():
+            nonlocal latest
+            latest = next(samples, latest)
+            if isinstance(latest, OSError):
+                raise latest
+            return latest
+
+        original_stat = Path.stat
+
+        def stat(candidate, *args, **kwargs):
+            if str(candidate) == "/proc/123/stat":
+                sample()
+                return SimpleNamespace()
+            return original_stat(candidate, *args, **kwargs)
+
+        def read_text(candidate, *args, **kwargs):
+            if str(candidate) == "/proc/123/stat":
+                return sample()
+            self.assertEqual(str(candidate), "/proc/1/comm")
+            return pid1 + "\n"
+
+        namespace = {
+            "Path": Path,
+            "errno": errno,
+            "os": SimpleNamespace(getuid=lambda: 10001),
+            "sys": SimpleNamespace(platform="linux", executable=sys.executable),
+            "subprocess": SimpleNamespace(run=lambda *a, **k: SimpleNamespace(stdout="123\n")),
+            "time": SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep),
+        }
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), "exec"), namespace)
+        with (
+            mock_patch.object(Path, "stat", stat),
+            mock_patch.object(Path, "read_text", read_text),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            try:
+                namespace["check_process_supervision"]()
+            finally:
+                self.elapsed = clock.now
+        return clock.now
+
+    def test_reaped_proc_esrch_is_absent(self):
+        try:
+            elapsed = self.probe([ProcessLookupError(errno.ESRCH, "Reaped owned process")])
+        except ProcessLookupError as failure:
+            self.fail(f"A reaped /proc entry must be absent, not propagate errno {failure.errno}")
+        self.assertEqual(elapsed, 0)
+
+    def test_proc_disappearing_after_a_present_poll_is_absent(self):
+        try:
+            elapsed = self.probe(["123 (owned) Z 1", ProcessLookupError(errno.ESRCH, "Reaped")])
+        except ProcessLookupError as failure:
+            self.fail(f"Reaping between polls must not propagate errno {failure.errno}")
+        self.assertLessEqual(elapsed, 0.01)
+
+    def test_missing_proc_enoent_is_absent(self):
+        self.assertEqual(self.probe([FileNotFoundError(errno.ENOENT, "Owned process gone")]), 0)
+
+    def test_permission_and_other_proc_errors_propagate(self):
+        for code in [errno.EACCES, errno.EPERM, errno.EIO, errno.ENOTDIR, errno.EBADF, None]:
+            failure = OSError(code, "Owned proc read failure")
+            with self.subTest(errno=code):
+                with self.assertRaises(OSError) as caught:
+                    self.probe([failure])
+                self.assertIs(caught.exception, failure)
+
+    def test_a_persistent_zombie_still_fails_at_the_five_second_deadline(self):
+        with self.assertRaisesRegex(AssertionError, "was not reaped: 123 \\(owned\\) Z 1"):
+            self.probe(["123 (owned) Z 1"])
+        self.assertGreaterEqual(self.elapsed, 5)
+        self.assertLess(self.elapsed, 5.02)
+
+    def test_absent_orphan_does_not_bypass_the_tini_requirement(self):
+        with self.assertRaisesRegex(AssertionError, "own PID1 init"):
+            self.probe([FileNotFoundError(errno.ENOENT, "Owned process gone")], pid1="sleep")
 
 
 if __name__ == "__main__":
