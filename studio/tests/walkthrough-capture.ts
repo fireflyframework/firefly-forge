@@ -82,6 +82,10 @@ export async function captureWalkthrough(
     "campaign-report-save-review": "Review",
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
+    "source-analysis-scope": "Scope",
+    "source-analysis-receipt": "Receipt",
+    "source-analysis-evidence": "Evidence",
+    "source-analysis-review": "Review",
   };
   if (expectedStep[stage])
     await expect(
