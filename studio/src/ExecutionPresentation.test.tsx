@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
+import launcherFixture from "../tests/php-launcher-fixture.json";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   EvidenceView,
@@ -242,6 +243,48 @@ describe("execution evidence presentation", () => {
       expect(html).toContain("Copy full");
     }
     expect(records[0].command).toHaveLength(200000);
+  });
+});
+
+describe("long nested command disclosure", () => {
+  it("keeps the actual escaped PHP launcher outside the compact heading and retains its original", () => {
+    const value = {
+      execution_id: "1".repeat(32),
+      effect: "start",
+      request: { request: { argv: launcherFixture.argv } },
+    };
+    const html = renderToStaticMarkup(<EvidenceView value={value} />);
+    const heading = html.match(
+      /class="record-command-heading"[\s\S]*?<\/code>/,
+    )?.[0];
+    expect(heading).toBeDefined();
+    expect(heading!.match(/<code>([\s\S]*)<\/code>/)?.[1].length).toBeLessThan(
+      250,
+    );
+    expect(heading).not.toContain("Copy full text");
+    expect(html).toContain("<summary>Full command</summary>");
+    expect(html).toContain("Copy full command");
+    expect(html).toContain("Advanced record");
+    expect(value.request.request.argv).toEqual(launcherFixture.argv);
+  });
+  it("keeps a short ordinary command readable without a redundant disclosure", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceView value={{ argv: ["npm", "test"], exit_code: 7 }} />,
+    );
+    expect(html).toContain("npm test");
+    expect(html).toContain("Exit 7");
+    expect(html).toContain("Failed");
+    expect(html).not.toContain("<summary>Full command</summary>");
+    const boundary = renderToStaticMarkup(
+      <EvidenceView value={{ command: "x".repeat(80) }} />,
+    );
+    expect(boundary).toContain("x".repeat(80));
+    expect(boundary).not.toContain("<summary>Full command</summary>");
+    const longer = renderToStaticMarkup(
+      <EvidenceView value={{ command: "x".repeat(81) }} />,
+    );
+    expect(longer).toContain("<summary>Full command</summary>");
+    expect(longer).toContain("Copy full command");
   });
 });
 
