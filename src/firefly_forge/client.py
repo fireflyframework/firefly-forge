@@ -99,6 +99,9 @@ class ForgeClient:
     def runner_continuation(self, identifier: str, request_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{self._id(identifier)}/runner-continuations/{self._id(request_id)}"))
 
+    def runner_continuation_candidates(self, identifier: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(identifier)}/runner-continuations/candidates"))
+
     def reconcile_execution_request(self, identifier: str, request_id: str, reconciliation_id: str) -> dict[str, Any]:
         from firefly_forge.execution_requests import ExecutionRequestReconciliation
 
