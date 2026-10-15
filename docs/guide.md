@@ -6,6 +6,8 @@ description: Find the setup, product design, execution, knowledge and operations
 
 # Find your next step
 
+Start with [concepts and factory journeys](factory-journeys.md) to understand how a product definition, project, component, campaign and run fit together. The guide follows repository setup, product decisions, execution, delivery and support, including operation from source-control conversations.
+
 For an illustrated case from connection through run evidence and recovery, follow the [Studio console tour](console-tour.md).
 
 Choose the path that matches the work in front of you. You can join an existing product at any stage; a new feature does not require recreating its original definition.

@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.15
+
+An authorized product operator can save a selected campaign report and read its exact result later. The immutable receipt retains the report, source boundary, historical repository scope and original actor. Saving requires the displayed report digest and a caller-retained request identity. Reusing that identity reads its original outcome; a lost response, missing receipt or conflict does not authorize another request. Later campaign changes leave the saved report intact. See [saved report history](project-campaigns.md#save-an-exact-report).
+
+The SDK, CLI and factory MCP expose explicit save, bounded history and exact readback. Every return checks current project and historical repository access; a stored receipt does not grant access. History is limited to 100 reports per campaign and 50 metadata entries per page, with byte limits checked before loading bodies. `prepared_at` records database preparation time, not commit time or live evidence freshness. The native PostgreSQL migration adds immutable archive storage without rewriting campaign execution journals or changing the existing report contract.
+
+Studio adds a report-and-review wizard, saved summaries and exact receipt inspection. It checks canonical digests and retains a small request reference in browser storage before the write, without tokens or report bodies. Lost delivery, reload or an initial missing receipt keeps the original identity; recovery reads it without repeating the save. Current access and the complete original marker binding remain required before another explicit save. Follow the [illustrated save and recovery journey](project-campaigns.md#save-and-recover-in-studio).
+
+The [concepts and factory journeys](factory-journeys.md) guide explains product definitions, components, projects, campaigns and their execution evidence. Repository guides use the actual connection controls and distinguish signed ingress, retained operations and outbound feedback from Git mirroring. Existing-source guidance explains monorepo and multiple-repository scope, inspection coverage and owner review; Studio now displays the backend's numeric skipped-file count correctly.
+
 ## 0.2.14
 
 SDK, CLI and MCP clients can inspect the original commands available for a continuation review. Use `ForgeClient.runner_continuation_candidates(run_id)`, `forge runner-continuation-candidates RUN_ID` or `get_runner_continuation_candidates(identifier)`. Each performs one authenticated read and preserves the server's unavailable or empty result. Inspection does not allocate a request, claim a command or dispatch work; the original leader still authorizes a separate explicit continuation. See [runner continuation](sandbox.md#request-continuation-in-studio).

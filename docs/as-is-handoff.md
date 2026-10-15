@@ -31,6 +31,89 @@ flowchart LR
 
 The exact owner-reviewed evidence becomes frozen assistant context. The dashed flycanon branch is optional and requires explicit admission; reviewed context can be used without uploading it.
 
+## Follow source inspection in Studio
+
+Select the product in **Product projects**, then choose **Open source inspection**. Its wizard has four steps. This walkthrough uses controlled responses for a monorepo with two distinct component roots, the same source commit and numeric skipped-file counts. It demonstrates presentation and explicit review; it runs no source inspection, model, provider or test command.
+
+1. In **Scope**, select the configured roots to inspect, then choose **Inspect configured source**. On your factory this starts source inspection; simply opening the wizard does not.
+2. In **Receipt**, select the returned report and inspect its recorded state, component/declaration counts and digest. **Refresh reports** reads retained reports. Continue to its evidence.
+3. In **Evidence**, check each component's root, source commit, declarations and skipped-file count. Expand **Exact source excerpt** to inspect a declaration's line and blob reference. Missing declarations require a coverage check before you infer anything about the product.
+4. In **Review**, read the open questions and download the source documents if needed. Acknowledge the source evidence explicitly, then choose **Acknowledge this report digest**. This confirms that report's source review; it leaves customer journeys and runtime behavior unconfirmed. **Done** closes the wizard.
+
+<figure class="forge-shot" markdown="1">
+
+![Scope step with two separate source roots selected in a monorepo.](assets/screenshots/source-analysis-scope-desktop-light.png)
+
+<figcaption>Scope: choose the configured components before inspecting. Both fixture roots belong to one repository; a multi-repository product retains each member's own repository and commit.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Receipt step with a retained inspection report, counts and digest.](assets/screenshots/source-analysis-receipt-desktop-light.png)
+
+<figcaption>Receipt: the controlled report is ready for review. Its identity and digest remain separate from an approved product definition.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Evidence step showing component roots, source commits and declaration references.](assets/screenshots/source-analysis-evidence-desktop-light.png)
+
+<figcaption>Evidence: inspect the source boundary and omitted-file count for each component. The fixture uses the same commit for both monorepo roots; it does not prove that their services integrate correctly.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Review step with owner questions and explicit source-evidence acknowledgment.](assets/screenshots/source-analysis-review-desktop-light.png)
+
+<figcaption>Review: the acknowledgment applies to source evidence. Confirm the proposed behavior separately with the product owner before requesting implementation.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect source evidence and review on a phone</summary>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Source declarations and component references within the phone evidence step.](assets/screenshots/source-analysis-evidence-mobile-light.png)
+
+<figcaption>Evidence: scroll the declaration content while retaining the wizard controls. Expand the exact source excerpt when checking a citation.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Explicit source review and acknowledgment within the phone wizard.](assets/screenshots/source-analysis-review-mobile-light.png)
+
+<figcaption>Review: read the questions and acknowledgment before confirming. These controlled captures follow the same current-source inventory and maintenance procedure as the <a href="../console-tour/#keep-captures-current">Studio tour</a>.</figcaption>
+</figure>
+
+</details>
+
+## Choose the product scope before inspection
+
+Create or select the [product project](factory-journeys.md#2-configure-the-product-project) before opening source inspection. For a monorepo, configure distinct, nonoverlapping component roots in one registered repository. For a multi-repository product, configure each member repository, its component roots and the intended dependencies. Select all components for a product overview, or an explicit subset for a focused question.
+
+Within one analysis, components in the same repository use the same cloned default-branch commit. Separate repositories retain their own observed commits. Those commits are not an atomic release across repositories; review the recorded set and any integration versions you need to reproduce the product. Configured dependencies describe the intended topology and do not establish observed runtime calls.
+
+The existing source can predate Firefly adoption. Keep its observed technology separate from the implementation target. Ask the product owner whether to reimplement the agreed behavior as a new supported product, or preserve the existing system and add supported components or features at an explicit boundary. Record that decision, compatibility requirements and rollout constraints in the product definition before requesting development. Source review alone authorizes neither a rewrite nor a framework migration.
+
+The current inspector does not discover arbitrary legacy frameworks or choose an adoption strategy automatically. Configure component execution with the supported [framework profiles](profiles.md); inspect a legacy declaration as evidence without treating it as a supported coding target. Framework adoption decisions and source-only observations are different contracts.
+
+## Understand the current inspection coverage
+
+Inspection reads committed blobs from a bare clone. It does not import the application, install dependencies, run tests, execute a build, follow symbolic links or call a deployed service. Known credential content is excluded through the configured redaction checks. This is a bounded source review, so an absent declaration does not prove a feature or dependency is absent.
+
+| Observed declaration | Current extractor | What still needs review |
+| --- | --- | --- |
+| Python HTTP mapping | Direct named pyfly-style mapping decorators with a literal first path argument. | Class prefixes, dynamic routing, aliases, other frameworks and runtime composition. |
+| Python test | Functions whose names start with `test_`. | Whether the test runs, what behavior it proves and its latest result. |
+| PHP HTTP route | Supported single-line literal `Route::get/post/put/patch/delete` declarations. | Groups, computed paths, controllers and the effective deployed route table. |
+| Framework dependency | Matching framework lines in `pyproject.toml`, `composer.json` and `package.json`. | Resolved versions, the complete dependency graph and actual runtime use. |
+
+One analysis shares a budget of 200 readable files and 2,000,000 source bytes across its selected components. A file must be at most 65,536 bytes. Each component retains at most 200 facts. The inspected extensions are `.py`, `.php`, `.json`, `.toml`, `.md`, `.yml`, `.yaml`, `.js`, `.ts` and `.tsx`; an accepted extension does not imply a semantic extractor for that language.
+
+`skipped_files` counts files refused by the size/shared budget or redaction checks. It is not a complete count of unsupported, private, symbolic-link or unparsable source. Earlier components can consume the shared budget. For a large product, inspect smaller component selections and retain their separate reports. Review file and language coverage before treating a source report as a product inventory.
+
+The assistant receives at most 40 KB of reviewed source context. Its `included_facts`, `omitted_facts` and `truncated` fields disclose that later handoff's coverage; they do not measure the entire codebase. A generated AS-IS narrative needs owner confirmation and executable acceptance checks for the proposed behavior.
+
 ## Inspect and review the source
 
 Create an inspection through `POST /api/v1/projects/{project_id}/analyses`. An empty body selects the project's configured components; `component_ids` narrows the selection. Inspect the returned source observations, skipped-file counts and open questions.

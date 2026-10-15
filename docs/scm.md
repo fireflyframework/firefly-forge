@@ -5,16 +5,46 @@ description: Connect GitHub, GitLab or Bitbucket applications and retain project
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Connect source-control applications
 
-Open **Connections → Source control** to register an application owned by your
-GitHub organization, GitLab account or Bitbucket workspace. The provider controls
-its permissions and grants. forge discovers the repositories it can access and
-checks the current grant again before cloning or publishing.
+A source-control connection lets forge read granted repositories and publish reviewed changes through the provider's API. GitHub Apps, GitLab OAuth applications and Bitbucket OAuth consumers supply that authority. Your factory sign-in controls who may configure forge; it does not grant access to the provider account.
 
-Application registration and owner approval happen on the provider's website.
-Saving a client ID or private key in forge does not create an application or prove
-access. **Test connection** makes a real provider request. **Connect repository**
-accepts a discovered repository ID; forge obtains its URL and default branch
-from a fresh provider response.
+## Connect one repository
+
+A factory administrator completes these steps in **Connections → Repositories**:
+
+1. Select **GitHub App**, **GitLab OAuth application** or **Bitbucket OAuth consumer**. Use **Create application** to open the provider's registration instructions. Create and approve the application in the organization or workspace that owns the repository.
+2. Supply the application fields described below and choose **Save application settings**. Saving those values records configuration; it does not create the provider application or establish a repository grant.
+3. Install the GitHub App on the intended repositories. For GitLab or a Bitbucket authorization-code grant, choose **Authorize in…** and finish consent in the same browser. Bitbucket client credentials use the configured consumer and workspace instead.
+4. Choose **Check access**. This makes a real provider request. A successful check describes the current grant, not a permanent permission.
+5. Choose **Find granted repositories**, inspect the returned repository name and URL, then **Connect NAME**. forge checks discovery again and registers the selected remote repository ID with its provider URL and default branch. It does not accept a caller-substituted URL or credentials in this action.
+6. Select that registered repository when defining a product or starting work. Enable signed conversation commands separately in [Repository workflow](repository-workflow.md); connecting an application alone does not enable webhook execution.
+
+<figure class="forge-shot" markdown="1">
+![Studio repository-access step in the factory connection wizard.](assets/screenshots/connect-repositories-desktop-light.png)
+<figcaption>The Repositories step is the entry point for application access. This controlled Studio screenshot shows the setup stage, with no provider catalog populated; it is not evidence of a live installation or grant.</figcaption>
+</figure>
+
+## Understand the two directions
+
+| Direction | Implemented behavior | What the result establishes |
+| --- | --- | --- |
+| Provider → factory | Discover granted repositories and clone their configured default branch when preparing a fresh run; a campaign can supply its frozen source commit. | The run's recorded source base, not a continuously synchronized workspace. |
+| Provider conversation → factory | Accept an enabled, signed structured command from an exact trusted actor. | A retained delivery and its allowed action; ordinary discussion does not start work. |
+| Factory → provider | Push verified source to the run branch and request a pull or merge request; optionally publish separate review-reference files. | A recorded publication outcome, not a merged default branch or deployment. |
+| Factory → conversation | Post queued, stopped or terminal status and supported worker questions using the conversation's original identity. | Feedback about retained work; an uncertain reply remains unresolved until checked. |
+
+These are explicit source and conversation flows. forge does not mirror every issue edit into a product definition, continuously merge remote changes into an active workspace, or merge its own pull requests. Resuming a run inspects its retained workspace. New upstream work and merge conflicts require a reviewed source decision; see [recovery](recovery.md) and [repository commands](repository-workflow.md).
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source publication flow" aria-describedby="scm-publication-guide" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+  S[Granted repository] --> W[Isolated run workspace]
+  W --> P[Verified review branch]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="scm-publication-guide">Source enters an isolated run. Publication requires passing checks and current release authority; the provider still owns review and merge. On a narrow screen, focus the diagram and scroll horizontally.</p>
 
 ## GitHub App
 
@@ -94,8 +124,7 @@ process leaves that marker unresolved; subsequent requests cannot send the old
 refresh token again, including after restart. The connection reports
 **Needs authorization**. Complete a new provider consent flow to establish a
 fresh grant. This recovery does not claim whether the previous provider request
-succeeded. SCM storage remains owner-private configuration; the general
-encrypted PostgreSQL provider-connection lifecycle is separate work.
+succeeded. SCM storage remains owner-private configuration. The [connected-account OAuth lifecycle](connected-accounts.md) uses a separate policy, client and credential store; configuring it does not register an SCM application or move these grants into that store.
 
 Token issuance and repository discovery also check that the application revision
 did not change while a provider request was in flight. An obsolete response cannot
@@ -124,7 +153,7 @@ All routes below use `/api/v1` and require current factory-administrator authori
 | POST | `/scm/connections/{provider}/test` | Live grant-test summary |
 | GET | `/scm/connections/{provider}/repositories` | Repositories in current grants |
 | POST | `/scm/connections/{provider}/repositories/connect` | Register a freshly discovered repository ID |
-| POST | `/scm/connections/{provider}/authorize` | Browser authorization URL and private cookie |
+| POST | `/scm/connections/{provider}/authorize` | GitLab or Bitbucket browser authorization URL and private cookie |
 | GET | `/scm/connections/{provider}/callback` | Complete GitLab or Bitbucket consent |
 
 ```json
@@ -140,10 +169,11 @@ or credentials supplied by the caller.
 ## Publish a verified change
 
 Studio runs begin with `publish: false`. After verification succeeds, **Publish
-pull request** creates a branch and invokes the provider's pull-request API.
+pull request** requests publication of the verified checkpoint to the run's branch and invokes the provider's pull-request API. An API-only server retains the publication request for its execution owner; an accepted request is not yet a remote pull request.
 Operators can also use `forge publish RUN_ID` or explicitly request `publish:
-true` when creating a run. forge does not merge a pull request or deploy a
-product through this action. Project reviews and branch protections still apply.
+true` when creating a run. Publication rechecks project release permission, the application revision, source/checkpoint evidence and any required review. A test-only run cannot publish an implementation branch. forge does not merge a pull request or deploy a product through this action. Project reviews and branch protections still apply.
+
+If a publication intent has no confirmed outcome, inspect the retained run and the provider's branch and pull request before another action. A timeout does not establish that nothing was published. [Recovery](recovery.md) explains the separate publication and execution intents.
 
 Generic Git, Azure DevOps and Gitea retain the manual repository path. HTTPS URLs
 must not contain credentials. Configure an appropriate Git credential helper or

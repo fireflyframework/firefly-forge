@@ -175,6 +175,14 @@ class CampaignReports:
             await self.access.require_repository(principal, repository_id, "read")
 
     async def report(self, project_id: str, campaign_id: str) -> Data:
+        result, repositories = await self._capture(project_id, campaign_id)
+        await self._authorize(result["project_id"], repositories)
+        await self.store.admit_credentials(result)
+        await self._authorize(result["project_id"], repositories)
+        return result
+
+    async def _capture(self, project_id: str, campaign_id: str) -> tuple[Data, set[str]]:
+        """Keep the historical repository manifest in the same read-only evidence cut."""
         project_id, campaign_id = identifier(project_id).hex, identifier(campaign_id).hex
         await self._authorize(project_id, set())
         # Capture the Store's actual datasource manager without installing a global registry.
@@ -209,10 +217,7 @@ class CampaignReports:
             repositories = set()
         result = CampaignReport(**result, digest=ZERO_HASH).model_dump(mode="json")
         result["digest"] = digest({key: value for key, value in result.items() if key != "digest"})
-        await self._authorize(project_id, repositories)
-        await self.store.admit_credentials(result)
-        await self._authorize(project_id, repositories)
-        return result
+        return result, repositories
 
     async def _rows(self, session: AsyncSession, statement: Select[Any], limit: int, remaining: list[int]) -> list[Any]:
         sample = statement.with_only_columns(statement.selected_columns.data).subquery()

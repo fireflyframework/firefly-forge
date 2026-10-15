@@ -75,6 +75,7 @@ nav:
   - Start:
       - Documentation home: index.md
       - Find your next step: guide.md
+      - Concepts and factory journeys: factory-journeys.md
       - Install and start: installation.md
       - Your first product: quickstart.md
       - Studio console tour: console-tour.md

@@ -1,0 +1,133 @@
+{
+  "provenance": "Fictional native PostgreSQL CampaignReportHistory returns exported by the backend owner. UI replay is not native HTTP acceptance.",
+  "receipt": {
+    "version": 1,
+    "project_id": "2d1ff361d60f42f18614baf8c9f7ed03",
+    "campaign_id": "16941b4ac9b04543993d9d4dd6048fa8",
+    "request_id": "88c5a9114b6f4c96a6db343e1ad24348",
+    "actor_id": "f3830c9f86bf41fe855f15942b3db953",
+    "sequence": 1,
+    "prepared_at": "2026-10-15T13:04:26.233144+00:00",
+    "source": {
+      "campaign_journal_head": "464827ef34297e7932f89d1e8bb39578aae8857f96c6b796edea9706f82b07f1",
+      "campaign_event_count": 2,
+      "project_digest": "da70c8f797361acb4cfe5c0cfed00c9a269e37b842b04da8165a9304f582cf97",
+      "request_digest": "efb53cd46f80382b6ff20c72f509ceef31722c821a0a8e659cd6f638ce64d51a"
+    },
+    "repositories": ["c716c7c1f00646f18873c2d39b1550bf"],
+    "digest": "cc8b1029d249034a903c3daf89fa63c7607396b0553a2c42279268359f12f99b",
+    "request_digest": "0842b5019ed7f85012a59a56d95864d704cd9683f07b6f3f5480376985a53d2a",
+    "report": {
+      "version": 1,
+      "project_id": "2d1ff361d60f42f18614baf8c9f7ed03",
+      "campaign": {
+        "id": "16941b4ac9b04543993d9d4dd6048fa8",
+        "recorded_status": "running",
+        "project_digest": "da70c8f797361acb4cfe5c0cfed00c9a269e37b842b04da8165a9304f582cf97",
+        "request_digest": "efb53cd46f80382b6ff20c72f509ceef31722c821a0a8e659cd6f638ce64d51a",
+        "journal_head": "464827ef34297e7932f89d1e8bb39578aae8857f96c6b796edea9706f82b07f1",
+        "event_count": 2
+      },
+      "state": "in_progress",
+      "reason": null,
+      "counts": {
+        "in_progress": 1
+      },
+      "components": [
+        {
+          "component_id": "api",
+          "repository_id": "c716c7c1f00646f18873c2d39b1550bf",
+          "run_id": "72df8e9882e94b1d927828f3070ffe94",
+          "attempt": 1,
+          "state": "in_progress",
+          "recorded_status": "queued",
+          "reason": null,
+          "verification": "not_verified",
+          "admission_digest": "7d0b4d01c8cc5a52ccabd92ad590be5dd834255f6c3ec014dda73e62293698ef",
+          "run_digest": "3674dd90492853cbe7423c01af81235e0c54ac2552c90ef8fd4306d46a325802",
+          "source_base": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "branch_receipt": null,
+          "checkpoint_revision": null,
+          "source_tree": null,
+          "source_tree_receipt": null,
+          "checkpoint_receipt": null,
+          "plan_digest": null,
+          "journal": {
+            "sequence": 0,
+            "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "head": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "tasks": [],
+          "checks": [],
+          "prior_attempts": [],
+          "depends_on": []
+        }
+      ],
+      "milestones": "not_configured",
+      "waves": "not_configured",
+      "scm_freshness": "not_observed",
+      "limits": {
+        "attempts": 200,
+        "tasks_per_run": 128,
+        "campaign_events": 1024,
+        "snapshot_seconds": 10,
+        "run_events_per_run": 2048,
+        "evidence_json_bytes": 16777216,
+        "journal_entries_per_run": 2048
+      },
+      "digest": "09727279e7ce807a63ae7dad401296b53f6a8cbe73587be5211e0da808f39fa7"
+    }
+  },
+  "page": {
+    "project_id": "2d1ff361d60f42f18614baf8c9f7ed03",
+    "campaign_id": "16941b4ac9b04543993d9d4dd6048fa8",
+    "items": [
+      {
+        "version": 1,
+        "project_id": "2d1ff361d60f42f18614baf8c9f7ed03",
+        "campaign_id": "16941b4ac9b04543993d9d4dd6048fa8",
+        "request_id": "88c5a9114b6f4c96a6db343e1ad24348",
+        "actor_id": "f3830c9f86bf41fe855f15942b3db953",
+        "sequence": 1,
+        "prepared_at": "2026-10-15T13:04:26.233144+00:00",
+        "source": {
+          "campaign_journal_head": "464827ef34297e7932f89d1e8bb39578aae8857f96c6b796edea9706f82b07f1",
+          "campaign_event_count": 2,
+          "project_digest": "da70c8f797361acb4cfe5c0cfed00c9a269e37b842b04da8165a9304f582cf97",
+          "request_digest": "efb53cd46f80382b6ff20c72f509ceef31722c821a0a8e659cd6f638ce64d51a"
+        },
+        "repositories": ["c716c7c1f00646f18873c2d39b1550bf"],
+        "digest": "98dd0f533a1d99260b58137d233d7261b9f536560c54e1f5169266c51d97894f",
+        "state": "in_progress",
+        "report_digest": "09727279e7ce807a63ae7dad401296b53f6a8cbe73587be5211e0da808f39fa7",
+        "receipt_digest": "cc8b1029d249034a903c3daf89fa63c7607396b0553a2c42279268359f12f99b"
+      }
+    ],
+    "next_after": null
+  },
+  "vectors": {
+    "algorithm": "SHA-256 of UTF-8 JSON with sorted keys, compact separators, ensure_ascii=False",
+    "vectors": [
+      {
+        "value": {
+          "question": "¿Cómo está el café?",
+          "label": "naïve résumé 東京",
+          "nested": {
+            "α": [1, false, null]
+          }
+        },
+        "canonical": "{\"label\":\"naïve résumé 東京\",\"nested\":{\"α\":[1,false,null]},\"question\":\"¿Cómo está el café?\"}",
+        "sha256": "0e9f34757e5ef366eeaad720c7e20051e98660f28dc132a49b12d9dd5846079b"
+      },
+      {
+        "value": {
+          "source_id": "inventory-001",
+          "version": 1
+        },
+        "canonical": "{\"source_id\":\"inventory-001\",\"version\":1}",
+        "sha256": "7099a61dd25558c439d06928730393a7ad11b3202ae8af569a08d0ceb2ee8cd3"
+      }
+    ]
+  }
+}

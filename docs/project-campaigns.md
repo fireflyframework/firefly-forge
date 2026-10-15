@@ -40,7 +40,7 @@ In **Product projects**, select a product and choose **Load campaigns**. Select 
 
 The report separates the server's evidence state from recorded workflow status. Its compact summary counts components; select one component to inspect its tasks, executable check receipts, recorded source and checkpoint references, prior attempts and journal references. Lists show at most 20 items per page. An unavailable snapshot has unknown counts, rather than reporting zero components or verified completion.
 
-The digest is displayed as a server reference; Studio does not independently verify it. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
+The live report displays its server digest. Studio verifies the canonical report digest before offering **Save this report**, and checks the complete saved receipt when reading history. SCM freshness remains **not observed**, and milestones and waves are **not configured**. Report reads are explicit and do not poll. An HTTP error or an unmatched response does not establish a report state; a changed session or denied reread clears private report evidence.
 
 The guide below uses controlled API fixtures: the product overview, campaign and component show the same successful recorded state with verified evidence. These screenshots illustrate reading a report; they do not establish live campaign execution or external SCM activity.
 
@@ -68,6 +68,41 @@ The guide below uses controlled API fixtures: the product overview, campaign and
 </figure>
 
 </details>
+
+## Save and recover in Studio
+
+After **View report**, an operator with project execution permission can choose **Save this report**. Review the evidence state, continue with **Review save**, and acknowledge that saving does not approve or run work. **Save report** stores a snapshot only if the server still observes the same evidence cut. Readers without execution permission can inspect authorized history but cannot save.
+
+Studio retains a small request reference before sending one save request. It contains the server, original operator, project, campaign, request ID and selected report digest. Tokens and report bodies are excluded. A successful response is followed by an exact receipt read. If delivery is lost, reload the same campaign and choose **Check saved request**. A missing receipt, conflict or permission error keeps the original identity unresolved; Studio does not repeat the write or replace its request ID.
+
+<figure class="forge-shot" markdown="1">
+![Controlled save review showing the evidence state and explicit acknowledgment.](assets/screenshots/campaign-report-save-review-desktop-light.png)
+<figcaption>Review the selected report before saving. This guide uses controlled API fixtures; it does not establish native campaign execution.</figcaption>
+</figure>
+
+Choose **Load saved reports** to read a page of up to 50 summaries, then **Open saved report** to retrieve its exact evidence. **Next saved reports** follows the server's sequence cursor. The saved sequence and server preparation time describe that receipt; they do not establish current SCM freshness. A historical report can belong to another authorized operator. Its original actor and source references remain available under **Original receipt references**.
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow an unresolved save and read its retained history</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view retaining an unresolved save request after reload.](assets/screenshots/campaign-report-save-unresolved-mobile-dark.png)
+<figcaption>The original request survives reload. Check its exact receipt without sending another save.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled list of saved campaign reports with sequence and preparation time.](assets/screenshots/campaign-report-saved-history-desktop-light.png)
+<figcaption>Loading history reads metadata. Opening a saved report reads its exact body with current permissions.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view of an exact saved report and its historical evidence state.](assets/screenshots/campaign-report-saved-receipt-mobile-dark.png)
+<figcaption>The historical snapshot remains separate from a later live report. Preparation time is not a commit or freshness timestamp.</figcaption>
+</figure>
+
+</details>
+
+A confirmed identity stays recoverable in browser storage. After reloading, check each retained request before starting another explicit save. Other tabs may also save; browser storage does not provide a global lock. If storage cannot be verified, saving is unavailable. An access refusal clears private report views while keeping the request reference for an authorized exact read.
 
 ## Understand the dependency gate
 
@@ -108,8 +143,58 @@ The report counts current attempts by state. `verified` requires the existing ca
 
 Each component includes its run and admission digests, plan digest and journal head. Task, branch, source-tree and checkpoint references identify the exact journal sequence and digest. Checks include their command digest, argument count, actual exit code and receipt reference. Command arguments and output are omitted. Follow those references through the existing run plan and journal endpoints. Campaign event count and head refer to the existing campaign journal.
 
-A report reads one PostgreSQL repeatable-read, read-only snapshot. Its `digest` is SHA-256 of the entire returned JSON object except `digest`, with recursively sorted keys, compact separators and unescaped Unicode. Version, defaults and limits are included. Identical retained evidence produces the same report; a later read can produce a different digest. Reports are returned to the caller and are not stored as a new report history. Credential admission runs after the snapshot closes, with repository permissions checked before and after it.
+A report reads one PostgreSQL repeatable-read, read-only snapshot. Its `digest` is SHA-256 of the entire returned JSON object except `digest`, with recursively sorted keys, compact separators and unescaped Unicode. Version, defaults and limits are included. Identical retained evidence produces the same report; a later read can produce a different digest. Reading a report returns it to the caller without archiving it. Credential admission runs after the snapshot closes, with repository permissions checked before and after it.
 
 The snapshot allows 200 child attempts, 1,024 campaign events, 128 tasks per current run, and 2,048 journal entries and run events per current run. A shared 16 MiB JSON evidence budget is checked in PostgreSQL before rows are loaded. The transaction has a ten-second deadline. Exceeding a limit or detecting inconsistent evidence returns `unknown` with a reason, no component totals and no partial verified result.
 
-The report follows the campaign's frozen component graph. The current project model has no milestone or wave configuration, so both are reported as `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Milestone definitions, wave grouping, reports across campaigns and a Studio report view remain separate work.
+## Save an exact report
+
+Archiving is an explicit operation. First read a report, keep its digest, and choose a stable request ID before sending `POST /api/v1/projects/{project_id}/campaigns/{campaign_id}/report-archives` with `request_id` and `expected_report_digest`. The server captures the same evidence cut and its complete historical repository manifest in one read-only transaction. A changed digest refuses the archive. A coherent `unknown`, blocked or running report may be saved with that state; an unavailable integrity or limit result with `counts: null` cannot be archived.
+
+<div class="forge-flow" role="region" aria-label="Campaign report archive and recovery diagram" aria-describedby="archive-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 112
+    rankSpacing: 32
+    nodeSpacing: 24
+---
+flowchart LR
+  subgraph SelectPhase["1. Select the evidence"]
+    direction TB
+    A[Read the selected report] --> B[Admit current access]
+  end
+  subgraph SavePhase["2. Save once"]
+    direction TB
+    C[Check identity and quotas] --> D[Immutable PostgreSQL receipt]
+  end
+  subgraph ReadPhase["3. Read the outcome"]
+    direction TB
+    F[Keep the original request ID] --> E[Read its exact receipt]
+  end
+  SelectPhase --> SavePhase --> ReadPhase
+```
+
+</div>
+
+<p class="forge-flow-caption" id="archive-flow-guide">Follow the groups from left to right and their steps from top to bottom. Read the exact receipt after a successful response or lost delivery. Keep the original request identity while the outcome is unresolved. Focus the diagram and use the arrow keys to scroll on a small screen.</p>
+
+Archiving requires current project execute permission and read access to every repository in the captured history, including prior attempts. Reading a saved report requires current read permissions for that same manifest. Credential admission also applies to retained reports and summaries. Losing access or registering a matching credential can therefore prevent a later read; saving a report does not grant access to it.
+
+The receipt preserves the original report and digest, originating actor, sequence, source cut and its own digest. `prepared_at` is the database time when the receipt was prepared, before credential admission and final insertion. It is neither a commit timestamp nor evidence or SCM freshness. The source cut is the captured campaign journal head and count, project and launch digests, and the run/journal references inside the report. Later work does not rewrite that history. PostgreSQL rejects updates and deletion of saved receipts; archiving does not append report bodies to the campaign execution journal.
+
+Use these client operations explicitly; none generates a request identity, retries a write or dispatches campaign work:
+
+| Action | Python SDK | CLI | MCP |
+| --- | --- | --- | --- |
+| Save selected report | `archive_campaign_report(project_id, campaign_id, request)` | `forge campaign archive-report PROJECT_ID CAMPAIGN_ID --request-id REQUEST_ID --expected-digest REPORT_DIGEST` | `archive_project_campaign_report` |
+| Read exact receipt | `campaign_report_archive(project_id, campaign_id, request_id)` | `forge campaign report-archive PROJECT_ID CAMPAIGN_ID REQUEST_ID` | `get_project_campaign_report_archive` |
+| List saved summaries | `campaign_report_archives(project_id, campaign_id, after=0)` | `forge campaign report-history PROJECT_ID CAMPAIGN_ID --after 0` | `list_project_campaign_report_archives` |
+
+The list route is `GET .../report-archives?after=0`; exact readback is `GET .../report-archives/{request_id}`. History returns at most 50 summaries with a `next_after` sequence cursor, without loading report bodies. A campaign allows at most 100 archives, and each receipt and metadata page has a 16 MiB JSON bound. Oversized data is refused, never truncated into a successful report. Existing evidence row and snapshot limits still apply.
+
+The write commits one immutable receipt atomically. Reusing the same ID, actor and selected digest returns that exact receipt; changing its binding refuses. Concurrent different requests can prepare the same next sequence: only one is admitted and the other receives an explicit history-advanced conflict with no insert. Keep the original request identity. A lost response, timeout, cancellation, 404 or conflict text does not prove that an earlier write cannot still commit, and does not authorize automatic resubmission or a new ID. A late loss of execute permission can also refuse the POST response after its receipt has committed; an authorized reader can still read that exact receipt. Read the exact receipt first. Saving a report records evidence; it does not approve delivery or configure milestones, waves or live SCM observation.
+
+The report follows the campaign's frozen component graph. The current project model has no milestone or wave configuration, so both are reported as `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Milestone definitions, wave grouping and reports across campaigns remain separate work.

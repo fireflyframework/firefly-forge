@@ -6,7 +6,9 @@ description: Use repository conversations to define products, request changes an
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-forge accepts trusted commands from GitHub issue and pull request comments, GitLab issue and merge request notes, and Bitbucket Cloud pull request comments. A command queues the same verified factory run used by Studio. Each run has its own workspace and branch, and retains the initiating receipt and issue identity.
+Use an issue or pull request conversation to request work and receive its recorded result. forge accepts structured comments from GitHub issues and pull requests, GitLab issues and merge requests, and Bitbucket Cloud pull requests. `run`, `test` and `maintain` admit factory runs; the other supported commands read evidence, change explicitly authorized settings or request an existing lifecycle action. An accepted command is not evidence that its work passed verification.
+
+Source-control integration has two directions: a signed conversation can request a permitted action, and forge can reply with its retained outcome or publish verified code. This is not continuous mirroring of issue text, product definitions and repository files. Your team still reviews requirements, resolves conflicts and merges pull requests. [Source-control connections](scm.md#understand-the-two-directions) describe the Git boundary.
 
 | Provider | Inbound verification | Supported conversations |
 | --- | --- | --- |
@@ -14,17 +16,53 @@ forge accepts trusted commands from GitHub issue and pull request comments, GitL
 | GitLab | Constant-time comparison of `X-Gitlab-Token` | Issues and merge requests |
 | Bitbucket Cloud | HMAC-SHA256 over the original body; `X-Hub-Signature` | Pull requests |
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Signed repository command flow" aria-describedby="repository-command-guide" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+  C[Signed new comment] --> R[Retained delivery receipt]
+  R --> A[Enabled factory action]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="repository-command-guide">The signature identifies a delivery; current actor, command and repository checks decide whether its action may run. A receipt can be denied or unresolved. Focus and scroll the diagram on a narrow screen.</p>
+
 Bitbucket Cloud [removed its native issue tracker API in August 2026](https://developer.atlassian.com/cloud/bitbucket/changelog/). forge rejects Bitbucket issue creation and legacy issue events. Use a pull request conversation; a Jira connector is not part of this integration.
 
 ## Connect and authorize
 
 1. Connect the repository through [your GitHub App or provider OAuth application](scm.md). forge checks its current grants before remote writes. GitHub issue authoring needs the App's **Issues: write** permission; pull request comments also use **Pull requests: write**. GitLab needs its configured API grant. Bitbucket needs pull request write access.
-2. Open repository collaboration settings. Enable the workflow and enter exact trusted actor IDs: numeric GitHub/GitLab user IDs or Bitbucket account UUIDs. Names, organization membership, labels, and a comment mentioning forge do not grant execution rights.
+2. Open **Administration → Repository workflow → Repository commands**, select the registered repository under **Workflow project**, and configure the Trust, Commands, Webhook and Review steps. Enable the workflow and enter exact trusted actor IDs: numeric GitHub/GitLab user IDs or Bitbucket account UUIDs. Names, organization membership, labels, and a comment mentioning forge do not grant execution rights.
 3. Save a separate webhook secret. It is write-only; configuration responses show whether it is present. This secret is independent of the forge operator token and provider OAuth/App credentials.
 4. Configure the provider webhook to send comment events to `https://YOUR-FACTORY/api/v1/webhooks/PROVIDER/REPOSITORY_ID`. Use `github`, `gitlab`, or `bitbucket` and the forge repository ID. Terminate HTTPS at your organization's gateway. The webhook route verifies provider credentials rather than accepting the operator token.
 5. Select the allowed commands, agent, product stack, publish setting, and operator-owned verification commands. Save a [product definition](product-definition.md) when the work needs a customer contract.
 
 GitHub and Bitbucket signatures are verified against raw bytes without JSON reserialization. GitLab's supported secret-token mode requires HTTPS; it does not provide a payload HMAC. GitLab's newer signing-token mode is not supported by this configuration. Consult [GitHub verification](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), [GitLab webhook headers](https://docs.gitlab.com/user/project/integrations/webhooks/), and [Bitbucket webhook secrets](https://support.atlassian.com/bitbucket-cloud/docs/manage-webhooks/).
+
+### Keep the authorities separate
+
+| Authority | What it controls |
+| --- | --- |
+| Factory administrator | Provider application settings, shared application onboarding, and the global delivery receipt process/reconciliation routes. |
+| Current project/repository permissions | Read repository settings; change collaboration policy with repository `members` permission; author an issue with repository `edit` permission. A reviewed product save also requires `review`. |
+| Exact provider actor and allowlists | Which signed comments may use the repository's enabled commands. Configuration actions also require `configuration_actors`; shared ingress rechecks its global actor lists. |
+| Provider application grant | Whether forge can currently access the remote repository or write the requested comment, issue or branch. |
+
+A provider user ID is separate from the factory session identity. Granting a comment author permission does not turn that author into a factory administrator or let a command replace operator-owned checks. A factory administrator should complete the full Studio setup and receipt-inspection journey; the repository policy API also enforces the narrower project permissions above.
+
+## First request: inspect, test, then build
+
+1. Finish the connection and workflow setup, including exact actor IDs and operator-owned verification commands. Confirm that the signed webhook URL is reachable through your deployment's HTTPS gateway. An API-only process can receive a delivery but does not start the collaboration poller. A configured execution owner is required to execute admitted runs and provide automatic lifecycle processing.
+2. From an allowed provider account, post `/forge project` to read the registered repository and saved product revision. For a Bitbucket workspace, use a pull request conversation.
+3. Post `/forge test` to request the configured checks. Inspect its receipt and the associated run in Studio; a queued run, a provider reply or an execution intent does not establish passing checks.
+4. Once the product definition is reviewed, post a new `/forge run` command with a concrete brief. Inspect **Plan**, **Changes**, **Verification** and any required independent review before publication.
+5. Keep publication disabled for a first test. Enable the separate publication policy only when the provider grant, project release authority and review gates are ready. Merging the resulting pull request remains a provider-side action.
+
+<figure class="forge-shot" markdown="1">
+![Studio run review with the selected product, saved definition and independent-review setting.](assets/screenshots/run-review-desktop-light.png)
+<figcaption>Studio and signed commands use the factory's run machinery. This controlled setup screenshot illustrates reviewing a run before starting it; it is not a real webhook delivery or provider publication.</figcaption>
+</figure>
 
 ## Commands
 
@@ -54,11 +92,29 @@ The deployment manager still checks repository ownership and the verified source
 
 forge records a delivery digest, provider identity, actor, command, decision, and associated run. GitHub delivery IDs, GitLab retry-stable `webhook-id`/`Idempotency-Key` headers, and Bitbucket request UUIDs prevent duplicate delivery processing. The originating comment ID also prevents a second run when a provider sends a new delivery ID for the same comment. A delivery ID reused for different bytes is rejected.
 
-The inbox and run creation share a PostgreSQL transaction. The lifecycle worker runs under the factory's execution lease, dispatches accepted receipts once, and posts queued and completion status back to the originating conversation. `GET /api/v1/collaboration/receipts?repository_id=ID` exposes receipt state to authenticated operators.
+The inbox and run creation share a PostgreSQL transaction. The lifecycle worker runs under the factory's execution lease, dispatches accepted receipts once, and posts queued, paused or terminal status back to the originating conversation. An API-role process does not start this execution poller. `GET /api/v1/collaboration/receipts?repository_id=ID` exposes receipt state to a current factory administrator; it is not a project-reader history endpoint.
 
-Remote comments and issue creation record a durable write intent before calling the provider. A timeout, interrupted write, or uncertain response produces `feedback_status: needs_reconciliation`. forge does not repost it automatically. Check the provider conversation before taking a new action; do not treat an unknown outcome as a failed write. After checking, authenticated operators can call `POST /api/v1/collaboration/receipts/ID/reconcile` with `outcome: posted` or `not_posted` and a note. This records the observed result and sends no remote request. If no comment was posted, request a new explicit `/forge status` rather than replaying the uncertain write.
+Inspect `status` separately from `feedback_status`. An action can have completed locally while its remote reply is uncertain. The receipt retains provider, actor, originating conversation, run/action references and any remote write intent. **Changes** and **Verification** show the associated run evidence; receipt processing never substitutes for those checks.
 
-Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/issues` with `title`, `body`, and an optional `idempotency_key`. Reuse that key when retrying the same request. Without a key, identical title/body content shares a digest key. Changing content with the same key is rejected. Provider App/OAuth credentials authorize the outbound call; the forge operator token is never used as a provider credential.
+<figure class="forge-shot" markdown="1">
+![Controlled Changes view showing a retained source patch in an interrupted run.](assets/screenshots/evidence-changes-desktop-light.png)
+<figcaption>Inspect the retained patch and run status before resuming or publishing. The interrupted fixture shown here does not establish a successful run or a remote commit.</figcaption>
+</figure>
+
+Remote comments and issue creation record a durable write intent before calling the provider. A timeout, interrupted write, or uncertain response produces `feedback_status: needs_reconciliation`. forge does not repost it automatically. Check the provider conversation before taking a new action; do not treat an unknown outcome as a failed write. After checking, a current factory administrator can call `POST /api/v1/collaboration/receipts/ID/reconcile` with `outcome: posted` or `not_posted` and a note. This records the observed result and sends no remote request. If no comment was posted, request a new explicit `/forge status` rather than replaying the uncertain write.
+
+Operators can author GitHub/GitLab issues through `POST /api/v1/repositories/ID/issues` with `title`, `body`, and an optional `idempotency_key`. Reading the same key returns its retained decision, including an uncertain outcome, without creating another remote issue. Keep that identity when checking a lost response. Without a key, identical title/body content shares a digest key. Changing content with the same key is rejected. Provider App/OAuth credentials authorize the outbound call; the forge operator token is never used as a provider credential.
+
+### Choose the right receipt action
+
+| Observation | Explicit next step |
+| --- | --- |
+| `status: received` | The execution owner may process the retained receipt. The administrator's `/collaboration/receipts/ID/process` route addresses that same receipt. |
+| `feedback_status: needs_reconciliation` | Check the original provider conversation, then record `posted` or `not_posted` with a bounded evidence note. Reconciliation makes no remote request. |
+| `status: needs_reconciliation` with an uncertain channel action | Check its local product/source/model result and any remote reference, then record `completed` or `not_completed`. This does not retry the action. |
+| Run needs reconciliation or publication outcome is unknown | Use the run's own [recovery contract](recovery.md). A conversation receipt cannot clear an unknown execution or publication effect. |
+
+Redelivery of the same originating comment is deduplicated, even with a different delivery ID. A newly posted comment is a new input and may request new work; do not use one as an automatic retry for an uncertain effect. After inspecting a missing reply, a new explicit status comment can request a fresh observation. Provider settings and actor permissions are checked again during dispatch, so an earlier accepted delivery can still be denied after revocation.
 
 These flows are tested with isolated PostgreSQL schemas and provider HTTP transports. They do not claim a live customer repository has granted access or accepted a webhook. Validate those grants and one signed delivery on your deployment before enabling automatic work.
 
@@ -73,7 +129,7 @@ permission acceptance.
 
 ## Register projects from a shared provider channel
 
-Configure the connected GitHub App or OAuth application once, then save operator-authenticated `PUT /api/v1/collaboration/bootstrap/PROVIDER`. The setup fields are `enabled`, `auto_register`, `trusted_actors`, `configuration_actors`, `defaults`, and the write-only `webhook_secret`. `configuration_actors` must be a subset of trusted actors. Defaults use the repository collaboration schema; verification commands, stack, agent, publication and deployment settings remain operator-owned.
+For shared ingress, open **Repository workflow → Application onboarding** as a factory administrator. Configure the connected GitHub App or OAuth application once, then save operator-authenticated `PUT /api/v1/collaboration/bootstrap/PROVIDER`. The setup fields are `enabled`, `auto_register`, `trusted_actors`, `configuration_actors`, `defaults`, and the write-only `webhook_secret`. `configuration_actors` must be a subset of trusted actors. Both `enabled` and `auto_register` start false; enabling onboarding does not by itself authorize registration of new repositories. Defaults use the repository collaboration schema; verification commands, stack, agent, publication and deployment settings remain operator-owned.
 
 Point the provider webhook at `https://YOUR-FACTORY/api/v1/webhooks/PROVIDER`. No forge repository ID is needed in this route. The first trusted structured comment can register its repository only after a fresh application-grant check confirms its exact remote identity and URL. Existing repository settings are preserved. GitHub installation and added-repository events must match the configured App installation; registration uses fresh granted repositories, not a repository list asserted by the payload. [GitHub documents these installation events](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
 

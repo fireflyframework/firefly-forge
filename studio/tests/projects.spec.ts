@@ -184,7 +184,7 @@ test("logical product preserves independent component contracts and canonical de
 });
 test("AS-IS source evidence requires an explicit digest review and never claims runtime verification", async ({
   page,
-}) => {
+}, testInfo) => {
   const project = {
     id: "c".repeat(32),
     definition: {
@@ -255,7 +255,7 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
               ...project.definition.components[0],
               commit: "f".repeat(40),
               execution: "source_only",
-              skipped_files: [],
+              skipped_files: 2,
               facts: [
                 {
                   kind: "http_route",
@@ -302,9 +302,19 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
   await page
     .getByRole("button", { name: "Inspect configured source", exact: true })
     .click();
+  await expect(
+    page.getByText("1 inspected component · 1 observed declaration", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("GET /stock", { exact: true })).toBeVisible();
   await expect(page.getByText("app/api.py:12", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("1 observed declaration · 2 skipped files · source only", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
     page.getByRole("button", {
@@ -327,6 +337,7 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
   await expect(
     page.getByText("reviewed · source inspection", { exact: true }),
   ).toBeVisible();
+  const fieldGeometry = [];
   for (const theme of ["light", "dark"]) {
     for (const [width, height] of [
       [1920, 1080],
@@ -335,6 +346,16 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
       [320, 844],
     ]) {
       await page.setViewportSize({ width, height });
+      fieldGeometry.push(
+        await page.locator("dialog[open] .wizard-field-scroll").evaluate(
+          (element, context) => ({
+            ...context,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+          }),
+          { width, theme },
+        ),
+      );
       const geometry = await page
         .locator("dialog[open] .wizard-actions")
         .evaluate((element) => {
@@ -355,6 +376,10 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
           };
         });
       expect(geometry).toEqual({ inside: true, buttons: true });
+      if (width <= 390)
+        await page.screenshot({
+          path: testInfo.outputPath(`source-review-${width}-${theme}.png`),
+        });
       await page.getByRole("button", { name: "Done", exact: true }).click();
       await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
       await page.locator(".workspace-main > main").evaluate((element) => {
@@ -385,4 +410,7 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
       await page.getByRole("button", { name: "Continue", exact: true }).click();
     }
   }
+  expect(
+    fieldGeometry.filter((field) => field.scrollWidth > field.clientWidth),
+  ).toEqual([]);
 });

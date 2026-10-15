@@ -18,6 +18,7 @@ import {
   type CampaignSummary,
 } from "./CampaignReportData";
 import "./CampaignReports.css";
+import { CampaignReportHistory } from "./CampaignReportHistory";
 const label = (value: string) => {
   const words = value.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -41,7 +42,8 @@ export function CampaignReports({
     live = useRef(true),
     operation = useRef(0),
     selection = useRef(""),
-    result = useRef<HTMLHeadingElement>(null);
+    result = useRef<HTMLHeadingElement>(null),
+    historicalHeading = useRef<HTMLHeadingElement>(null);
   const allowed =
     session.global_admin ||
     session.memberships.some(
@@ -216,6 +218,26 @@ export function CampaignReports({
           <code>{selected}</code>
         </details>
       )}
+      {selected && (
+        <CampaignReportHistory
+          key={selected + (report?.digest ?? "")}
+          connection={connection}
+          session={session}
+          project={project.id}
+          campaign={selected}
+          report={report}
+          onDenied={() =>
+            failure(new ApiError("Project evidence access denied", 403))
+          }
+          renderReport={(data) => (
+            <ReportSnapshot
+              report={data}
+              heading={historicalHeading}
+              title="Historical report evidence"
+            />
+          )}
+        />
+      )}
       {report && (
         <ReportSnapshot
           key={report.digest + selected}
@@ -229,7 +251,9 @@ export function CampaignReports({
 function ReportSnapshot({
   report,
   heading,
+  title = "Campaign report snapshot",
 }: {
+  title?: string;
   report: CampaignReport;
   heading: React.RefObject<HTMLHeadingElement | null>;
 }) {
@@ -237,12 +261,9 @@ function ReportSnapshot({
     [selected, setSelected] = useState("");
   const detail = report.components.find((c) => c.component_id === selected);
   return (
-    <section
-      className="campaign-report-snapshot"
-      aria-label="Campaign report snapshot"
-    >
+    <section className="campaign-report-snapshot" aria-label={title}>
       <h3 ref={heading} tabIndex={-1}>
-        Campaign report snapshot
+        {title}
       </h3>
       <dl className="campaign-report-summary">
         <div>

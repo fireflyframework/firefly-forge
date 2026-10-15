@@ -6,6 +6,13 @@ import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
+import {
+  setup as setupCampaignHistory,
+  selectCampaign as selectCampaignHistory,
+  reviewSave as reviewCampaignSave,
+  native as campaignArchiveFixture,
+  digest as archiveFixtureDigest,
+} from "./campaign-report-history-fixture";
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
@@ -1735,3 +1742,453 @@ for (const device of ["desktop", "mobile"])
       expect(calls.every((call) => call.startsWith("GET "))).toBe(true);
     });
   }
+
+// Controlled source declarations illustrate inspection; no Git checkout, application or model runs.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey source analysis ${device} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const sourceRepository = { ...repository, id: "b".repeat(32) };
+      const project = {
+        id: "c".repeat(32),
+        definition: {
+          name: "Inventory product",
+          description:
+            "Existing inventory API and customer portal in one repository",
+          owners: ["Inventory team"],
+          topology: "monorepo",
+          components: [
+            {
+              id: "api",
+              name: "Inventory API",
+              repository_id: sourceRepository.id,
+              path: "apps/api",
+              kind: "api",
+              backend: "pyfly",
+              frontend: "none",
+              verification: [],
+              depends_on: [],
+              responsibility: "Stock reservations",
+            },
+            {
+              id: "portal",
+              name: "Customer portal",
+              repository_id: sourceRepository.id,
+              path: "apps/portal",
+              kind: "web",
+              backend: "none",
+              frontend: "react",
+              verification: [],
+              depends_on: ["api"],
+              responsibility: "Customer stock view",
+            },
+          ],
+        },
+        revision: 1,
+        digest: "d".repeat(64),
+        updated_at: "2026-10-15T12:00:00Z",
+        created_at: "2026-10-15T12:00:00Z",
+      };
+      const commit = "f".repeat(40);
+      let report: Record<string, unknown> | null = null;
+      const inspections: unknown[] = [],
+        reviews: unknown[] = [];
+      const declarations = [
+        {
+          kind: "http_route",
+          value: "/stock",
+          path: "apps/api/app.py",
+          line: 12,
+          excerpt: '@get_mapping("/stock")',
+        },
+        {
+          kind: "declared_dependency",
+          value: '"react": "^19.0.0"',
+          path: "apps/portal/package.json",
+          line: 8,
+          excerpt: '"react": "^19.0.0"',
+        },
+      ];
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        let json: unknown = {};
+        if (path.endsWith("/repositories")) json = [sourceRepository];
+        if (
+          ["/runs", "/providers", "/deployment-targets"].some((suffix) =>
+            path.endsWith(suffix),
+          )
+        )
+          json = [];
+        if (path.endsWith("/projects")) json = [project];
+        if (path.endsWith(`/projects/${project.id}`))
+          json = {
+            ...project,
+            components: project.definition.components.map((component) => ({
+              ...component,
+              latest_status: "not_started",
+              repository_run_count: 0,
+              runs: [],
+            })),
+            counts: { not_started: 2 },
+          };
+        if (path.endsWith("/analyses")) {
+          if (request.method() === "POST") {
+            inspections.push(request.postDataJSON());
+            expect(inspections).toEqual([{ component_ids: ["api", "portal"] }]);
+            report = {
+              id: "a".repeat(32),
+              project_id: project.id,
+              status: "ready_for_review",
+              reviewed: false,
+              method: "source_inspection",
+              digest: "e".repeat(64),
+              created_at: project.created_at,
+              components: project.definition.components.map(
+                (component, index) => ({
+                  ...component,
+                  commit,
+                  execution: "source_only",
+                  skipped_files: 2,
+                  facts: [
+                    {
+                      kind: declarations[index].kind,
+                      value: declarations[index].value,
+                      confidence: "observed",
+                      source: {
+                        path: declarations[index].path,
+                        line: declarations[index].line,
+                        excerpt: declarations[index].excerpt,
+                        blob: String(index).repeat(40),
+                        commit,
+                      },
+                    },
+                  ],
+                }),
+              ),
+              documents: {
+                "functional-as-is.md":
+                  "# Observed source declarations\n\nTwo component roots share one source commit. Runtime behavior remains unverified.",
+              },
+              open_questions: [
+                "Which customer roles may reserve stock?",
+                "Which checks establish the existing application's runtime behavior?",
+              ],
+              functional_definition: null,
+            };
+            json = report;
+          } else json = report ? [report] : [];
+        }
+        if (path.endsWith(`/analyses/${"a".repeat(32)}`)) json = report;
+        if (path.endsWith(`/analyses/${"a".repeat(32)}/review`)) {
+          reviews.push(request.postDataJSON());
+          expect(reviews).toEqual([{ digest: "e".repeat(64), reviewed: true }]);
+          report = { ...report, status: "reviewed", reviewed: true };
+          json = report;
+        }
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("test-operator-token-at-least-24-characters");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Product projects");
+      await expect(page.locator(".project-overview-header")).toContainText(
+        "monorepo · revision",
+      );
+      await page
+        .getByRole("button", { name: "Open source inspection", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Source inspection review",
+        exact: true,
+      });
+      const shot = async (stage: string) => {
+        await capture(page, stage, theme, device, {
+          resetFields: stage !== "source-analysis-review",
+        });
+        await expect(dialog.locator(".wizard-heading")).toBeInViewport();
+        const controlsFit = await dialog.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return [...element.querySelectorAll(".wizard-actions button")].every(
+            (button) => {
+              const control = button.getBoundingClientRect();
+              return (
+                control.top >= box.top &&
+                control.bottom <= Math.min(box.bottom, innerHeight) &&
+                button.contains(
+                  document.elementFromPoint(
+                    control.x + control.width / 2,
+                    control.y + control.height / 2,
+                  ),
+                )
+              );
+            },
+          );
+        });
+        expect(controlsFit).toBe(true);
+        const path = testInfo.outputPath(`${stage}.png`);
+        await page.screenshot({ path });
+        await testInfo.attach(stage, {
+          path,
+          contentType: "image/png",
+        });
+      };
+      await expect(dialog.getByRole("checkbox")).toHaveCount(2);
+      for (const name of [
+        "Inventory API · apps/api",
+        "Customer portal · apps/portal",
+      ])
+        await expect(
+          dialog.getByRole("checkbox", { name, exact: true }),
+        ).toBeChecked();
+      await shot("source-analysis-scope");
+      expect(inspections).toHaveLength(0);
+      await dialog
+        .getByRole("button", { name: "Inspect configured source", exact: true })
+        .click();
+      await expect(
+        dialog.getByText("2 inspected components · 2 observed declarations", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByText("ready for review · source inspection", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await shot("source-analysis-receipt");
+      await dialog
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      for (const declaration of declarations) {
+        await expect(
+          dialog
+            .locator(".source-fact > p")
+            .filter({ hasText: declaration.value }),
+        ).toHaveText(declaration.value);
+        await expect(
+          dialog.getByText(`${declaration.path}:${declaration.line}`, {
+            exact: true,
+          }),
+        ).toBeAttached();
+      }
+      await expect(
+        dialog
+          .locator(".source-evidence-component > p code")
+          .filter({ hasText: commit }),
+      ).toHaveCount(2);
+      await expect(
+        dialog.getByText(
+          "1 observed declaration · 2 skipped files · source only",
+          { exact: true },
+        ),
+      ).toHaveCount(2);
+      await expect(dialog.getByText("apps/api", { exact: true })).toBeVisible();
+      await expect(
+        dialog.getByText("apps/portal", { exact: true }),
+      ).toBeAttached();
+      await shot("source-analysis-evidence");
+      await dialog
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      const acknowledge = dialog.getByRole("button", {
+        name: "Acknowledge this report digest",
+        exact: true,
+      });
+      await expect(acknowledge).toBeDisabled();
+      await expect(
+        dialog.getByText("Which customer roles may reserve stock?", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await dialog
+        .getByRole("checkbox", {
+          name: "I reviewed the source evidence and open questions. This does not claim observed runtime behavior.",
+          exact: true,
+        })
+        .check();
+      await expect(acknowledge).toBeEnabled();
+      await dialog.getByRole("checkbox").evaluate((input) => {
+        input.closest("label")!.scrollIntoView({ block: "center" });
+      });
+      const acknowledgementFits = async () =>
+        dialog.getByRole("checkbox").evaluate((input) => {
+          const label = input.closest("label")!,
+            box = label.getBoundingClientRect(),
+            field = label
+              .closest(".wizard-field-scroll")!
+              .getBoundingClientRect(),
+            control = input.getBoundingClientRect();
+          return (
+            box.top >= field.top &&
+            box.bottom <= field.bottom &&
+            document.elementFromPoint(
+              control.x + control.width / 2,
+              control.y + control.height / 2,
+            ) === input
+          );
+        });
+      await expect.poll(acknowledgementFits).toBe(true);
+      await shot("source-analysis-review");
+      await expect.poll(acknowledgementFits).toBe(true);
+      expect(reviews).toHaveLength(0);
+      await acknowledge.click();
+      await expect(
+        dialog.getByText("reviewed · source inspection", { exact: true }),
+      ).toBeVisible();
+      expect(inspections).toHaveLength(1);
+      expect(reviews).toHaveLength(1);
+      await expect(dialog.getByRole("alert")).toHaveCount(0);
+    });
+
+// Controlled archive responses demonstrate identity retention, not native PostgreSQL acceptance.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey campaign archives ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupCampaignHistory(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      state.postMode = "lost";
+      state.archiveReadStatus = 404;
+      await selectCampaignHistory(page, state);
+      const dialog = await reviewCampaignSave(page);
+      await expect(
+        dialog.getByRole("button", { name: "Save report", exact: true }),
+      ).toBeEnabled();
+      await capture(page, "campaign-report-save-review", theme, device, {
+        resetFields: false,
+      });
+      expect(state.archivePosts).toBe(0);
+      await dialog
+        .getByRole("button", { name: "Save report", exact: true })
+        .click();
+      await expect(
+        page.getByText("Saved request unresolved", { exact: true }),
+      ).toBeVisible();
+      expect(state.archivePosts).toBe(1);
+      expect(state.markerBeforePost).toBe(true);
+      const original = { ...state.postBodies[0] };
+      await page.reload();
+      await navigate(page, "Product projects");
+      await selectCampaignHistory(page, state);
+      await page
+        .getByRole("button", { name: "Check saved request 1", exact: true })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "No exact saved report was observed",
+      );
+      const align = async (selector: string) => {
+        await page.locator(selector).evaluate((element) => {
+          const main = element.closest("main")!,
+            shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+          main.scrollTop +=
+            element.getBoundingClientRect().top - shell.bottom - 16;
+        });
+        await expect
+          .poll(() =>
+            page.locator(selector).evaluate((element) => {
+              const box = element.getBoundingClientRect(),
+                shell = document
+                  .querySelector(".workspace-main > header")!
+                  .getBoundingClientRect();
+              return (
+                box.top >= shell.bottom + 12 &&
+                element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                )
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await align(".campaign-history-pending h4");
+      await capture(page, "campaign-report-save-unresolved", theme, device, {
+        actionSelector: ".campaign-history-pending button",
+      });
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(1);
+      state.archiveReadStatus = 200;
+      await page
+        .getByRole("button", { name: "Check saved request 1", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Saved campaign report",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(2);
+      const receipt =
+        state.archiveReceipt as typeof campaignArchiveFixture.receipt;
+      expect(receipt.request_id).toBe(original.request_id);
+      expect(receipt.report.digest).toBe(original.expected_report_digest);
+      expect(receipt.actor_id).toBe("f".repeat(32));
+      const summary = {
+        ...campaignArchiveFixture.page.items[0],
+        request_id: receipt.request_id,
+        actor_id: receipt.actor_id,
+        receipt_digest: receipt.digest,
+        digest: "",
+      };
+      summary.digest = archiveFixtureDigest(
+        Object.fromEntries(
+          Object.entries(summary).filter(([key]) => key !== "digest"),
+        ),
+      );
+      state.archivePage = { ...campaignArchiveFixture.page, items: [summary] };
+      await page
+        .getByRole("button", { name: "Load saved reports", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Open saved report 1", exact: true }),
+      ).toBeVisible();
+      await align(".campaign-report-history > .section-heading h3");
+      await capture(page, "campaign-report-saved-history", theme, device, {
+        actionSelector: ".campaign-history-list button",
+      });
+      await page
+        .getByRole("button", { name: "Open saved report 1", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Saved campaign report",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await align(
+        '.campaign-report-history [aria-label="Exact saved report"] > h3',
+      );
+      await capture(page, "campaign-report-saved-receipt", theme, device, {
+        actionSelector:
+          '.campaign-report-history [aria-label="Exact saved report"] .campaign-report-components button',
+      });
+      expect(state.archivePosts).toBe(1);
+      expect(state.archiveReads).toBe(3);
+      expect(state.archiveLists).toBe(1);
+      expect(state.postBodies).toEqual([original]);
+    });
