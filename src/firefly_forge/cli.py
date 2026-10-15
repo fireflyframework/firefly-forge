@@ -888,6 +888,15 @@ def get_campaign(project_id: str, campaign_id: str) -> None:
         display(connection.project_campaign(project_id, campaign_id))
 
 
+@campaign.command("report")
+@click.argument("project_id")
+@click.argument("campaign_id")
+def report_campaign(project_id: str, campaign_id: str) -> None:
+    """Read a deterministic campaign evidence snapshot, without contacting source control."""
+    with client() as connection:
+        display(connection.project_campaign_report(project_id, campaign_id))
+
+
 @campaign.command("cancel")
 @click.argument("project_id")
 @click.argument("campaign_id")

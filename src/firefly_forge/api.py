@@ -45,6 +45,7 @@ from firefly_forge.assistant_persistence import (
 )
 from firefly_forge.assurance import Assurance
 from firefly_forge.browser_runner import BrowserRunner
+from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
 from firefly_forge.cloud import CloudRecipes
@@ -734,6 +735,10 @@ class FactoryConfiguration:
         return ProjectCampaigns(
             store, engine, journal, records, children, events, projects=projects, project_records=project_records
         )
+
+    @bean
+    def campaign_reports(self, store: Store, campaigns: ProjectCampaigns, journal: Journal) -> CampaignReports:
+        return CampaignReports(store, campaigns, journal)
 
     @bean
     def provider_configuration(self, store: Store) -> ConfigurationStore:

@@ -6,14 +6,15 @@ from typing import Any
 from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, request_mapping
 
+from firefly_forge.campaign_reports import CampaignReport, CampaignReports
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry, ProjectCampaigns
 
 
 @rest_controller
 @request_mapping("/api/v1/projects/{project_id}/campaigns")
 class ProjectCampaignController:
-    def __init__(self, campaigns: ProjectCampaigns) -> None:
-        self.manager = campaigns
+    def __init__(self, campaigns: ProjectCampaigns, reports: CampaignReports) -> None:
+        self.manager, self.reports = campaigns, reports
 
     @get_mapping("")
     async def campaigns(self, project_id: PathVar[str]) -> list[dict[str, Any]]:
@@ -26,6 +27,10 @@ class ProjectCampaignController:
     @get_mapping("/{campaign_id}")
     async def campaign(self, project_id: PathVar[str], campaign_id: PathVar[str]) -> dict[str, Any]:
         return await self.manager.campaign(project_id, campaign_id)
+
+    @get_mapping("/{campaign_id}/report")
+    async def report(self, project_id: PathVar[str], campaign_id: PathVar[str]) -> CampaignReport:
+        return CampaignReport.model_validate(await self.reports.report(project_id, campaign_id))
 
     @post_mapping("/{campaign_id}/cancel")
     async def cancel(

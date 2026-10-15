@@ -116,6 +116,7 @@ async def test_mcp_tools_have_real_input_contracts():
         "list_project_campaigns",
         "launch_project_campaign",
         "get_project_campaign",
+        "get_project_campaign_report",
         "cancel_project_campaign",
         "resume_project_campaign",
         "retry_project_campaign",
