@@ -41,6 +41,8 @@ Choose and verify the execution environment before admitting a run. Git workspac
 
 In Studio, a run's Plan tab can review an original queued command for explicit continuation after one controller replacement. The original Factory worker must still be waiting. The browser retains the request before submission and reads its exact receipt after a lost response. Follow the [continuation guide](docs/sandbox.md#continue-one-queued-command-after-a-controller-restart) for the admission and recovery limits.
 
+SDK, CLI and MCP clients can inspect those original-command candidates through the same authenticated read. Inspection never creates a continuation request or dispatches work. API-only installations report local admission and execution separately in health and metrics; accepting a request does not establish that a remote worker is ready.
+
 For a product spanning components, open **Product projects > Campaign reports** to read saved task, check and source evidence. Evidence state is separate from recorded workflow status; unresolved operations prevent verified delivery. The [campaign guide](docs/project-campaigns.md#read-a-report-in-studio) explains unavailable counts, component references and the SDK, CLI and MCP entry points.
 
 Administrators can explicitly configure a mutually authenticated local command controller with frozen execution profiles and project quotas. Its isolated containers receive sanitized component source and return bounded command receipts and artifacts. This adapter has local qualification on a trusted Factory host; browser pools, full coding-provider isolation, Kubernetes and multi-host placement remain separate work. Follow the [local pool setup](docs/sandbox.md#administrator-opt-in-local-command-pools) before selecting it.
