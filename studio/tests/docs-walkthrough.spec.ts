@@ -123,6 +123,10 @@ for (const device of ["desktop", "mobile"])
       };
       let searchTests = 0;
       const learningReads: string[] = [];
+      let invalidation: { request_id: string; reason: string } | null = null;
+      let invalidationWrites = 0;
+      let receiptReady = false;
+      const invalidationReads: string[] = [];
       let learningSettings = {
         version: 1,
         revision: "a".repeat(32),
@@ -144,8 +148,50 @@ for (const device of ["desktop", "mobile"])
           learningReads.push(request.method() + " " + path);
         let json: unknown = {};
         if (path.endsWith(`/${learningRepository.id}/learning`))
-          json = [learningRecord, failureCandidate];
+          json = [
+            {
+              ...learningRecord,
+              state: receiptReady ? "invalidated" : "verified",
+            },
+            failureCandidate,
+          ];
         else if (
+          path.endsWith(`/learning/records/${learningRecord.id}/invalidate`)
+        ) {
+          expect(request.method()).toBe("POST");
+          invalidationWrites++;
+          invalidation = request.postDataJSON();
+          return route.abort("failed");
+        } else if (
+          path.includes(`/learning/records/${learningRecord.id}/invalidations/`)
+        ) {
+          expect(request.method()).toBe("GET");
+          expect(invalidation).not.toBeNull();
+          expect(path).toBe(
+            `/api/v1/learning/records/${learningRecord.id}/invalidations/${invalidation!.request_id}`,
+          );
+          invalidationReads.push(path);
+          if (!receiptReady)
+            return route.fulfill({
+              status: 404,
+              json: { detail: "Learning invalidation request not observed" },
+            });
+          json = {
+            event_id: "2".repeat(32),
+            record_id: learningRecord.id,
+            repository_id: learningRepository.id,
+            run_id: learningRecord.envelope.run_id,
+            request_id: invalidation!.request_id,
+            kind: "invalidation",
+            event_state: "invalidated",
+            current_record_state: "invalidated",
+            reason: invalidation!.reason,
+            actor_id: "f".repeat(32),
+            created_at: "2026-10-15T01:30:00Z",
+            sequence: 2,
+            digest: "3".repeat(64),
+          };
+        } else if (
           path.endsWith(`/learning/records/${learningRecord.id}/projection`)
         )
           json = {
@@ -666,5 +712,243 @@ for (const device of ["desktop", "mobile"])
       expect(
         learningReads.some((call) => call.includes(failureCandidate.id)),
       ).toBe(false);
+
+      await selected.click();
+      await page.locator(".learning-records-filter-toggle > summary").click();
+      await page
+        .getByLabel("Saved state", { exact: true })
+        .selectOption("verified");
+      await page
+        .getByRole("button", { name: "Invalidate evidence", exact: true })
+        .click();
+      const reason = "Inventory dependency changed.";
+      await page
+        .getByLabel("Reason for invalidation", { exact: true })
+        .fill(reason);
+      const dialogHeading = page.getByRole("dialog").getByRole("heading", {
+        name: "Invalidate saved evidence",
+        exact: true,
+      });
+      const assertHeadingHit = async (selector: string) => {
+        await expect
+          .poll(() =>
+            page.locator(selector).evaluate((element) => {
+              const box = element.getBoundingClientRect();
+              return (
+                box.top >= 0 &&
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ) === element
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await expect(dialogHeading).toBeVisible();
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
+      const assertLifecycle = async (completeReceipt = false) => {
+        await expect
+          .poll(() =>
+            page
+              .locator(".learning-record-invalidation > h4")
+              .evaluate((heading, complete) => {
+                const box = heading.getBoundingClientRect();
+                const shell = document
+                  .querySelector(".workspace-main > header")!
+                  .getBoundingClientRect();
+                const footer = document
+                  .querySelector(".workspace-main > footer")!
+                  .getBoundingClientRect();
+                const result = document
+                  .querySelector(".learning-invalidation-result")!
+                  .getBoundingClientRect();
+                return (
+                  box.top >= shell.bottom + 16 &&
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ) === heading &&
+                  (!complete || result.bottom <= footer.top)
+                );
+              }, completeReceipt),
+          )
+          .toBe(true);
+      };
+      const alignLifecycle = async (completeReceipt = false) => {
+        await page
+          .locator(".learning-record-invalidation > h4")
+          .evaluate((heading) => {
+            const shell = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+            const main = heading.closest("main")!;
+            main.scrollTop +=
+              heading.getBoundingClientRect().top - shell.bottom - 20;
+          });
+        await assertLifecycle(completeReceipt);
+      };
+      await capture(page, "learning-invalidation-reason", theme, device);
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
+      await page
+        .getByRole("button", { name: "Review invalidation", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Confirm invalidation", exact: true }),
+      ).toBeDisabled();
+      await page
+        .getByLabel(
+          "I understand this excludes the evidence from reuse and keeps its history.",
+          { exact: true },
+        )
+        .check();
+      for (const value of [
+        new URL("/api/v1", page.url()).href,
+        learningRepository.id,
+        learningRecord.id,
+        "f".repeat(32),
+      ])
+        await expect(
+          page
+            .getByRole("dialog", {
+              name: "Invalidate saved evidence",
+              exact: true,
+            })
+            .getByText(value, { exact: true }),
+        ).toBeVisible();
+      await page.locator(".learning-invalidation-ack").scrollIntoViewIfNeeded();
+      await page
+        .locator(".learning-invalidation-dialog .wizard-field-scroll")
+        .evaluate((field) => {
+          const viewport = field.getBoundingClientRect();
+          const reason = field
+            .querySelector(".learning-invalidation-reason")!
+            .getBoundingClientRect();
+          const acknowledgment = field
+            .querySelector(".learning-invalidation-ack")!
+            .getBoundingClientRect();
+          const margin = Math.max(
+            0,
+            (viewport.height - (acknowledgment.bottom - reason.top)) / 2,
+          );
+          field.scrollTop += reason.top - viewport.top - margin;
+        });
+      const readReviewBounds = () =>
+        page.locator(".learning-invalidation-dialog").evaluate((dialog) => {
+          const field = dialog
+            .querySelector(".wizard-field-scroll")!
+            .getBoundingClientRect();
+          return [
+            ".learning-invalidation-reason",
+            ".learning-invalidation-ack",
+          ].map((selector) => {
+            const box = dialog.querySelector(selector)!.getBoundingClientRect();
+            return {
+              selector,
+              top: box.top,
+              bottom: box.bottom,
+              fieldTop: field.top,
+              fieldBottom: field.bottom,
+              inside: box.top >= field.top && box.bottom <= field.bottom,
+            };
+          });
+        });
+      await expect
+        .poll(async () => (await readReviewBounds()).every((row) => row.inside))
+        .toBe(true);
+      await capture(page, "learning-invalidation-review", theme, device, {
+        resetFields: false,
+      });
+      await expect
+        .poll(async () => (await readReviewBounds()).every((row) => row.inside))
+        .toBe(true);
+      await assertHeadingHit(
+        ".learning-invalidation-dialog .access-dialog-heading h2",
+      );
+      await page
+        .getByRole("button", { name: "Confirm invalidation", exact: true })
+        .click();
+      await expect(
+        page.getByText("Original request unresolved", { exact: true }),
+      ).toBeVisible();
+      expect(invalidationWrites).toBe(1);
+      expect(invalidationReads).toHaveLength(0);
+      const original = invalidation!;
+      expect(original.reason).toBe(reason);
+      expect(original.request_id).toMatch(/^[a-f0-9]{32}$/);
+      await navigate(page, "Factory");
+      await navigate(page, "Knowledge");
+      await page
+        .getByLabel("Knowledge project", { exact: true })
+        .selectOption(learningRepository.id);
+      await page
+        .getByRole("tab", { name: "Learning records", exact: true })
+        .click();
+      await selected.click();
+      await page.locator(".learning-records-filter-toggle > summary").click();
+      await page
+        .getByLabel("Saved state", { exact: true })
+        .selectOption("verified");
+      await page
+        .getByRole("button", { name: "Check original request", exact: true })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The exact request has not been observed",
+      );
+      await expect(page.getByText(reason, { exact: true })).toBeVisible();
+      await expect(
+        page.getByText(original.request_id, { exact: true }),
+      ).toBeVisible();
+      expect(invalidationWrites).toBe(1);
+      expect(invalidationReads).toHaveLength(1);
+      await alignLifecycle();
+      await capture(page, "learning-invalidation-unresolved", theme, device, {
+        actionSelector: ".learning-record-invalidation button.secondary",
+      });
+      await assertLifecycle();
+      receiptReady = true;
+      await page
+        .getByRole("button", { name: "Check original request", exact: true })
+        .click();
+      const confirmed = page.getByText("Original invalidation confirmed", {
+        exact: true,
+      });
+      await expect(confirmed).toBeVisible();
+      await expect(
+        page.getByText("0 of 2 saved records shown", { exact: true }),
+      ).toBeVisible();
+      await expect(selected).toHaveCount(0);
+      await expect(
+        page.locator(".learning-record-filter-context"),
+      ).toContainText("The selected record no longer matches this filter");
+      await expect(page.getByText(reason, { exact: true })).toBeVisible();
+      for (const value of [
+        original.request_id,
+        "f".repeat(32),
+        "2".repeat(32),
+        "3".repeat(64),
+      ])
+        await expect(
+          page
+            .locator(".learning-invalidation-result")
+            .getByText(value, { exact: true }),
+        ).toBeVisible();
+      await expect(page.locator(".learning-invalidation-result")).toContainText(
+        "Historical event: invalidated. Current record state: invalidated.",
+      );
+      expect(invalidationWrites).toBe(1);
+      expect(invalidationReads).toEqual([
+        `/api/v1/learning/records/${learningRecord.id}/invalidations/${original.request_id}`,
+        `/api/v1/learning/records/${learningRecord.id}/invalidations/${original.request_id}`,
+      ]);
+      expect(invalidation).toEqual(original);
+      await alignLifecycle(device === "desktop");
+      await expect(confirmed).toBeInViewport();
+      await capture(page, "learning-invalidation-confirmed", theme, device);
+      await assertLifecycle(device === "desktop");
     });
   }

@@ -799,6 +799,8 @@ class SandboxExecutor:
         git_root: Path | None = None,
         _browser: bool = False,
         _browser_input: bytes | None = None,
+        _diagnostic_snapshot: str | None = None,
+        _receipt_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> ProcessResult:
         if task_id not in {"implement", "verify"}:
             raise ValueError("Runner commands must belong to an implementation or verification stage")
@@ -820,6 +822,12 @@ class SandboxExecutor:
         async with self._run_locks[run_id], self._capacity:
             run = await self._admit_execution(run_id)
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
+            if _diagnostic_snapshot is not None:
+                from firefly_forge.diagnostic_recipes import profile_configuration
+
+                profile_configuration(snapshot)
+                if snapshot["digest"] != _diagnostic_snapshot or _browser:
+                    raise ValueError("Frozen diagnostic runner policy changed before profiling dispatch")
             if snapshot.get("mode") == "pool":
                 if self.pool_worker is None:
                     raise RuntimeError("Factory pool worker is not configured; execution cannot fall back")
@@ -913,6 +921,7 @@ class SandboxExecutor:
                         await self._cleanup(config, run_id, task_id, execution_id, payload, labels)
                     else:
                         await self._cleanup_host(run_id, task_id, execution_id, payload)
+                    self._capture_diagnostic(_receipt_sink, execution_id, payload)
                     return ProcessResult(argv, evidence["exit_code"], evidence["output"])
                 if any(
                     effect.get("evidence", {}).get("outcome") == "interrupted"
@@ -1097,7 +1106,27 @@ class SandboxExecutor:
             finally:
                 if not retain_container:
                     await asyncio.shield(self._cleanup(config, run_id, task_id, execution_id, payload, labels))
+            self._capture_diagnostic(_receipt_sink, execution_id, payload)
             return ProcessResult(argv, result.exit_code, result.output)
+
+    @staticmethod
+    def _capture_diagnostic(
+        sink: Callable[[dict[str, Any]], None] | None, execution_id: str, payload: dict[str, Any]
+    ) -> None:
+        if sink is None:
+            return
+        # Diagnostic metadata cannot turn a retained command result into a retryable failure.
+        with suppress(Exception):
+            sink(
+                {
+                    "execution_id": execution_id,
+                    "request_digest": payload["request_digest"],
+                    "snapshot_digest": payload["snapshot_digest"],
+                    "workspace_digest": payload["request"]["workspace_digest"],
+                    "start_key": execution_id + ":start",
+                    "cleanup_key": execution_id + ":cleanup",
+                }
+            )
 
     async def recover(self) -> dict[str, int]:
         """Inspect and clean persistent owned executions after the engine acquires its lease."""

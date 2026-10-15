@@ -1201,11 +1201,13 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
                 .evaluate((element) => {
                   element.scrollTop = 0;
                 });
-            expect(
-              await page
-                .locator(".workspace-main>main")
-                .evaluate((element) => element.scrollTop),
-            ).toBe(0);
+            await expect
+              .poll(() =>
+                page
+                  .locator(".workspace-main>main")
+                  .evaluate((element) => element.scrollTop),
+              )
+              .toBe(0);
             const heading = await page
                 .getByRole("heading", { name: "External tools", exact: true })
                 .boundingBox(),

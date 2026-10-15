@@ -804,6 +804,9 @@ class ForgeClient:
         body = LearningInvalidation(reason=reason, request_id=request_id)
         return dict(self.request("POST", f"learning/records/{self._id(record_id)}/invalidate", json=body.model_dump()))
 
+    def learning_invalidation_receipt(self, record_id: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"learning/records/{self._id(record_id)}/invalidations/{self._id(request_id)}"))
+
     def learning_projection(self, record_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"learning/records/{self._id(record_id)}/projection"))
 

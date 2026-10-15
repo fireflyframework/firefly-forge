@@ -22,6 +22,13 @@ from pyfly.container import service
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 
 from firefly_forge.configuration import redact_secrets
+from firefly_forge.diagnostic_recipes import (
+    PythonProfileRequest,
+    build_profile_argv,
+    profile_available,
+    profile_configuration,
+    profile_observation,
+)
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command
 from firefly_forge.policies import inject_policy_snapshot, policy_commands
@@ -469,6 +476,9 @@ class Engine:
                 async def command_executor(argv: list[str], timeout: int) -> Any:
                     return await self._project_command(identifier, run, workspace, argv, timeout, "implement")
 
+                async def python_profile(request: PythonProfileRequest) -> dict[str, Any]:
+                    return await self._profile_python(identifier, run, workspace, request)
+
                 async def browser_runner(path: str, width: int, height: int, theme: str) -> dict[str, Any]:
                     return cast(
                         dict[str, Any],
@@ -596,6 +606,11 @@ class Engine:
                     and "external_mcp" in (grants or ())
                     else None,
                     command_executor=command_executor if self.sandbox and "execute_command" in (grants or ()) else None,
+                    python_profile=python_profile
+                    if self.sandbox
+                    and {"execute_command", "profile_python"}.issubset(grants or ())
+                    and profile_available(run.get("sandbox_snapshot"))
+                    else None,
                     browser_runner=browser_runner if self.browser and "browser_check" in (grants or ()) else None,
                     browser_journey=browser_journey if self.browser and "browser_journey" in (grants or ()) else None,
                     reference_resolver=reference_resolver
@@ -1348,6 +1363,8 @@ class Engine:
         stage: str,
         *,
         ordinal: int | None = None,
+        _diagnostic_snapshot: str | None = None,
+        _receipt_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> Any:
         from firefly_forge.project_access import ProjectAccess
 
@@ -1356,6 +1373,11 @@ class Engine:
             raise asyncio.CancelledError()
         await ProjectAccess(self.store).authorize_execution(run)
         directory = self.component_directory(run, workspace)
+        diagnostic = (
+            {"_diagnostic_snapshot": _diagnostic_snapshot, "_receipt_sink": _receipt_sink}
+            if _diagnostic_snapshot is not None
+            else {}
+        )
         if self.sandbox is not None:
             return await self.sandbox.execute(
                 identifier,
@@ -1366,10 +1388,43 @@ class Engine:
                 stage,
                 ordinal=ordinal,
                 git_root=workspace if stage == "verify" else None,
+                **diagnostic,
             )
+        if _diagnostic_snapshot is not None:
+            raise ValueError("Python profiling cannot execute without its isolated runner")
         if run.get("sandbox_snapshot", {}).get("mode") in {"docker", "pool"}:
             raise ValueError("The selected Docker runner is unavailable; execution cannot fall back to the host")
         return await execute(argv, directory, timeout)
+
+    async def _profile_python(
+        self, identifier: str, run: dict[str, Any], workspace: Path, request: PythonProfileRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.agent_roles import stage_allowed_tools
+        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.workspace_tools import WorkspaceTools
+
+        request = PythonProfileRequest.model_validate(request.model_dump(mode="json"))
+        grants = stage_allowed_tools(run.get("role_snapshot") or {}, "implement", "agentic")
+        if self.sandbox is None or not {"profile_python", "execute_command"}.issubset(grants or ()):
+            raise ValueError("Python profiling requires explicit profiling and command grants and an isolated runner")
+        config = profile_configuration(run.get("sandbox_snapshot"))
+        await self.assert_ownership()
+        await ProjectAccess(self.store).authorize_execution(run)
+        scope = self.component_directory(run, workspace)
+        source = await WorkspaceTools(scope, repository_root=workspace).read_file(request.script)
+        source_sha256 = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        binding: dict[str, Any] = {}
+        result = await self._project_command(
+            identifier,
+            run,
+            workspace,
+            build_profile_argv(request, source_sha256),
+            request.timeout,
+            "implement",
+            _diagnostic_snapshot=run["sandbox_snapshot"]["digest"],
+            _receipt_sink=binding.update,
+        )
+        return profile_observation(request, source_sha256, str(config.image), result, binding)
 
     async def _test(
         self,

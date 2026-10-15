@@ -8,7 +8,7 @@ description: Understand scoped learning, knowledge-first lookup, failed-attempt 
 A useful lesson explains which question it addresses, what was observed and where that observation still applies. forge already retrieves required flycanon context and retains verified repository memory. The initial learning implementation adds deterministic eligibility and exact question-to-evidence associations. A receipt-backed same-run cap also bounds identical repair proposals without replacing verification.
 
 !!! info "Implementation boundary"
-    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration and read-only record and projection inspection. Its submission, reconciliation and invalidation workflows remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
+    Learning uses scoped PostgreSQL records, evidence eligibility, native knowledge-first decisions and explicit flycanon projection. An opt-in lookup can retrieve a citation from the verified projection of an exact eligible local record. Semantic similarity cannot authorize related lessons. Studio includes policy configuration, record and projection inspection, and reviewed evidence invalidation with exact-request recovery. Studio source submission and ingestion reconciliation remain open, alongside cross-run classified negative repair circuits and sharing between projects. Generic failed checks record an observed outcome; they do not prove that an approach fails everywhere.
 
 ## Configure and inspect local learning
 
@@ -75,11 +75,20 @@ The selected projection must be verified and match the current project/repositor
 | Save policy | `forge learning configure policy.json` | `configure_learning_policy` |
 | List authorized records | `forge learning records REPOSITORY_ID` | `list_learning_records` |
 | Invalidate evidence | `forge learning invalidate RECORD_ID --reason REASON --request-id REQUEST_ID` | `invalidate_learning` |
+| Read an exact invalidation receipt | `forge learning invalidation-receipt RECORD_ID --request-id REQUEST_ID` | `get_learning_invalidation_receipt` |
 | Read projection state | `forge learning projection RECORD_ID` | `get_learning_projection` |
 | Submit once | `forge learning submit RECORD_ID --request-id REQUEST_ID` | `submit_learning_projection` |
 | Observe an admitted source | `forge learning observe RECORD_ID --request-id REQUEST_ID --source-id SOURCE_ID` | `observe_learning_projection` |
 
 Record, repository and request IDs use 32 lowercase hexadecimal characters; the source ID is the actual flycanon identifier. Each new action needs an explicit request identity. Inspect the record's source, checks and scope before submitting it. Submission requires verified local outcome evidence and current review authority. If its effect is unknown, observe the known source or retain the unresolved state; another submission must not replay it. The API and SDK expose the same actions. These commands do not create a cross-project grant or a new model session.
+
+### Inspect an uncertain invalidation
+
+Keep the factory URL, actor, record ID, request ID and reason with a pending invalidation. If the response is lost, use the receipt command above, Python `learning_invalidation_receipt(record_id, request_id)`, or `GET /api/v1/learning/records/{id}/invalidations/{request_id}`. These reads require current project review authority; unassigned records require a factory administrator.
+
+A receipt identifies the exact committed event, record, repository, origin run, request, reason, sequence, original timestamp and event digest. `event_state` describes that historical invalidation; `current_record_state` describes the record when read. New invalidation events retain their original `actor_id`. Legacy events without attribution return `null`; reading or repeating an existing request does not replace its actor or rewrite its bytes or digest.
+
+Compare the receipt with the retained request identity and reason. A record invalidated by another request does not establish the pending request's outcome. A 404 means that exact invalidation has not been observed; it does not prove an in-flight writer cannot commit. Retain the uncertainty for operator review. The receipt read never submits, repeats, abandons or promotes a decision. A retained reason that has since become a registered credential is refused by the current read fence while the original private event remains intact.
 
 ## Decide whether a search is needed
 
@@ -110,7 +119,7 @@ Select a record to inspect its saved state, question, supported statement, frame
 
 The projection panel reads the selected local outcome's saved flycanon status and provenance. A pending submission, admitted source, verified projection and unknown outcome are separate states. An unknown outcome is never retried by this view. A denied or unavailable projection does not replace the local evidence with a claim about remote verification.
 
-**Refresh records** performs an authorized read. The explorer does not submit sources, observe remote ingestion or invalidate records. Those operations use the existing reviewed CLI, SDK, MCP and API contracts. A generic status reload cannot identify the exact receipt of a lost invalidation request; Studio write controls remain pending until that reconciliation contract is available.
+**Refresh records** performs an authorized read. It does not submit sources or observe remote ingestion. Evidence invalidation uses the separate review below. A generic status reload cannot identify the exact receipt of a lost invalidation request.
 
 <figure class="forge-shot" markdown="1">
 
@@ -179,6 +188,92 @@ The projection panel reads the selected local outcome's saved flycanon status an
 ![Failure candidate on a phone](assets/screenshots/learning-candidate-mobile-dark.png)
 
 <figcaption>The candidate retains its observed purpose and date. Reviewing it performs reads without replaying a submission.</figcaption>
+</figure>
+
+</div>
+</details>
+
+### Invalidate saved evidence
+
+Select a candidate or verified record, then choose **Invalidate evidence**. Current project review permission is required; unassigned records require a factory administrator. Enter a specific reason without credentials, choose **Review invalidation**, and acknowledge that the decision excludes the evidence from reuse while keeping its history. **Confirm invalidation** submits one decision. **Keep evidence** or closing the review before confirmation submits nothing.
+
+Before sending, Studio saves and reads back the original factory URL, actor, repository, project, origin run, record, request ID and reason in the current tab's storage. Unreadable or corrupt storage blocks submission. The marker survives navigation and reload in that tab; it is not a browser backup. Keep the original request details before closing a tab with an unresolved decision.
+
+Even a successful POST is followed by the exact authorized receipt read. If the response is lost, choose **Check original request**. That control only reads; it never resubmits, abandons or replaces the pending request. An invalidated record, another actor's event, a different reason, a mismatched request or a 404 cannot confirm the original decision. A 404 means the request has not been observed and may still be in flight. Keep the uncertainty for operator review.
+
+**Original invalidation confirmed** requires the matching record, repository, run, request, reason and original actor, with a valid event identity, timestamp, sequence and digest. Legacy unknown attribution cannot confirm a newly retained Studio request. The historical invalidation and current record state are shown separately. Reload requires a fresh authorized receipt read. A denied receipt read clears private evidence from the view while retaining the marker; changing actors or factories cannot reconcile another context's request. The CLI, SDK and MCP receipt reads remain available for authorized operator inspection.
+
+If invalidation removes the selected record from the active filter, the filtered list and count update while its decision remains open. **Close selected record** dismisses that detail and returns focus to the filter control. Selecting it again preserves the pending request identity and requires its exact receipt read.
+
+These captures follow one fictional request whose response is lost. The first receipt read returns 404; a later read returns the matching event. Navigation, forms and retained request storage run in the browser against controlled API fixtures. No provider or knowledge service is called.
+
+<figure class="forge-shot" markdown="1">
+
+![Reason for invalidating saved evidence](assets/screenshots/learning-invalidation-reason-desktop-light.png)
+
+<figcaption>Reason: explain the changed dependency before reviewing the decision. Keeping the evidence or closing this dialog submits nothing.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review the decision and read its original receipt</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Review the scoped evidence invalidation](assets/screenshots/learning-invalidation-review-desktop-light.png)
+
+<figcaption>Review: check the factory, actor, repository, record and reason, then acknowledge the effect. Confirmation sends one request after its identity has been retained.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Unresolved invalidation after an exact receipt read](assets/screenshots/learning-invalidation-unresolved-desktop-light.png)
+
+<figcaption>Unresolved: the fixture loses the write response, retains its identity across navigation and returns 404 on the first receipt read. Check original request performs another read; it cannot replay the decision.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Exact original invalidation confirmation](assets/screenshots/learning-invalidation-confirmed-desktop-light.png)
+
+<figcaption>Confirmed: the later read matches the original actor, request and reason. The historical event and current state remain separate. Its detail stays available even after the Verified evidence filter excludes the updated record.</figcaption>
+</figure>
+
+</div>
+</details>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow invalidation and exact-request recovery on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Enter an invalidation reason on a phone](assets/screenshots/learning-invalidation-reason-mobile-light.png)
+
+<figcaption>Reason: the narrow dialog keeps the field and review action reachable. Leave credentials out of the reason.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Review evidence invalidation on a phone](assets/screenshots/learning-invalidation-review-mobile-light.png)
+
+<figcaption>Review: inspect the scoped decision and acknowledgment before confirming. Scroll the form to read its remaining context.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Retained unresolved invalidation on a phone](assets/screenshots/learning-invalidation-unresolved-mobile-dark.png)
+
+<figcaption>Unresolved: the original reason and request stay available with the receipt-read control. A missing event leaves uncertainty in place.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the matching invalidation receipt on a phone](assets/screenshots/learning-invalidation-confirmed-mobile-dark.png)
+
+<figcaption>Confirmed: read the matched decision, then scroll through its retained event provenance. This fictional flow sends one write and two exact receipt reads.</figcaption>
 </figure>
 
 </div>

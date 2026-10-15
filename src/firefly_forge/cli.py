@@ -1389,6 +1389,15 @@ def learning_invalidate(record_id: str, reason: str, request_id: str) -> None:
         display(connection.invalidate_learning(record_id, reason, request_id))
 
 
+@learning.command("invalidation-receipt")
+@click.argument("record_id")
+@click.option("--request-id", required=True)
+def learning_invalidation_receipt(record_id: str, request_id: str) -> None:
+    """Read one committed request. A missing receipt never authorizes another write."""
+    with client() as connection:
+        display(connection.learning_invalidation_receipt(record_id, request_id))
+
+
 @learning.command("projection")
 @click.argument("record_id")
 def learning_projection(record_id: str) -> None:

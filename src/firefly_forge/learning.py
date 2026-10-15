@@ -91,6 +91,9 @@ class LearningLedger:
             "created_at": at.isoformat(),
             "previous_hash": existing[-1].digest if existing else "0" * 64,
         }
+        if kind == "invalidation":
+            actor = CURRENT_PRINCIPAL.get()
+            event["actor_id"] = actor.id.hex if actor is not None else None
         event["digest"] = digest(event)
         await self.events.save(
             ForgeLearningEventEntity(
@@ -479,6 +482,54 @@ class LearningLedger:
 
             return outcome, guard
 
+    async def _review(self, row: ForgeLearningRecordEntity) -> None:
+        actor = CURRENT_PRINCIPAL.get()
+        if actor is not None:
+            project_id = row.data["envelope"]["context"].get("project_id")
+            if project_id:
+                await ProjectAccess(self.store).require_project(actor, project_id, "review")
+            elif not await ProjectAccess(self.store).current_administrator(actor):
+                raise ValueError("Unassigned learning reviews require a factory administrator")
+
+    async def invalidation_receipt(self, record_id: str, request_id: str) -> Data:
+        identifier(request_id)
+        async with self.store._unit():
+            row = await self.records_repository.find_by_id(identifier(record_id), lock=LockMode.PESSIMISTIC_READ)
+            if row is None:
+                raise KeyError("Learning record not found")
+            await self._review(row)
+            event = await self.events.for_request(row.id, request_id)
+            if event is None or event.data.get("kind") != "invalidation":
+                raise KeyError("Learning invalidation request not observed")
+            data = event.data
+            if (
+                event.digest != data.get("digest")
+                or event.digest != digest({key: value for key, value in data.items() if key != "digest"})
+                or data.get("record_id") != row.id.hex
+                or data.get("run_id") != row.run_id.hex
+                or data.get("request_id") != request_id
+                or data.get("sequence") != event.sequence
+                or data.get("payload", {}).get("state") != "invalidated"
+            ):
+                raise ValueError("Learning invalidation receipt integrity check failed")
+            result = {
+                "event_id": event.id.hex,
+                "record_id": row.id.hex,
+                "repository_id": row.repository_id.hex,
+                "run_id": row.run_id.hex,
+                "request_id": request_id,
+                "kind": "invalidation",
+                "event_state": "invalidated",
+                "current_record_state": row.state,
+                "reason": data["payload"]["reason"],
+                "actor_id": data.get("actor_id"),
+                "created_at": data["created_at"],
+                "sequence": event.sequence,
+                "digest": event.digest,
+            }
+            await self.store.admit_credentials(result)
+            return result
+
     async def invalidate(self, record_id: str, *, reason: str, request_id: str) -> Data:
         identifier(request_id)
         if not reason.strip() or len(reason) > 2000:
@@ -488,13 +539,7 @@ class LearningLedger:
             row = await self.records_repository.find_by_id(identifier(record_id), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None:
                 raise KeyError("Learning record not found")
-            actor = CURRENT_PRINCIPAL.get()
-            if actor is not None:
-                project_id = row.data["envelope"]["context"].get("project_id")
-                if project_id:
-                    await ProjectAccess(self.store).require_project(actor, project_id, "review")
-                elif not await ProjectAccess(self.store).current_administrator(actor):
-                    raise ValueError("Unassigned learning reviews require a factory administrator")
+            await self._review(row)
             await self._append(row, request_id, "invalidation", {"reason": reason, "state": "invalidated"})
             row.state = "invalidated"
             await self.records_repository.save(row)
