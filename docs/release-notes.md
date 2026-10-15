@@ -11,6 +11,8 @@ Local command-pool supervisors reap adopted children while a command runs. After
 
 Retained pool artifacts and command output are checked against the current credential registry before being returned. A value newly recognized as a credential blocks the read and requires reconciliation without altering the original artifact or receipt or resubmitting the command. Unregistered secrets still require review.
 
+Runner admission rechecks current project authority and cancellation after waiting for execution capacity and before dispatch. A queued command cannot start using permission that was revoked while it waited. Retained command reads apply the same admission; cleanup remains available to drain the invocation's owned resources after revocation or cancellation. See [dispatch admission](sandbox.md#recheck-authority-after-waiting-for-a-runner).
+
 The existing-product, feature-change and proposed analytics diagrams read from left to right. Long sequences use phases; narrow screens retain readable labels in keyboard-accessible scroll regions. Existing-product review explicitly precedes frozen assistant context, and admission to flycanon remains optional. Compact navigation also keeps the forge name lowercase and preserves canonical Firefly artwork for the bridge.
 
 These changes retain the trusted local command-pool boundary. Kubernetes, multi-host placement, browser pools and complete coding-provider isolation require separate qualification.

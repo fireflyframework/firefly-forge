@@ -19,6 +19,12 @@ The runner applies to independent verification and the native Firefly Agentic `e
 
 Cloud provisioning and deployment commands use the separately configured [deployment target and credentials](deployment.md). Their credential workflows are outside this code runner.
 
+## Recheck authority after waiting for a runner
+
+After acquiring its run lock and execution capacity, the runner reads the current ownership, cancellation request and project execution authority. It checks again before recording a new create intent and before host execution or Docker preparation and start. A revocation or cancellation received while a command waits prevents that command from starting. Returning a retained result also requires current admission; the original result and journal remain intact when access is refused.
+
+Cleanup can still remove the invocation's owned containers and volumes after revocation or cancellation. Removing execution permission must not prevent those resources from draining. Effects a command already performed remain part of its retained history and recovery process.
+
 ## Keep Python verification tied to current source
 
 Factory commands receive a fresh execution-owned Python cache namespace and `PYTHONDONTWRITEBYTECODE=1`. The namespace replaces inherited or caller-supplied `PYTHONPYCACHEPREFIX` values. This prevents normal Python imports from accepting an earlier timestamp-and-size cache after a same-size source edit. Disabling bytecode writes alone would still allow an existing stale cache to be read.
