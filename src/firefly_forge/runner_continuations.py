@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from pathlib import Path, PurePosixPath
+from threading import Event
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,8 +18,12 @@ from firefly_forge.execution_request_persistence import ForgeExecutionRequestEnt
 from firefly_forge.execution_requests import ExecutionRequests, digest
 from firefly_forge.journal import Journal
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+from firefly_forge.project_models import component_path
+from firefly_forge.runner_factory_models import validate_factory_pool
 from firefly_forge.runner_pool_models import FactoryFence, RunnerProjectInvocation, pool_digest
+from firefly_forge.runner_pool_persistence import ForgeRunnerInvocationRepository
 from firefly_forge.runtime_roles import RuntimeRoles
+from firefly_forge.sandbox import pack_workspace
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.store import Store, identifier, now
 
@@ -25,6 +32,26 @@ if TYPE_CHECKING:
 
 KIND = "runner_continue"
 RUN_FIELDS = ("repository_id", "project_id", "execution_actor", "agent", "sandbox_snapshot", "component_snapshot")
+CANDIDATE_READ_SECONDS = 3
+CANDIDATE_READ_COMMANDS = 16
+CANDIDATE_SOURCE_BYTES = 16_777_216
+CANDIDATE_READ_CHECKPOINTS = 4096
+
+
+class _CandidateBudgetExceeded(RuntimeError):
+    pass
+
+
+class _CandidateReadBudget:
+    def __init__(self) -> None:
+        self.deadline = monotonic() + CANDIDATE_READ_SECONDS
+        self.stopping = Event()
+        self.remaining = CANDIDATE_READ_CHECKPOINTS
+
+    def checkpoint(self) -> None:
+        if self.stopping.is_set() or monotonic() >= self.deadline or self.remaining <= 0:
+            raise _CandidateBudgetExceeded("Local candidate inspection budget exhausted")
+        self.remaining -= 1
 
 
 class RunnerContinuationInput(BaseModel):
@@ -81,6 +108,7 @@ class RunnerContinuations:
         self.store, self.runtime, self.worker = store, runtime, worker
         self.requests = ExecutionRequests(store, runtime)
         self.journal = Journal(store)
+        self._candidate_sources = asyncio.Semaphore(1)
 
     async def _actor(self, run: dict[str, Any]) -> dict[str, Any]:
         principal = CURRENT_PRINCIPAL.get()
@@ -116,6 +144,197 @@ class RunnerContinuations:
             raise RuntimeError("Factory command has no exact original start intent")
         stage = next(task for task in (await self.journal.plan(run_id))["tasks"] if task["id"] == wal["task_id"])
         return continuation_binding(run, wal, stage)
+
+    async def _source_digest(self, workspace: Path, limit: int, budget: _CandidateReadBudget) -> str:
+        budget.checkpoint()
+        if self._candidate_sources.locked():
+            raise _CandidateBudgetExceeded("Local candidate source reader is occupied")
+        registry = self.store.credential_registry()
+        async with self._candidate_sources:
+
+            def capture() -> str:
+                return pack_workspace(
+                    workspace, min(limit, CANDIDATE_SOURCE_BYTES), registry=registry, _checkpoint=budget.checkpoint
+                )[1]
+
+            reader = asyncio.create_task(asyncio.to_thread(capture))
+            try:
+                return await asyncio.shield(reader)
+            except BaseException:
+                budget.stopping.set()
+                # Thread cancellation is cooperative. Keep ownership until even a late local syscall returns.
+                while not reader.done():
+                    try:
+                        await asyncio.shield(reader)
+                    except asyncio.CancelledError:
+                        continue
+                    except BaseException:
+                        break
+                if not reader.cancelled():
+                    reader.exception()
+                raise
+
+    async def _candidates(
+        self, run_id: str, actor: dict[str, Any], budget: _CandidateReadBudget
+    ) -> tuple[list[dict[str, Any]], str]:
+        run = await self.store.get_run(run_id)
+        if (run.get("sandbox_snapshot") or {}).get("mode") != "pool":
+            return [], "not_applicable"
+        policy = validate_factory_pool(run["sandbox_snapshot"])
+        async with self.store._unit():
+            previous = await self.requests.records.for_run(identifier(run_id), KIND)
+            if len(previous) >= 50 or await self.requests.records.pending_count() >= 500:
+                return [], "admission_unavailable"
+            requested = {row.request_key for row in previous}
+        rows = await self.journal.sandbox_executions(run_id)
+        if len(rows) > policy.command_limit:
+            return [], "evidence_unavailable"
+        rows = [row for row in rows if row["status"] == "running" and row["execution_id"] not in requested]
+        if len(rows) > CANDIDATE_READ_COMMANDS:
+            raise _CandidateBudgetExceeded("Too many original commands for bounded local inspection")
+        source_digests: dict[Path, str] = {}
+        commands = []
+        state = "request_already_recorded" if requested else "no_candidate"
+        families = {
+            "python": "Python",
+            "python3": "Python",
+            "python3.13": "Python",
+            "git": "Git",
+            "npm": "npm",
+            "node": "Node",
+            "make": "Make",
+            "pytest": "pytest",
+            "uv": "uv",
+            "java": "Java",
+            "mvn": "Maven",
+        }
+        for row in rows:
+            budget.checkpoint()
+            try:
+                binding = await self.binding(run_id, row["execution_id"])
+                async with self.store._unit():
+                    if not await ForgeRunnerInvocationRepository().factory_owned(
+                        FactoryFence.model_validate(binding["fence"])
+                    ):
+                        state = "leader_unavailable"
+                        continue
+                invocation = RunnerProjectInvocation.model_validate(row["request"]["request"])
+                await self.store.admit_credentials(invocation.model_dump(mode="json"))
+                workspaces = self.store.path.parent / "workspaces"
+                root = workspaces / run_id
+                workspace = root / component_path((run.get("component_snapshot") or {}).get("path", "."))
+                if (
+                    workspaces.is_symlink()
+                    or root.is_symlink()
+                    or workspace.is_symlink()
+                    or not root.resolve(strict=True).is_relative_to(workspaces.resolve(strict=True))
+                    or not workspace.resolve(strict=True).is_relative_to(root.resolve(strict=True))
+                    or row["request"]["command"]["workspace"] != str(workspace)
+                ):
+                    state = "source_unavailable"
+                    continue
+                if workspace not in source_digests:
+                    source_digests[workspace] = await self._source_digest(workspace, policy.workspace_max_bytes, budget)
+                if source_digests[workspace] != invocation.bundle.source_archive_digest:
+                    state = "source_changed"
+                    continue
+                family = families.get(PurePosixPath(invocation.argv[0]).name, "Project")
+                commands.append(
+                    {
+                        "execution_id": row["execution_id"],
+                        "task_id": binding["task_id"],
+                        "attempt": binding["attempt"],
+                        "command_label": family + " command",
+                        "argument_count": len(invocation.argv) - 1,
+                        "source_digest": invocation.source_digest,
+                        "invocation_digest": binding["invocation_digest"],
+                        "wal_digest": binding["wal_digest"],
+                        "binding_digest": digest({**binding, "actor": actor}),
+                    }
+                )
+            except _CandidateBudgetExceeded:
+                raise
+            except OSError:
+                state = "source_unavailable"
+            except (KeyError, ValueError, RuntimeError):
+                state = "evidence_unavailable"
+        return commands, "requires_leader_confirmation" if commands else state
+
+    async def candidates(self, run_id: str) -> dict[str, Any]:
+        run_id = identifier(run_id).hex
+        run = await self.store.get_run(run_id)
+        actor = await self._actor(run)
+        budget = _CandidateReadBudget()
+        try:
+            async with asyncio.timeout(CANDIDATE_READ_SECONDS):
+                return await self._candidate_read(run_id, run, actor, budget)
+        except (TimeoutError, _CandidateBudgetExceeded):
+            budget.stopping.set()
+            await self._actor(await self.store.get_run(run_id))
+            result = {
+                "version": 1,
+                "run_id": run_id,
+                "repository_id": run["repository_id"],
+                "project_id": run.get("project_id"),
+                "actor_id": actor["user_id"],
+                "state": "read_budget_exceeded",
+                "commands": [],
+                "reason": (
+                    "Bounded local inspection is unavailable. No continuation is offered; "
+                    "exact saved requests remain readable."
+                ),
+            }
+            await self.store.admit_credentials(result)
+            await self._actor(await self.store.get_run(run_id))
+            self.store.reject_credentials(result)
+            return result
+
+    async def _candidate_read(
+        self, run_id: str, run: dict[str, Any], actor: dict[str, Any], budget: _CandidateReadBudget
+    ) -> dict[str, Any]:
+        commands, state = await self._candidates(run_id, actor, budget)
+        reasons = {
+            "requires_leader_confirmation": (
+                "The leader must confirm that the original command is still waiting; "
+                "controller checks and quotas apply."
+            ),
+            "source_unavailable": (
+                "This API host cannot verify the shared workspace. Use the authorized host with the shared source; "
+                "existing request receipts remain read-only."
+            ),
+            "leader_unavailable": "The original Factory leader is not currently proven live. No request is offered.",
+            "source_changed": "Original source changed. No continuation is offered; inspect the execution evidence.",
+            "request_already_recorded": (
+                "A continuation identity is already saved for an original command. "
+                "Read its exact request; do not submit another identity."
+            ),
+            "admission_unavailable": (
+                "The bounded continuation admission queue is full. "
+                "Existing requests remain attached to their original identities."
+            ),
+            "not_applicable": "This run does not use an original pool command.",
+            "no_candidate": "No original active command currently passes local continuation checks.",
+            "evidence_unavailable": "Local original-command evidence cannot be verified. No continuation is offered.",
+        }
+        result = {
+            "version": 1,
+            "run_id": run_id,
+            "repository_id": run["repository_id"],
+            "project_id": run.get("project_id"),
+            "actor_id": actor["user_id"],
+            "state": state,
+            "commands": commands,
+            "reason": reasons[state],
+        }
+        await self.store.admit_credentials(result)
+        await self._actor(await self.store.get_run(run_id))
+        if (commands, state) != await self._candidates(run_id, actor, budget):
+            result["commands"] = []
+            result["state"] = "evidence_changed"
+            result["reason"] = "Local command evidence changed. Refresh it before reviewing a continuation."
+        await self._actor(await self.store.get_run(run_id))
+        self.store.reject_credentials(result)
+        return result
 
     async def request(self, run_id: str, body: RunnerContinuationInput) -> dict[str, Any]:
         run_id = identifier(run_id).hex

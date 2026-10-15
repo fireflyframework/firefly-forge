@@ -68,7 +68,12 @@ import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
 import { FactoryWelcome } from "./FactoryWelcome";
 import { ProductDefinition } from "./ProductDefinition";
-import { IdentityMenu, SignIn, useIdentity } from "./Identity";
+import {
+  IdentityMenu,
+  SignIn,
+  useIdentity,
+  type IdentitySession,
+} from "./Identity";
 import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
@@ -1102,7 +1107,11 @@ export default function App() {
                 <summary>Full run brief</summary>
                 <p>{selected.brief}</p>
               </details>
-              <div className="run-controls">
+              <div
+                className="run-controls"
+                id={`run-controls-${selected.id}`}
+                tabIndex={-1}
+              >
                 <span>
                   <GitBranch size={16} />
                   Isolated change
@@ -1192,6 +1201,7 @@ export default function App() {
                 busy={busy}
                 connection={connection}
                 onDelivery={() => navigate("delivery")}
+                session={identity.session}
               />
             </>
           )}
@@ -2163,7 +2173,9 @@ function RunDetail({
   busy,
   connection,
   onDelivery,
+  session,
 }: {
+  session: IdentitySession | null;
   run: ForgeRun;
   busy: boolean;
   connection: Connection;
@@ -2295,7 +2307,12 @@ function RunDetail({
           </section>
         )}
         {tab === "plan" && (
-          <ExecutionRecord key={run.id} run={run} connection={connection} />
+          <ExecutionRecord
+            key={run.id}
+            run={run}
+            connection={connection}
+            session={session}
+          />
         )}
         {tab === "deployment" && (
           <RunDelivery

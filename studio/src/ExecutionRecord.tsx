@@ -8,6 +8,9 @@ import {
   journalDisposition,
 } from "./ExecutionPresentation";
 
+import { RunnerContinuation } from "./RunnerContinuation";
+import type { IdentitySession } from "./Identity";
+
 type Journal = {
   valid: boolean;
   entries: {
@@ -117,9 +120,11 @@ export function ContinueRun({
 export function ExecutionRecord({
   run,
   connection,
+  session,
 }: {
   run: ForgeRun;
   connection: Connection;
+  session: IdentitySession | null;
 }) {
   const [plan, setPlan] = useState<DevelopmentPlan | null>(null);
   const [journal, setJournal] = useState<Journal | null>(null);
@@ -154,6 +159,26 @@ export function ExecutionRecord({
   }, [connection, run.id]);
   return (
     <div className="execution-record">
+      {session && (
+        <RunnerContinuation
+          key={JSON.stringify([
+            connection.base,
+            connection.token,
+            session.user.id,
+            session.global_admin,
+            session.memberships,
+            run.id,
+            run.repository_id,
+            run.project_id,
+            run.publish,
+            run.status,
+            run.cancel_request?.status,
+          ])}
+          run={run}
+          connection={connection}
+          session={session}
+        />
+      )}
       {error && (
         <div className="alert" role="alert">
           {error}
@@ -207,7 +232,9 @@ export function ExecutionRecord({
       )}
       <section className="integration-section">
         <div className="section-heading">
-          <h2>Execution journal</h2>
+          <h2 id={`run-journal-${run.id}`} tabIndex={-1}>
+            Execution journal
+          </h2>
           {journal && (
             <span className={"badge " + (journal.valid ? "success" : "failed")}>
               {journal.valid
