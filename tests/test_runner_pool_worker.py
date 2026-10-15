@@ -16,6 +16,7 @@ from firefly_forge.sandbox import pack_workspace
 class ObservedController:
     def __init__(self, profile, returned):
         self.profile_value, self.returned = profile, returned
+        self.output = b"completed\n"
         self.submissions = 0
         self.lost_response = False
         self.before_submit = None
@@ -48,13 +49,13 @@ class ObservedController:
                 "outcome": "completed",
                 **{
                     kind: {"kind": kind, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-                    for kind, data in {"result": self.returned, "output": b"completed\n"}.items()
+                    for kind, data in {"result": self.returned, "output": self.output}.items()
                 },
             },
         }
 
     async def artifact(self, invocation, kind, receipt):
-        return self.returned if kind == "result" else b"completed\n"
+        return self.returned if kind == "result" else self.output
 
 
 async def fixture(store, tmp_path):
@@ -125,6 +126,69 @@ async def test_start_wal_precedes_single_submit_and_original_git_survives_public
     again = await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
     assert again == result and controller.submissions == 1
     assert (await journal.sandbox_executions(run["id"]))[0]["status"] == "removed"
+
+
+@pytest.mark.parametrize("escaped", [False, True])
+async def test_cached_output_rechecks_new_credentials_without_replay_or_receipt_changes(store, tmp_path, escaped):
+    import json
+
+    credentials = {}
+    store.credential_registry = lambda: credentials
+    worker, controller, run, journal, workspace = await fixture(store, tmp_path)
+    canary = 'newly-registered-factory-canary-"quoted"'
+    payload = (json.dumps(canary)[1:-1] if escaped else canary).encode()
+    controller.output = payload
+    first = await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+    assert first.output == payload.decode() and controller.submissions == 1
+    credentials["FORGE_UNRELATED_API_TOKEN"] = "unrelated-registered-canary"
+    assert await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1) == first
+    before = await journal.sandbox_executions(run["id"])
+    output = worker.artifacts.directory / before[0]["execution_id"] / "output.bin"
+    original = output.stat()
+
+    credentials["FORGE_TEST_API_TOKEN"] = canary
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="credential.*reconciliation") as failure:
+            await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+        assert canary not in str(failure.value)
+
+    assert controller.submissions == 1
+    assert await journal.sandbox_executions(run["id"]) == before
+    assert output.read_bytes() == payload
+    assert (output.stat().st_ino, output.stat().st_mtime_ns) == (original.st_ino, original.st_mtime_ns)
+
+
+@pytest.mark.parametrize("escaped", [False, True])
+async def test_first_output_rechecks_credentials_after_final_receipt_without_replaying(
+    store, tmp_path, monkeypatch, escaped
+):
+    import json
+
+    credentials = {}
+    store.credential_registry = lambda: credentials
+    worker, controller, run, journal, workspace = await fixture(store, tmp_path)
+    canary = 'registered-at-receipt-canary-"quoted"'
+    payload = (json.dumps(canary)[1:-1] if escaped else canary).encode()
+    controller.output = payload
+    original = journal.sandbox_effect_receipt
+
+    async def register_after_receipt(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        if kwargs.get("effect") == "cleanup":
+            credentials["FORGE_TEST_API_TOKEN"] = canary
+        return result
+
+    monkeypatch.setattr(journal, "sandbox_effect_receipt", register_after_receipt)
+    with pytest.raises(RuntimeError, match="credential.*reconciliation") as failure:
+        await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+    assert canary not in str(failure.value)
+    before = await journal.sandbox_executions(run["id"])
+    assert before[0]["status"] == "removed"
+    assert before[0]["effects"]["start"]["evidence"]["workspace_import"] == "complete"
+    with pytest.raises(RuntimeError, match="credential.*reconciliation"):
+        await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
+    assert controller.submissions == 1
+    assert await journal.sandbox_executions(run["id"]) == before
 
 
 async def test_unknown_submit_is_never_replayed_and_keeps_durable_start_intent(store, tmp_path):

@@ -92,6 +92,37 @@ def test_artifacts_reject_configured_credentials_and_symlinked_retention_root(tm
         artifact_service(alias)
 
 
+@pytest.mark.parametrize("kind", ["output", "result"])
+@pytest.mark.parametrize("escaped", [False, True])
+def test_retained_artifacts_recheck_new_credentials_without_changing_custody(tmp_path, kind, escaped):
+    import json
+
+    pool, request, _, root = fixture_request(tmp_path)
+    service = artifact_service(root)
+    credentials = {}
+    service.credential_registry = lambda: credentials
+    canary = 'newly-registered-runner-canary-"quoted"'
+    payload = (json.dumps(canary)[1:-1] if escaped else canary).encode()
+    receipt = service.retain(pool, request, kind, payload)
+    path = root / request.execution_id / (kind + ".bin")
+    original = path.stat()
+    assert service.read(pool, request, kind, receipt) == payload
+    credentials["FORGE_UNRELATED_API_TOKEN"] = "unrelated-registered-canary"
+    assert service.read(pool, request, kind, receipt) == payload
+
+    credentials["FORGE_TEST_API_TOKEN"] = canary
+    with pytest.raises(ValueError, match="credential") as failure:
+        service.read(pool, request, kind, receipt)
+
+    assert canary not in str(failure.value)
+    assert path.read_bytes() == payload
+    assert (path.stat().st_ino, path.stat().st_mtime_ns) == (original.st_ino, original.st_mtime_ns)
+    assert receipt == {"kind": kind, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+
+    credentials.clear()
+    assert service.read(pool, request, kind, receipt) == payload
+
+
 def test_canonical_source_identity_ignores_uid_but_binds_paths_content_and_executable_mode(tmp_path):
     module = importlib.import_module("firefly_forge.runner_pool_artifacts")
     digest = getattr(module, "source_tree_digest", None)
