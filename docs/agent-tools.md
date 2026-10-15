@@ -21,6 +21,7 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `internet_search` | A configured server-mediated search API with bounded citations. |
 | `external_mcp` | An exact reviewed read tool within the project/repository/role grant. |
 | `knowledge_lookup` | Repository-scoped references and eligible local outcomes under the run's frozen learning policy. |
+| `profile_python` | Optional stdlib CPU-profile observation through the same frozen Docker command runner and retained effects. Requires both profiling and command grants. |
 
 Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phase and provider before enabling a capability. Commands, browsers, internet search and external MCP are optional configured capabilities; the initial implementation role grants the six confined source tools.
 
@@ -29,6 +30,22 @@ Native tool arguments reject known configured credentials before file writes or 
 Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. A rejected line edit requires reading the new file before retrying.
 
 Official Codex and Claude Code tools use their own CLI permissions. Role tool lists describe advisory intent for those providers; native Python enforcement applies to Firefly Agentic and bridge execution.
+
+## Observe a Python workload
+
+Grant both `profile_python` and `execute_command` to the implementation role before creating the run. The repository runner must use an immutable Docker image, archive workspace transfer and network `none`, without a pool binding. Its image must already contain `python3` and the workload's dependencies. Host, bind-mount, network-enabled and pool profiles do not receive this optional tool. Readiness checks runner availability; the invocation still determines whether the image has a working Python interpreter. The default six source grants are unchanged.
+
+The native tool accepts a versioned recipe request:
+
+```json
+{"request":{"recipe":"forge-python-cprofile-v1","script":"scripts/measure.py","args":["--size","1000"],"sort":"cumulative","rows":20,"timeout":30}}
+```
+
+The script must be a non-private, relative `.py` path within the component. forge reads its UTF-8 bytes and records their SHA256. A fixed isolated Python launcher imports the standard library before project modules, rechecks that exact source hash, compiles those bytes once and executes the workload with literal arguments. It prints a bounded text `cProfile` report without creating or loading a `.prof` file. Arguments are limited to sixteen bounded strings, rows to 1–100 and time to 1–120 seconds, further limited by the run's frozen command policy. CPU, memory, process, output and total-command budgets remain those of the same runner. Profiling consumes a command slot.
+
+The observation returns the actual workload exit, up to 16,000 output characters, a truncation flag, source hash, image, exact command and the exact retained command/start/cleanup receipt identities. A missing optional receipt binding is explicit as `receipt: null`; it does not trigger another execution. Full runner output and effect evidence retain the existing private journal contract. A timeout, uncertain effect or failed workspace publication keeps that contract's failure or reconciliation behavior and cannot be blindly replayed. Current execution authority, cancellation and credential checks still apply.
+
+Timing values and workload text are untrusted diagnostic observations, not deterministic thresholds or QA approval. `report_marker_observed` only reports whether the expected text appeared; a workload can spoof it or exit before a report is printed. A nonzero workload exit remains nonzero, and profiling alone does not satisfy the worker's source-change or verification requirements. There is no host profiler parser, debugger port, `ptrace`, Docker socket grant or host fallback. Interactive debugging, PHP profiling and application-network orchestration require separate acceptance.
 
 ## Configure real browser checks
 

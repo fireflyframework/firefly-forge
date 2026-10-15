@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
+from firefly_forge.diagnostic_recipes import PythonProfileRequest
 from firefly_forge.profiles import build_instruction
 from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
 from firefly_forge.search_tools import SearchProviderError
@@ -147,6 +148,12 @@ async def execute_agentic(
         if context.browser_runner is None:
             raise ValueError("Browser execution is not configured")
         return await context.browser_runner(path, width, height, theme)
+
+    async def profile_python(request: PythonProfileRequest) -> dict[str, Any]:
+        """Observe a versioned Python CPU recipe; its timings are not QA approval."""
+        if context.python_profile is None or context.command_executor is None:
+            raise ValueError("Isolated Python profiling is not configured")
+        return await context.python_profile(request)
 
     async def browser_journey(plan: BrowserJourney) -> Any:
         """Perform a declared isolated user journey with bounded DOM and optional image evidence."""
@@ -305,6 +312,12 @@ async def execute_agentic(
         handlers["external_mcp"] = external_mcp
     if context.knowledge_lookup is not None:
         handlers["knowledge_lookup"] = knowledge_lookup
+    if (
+        context.python_profile is not None
+        and context.command_executor is not None
+        and {"execute_command", "profile_python"}.issubset(context.allowed_tools or ())
+    ):
+        handlers["profile_python"] = profile_python
     unknown = (context.allowed_tools or frozenset()) - {
         "list_files",
         "read_file",
@@ -318,6 +331,7 @@ async def execute_agentic(
         "internet_search",
         "external_mcp",
         "knowledge_lookup",
+        "profile_python",
     }
     if unknown:
         raise ValueError("Native tool grant contains an unknown tool")

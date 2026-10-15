@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from firefly_forge.process import ProcessResult, execute
 
 if TYPE_CHECKING:
+    from firefly_forge.diagnostic_recipes import PythonProfileRequest
     from firefly_forge.qa import BrowserJourney, EvidenceImage, JourneyEvidence, QAReference
 
 
@@ -36,6 +37,7 @@ class ToolRuntimeContext:
     qa_references: tuple[dict[str, Any], ...] = ()
     reference_loader: Callable[[str], Awaitable[EvidenceImage]] | None = None
     reference_resolver: Callable[[BrowserJourney], Awaitable[tuple[QAReference, EvidenceImage] | None]] | None = None
+    python_profile: Callable[[PythonProfileRequest], Awaitable[dict[str, Any]]] | None = None
 
 
 def _private_name(name: str) -> bool:
@@ -283,6 +285,7 @@ _TOOL_DESCRIPTIONS = {
     "internet_search": "Search the configured server-mediated search provider",
     "external_mcp": "Read an exact reviewed external tool within a project and repository grant",
     "knowledge_lookup": "Inspect scoped references and exact verified local outcomes without a web-search key",
+    "profile_python": "Observe bounded Python CPU profiling through the frozen isolated command runner",
 }
 
 
@@ -297,8 +300,11 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
             "internet_search",
             "external_mcp",
             "knowledge_lookup",
+            "profile_python",
         }
         available = not optional or bool(snapshot.get(identifier, False))
+        if identifier == "profile_python":
+            available = available and bool(snapshot.get("execute_command", False))
         supported = provider in {"agentic", "bridge", "api"}
         result.append(
             {
@@ -314,7 +320,11 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
                     else "An explicit execution, browser or search configuration is required"
                 ),
                 "providers": ["agentic", "bridge"],
-                "requires": [identifier] if optional else [],
+                "requires": ["execute_command", "profile_python"]
+                if identifier == "profile_python"
+                else [identifier]
+                if optional
+                else [],
             }
         )
     return result
