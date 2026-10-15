@@ -3,12 +3,12 @@ name: Verify
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
-  check:
+  python:
     runs-on: ubuntu-24.04
     env:
       FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
@@ -29,6 +29,28 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
+      - run: uv sync --locked --group dev --group docs
+      - run: make python-check
+  studio:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm --prefix studio ci
+      - run: npx --prefix studio playwright install --with-deps chromium
+      - run: make studio-check
+      - run: npm --prefix studio audit --omit=dev --audit-level=high
+  documentation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
@@ -37,18 +59,7 @@ jobs:
       - run: uv sync --locked --group dev --group docs
       - run: npm --prefix studio ci
       - run: npx --prefix studio playwright install --with-deps chromium
-      - run: make check package
-      - run: npm --prefix studio audit --omit=dev --audit-level=high
-      - name: Install the wheel outside the source checkout
-        run: |
-          uv venv "$RUNNER_TEMP/forge-installed"
-          uv pip install --python "$RUNNER_TEMP/forge-installed/bin/python" dist/*.whl
-          cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/forge-installed/bin/python" "$GITHUB_WORKSPACE/scripts/installed_smoke.py"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: firefly-forge-distributions
-          path: dist/*
+      - run: make docs-check
   container:
     runs-on: ubuntu-24.04
     env:
@@ -74,3 +85,54 @@ jobs:
         run: docker run --rm --network host -e FORGE_DATABASE_URL -e FORGE_DATABASE_SCHEMA=forge_container_ci -v "$PWD/scripts/container_smoke.py:/tmp/container_smoke.py:ro" firefly-forge:ci /app/.venv/bin/python /tmp/container_smoke.py
       - name: Exercise default command and image-owned process supervision
         run: python3 scripts/container_default_command_smoke.py firefly-forge:ci
+  check:
+    needs: [python, studio, documentation, container]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:forge_test@127.0.0.1:5432/forge_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
+          POSTGRES_DB: forge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge_test -d forge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: ${{ always() }}
+      - name: Require every verification gate
+        if: ${{ always() }}
+        env:
+          FORGE_CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/check_ci_gates.py
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: uv sync --locked --group dev --group docs
+      - run: npm --prefix studio ci
+      - run: npm --prefix studio run build
+      - run: uv build
+      - run: uv run python scripts/check_distribution.py dist
+      - run: uv run python scripts/check_release_payloads.py dist
+      - name: Install the wheel outside the source checkout
+        run: |
+          uv venv "$RUNNER_TEMP/forge-installed"
+          uv pip install --python "$RUNNER_TEMP/forge-installed/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-installed/bin/python" "$GITHUB_WORKSPACE/scripts/installed_smoke.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firefly-forge-distributions
+          path: dist/*
+          if-no-files-found: error

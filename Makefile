@@ -5,8 +5,8 @@ check: python-check studio-check docs-check
 
 python-check:
 	uv run python -m compileall -q src
-	uv run ruff check src tests
-	uv run ruff format --check src tests
+	uv run ruff check src tests scripts/check_ci_gates.py scripts/check_release_payloads.py
+	uv run ruff format --check src tests scripts/check_ci_gates.py scripts/check_release_payloads.py
 	uv run mypy src/firefly_forge
 	uv run pytest
 
