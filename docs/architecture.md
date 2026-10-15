@@ -270,7 +270,7 @@ After failed QA, `Engine._repair_proposal` inspects the owned workspace and chec
 | `LearningProjection` | Submit or observe a separate flycanon projection; read an exact eligible citation | Captured target, source identity, content digest and citation |
 | Repair proposal admission | Permit or hold the next same-run coding proposal after actual QA | Native verification receipt, matching round count, policy digest and decision |
 
-The proposal cap leaves verification commands, diagnostic checks, intentional RED tests and test-only runs available. It does not classify an approach as invalid across runs. Cross-run negative learning, reviewed sharing between projects and Studio lifecycle-write reconciliation remain separate work.
+The proposal cap leaves verification commands, diagnostic checks, intentional RED tests and test-only runs available. It does not classify an approach as invalid across runs. Cross-run negative learning, reviewed sharing between projects, Studio source submission and ingestion reconciliation remain separate work.
 
 Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning.py), [`learning_projection.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/learning_projection.py), [`repair_proposals.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/repair_proposals.py). The [learning guide](learning.md#review-saved-records-in-studio) explains record inspection, guarded invalidation and exact-request recovery.
 
