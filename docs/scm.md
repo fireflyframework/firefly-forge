@@ -54,6 +54,61 @@ write** and **Pull requests: read and write**. Install it on the selected
 repositories. Save its app ID, installation ID and unencrypted RSA private key
 in forge. The optional app slug provides a direct installation link.
 
+### Walk through registration
+
+Start in your organization's **Settings → Developer settings → GitHub Apps →
+New GitHub App**. Give the application a name that identifies its purpose and
+set its homepage to your factory's documentation. For a local acceptance test,
+use a separate test application and a repository containing fictional data.
+
+<figure class="forge-shot" markdown="1">
+![GitHub confirms registration of the firefly forge local acceptance application.](assets/provider-guides/github-app-registration.jpg)
+<figcaption>Captured from GitHub during the local acceptance setup. The registration banner confirms that the application exists. Installation and a successful connection check are separate steps. Use your own application identifiers; the values shown belong to this test application.</figcaption>
+</figure>
+
+Configure these repository permissions before installing the application:
+
+| Permission | Access | Purpose |
+| --- | --- | --- |
+| Contents | Read and write | Clone source and publish reviewed branches. |
+| Pull requests | Read and write | Open pull requests and post feedback in pull-request conversations. |
+| Issues | Read and write, when using issue conversations | Post status and questions back to the issue that requested the work. |
+| Metadata | Read-only | Discover the repositories granted to the installation. GitHub marks this permission as mandatory. |
+
+Organization and account permissions are not needed for this installation-token
+flow. GitHub user authorization is separate from the factory's sign-in and from
+the repository's signed conversation-command settings.
+
+Complete setup in this order:
+
+1. In **Credentials → Key pairs → New key**, generate an RSA private key. Keep
+   the downloaded key out of source control, screenshots and shared support
+   reports. Supply it only to forge's write-only private-key field. If the
+   download is interrupted, check the browser's downloads and the application's
+   existing key list before creating another key.
+2. Open **Install App**, select the intended account and choose **Only select
+   repositories**. Select the test repository and inspect the permission summary
+   before confirming the installation. Record its installation ID.
+3. In forge, save the app ID, installation ID, private key and optional app slug.
+   Choose **Check access**, then **Find granted repositories**. Check the returned
+   repository name before connecting it.
+4. Configure signed inbound commands using [Repository workflow](repository-workflow.md).
+   A local forge server needs a reachable delivery route before GitHub can send
+   webhooks to it. Registration and repository discovery do not establish webhook
+   delivery. Keep the webhook inactive during a staged setup until its receiving
+   route and signature secret are ready.
+
+<figure class="forge-shot" markdown="1">
+![The installed GitHub App has read and write permissions on one selected private acceptance repository.](assets/provider-guides/github-app-installed.jpg)
+<figcaption>After installation, GitHub shows the effective permissions and the selected repository. This acceptance application is restricted to one private repository containing fictional data. The image records the provider installation; a forge grant check and webhook delivery still need their own evidence.</figcaption>
+</figure>
+
+These captures record registration and installation. A complete acceptance
+record also needs a real grant check, a confirmed inbound command and its
+outbound feedback. Replace screenshots when the provider changes its screens
+or the documented workflow changes; review every image for credentials before
+publishing it.
+
 forge signs a short-lived app JWT. Repository discovery uses an installation
 token with metadata permission. Git execution and pull requests use a token
 restricted to the selected repository ID, with the two write permissions above.
