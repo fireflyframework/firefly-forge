@@ -63,6 +63,7 @@ import {
   type DraftProposal,
 } from "./ProductProposal";
 import { MarkdownEditor } from "./RichMarkdown";
+import { reconcileProductSave, saveProductDefinition } from "./ProductSave";
 import { ProductList, ProductJourneys } from "./ProductFields";
 import "./ProductWorkspace.css";
 import { safeExternalLink } from "./FeatureLinks";
@@ -339,7 +340,7 @@ export function ProductDefinition({
                     <button
                       type="button"
                       className="text-button"
-                      disabled={saving}
+                      disabled={saving || session.saveHeld}
                       onClick={() => setDiscarding(true)}
                     >
                       Discard edits
@@ -415,6 +416,12 @@ export function ProductDefinition({
                 onConfigure={onConfigure}
                 onUse={(definition, source) => {
                   if (currentProject.current !== selected.id) return;
+                  if (session.saveHeld) {
+                    setError(
+                      "Review the retained product save before applying a proposal.",
+                    );
+                    return;
+                  }
                   setPendingProposal({
                     definition,
                     source,
@@ -443,6 +450,13 @@ export function ProductDefinition({
               value={pendingProposal}
               onCancel={() => setPendingProposal(null)}
               onApply={() => {
+                if (session.saveHeld) {
+                  setPendingProposal(null);
+                  setError(
+                    "Review the retained product save before applying a proposal.",
+                  );
+                  return;
+                }
                 const { definition, source } = pendingProposal;
                 book.apply(session, definition, source);
                 setEditorKey((value) => value + 1);
@@ -882,18 +896,37 @@ function DefinitionEditor({
         throw new Error(
           "The saved definition changed. Your draft is retained; saving is held.",
         );
-      const submittedVersion = session.editVersion;
-      const result = await request<ProductSnapshot>(
-        connection,
-        `/repositories/${repository.id}/product`,
-        { method: "PUT", body: JSON.stringify(data()) },
-      );
-      if (session.acceptSaved(result, submittedVersion)) {
+      const result = await saveProductDefinition(session, connection, input);
+      if (!session.dirty && !session.stale) {
         setSaved(true);
         onSaved(result);
       } else if (session.active) {
         setError(
           "The earlier save finished, but the draft or observed server revision changed. Your draft is retained.",
+        );
+      }
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function recoverSave(retry: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = retry
+        ? await saveProductDefinition(session, connection, data(), true)
+        : await reconcileProductSave(session, connection);
+      if (result && !session.dirty && !session.stale) {
+        setSaved(true);
+        onSaved(result);
+      } else if (session.active) {
+        setError(
+          session.saveHeld
+            ? "The save outcome is still uncertain. Your original input is retained; no second save was sent."
+            : "The saved revision changed. Your edits are retained; review the current definition before another save.",
         );
       }
     } catch (cause) {
@@ -1799,6 +1832,37 @@ function DefinitionEditor({
               onPending={setDesignPending}
             />
           )}
+          {session.saveAttempt?.phase === "unknown" && (
+            <div className="alert" role="status">
+              <p>
+                The save outcome is uncertain. Your submitted input is retained.
+                Inspect the saved definition before sending another edit.
+              </p>
+              <div className="feature-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void recoverSave(false)}
+                >
+                  Inspect saved definition
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void recoverSave(true)}
+                >
+                  Retry original conditional save
+                </button>
+              </div>
+              <small>
+                Retry uses the original input and revision condition. It cannot
+                overwrite a later saved revision. Reloading or signing out
+                clears this tab-held input.
+              </small>
+            </div>
+          )}
           {error && (
             <div className="alert" role="alert">
               {error}
@@ -1828,7 +1892,10 @@ function DefinitionEditor({
             )}
             <button
               className="primary"
-              disabled={busy || (step === 4 && (saved || session.stale))}
+              disabled={
+                busy ||
+                (step === 4 && (saved || session.stale || session.saveHeld))
+              }
             >
               {step === 4
                 ? fullyReviewed
@@ -1844,7 +1911,11 @@ function DefinitionEditor({
       </Wizard>
       {snapshot && step === 4 && (
         <div className="feature-actions">
-          <button className="primary" onClick={onStart}>
+          <button
+            className="primary"
+            onClick={onStart}
+            disabled={session.saveHeld}
+          >
             {savedMissingReviews.length
               ? "Start run from saved draft"
               : "Start run"}{" "}

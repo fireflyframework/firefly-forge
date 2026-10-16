@@ -99,6 +99,23 @@ class ProductDefinition(BaseModel):
         return self
 
 
+class ConditionalProductSave(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_revision: int = Field(ge=0)
+    expected_digest: str | None = Field(pattern=r"^[a-f0-9]{64}$")
+    definition: ProductDefinition
+
+    @model_validator(mode="after")
+    def complete_cut(self) -> ConditionalProductSave:
+        if (self.expected_revision == 0) != (self.expected_digest is None):
+            raise ValueError("Use revision zero and a null digest only for a missing product")
+        return self
+
+
+class ConditionalProductSaveRejected(ValueError):
+    """The conditional endpoint refused before inserting a product revision."""
+
+
 class CollaborationSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = False
@@ -394,15 +411,39 @@ class Collaboration:
             row = await self.products.find_current(identifier(repository_id))
             return copy.deepcopy(row.data) if row else None
 
-    async def save_product(self, repository_id: str, request: ProductDefinition) -> Data:
-        await self.store.admit_credentials(request.model_dump())
-        if request.architecture is not None and not request.architecture.reviewed:
-            raise ValueError("Review the architecture proposal before saving the product definition")
-        await ProductDesign(self.store).validate_review(repository_id, request)
+    async def save_product(
+        self, repository_id: str, request: ProductDefinition, *, condition: ConditionalProductSave | None = None
+    ) -> Data:
+        if condition is not None:
+            condition = ConditionalProductSave.model_validate(condition.model_dump())
+            if condition.definition.model_dump() != request.model_dump():
+                raise ConditionalProductSaveRejected("Conditional save definition differs from its retained request")
+            request = condition.definition.model_copy(deep=True)
+        try:
+            await self.store.admit_credentials(request.model_dump())
+            if request.architecture is not None and not request.architecture.reviewed:
+                raise ValueError("Review the architecture proposal before saving the product definition")
+            await ProductDesign(self.store).validate_review(repository_id, request)
+        except ValueError as exc:
+            if condition is not None:
+                raise ConditionalProductSaveRejected(str(exc)) from None
+            raise
         async with self.store._unit():
             await self._repo_lock(repository_id)
             previous = await self.products.find_current(identifier(repository_id))
-            origin = await validate_origin(self.store, repository_id, request)
+            if condition is not None and (
+                condition.expected_revision != (previous.revision if previous else 0)
+                or condition.expected_digest != (previous.digest if previous else None)
+            ):
+                raise ConditionalProductSaveRejected(
+                    "The saved product changed; inspect the current definition before saving again"
+                )
+            try:
+                origin = await validate_origin(self.store, repository_id, request)
+            except ValueError as exc:
+                if condition is not None:
+                    raise ConditionalProductSaveRejected(str(exc)) from None
+                raise
             data = {
                 "repository_id": repository_id,
                 "revision": previous.revision + 1 if previous else 1,

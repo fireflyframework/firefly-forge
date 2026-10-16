@@ -41,6 +41,15 @@ Open **Product definition** and select the product project. Work through five st
 
 Each step states its required inputs. Back preserves the working draft. Saving creates a product revision; it does not start a coding run.
 
+Studio saves through `PUT /api/v1/repositories/ID/product/conditional`, with the definition and its expected prior revision and digest. A new product uses revision `0` and a null digest. The server checks both values under the repository lock before inserting. A conflicting save is refused. The original `/product` endpoint keeps its existing unconditional behavior for current clients.
+
+A readable authentication, permission, missing-endpoint or validation rejection leaves the fields editable. Business validation and stale-cut refusals from the conditional endpoint carry `code: product_save_not_applied`, emitted only before inserting a revision; an unqualified conflict remains uncertain. A rejected retry does not settle an earlier uncertain request. Studio never retries automatically.
+
+If a response is lost or cannot be read, Studio retains the submitted input and holds further edits from being saved. Navigating away and back does not remove that hold. **Inspect saved definition** performs a GET without repeating the write. An unchanged or unavailable result keeps the hold. A later matching definition confirms the content currently saved; it does not establish which request wrote it. The original conditional request can no longer overwrite that later revision. If the later definition differs, your edits remain held for review before you discard or replace them.
+
+**Retry original conditional save** is an explicit choice. It sends the retained original input and revision condition, including after you type newer edits. Two requests with that same condition can insert at most one revision. Studio does not retry automatically or fall back to the unconditional endpoint. Reloading or signing out clears the input retained in this tab. These conditions protect conditional writes; they do not add an immutable request identity, exact operation-receipt lookup or general idempotency to the older endpoint.
+
+
 Optional architecture and design settings retain the backend/frontend choice, product brand, tokens, grid and review references. A service-only product can describe API processes without adding a frontend journey.
 
 On a wide screen, the AI assistant opens beside the editor in a collapsible panel. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft.

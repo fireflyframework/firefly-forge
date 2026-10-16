@@ -73,6 +73,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public responseKind: "http" | "unreadable" = "http",
+    public code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -146,6 +148,7 @@ export async function request<T>(
         ? "The server returned a non-JSON response. Check the API address."
         : `Request failed (${response.status}).`,
       response.status,
+      "unreadable",
     );
   }
   if (!response.ok) {
@@ -155,7 +158,8 @@ export async function request<T>(
       typeof window !== "undefined"
     )
       window.dispatchEvent(new Event("forge-session-expired"));
-    const error = data as { detail?: unknown; error?: string } | undefined;
+    const error = data as
+      { detail?: unknown; error?: string; code?: unknown } | undefined;
     const validation = Array.isArray(error?.detail)
       ? error.detail
           .flatMap((item: unknown) => {
@@ -192,6 +196,14 @@ export async function request<T>(
           ? "Your session is unavailable. Sign in again to continue."
           : `Request failed (${response.status}).`),
       response.status,
+      typeof error?.detail === "string" ||
+        validation ||
+        typeof error?.error === "string"
+        ? "http"
+        : "unreadable",
+      typeof error?.code === "string" && /^[a-z_]{1,100}$/.test(error.code)
+        ? error.code
+        : undefined,
     );
   }
   return data as T;

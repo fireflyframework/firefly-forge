@@ -301,12 +301,15 @@ for (const device of ["desktop", "mobile"])
             browsing_available: true,
             warnings: [],
           };
-        else if (path.endsWith("/product")) {
+        else if (
+          path.endsWith("/product") ||
+          path.endsWith("/product/conditional")
+        ) {
           if (request.method() === "PUT")
             product = {
               repository_id: repository.id,
               revision: 1,
-              definition: request.postDataJSON(),
+              definition: request.postDataJSON().definition,
               digest: "a".repeat(64),
               created_at: "2026-10-13T15:00:00Z",
             };

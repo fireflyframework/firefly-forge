@@ -54,13 +54,13 @@ async function setup(page: Page) {
         provider: "github",
         default_branch: "main",
       }));
-    if (path.endsWith("/product")) {
+    if (path.endsWith("/product") || path.endsWith("/product/conditional")) {
       json = product(path.includes(a) ? a : b, revision);
       if (route.request().method() === "PUT") {
         writes++;
         json = {
           ...product(path.includes(a) ? a : b, ++revision),
-          definition: route.request().postDataJSON(),
+          definition: route.request().postDataJSON().definition,
         };
       }
     }
@@ -409,19 +409,22 @@ test("a re-entry GET captured before save completion cannot regress the saved re
   });
   let putStarted = false,
     readStarted = false;
-  await page.route(`**/repositories/${a}/product`, async (route) => {
-    if (route.request().method() === "PUT") {
-      putStarted = true;
-      const definition = route.request().postDataJSON();
-      await putGate;
-      await route.fulfill({ json: { ...product(a, 2), definition } });
-    } else {
-      readStarted = true;
-      const older = product(a);
-      await readGate;
-      await route.fulfill({ json: older });
-    }
-  });
+  await page.route(
+    `**/repositories/${a}/product{,/conditional}`,
+    async (route) => {
+      if (route.request().method() === "PUT") {
+        putStarted = true;
+        const definition = route.request().postDataJSON().definition;
+        await putGate;
+        await route.fulfill({ json: { ...product(a, 2), definition } });
+      } else {
+        readStarted = true;
+        const older = product(a);
+        await readGate;
+        await route.fulfill({ json: older });
+      }
+    },
+  );
   await customer(page).fill("Submitted A");
   for (let step = 0; step < 3; step++)
     await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -438,7 +441,7 @@ test("a re-entry GET captured before save completion cannot regress the saved re
   const savedResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "PUT" &&
-      response.url().endsWith(`/repositories/${a}/product`),
+      response.url().endsWith(`/repositories/${a}/product/conditional`),
   );
   acceptPut();
   await savedResponse;

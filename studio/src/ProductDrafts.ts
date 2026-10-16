@@ -16,6 +16,8 @@ import {
   type ProductSnapshot,
 } from "./api";
 
+import type { ProductSaveAttempt } from "./ProductSave";
+
 let sequence = 0;
 const cut = (value: ProductSnapshot | null) =>
   value ? `${value.revision}:${value.digest}` : "missing";
@@ -32,6 +34,45 @@ export class ProductDraftSession {
   private latest: ProductSnapshot | null = null;
   editVersion = 0;
   private saveEpoch = 0;
+  private pendingSave: ProductSaveAttempt | null = null;
+  get saveAttempt() {
+    return structuredClone(this.pendingSave);
+  }
+  get saveHeld() {
+    return this.pendingSave !== null;
+  }
+  retainSave(attempt: ProductSaveAttempt) {
+    if (!this.active || this.stale || this.saveHeld)
+      throw new Error(
+        "Review the retained product save before sending another save.",
+      );
+    this.pendingSave = structuredClone(attempt);
+    this.changed();
+  }
+  markSaveUnknown(id: number) {
+    if (this.active && this.pendingSave?.id === id) {
+      this.pendingSave.phase = "unknown";
+      this.changed();
+    }
+  }
+  retrySave(id: number) {
+    if (
+      !this.active ||
+      this.pendingSave?.id !== id ||
+      this.pendingSave.phase !== "unknown"
+    )
+      throw new Error(
+        "The original product save is already being sent or is no longer current.",
+      );
+    this.pendingSave.phase = "sending";
+    this.changed();
+  }
+  releaseSave(id: number) {
+    if (!this.active || this.pendingSave?.id !== id) return false;
+    this.pendingSave = null;
+    this.changed();
+    return true;
+  }
   get observationEpoch() {
     return this.saveEpoch;
   }
@@ -42,7 +83,7 @@ export class ProductDraftSession {
     return !this.closed;
   }
   get dirty() {
-    return Boolean(this.fields.get("dirty"));
+    return Boolean(this.fields.get("dirty")) || this.saveHeld;
   }
   get stale() {
     return this.observed && cut(this.base) !== cut(this.latest);
@@ -125,6 +166,7 @@ export class ProductDraftSession {
   close() {
     this.closed = true;
     this.fields.clear();
+    this.pendingSave = null;
     this.base = this.latest = this.brand = null;
     this.observed = false;
     this.listeners.clear();
@@ -165,6 +207,10 @@ export class ProductDraftBook {
   private replace(session: ProductDraftSession, next: ProductDraftSession) {
     if (this.closed || this.sessions.get(session.repository) !== session)
       return;
+    if (session.saveHeld)
+      throw new Error(
+        "Review the retained product save before discarding or replacing this draft.",
+      );
     session.close();
     this.sessions.set(session.repository, next);
     for (const listener of this.listeners) listener();
