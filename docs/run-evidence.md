@@ -30,7 +30,7 @@ The query and its output are bounded. Exact records can be at most 1 MiB. A page
 forge evidence export RUN_ID --expected-cut CUT_DIGEST --output run-evidence.zip
 ```
 
-The output file must not already exist. The ZIP contains `manifest.json`, `run.json`, `plan.json`, `tasks.json`, `activity.json`, `journal.json`, `tools.json` and `artifacts.json`. The manifest lists each data member's byte length and SHA256. Its own `digest` seals its canonical JSON fields except `digest`; the HTTP `X-Content-SHA256` header identifies the complete ZIP. Repeating an export of the same unchanged cut produces the same bytes.
+The output file must not already exist. The ZIP contains `manifest.json`, `run.json`, `plan.json`, `tasks.json`, `activity.json`, `journal.json`, `tools.json` and `artifacts.json`. The manifest lists each data member's byte length and SHA256. Its own `digest` seals its canonical JSON fields except `digest`; the HTTP `X-Content-SHA256` header identifies the complete ZIP. Repeating an export of the same unchanged cut with the same Python/zlib runtime produces the same bytes. Entries use fixed timestamps, Unix file modes and empty comments/extra fields; compressed bytes are not promised identical across different compression implementations or versions.
 
 The WAL retains its original payloads and chain hashes. Activity and task rows carry observed state; they do not become immutable receipts merely by appearing in an export. The plan includes an explicit projection and the original plan digest. An execution actor copied from the run is labeled `observed_run_row` rather than presented as an immutable historical attribution.
 

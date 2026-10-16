@@ -80,6 +80,12 @@ def test_complete_bundle_is_repeatable_and_does_not_certify_old_source_zip():
     content = m.evidence_zip(snap)
     assert content == m.evidence_zip(m.build_evidence(**data))
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        assert archive.comment == b""
+        for info in archive.infolist():
+            assert info.create_system == 3
+            assert info.external_attr >> 16 == 0o100600
+            assert info.date_time == (1980, 1, 1, 0, 0, 0)
+            assert info.extra == info.comment == b"" and not info.is_dir()
         assert set(archive.namelist()) == {
             "manifest.json",
             "run.json",
