@@ -137,7 +137,7 @@ def _bridge_failure(exc: Exception) -> ProviderError | None:
                 retry_after=observation.get("retry_after"),
                 observation=observation,
             )
-        if exc.status_code < 500:
+        if exc.status_code < 500 and not 300 <= exc.status_code < 400:
             return None
     return ProviderOutcomeUnknown(
         "Bridge execution outcome is unknown; reconcile the retained job before continuing",
@@ -542,6 +542,7 @@ class BridgeProvider(ConfiguredProvider):
                 if completion and (attempt := _bridge_attempt.get()) is not None:
                     attempt.dispatch()
                 try:
+                    kwargs["follow_redirects"] = False
                     return await super()._send_request(request, **kwargs)
                 except asyncio.CancelledError as exc:
                     if completion:
