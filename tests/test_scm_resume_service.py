@@ -666,3 +666,69 @@ async def test_revoked_v2_feedback_authority_is_checked_before_outbound_intent()
     service.resume_authority = SimpleNamespace(authorize_feedback=denied)
     await service.feedback(row.data["id"])
     assert row.data["feedback_status"] == "pending"
+
+
+@pytest.mark.parametrize("original", ["missing", "disabled", "enabled"])
+async def test_v2_locks_require_the_original_bootstrap_identity_without_changing_legacy_policy(monkeypatch, original):
+    from uuid import UUID
+
+    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+    from firefly_forge.project_persistence import ForgeProjectRepository
+
+    module = implementation()
+    run = {
+        "id": "1" * 32,
+        "repository_id": "2" * 32,
+        "project_id": "3" * 32,
+        "status": "paused",
+        "agent": "bridge",
+        "execution_actor": {"user_id": "4" * 32, "authentication_method": "local_bootstrap"},
+    }
+    delivery = {"id": "6" * 32, "command": {"version": 2}, "verification": {}, "digest": "7" * 64}
+    row = SimpleNamespace(data=delivery)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    @asynccontextmanager
+    async def unit():
+        yield SimpleNamespace(execute=noop)
+
+    async def identity(_self, key, **kwargs):
+        if key.hex == run["execution_actor"]["user_id"]:
+            return None if original == "missing" else SimpleNamespace(enabled=original == "enabled")
+        assert key.hex == "5" * 32
+        return SimpleNamespace(enabled=True)
+
+    async def run_record(*args, **kwargs):
+        return SimpleNamespace(status="paused", data=run, repository_id=UUID(run["repository_id"]))
+
+    async def inbox(*args, **kwargs):
+        return row
+
+    monkeypatch.setattr(ForgeIdentityUserRepository, "find_by_id", identity)
+    monkeypatch.setattr(ForgeProjectRepository, "find_by_id", noop)
+    service = module.SCMResumeAuthority(
+        SimpleNamespace(
+            schema="host-only",
+            _unit=unit,
+            repository_records=SimpleNamespace(find_by_id=noop),
+            run_records=SimpleNamespace(find_by_id=run_record),
+            assert_campaign_current=noop,
+        ),
+        None,
+        None,
+        None,
+        SimpleNamespace(find_by_id=inbox),
+        None,
+    )
+    if original == "missing":
+        # The pre-identity bootstrap exception remains a global legacy contract.
+        await service._original(run)
+    if original != "enabled":
+        with pytest.raises(AccessDenied):
+            async with service._locked(delivery, {"run": run, "user_id": "5" * 32}):
+                await service._original(run)
+    else:
+        async with service._locked(delivery, {"run": run, "user_id": "5" * 32}) as locked:
+            assert locked is row

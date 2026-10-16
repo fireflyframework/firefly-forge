@@ -495,7 +495,11 @@ class SCMResumeAuthority:
                 {"key": self.store.schema + ":members:" + run["project_id"]},
             )
             for user in sorted({context["user_id"], run["execution_actor"]["user_id"]}):
-                await ForgeIdentityUserRepository().find_by_id(identifier(user), lock=LockMode.PESSIMISTIC_WRITE)
+                identity = await ForgeIdentityUserRepository().find_by_id(
+                    identifier(user), lock=LockMode.PESSIMISTIC_WRITE
+                )
+                if identity is None or not identity.enabled:
+                    raise AccessDenied("Both original and delegated execution identities must remain enabled")
             await ForgeProjectRepository().find_by_id(identifier(run["project_id"]), lock=LockMode.PESSIMISTIC_WRITE)
             await self.store.repository_records.find_by_id(
                 identifier(run["repository_id"]), lock=LockMode.PESSIMISTIC_WRITE
