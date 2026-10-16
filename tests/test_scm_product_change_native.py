@@ -195,7 +195,8 @@ def test_native_stale_or_foreign_product_cut_writes_nothing(native_product, drif
 @pytest.mark.parametrize("revocation", ["identity", "membership", "late_credentials"])
 def test_native_revocation_or_fresh_credentials_refuse_product_write(native_product, monkeypatch, revocation):
     p = native_product
-    delivery = p.receive(p.command(p.consent()))
+    command = p.command(p.consent())
+    delivery = p.receive(command)
     original = p.service._preflight
     lifecycle_save = ProductLifecycle._save_prepared
 
@@ -218,7 +219,7 @@ def test_native_revocation_or_fresh_credentials_refuse_product_write(native_prod
 
     async def save_then_register(self, *args, **kwargs):
         result = await lifecycle_save(self, *args, **kwargs)
-        monkeypatch.setattr(p.case.store, "credential_registry", lambda: {"owned_fixture": "Escalate ticket"})
+        monkeypatch.setattr(p.case.store, "credential_registry", lambda: {"OWNED_FIXTURE_API_KEY": "Escalate ticket"})
         return result
 
     monkeypatch.setattr(p.service, "_preflight", revoke_after_provider)
@@ -226,6 +227,8 @@ def test_native_revocation_or_fresh_credentials_refuse_product_write(native_prod
         monkeypatch.setattr(ProductLifecycle, "_save_prepared", save_then_register)
     assert p.case.process(delivery)["status"] == "denied"
     assert p.current() == p.original
+    missing = p.case.http.get(p.path + "/scm-product-changes/requests/" + command["change"]["request_id"])
+    assert missing.status_code == 404
 
 
 def test_native_product_commit_serializes_with_membership_revocation(native_product, monkeypatch):
@@ -335,9 +338,9 @@ def test_native_quota_is_atomic_and_existing_receipts_remain_immutable(native_pr
             await session.execute(
                 text(
                     f'UPDATE "{p.case.store.schema}".forge_access_events '
-                    "SET data = data || '{\"changed\":true}'::jsonb WHERE id=:id"
+                    "SET data = data || CAST(:changed AS jsonb) WHERE id=:id"
                 ),
-                {"id": UUID(grant["event_id"])},
+                {"id": UUID(grant["event_id"]), "changed": '{"changed":true}'},
             )
 
     with pytest.raises(DBAPIError):
