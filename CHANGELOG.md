@@ -6,6 +6,7 @@
 
 - Add separate administrator consent for signed same-run continuation after an answered agent question, bound to current mapping, component scope, original execution identity, plan and WAL.
 - Guide consent and revocation through a three-step Studio review with retained-request recovery, exact receipt checks and coordination between browser tabs.
+- Keep the consent review readable on short screens and at increased zoom, with scrolling content, responsive actions and visible keyboard focus.
 - Expose consent save, exact read and current read through the SDK, CLI and three native-template-backed MCP tools; keep existing V1 delegation contracts unchanged.
 - Suppress automatic Bridge inference retries and retain structured quota/context pauses for deliberate recovery.
 - Retain ambiguous Bridge transport, completion and cancellation outcomes for reconciliation, preserving the original intent and refusing generic resume, handoff or replacement retry.
