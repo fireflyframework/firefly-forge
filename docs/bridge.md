@@ -59,13 +59,13 @@ never changes a queued run's revision. The provider catalog adds this optional,
 nonsecret choice; existing SDK and MCP input schemas remain unchanged.
 
 Required mode needs a Bridge with version 1 completion-recovery capability.
-Forge checks that capability with the selected authenticated connection and
+forge checks that capability with the selected authenticated connection and
 refuses before submitting a completion when it is unavailable. Legacy mode
 keeps its existing request format and does not claim durable correlation.
 Direct product-assistant conversations do not implement this run-owned
 recovery contract and cannot use required mode.
 
-For each actual model request, including another tool cycle, Forge creates a
+For each actual model request, including another tool cycle, forge creates a
 separate identity, commits its native journal intent, and reserves bounded
 response storage before POST. The intent binds the task attempt, original
 execution actor, project, repository, source cut, and coding or review model
@@ -78,7 +78,7 @@ Required-mode transport responses are buffered up to 256 KiB and pass current
 credential and execution admission before the model can consume them. A native
 `bridge_request_response` is transport evidence; the authenticated exact Bridge
 read supplies the sealed original terminal. A successful HTTP response does not
-prove that the Agentic graph or Forge task completed.
+prove that the Agentic graph or forge task completed.
 
 Use the REST evidence routes under `/api/v1`:
 
@@ -109,7 +109,7 @@ report only recorded facts. They do not establish available subscription quota
 or a known reset time.
 
 `completion_recovery_full` is a known remote `admission_refused` fact with the
-original completion identity. Forge retains a separate manual
+original completion identity. forge retains a separate manual
 `bridge_admission_refused` hold. It does not infer subscription exhaustion,
 inherit a reset from `Retry-After`, or classify this refusal as unknown remote
 work. Other uncertain outcomes keep their existing reconciliation holds.
@@ -119,11 +119,11 @@ independent review. Dedicated Studio, SDK/CLI, and MCP recovery controls remain
 outside this cut; product-assistant recovery is also unavailable.
 
 This cut recovers evidence only. The first admitted completion also retains
-`bridge_completion_hold` because Forge has no durable Agentic message-history
+`bridge_completion_hold` because forge has no durable Agentic message-history
 checkpoint for graph reentry. Neither a terminal result nor an observation GET
 clears it. Resume, provider handoff, automatic resume, and Retry remain blocked,
 including after cancellation or interruption. Legacy unknown runs without a
-correlation identity stay held; Forge does not search for a similar job or
+correlation identity stay held; forge does not search for a similar job or
 reconstruct a graph from its brief.
 
 Retention has hard limits: 100 intents per run, 9,000,000 request wire bytes,
