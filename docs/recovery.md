@@ -125,3 +125,13 @@ A separate process-local mutable-settings cut starts before preparation and stay
 Credential matching uses the prepared registry and process-local configuration generation, with current native OAuth evidence checked inside the transaction. Fresh credential and authority checks also apply before returning the committed result. A refusal after commit does not establish that nothing was saved. These guards do not serialize configuration files written by another process.
 
 This boundary provides no new public request identity or exact creation receipt. Ordinary `POST /runs` retains its existing contract; recovery of a lost creation response needs the separate original-request protocol. It must not be inferred from a matching brief or the latest run list.
+
+## Recover an original run admission
+
+The explicit `POST /api/v1/run-creation-requests/{request_id}` accepts `{version: 1, input: RunInput}`. Retain the lowercase 32-character request ID and exact normalized body before sending it. A new admission returns 201; an authorized identical replay returns 200 with the original receipt. Changed input, explicit field presence or original authentication method cannot reuse the identity. The normal `POST /runs` contract remains unchanged and has no such identity guarantee.
+
+Use exact `GET /api/v1/run-creation-requests/{request_id}` after a lost response. A missing receipt, denied read or unavailable server does not authorize a replacement ID or a fallback to ordinary run creation. Reads check the original native owner, current enabled identity, resource permissions and credentials. They return the immutable admission, not the run's current status; follow its `run_id` through the normal authorized run endpoint. A later failure while returning a committed receipt does not establish that no run was admitted.
+
+The new route requires a registered native session or bearer identity. In local bootstrap mode, complete the supported sign-in flow first so the native identity exists. SCM attribution and actor labels cannot create these requests. New admissions share the existing prepared configuration boundary, then insert the queued run, its original event and receipt in one native transaction. Receipt JSON is bounded to 256 KiB and protected against update/delete. The additive revision on this isolated branch is 27 above its revision-26 parent; integration must reconcile any other future migration explicitly.
+
+This protocol guarantees one run admission per retained identity, not exactly-once worker or model execution. Native transaction, migration and browser qualification remain separate acceptance steps. SDK, CLI and MCP do not expose this new protocol in this cut.

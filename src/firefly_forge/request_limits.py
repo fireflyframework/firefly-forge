@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -16,6 +18,8 @@ class RequestLimits:
             await self.app(scope, receive, send)
             return
         limit = 100_000
+        if re.fullmatch(r"/api/v1/run-creation-requests/[a-f0-9]{32}", scope["path"]):
+            limit = 256 * 1024
         if scope["path"].endswith("/knowledge/uploads"):
             limit = 1_400_000
         if "/assistant/conversations/" in scope["path"] and scope["path"].endswith("/attachments"):
