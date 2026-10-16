@@ -55,10 +55,13 @@ TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
 class PreparedRunAdmission:
     packet: bytes
     generation: object
+    settings_generation: object | None = None
     tuple_paths: tuple[tuple[str | int, ...], ...] = ()
 
     @classmethod
-    def capture(cls, packet: Data, generation: object) -> PreparedRunAdmission:
+    def capture(
+        cls, packet: Data, generation: object, settings_generation: object | None = None
+    ) -> PreparedRunAdmission:
         paths: list[tuple[str | int, ...]] = []
 
         def visit(value: Any, path: tuple[str | int, ...]) -> None:
@@ -72,7 +75,12 @@ class PreparedRunAdmission:
                     paths.append(path)
 
         visit(packet, ())
-        return cls(json.dumps(packet, separators=(",", ":"), ensure_ascii=False).encode(), generation, tuple(paths))
+        return cls(
+            json.dumps(packet, separators=(",", ":"), ensure_ascii=False).encode(),
+            generation,
+            settings_generation,
+            tuple(paths),
+        )
 
     def unpack(self) -> Data:
         if type(self.packet) is not bytes:
@@ -341,7 +349,12 @@ class Store:
                 result = await self.insert_prepared_run_locked(prepared)
         await self.admit_credentials(result)
         await self._prepared_run_actor(prepared)
+        self.assert_prepared_run_settings(prepared)
         return result
+
+    def assert_prepared_run_settings(self, prepared: PreparedRunAdmission) -> None:
+        if prepared.settings_generation is not self.configuration.settings_generation:
+            raise ValueError("Run settings changed during preparation or admission")
 
     async def prepare_run(
         self,
@@ -361,6 +374,7 @@ class Store:
 
         if current_unit_of_work() is not None:
             raise ValueError("Prepare run admission outside the native transaction")
+        settings_generation = self.configuration.settings_generation
         actor = CURRENT_PRINCIPAL.get()
         actor_snapshot = ProjectAccess.actor_snapshot(actor) if actor else None
         original_input = request.model_dump(mode="json", exclude_unset=True)
@@ -576,7 +590,9 @@ class Store:
             "request": original_input,
             "actor_identity": {"issuer": actor.issuer, "subject": actor.subject} if actor else None,
         }
-        return PreparedRunAdmission.capture(packet, self.configuration.write_generation)
+        if settings_generation is not self.configuration.settings_generation:
+            raise ValueError("Run settings changed during preparation")
+        return PreparedRunAdmission.capture(packet, self.configuration.write_generation, settings_generation)
 
     async def _prepared_run_actor(self, prepared: PreparedRunAdmission) -> None:
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
@@ -651,6 +667,7 @@ class Store:
 
         if current_unit_of_work() is None:
             raise ValueError("Insert prepared run admission in the native caller transaction")
+        self.assert_prepared_run_settings(prepared)
         packet = prepared.unpack()
         data = packet["run"]
         request = RunInput.model_validate(packet["request"])
@@ -682,6 +699,7 @@ class Store:
         await self.admit_credentials(result)
         await self._prepared_run_actor(prepared)
         self.reject_credentials(result)
+        self.assert_prepared_run_settings(prepared)
         if prepared.generation is not self.configuration.write_generation:
             raise ValueError("Run settings changed during insertion")
         return result

@@ -225,6 +225,7 @@ class ProjectCampaigns:
         return True
 
     async def launch(self, project_id: str, request: CampaignLaunch) -> Data:
+        settings_generation = self.store.configuration.settings_generation
         await self.store.admit_credentials(request.model_dump())
         if not self.store.runtime_roles or self.store.runtime_roles.executes_jobs:
             await self.engine.assert_ownership()
@@ -280,6 +281,8 @@ class ProjectCampaigns:
             admissions[component.id] = admission
         if self._configuration_vector(str(definition.product_repository_id), agents) != configuration:
             raise ValueError("Campaign settings changed during source and runner preflight; launch again")
+        if settings_generation is not self.store.configuration.settings_generation:
+            raise ValueError("Campaign settings changed during preparation")
         generation = self.store.configuration.write_generation
         admissions = {key: replace(value, generation=generation) for key, value in admissions.items()}
         with prepared_credential_rejection(self.store):
@@ -378,9 +381,12 @@ class ProjectCampaigns:
                 )
                 await self._release(row)
                 result = await self.campaign(project_id, row.id.hex)
+                for admission in admissions.values():
+                    self.store.assert_prepared_run_settings(admission)
         await self.store.admit_credentials(result)
         for admission in admissions.values():
             await self.store._prepared_run_actor(admission)
+            self.store.assert_prepared_run_settings(admission)
         return result
 
     async def campaigns(self, project_id: str) -> list[Data]:

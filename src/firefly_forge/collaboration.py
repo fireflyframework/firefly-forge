@@ -799,6 +799,7 @@ class Collaboration:
         )
 
     async def process(self, receipt_id: str) -> Data:
+        settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
         if (initial.get("command") or {}).get("action") == "product_change":
             from firefly_forge.product_lifecycle import ProductLifecycle
@@ -906,9 +907,18 @@ class Collaboration:
                     or (prepared_input.product_definition or {}).get("revision") == requested_revision
                 ):
                     prepared_run = await self.store.prepare_run(prepared_input)
+                    if prepared_channel is not None:
+                        current_channel = self.store.configuration._read(
+                            self.store.configuration.directory / "channel-bootstrap.json"
+                        ).get(initial["provider"], {})
+                        if current_channel != prepared_channel:
+                            raise ValueError("The global channel changed during run preflight")
+                    if settings_generation is not self.store.configuration.settings_generation:
+                        raise ValueError("Repository command settings changed during run preflight")
         with prepared_credential_rejection(self.store) if prepared_run is not None else nullcontext():
             async with self.store._unit():
                 if prepared_run is not None:
+                    self.store.assert_prepared_run_settings(prepared_run)
                     await self.store.fence_prepared_runs([prepared_run])
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 if row is None:
@@ -1017,9 +1027,12 @@ class Collaboration:
                         feedback_status="pending",
                         feedback_stage="deployment_queued",
                     )
+                if prepared_run is not None:
+                    self.store.assert_prepared_run_settings(prepared_run)
         if prepared_run is not None:
             await self.store.admit_credentials(run)
             await self.store._prepared_run_actor(prepared_run)
+            self.store.assert_prepared_run_settings(prepared_run)
         await self.feedback(receipt_id)
         return await self.receipt(receipt_id)
 

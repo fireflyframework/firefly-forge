@@ -120,6 +120,8 @@ This storage service is registered in native dependency injection and remains un
 
 Run admission prepares runner capabilities, provider settings, policies, roles and reviewed design files before taking the insertion locks. `Store.prepare_run` retains immutable bytes and original field presence. The locked insert checks the current native actor, project/component and repository/product cuts, then saves the queued run and its first event together. Campaign and incident admissions prepare before entering their own atomic write.
 
+A separate process-local mutable-settings cut starts before preparation and stays checked through insertion and return. Writing the admission’s own snapshots into the exact private `revisions` and `model-profile-revisions` directories does not advance this cut; changes to current provider, policy, role, channel or application settings do, including a change immediately restored. Channel and application admissions also reread their captured settings outside the write transaction. The existing all-writes credential generation keeps its original behavior.
+
 Credential matching uses the prepared registry and process-local configuration generation, with current native OAuth evidence checked inside the transaction. Fresh credential and authority checks also apply before returning the committed result. A refusal after commit does not establish that nothing was saved. These guards do not serialize configuration files written by another process.
 
 This boundary provides no new public request identity or exact creation receipt. Ordinary `POST /runs` retains its existing contract; recovery of a lost creation response needs the separate original-request protocol. It must not be inferred from a matching brief or the latest run list.
