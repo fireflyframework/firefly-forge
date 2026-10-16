@@ -1,0 +1,89 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.page-heading.factory-overview-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+.page-heading.factory-overview-heading > div {
+  display: contents;
+}
+.page-heading.factory-overview-heading > .primary {
+  grid-column: 2;
+  grid-row: 1;
+}
+.page-heading.factory-overview-heading p {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0;
+}
+.production-floor .production-heading {
+  padding: 8px 20px;
+}
+.production-floor .production-heading h2 {
+  margin: 0;
+}
+.production-floor .production-filters {
+  padding: 12px 20px 8px;
+  gap: 8px 16px;
+}
+.production-floor .production-filters label {
+  gap: 4px;
+}
+.production-floor .production-status {
+  margin: 0;
+  padding-bottom: 8px;
+}
+.production-floor .production-explanation {
+  margin: 0 0 8px;
+  padding-inline: 20px;
+}
+.production-floor .production-view-switch {
+  padding: 0 16px 8px;
+  margin-bottom: 0;
+}
+.production-floor .factory-live-viewport {
+  min-height: 180px;
+  height: clamp(180px, calc(100dvh - 560px), 320px);
+}
+.production-floor .production-inspector {
+  padding: 16px 20px;
+}
+.production-guide {
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.production-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.production-guide p {
+  margin: 12px 0 0;
+  max-width: 80ch;
+  color: var(--muted);
+}
+@media (max-width: 600px) {
+  .page-heading.factory-overview-heading h1 {
+    font-size: 28px;
+  }
+  .production-floor .production-heading {
+    padding-inline: 16px;
+  }
+  .production-floor .production-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: 16px;
+  }
+  .production-floor .production-status {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+  .production-floor .production-explanation {
+    padding-inline: 16px;
+  }
+  .production-floor .factory-live-viewport {
+    height: clamp(180px, calc(100dvh - 650px), 240px);
+  }
+}

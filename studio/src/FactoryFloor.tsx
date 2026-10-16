@@ -9,6 +9,7 @@ import {
   type Repository,
 } from "./api";
 import { FlowBoard } from "./FlowBoard";
+import "./FactoryFloor.css";
 import { FactoryScene } from "./FactoryScene";
 import {
   manufacturingStations,
@@ -194,10 +195,7 @@ export function FactoryFloor({
         </p>
       </div>
       <p className="production-explanation">
-        Choose a project, then a recorded run. Prepare inspects source, Develop
-        uses the coding provider, Test records executable checks, and Checkpoint
-        freezes verified source. Publish, Deploy and Health checks require
-        separate recorded actions.
+        Choose a project and run, then select a stage.
       </p>
       <div
         className="production-view-switch feature-tabs"
@@ -263,6 +261,14 @@ export function FactoryFloor({
           </div>
         </>
       )}
+      <details className="production-guide">
+        <summary>How stages work</summary>
+        <p>
+          Prepare inspects source, Develop uses the coding provider, Test
+          records executable checks, and Checkpoint freezes verified source.
+          Publish, Deploy and Health checks require separate recorded actions.
+        </p>
+      </details>
       {error && (
         <div className="alert" role="alert">
           {error}
