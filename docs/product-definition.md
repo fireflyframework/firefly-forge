@@ -49,7 +49,6 @@ If a response is lost or cannot be read, Studio retains the submitted input and 
 
 **Retry original conditional save** is an explicit choice. It sends the retained original input and revision condition, including after you type newer edits. Two requests with that same condition can insert at most one revision. Studio does not retry automatically or fall back to the unconditional endpoint. Reloading or signing out clears the input retained in this tab. These conditions protect conditional writes; they do not add an immutable request identity, exact operation-receipt lookup or general idempotency to the older endpoint.
 
-
 Optional architecture and design settings retain the backend/frontend choice, product brand, tokens, grid and review references. A service-only product can describe API processes without adding a frontend journey.
 
 On a wide screen, the AI assistant opens beside the editor in a collapsible panel. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft.
@@ -74,7 +73,7 @@ Use **Discard edits** to start again from the saved definition. Review the produ
 
 Reloading, closing the tab, changing the factory connection or signing out clears working drafts. The browser shows an unload warning if any product has unsaved edits, including when you are on another Studio page. Save a revision before leaving when you need to keep the work.
 
-When Studio reads a newer saved revision, your earlier fields and base revision stay in place and saving is held. Discard the draft when you are ready to load the current saved version. This browser check cannot detect an unobserved concurrent save atomically; the save endpoint has no compare-and-swap revision contract.
+When Studio reads a newer saved revision, your earlier fields and base revision stay in place and saving is held. Discard the draft when you are ready to load the current saved version. The conditional save checks that same base under the server's repository lock, including concurrent saves the browser has not yet observed. An uncertain submission must be inspected or explicitly retried before its draft can be discarded.
 
 ## Freeze the run's contract
 

@@ -2,10 +2,11 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.20 (unreleased)
+## 0.2.20 — 2026-10-16
 
 - Preserve product-definition edits and the current wizard step when navigating between products or other Studio pages. Keep drafts scoped to the current user and factory connection, with explicit discard and an unload warning.
-- Retain the original draft when Studio observes a newer saved revision, and hold saving until the operator discards it. This client check does not provide an atomic server revision lock.
+- Retain Start a run fields, selected source, wizard step and policy choices during navigation; explicit repository launches honor their selected repository while keeping the draft.
+- Save product definitions with an atomic revision-and-digest condition. Retain an uncertain submission for inspection or explicit retry of the same original input, preserving later edits and refusing a stale write.
 - Accept worker feedback and response identifiers up to the existing 80-character limit without exceeding the journal's 64-character storage column. Preserve short legacy keys, original message identifiers and duplicate-content checks.
 
 ## 0.2.19 — 2026-10-16

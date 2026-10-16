@@ -5,11 +5,13 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
-## 0.2.20 (unreleased)
+## 0.2.20
 
 Product-definition drafts retain their form fields, wizard step and AI source while you move between products or Studio pages. Drafts belong to the current user and factory connection. Reloading or signing out clears them; **Discard edits** asks for confirmation and affects only the selected product. See [working drafts](product-definition.md#keep-and-discard-a-working-draft).
 
-If Studio observes that the saved definition has changed, it keeps your original draft and holds saving. This check uses revisions already read by the browser; the save endpoint does not provide an atomic compare-and-swap operation.
+**Start a run** also retains its fields, selected source, step and policy choices while you navigate. An explicit launch from a repository card selects that repository and preserves the draft. Successful submission clears only the submitted version; later edits remain. This retention does not reconcile a lost run-creation response.
+
+Studio saves product definitions through a conditional endpoint that checks the expected revision and digest under the repository lock. An uncertain response retains the original submission. Inspect the current definition or explicitly retry that same submission; Studio does not resend automatically. A stale original request cannot overwrite a later revision. The legacy unconditional endpoint keeps its existing behavior. See [conditional save and recovery](product-definition.md#design-with-the-assistant-in-studio).
 
 Worker feedback and answers can use the full existing 80-character message identifier. Journal keys that would exceed the storage column use a deterministic digest of the message kind and identifier. Existing short keys, payload identifiers and replay checks remain unchanged. No database migration is required.
 

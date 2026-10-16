@@ -47,7 +47,34 @@
 .product-workbench-heading > .alert {
   grid-column: 1/-1;
 }
+.product-save-recovery.alert {
+  display: grid;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+.product-save-recovery p {
+  margin: 0;
+}
+.product-save-recovery .feature-actions {
+  margin: 0;
+  gap: 8px;
+  align-items: stretch;
+}
+.product-save-recovery button {
+  margin-left: 0;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  white-space: normal;
+}
 @media (max-width: 600px) {
+  .product-save-recovery .feature-actions button {
+    flex: 1 1 100%;
+  }
   .product-draft-notice {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;

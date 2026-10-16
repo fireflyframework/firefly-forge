@@ -95,31 +95,75 @@ async function setup(page: Page, committed: boolean) {
   return { writes: () => writes, revision: () => revision };
 }
 
-test("committed product save with a lost response is inspected without a second write after navigation", async ({
-  page,
-}) => {
-  const state = await setup(page, true);
-  await expect(
-    page.getByRole("button", { name: "Save draft definition", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Discard edits", exact: true }),
-  ).toBeDisabled();
-  await navigate(page, "Connections");
-  await navigate(page, "Product definition");
-  await expect(
-    page.getByRole("button", { name: "Save draft definition", exact: true }),
-  ).toBeDisabled();
-  expect(state.writes()).toBe(1);
-  await page
-    .getByRole("button", { name: "Inspect saved definition", exact: true })
-    .click();
-  await expect(
-    page.getByText("Product definition saved.", { exact: true }),
-  ).toBeVisible();
-  expect(state.writes()).toBe(1);
-  expect(state.revision()).toBe(2);
-});
+for (const view of [
+  { width: 1440, height: 900, theme: "light" },
+  { width: 390, height: 844, theme: "dark" },
+  { width: 320, height: 400, theme: "dark" },
+] as const)
+  test(`committed product save is inspected without another write ${view.width}x${view.height} ${view.theme}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize(view);
+    const state = await setup(page, true);
+    await page
+      .getByRole("combobox", { name: "Appearance", exact: true })
+      .selectOption(view.theme);
+    await expect(
+      page.getByRole("button", { name: "Save draft definition", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Discard edits", exact: true }),
+    ).toBeDisabled();
+    await navigate(page, "Connections");
+    await navigate(page, "Product definition");
+    await expect(
+      page.getByRole("button", { name: "Save draft definition", exact: true }),
+    ).toBeDisabled();
+    expect(state.writes()).toBe(1);
+    const recovery = page.locator(".product-save-recovery");
+    const layout = await recovery.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const copy = element.querySelector("p")!.getBoundingClientRect();
+      const actions = element
+        .querySelector(".feature-actions")!
+        .getBoundingClientRect();
+      const help = element.querySelector("small")!.getBoundingClientRect();
+      return {
+        overflow: element.scrollWidth > element.clientWidth,
+        withinWidth: bounds.left >= 0 && bounds.right <= innerWidth,
+        separated: copy.bottom <= actions.top && actions.bottom <= help.top,
+      };
+    });
+    expect(layout).toEqual({
+      overflow: false,
+      withinWidth: true,
+      separated: true,
+    });
+    for (const name of [
+      "Inspect saved definition",
+      "Retry original conditional save",
+    ]) {
+      const action = recovery.getByRole("button", { name, exact: true });
+      await action.scrollIntoViewIfNeeded();
+      await action.focus();
+      await expect(action).toBeFocused();
+      const bounds = await action.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(view.height);
+    }
+    await page.screenshot({
+      path: info.outputPath("product-save-recovery.png"),
+    });
+    await page
+      .getByRole("button", { name: "Inspect saved definition", exact: true })
+      .click();
+    await expect(
+      page.getByText("Product definition saved.", { exact: true }),
+    ).toBeVisible();
+    expect(state.writes()).toBe(1);
+    expect(state.revision()).toBe(2);
+  });
 test("unchanged read keeps the hold; only explicit identical conditional retry can save", async ({
   page,
 }) => {

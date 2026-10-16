@@ -1833,7 +1833,7 @@ function DefinitionEditor({
             />
           )}
           {session.saveAttempt?.phase === "unknown" && (
-            <div className="alert" role="status">
+            <div className="alert product-save-recovery" role="status">
               <p>
                 The save outcome is uncertain. Your submitted input is retained.
                 Inspect the saved definition before sending another edit.
