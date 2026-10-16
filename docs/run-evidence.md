@@ -1,3 +1,7 @@
+---
+description: Read and export a consistent cut of retained run activity, task state, WAL entries and tool results, with current access checks and explicit evidence limits.
+---
+
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Read and export run evidence
 
