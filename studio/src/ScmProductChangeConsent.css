@@ -1,0 +1,86 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.scm-product-change-consent {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+  min-width: 0;
+}
+.scm-product-change-consent h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scm-product-change-consent article {
+  margin: 16px 0;
+}
+.scm-product-change-dialog code,
+.scm-product-change-consent code {
+  overflow-wrap: anywhere;
+}
+.scm-product-change-dialog .wizard-field-scroll {
+  scroll-padding-bottom: 16px;
+}
+.scm-product-change-dialog .scm-delegation-check {
+  padding-right: 8px;
+}
+
+/* One scroll owner keeps every step readable when dialog chrome exceeds the available height. */
+.access-member-dialog.scm-product-change-dialog {
+  display: block;
+  overflow: auto;
+  container-type: inline-size;
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
+}
+.access-member-dialog.scm-product-change-dialog .access-dialog-heading,
+.access-member-dialog.scm-product-change-dialog .wizard-heading,
+.access-member-dialog.scm-product-change-dialog h2,
+.access-member-dialog.scm-product-change-dialog p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.access-member-dialog.scm-product-change-dialog .access-dialog-heading {
+  align-items: start;
+}
+.access-member-dialog.scm-product-change-dialog .access-dialog-heading button {
+  flex: 0 0 auto;
+}
+.access-member-dialog.scm-product-change-dialog .wizard,
+.access-member-dialog.scm-product-change-dialog .wizard-body,
+.access-member-dialog.scm-product-change-dialog .wizard-content,
+.access-member-dialog.scm-product-change-dialog .wizard-form {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+.access-member-dialog.scm-product-change-dialog .wizard-field-scroll {
+  display: block;
+  overflow: visible;
+  min-height: 160px;
+  max-height: none;
+}
+.access-member-dialog.scm-product-change-dialog .wizard-actions {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.access-member-dialog.scm-product-change-dialog .wizard-actions button {
+  min-height: 44px;
+  min-width: 0;
+  width: 100%;
+  white-space: normal;
+}
+@container (max-width: 480px) {
+  .access-member-dialog.scm-product-change-dialog .wizard-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.access-member-dialog.scm-product-change-dialog .wizard-heading p {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.access-member-dialog.scm-product-change-dialog .scm-delegation-check {
+  min-height: 44px;
+}
