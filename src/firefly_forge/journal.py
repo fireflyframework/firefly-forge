@@ -931,12 +931,19 @@ class Journal:
 
             delegation = actor.scm_delegation or {}
             reference = delegation.get("verified_reference", {})
-            responding_actor = SCMRespondingActorV2.model_validate(
+            from firefly_forge.scm_poll_models import SCMRespondingActorV3
+
+            model: type[SCMRespondingActorV2] | type[SCMRespondingActorV3] = SCMRespondingActorV2
+            polled = delegation.get("transport") == "github_rest_poll_v1"
+            if polled:
+                model = SCMRespondingActorV3
+            responding_actor = model.model_validate(
                 {
-                    "version": 2,
+                    "version": 3 if polled else 2,
                     "user_id": actor.id.hex,
                     "authentication_method": "scm_mapping",
                     "provenance": {
+                        **({"transport": "github_rest_poll_v1"} if polled else {}),
                         "binding_request_id": delegation.get("binding_request_id"),
                         "binding_digest": delegation.get("binding_digest"),
                         "verified_receipt_id": delegation.get("verified_receipt_id"),

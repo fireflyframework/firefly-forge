@@ -11,7 +11,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote, urlsplit
@@ -277,6 +277,7 @@ class Collaboration:
         product_change_authority: Any = None,
     ) -> None:
         self.store = store
+        self.polling: Any = None
         self.resume_authority = resume_authority
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.scm = scm or SCMConnections(store)
@@ -314,6 +315,7 @@ class Collaboration:
         async with self.store._unit():
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
+            data.pop("_github_poll_v1", None)
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
             data.pop("_scm_product_change_authority_v1", None)
@@ -344,11 +346,29 @@ class Collaboration:
                 or redact_secrets(content, self.scm.redaction_settings()) != content
             ):
                 raise ValueError("Test commands must use server credential configuration, not inline secrets")
-        async with self.store._unit():
+        from sqlalchemy import text
+
+        from firefly_forge.scm_polling import state_of
+
+        async with self.store._unit() as session:
+            before = await self.settings_records.find_for_repository(identifier(repository_id))
+            pointer = state_of(before.data if before else {})["configuration"]
+            if pointer is not None:
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {"key": self.store.schema + ":members:" + pointer["project_id"]},
+                )
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
+            if state_of(row.data if row else {})["configuration"] != pointer:
+                raise ValueError("Polling configuration changed during collaboration admission")
             data = request.model_dump(exclude={"webhook_secret"})
-            for key in ("_scm_authority_v1", "_scm_resume_authority_v2", "_scm_product_change_authority_v1"):
+            for key in (
+                "_scm_authority_v1",
+                "_scm_resume_authority_v2",
+                "_scm_product_change_authority_v1",
+                "_github_poll_v1",
+            ):
                 if row is not None and key in row.data:
                     data[key] = copy.deepcopy(row.data[key])
             if row is None:
@@ -768,7 +788,11 @@ class Collaboration:
         async with self.store._unit():
             configured = await self.settings_records.find_for_repository(identifier(initial["repository_id"]))
             mapped_repository = bool(authority_state(configured.data if configured else {})["heads"])
-        if mapped_repository or (initial.get("command") or {}).get("action") == "respond":
+        if (
+            mapped_repository
+            or (initial.get("command") or {}).get("action") == "respond"
+            or (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        ):
             await self._process_delegated(receipt_id)
             await self.feedback(receipt_id)
             return await self.receipt(receipt_id)
@@ -1199,13 +1223,23 @@ class Collaboration:
         kind = "pullrequests" if issue["kind"] == "pull_request" else "issues"
         return base + "/" + kind + "/" + str(issue["number"]) + "/comments"
 
-    async def _remote_write(self, repo: Data, payload: Data, issue: Data | None = None) -> Data:
+    async def _remote_write(
+        self,
+        repo: Data,
+        payload: Data,
+        issue: Data | None = None,
+        *,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
         provider = str(repo["connection_provider"])
         token, api = await self.scm.issue_authentication(
             repo, pull_request=bool(issue and issue["kind"] == "pull_request")
         )
         if self.deployments is not None and self.deployments.engine.poller is not None:
             await self.store.assert_ownership()
+        if before_write is not None:
+            await before_write()
+        self.store.reject_credentials(payload)
         response = await self.scm._request(
             "POST",
             api + self._issue_path(provider, repo, issue),
@@ -1221,6 +1255,14 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        polled = (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        if polled:
+            try:
+                if self.polling is None:
+                    return
+                await self.polling.authorize_feedback(initial)
+            except Exception:
+                return
         versioned = (initial.get("command") or {}).get("version") == 2
         if versioned:
             try:
@@ -1300,7 +1342,14 @@ class Collaboration:
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
             if versioned:
                 await self.resume_authority.authorize_feedback(receipt_id)
-            remote = await self._remote_write(repo, payload, data["issue"])
+            if polled:
+                await self.polling.authorize_feedback(data)
+            if polled:
+                remote = await self._remote_write(
+                    repo, payload, data["issue"], before_write=lambda: self.polling.authorize_feedback_local(data)
+                )
+            else:
+                remote = await self._remote_write(repo, payload, data["issue"])
         except Exception:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -1446,6 +1495,13 @@ class Collaboration:
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
             elif data.get("run_id") and data.get("feedback_status") == "sent":
+                if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                    try:
+                        if self.polling is None:
+                            continue
+                        await self.polling.authorize_feedback(data)
+                    except Exception:
+                        continue
                 run = await self.store.get_run(data["run_id"])
                 if run["status"] in {
                     "succeeded",
