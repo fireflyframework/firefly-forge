@@ -11,7 +11,16 @@ from mcp.types import ListToolsResult
 from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
-NEW_TOOLS = {"configure_scm_resume_grant", "get_scm_resume_grant", "get_current_scm_resume_grant"}
+NEW_TOOLS = {
+    "query_run_evidence",
+    "configure_scm_resume_grant",
+    "get_scm_resume_grant",
+    "get_current_scm_resume_grant",
+    "configure_scm_product_change_grant",
+    "get_scm_product_change_grant",
+    "get_current_scm_product_change_grant",
+    "get_scm_product_change",
+}
 
 
 def _baseline():
@@ -20,7 +29,7 @@ def _baseline():
 
 async def test_actual_mcp_wire_metadata_stays_byte_exact():
     tools = await create_server().list_tools()
-    assert len(tools) == 145
+    assert len(tools) == 150
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     assert ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True) == _baseline()["wire_json"]
@@ -36,7 +45,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 222
+    assert len(catalog.registry) == 228
 
 
 def test_mcp_callbacks_preserve_the_original_executable_ast():

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_product_change
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read an immutable signed product-edit result using the original project, repository and change request ID. The resulting product revision is historical and may differ from the current product. This read does not send another command, approve a definition or execute work. A missing result does not authorize replay or a replacement identity.
+required_variables: []
+metadata:
+  defaults: {}

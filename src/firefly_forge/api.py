@@ -181,6 +181,8 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_product_change_controllers import SCMProductChangeController
+from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
 from firefly_forge.scm_resume_service import SCMResumeAuthority
 from firefly_forge.search_tools import SearchTools
@@ -645,6 +647,17 @@ class FactoryConfiguration:
         return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
 
     @bean
+    def scm_product_change_authority(
+        self,
+        store: Store,
+        authority: SCMActorAuthority,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMProductChangeAuthority:
+        return SCMProductChangeAuthority(store, authority, settings_records, inbox, events)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -860,8 +873,11 @@ class FactoryConfiguration:
         analysis: ReverseEngineering,
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
+        product_change_authority: SCMProductChangeAuthority,
     ) -> Collaboration:
-        collaboration = Collaboration(store, scm, deployments, settings_records, inbox, products, resume_authority)
+        collaboration = Collaboration(
+            store, scm, deployments, settings_records, inbox, products, resume_authority, product_change_authority
+        )
         collaboration.analysis_manager = analysis
         collaboration.product_assistant = assistant
         deployments.secret_registries.append(collaboration)
@@ -974,6 +990,7 @@ def create_runtime(
         CollaborationController,
         SCMActorAuthorityController,
         SCMResumeAuthorityController,
+        SCMProductChangeController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,

@@ -553,6 +553,16 @@ The following screenshots use constructed, model-bound fixtures. They demonstrat
 </div>
 </details>
 
+## Review whole-product SCM editing consent
+
+In **Project access**, read the current delegation and its exact revision for the project's product repository. The **Whole-product edit consent** section is separate from answer and resume permissions. A native factory administrator can review the mapped person, every project component and the product repository, then explicitly allow or revoke signed product edits.
+
+Review the whole scope before recording consent once. This grants no membership. Each signed change still needs the mapped person's current read and edit access, a current application grant and the original product revision/digest. A successful product edit clears its functional and design approval, and architecture approval when present; it starts no execution.
+
+Studio retains the original consent request before sending it. Use a browser with Web Locks on HTTPS or localhost. If coordination or storage cannot be checked, Studio holds the write. After a lost response, conflict or reload, use **Check original consent**. A missing exact receipt keeps the original request unresolved; it does not permit another write.
+
+**Read an original signed product-edit result** accepts the original change request reference from the signed command. It reads the immutable result and its recorded delegation. The displayed revision is historical; the current product may have advanced. This read sends no SCM command. The administration flow does not configure provider delivery, create a project or implement GitFlow.
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).

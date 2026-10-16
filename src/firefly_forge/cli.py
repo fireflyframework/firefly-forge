@@ -414,6 +414,56 @@ def get_current_scm_resume_grant(project_id: str, repository_id: str, binding_re
         display(connection.current_scm_resume_grant(project_id, repository_id, binding_request_id))
 
 
+@project.group("scm-product-change-grants")
+def scm_product_change_grants() -> None:
+    """Review and save explicit consent for signed whole-product edits."""
+
+
+@scm_product_change_grants.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_product_change_grant(project_id: str, repository_id: str, document: Path) -> None:
+    """Submit one reviewed consent JSON; retain its request ID after an uncertain response."""
+    with client() as connection:
+        display(connection.configure_scm_product_change_grant(project_id, repository_id, json_document(document)))
+
+
+@scm_product_change_grants.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_product_change_grant(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the original consent receipt without resending or replacing its request."""
+    with client() as connection:
+        display(connection.scm_product_change_grant(project_id, repository_id, request_id))
+
+
+@scm_product_change_grants.command("current")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("binding_request_id")
+def get_current_scm_product_change_grant(project_id: str, repository_id: str, binding_request_id: str) -> None:
+    """Read current consent for an exact V1 binding; this does not edit a product."""
+    with client() as connection:
+        display(connection.current_scm_product_change_grant(project_id, repository_id, binding_request_id))
+
+
+@project.group("scm-product-changes")
+def scm_product_changes() -> None:
+    """Read retained signed product edits without sending another command."""
+
+
+@scm_product_changes.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_product_change(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the exact original product-edit result; missing evidence does not permit another write."""
+    with client() as connection:
+        display(connection.scm_product_change(project_id, repository_id, request_id))
+
+
 @main.group()
 def identity() -> None:
     """Inspect identity receipts and request explicit administrator-only changes."""

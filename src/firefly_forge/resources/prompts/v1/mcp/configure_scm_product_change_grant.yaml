@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_scm_product_change_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save or revoke explicit whole-product edit consent under an exact reviewed V1 identity mapping.
+
+  Requires current native administrator authority, exact project and mapping digests, every project component, and explicit whole-product acknowledgment. Saving grants no membership. The mapped user must retain current read and edit access. The provider repository grant may be rechecked. This saves consent; it does not fabricate a signed command, edit a product or execute work. Retain the original caller request ID before one POST. After loss, refusal or conflict, read that exact request without automatically resending or replacing its identity.
+required_variables: []
+metadata:
+  defaults: {}

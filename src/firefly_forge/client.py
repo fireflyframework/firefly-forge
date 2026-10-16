@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+    from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
@@ -369,6 +370,48 @@ class ForgeClient:
         """Read the current consent for an exact V1 binding without dispatching a run action."""
         path = self._scm_resume_grant_path(project_id, repository_id)
         return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
+    def _scm_product_change_grant_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-product-change-grants"
+
+    def configure_scm_product_change_grant(
+        self, project_id: str, repository_id: str, request: SCMProductChangeGrantInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit one explicit whole-product consent; preserve its request identity after an uncertain result."""
+        from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
+
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        try:
+            value = request.model_dump(warnings=False) if isinstance(request, SCMProductChangeGrantInputV1) else request
+            body = SCMProductChangeGrantInputV1.model_validate(value)
+        except ValueError:
+            raise ValueError(
+                "Use a bounded whole-product edit consent with exact reviewed scope and request identities"
+            ) from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_product_change_grant(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact retained consent; missing evidence never authorizes another write."""
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def current_scm_product_change_grant(
+        self, project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        """Read the current consent for an exact V1 binding without dispatching a run action."""
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
+    def scm_product_change(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read an immutable signed product-edit result; this never dispatches an edit."""
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        request = self._scm_actor_identifier(request_id)
+        return dict(
+            self.request("GET", f"projects/{project}/repositories/{repository}/scm-product-changes/requests/{request}")
+        )
 
     def configure_project(
         self, definition: ProjectDefinition | dict[str, Any], project_id: str | None = None

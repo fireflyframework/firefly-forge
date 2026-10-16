@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_product_change_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the immutable original whole-product edit consent for its exact project, repository and request ID under current native read authority. Historical active consent does not establish current authority. A missing receipt never authorizes another POST or replacement identity.
+required_variables: []
+metadata:
+  defaults: {}

@@ -27,6 +27,7 @@ from firefly_forge.run_evidence import EvidenceQuery
 from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
 from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
 from firefly_forge.task_routing import TaskRoutingInput
 from firefly_forge.tool_broker import ToolPolicyInput
@@ -56,6 +57,7 @@ CampaignDeliveryPlanRequest = SkipValidation[CampaignDeliveryPlanInput]
 SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 SCMResumeGrantRequest = SkipValidation[SCMResumeGrantInputV2]
 RunEvidenceRequest = Annotated[Any, WithJsonSchema(EvidenceQuery.model_json_schema())]
+SCMProductChangeGrantRequest = SkipValidation[SCMProductChangeGrantInputV1]
 
 
 def create_server() -> MCPServer:
@@ -746,6 +748,58 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.current_scm_resume_grant(project_id, repository_id, binding_request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/configure_scm_product_change_grant"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def configure_scm_product_change_grant(
+        project_id: str, repository_id: str, request: SCMProductChangeGrantRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_scm_product_change_grant(project_id, repository_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_scm_product_change_grant"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_scm_product_change_grant(project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.scm_product_change_grant(project_id, repository_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_current_scm_product_change_grant"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_current_scm_product_change_grant(
+        project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.current_scm_product_change_grant(project_id, repository_id, binding_request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_scm_product_change"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_scm_product_change(project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.scm_product_change(project_id, repository_id, request_id)
 
     @server.tool(description=prompt_text("mcp/list_identity_users"), annotations=ToolAnnotations(read_only_hint=True))
     def list_identity_users() -> list[dict[str, Any]]:

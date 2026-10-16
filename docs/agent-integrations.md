@@ -370,3 +370,18 @@ The additional MCP tools retain the same API contracts:
 | Recorded browser image | `get_browser_evidence_image` |
 
 `configure_internet_search` takes a private key-file path on the **MCP host**, rather than a model-visible key, or an explicit `clear_secret`. The factory server receives the key through its authenticated write-only configuration API. `get_browser_evidence_image` returns native MCP image content from an existing authenticated capture. The forge transport remains stdio; these tools do not create a public HTTP MCP connector.
+
+## Whole-product SCM edit consent
+
+A mapped SCM account needs separate administrator consent to change an existing functional product. It must retain current native read and edit access in every project sharing that product repository. The request covers every project component and the exact product repository; it cannot grant execution or approve the resulting definition.
+
+| Operation | Python SDK | MCP |
+| --- | --- | --- |
+| Save or revoke consent | `configure_scm_product_change_grant` | `configure_scm_product_change_grant` |
+| Read the original consent | `scm_product_change_grant` | `get_scm_product_change_grant` |
+| Read current consent for a V1 mapping | `current_scm_product_change_grant` | `get_current_scm_product_change_grant` |
+| Read an original signed edit result | `scm_product_change` | `get_scm_product_change` |
+
+Use `forge project scm-product-change-grants configure PROJECT REPOSITORY consent.json` for one reviewed write. The document is the strict `SCMProductChangeGrantInputV1` body described in [SCM product changes](scm.md#change-an-existing-functional-product). Retain its original request ID before sending it. After an uncertain response or conflict, use `get PROJECT REPOSITORY REQUEST` under the same CLI group. `current PROJECT REPOSITORY BINDING_REQUEST` reads the current consent for that mapping; it does not resolve a different original request.
+
+The signed `/forge product_change` command still arrives through verified provider ingress. These clients do not fabricate its signature, infer an actor or send a product edit on behalf of the provider. Read the original result with `forge project scm-product-changes get PROJECT REPOSITORY CHANGE_REQUEST`. A missing receipt does not authorize a resend or replacement identity. Its recorded product revision may differ from the current product.
