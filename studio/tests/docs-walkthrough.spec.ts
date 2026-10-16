@@ -534,6 +534,26 @@ for (const device of ["desktop", "mobile"])
         .click();
       await expect.poll(() => admitted).toBe(true);
       await navigate(page, "Factory");
+      await page.evaluate(() => document.fonts.ready);
+      const floorBounds = await page
+        .locator(".factory-live-viewport")
+        .evaluate((node) => {
+          const scene = node.getBoundingClientRect();
+          const main = document.querySelector("main")!.getBoundingClientRect();
+          const footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
+          return {
+            top: scene.top,
+            bottom: scene.bottom,
+            height: scene.height,
+            mainTop: main.top,
+            footerTop: footer.top,
+          };
+        });
+      expect(floorBounds.top).toBeGreaterThanOrEqual(floorBounds.mainTop);
+      expect(floorBounds.bottom).toBeLessThanOrEqual(floorBounds.footerTop);
+      expect(floorBounds.height).toBeGreaterThanOrEqual(180);
       await capture(page, "factory-overview", theme, device);
       await page
         .getByRole("button", { name: /Fixture reservation verification/ })
