@@ -379,6 +379,80 @@ def get_scm_actor(project_id: str, repository_id: str, request_id: str) -> None:
         display(connection.scm_actor_binding(project_id, repository_id, request_id))
 
 
+@project.group("scm-polling")
+def scm_polling() -> None:
+    """Configure local GitHub issue polling and separate API-observed account consent."""
+
+
+@scm_polling.command("setup")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_setup(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_setup(project_id, repository_id))
+
+
+@scm_polling.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_polling(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_scm_polling(project_id, repository_id, json_document(document)))
+
+
+@scm_polling.command("configuration")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def read_scm_polling_configuration(project_id: str, repository_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_configuration(project_id, repository_id, request_id))
+
+
+@scm_polling.command("status")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_status(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_status(project_id, repository_id))
+
+
+@scm_polling.command("candidates")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_candidates(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_candidates(project_id, repository_id))
+
+
+@scm_polling.command("consent")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_polling_binding(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_scm_polling_binding(project_id, repository_id, json_document(document)))
+
+
+@scm_polling.command("binding")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def read_scm_polling_binding(project_id: str, repository_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_binding(project_id, repository_id, request_id))
+
+
+@scm_polling.command("heads")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.option("--after", help="Continue after the exact retained binding key.")
+def read_scm_polling_heads(project_id: str, repository_id: str, after: str | None) -> None:
+    with client() as connection:
+        display(connection.scm_polling_heads(project_id, repository_id, after))
+
+
 @project.group("scm-resume-grants")
 def scm_resume_grants() -> None:
     """Review and save explicit consent for signed same-run resume requests."""

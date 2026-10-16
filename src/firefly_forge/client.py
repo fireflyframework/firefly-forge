@@ -340,6 +340,75 @@ class ForgeClient:
         path = self._scm_actor_path(project_id, repository_id)
         return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
 
+    def _scm_poll_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-polling"
+
+    def scm_polling_setup(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/setup"))
+
+    def configure_scm_polling(self, project_id: str, repository_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.scm_poll_models import PollConfigurationV1
+
+        body = PollConfigurationV1.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                self._scm_poll_path(project_id, repository_id) + "/configuration",
+                json=body.model_dump(mode="json"),
+            )
+        )
+
+    def scm_polling_configuration(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id)
+                + "/configuration/requests/"
+                + self._scm_actor_identifier(request_id),
+            )
+        )
+
+    def scm_polling_status(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/status"))
+
+    def scm_polling_candidates(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/candidates"))
+
+    def configure_scm_polling_binding(
+        self, project_id: str, repository_id: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.scm_poll_models import SCMPollActorBindingInputV2
+
+        body = SCMPollActorBindingInputV2.model_validate(request)
+        return dict(
+            self.request(
+                "POST", self._scm_poll_path(project_id, repository_id) + "/bindings", json=body.model_dump(mode="json")
+            )
+        )
+
+    def scm_polling_binding(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id)
+                + "/bindings/requests/"
+                + self._scm_actor_identifier(request_id),
+            )
+        )
+
+    def scm_polling_heads(self, project_id: str, repository_id: str, after: str | None = None) -> dict[str, Any]:
+        if after is not None and not re.fullmatch(r"[a-f0-9]{64}", after):
+            raise ValueError("Use an exact polling binding key cursor")
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id) + "/bindings",
+                params={} if after is None else {"after": after},
+            )
+        )
+
     def _scm_resume_grant_path(self, project_id: str, repository_id: str) -> str:
         project = self._scm_actor_identifier(project_id)
         repository = self._scm_actor_identifier(repository_id)

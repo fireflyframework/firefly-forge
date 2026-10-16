@@ -181,6 +181,8 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_poll_controllers import SCMPollController
+from firefly_forge.scm_polling import SCMPolling
 from firefly_forge.scm_product_change_controllers import SCMProductChangeController
 from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
@@ -416,6 +418,7 @@ class FactoryConfiguration:
         deployments: DeploymentManager,
         campaigns: ProjectCampaigns,
         collaboration: Collaboration,
+        polling: SCMPolling,
         observability: ApplicationOperations,
     ) -> WorkerSupervision:
         return WorkerSupervision(
@@ -426,6 +429,7 @@ class FactoryConfiguration:
                 "deployments": deployments,
                 "campaigns": campaigns,
                 "scm_feedback": collaboration,
+                "scm_ingress": polling,
                 "observability": observability,
             },
         )
@@ -629,6 +633,19 @@ class FactoryConfiguration:
         connections = SCMConnections(store)
         store.connections = connections
         return connections
+
+    @bean
+    def scm_polling(
+        self,
+        store: Store,
+        scm: SCMConnections,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMPolling:
+        polling = SCMPolling(store, scm, settings_records, inbox, events)
+        store.scm_polling = polling
+        return polling
 
     @bean
     def scm_actor_authority(self, store: Store, connections: SCMConnections) -> SCMActorAuthority:
@@ -874,10 +891,13 @@ class FactoryConfiguration:
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
         product_change_authority: SCMProductChangeAuthority,
+        polling: SCMPolling,
     ) -> Collaboration:
         collaboration = Collaboration(
             store, scm, deployments, settings_records, inbox, products, resume_authority, product_change_authority
         )
+        collaboration.polling = polling
+        polling.collaboration = collaboration
         collaboration.analysis_manager = analysis
         collaboration.product_assistant = assistant
         deployments.secret_registries.append(collaboration)
@@ -990,6 +1010,7 @@ def create_runtime(
         CollaborationController,
         SCMActorAuthorityController,
         SCMResumeAuthorityController,
+        SCMPollController,
         SCMProductChangeController,
         ForgeObservationRepository,
         ForgeIncidentRepository,

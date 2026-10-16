@@ -110,6 +110,17 @@ export function WorkerDialogue({
           throw new Error("The conversation context changed.");
         return receipt;
       },
+      readPollingBinding: async (requestId) => {
+        if (generation.current !== cycle || currentScope.current !== binding)
+          throw new Error("The conversation context changed.");
+        const receipt = await request<unknown>(
+          connection,
+          `/projects/${encodeURIComponent(scope.project!)}/repositories/${encodeURIComponent(scope.repository)}/scm-polling/bindings/requests/${encodeURIComponent(requestId)}`,
+        );
+        if (generation.current !== cycle || currentScope.current !== binding)
+          throw new Error("The conversation context changed.");
+        return receipt;
+      },
     });
     const exact = await confirmReplyMarkers(saved, parsed);
     if (generation.current !== cycle || currentScope.current !== binding)

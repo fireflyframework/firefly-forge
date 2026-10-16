@@ -403,3 +403,64 @@ Recover the original result with `GET /api/v1/projects/{project}/repositories/{r
 The Studio consent flow and SDK/CLI/MCP adapters use these same API contracts. Local source or controlled transport checks do not establish native, installed or live provider acceptance. This cut does not post an automatic SCM comment for a product change. Inspect the retained result through the exact API read. Provider delivery configuration remains a prerequisite; local signed fixtures do not establish live provider acceptance, project bootstrap or GitFlow behavior.
 
 Product changes accept at most 80,000 UTF-8 input bytes. Saved product revisions and project cuts are bounded to 1 MiB each. Consent retains at most 100 heads, 50 revisions per head and 5,000 original requests; product edits retain at most 5,000 operations per repository. The combined consent and edit-event history has a 16 MiB budget, with 64 KiB consent and 128 KiB action envelopes. Limits refuse the operation; they do not omit evidence or report partial success.
+
+## Use GitHub issue comments from a local factory
+
+An administrator can enable authenticated polling when GitHub cannot reach a local webhook endpoint. The native worker reads the configured GitHub App installation's issue conversations. It records the transport as `github_rest_poll_v1`; these observations have no webhook signature and do not establish personal OAuth sign-in. GitLab and Bitbucket retain their existing webhook paths.
+
+This adapter supports two commands on an existing run with an explicit project and component:
+
+- `/forge status {"run_id":"…"}` requires the mapped user's current project read permission.
+- `/forge respond {"run_id":"…","request_id":"…","answer":"…"}` requires current execution permission, and release permission when that run has publication enabled. The exact pending question receives the answer; the run stays paused.
+
+Polling does not create a run, resume it, change its model or source, cancel it, publish changes, or merge a pull request. Versioned resume and product-change commands require their separate signed-ingress contracts. Pull-request conversations, bot accounts and issue bodies cannot dispatch polling actions.
+
+### Configure and complete the baseline
+
+First connect the selected repository through the GitHub App and enable its repository collaboration settings. Register the native user, assign the required project role, and explicitly allow the numeric GitHub account in `trusted_actors`. Enable `status` in `allowed_commands` and `respond` in `channel_commands` only when needed. Saving polling consent does not create a user or membership.
+
+Read the current server-derived setup cut:
+
+```sh
+forge project scm-polling setup PROJECT_ID REPOSITORY_ID
+```
+
+Prepare a `PollConfigurationV1` document with `version: 1`, a fresh 32-character lowercase hexadecimal `request_id`, the returned `expected_previous_digest`, `project_binding_digest` as `expected_project_binding_digest`, `connection_revision` as `expected_connection_revision`, `enabled: true`, and `interval_seconds` between 60 and 3600. The setup read does not test the provider grant. Submit once, preserving that document and its request ID:
+
+```sh
+forge project scm-polling configure PROJECT_ID REPOSITORY_ID configuration.json
+forge project scm-polling configuration PROJECT_ID REPOSITORY_ID REQUEST_ID
+forge project scm-polling status PROJECT_ID REPOSITORY_ID
+```
+
+The execution-owning worker performs the scan through its normal lifecycle. An API-only process does not poll. Existing comments are retained without dispatch while the initial baseline completes. Wait for `ready: true`, then publish a **new comment** for each command. A new configuration restarts the baseline without deleting existing evidence. Restarting the same configuration resumes its retained scan.
+
+### Review a separate API-observed account consent
+
+Read retained account observations:
+
+```sh
+forge project scm-polling candidates PROJECT_ID REPOSITORY_ID
+```
+
+Review the exact numeric author and repository. Prepare a new `SCMPollActorBindingInputV2` document containing `version: 2`, a fresh `request_id`, `expected_previous_digest` (null for the first consent), the returned `project_binding_digest`, `observed_receipt_id` from the selected item's `id`, its `reference_digest` as `expected_reference_digest`, an enabled `native_user_id`, selected `component_ids`, `allowed_actions` limited to `respond` and/or `status`, `active: true`, and `acknowledge_api_observed_identity: true`. The acknowledgment concerns an account observed through the authenticated API. Existing webhook V1 mappings grant no polling authority.
+
+```sh
+forge project scm-polling consent PROJECT_ID REPOSITORY_ID consent.json
+forge project scm-polling binding PROJECT_ID REPOSITORY_ID REQUEST_ID
+forge project scm-polling heads PROJECT_ID REPOSITORY_ID
+```
+
+The consent write re-reads the comment, issue and current collaborator permission. It checks the numeric author ID against the permission response, then checks native identity, membership, project cut and current configuration under native locks. Login text and `author_association` confer no authority. Each command repeats the external read before admission and rechecks local authority. External revocation can race a completed permission read; this does not provide an atomic transaction with GitHub.
+
+Heads are configured consent revisions, not proof of a current provider grant. Revoke through a new explicit consent request with `active: false` and the exact previous digest. Authorized historical reads remain available after later revocation. Recorded answers use additive `responding_actor` version 3, and Studio verifies the historical polling receipt before displaying that attribution.
+
+### Recover without repeating a write
+
+After a timeout, 403, or conflict, read the **same** configuration or consent request ID. A missing receipt does not authorize a new ID or an automatic POST. Check the current setup or heads as an administrator while retaining the original request.
+
+The App sends feedback through the existing durable writing/sent/reconciliation states. A lost reply or interrupted write remains unresolved, even when GitHub may already have accepted the comment. Repeated worker ticks do not post it again. Inspect the provider conversation, then use the existing explicit feedback reconciliation with the observed posted/not-posted outcome. Current polling consent, native permission and provider access are checked before private run feedback is read and immediately before the POST.
+
+A scan is bounded to 50 objects per page, 20 pages and 16 MiB across its issue/comment streams. A page response is limited to 4 MiB; retained inbox evidence is bounded to 5000 source identities and 16 MiB. A refusal leaves the cursor and retained evidence intact. Known sensitive content is withheld with its digest and source identity; it cannot become a command or consent reference. Retry/reset metadata delays reads. `availability: unavailable` reports a blocked local cut or a failed poll; it does not certify the baseline as ready.
+
+The shared `(repository, provider, source_key)` identity also deduplicates a comment seen through a webhook. Editing an observed comment does not create another action; publish a new comment. Complete rescans can observe resources that remain present after pagination shifts. REST polling cannot recover comments deleted before observation or every intermediate edit. Source/host controls and constructed Studio vectors do not establish live GitHub delivery or native database acceptance; those remain separate acceptance steps.

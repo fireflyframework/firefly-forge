@@ -662,6 +662,12 @@ class SCMActorAuthority:
         from firefly_forge.access_persistence import ForgeMembershipRepository
 
         context = actor.get("scm_delegation")
+        if isinstance(context, dict) and context.get("transport") == "github_rest_poll_v1":
+            polling = getattr(self.store, "scm_polling", None)
+            if polling is None:
+                raise AccessDenied("The native polling authority is unavailable")
+            await polling.authorize_snapshot(actor, project_id, permission)
+            return
         if not isinstance(context, dict) or set(context) != {
             "project_id",
             "repository_id",
@@ -756,6 +762,14 @@ class SCMActorAuthority:
         self.store.reject_credentials({"actor": actor, "receipt": receipt})
 
     async def resolve(self, delivery: Data) -> Principal:
+        if (delivery.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            polling = getattr(self.store, "scm_polling", None)
+            if polling is None:
+                raise AccessDenied("The native polling authority is unavailable")
+            resolved = await polling.resolve(delivery)
+            if not isinstance(resolved, Principal):
+                raise AccessDenied("The polling authority returned an invalid principal")
+            return resolved
         command = delivery.get("command") or {}
         if command.get("action") not in {"respond", "status", "cancel"} or not command.get("run_id"):
             raise AccessDenied("This SCM action requires explicit project/component setup and a qualified adapter")

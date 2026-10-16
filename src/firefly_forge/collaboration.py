@@ -277,6 +277,7 @@ class Collaboration:
         product_change_authority: Any = None,
     ) -> None:
         self.store = store
+        self.polling: Any = None
         self.resume_authority = resume_authority
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.scm = scm or SCMConnections(store)
@@ -314,6 +315,7 @@ class Collaboration:
         async with self.store._unit():
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
+            data.pop("_github_poll_v1", None)
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
             data.pop("_scm_product_change_authority_v1", None)
@@ -348,7 +350,12 @@ class Collaboration:
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = request.model_dump(exclude={"webhook_secret"})
-            for key in ("_scm_authority_v1", "_scm_resume_authority_v2", "_scm_product_change_authority_v1"):
+            for key in (
+                "_scm_authority_v1",
+                "_scm_resume_authority_v2",
+                "_scm_product_change_authority_v1",
+                "_github_poll_v1",
+            ):
                 if row is not None and key in row.data:
                     data[key] = copy.deepcopy(row.data[key])
             if row is None:
@@ -768,7 +775,11 @@ class Collaboration:
         async with self.store._unit():
             configured = await self.settings_records.find_for_repository(identifier(initial["repository_id"]))
             mapped_repository = bool(authority_state(configured.data if configured else {})["heads"])
-        if mapped_repository or (initial.get("command") or {}).get("action") == "respond":
+        if (
+            mapped_repository
+            or (initial.get("command") or {}).get("action") == "respond"
+            or (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        ):
             await self._process_delegated(receipt_id)
             await self.feedback(receipt_id)
             return await self.receipt(receipt_id)
@@ -1221,6 +1232,14 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        polled = (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        if polled:
+            try:
+                if self.polling is None:
+                    return
+                await self.polling.authorize_feedback(initial)
+            except Exception:
+                return
         versioned = (initial.get("command") or {}).get("version") == 2
         if versioned:
             try:
@@ -1300,6 +1319,8 @@ class Collaboration:
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
             if versioned:
                 await self.resume_authority.authorize_feedback(receipt_id)
+            if polled:
+                await self.polling.authorize_feedback(data)
             remote = await self._remote_write(repo, payload, data["issue"])
         except Exception:
             async with self.store._unit():
@@ -1446,6 +1467,13 @@ class Collaboration:
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
             elif data.get("run_id") and data.get("feedback_status") == "sent":
+                if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                    try:
+                        if self.polling is None:
+                            continue
+                        await self.polling.authorize_feedback(data)
+                    except Exception:
+                        continue
                 run = await self.store.get_run(data["run_id"])
                 if run["status"] in {
                     "succeeded",

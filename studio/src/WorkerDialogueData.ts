@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { attemptDigest } from "./LearningObservationAttemptData";
 import { readDelegationReceipt } from "./ScmDelegationData";
+import { readPollingBindingReceipt } from "./ScmPollingData";
 
 export type WorkerQuestion = {
   id: string;
@@ -25,6 +26,7 @@ export type WorkerDelegationRead = {
   repository: string;
   component: string | null;
   readBinding: (requestId: string) => Promise<unknown>;
+  readPollingBinding?: (requestId: string) => Promise<unknown>;
 };
 export type WorkerReply = { id: string; actor: string; answer: string };
 export type WorkerThread = {
@@ -296,6 +298,58 @@ export async function workerThreads(
           ] as const) {
             assert(provenance[key] === receipt.verified_reference[key]);
           }
+        } else if (identity.version === 3) {
+          assert(
+            Object.keys(identity).sort().join(",") ===
+              "authentication_method,provenance,user_id,version",
+          );
+          assert(
+            identity.authentication_method === "scm_mapping" &&
+              delegation?.project &&
+              delegation.component &&
+              delegation.readPollingBinding,
+          );
+          const provenance = object(identity.provenance);
+          assert(
+            Object.keys(provenance).sort().join(",") ===
+              "api_origin,binding_digest,binding_request_id,connection_revision,external_actor_id,installation_id,provider,remote_repository_id,transport,verified_receipt_id",
+          );
+          assert(
+            provenance.transport === "github_rest_poll_v1" &&
+              provenance.provider === "github",
+          );
+          const requestId = matches(provenance.binding_request_id, id);
+          matches(provenance.binding_digest, hash);
+          matches(provenance.verified_receipt_id, id);
+          const readKey = "github_rest_poll_v1:" + requestId;
+          if (!mappingReads.has(readKey))
+            mappingReads.set(readKey, delegation.readPollingBinding(requestId));
+          const receipt = await readPollingBindingReceipt(
+            await mappingReads.get(readKey),
+            {
+              project: delegation.project,
+              repository: delegation.repository,
+              requestId,
+              receiptDigest: provenance.binding_digest as string,
+            },
+          );
+          assert(
+            receipt.request.active &&
+              receipt.request.native_user_id === identity.user_id &&
+              receipt.request.component_ids.includes(delegation.component) &&
+              receipt.request.allowed_actions.includes("respond"),
+          );
+          for (const key of [
+            "provider",
+            "api_origin",
+            "connection_revision",
+            "installation_id",
+            "remote_repository_id",
+            "external_actor_id",
+            "transport",
+          ] as const)
+            assert(provenance[key] === receipt.verified_reference[key]);
+          assert(answer.actor === provenance.external_actor_id);
         } else {
           assert(
             Object.keys(identity).sort().join(",") ===
@@ -439,6 +493,10 @@ export function workerAttributionSummary(event: WorkerEvent): string {
   if (attribution === undefined)
     return "This label does not establish authenticated authorship.";
   const identity = object(attribution);
+  if (identity.version === 3) {
+    assert(object(identity.provenance).transport === "github_rest_poll_v1");
+    return "Delegated through an API-observed GitHub account to a mapped Forge user.";
+  }
   if (identity.version === 2) {
     const names = {
       github: "GitHub",

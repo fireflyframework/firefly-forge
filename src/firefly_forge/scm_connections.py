@@ -348,15 +348,24 @@ class SCMConnections:
         issues: bool = False,
         pull_request: bool = False,
         references: bool = False,
+        issues_read: bool = False,
     ) -> str:
         record, values = self._record("github"), self._values("github")
         if not self.configured("github"):
             raise ValueError("Configure the GitHub App before connecting repositories")
+        if issues_read and (not repository_id or issues or pull_request or references):
+            raise ValueError("Use a separate repository-scoped issue-read grant")
         cache_key = (
             str(record["revision"])
             + ":"
             + str(repository_id)
-            + (":references" if references else ((":pr" if pull_request else ":issues") if issues else ""))
+            + (
+                ":issues-read"
+                if issues_read
+                else ":references"
+                if references
+                else ((":pr" if pull_request else ":issues") if issues else "")
+            )
         )
         cached = self._tokens.get(cache_key)
         if cached and cached[1] > time.time() + 90:
@@ -372,6 +381,8 @@ class SCMConnections:
             permissions = {"pull_requests" if pull_request else "issues": "write"}
         if references and repository_id:
             permissions = {"contents": "write"}
+        if issues_read:
+            permissions = {"issues": "read"}
         payload: Data = {"permissions": permissions}
         if repository_id:
             if not repository_id.isdecimal():
@@ -724,6 +735,68 @@ class SCMConnections:
             else await self._oauth_token(provider)
         )
         return token, self._api(provider)
+
+    async def github_poll_read(
+        self,
+        repository: Data,
+        resource: str,
+        *,
+        page: int = 1,
+        value: str = "",
+    ) -> httpx.Response:
+        """Read one pinned API resource with a distinct singleton issue-read grant."""
+        if repository.get("connection_provider") != "github":
+            raise ValueError("Authenticated polling currently supports GitHub only")
+        from firefly_forge.scm import coordinates
+
+        revision = self._record("github").get("revision")
+        grants = await self.repositories("github")
+        if not any(
+            item["id"] == repository.get("remote_repository_id")
+            and item["url"] == repository["url"]
+            and item["name"] == repository["name"]
+            for item in grants
+        ):
+            raise ValueError("The GitHub App no longer grants this exact repository")
+        _, _, name = coordinates(repository["url"])
+        if name != repository["name"] or len(name.split("/")) != 2:
+            raise ValueError("The connected GitHub repository path changed")
+        base = self._api("github") + "/repos/" + name
+        params: Data = {}
+        if resource in {"issues", "comments"}:
+            if type(page) is not int or not 1 <= page <= 20:
+                raise ValueError("Use a bounded polling page")
+            path = "/issues" + ("/comments" if resource == "comments" else "")
+            params = {"sort": "created", "direction": "asc", "per_page": 50, "page": page}
+            if resource == "issues":
+                params["state"] = "all"
+        elif resource in {"issue", "comment"} and value.isdecimal() and int(value) > 0:
+            path = "/issues/" + ("comments/" if resource == "comment" else "") + value
+        elif (
+            resource == "permission"
+            and value
+            and len(value) <= 100
+            and all(character.isascii() and (character.isalnum() or character == "-") for character in value)
+        ):
+            path = "/collaborators/" + value + "/permission"
+        else:
+            raise ValueError("Unsupported authenticated polling resource")
+        token = await self._github_token(str(repository["remote_repository_id"]), issues_read=True)
+        self._assert_revision("github", revision)
+        response = await self._request(
+            "GET",
+            base + path,
+            params=params,
+            headers={
+                "Authorization": "Bearer " + token,
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2026-03-10",
+            },
+            response_limit=4 * 1024 * 1024,
+            allowed_statuses=(200, 403, 404, 429),
+        )
+        self._assert_revision("github", revision)
+        return response
 
     async def reference_authentication(self, repository: Data) -> tuple[str, str]:
         provider = str(repository.get("connection_provider"))
