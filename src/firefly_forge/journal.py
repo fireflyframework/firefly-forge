@@ -41,6 +41,11 @@ def digest(data: Data) -> str:
     ).hexdigest()
 
 
+def _worker_message_key(kind: str, message_id: str) -> str:
+    key = f"{kind}:{message_id}"
+    return key if len(key) <= 64 else digest({"kind": kind, "id": message_id})
+
+
 @service
 class Journal:
     phase = 50
@@ -851,7 +856,7 @@ class Journal:
                 self._worker_payload(run, feedback.model_dump_json())
             ).model_dump(mode="json")
             entries = await self.records.find_for_run(run.id)
-            key = "worker-feedback:" + feedback.id
+            key = _worker_message_key("worker-feedback", feedback.id)
             existing = next(
                 (entry for entry in entries if entry.kind == "worker_feedback" and entry.idempotency_key == key), None
             )
@@ -990,7 +995,7 @@ class Journal:
             self._worker_payload(run, json.dumps(payload), reject_credentials=True)
             self.store.reject_credentials(payload)
             entries = await self.records.find_for_run(run.id)
-            key = "worker-response:" + response.id
+            key = _worker_message_key("worker-response", response.id)
             existing = next(
                 (entry for entry in entries if entry.kind == "worker_response" and entry.idempotency_key == key), None
             )
