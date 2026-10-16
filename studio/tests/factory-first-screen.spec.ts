@@ -107,6 +107,13 @@ for (const viewport of [
       await page.evaluate(() => document.fonts.ready);
       const scene = page.getByRole("figure", { name: "Operational factory" });
       await expect(scene).toHaveAttribute("data-renderer", "webgl");
+      await expect(scene).toHaveAttribute("data-camera", "overview");
+      await expect(
+        scene.getByRole("button", {
+          name: "Focus selected stage",
+          exact: true,
+        }),
+      ).toHaveAttribute("aria-pressed", "false");
       await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
         repository.id,
       );
@@ -164,6 +171,36 @@ for (const viewport of [
       const stages = page.getByLabel("Recorded execution stages");
       await expect(stages.getByRole("button")).toHaveCount(7);
       await stages.getByRole("button", { name: /^Test / }).click();
+      await expect(
+        stages.getByRole("button", { name: /^Test / }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator(".production-inspector")).toContainText(
+        "Fixture checks have not run.",
+      );
+      const focus = scene.getByRole("button", {
+        name: "Focus selected stage",
+        exact: true,
+      });
+      await focus.click();
+      await expect(scene).toHaveAttribute("data-camera", "selected-stage");
+      const overview = scene.getByRole("button", {
+        name: "Show full floor",
+        exact: true,
+      });
+      await expect(overview).toHaveAttribute("aria-pressed", "true");
+      expect((await overview.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+      await expect(
+        stages.getByRole("button", { name: /^Test / }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `factory-focused-${viewport.width}-${theme}.png`,
+        ),
+      });
+      await overview.focus();
+      await page.keyboard.press("Enter");
+      await expect(scene).toHaveAttribute("data-camera", "overview");
+      await expect(focus).toBeFocused();
       await expect(
         stages.getByRole("button", { name: /^Test / }),
       ).toHaveAttribute("aria-pressed", "true");

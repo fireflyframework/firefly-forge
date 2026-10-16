@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Focus, Maximize2 } from "lucide-react";
 import type {
   AnimationAction,
   Object3D,
@@ -49,7 +50,7 @@ async function loadModel(signal: AbortSignal): Promise<Model> {
 
 export function FactoryScene(props: FactorySceneProps) {
   const viewport = useRef<HTMLDivElement>(null);
-  const current = useRef(props);
+  const current = useRef({ ...props, focusSelected: false });
   const controller = useRef<Controller | null>(null);
   const [rendererType, setRendererType] = useState<"loading" | "webgl" | "svg">(
     "loading",
@@ -57,6 +58,7 @@ export function FactoryScene(props: FactorySceneProps) {
   const [reason, setReason] = useState("");
   const [generation, setGeneration] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [focusSelected, setFocusSelected] = useState(false);
   useEffect(() => {
     const query = matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(query.matches);
@@ -268,7 +270,7 @@ export function FactoryScene(props: FactorySceneProps) {
         renderer.setSize(width, height, false);
         renderer.shadowMap.enabled = width >= 700;
         const focused =
-          width < 700 && current.current.selectedId
+          current.current.focusSelected && current.current.selectedId
             ? groups.get(current.current.selectedId)
             : null;
         const bounds = new THREE.Box3().setFromObject(focused ?? world),
@@ -470,9 +472,9 @@ export function FactoryScene(props: FactorySceneProps) {
     };
   }, [generation]);
   useLayoutEffect(() => {
-    current.current = props;
+    current.current = { ...props, focusSelected };
     controller.current?.update();
-  }, [props]);
+  }, [props, focusSelected]);
   return (
     <figure
       className="factory-live"
@@ -480,8 +482,25 @@ export function FactoryScene(props: FactorySceneProps) {
       data-renderer={rendererType}
       data-theme={props.theme}
       data-reduced-motion={reducedMotion}
+      data-camera={focusSelected ? "selected-stage" : "overview"}
     >
       <div ref={viewport} className="factory-live-viewport">
+        {rendererType === "webgl" && (
+          <button
+            type="button"
+            className="secondary factory-live-camera"
+            aria-pressed={focusSelected}
+            disabled={!props.selectedId}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              setFocusSelected((value) => !value);
+            }}
+          >
+            {focusSelected ? <Maximize2 size={16} /> : <Focus size={16} />}
+            {focusSelected ? "Show full floor" : "Focus selected stage"}
+          </button>
+        )}
         {rendererType !== "webgl" && (
           <img
             src={`/assets/forge-factory-${props.theme}.svg`}
