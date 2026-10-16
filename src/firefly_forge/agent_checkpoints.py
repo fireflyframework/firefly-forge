@@ -20,7 +20,7 @@ from firefly_forge.bridge_completion_scope import BridgeCompletionScope
 from firefly_forge.bridge_completions import RESPONSE, BridgeCompletions, _cut, _outside_unit, _request_id
 from firefly_forge.journal import digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
-from firefly_forge.store import identifier
+from firefly_forge.store import identifier, prepared_credential_rejection
 
 Data = dict[str, Any]
 CHECKPOINT = "agent_checkpoint"
@@ -109,7 +109,7 @@ class AgentCheckpoints:
                     raise AccessDenied("Checkpoint current execution scope changed")
             await self.completions._current(frozen, field, reader, assert_ownership)
 
-        async def admit(raw: Data, body: bytes) -> Data:
+        async def checkpoint_admit(raw: Data, body: bytes) -> Data:
             _outside_unit()
             if type(body) is not bytes:
                 raise ValueError("Checkpoint request requires immutable wire bytes")
@@ -161,19 +161,28 @@ class AgentCheckpoints:
             self.store.reject_credentials(body.decode("utf-8"))
             return record
 
+        async def admit(raw: Data, body: bytes) -> Data:
+            with prepared_credential_rejection(self.store):
+                return await checkpoint_admit(raw, body)
+
         async def response(intent: Data, body: bytes) -> None:
             _outside_unit()
             if type(body) is not bytes or not 1 <= len(body) <= 262144:
                 raise ValueError("Original response requires bounded immutable bytes")
             # Retaining HTTP evidence and consuming it are distinct commits. A failed consume never exposes it.
             assert base.response is not None
-            await base.response(intent, body)
-            await self._consume(frozen, intent, body, current, reader)
+            with prepared_credential_rejection(self.store):
+                await base.response(intent, body)
+                await self._consume(frozen, intent, body, current, reader)
 
         return BridgeCompletionScope(base.prepare, admit, base.guard, response)
 
     async def exact(self, run_id: str, request_id: str) -> Data:
         """Read immutable checkpoint receipts without returning a completion or issuing a restore ticket."""
+        with prepared_credential_rejection(self.store):
+            return await self._exact(run_id, request_id)
+
+    async def _exact(self, run_id: str, request_id: str) -> Data:
         _outside_unit()
         run_id = identifier(run_id).hex
         _request_id(request_id)

@@ -95,6 +95,7 @@ async def setup(tmp_path, monkeypatch):
     name = "firefly_forge.agent_checkpoints"
     assert importlib.util.find_spec(name) is not None, "Atomic native checkpoint storage is missing"
     store, journal = await fixture(tmp_path, monkeypatch)
+    store.credential_registry = dict
     manager = MemoryManager(store, journal)
 
     @asynccontextmanager
@@ -519,3 +520,108 @@ async def test_runtime_metadata_and_credentials_are_read_only_outside_native_uni
     assert await scope.admit(descriptor, body) == intent
     await scope.response(intent, response)
     assert checks
+
+
+@pytest.mark.parametrize("operation", ["checkpoint", "consume"])
+async def test_actual_credential_configuration_never_reads_or_locks_inside_native_unit(
+    tmp_path, monkeypatch, operation
+):
+    from types import MethodType
+
+    from firefly_forge.store import Store
+
+    store, journal, manager, service, scope, descriptor, checkpoint, body, response = await setup(tmp_path, monkeypatch)
+    store.credential_registry = lambda: store.configuration.resolve("bridge")
+    monkeypatch.setattr(store, "reject_credentials", MethodType(Store.reject_credentials, store))
+    intent = await scope.admit(descriptor, body) if operation == "consume" else None
+    resolve = store.configuration.resolve
+    acquire = type(store.configuration.lock).acquire
+    reads, locks = [], []
+
+    def outside_resolve(provider):
+        assert current_unit_of_work() is None, "Actual credential configuration read inside native writer unit"
+        reads.append(provider)
+        return resolve(provider)
+
+    def outside_lock(lock, *args, **kwargs):
+        assert current_unit_of_work() is None, "Actual credential FileLock acquired inside native writer unit"
+        locks.append(lock.lock_file)
+        return acquire(lock, *args, **kwargs)
+
+    monkeypatch.setattr(store.configuration, "resolve", outside_resolve)
+    monkeypatch.setattr(type(store.configuration.lock), "acquire", outside_lock)
+    if operation == "checkpoint":
+        await scope.admit(descriptor, body)
+        assert sum(row.kind == "agent_checkpoint" for row in journal.records.rows) == 1
+    else:
+        await scope.response(intent, response)
+        assert sum(row.kind == "agent_consume" for row in journal.records.rows) == 1
+    assert reads and locks and current_unit_of_work() is None
+
+
+@pytest.mark.parametrize("kind", ["agent_checkpoint", "agent_consume"])
+async def test_real_configuration_change_after_append_refuses_and_rolls_back_writer(tmp_path, monkeypatch, kind):
+    from types import MethodType
+
+    from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
+    from firefly_forge.store import Store
+
+    store, journal, manager, service, scope, descriptor, checkpoint, body, response = await setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(store, "reject_credentials", MethodType(Store.reject_credentials, store))
+    intent = await scope.admit(descriptor, body) if kind == "agent_consume" else None
+    other = ConfigurationStore(store.configuration.directory.parent)
+    save = journal.records.save
+
+    async def changed(row):
+        await save(row)
+        if row.kind == kind:
+            other.update("bridge", ProviderConfiguration(values={"token": "Fictional storage fixture"}))
+
+    monkeypatch.setattr(journal.records, "save", changed)
+    with pytest.raises(ValueError, match="Credential sources changed"):
+        if kind == "agent_checkpoint":
+            await scope.admit(descriptor, body)
+        else:
+            await scope.response(intent, response)
+    assert not any(row.kind == kind for row in journal.records.rows)
+    assert manager.events[-1] == "rollback" and current_unit_of_work() is None
+    if kind == "agent_checkpoint":
+        assert not any(row.kind == INTENT for row in journal.records.rows)
+        assert "bridge_completion_hold" not in store.run.data
+    else:
+        assert any(row.kind == RESPONSE for row in journal.records.rows)
+
+
+@pytest.mark.parametrize("kind", ["agent_checkpoint", "agent_consume"])
+async def test_registry_change_after_commit_refuses_exposure_without_rearming(tmp_path, monkeypatch, kind):
+    from types import MethodType
+
+    from firefly_forge.store import Store
+
+    store, journal, manager, service, scope, descriptor, checkpoint, body, response = await setup(tmp_path, monkeypatch)
+    registry = {}
+    store.credential_registry = lambda: dict(registry)
+    monkeypatch.setattr(store, "reject_credentials", MethodType(Store.reject_credentials, store))
+    intent = await scope.admit(descriptor, body) if kind == "agent_consume" else None
+    commit = manager.commit
+
+    async def changed(unit):
+        await commit(unit)
+        if any(row.kind == kind for row in journal.records.rows):
+            registry["CURRENT_TOKEN"] = "Original Ω result" if kind == "agent_consume" else "Fictional storage fixture"
+
+    monkeypatch.setattr(manager, "commit", changed)
+    with pytest.raises(ValueError, match="configured credentials"):
+        if kind == "agent_checkpoint":
+            await scope.admit(descriptor, body)
+        else:
+            await scope.response(intent, response)
+    assert sum(row.kind == kind for row in journal.records.rows) == 1
+    assert store.run.data.get("bridge_completion_hold")
+    before = copy.deepcopy([row.data for row in journal.records.rows])
+    with pytest.raises(ValueError):
+        if kind == "agent_checkpoint":
+            await scope.admit(descriptor, body)
+        else:
+            await scope.response(intent, response)
+    assert [row.data for row in journal.records.rows] == before and current_unit_of_work() is None
