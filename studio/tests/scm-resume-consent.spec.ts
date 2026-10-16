@@ -1,5 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import v1 from "./scm-delegation-contract-fixture.json" with { type: "json" };
 import packet from "./scm-resume-contract-fixture.json" with { type: "json" };
 import {
@@ -298,6 +298,12 @@ for (const viewport of [
       expect(measures.right).toBeLessThanOrEqual(viewport.width);
       expect(measures.bottom).toBeLessThanOrEqual(viewport.height);
       expect(measures.scrollWidth).toBeLessThanOrEqual(measures.width + 1);
+      await modal
+        .getByRole("button", {
+          name: "Record resume consent",
+          exact: true,
+        })
+        .scrollIntoViewIfNeeded();
       await expect(
         modal.getByRole("button", {
           name: "Record resume consent",
@@ -309,4 +315,187 @@ for (const viewport of [
       });
       await page.keyboard.press("Escape");
       await expect(modal).not.toBeVisible();
+    });
+
+async function readingArea(content: Locator) {
+  return content.evaluate((node) => {
+    const zoom =
+      Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+    let top = 0,
+      bottom = innerHeight,
+      left = 0,
+      right = innerWidth;
+    let nearest: { height: number; width: number; scrollWidth: number } | null =
+      null;
+    for (
+      let parent = node.parentElement;
+      parent;
+      parent = parent.parentElement
+    ) {
+      const style = getComputedStyle(parent),
+        box = parent.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+        const start = box.top + parent.clientTop * zoom;
+        top = Math.max(top, start);
+        bottom = Math.min(bottom, start + parent.clientHeight * zoom);
+        nearest ??= {
+          height: parent.clientHeight,
+          width: parent.clientWidth,
+          scrollWidth: parent.scrollWidth,
+        };
+      }
+      if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+        const start = box.left + parent.clientLeft * zoom;
+        left = Math.max(left, start);
+        right = Math.min(right, start + parent.clientWidth * zoom);
+      }
+      if (parent instanceof HTMLDialogElement) break;
+    }
+    const target = node.getBoundingClientRect();
+    const dialog = node.closest("dialog")!;
+    const describe = (element: Element) => {
+      const box = element.getBoundingClientRect(),
+        style = getComputedStyle(element);
+      return {
+        tag: element.tagName,
+        className: element.className,
+        rect: {
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+        },
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        gridTemplateColumns: style.gridTemplateColumns,
+        padding: style.padding,
+        overflow: style.overflow,
+      };
+    };
+    return {
+      diagnostics: {
+        zoom,
+        clip: { top, bottom, left, right },
+        target: describe(node),
+        dialog: describe(dialog),
+        actions: describe(dialog.querySelector(".wizard-actions")!),
+        steps: describe(dialog.querySelector(".wizard-steps")!),
+        horizontalOverflow: Array.from(dialog.querySelectorAll("*"))
+          .filter((element) => {
+            const box = element.getBoundingClientRect();
+            return box.left < left - 1 || box.right > right + 1;
+          })
+          .slice(0, 30)
+          .map(describe),
+        stylesheetOrder: Array.from(
+          document.querySelectorAll("style[data-vite-dev-id]"),
+        )
+          .map((element) => element.getAttribute("data-vite-dev-id"))
+          .filter((path) =>
+            /Scm(Delegation|ResumeConsent)\.css$/.test(path ?? ""),
+          ),
+      },
+      usefulHeight: nearest
+        ? Math.min(nearest.height, (bottom - top) / zoom)
+        : 0,
+      width: nearest?.width ?? 0,
+      scrollWidth: nearest?.scrollWidth ?? 0,
+      fullyVisible:
+        target.top >= top &&
+        target.bottom <= bottom &&
+        target.left >= left &&
+        target.right <= right,
+      hit: node.contains(
+        document.elementFromPoint(
+          target.x + target.width / 2,
+          target.y + target.height / 2,
+        ),
+      ),
+    };
+  });
+}
+
+for (const viewport of [
+  { width: 320, height: 400, zoom: 1 },
+  { width: 320, height: 400, zoom: 2 },
+  { width: 1440, height: 1000, zoom: 2 },
+])
+  for (const theme of ["light", "dark"])
+    test(`consent has a readable scrolling viewport on every step ${viewport.width}x${viewport.height} zoom${viewport.zoom} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      const { state } = await setup(page);
+      await page.evaluate((zoom) => {
+        document.documentElement.style.zoom = String(zoom);
+      }, viewport.zoom);
+      await page
+        .getByRole("combobox", { name: "Appearance", exact: true })
+        .selectOption(theme);
+      await page
+        .getByRole("button", { name: "Review resume consent", exact: true })
+        .click();
+      const modal = page.getByRole("dialog", {
+        name: "Review same-run resume consent",
+        exact: true,
+      });
+      for (let step = 0; step < 3; step++) {
+        const content =
+          step === 0
+            ? modal.getByText(/They may request the same paused run/)
+            : step === 1
+              ? modal
+                  .getByRole("checkbox", { name: "Inventory API", exact: true })
+                  .locator("..")
+              : modal.getByText(/Consent adds no membership/);
+        await content.scrollIntoViewIfNeeded();
+        const area = await readingArea(content);
+        await testInfo.attach(`reading-area-step-${step}`, {
+          body: JSON.stringify(area),
+          contentType: "application/json",
+        });
+        expect(area.usefulHeight).toBeGreaterThanOrEqual(120);
+        expect(area.scrollWidth).toBeLessThanOrEqual(area.width + 1);
+        if (step === 2) {
+          const ack = modal.getByRole("checkbox", {
+            name: /I reviewed this person/,
+          });
+          await ack.focus();
+          await expect(ack).toBeFocused();
+          const focus = await readingArea(ack);
+          expect(focus.fullyVisible).toBe(true);
+          expect(focus.hit).toBe(true);
+          await page.keyboard.press("Space");
+          await expect(ack).toBeChecked();
+        }
+        const action = modal.getByRole("button", {
+          name: step === 2 ? "Record resume consent" : "Continue",
+          exact: true,
+        });
+        await action.scrollIntoViewIfNeeded();
+        await action.focus();
+        await expect(action).toBeFocused();
+        await expect(action).toBeInViewport();
+        const focus = await readingArea(action);
+        await testInfo.attach(`action-focus-step-${step}`, {
+          body: JSON.stringify(focus),
+          contentType: "application/json",
+        });
+        expect(focus.fullyVisible).toBe(true);
+        expect(focus.hit).toBe(true);
+        await page.screenshot({
+          path: testInfo.outputPath(`consent-reading-step-${step}.png`),
+        });
+        expect(state.posts).toHaveLength(0);
+        if (step < 2) await page.keyboard.press("Enter");
+      }
+      await page.keyboard.press("Escape");
+      await expect(modal).not.toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: "Review resume consent",
+          exact: true,
+        }),
+      ).toBeFocused();
+      expect(state.posts).toHaveLength(0);
     });

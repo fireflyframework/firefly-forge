@@ -23,3 +23,46 @@
 .scm-resume-dialog .scm-delegation-check {
   padding-right: 8px;
 }
+.scm-resume-dialog[data-compact="true"] {
+  container: scm-resume-consent / inline-size;
+  display: block;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scroll-padding-block: 12px;
+}
+.scm-resume-dialog[data-compact="true"] .access-dialog-heading h2 {
+  min-width: 0;
+}
+.scm-resume-dialog[data-compact="true"] .wizard,
+.scm-resume-dialog[data-compact="true"] .wizard-body,
+.scm-resume-dialog[data-compact="true"] .wizard-content,
+.scm-resume-dialog[data-compact="true"] .wizard-form {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-field-scroll {
+  overflow: visible;
+  max-height: none;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-actions {
+  position: static;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-actions button {
+  scroll-margin-block: 4px;
+}
+@media (max-width: 640px) {
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container scm-resume-consent (max-width: 240px) {
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"] .wizard-content,
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-field-scroll,
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-actions {
+    padding-inline: 0;
+  }
+}
