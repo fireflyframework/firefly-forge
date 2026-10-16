@@ -68,7 +68,7 @@ Compatible API and bridge tests request `/models`. A hosted provider without an 
 
 Generation defaults to a 1,800-second wall timeout. Native Agentic also bounds requests and tool calls; its optional output-token limit is available for direct APIs. Subscription bridge execution omits that cap because the bridge cannot implement it. Verification has its own per-command timeouts.
 
-The bridge submits each model request once. A structured `quota_exhausted` response pauses the run for an operator; `execution_paused` also requires an explicit review of the retained native session. A supplied job reference and numeric retry delay are saved as observations, and neither schedules an automatic resume. A missing reset time remains unknown.
+The bridge submits each model request once. It disables SDK retries and HTTP redirect forwarding independently. A redirect leaves the outcome unknown for reconciliation; it cannot authorize a second request. A structured `quota_exhausted` response pauses the run for an operator; `execution_paused` also requires an explicit review of the retained native session. A supplied job reference and numeric retry delay are saved as observations, and neither schedules an automatic resume. A missing reset time remains unknown.
 
 An unclassified bridge server error, transport failure, or unusable completion response (including an empty stream) leaves the run and its active intent in `needs_reconciliation`, with its workspace retained. Forge cannot tell whether the bridge finished that submission. Resume, provider handoff and Retry run refuse this unresolved outcome, including after cancellation or an interrupted or failed status.
 
