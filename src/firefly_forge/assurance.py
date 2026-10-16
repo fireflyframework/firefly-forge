@@ -242,17 +242,52 @@ class Assurance:
         if assert_ownership:
             await assert_ownership()
         await ProjectAccess(self.store).authorize_execution(await self.store.get_run(run["id"]), "execute")
+        from firefly_forge.bridge_completion_scope import bridge_completion_scope
+        from firefly_forge.bridge_completions import BridgeCompletions
+        from firefly_forge.providers import ProviderSubmissionCancelled
+
+        completion_scope = (
+            BridgeCompletions(self.store, self.journal).scope(
+                await self.store.get_run(run["id"]), intent, review=True, assert_ownership=assert_ownership
+            )
+            if self.journal and intent
+            else None
+        )
         try:
-            await provider.execute(directory, brief, run["backend"], run["frontend"], emit)
+            with bridge_completion_scope(completion_scope):
+                await provider.execute(directory, brief, run["backend"], run["frontend"], emit)
+        except ProviderSubmissionCancelled as exc:
+            if self.journal and intent:
+                await self.journal.fail(
+                    run["id"],
+                    intent["idempotency_key"],
+                    "provider_outcome_unknown",
+                    "Bridge review submission cancelled before its outcome was known",
+                )
+                exc.native_retained = True
+            raise
         except Exception as exc:
-            from firefly_forge.providers import ProviderLimitError, ProviderOutcomeUnknown, classify_provider_failure
+            from firefly_forge.providers import (
+                ProviderAdmissionRefused,
+                ProviderLimitError,
+                ProviderOutcomeUnknown,
+                classify_provider_failure,
+            )
 
             kind = classify_provider_failure(exc)
             if (
                 self.journal
                 and intent
                 and kind
-                and kind[0] in {"quota", "rate_limit", "authentication", "provider_paused", "provider_outcome_unknown"}
+                and kind[0]
+                in {
+                    "quota",
+                    "rate_limit",
+                    "authentication",
+                    "provider_paused",
+                    "provider_outcome_unknown",
+                    "bridge_admission_refused",
+                }
             ):
                 await self.journal.fail(
                     run["id"],
@@ -266,7 +301,8 @@ class Assurance:
                                 redact_secrets(redact_environment(json.dumps(exc.observation)), settings)
                             )
                         }
-                        if isinstance(exc, (ProviderLimitError, ProviderOutcomeUnknown)) and exc.observation
+                        if isinstance(exc, (ProviderLimitError, ProviderOutcomeUnknown, ProviderAdmissionRefused))
+                        and exc.observation
                         else {}
                     ),
                 )

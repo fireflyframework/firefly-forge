@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/query_run_evidence
+version: 1.0.0
+description: Retained run evidence read contract
+system_template: ""
+user_template: |
+  Read a bounded page or exact record of retained run evidence. Pin the returned cut and filter when continuing a page. This read never executes, resumes, reconciles or replays work. Missing or withheld evidence is not proof of success.
+required_variables: []
+metadata:
+  defaults: {}

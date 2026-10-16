@@ -99,6 +99,8 @@ PostgreSQL stores repositories, runs, events, plans, task states and the write-a
 
 A host API still needs the required Flycanon connection. The managed service's internal `knowledge` hostname is available to containers on its network. Configure a separately reachable authenticated HTTPS service and its CA when running forge directly on the host; do not disable knowledge or publish an unprotected service to work around that boundary.
 
+For a new managed host connection, [bootstrap with an explicit HTTPS loopback endpoint](knowledge.md#initialize-a-new-managed-connection-on-the-host). It creates the matching certificate and preserves required retrieval. You must supply the running local flycanon, PostgreSQL/pgvector and embedding backend; the command starts or downloads none of them.
+
 ```sh
 uv run forge serve --host 127.0.0.1 --port 8787 --data-dir .forge
 ```

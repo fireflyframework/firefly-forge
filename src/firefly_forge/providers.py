@@ -26,6 +26,7 @@ import httpx
 from firefly_forge.configuration import (
     DEFAULTS,
     FIELDS,
+    OPTIONAL_SETTINGS,
     ConfigurationStore,
     normalize_provider,
     public_settings,
@@ -73,8 +74,18 @@ class ProviderOutcomeUnknown(ProviderError):
         self.observation = observation or {}
 
 
+class ProviderAdmissionRefused(ProviderError):
+    """The Bridge explicitly refused admission; graph checkpoint recovery remains unavailable."""
+
+    def __init__(self, observation: dict[str, Any]) -> None:
+        super().__init__("Bridge completion recovery retention is full; manual reconciliation is required")
+        self.observation = observation
+
+
 class ProviderSubmissionCancelled(asyncio.CancelledError):
     """Local cancellation cannot establish the outcome of an attempted Bridge submission."""
+
+    native_retained = False
 
 
 @dataclass
@@ -86,6 +97,7 @@ class _BridgeInvocation:
 class _BridgeAttempt:
     invocation: _BridgeInvocation | None
     key: object = field(default_factory=object)
+    reference: dict[str, Any] = field(default_factory=dict)
 
     def dispatch(self) -> None:
         if self.invocation is not None:
@@ -110,7 +122,8 @@ def _bridge_failure(exc: Exception) -> ProviderError | None:
     body = getattr(exc, "body", None)
     body = body.get("error", body) if isinstance(body, dict) else {}
     body = body if isinstance(body, dict) else {}
-    observation: dict[str, Any] = {}
+    attempt = _bridge_attempt.get()
+    observation: dict[str, Any] = dict(attempt.reference) if attempt is not None else {}
     job = body.get("job_id") or headers.get("x-bridge-job-id")
     if isinstance(job, str) and len(job) == 36:
         with suppress(ValueError):
@@ -123,6 +136,14 @@ def _bridge_failure(exc: Exception) -> ProviderError | None:
         pass
     if isinstance(exc, ModelHTTPError):
         code = body.get("code")
+        if exc.status_code == 429 and code == "completion_recovery_full" and observation:
+            return ProviderAdmissionRefused(
+                {
+                    **{key: value for key, value in observation.items() if key not in {"job_id", "retry_after"}},
+                    "admission": "admission_refused",
+                    "code": "completion_recovery_full",
+                }
+            )
         if exc.status_code == 429 and code == "quota_exhausted":
             return ProviderLimitError(
                 "Bridge quota is exhausted; inspect the retained job before an explicit resume",
@@ -146,6 +167,8 @@ def _bridge_failure(exc: Exception) -> ProviderError | None:
 
 
 def classify_provider_failure(exc: Exception) -> tuple[str, float | None] | None:
+    if isinstance(exc, ProviderAdmissionRefused):
+        return "bridge_admission_refused", None
     if isinstance(exc, ProviderOutcomeUnknown):
         return "provider_outcome_unknown", exc.observation.get("retry_after")
     if isinstance(exc, ProviderLimitError):
@@ -536,14 +559,103 @@ class BridgeProvider(ConfiguredProvider):
         ):
             headers["X-Bridge-Image-Revision"] = revision
 
+        mode = self.settings.get("FORGE_BRIDGE_COMPLETION_RECOVERY", "legacy")
+        from firefly_forge.configuration import validate_completion_recovery
+
+        validate_completion_recovery(mode)
+
         class BridgeClient(AsyncOpenAI):
             async def _send_request(self, request: Any, **kwargs: Any) -> Any:
                 completion = request.method == "POST" and request.url.path.rstrip("/").endswith("/chat/completions")
-                if completion and (attempt := _bridge_attempt.get()) is not None:
+                attempt = _bridge_attempt.get()
+                if completion and mode == "required":
+                    from firefly_forge.bridge_completion_models import RecoveryCapability
+                    from firefly_forge.bridge_completion_scope import current_completion_scope
+
+                    scope = current_completion_scope()
+                    if scope is None or attempt is None or scope.response is None:
+                        raise ProviderError("Required completion recovery needs a native run-owned admission scope")
+                    body = await request.aread()
+                    if not 1 <= len(body) <= 9_000_000:
+                        raise ProviderError("Bridge completion wire body exceeds its admission bound")
+                    await scope.prepare(body)
+                    from httpx2 import HTTPError as BridgeHTTPError
+
+                    try:
+                        async with asyncio.timeout(5):
+                            async with self._client.stream(
+                                "GET",
+                                endpoint + "/bridge/status",
+                                headers={"Authorization": "Bearer " + self.api_key},
+                                follow_redirects=False,
+                            ) as status:
+                                if status.status_code != 200:
+                                    raise ProviderError("Required Bridge completion recovery capability is unavailable")
+                                content = bytearray()
+                                async for chunk in status.aiter_bytes():
+                                    content.extend(chunk)
+                                    if len(content) > 65536:
+                                        raise ProviderError("Bridge capability exceeds its read bound")
+                    except (BridgeHTTPError, TimeoutError):
+                        raise ProviderError(
+                            "Bridge recovery capability could not be read; no completion was submitted"
+                        ) from None
+                    try:
+                        recovery = RecoveryCapability.model_validate(json.loads(content)["completionRecovery"])
+                    except (ValueError, KeyError, TypeError):
+                        raise ProviderError("Required Bridge completion recovery capability is invalid") from None
+                    request_id = "fbr1_" + uuid.uuid4().hex
+                    descriptor = {
+                        "request_id": request_id,
+                        "principal_id": recovery.principal_id,
+                        "model": name,
+                        "endpoint": endpoint,
+                        "wire_sha256": hashlib.sha256(body).hexdigest(),
+                        "wire_bytes": len(body),
+                        "image_revision": request.headers.get("x-bridge-image-revision"),
+                    }
+                    intent = await scope.admit(descriptor, body)
+                    attempt.reference = {
+                        "completion_request_id": request_id,
+                        "intent_digest": intent["digest"],
+                        "principal_id": recovery.principal_id,
+                    }
+                    request.headers["Idempotency-Key"] = request_id
+                    request.headers["X-Bridge-Completion-Recovery"] = "1"
+                    await scope.guard(intent, body)
+                if completion and attempt is not None:
                     attempt.dispatch()
                 try:
                     kwargs["follow_redirects"] = False
-                    return await super()._send_request(request, **kwargs)
+                    if completion and mode == "required":
+                        kwargs["stream"] = True
+                    response = await super()._send_request(request, **kwargs)
+                    if completion and mode == "required":
+                        assert scope is not None and scope.response is not None and attempt is not None
+                        try:
+                            content = bytearray()
+                            async for chunk in response.aiter_bytes():
+                                content.extend(chunk)
+                                if len(content) > 262144:
+                                    raise ValueError("Bridge transport response exceeds 256 KiB")
+                            # Reconstitute the consumed SDK response before its ordinary parser runs.
+                            response._content = bytes(content)
+                            if 200 <= response.status_code < 300:
+                                await scope.response(intent, bytes(content))
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            from firefly_forge.project_access import AccessDenied
+
+                            if isinstance(exc, AccessDenied):
+                                raise
+                            raise ProviderOutcomeUnknown(
+                                "Bridge response could not be admitted; inspect the original completion identity",
+                                observation=dict(attempt.reference),
+                            ) from None
+                        finally:
+                            await response.aclose()
+                    return response
                 except asyncio.CancelledError as exc:
                     if completion:
                         raise ProviderSubmissionCancelled(
@@ -610,7 +722,7 @@ class BridgeProvider(ConfiguredProvider):
                     return response
                 except Exception as exc:
                     if failure := _bridge_failure(exc):
-                        if isinstance(failure, ProviderLimitError):
+                        if isinstance(failure, (ProviderLimitError, ProviderAdmissionRefused)):
                             attempt.complete()
                         raise failure from exc
                     raise
@@ -633,7 +745,7 @@ class BridgeProvider(ConfiguredProvider):
                     raise
                 except Exception as exc:
                     if failure := _bridge_failure(exc):
-                        if isinstance(failure, ProviderLimitError):
+                        if isinstance(failure, (ProviderLimitError, ProviderAdmissionRefused)):
                             attempt.complete()
                         raise failure from exc
                     raise
@@ -691,7 +803,11 @@ def _login_ready(executable: str, name: str, _cache_bucket: int) -> bool:
 
 
 def _environment_settings(name: str) -> dict[str, str]:
-    result = {env: os.environ.get(env, DEFAULTS.get(env, "")) for env in FIELDS[name].values()}
+    result = {
+        env: os.environ.get(env, DEFAULTS.get(env, ""))
+        for env in FIELDS[name].values()
+        if env not in OPTIONAL_SETTINGS or env in os.environ
+    }
     if name == "agentic" and not result["FORGE_AGENTIC_API_KEY"]:
         aliases = ["OPENAI_API_KEY"]
         if result["FORGE_AGENTIC_MODEL"].startswith("anthropic:"):
@@ -767,6 +883,7 @@ def provider_catalog(configuration: ConfigurationStore | None = None) -> list[di
                 "executable": name,
                 "timeout": "1800",
                 "max_tokens": "16384",
+                "completion_recovery": "legacy or required; absent preserves legacy",
             }.get(key, "Saved securely; leave blank to retain")
             fields.append(
                 {

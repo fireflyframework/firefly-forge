@@ -469,6 +469,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/configure_scm_product_change_grant",
+      "version": "1.0.0",
+      "path": "mcp/configure_scm_product_change_grant.yaml",
+      "sha256": "7e658daeb808b8790a826f9103c8cfb7816cbf8312b2066eb4c552e242fead6c",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/configure_scm_resume_grant",
       "version": "1.0.0",
       "path": "mcp/configure_scm_resume_grant.yaml",
@@ -593,6 +601,14 @@
       "version": "1.0.0",
       "path": "mcp/get_connection_oauth_providers.yaml",
       "sha256": "2d695343f83b74236a28ff905dc0f70e6859b578e530649384ae441bbfa363a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_current_scm_product_change_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_current_scm_product_change_grant.yaml",
+      "sha256": "c4e3966b578b3566e36d1a54061bf1ae14a9edf12ae892c948979ec0513cb945",
       "field": "user",
       "variables": {}
     },
@@ -881,6 +897,22 @@
       "version": "1.0.0",
       "path": "mcp/get_scm_actor_binding.yaml",
       "sha256": "996f65c73036bd7f5741c3293ffd71915c30c2a44b5e70384951ea122d33e321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_product_change",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_product_change.yaml",
+      "sha256": "ebf6e3bae19257ba70e9f7504669c86e5be0dc48934e668aa7eef197e81c436f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_product_change_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_product_change_grant.yaml",
+      "sha256": "7aa9242e19c7a66758e854242564dbb31b5da0e133229bbfb6f3cd92c3bf5f92",
       "field": "user",
       "variables": {}
     },
@@ -1834,6 +1866,22 @@
       "version": "1.0.0",
       "path": "tools/write_file.yaml",
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/query_run_evidence",
+      "version": "1.0.0",
+      "path": "mcp/query_run_evidence.yaml",
+      "sha256": "51a8d98b6c82eeca836823be9b82d9ec786ab871b07492bffd2f86d092280669",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/read_run_evidence",
+      "version": "1.0.0",
+      "path": "tools/read_run_evidence.yaml",
+      "sha256": "d36c263ee23205073b7bae519a601500f7d84c825cb5728a7d83c75aae809f1a",
       "field": "user",
       "variables": {}
     }

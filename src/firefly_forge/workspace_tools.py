@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from firefly_forge.process import ProcessResult, execute
+from firefly_forge.prompts import prompt_text
 
 if TYPE_CHECKING:
     from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
@@ -29,6 +30,7 @@ class ToolRuntimeContext:
     browser_runner: Callable[[str, int, int, str], Awaitable[dict[str, Any]]] | None = None
     internet_search: Callable[[str, int], Awaitable[dict[str, Any]]] | None = None
     internet_search_refresh: Callable[[str, int, bool, str | None], Awaitable[dict[str, Any]]] | None = None
+    read_run_evidence: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
     knowledge_lookup: Callable[[str, bool, str | None], Awaitable[dict[str, Any]]] | None = None
     external_mcp: Callable[[str, str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
     credential_registry: Callable[[], dict[str, str]] = dict
@@ -287,6 +289,7 @@ _TOOL_DESCRIPTIONS = {
     "browser_journey": "Exercise bounded user journeys and return DOM and screenshot evidence",
     "internet_search": "Search the configured server-mediated search provider",
     "external_mcp": "Read an exact reviewed external tool within a project and repository grant",
+    "read_run_evidence": prompt_text("tools/read_run_evidence"),
     "knowledge_lookup": "Inspect scoped references and exact verified local outcomes without a web-search key",
     "profile_python": "Observe bounded Python CPU profiling through the frozen isolated command runner",
     "trace_python": "Observe best-effort target Python line counts through the frozen isolated command runner",
@@ -305,6 +308,7 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
             "internet_search",
             "external_mcp",
             "knowledge_lookup",
+            "read_run_evidence",
             "profile_python",
             "trace_python",
             "profile_php",

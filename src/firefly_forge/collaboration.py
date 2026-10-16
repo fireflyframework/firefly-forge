@@ -11,7 +11,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote, urlsplit
@@ -38,12 +38,14 @@ from firefly_forge.product_lifecycle import IntegrationContract, validate_integr
 from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 from firefly_forge.store import Store, identifier, now
 from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_process_references
 
 if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
+    from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
 
 Data = dict[str, Any]
 Provider = Literal["github", "gitlab", "bitbucket"]
@@ -156,9 +158,18 @@ class RepositoryCommand(BaseModel):
         return self
 
     @classmethod
-    def parse(cls, text: str) -> RepositoryCommand | ChannelCommand | SCMResumeCommandV2 | SCMResumeStatusV2:
+    def parse(
+        cls, text: str
+    ) -> RepositoryCommand | ChannelCommand | SCMResumeCommandV2 | SCMResumeStatusV2 | SCMProductChangeCommandV1:
         from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 
+        if text.strip().startswith("/forge product_change "):
+            from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
+
+            options = json.loads(text.strip().removeprefix("/forge product_change "))
+            if not isinstance(options, dict) or "action" in options:
+                raise ValueError("Command options cannot override the product change action")
+            return SCMProductChangeCommandV1.model_validate({"action": "product_change", **options})
         versioned = re.fullmatch(r"/forge (status|resume) ([^\r\n]+)", text.strip())
         if versioned:
             options = json.loads(versioned[2])
@@ -263,9 +274,12 @@ class Collaboration:
         inbox: ForgeWebhookInboxRepository | None = None,
         products: ForgeProductDefinitionRepository | None = None,
         resume_authority: Any = None,
+        product_change_authority: Any = None,
     ) -> None:
         self.store = store
+        self.polling: Any = None
         self.resume_authority = resume_authority
+        self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.scm = scm or SCMConnections(store)
         self.deployments = deployments
         self.settings_records = settings_records or ForgeCollaborationSettingsRepository()
@@ -301,8 +315,10 @@ class Collaboration:
         async with self.store._unit():
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
+            data.pop("_github_poll_v1", None)
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
+            data.pop("_scm_product_change_authority_v1", None)
             return {
                 **data,
                 "repository_id": repository_id,
@@ -330,11 +346,29 @@ class Collaboration:
                 or redact_secrets(content, self.scm.redaction_settings()) != content
             ):
                 raise ValueError("Test commands must use server credential configuration, not inline secrets")
-        async with self.store._unit():
+        from sqlalchemy import text
+
+        from firefly_forge.scm_polling import state_of
+
+        async with self.store._unit() as session:
+            before = await self.settings_records.find_for_repository(identifier(repository_id))
+            pointer = state_of(before.data if before else {})["configuration"]
+            if pointer is not None:
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {"key": self.store.schema + ":members:" + pointer["project_id"]},
+                )
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
+            if state_of(row.data if row else {})["configuration"] != pointer:
+                raise ValueError("Polling configuration changed during collaboration admission")
             data = request.model_dump(exclude={"webhook_secret"})
-            for key in ("_scm_authority_v1", "_scm_resume_authority_v2"):
+            for key in (
+                "_scm_authority_v1",
+                "_scm_resume_authority_v2",
+                "_scm_product_change_authority_v1",
+                "_github_poll_v1",
+            ):
                 if row is not None and key in row.data:
                     data[key] = copy.deepcopy(row.data[key])
             if row is None:
@@ -566,10 +600,20 @@ class Collaboration:
                         and verified_reference is not None
                         and self.resume_authority is not None
                     )
-                    if not versioned_resume and command.action not in [
-                        *settings["allowed_commands"],
-                        *settings.get("channel_commands", []),
-                    ]:
+                    product_edit = (
+                        isinstance(command, SCMProductChangeCommandV1)
+                        and verified_reference is not None
+                        and self.product_change_authority is not None
+                    )
+                    if (
+                        not versioned_resume
+                        and not product_edit
+                        and command.action
+                        not in [
+                            *settings["allowed_commands"],
+                            *settings.get("channel_commands", []),
+                        ]
+                    ):
                         reason = "command_disabled"
             except (ValueError, KeyError, TypeError):
                 event.pop("text", None)
@@ -689,6 +733,30 @@ class Collaboration:
 
     async def process(self, receipt_id: str) -> Data:
         initial = await self.receipt(receipt_id)
+        if (initial.get("command") or {}).get("action") == "product_change":
+            from firefly_forge.product_lifecycle import ProductLifecycle
+            from firefly_forge.project_access import AccessDenied
+
+            try:
+                if self.product_change_authority is None:
+                    raise ValueError("The explicit product edit capability is unavailable")
+                return await self.product_change_authority.process(receipt_id, ProductLifecycle(self))
+            except (AccessDenied, ValueError, KeyError, PermissionError):
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if (
+                        row is not None
+                        and row.status == "received"
+                        and row.data.get("action_status") in {None, "not_dispatched"}
+                    ):
+                        await self._write_row(
+                            row,
+                            status="denied",
+                            action_status="not_dispatched",
+                            reason="scm_product_edit_setup_or_conflict",
+                        )
+                        return {"id": receipt_id, "status": "denied", "reason": "scm_product_edit_setup_or_conflict"}
+                return {"id": receipt_id, "status": "withheld", "reason": "scm_product_edit_result_unconfirmed"}
         if (initial.get("command") or {}).get("version") == 2:
             if self.resume_authority is None:
                 raise ValueError("The native V2 resume service is unavailable")
@@ -720,7 +788,11 @@ class Collaboration:
         async with self.store._unit():
             configured = await self.settings_records.find_for_repository(identifier(initial["repository_id"]))
             mapped_repository = bool(authority_state(configured.data if configured else {})["heads"])
-        if mapped_repository or (initial.get("command") or {}).get("action") == "respond":
+        if (
+            mapped_repository
+            or (initial.get("command") or {}).get("action") == "respond"
+            or (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        ):
             await self._process_delegated(receipt_id)
             await self.feedback(receipt_id)
             return await self.receipt(receipt_id)
@@ -1151,13 +1223,23 @@ class Collaboration:
         kind = "pullrequests" if issue["kind"] == "pull_request" else "issues"
         return base + "/" + kind + "/" + str(issue["number"]) + "/comments"
 
-    async def _remote_write(self, repo: Data, payload: Data, issue: Data | None = None) -> Data:
+    async def _remote_write(
+        self,
+        repo: Data,
+        payload: Data,
+        issue: Data | None = None,
+        *,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
         provider = str(repo["connection_provider"])
         token, api = await self.scm.issue_authentication(
             repo, pull_request=bool(issue and issue["kind"] == "pull_request")
         )
         if self.deployments is not None and self.deployments.engine.poller is not None:
             await self.store.assert_ownership()
+        if before_write is not None:
+            await before_write()
+        self.store.reject_credentials(payload)
         response = await self.scm._request(
             "POST",
             api + self._issue_path(provider, repo, issue),
@@ -1173,6 +1255,14 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        polled = (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        if polled:
+            try:
+                if self.polling is None:
+                    return
+                await self.polling.authorize_feedback(initial)
+            except Exception:
+                return
         versioned = (initial.get("command") or {}).get("version") == 2
         if versioned:
             try:
@@ -1252,7 +1342,14 @@ class Collaboration:
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
             if versioned:
                 await self.resume_authority.authorize_feedback(receipt_id)
-            remote = await self._remote_write(repo, payload, data["issue"])
+            if polled:
+                await self.polling.authorize_feedback(data)
+            if polled:
+                remote = await self._remote_write(
+                    repo, payload, data["issue"], before_write=lambda: self.polling.authorize_feedback_local(data)
+                )
+            else:
+                remote = await self._remote_write(repo, payload, data["issue"])
         except Exception:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -1398,6 +1495,13 @@ class Collaboration:
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
             elif data.get("run_id") and data.get("feedback_status") == "sent":
+                if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                    try:
+                        if self.polling is None:
+                            continue
+                        await self.polling.authorize_feedback(data)
+                    except Exception:
+                        continue
                 run = await self.store.get_run(data["run_id"])
                 if run["status"] in {
                     "succeeded",

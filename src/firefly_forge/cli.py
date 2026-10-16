@@ -379,6 +379,80 @@ def get_scm_actor(project_id: str, repository_id: str, request_id: str) -> None:
         display(connection.scm_actor_binding(project_id, repository_id, request_id))
 
 
+@project.group("scm-polling")
+def scm_polling() -> None:
+    """Configure local GitHub issue polling and separate API-observed account consent."""
+
+
+@scm_polling.command("setup")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_setup(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_setup(project_id, repository_id))
+
+
+@scm_polling.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_polling(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_scm_polling(project_id, repository_id, json_document(document)))
+
+
+@scm_polling.command("configuration")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def read_scm_polling_configuration(project_id: str, repository_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_configuration(project_id, repository_id, request_id))
+
+
+@scm_polling.command("status")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_status(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_status(project_id, repository_id))
+
+
+@scm_polling.command("candidates")
+@click.argument("project_id")
+@click.argument("repository_id")
+def read_scm_polling_candidates(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_candidates(project_id, repository_id))
+
+
+@scm_polling.command("consent")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_polling_binding(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_scm_polling_binding(project_id, repository_id, json_document(document)))
+
+
+@scm_polling.command("binding")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def read_scm_polling_binding(project_id: str, repository_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.scm_polling_binding(project_id, repository_id, request_id))
+
+
+@scm_polling.command("heads")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.option("--after", help="Continue after the exact retained binding key.")
+def read_scm_polling_heads(project_id: str, repository_id: str, after: str | None) -> None:
+    with client() as connection:
+        display(connection.scm_polling_heads(project_id, repository_id, after))
+
+
 @project.group("scm-resume-grants")
 def scm_resume_grants() -> None:
     """Review and save explicit consent for signed same-run resume requests."""
@@ -412,6 +486,56 @@ def get_current_scm_resume_grant(project_id: str, repository_id: str, binding_re
     """Read current consent for an exact V1 binding; this does not resume a run."""
     with client() as connection:
         display(connection.current_scm_resume_grant(project_id, repository_id, binding_request_id))
+
+
+@project.group("scm-product-change-grants")
+def scm_product_change_grants() -> None:
+    """Review and save explicit consent for signed whole-product edits."""
+
+
+@scm_product_change_grants.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_product_change_grant(project_id: str, repository_id: str, document: Path) -> None:
+    """Submit one reviewed consent JSON; retain its request ID after an uncertain response."""
+    with client() as connection:
+        display(connection.configure_scm_product_change_grant(project_id, repository_id, json_document(document)))
+
+
+@scm_product_change_grants.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_product_change_grant(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the original consent receipt without resending or replacing its request."""
+    with client() as connection:
+        display(connection.scm_product_change_grant(project_id, repository_id, request_id))
+
+
+@scm_product_change_grants.command("current")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("binding_request_id")
+def get_current_scm_product_change_grant(project_id: str, repository_id: str, binding_request_id: str) -> None:
+    """Read current consent for an exact V1 binding; this does not edit a product."""
+    with client() as connection:
+        display(connection.current_scm_product_change_grant(project_id, repository_id, binding_request_id))
+
+
+@project.group("scm-product-changes")
+def scm_product_changes() -> None:
+    """Read retained signed product edits without sending another command."""
+
+
+@scm_product_changes.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_product_change(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the exact original product-edit result; missing evidence does not permit another write."""
+    with client() as connection:
+        display(connection.scm_product_change(project_id, repository_id, request_id))
 
 
 @main.group()
@@ -1507,13 +1631,14 @@ def knowledge() -> None:
 @knowledge.command("bootstrap")
 @click.option("--data-dir", type=click.Path(path_type=Path), required=True)
 @click.option("--service-dir", type=click.Path(path_type=Path), required=True)
-def knowledge_bootstrap(data_dir: Path, service_dir: Path) -> None:
+@click.option("--endpoint", help="New installation only: HTTPS loopback URL for the local knowledge service")
+def knowledge_bootstrap(data_dir: Path, service_dir: Path, endpoint: str | None) -> None:
     """Create one-time private service credentials without resetting existing settings."""
     from firefly_forge.configuration import ConfigurationStore
     from firefly_forge.managed_knowledge import bootstrap_knowledge
 
     try:
-        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir)
+        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir, endpoint=endpoint)
         if result["state"] == "external":
             raise ValueError(
                 "Existing knowledge settings retained; use the existing service instead of the managed stack"
@@ -1646,3 +1771,36 @@ def learning_observation_attempt(record_id: str, attempt_id: str) -> None:
     """Read exact local evidence. Only not_dispatched permits an explicit fresh request."""
     with client() as connection:
         display(connection.learning_projection_observation_attempt(record_id, attempt_id))
+
+
+@main.group()
+def evidence() -> None:
+    """Read retained run evidence without executing or resuming work."""
+
+
+@evidence.command("query")
+@click.argument("run_id")
+@click.option("--expected-cut")
+@click.option("--expected-filter")
+@click.option("--after", type=click.IntRange(0, 8192), default=0)
+@click.option("--limit", type=click.IntRange(1, 50), default=50)
+@click.option("--kind", type=click.Choice(["all", "journal", "activity", "tool", "artifact"]), default="all")
+@click.option("--task-id")
+@click.option("--text", default="")
+@click.option("--record-id")
+def query_run_evidence(run_id: str, **values: Any) -> None:
+    with client() as connection:
+        display(connection.run_evidence(run_id, {k: v for k, v in values.items() if v is not None}))
+
+
+@evidence.command("export")
+@click.argument("run_id")
+@click.option("--expected-cut", required=True)
+@click.option("--output", type=click.Path(path_type=Path), required=True)
+def export_run_evidence(run_id: str, expected_cut: str, output: Path) -> None:
+    with client() as connection:
+        content = connection.export_run_evidence(run_id, expected_cut)
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(descriptor, "wb") as target:
+        target.write(content)
+    click.echo(str(output))

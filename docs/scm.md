@@ -16,7 +16,7 @@ A factory administrator completes these steps in **Connections → Repositories*
 3. Install the GitHub App on the intended repositories. For GitLab or a Bitbucket authorization-code grant, choose **Authorize in…** and finish consent in the same browser. Bitbucket client credentials use the configured consumer and workspace instead.
 4. Choose **Check access**. This makes a real provider request. A successful check describes the current grant, not a permanent permission.
 5. Choose **Find granted repositories**, inspect the returned repository name and URL, then **Connect NAME**. forge checks discovery again and registers the selected remote repository ID with its provider URL and default branch. It does not accept a caller-substituted URL or credentials in this action.
-6. Select that registered repository when defining a product or starting work. Enable signed conversation commands separately in [Repository workflow](repository-workflow.md); connecting an application alone does not enable webhook execution.
+6. Select that registered repository when defining a product or starting work. Enable [signed conversation commands](repository-workflow.md) or [local GitHub issue polling](#use-github-issue-comments-from-a-local-factory) separately; connecting an application alone does not enable either transport.
 
 <figure class="forge-shot" markdown="1">
 ![Studio repository-access step in the factory connection wizard.](assets/screenshots/connect-repositories-desktop-light.png)
@@ -28,7 +28,7 @@ A factory administrator completes these steps in **Connections → Repositories*
 | Direction | Implemented behavior | What the result establishes |
 | --- | --- | --- |
 | Provider → factory | Discover granted repositories and clone their configured default branch when preparing a fresh run; a campaign can supply its frozen source commit. | The run's recorded source base, not a continuously synchronized workspace. |
-| Provider conversation → factory | Accept an enabled, signed structured command from an exact trusted actor. | A retained delivery and its allowed action; ordinary discussion does not start work. |
+| Provider conversation → factory | Accept an enabled signed command, or poll GitHub issue comments for separately authorized `respond` and `status` actions. | A retained delivery and its allowed action; ordinary discussion does not start work. |
 | Factory → provider | Push verified source to the run branch and request a pull or merge request; optionally publish separate review-reference files. | A recorded publication outcome, not a merged default branch or deployment. |
 | Factory → conversation | Post queued, stopped or terminal status and supported worker questions using the conversation's original identity. | Feedback about retained work; an uncertain reply remains unresolved until checked. |
 
@@ -93,11 +93,12 @@ Complete setup in this order:
 3. In forge, save the app ID, installation ID, private key and optional app slug.
    Choose **Check access**, then **Find granted repositories**. Check the returned
    repository name before connecting it.
-4. Configure signed inbound commands using [Repository workflow](repository-workflow.md).
-   A local forge server needs a reachable delivery route before GitHub can send
-   webhooks to it. Registration and repository discovery do not establish webhook
-   delivery. Keep the webhook inactive during a staged setup until its receiving
-   route and signature secret are ready.
+4. Choose the incoming conversation transport. [Signed inbound commands](repository-workflow.md)
+   need an HTTPS route that GitHub can reach and a separate webhook secret.
+   [Local issue polling](#use-github-issue-comments-from-a-local-factory) reads through
+   the App API and needs no incoming webhook route. Its supported actions are
+   limited to `respond` and `status` on existing scoped runs. Registration and
+   repository discovery alone establish neither transport.
 
 ### Verify the downloaded key
 
@@ -373,3 +374,213 @@ Studio retains the complete request binding before one POST and confirms it thro
 This first slice refuses any cancellation request, publication state, unfinished sandbox, unresolved external effect or contradictory plan. It requires an original plan with a matching journal reference, so a prior handoff without such a reference is unavailable here. The cut is bounded to 2,000 journal records, tasks and run-summary events per category. It admits at most 4 MiB of combined journal/task/plan evidence, a 1 MiB run snapshot and plan, and a 3-second statement timeout. Limits refuse instead of returning partial evidence. Consent history has separate V2 retention limits of 100 heads, 50 revisions per head, 5,000 requests and 16 MiB, with 64 KiB receipt envelopes.
 
 Configured ingress remains a prerequisite. This adapter does not add authenticated provider polling, a local GitHub relay or an automatically configured webhook. Controlled host tests of the command and service do not establish live GitHub delivery or native database/worker acceptance.
+
+## Change an existing functional product
+
+An existing project can separately authorize a mapped SCM account to change its functional product definition. A factory administrator must record an explicit whole-product edit capability. Reply delegation and same-run resume consent do not grant this permission. The mapped native user still needs current read and edit access in every project that shares the product repository.
+
+This capability covers the project's complete component graph and exact `product_repository_id`. It changes features, integration contracts, journeys, acceptance criteria and user stories through the existing incremental product-change format. The saved result clears functional and design approval, and architecture approval when present. It retains unchanged features and their impact references. It does not change project topology, create a project, start a run or approve the resulting definition.
+
+Record the capability with `POST /api/v1/projects/{project}/repositories/{repository}/scm-product-change-grants`. Its version-1 body contains an original `request_id`, the reviewed previous grant digest, the full project binding digest, the exact V1 mapping request and digest, every component ID, `allowed_actions: ["product_change"]`, `active`, and `acknowledge_product_definition_edit: true`. The mapping identifies the registered native user; the request cannot supply another user or actor label. Saving consent checks that user's current edit access and grants no membership.
+
+Read the exact consent through `/scm-product-change-grants/requests/{request}` or its current reference through `/scm-product-change-grants/current/{binding_request}` under the same project/repository path. Historical receipts remain readable with current native read access after revocation. A historical active setting does not establish current permission to act.
+
+Send one signed `/forge product_change` command with the following fields in its JSON options:
+
+| Field | Value to retain before sending |
+| --- | --- |
+| `version` | Integer `1` |
+| `project_id` | The existing project |
+| `expected_project_binding_digest` | The reviewed full project cut |
+| `expected_grant_request_id`, `expected_grant_digest` | The exact edit capability |
+| `change.request_id` | The original 32-character hexadecimal operation identity |
+| `change.base_revision`, `change.base_digest` | The exact saved functional product being edited |
+| Other `change` fields | The existing `FeatureChangeInput` patch, with no execution or review-approval options |
+
+The SCM command cannot override the verified provider, installation, repository or account. Forge checks the application's repository grant before acquiring database locks. It then checks current native permissions, mapping, capability, project cut and product base under the native locks. A stale base or known missing authority refuses before a product revision or action result is written. A successful change records the immutable product revision and delegated action receipt in one transaction.
+
+Recover the original result with `GET /api/v1/projects/{project}/repositories/{repository}/scm-product-changes/requests/{change.request_id}`. The receipt retains the original source, mapped native user and resulting product revision/digest. A later product edit does not rewrite it. Current product GET returns the latest definition, which may have advanced since that receipt. Keep the original request identity after a lost response, conflict or missing exact receipt; none permits an automatic resend. Permission to return a response can be revoked after the product transaction commits, so a denied response does not establish that no product was saved.
+
+The Studio consent flow and SDK/CLI/MCP adapters use these same API contracts. Local source or controlled transport checks do not establish native, installed or live provider acceptance. This cut does not post an automatic SCM comment for a product change. Inspect the retained result through the exact API read. Provider delivery configuration remains a prerequisite; local signed fixtures do not establish live provider acceptance, project bootstrap or GitFlow behavior.
+
+Product changes accept at most 80,000 UTF-8 input bytes. Saved product revisions and project cuts are bounded to 1 MiB each. Consent retains at most 100 heads, 50 revisions per head and 5,000 original requests; product edits retain at most 5,000 operations per repository. The combined consent and edit-event history has a 16 MiB budget, with 64 KiB consent and 128 KiB action envelopes. Limits refuse the operation; they do not omit evidence or report partial success.
+
+## Use GitHub issue comments from a local factory
+
+Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.
+
+The polling workflow supports an existing run with an explicit project and component. `status` reads its current state; `respond` answers its exact pending worker question and leaves the run paused. Run creation, resume, cancellation, model/source changes, publication and merge are outside this transport. The [same-run resume grant](#opt-in-same-run-resume-v2) and [product-change capability](#change-an-existing-functional-product) require their separate signed-ingress contracts.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Local GitHub polling and clarification flow" aria-describedby="scm-polling-guide" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+  Setup["1. Connect App<br/>Enable polling"] --> Review["2. Finish baseline<br/>Record consent"]
+  Review --> Use["3. New comment<br/>Read reply and WAL"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="scm-polling-guide">Existing comments establish the baseline and account observations. They do not dispatch actions. After readiness and consent, publish a new comment and inspect its retained result. Focus and scroll the diagram on a narrow screen.</p>
+
+### 1. Prepare the App and native permissions
+
+Connect the selected repository through the [GitHub App](#github-app). The installation needs **Issues: read** for polling and current collaborator checks, and **Issues: write** to send feedback. Repository discovery uses the installation's metadata grant. forge requests a separate issue-read token for scans and an issue-write token for replies; it does not use an owner token or increase publication permissions.
+
+Register the intended native user and assign [project access](identity.md#grant-project-access). In the repository's collaboration settings, enable the workflow, enter the exact numeric GitHub account in `trusted_actors`, and permit `status` in `allowed_commands` and/or `respond` in `channel_commands`. Keep unrelated settings unchanged. A GitHub login name or `author_association` is not an authorization rule.
+
+| Decision | Required authority |
+| --- | --- |
+| Save polling configuration or API-observed consent | Current factory administrator |
+| Read setup and candidate observations | Current factory administrator |
+| Read polling status, heads or an exact configuration/consent | Current project/repository read access |
+| `/forge status` | Active polling consent for the component and action; mapped user's current project `read` permission |
+| `/forge respond` | Active polling consent for the component and action; current project `execute`, plus `release` when the run has publication enabled |
+| Inspect global delivery receipts or reconcile feedback | Current factory administrator |
+
+The mapping grants no membership. The mapped user must remain registered and enabled. A webhook V1 mapping, a same-run resume grant and this API-observed V2 consent are separate records; saving one never upgrades another.
+
+### 2. Save one polling configuration
+
+Configure the CLI's `FORGE_URL` and `FORGE_API_TOKEN` through the [operator environment](agent-integrations.md). The token belongs to forge, not the GitHub App. Keep it out of comments and request documents.
+
+```sh
+forge project scm-polling setup PROJECT_ID REPOSITORY_ID
+```
+
+Inspect the returned project and repository. Copy its `project_binding_digest` and `connection_revision` into a local `configuration.json` document. Use the returned `expected_previous_digest` for an update, or JSON `null` for the first configuration. Replace the uppercase placeholders below with the exact returned values and a new 32-character lowercase hexadecimal request ID:
+
+```json
+{
+  "version": 1,
+  "request_id": "NEW_CONFIGURATION_REQUEST_ID",
+  "expected_previous_digest": null,
+  "expected_project_binding_digest": "PROJECT_BINDING_DIGEST",
+  "expected_connection_revision": "CONNECTION_REVISION",
+  "enabled": true,
+  "interval_seconds": 60
+}
+```
+
+Save the document before sending it. Choose either CLI or SDK for each write. Send once and keep that request ID for exact recovery:
+
+```sh
+forge project scm-polling configure PROJECT_ID REPOSITORY_ID configuration.json
+forge project scm-polling configuration PROJECT_ID REPOSITORY_ID CONFIGURATION_REQUEST_ID
+```
+
+The setup read does not contact GitHub. The configuration write checks current repository access and the reviewed connection/project cut. An interval must be between 60 and 3600 seconds. Each repository has one current polling project. Moving its configuration to another project invalidates the previous project's action snapshots while preserving authorized historical reads. A concurrent change refuses the reviewed request instead of silently using another cut.
+
+### 3. Finish the baseline before posting commands
+
+The execution-owning worker scans issues and comments through its normal lifecycle. An API-only process can configure and read polling, but does not run the consumer. Read status:
+
+```sh
+forge project scm-polling status PROJECT_ID REPOSITORY_ID
+```
+
+| Status field | What to check |
+| --- | --- |
+| `ready` | Wait for `true` before consent and new command comments. |
+| `baseline_complete` | The initial scan finished; current availability can still make `ready` false. |
+| `phase`, `completed_scans`, `last_success_at` | Retained scan progress, not proof of command success. |
+| `availability`, `retry_at`, `next_due_at` | A blocked local cut or failed poll is unavailable; provider backoff delays reads. |
+| `source_conflicts` | An observed comment changed; inspect the retained evidence before proceeding. |
+
+This status read checks retained progress and current local configuration. The next scan or action performs the provider requests; `ready` is not a fresh GitHub grant check.
+
+Existing comments are retained without dispatch during the initial baseline. A new configuration starts another baseline and retains earlier evidence; restarting the same configuration resumes its saved cursor. After `ready: true`, the operator should tell participants to publish **new comments**. Editing a baseline comment does not turn it into an action.
+
+If the intended account has no retained observation, ask that person to post an ordinary, nonsecret comment in an issue. Wait for a successful scan, then inspect the candidates. Discussion does not dispatch work.
+
+### 4. Review a separate account consent
+
+```sh
+forge project scm-polling candidates PROJECT_ID REPOSITORY_ID
+```
+
+Select an observation from the exact repository and review its numeric author ID. Use its `id` and `reference_digest`, plus the page's `project_binding_digest`, in `consent.json`. Replace the placeholders with reviewed values; `component_ids` contains actual component IDs from the project:
+
+```json
+{
+  "version": 2,
+  "request_id": "NEW_CONSENT_REQUEST_ID",
+  "expected_previous_digest": null,
+  "expected_project_binding_digest": "PROJECT_BINDING_DIGEST",
+  "observed_receipt_id": "OBSERVED_RECEIPT_ID",
+  "expected_reference_digest": "REFERENCE_DIGEST",
+  "native_user_id": "REGISTERED_NATIVE_USER_ID",
+  "component_ids": ["api"],
+  "allowed_actions": ["respond", "status"],
+  "active": true,
+  "acknowledge_api_observed_identity": true
+}
+```
+
+Use `null` only for the first consent for this exact account/project/provider scope. For an update, copy the previous receipt's digest. Keep only the components and actions the person needs. Save the complete document before one submission:
+
+```sh
+forge project scm-polling consent PROJECT_ID REPOSITORY_ID consent.json
+forge project scm-polling binding PROJECT_ID REPOSITORY_ID CONSENT_REQUEST_ID
+forge project scm-polling heads PROJECT_ID REPOSITORY_ID
+```
+
+The server re-reads the comment, issue and current collaborator permission, compares the numeric author ID, and checks the native user, project cut and configuration. The request accepts references to server observations; it does not accept a caller-created trusted observation. Current heads are saved consent revisions, not certification of current provider grants. `heads --after BINDING_KEY` continues after the exact returned key.
+
+The SDK uses the same documents and original IDs. At the corresponding step above, `configure_scm_polling(project, repository, configuration)` submits the configuration and `configure_scm_polling_binding(project, repository, consent)` submits the separate consent. Use exact reads after an uncertain response. For example, set `PROJECT_ID` and `REPOSITORY_ID` to the reviewed IDs in your environment, then recover a consent already sent at this step:
+
+```python
+import json
+import os
+from pathlib import Path
+from firefly_forge.client import ForgeClient
+
+consent = json.loads(Path("consent.json").read_text())
+with ForgeClient(os.environ["FORGE_URL"], os.environ["FORGE_API_TOKEN"]) as factory:
+    receipt = factory.scm_polling_binding(
+        os.environ["PROJECT_ID"], os.environ["REPOSITORY_ID"], consent["request_id"]
+    )
+```
+
+The other SDK reads are `scm_polling_setup`, `scm_polling_configuration`, `scm_polling_status`, `scm_polling_candidates` and `scm_polling_heads`, with the same project/repository arguments. The exact configuration read also takes its original request ID. An SDK exception does not authorize another POST.
+
+### 5. Publish a new status or answer comment
+
+From the consented GitHub account, post one complete command in an issue of the configured repository. Replace the placeholders with the existing run ID and its exact pending worker-request ID:
+
+```text
+/forge status {"run_id":"RUN_ID"}
+/forge respond {"run_id":"RUN_ID","request_id":"PENDING_QUESTION_ID","answer":"Keep the existing contacts."}
+```
+
+These are separate comments and separate decisions. A status read changes no run WAL. An answer records one `worker_response` with additive `responding_actor.version: 3`, the mapped native user and exact polling-consent/delivery references. The original execution actor remains unchanged. In Studio, inspect the run's [agent question and answer](agent-lifecycle.md) and its historical attribution. `forge journal RUN_ID` exposes the retained chain. Answering leaves the run paused; any continuation needs its own supported, explicit authority.
+
+Pull-request conversations, bot accounts, issue bodies and edited comments cannot dispatch these polling actions. The worker rechecks the current comment and account access before admission, then rechecks local authority around the retained write. Configuration changes and collaboration trust/enable changes share the project membership fence used by Journal responses. These checks do not make remote GitHub revocation atomic with a local database transaction.
+
+### 6. Inspect the reply and preserve unknown outcomes
+
+The App posts feedback to the originating issue with the delivery receipt reference and original action result. Later feedback reports the current run status separately. A saved answer and a delivered comment are different outcomes.
+
+A current factory administrator can inspect `GET /api/v1/collaboration/receipts?repository_id=REPOSITORY_ID`, or call `ForgeClient.repository_receipts(repository_id)`. Check `status`, `action_status`, `feedback_status` and the associated run rather than treating an accepted receipt as completed execution. Project-reader polling/history routes do not grant access to this global administrative list.
+
+After a timeout, 403, 409 or missing exact configuration/consent receipt, retain the **same request ID and complete input**. Use the exact `configuration` or `binding` read. A missing receipt does not prove that no write occurred and does not authorize a new ID or automatic resend. An administrator can inspect current setup/heads while preserving the original operation.
+
+For feedback, forge records `writing` before the provider request and `sent` only after a confirmed result. A lost reply, interrupted process or late authority/credential refusal can leave `feedback_status: needs_reconciliation`. Repeated ticks do not repost that write. Inspect the provider conversation, then use [explicit feedback reconciliation](repository-workflow.md#receipts-and-feedback) with `posted` or `not_posted` and an observed-outcome note. Reconciliation records `sent` or `not_sent` and sends no remote request. If no reply was posted, a new explicit status comment is the supported next request; replaying the unknown write is not.
+
+Current consent, native permission and provider access are checked before reading private feedback. After token preparation and the final local authority check, a synchronous check rejects any payload containing a currently registered credential before POST. Historical receipts are not rewritten. To revoke consent, submit a new reviewed request with `active: false` and the exact previous digest. Authorized historical reads remain available; the old receipt does not assert that authority is still active.
+
+### Polling limits and acceptance boundaries
+
+| Resource | Limit |
+| --- | --- |
+| Scan | 50 objects per page, 20 pages and 16 MiB across issue/comment streams |
+| Page response | 4 MiB |
+| Inbox evidence | 5,000 source identities and 16 MiB |
+| Consent history | 100 heads, 50 revisions per head, 5,000 requests, 64 KiB per receipt |
+| Retained polling configuration/consent events | Combined 16 MiB budget; 5,000 configuration request identities |
+
+A limit refuses the operation and preserves its cursor/evidence. Known sensitive content is withheld with its digest and source identity and cannot become a command or consent reference. The shared `(repository, provider, source_key)` identity also deduplicates a comment observed through a webhook. Edits retain a source-conflict record instead of creating another action; publish a new comment only after reviewing that conflict.
+
+Complete rescans can observe resources that remain present after pagination shifts. REST polling cannot recover a comment deleted before observation or every intermediate edit. Native DI/PostgreSQL tests using recorded App HTTP and controlled Studio vectors are separate from a live GitHub issue round trip.
+
+For your own installation, confirm the baseline, save the separate consent, and publish a new status comment followed by an answer to an actual pending question. Retain the configuration/consent request IDs, GitHub comment IDs, delivery receipt, answer's WAL reference and App reply URL privately. Check that status adds no run WAL, the answer appears once with V3 attribution, the original run remains paused, and feedback arrives from the App in the same issue. Recover any uncertain result through its original receipt rather than resending it. Source publication, repository bootstrap and full GitFlow remain separate workflows.

@@ -31,6 +31,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "model": "FORGE_BRIDGE_MODEL",
         "endpoint": "FORGE_BRIDGE_URL",
         "token": "FORGE_BRIDGE_TOKEN",
+        "completion_recovery": "FORGE_BRIDGE_COMPLETION_RECOVERY",
         "timeout": "FORGE_PROVIDER_TIMEOUT",
     },
     "agentic": {
@@ -48,6 +49,13 @@ DEFAULTS = {
     "FORGE_BRIDGE_MODEL": "bridge/default",
 }
 SECRETS = {"token", "api_key"}
+OPTIONAL_SETTINGS = {"FORGE_BRIDGE_COMPLETION_RECOVERY"}
+
+
+def validate_completion_recovery(value: str) -> str:
+    if value not in {"legacy", "required"}:
+        raise ValueError("Completion recovery must be legacy or required")
+    return value
 
 
 class ProviderConfiguration(BaseModel):
@@ -83,6 +91,7 @@ def public_settings(provider: str, settings: dict[str, str]) -> dict[str, str | 
         if key in SECRETS
         else settings.get(env, "")
         for key, env in FIELDS[normalize_provider(provider)].items()
+        if env not in OPTIONAL_SETTINGS or env in settings
     }
     if result.get("endpoint"):
         try:
@@ -152,7 +161,11 @@ class ConfigurationStore:
         provider = normalize_provider(provider)
         with self.lock:
             persisted = self._read(self.path).get(provider, {})
-        result = {env: os.environ.get(env, DEFAULTS.get(env, "")) for env in FIELDS[provider].values()}
+        result = {
+            env: os.environ.get(env, DEFAULTS.get(env, ""))
+            for env in FIELDS[provider].values()
+            if env not in OPTIONAL_SETTINGS or env in os.environ
+        }
         if provider == "agentic" and not result["FORGE_AGENTIC_API_KEY"]:
             model = str(persisted.get("FORGE_AGENTIC_MODEL", result["FORGE_AGENTIC_MODEL"]))
             aliases = ["OPENAI_API_KEY"]
@@ -178,6 +191,8 @@ class ConfigurationStore:
                 raise ValueError("Configuration value exceeds limits")
             if key in SECRETS and not value:
                 continue
+            if key == "completion_recovery":
+                value = validate_completion_recovery(value)
             if key == "endpoint" and value:
                 value = validate_endpoint(value)
             if key in {"model", "executable"} and any(ord(c) < 32 for c in value):
@@ -197,6 +212,8 @@ class ConfigurationStore:
 
     def snapshot(self, provider: str) -> dict[str, Any]:
         settings = self.resolve(provider)
+        if "FORGE_BRIDGE_COMPLETION_RECOVERY" in settings:
+            validate_completion_recovery(settings["FORGE_BRIDGE_COMPLETION_RECOVERY"])
         endpoint_name = FIELDS[normalize_provider(provider)].get("endpoint")
         if endpoint_name and settings.get(endpoint_name):
             settings[endpoint_name] = validate_endpoint(settings[endpoint_name])

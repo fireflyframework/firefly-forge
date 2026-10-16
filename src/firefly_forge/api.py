@@ -44,6 +44,8 @@ from firefly_forge.assistant_persistence import (
     ForgeAssistantTurnRepository,
 )
 from firefly_forge.assurance import Assurance
+from firefly_forge.bridge_completion_controllers import BridgeCompletionController
+from firefly_forge.bridge_completions import BridgeCompletions
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.campaign_delivery_plan_controllers import CampaignDeliveryPlanController
 from firefly_forge.campaign_delivery_plan_persistence import ForgeCampaignDeliveryPlanRepository
@@ -163,6 +165,8 @@ from firefly_forge.projects import Projects
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
+from firefly_forge.run_evidence import RunEvidence
+from firefly_forge.run_evidence_controllers import RunEvidenceController
 from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
 from firefly_forge.runner_continuation_controllers import RunnerContinuationController
@@ -179,6 +183,10 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_poll_controllers import SCMPollController
+from firefly_forge.scm_polling import SCMPolling
+from firefly_forge.scm_product_change_controllers import SCMProductChangeController
+from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
 from firefly_forge.scm_resume_service import SCMResumeAuthority
 from firefly_forge.search_tools import SearchTools
@@ -412,6 +420,7 @@ class FactoryConfiguration:
         deployments: DeploymentManager,
         campaigns: ProjectCampaigns,
         collaboration: Collaboration,
+        polling: SCMPolling,
         observability: ApplicationOperations,
     ) -> WorkerSupervision:
         return WorkerSupervision(
@@ -422,6 +431,7 @@ class FactoryConfiguration:
                 "deployments": deployments,
                 "campaigns": campaigns,
                 "scm_feedback": collaboration,
+                "scm_ingress": polling,
                 "observability": observability,
             },
         )
@@ -627,6 +637,19 @@ class FactoryConfiguration:
         return connections
 
     @bean
+    def scm_polling(
+        self,
+        store: Store,
+        scm: SCMConnections,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMPolling:
+        polling = SCMPolling(store, scm, settings_records, inbox, events)
+        store.scm_polling = polling
+        return polling
+
+    @bean
     def scm_actor_authority(self, store: Store, connections: SCMConnections) -> SCMActorAuthority:
         return SCMActorAuthority(store, connections)
 
@@ -643,6 +666,17 @@ class FactoryConfiguration:
         return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
 
     @bean
+    def scm_product_change_authority(
+        self,
+        store: Store,
+        authority: SCMActorAuthority,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMProductChangeAuthority:
+        return SCMProductChangeAuthority(store, authority, settings_records, inbox, events)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -652,6 +686,10 @@ class FactoryConfiguration:
         sandboxes: ForgeSandboxRepository,
     ) -> Journal:
         return Journal(store, plans=plans, tasks=tasks, records=records, sandboxes=sandboxes)
+
+    @bean
+    def bridge_completions(self, store: Store, journal: Journal) -> BridgeCompletions:
+        return BridgeCompletions(store, journal)
 
     @bean
     def runner_backends(self) -> RunnerBackends:
@@ -763,6 +801,10 @@ class FactoryConfiguration:
         )
 
     @bean
+    def run_evidence(self, store: Store) -> RunEvidence:
+        return RunEvidence(store)
+
+    @bean
     def campaign_reports(self, store: Store, campaigns: ProjectCampaigns, journal: Journal) -> CampaignReports:
         return CampaignReports(store, campaigns, journal)
 
@@ -854,8 +896,14 @@ class FactoryConfiguration:
         analysis: ReverseEngineering,
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
+        product_change_authority: SCMProductChangeAuthority,
+        polling: SCMPolling,
     ) -> Collaboration:
-        collaboration = Collaboration(store, scm, deployments, settings_records, inbox, products, resume_authority)
+        collaboration = Collaboration(
+            store, scm, deployments, settings_records, inbox, products, resume_authority, product_change_authority
+        )
+        collaboration.polling = polling
+        polling.collaboration = collaboration
         collaboration.analysis_manager = analysis
         collaboration.product_assistant = assistant
         deployments.secret_registries.append(collaboration)
@@ -961,12 +1009,16 @@ def create_runtime(
         LearningController,
         LearningObservationAttempts,
         JournalController,
+        BridgeCompletionController,
+        RunEvidenceController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
         ForgeProductDefinitionRepository,
         CollaborationController,
         SCMActorAuthorityController,
         SCMResumeAuthorityController,
+        SCMPollController,
+        SCMProductChangeController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,

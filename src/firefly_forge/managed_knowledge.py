@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import secrets
@@ -14,6 +15,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from cryptography import x509
@@ -24,7 +26,7 @@ from flycanon_sdk import CanonAPIError, CanonError, SourceMetadata, SubmitSource
 from pydantic import ValidationError
 from pyfly.container import service
 
-from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.configuration import ConfigurationStore, validate_endpoint
 from firefly_forge.knowledge import KnowledgeConnection, KnowledgeSettings, _current
 from firefly_forge.store import now
 
@@ -55,7 +57,35 @@ def _write_private(path: Path, value: bytes) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
-def _certificates() -> dict[str, bytes]:
+DEFAULT_ENDPOINT = "https://knowledge:8500"
+
+
+def _loopback_endpoint(value: str) -> str:
+    endpoint = validate_endpoint(value)
+    parsed = urlsplit(value)
+    host = parsed.hostname or ""
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host == "localhost"
+    if (
+        parsed.scheme != "https"
+        or not loopback
+        or parsed.path not in {"", "/"}
+        or any(char in value for char in "@?#%")
+        or any(char.isspace() or ord(char) == 127 for char in value)
+        or parsed.netloc.endswith(":")
+        or parsed.port == 0
+    ):
+        raise ValueError("Managed host knowledge requires an HTTPS loopback endpoint with a valid port and no path")
+    return endpoint
+
+
+def _certificates(host: str = "knowledge") -> dict[str, bytes]:
+    try:
+        identity: x509.GeneralName = x509.IPAddress(ipaddress.ip_address(host))
+    except ValueError:
+        identity = x509.DNSName(host)
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     issued = datetime.now(UTC)
@@ -75,7 +105,7 @@ def _certificates() -> dict[str, bytes]:
     )
     server = (
         x509.CertificateBuilder()
-        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "knowledge")]))
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)]))
         .issuer_name(issuer)
         .public_key(server_key.public_key())
         .serial_number(x509.random_serial_number())
@@ -84,7 +114,7 @@ def _certificates() -> dict[str, bytes]:
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
         .add_extension(x509.KeyUsage(True, False, True, False, False, False, False, False, False), critical=True)
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("knowledge")]), critical=False)
+        .add_extension(x509.SubjectAlternativeName([identity]), critical=False)
         .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
         .sign(ca_key, hashes.SHA256())
     )
@@ -97,12 +127,17 @@ def _certificates() -> dict[str, bytes]:
     }
 
 
-def bootstrap_knowledge(private: ConfigurationStore, service_directory: Path) -> dict[str, Any]:
+def bootstrap_knowledge(
+    private: ConfigurationStore, service_directory: Path, *, endpoint: str | None = None
+) -> dict[str, Any]:
     """Initialize once; existing operator choices and queued revisions are never rewritten."""
+    selected = _loopback_endpoint(endpoint) if endpoint is not None else None
     with private.lock:
         saved = private._read(private.directory / "knowledge.json")
         manifest = private._read(private.directory / "managed-knowledge.json")
         if saved and not manifest:
+            if selected is not None and selected != saved.get("settings", {}).get("endpoint"):
+                raise ValueError("Existing knowledge connection cannot be changed by bootstrap")
             return {"state": "external", "detail": "Existing knowledge settings retained; managed service not created"}
         if service_directory.is_symlink():
             raise ValueError("Managed knowledge service directory must be a real private directory")
@@ -117,6 +152,22 @@ def bootstrap_knowledge(private: ConfigurationStore, service_directory: Path) ->
                     )
             if not saved:
                 raise ValueError("Managed knowledge configuration is missing; restore its original settings")
+            original = _loopback_endpoint(manifest["endpoint"]) if "endpoint" in manifest else DEFAULT_ENDPOINT
+            try:
+                settings = KnowledgeSettings.model_validate(saved["settings"])
+            except (ValidationError, KeyError):
+                raise ValueError(
+                    "Managed knowledge connection has changed; restore its original configuration"
+                ) from None
+            issued = json.loads(_private_file(service_directory / "service.json"))
+            if (
+                settings.endpoint != original
+                or selected is not None
+                and selected != original
+                or settings.api_key != issued.get("api_key")
+                or settings.ca_certificate != _private_file(service_directory / "ca.crt").decode()
+            ):
+                raise ValueError("Managed knowledge connection has changed; restore its original configuration")
             return {"state": "existing", "detail": "Persisted knowledge credentials retained"}
         service_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not service_directory.is_dir() or list(service_directory.iterdir()):
@@ -124,7 +175,8 @@ def bootstrap_knowledge(private: ConfigurationStore, service_directory: Path) ->
         service_directory.chmod(0o700)
         key = secrets.token_urlsafe(48)
         password = secrets.token_urlsafe(48)
-        files = _certificates()
+        target = selected or DEFAULT_ENDPOINT
+        files = _certificates(urlsplit(target).hostname or "knowledge")
         files["postgres-password"] = password.encode()
         files["service.json"] = json.dumps(
             {
@@ -139,7 +191,7 @@ def bootstrap_knowledge(private: ConfigurationStore, service_directory: Path) ->
             enabled=True,
             required=True,
             auto_memory=True,
-            endpoint="https://knowledge:8500",
+            endpoint=target,
             tenant_id="forge",
             framework_workspace="frameworks",
             api_key=key,
@@ -150,7 +202,11 @@ def bootstrap_knowledge(private: ConfigurationStore, service_directory: Path) ->
         )
         private._write(
             private.directory / "managed-knowledge.json",
-            {"version": 1, "files": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}},
+            {
+                "version": 1,
+                "files": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()},
+                **({"endpoint": selected} if selected is not None else {}),
+            },
         )
         return {
             "state": "initialized",

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+    from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
@@ -339,6 +340,75 @@ class ForgeClient:
         path = self._scm_actor_path(project_id, repository_id)
         return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
 
+    def _scm_poll_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-polling"
+
+    def scm_polling_setup(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/setup"))
+
+    def configure_scm_polling(self, project_id: str, repository_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.scm_poll_models import PollConfigurationV1
+
+        body = PollConfigurationV1.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                self._scm_poll_path(project_id, repository_id) + "/configuration",
+                json=body.model_dump(mode="json"),
+            )
+        )
+
+    def scm_polling_configuration(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id)
+                + "/configuration/requests/"
+                + self._scm_actor_identifier(request_id),
+            )
+        )
+
+    def scm_polling_status(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/status"))
+
+    def scm_polling_candidates(self, project_id: str, repository_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", self._scm_poll_path(project_id, repository_id) + "/candidates"))
+
+    def configure_scm_polling_binding(
+        self, project_id: str, repository_id: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.scm_poll_models import SCMPollActorBindingInputV2
+
+        body = SCMPollActorBindingInputV2.model_validate(request)
+        return dict(
+            self.request(
+                "POST", self._scm_poll_path(project_id, repository_id) + "/bindings", json=body.model_dump(mode="json")
+            )
+        )
+
+    def scm_polling_binding(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id)
+                + "/bindings/requests/"
+                + self._scm_actor_identifier(request_id),
+            )
+        )
+
+    def scm_polling_heads(self, project_id: str, repository_id: str, after: str | None = None) -> dict[str, Any]:
+        if after is not None and not re.fullmatch(r"[a-f0-9]{64}", after):
+            raise ValueError("Use an exact polling binding key cursor")
+        return dict(
+            self.request(
+                "GET",
+                self._scm_poll_path(project_id, repository_id) + "/bindings",
+                params={} if after is None else {"after": after},
+            )
+        )
+
     def _scm_resume_grant_path(self, project_id: str, repository_id: str) -> str:
         project = self._scm_actor_identifier(project_id)
         repository = self._scm_actor_identifier(repository_id)
@@ -369,6 +439,48 @@ class ForgeClient:
         """Read the current consent for an exact V1 binding without dispatching a run action."""
         path = self._scm_resume_grant_path(project_id, repository_id)
         return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
+    def _scm_product_change_grant_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-product-change-grants"
+
+    def configure_scm_product_change_grant(
+        self, project_id: str, repository_id: str, request: SCMProductChangeGrantInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit one explicit whole-product consent; preserve its request identity after an uncertain result."""
+        from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
+
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        try:
+            value = request.model_dump(warnings=False) if isinstance(request, SCMProductChangeGrantInputV1) else request
+            body = SCMProductChangeGrantInputV1.model_validate(value)
+        except ValueError:
+            raise ValueError(
+                "Use a bounded whole-product edit consent with exact reviewed scope and request identities"
+            ) from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_product_change_grant(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact retained consent; missing evidence never authorizes another write."""
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def current_scm_product_change_grant(
+        self, project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        """Read the current consent for an exact V1 binding without dispatching a run action."""
+        path = self._scm_product_change_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
+    def scm_product_change(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read an immutable signed product-edit result; this never dispatches an edit."""
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        request = self._scm_actor_identifier(request_id)
+        return dict(
+            self.request("GET", f"projects/{project}/repositories/{repository}/scm-product-changes/requests/{request}")
+        )
 
     def configure_project(
         self, definition: ProjectDefinition | dict[str, Any], project_id: str | None = None
@@ -685,6 +797,24 @@ class ForgeClient:
                 "POST", f"runs/{self._id(run_id)}/worker-requests/{request_id}/respond", json=model.model_dump()
             )
         )
+
+    def run_evidence(self, identifier: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from firefly_forge.run_evidence import EvidenceQuery
+
+        selected = EvidenceQuery.model_validate(query or {})
+        return dict(
+            self.request("GET", f"runs/{self._id(identifier)}/evidence", params=selected.model_dump(exclude_none=True))
+        )
+
+    def export_run_evidence(self, identifier: str, expected_cut: str) -> bytes:
+        from firefly_forge.run_evidence import EvidenceExportInput
+
+        selected = EvidenceExportInput(expected_cut=expected_cut)
+        response = self.http.get(
+            f"runs/{self._id(identifier)}/evidence.zip", params={"expected_cut": selected.expected_cut}
+        )
+        response.raise_for_status()
+        return response.content
 
     def export(self, identifier: str) -> bytes:
         response = self.http.get(f"runs/{identifier}/artifacts/changes.zip")
