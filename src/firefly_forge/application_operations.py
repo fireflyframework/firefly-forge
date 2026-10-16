@@ -276,6 +276,7 @@ class ApplicationOperations:
             return [copy.deepcopy(row.data) for row in await self.incident_records.latest()]
 
     async def maintenance(self, incident_id: str, request: MaintenanceRequest) -> dict[str, Any]:
+        settings_generation = self.store.configuration.settings_generation
         async with self.store._unit():
             incident = await self.incident_records.find_by_id(identifier(incident_id))
             if not incident:
@@ -284,15 +285,15 @@ class ApplicationOperations:
                 raise ValueError("Maintenance requires an open incident")
             original = copy.deepcopy(incident.data)
             application_id = incident.application_id
-        app = self._configuration()[application_id]
+        app = copy.deepcopy(self._configuration()[application_id])
         prepared = await self.store.prepare_run(
             RunInput(
-                repository_id=incident.data["repository_id"],
+                repository_id=original["repository_id"],
                 brief=(
                     prompt_text(
                         "implementation/maintenance-request",
                         application=f"{app['name']}",
-                        incident=f"{incident.data['summary']}",
+                        incident=f"{original['summary']}",
                         request=f"{request.brief}",
                     )
                 ),
@@ -304,8 +305,13 @@ class ApplicationOperations:
                 publish=False,
             )
         )
+        if self._configuration().get(application_id) != app:
+            raise ValueError("The application changed during maintenance preflight")
+        if settings_generation is not self.store.configuration.settings_generation:
+            raise ValueError("Maintenance settings changed during preflight")
         with prepared_credential_rejection(self.store):
             async with self.store._unit():
+                self.store.assert_prepared_run_settings(prepared)
                 await self.store.fence_prepared_runs([prepared])
                 incident = await self.incident_records.find_by_id(
                     identifier(incident_id), lock=LockMode.PESSIMISTIC_WRITE
@@ -324,8 +330,10 @@ class ApplicationOperations:
                     "updated_at": now(),
                 }
                 await self.incident_records.save(incident)
+                self.store.assert_prepared_run_settings(prepared)
         await self.store.admit_credentials(run)
         await self.store._prepared_run_actor(prepared)
+        self.store.assert_prepared_run_settings(prepared)
         return run
 
     async def resolve(self, incident_id: str, resolution: str) -> dict[str, Any]:

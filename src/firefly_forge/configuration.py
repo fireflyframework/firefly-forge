@@ -18,6 +18,7 @@ from pyfly.container import service
 
 # A process-local write cut; callers still re-admit external sources before exposure.
 _write_generations: dict[str, object] = {}
+_settings_generations: dict[str, object] = {}
 
 FIELDS: dict[str, dict[str, str]] = {
     "codex": {
@@ -132,10 +133,15 @@ class ConfigurationStore:
         self.lock = FileLock(str(self.directory / "settings.lock"))
         self._generation_key = str(self.directory.resolve())
         _write_generations.setdefault(self._generation_key, object())
+        _settings_generations.setdefault(self._generation_key, object())
 
     @property
     def write_generation(self) -> object:
         return _write_generations[self._generation_key]
+
+    @property
+    def settings_generation(self) -> object:
+        return _settings_generations[self._generation_key]
 
     def _read(self, path: Path) -> dict[str, Any]:
         try:
@@ -164,6 +170,14 @@ class ConfigurationStore:
                 os.fsync(target.fileno())
             os.replace(filename, path)
             _write_generations[self._generation_key] = object()
+            snapshots = {self.revisions, self.directory / "model-profile-revisions"}
+            immutable_snapshot = (
+                path.parent in snapshots
+                and not path.parent.is_symlink()
+                and path.parent.resolve().parent == self.directory.resolve()
+            )
+            if not immutable_snapshot:
+                _settings_generations[self._generation_key] = object()
         finally:
             Path(filename).unlink(missing_ok=True)
 
