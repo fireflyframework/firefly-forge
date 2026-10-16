@@ -1,6 +1,8 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Prepared PostgreSQL controls: operator-owned fresh schemas, no live Bridge/model."""
 
+import asyncio
+
 import httpx2
 import pytest
 from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -126,3 +128,72 @@ async def test_known_bridge_pause_remains_manual_after_native_store_restart(stor
     assert await reopened.entries(run["id"]) == entries
     assert await reopened_store.get_run(run["id"]) == held
     assert Journal.verify_chain(entries)
+
+
+async def test_cancelled_inflight_bridge_submission_survives_restart_without_retry(store, store_factory, tmp_path):
+    from firefly_forge.controllers import RunService
+
+    source = await seed_repository(tmp_path / "source")
+    repository = await store.add_repository(RepositoryInput(name="Cancelled Bridge fixture", url=str(source)))
+    run = await store.create_run(
+        RunInput(repository_id=repository["id"], brief="Retain an in-flight cancellation", agent="bridge", skills=[])
+    )
+    model = providers.BridgeProvider(
+        {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
+    ).model()
+    await model.client._client.aclose()
+    submitted = asyncio.Event()
+    blocked = asyncio.Event()
+    requests = []
+
+    async def respond(request):
+        requests.append(request)
+        submitted.set()
+        await blocked.wait()
+        raise AssertionError("This request never returns a response")
+
+    model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+
+    class OfflineWorker:
+        async def execute(self, workspace, *args):
+            (workspace / "partial.txt").write_text("Retain cancelled original work")
+            await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters())
+
+    journal = Journal(store)
+    engine = Engine(store, tmp_path / "workspaces", lambda _: OfflineWorker(), journal=journal)
+    execution = asyncio.create_task(engine.execute_run(run["id"]))
+    engine.active[run["id"]] = execution
+    try:
+        await asyncio.wait_for(submitted.wait(), 10)
+        run_ids = {item["id"] for item in await store.runs()}
+        await engine.cancel_effect(run["id"])
+        assert execution.done() and execution.cancelled()
+        held = await store.get_run(run["id"])
+        assert held["status"] == "cancelled"
+        assert held["pause"]["kind"] == "provider_outcome_unknown"
+        assert held["pause"]["automatic"] is False and held["pause"]["retry_at"] is None
+        entries = await journal.entries(run["id"])
+        intents = [item for item in entries if item["task_id"] == "implement" and item["kind"] == "intent"]
+        errors = [item for item in entries if item["task_id"] == "implement" and item["kind"] == "error"]
+        assert len(intents) == len(errors) == len(requests) == 1
+        assert intents[0]["idempotency_key"] == errors[0]["idempotency_key"]
+        assert errors[0]["payload"]["kind"] == "provider_outcome_unknown"
+        assert "provider_observation" not in errors[0]["payload"]
+        assert Journal.verify_chain(entries)
+        reopened_store = await store_factory(store.path)
+        reopened = Journal(reopened_store)
+        assert await reopened.recover() == 0
+        with pytest.raises(ValueError, match="Bridge.*reconcil"):
+            await RunService(reopened_store, engine).retry(run["id"])
+        with pytest.raises(ValueError, match="Bridge.*reconcil"):
+            await reopened.resume(run["id"])
+        assert {item["id"] for item in await reopened_store.runs()} == run_ids
+        assert await reopened.entries(run["id"]) == entries
+        assert await reopened_store.get_run(run["id"]) == held
+        assert len(requests) == 1
+        assert (engine.workspaces / run["id"] / "partial.txt").read_text() == "Retain cancelled original work"
+    finally:
+        if not execution.done():
+            execution.cancel()
+            await asyncio.gather(execution, return_exceptions=True)
+        await model.client.close()

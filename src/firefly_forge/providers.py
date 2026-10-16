@@ -72,6 +72,10 @@ class ProviderOutcomeUnknown(ProviderError):
         self.observation = observation or {}
 
 
+class ProviderSubmissionCancelled(asyncio.CancelledError):
+    """Local cancellation cannot establish the outcome of an attempted Bridge submission."""
+
+
 def _bridge_failure(exc: Exception) -> ProviderError | None:
     from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 
@@ -507,11 +511,27 @@ class BridgeProvider(ConfiguredProvider):
         ):
             headers["X-Bridge-Image-Revision"] = revision
 
+        class BridgeClient(AsyncOpenAI):
+            async def _send_request(self, request: Any, **kwargs: Any) -> Any:
+                try:
+                    return await super()._send_request(request, **kwargs)
+                except asyncio.CancelledError as exc:
+                    if request.method == "POST" and request.url.path.rstrip("/").endswith("/chat/completions"):
+                        raise ProviderSubmissionCancelled(
+                            "Bridge submission cancelled before its outcome was known"
+                        ) from exc
+                    raise
+
         class BridgeStreamedResponse(OpenAIStreamedResponse):
+            bridge_complete = False
+
             async def _get_event_iterator(self) -> AsyncIterator[Any]:
                 try:
                     async for event in super()._get_event_iterator():
                         yield event
+                    self.bridge_complete = True
+                except asyncio.CancelledError as exc:
+                    raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
                 except Exception as exc:
                     raise (
                         _bridge_failure(exc)
@@ -536,6 +556,8 @@ class BridgeProvider(ConfiguredProvider):
             async def _process_streamed_response(self, *args: Any, **kwargs: Any) -> Any:
                 try:
                     return await super()._process_streamed_response(*args, **kwargs)
+                except asyncio.CancelledError as exc:
+                    raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
                 except Exception as exc:
                     raise (
                         _bridge_failure(exc)
@@ -554,9 +576,16 @@ class BridgeProvider(ConfiguredProvider):
 
             @asynccontextmanager
             async def request_stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+                stream = None
                 try:
                     async with super().request_stream(*args, **kwargs) as stream:
                         yield stream
+                except ProviderSubmissionCancelled:
+                    raise
+                except asyncio.CancelledError as exc:
+                    if stream is not None and not getattr(stream, "bridge_complete", False):
+                        raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
+                    raise
                 except Exception as exc:
                     if failure := _bridge_failure(exc):
                         raise failure from exc
@@ -565,7 +594,7 @@ class BridgeProvider(ConfiguredProvider):
         return BridgeChatModel(
             name,
             provider=OpenAIProvider(
-                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
+                openai_client=BridgeClient(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
             ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
