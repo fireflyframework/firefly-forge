@@ -130,7 +130,9 @@ async def test_known_bridge_pause_remains_manual_after_native_store_restart(stor
     assert Journal.verify_chain(entries)
 
 
-async def test_cancelled_inflight_bridge_submission_survives_restart_without_retry(store, store_factory, tmp_path):
+async def test_cancelled_inflight_bridge_submission_survives_restart_without_retry(
+    store, store_factory, tmp_path, monkeypatch
+):
     from firefly_forge.controllers import RunService
 
     source = await seed_repository(tmp_path / "source")
@@ -138,9 +140,10 @@ async def test_cancelled_inflight_bridge_submission_survives_restart_without_ret
     run = await store.create_run(
         RunInput(repository_id=repository["id"], brief="Retain an in-flight cancellation", agent="bridge", skills=[])
     )
-    model = providers.BridgeProvider(
+    provider = providers.BridgeProvider(
         {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
-    ).model()
+    )
+    model = provider.model()
     await model.client._client.aclose()
     submitted = asyncio.Event()
     blocked = asyncio.Event()
@@ -148,19 +151,16 @@ async def test_cancelled_inflight_bridge_submission_survives_restart_without_ret
 
     async def respond(request):
         requests.append(request)
+        (engine.workspaces / run["id"] / "partial.txt").write_text("Retain cancelled original work")
         submitted.set()
         await blocked.wait()
         raise AssertionError("This request never returns a response")
 
     model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
 
-    class OfflineWorker:
-        async def execute(self, workspace, *args):
-            (workspace / "partial.txt").write_text("Retain cancelled original work")
-            await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters())
-
+    monkeypatch.setattr(provider, "model", lambda **kwargs: model)
     journal = Journal(store)
-    engine = Engine(store, tmp_path / "workspaces", lambda _: OfflineWorker(), journal=journal)
+    engine = Engine(store, tmp_path / "workspaces", lambda _: provider, journal=journal)
     execution = asyncio.create_task(engine.execute_run(run["id"]))
     engine.active[run["id"]] = execution
     try:
