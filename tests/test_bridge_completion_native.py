@@ -7,11 +7,13 @@ is not part of the author's executed host qualification.
 
 import copy
 import hashlib
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from uuid import UUID, uuid4
 
+import httpx
 import httpx2
 import pytest
+from pydantic_ai.models import override_allow_model_requests
 from test_bridge_completion_callbacks import CAPABILITY
 from test_identity import fixture as oidc_fixture
 from test_identity import request as identity_request
@@ -25,6 +27,26 @@ from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, Projec
 from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.projects import Projects
 from firefly_forge.providers import BridgeProvider
+
+
+@contextmanager
+def mock_model_requests(model):
+    client = model.client._client
+    if type(client._transport) is not httpx2.MockTransport or client._mounts:
+        raise AssertionError("Scoped model permission requires the installed mock and no mounted transports")
+
+    async def refuse_async_network(*args, **kwargs):
+        raise AssertionError("Native completion fixture forbids real HTTP transport")
+
+    def refuse_sync_network(*args, **kwargs):
+        raise AssertionError("Native completion fixture forbids real HTTP transport")
+
+    with pytest.MonkeyPatch.context() as patch:
+        for module in (httpx, httpx2):
+            patch.setattr(module.AsyncHTTPTransport, "handle_async_request", refuse_async_network)
+            patch.setattr(module.HTTPTransport, "handle_request", refuse_sync_network)
+        with override_allow_model_requests(True):
+            yield
 
 
 @asynccontextmanager
@@ -172,7 +194,11 @@ async def test_native_ambient_transaction_refuses_before_capability_or_post(stor
         model.client._client._mounts = {}
         try:
             async with store._unit():
-                with bridge_completion_scope(scope), pytest.raises(ValueError, match="active caller transaction"):
+                with (
+                    mock_model_requests(model),
+                    bridge_completion_scope(scope),
+                    pytest.raises(ValueError, match="active caller transaction"),
+                ):
                     await call(model)
             assert calls == []
             assert not any(entry["kind"] == INTENT for entry in await journal.entries(run["id"]))
@@ -272,7 +298,7 @@ async def test_native_sdk_transport_sees_committed_original_intent_before_one_po
         model.client._client._transport = httpx2.MockTransport(respond)
         model.client._client._mounts = {}
         try:
-            with bridge_completion_scope(scope), pytest.raises(ProviderOutcomeUnknown):
+            with mock_model_requests(model), bridge_completion_scope(scope), pytest.raises(ProviderOutcomeUnknown):
                 await call(model)
             assert len(requests) == 1
             assert (await store.get_run(run["id"]))["bridge_completion_hold"]["request_id"] == requests[0].headers[
