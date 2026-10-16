@@ -455,7 +455,11 @@ test("missing browser coordination holds the original form without storage or di
     Object.defineProperty(navigator, "locks", { value: undefined }),
   );
   await page.getByRole("button", { name: "Send answer", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
+  await expect(
+    page
+      .getByRole("region", { name: "Agent questions and answers", exact: true })
+      .getByRole("alert"),
+  ).toHaveText(
     "This browser cannot safely coordinate answer requests across tabs. Use a supported browser on HTTPS or localhost, then check the original conversation before continuing. No answer was sent.",
   );
   expect(
