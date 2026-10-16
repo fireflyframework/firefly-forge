@@ -9,7 +9,11 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 Administrators can record separate consent for a mapped source-control user to request continuation after answering an agent's question. A three-step review covers the mapping, component scope and consent. Studio retains the original request before one POST and confirms it through its exact receipt; a lost response or missing receipt blocks a replacement request. Consent alone does not resume work. Signed ingress still checks the answered question, current permissions, original execution identity, frozen plan and WAL before admitting continuation of the same run. See [source-control consent](scm.md) and [SDK, CLI and MCP operations](agent-integrations.md#consent-to-signed-same-run-resume).
 
-Bridge inference calls no longer use the SDK's automatic retries. A structured quota limit or context pause requires deliberate recovery. An ambiguous transport or stream outcome keeps the original intent as needing reconciliation; generic resume and handoff refuse that state. This prevents an unknown outcome from being presented as a successful or failed execution. Automatic recovery of the same Bridge job remains separate work. See [agent failure and recovery](agents.md).
+Bridge inference calls no longer use the SDK's automatic retries. A structured quota limit or context pause requires deliberate recovery. An ambiguous transport or completion outcome keeps the original intent for reconciliation. Cancellation while a submission is unfinished also retains that hold: stopping the local agent does not establish what happened at the bridge. Resume, handoff and Retry run refuse the unresolved outcome, including after cancellation or interruption. Automatic recovery of the same Bridge job remains separate work. See [agent failure and recovery](agents.md).
+
+Explicit manual continuation preserves the original retry-counter shape, including when the run has no counter. Automatic retries still increment their counter. This keeps the run consistent with the source-control consent review.
+
+The factory overview uses a compact heading and responsive production scene. Select a project and run to inspect recorded stages; open **How stages work** for the full guide. Stage details remain reachable through the page on a phone.
 
 ## 0.2.17
 

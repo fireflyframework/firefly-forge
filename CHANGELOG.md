@@ -8,7 +8,9 @@
 - Guide consent and revocation through a three-step Studio review with retained-request recovery, exact receipt checks and coordination between browser tabs.
 - Expose consent save, exact read and current read through the SDK, CLI and three native-template-backed MCP tools; keep existing V1 delegation contracts unchanged.
 - Suppress automatic Bridge inference retries and retain structured quota/context pauses for deliberate recovery.
-- Retain ambiguous Bridge transport outcomes as needing reconciliation, preserving the original intent and refusing generic resume or handoff.
+- Retain ambiguous Bridge transport, completion and cancellation outcomes for reconciliation, preserving the original intent and refusing generic resume, handoff or replacement retry.
+- Preserve an absent retry counter during explicit manual continuation, keeping the reviewed run unchanged while automatic retries retain their existing counter.
+- Keep the production scene, project and run selectors within the responsive factory overview, with stage details and the full guide available below.
 
 ## 0.2.17 — 2026-10-15
 
