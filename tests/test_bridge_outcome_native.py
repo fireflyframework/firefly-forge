@@ -81,6 +81,20 @@ async def test_unusable_bridge_completion_survives_store_restart_without_resubmi
         assert (
             engine.workspaces / run["id"] / "partial.txt"
         ).read_text() == "Retain partial source until reconciliation"
+        from firefly_forge.controllers import RunService
+
+        run_ids = {value["id"] for value in await store.runs()}
+        await engine.cancel_effect(run["id"])
+        cancelled = await store.get_run(run["id"])
+        assert cancelled["status"] == "cancelled"
+        assert cancelled["pause"] == held["pause"]
+        with pytest.raises(ValueError, match="Bridge.*reconcil"):
+            await RunService(store, engine).retry(run["id"])
+        await engine.execute_run(run["id"])
+        assert len(submissions) == 1
+        assert {value["id"] for value in await store.runs()} == run_ids
+        assert await journal.entries(run["id"]) == entries
+        assert await store.get_run(run["id"]) == cancelled
     finally:
         await model.client.close()
 
