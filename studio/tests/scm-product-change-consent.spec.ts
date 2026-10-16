@@ -406,6 +406,24 @@ for (const viewport of [
       });
       expect(visible.top).toBeGreaterThanOrEqual(visible.ownerTop);
       expect(visible.bottom).toBeLessThanOrEqual(visible.ownerBottom);
+      if (viewport.width <= 480) {
+        const actions = await save.evaluate((node) => {
+          const primary = node.getBoundingClientRect();
+          const secondary = node
+            .parentElement!.querySelector("button.secondary")!
+            .getBoundingClientRect();
+          return {
+            primaryTop: primary.top,
+            primaryLeft: primary.left,
+            secondaryBottom: secondary.bottom,
+            secondaryLeft: secondary.left,
+          };
+        });
+        expect(actions.primaryTop).toBeGreaterThanOrEqual(
+          actions.secondaryBottom,
+        );
+        expect(actions.primaryLeft).toBeCloseTo(actions.secondaryLeft, 1);
+      }
       await save.focus();
       await expect(save).toBeFocused();
       await page.screenshot({
