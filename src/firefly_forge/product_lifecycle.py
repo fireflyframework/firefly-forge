@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -276,9 +277,104 @@ class ProductLifecycle:
             raise ValueError("Save an initial product definition before requesting a feature change")
         return self._prepare(previous, request)
 
+    async def prepare(self, repository_id: str, request: FeatureChangeInput, *, previous: Data | None = None) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        from firefly_forge.collaboration import ProductDefinition
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare product changes outside a caller transaction")
+        request = FeatureChangeInput.model_validate(request.model_dump(mode="json", warnings=False), strict=True)
+        await self.store.admit_credentials(request.model_dump(mode="json"))
+        previous = previous if previous is not None else await self.collaboration.product(repository_id)
+        if previous is None:
+            raise ValueError("Save an initial product definition before requesting a feature change")
+        prepared = self._prepare(previous, request)
+        definition = ProductDefinition.model_validate(prepared["definition"])
+        origin = await validate_origin(self.store, repository_id, definition)
+        result = {"request_digest": content_digest(request.model_dump()), "prepared": prepared, "origin": origin}
+        if len(json.dumps(result, ensure_ascii=False).encode()) > 1024 * 1024:
+            raise ValueError("The prepared product change exceeds 1 MiB")
+        await self.store.admit_credentials(result)
+        result["digest"] = content_digest(result)
+        return result
+
+    async def apply_prepared_locked(
+        self, repository_id: str, request: FeatureChangeInput, prepared: Data, *, actor_id: UUID
+    ) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        from firefly_forge.collaboration import ProductDefinition
+
+        if current_unit_of_work() is None:
+            raise ValueError("A prepared product change requires the native caller transaction and repository lock")
+        request = FeatureChangeInput.model_validate(request.model_dump(mode="json", warnings=False), strict=True)
+        request_digest = content_digest(request.model_dump())
+        if prepared.get("request_digest") != request_digest or content_digest(
+            {key: value for key, value in prepared.items() if key != "digest"}
+        ) != prepared.get("digest"):
+            raise ValueError("The prepared product change binding changed")
+        await self.collaboration._repo_lock(repository_id)
+        replay = await self.collaboration.products.find_change(identifier(repository_id), request.request_id)
+        if replay is not None:
+            retained = replay.data
+            if (
+                retained["change_receipt"]["request_digest"] != request_digest
+                or retained["change_receipt"].get("actor_id") != actor_id.hex
+                or content_digest({k: v for k, v in retained.items() if k != "digest"}) != retained.get("digest")
+            ):
+                raise ValueError("Product change replay belongs to another actor or request")
+            self.store.reject_credentials(retained)
+            return copy.deepcopy(retained)
+        previous = await self.collaboration.products.find_current(identifier(repository_id))
+        if previous is None or self._prepare(previous.data, request) != prepared["prepared"]:
+            raise ValueError("The prepared product base changed")
+        definition = ProductDefinition.model_validate(prepared["prepared"]["definition"])
+        if await validate_origin(self.store, repository_id, definition) != prepared["origin"]:
+            raise ValueError("The prepared product origin changed")
+        self.store.reject_credentials({"request": request.model_dump(), "prepared": prepared})
+        result = await self._save_prepared(repository_id, request, prepared["prepared"], prepared["origin"], actor_id)
+        if len(json.dumps(result, ensure_ascii=False).encode()) > 1024 * 1024:
+            raise ValueError("The saved product change exceeds 1 MiB")
+        self.store.reject_credentials(result)
+        return result
+
+    async def _save_prepared(
+        self, repository_id: str, request: FeatureChangeInput, prepared: Data, origin: Data, actor_id: UUID | None
+    ) -> Data:
+        from firefly_forge.collaboration_persistence import ForgeProductDefinitionEntity
+
+        data = {
+            "repository_id": repository_id,
+            "revision": request.base_revision + 1,
+            "definition": copy.deepcopy(prepared["definition"]),
+            "created_at": now(),
+            "origin": origin,
+            "change_receipt": {
+                "request_id": request.request_id,
+                "request_digest": content_digest(request.model_dump()),
+                "base_revision": request.base_revision,
+                "base_digest": request.base_digest,
+                "actor_id": actor_id.hex if actor_id else None,
+                "reason": request.reason,
+                "impact": prepared["impact"],
+                "implementation_status": "not_started",
+            },
+        }
+        data["digest"] = content_digest(data)
+        await self.collaboration.products.save(
+            ForgeProductDefinitionEntity(
+                id=uuid4(),
+                repository_id=identifier(repository_id),
+                revision=data["revision"],
+                digest=data["digest"],
+                data=data,
+            )
+        )
+        return copy.deepcopy(data)
+
     async def apply(self, repository_id: str, request: FeatureChangeInput, *, actor_id: UUID | None = None) -> Data:
         from firefly_forge.collaboration import ProductDefinition
-        from firefly_forge.collaboration_persistence import ForgeProductDefinitionEntity
 
         await self.store.admit_credentials(request.model_dump())
         request_digest = content_digest(request.model_dump())
@@ -296,31 +392,4 @@ class ProductLifecycle:
             definition = ProductDefinition.model_validate(prepared["definition"])
             await self.store.admit_credentials(definition.model_dump())
             origin = await validate_origin(self.store, repository_id, definition)
-            data = {
-                "repository_id": repository_id,
-                "revision": previous.revision + 1,
-                "definition": definition.model_dump(mode="json"),
-                "created_at": now(),
-                "origin": origin,
-                "change_receipt": {
-                    "request_id": request.request_id,
-                    "request_digest": request_digest,
-                    "base_revision": request.base_revision,
-                    "base_digest": request.base_digest,
-                    "actor_id": actor_id.hex if actor_id else None,
-                    "reason": request.reason,
-                    "impact": prepared["impact"],
-                    "implementation_status": "not_started",
-                },
-            }
-            data["digest"] = content_digest(data)
-            await self.collaboration.products.save(
-                ForgeProductDefinitionEntity(
-                    id=uuid4(),
-                    repository_id=identifier(repository_id),
-                    revision=data["revision"],
-                    digest=data["digest"],
-                    data=data,
-                )
-            )
-            return copy.deepcopy(data)
+            return await self._save_prepared(repository_id, request, prepared, origin, actor_id)
