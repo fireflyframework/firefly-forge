@@ -477,7 +477,7 @@ class BridgeProvider(ConfiguredProvider):
 
     def model(self, *, image_capability: dict[str, Any] | None = None) -> Any:
         from openai import AsyncOpenAI
-        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.models.openai import OpenAIChatModel, OpenAIStreamedResponse
         from pydantic_ai.profiles.openai import OpenAIModelProfile
         from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -507,7 +507,43 @@ class BridgeProvider(ConfiguredProvider):
         ):
             headers["X-Bridge-Image-Revision"] = revision
 
+        class BridgeStreamedResponse(OpenAIStreamedResponse):
+            async def _get_event_iterator(self) -> AsyncIterator[Any]:
+                try:
+                    async for event in super()._get_event_iterator():
+                        yield event
+                except Exception as exc:
+                    raise (
+                        _bridge_failure(exc)
+                        or ProviderOutcomeUnknown(
+                            "Bridge returned an unusable stream; reconcile the retained job before continuing"
+                        )
+                    ) from exc
+
         class BridgeChatModel(OpenAIChatModel):
+            @property
+            def _streamed_response_cls(self) -> type[OpenAIStreamedResponse]:
+                return BridgeStreamedResponse
+
+            def _process_response(self, *args: Any, **kwargs: Any) -> Any:
+                try:
+                    return super()._process_response(*args, **kwargs)
+                except Exception as exc:
+                    raise ProviderOutcomeUnknown(
+                        "Bridge returned an unusable response; reconcile the retained job before continuing"
+                    ) from exc
+
+            async def _process_streamed_response(self, *args: Any, **kwargs: Any) -> Any:
+                try:
+                    return await super()._process_streamed_response(*args, **kwargs)
+                except Exception as exc:
+                    raise (
+                        _bridge_failure(exc)
+                        or ProviderOutcomeUnknown(
+                            "Bridge returned an unusable stream; reconcile the retained job before continuing"
+                        )
+                    ) from exc
+
             async def request(self, *args: Any, **kwargs: Any) -> Any:
                 try:
                     return await super().request(*args, **kwargs)

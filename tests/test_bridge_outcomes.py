@@ -414,3 +414,164 @@ async def test_assurance_keeps_bridge_outcome_on_the_original_review_intent(tmp_
     assert entry["payload"]["provider_observation"] == {"job_id": JOB}
     assert entry["payload"]["automatic"] is False
     assert task.status == ("needs_reconciliation" if kind == "provider_outcome_unknown" else "paused")
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["invalid-response-json", "empty-response-stream"])
+async def test_bridge_unusable_success_response_retains_unknown_outcome(stream):
+    model = providers.BridgeProvider(
+        {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
+    ).model()
+    await model.client._client.aclose()
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        if stream:
+            return httpx2.Response(200, headers={"content-type": "text/event-stream"}, text="data: [DONE]\n\n")
+        return httpx2.Response(200, json={"id": "fictional", "choices": "unusable"})
+
+    model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+    try:
+        with pytest.raises(providers.ProviderOutcomeUnknown) as caught:
+            if stream:
+                async with model.request_stream(
+                    [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+                ):
+                    pytest.fail("An empty stream cannot provide a completion")
+            else:
+                await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters())
+        assert providers.classify_provider_failure(caught.value) == ("provider_outcome_unknown", None)
+        assert caught.value.observation == {}
+        assert len(calls) == 1
+        assert model.client.max_retries == 0
+    finally:
+        await model.client.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_bridge_pre_submit_validation_does_not_claim_unknown_outcome(stream):
+    from pydantic_ai.exceptions import UserError
+    from pydantic_ai.native_tools import WebSearchTool
+
+    model = providers.BridgeProvider(
+        {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
+    ).model()
+    await model.client._client.aclose()
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        pytest.fail("Invalid input must not submit a request")
+
+    model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+    parameters = ModelRequestParameters(native_tools=[WebSearchTool()])
+    try:
+        with pytest.raises(UserError, match="WebSearchTool is not supported") as caught:
+            if stream:
+                async with model.request_stream([ModelRequest(parts=[UserPromptPart("Offline")])], None, parameters):
+                    pytest.fail("Invalid native tools cannot produce a stream")
+            else:
+                await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, parameters)
+        assert providers.classify_provider_failure(caught.value) is None
+        assert calls == []
+    finally:
+        await model.client.close()
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["invalid-response-json", "empty-response-stream"])
+async def test_unusable_bridge_response_reaches_engine_original_journal_intent(tmp_path, monkeypatch, stream):
+    store = MemoryStore()
+    store.run.data.update(agent="bridge", repair_budget=0, resume_existing=True, repository_id=UUID(int=2).hex)
+    task = SimpleNamespace(task_id="implement", status="running", data={"idempotency_key": "original"})
+    journal = Journal(store, tasks=Rows([task]), records=Rows([]))
+    engine = Engine(store, tmp_path, journal=journal)
+    workspace = tmp_path / UUID(int=1).hex
+    workspace.mkdir()
+    (workspace / "retained.txt").write_text("Retained partial work")
+    model = providers.BridgeProvider(
+        {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
+    ).model()
+    await model.client._client.aclose()
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        if stream:
+            return httpx2.Response(200, headers={"content-type": "text/event-stream"}, text="data: [DONE]\n\n")
+        return httpx2.Response(200, json={"id": "fictional", "choices": "unusable"})
+
+    model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+
+    async def repository(repository_id):
+        return {"url": "fictional"}
+
+    async def intent(*args):
+        return {"idempotency_key": "original", "disposition": "completed"}
+
+    async def inspect(*args):
+        if stream:
+            async with model.request_stream(
+                [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+            ):
+                pytest.fail("An empty stream cannot provide a completion")
+        else:
+            await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters())
+
+    store.repository = repository
+    monkeypatch.setattr(engine, "_begin_task", intent)
+    monkeypatch.setattr(engine, "_inspect_workspace", inspect)
+    try:
+        await engine.execute_run(UUID(int=1).hex)
+        assert store.finished == []
+        assert task.status == store.run.status == "needs_reconciliation"
+        assert task.data["idempotency_key"] == "original"
+        assert (workspace / "retained.txt").read_text() == "Retained partial work"
+        assert len(journal.records.rows) == len(calls) == 1
+        error = journal.records.rows[0].data
+        assert error["idempotency_key"] == "original"
+        assert error["payload"]["kind"] == "provider_outcome_unknown"
+        assert error["payload"]["automatic"] is False and error["payload"]["retry_at"] is None
+        with pytest.raises(ValueError, match="Bridge.*reconcil"):
+            await journal.resume(UUID(int=1).hex)
+        assert len(calls) == 1
+    finally:
+        await model.client.close()
+
+
+async def test_bridge_partial_stream_decoding_failure_is_unknown_not_consumer_failure():
+    model = providers.BridgeProvider(
+        {"FORGE_BRIDGE_URL": "http://localhost:19191", "FORGE_BRIDGE_TOKEN": "fictional"}
+    ).model()
+    await model.client._client.aclose()
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        return httpx2.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text='data: {"id":"fictional","model":"bridge/default","created":1,'
+            '"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n'
+            'data: {"id":"fictional","model":"bridge/default","created":1,"choices":"unusable"}\n\n'
+            "data: [DONE]\n\n",
+        )
+
+    model.client._client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+    try:
+        with pytest.raises(providers.ProviderOutcomeUnknown):
+            async with model.request_stream(
+                [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+            ) as response:
+                async for _ in response:
+                    pass
+        assert len(calls) == 1
+        consumer_error = ValueError("Local consumer did not accept the response")
+        with pytest.raises(ValueError) as caught:
+            async with model.request_stream(
+                [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+            ):
+                raise consumer_error
+        assert caught.value is consumer_error
+        assert len(calls) == 2
+    finally:
+        await model.client.close()
