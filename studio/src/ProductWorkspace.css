@@ -96,7 +96,7 @@
   border-radius: 12px;
   background: var(--surface);
   padding: 16px;
-  container: product-assistant / inline-size;
+  container: product-assistant / size;
   overflow: hidden;
 }
 .product-assistant-panel .product-assistant {
@@ -277,6 +277,16 @@
   margin: 0;
   order: 1;
   display: none;
+}
+@container product-assistant (max-height: 480px) {
+  .product-assistant .assistant-composer {
+    gap: 4px;
+    padding-top: 4px;
+  }
+  .product-assistant .assistant-composer textarea {
+    min-height: 40px;
+    height: 40px;
+  }
 }
 .assistant-empty {
   font-size: 14px;
