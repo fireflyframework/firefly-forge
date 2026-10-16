@@ -99,6 +99,11 @@ async function setup(page: Page, reader = false) {
     name: "Same-run resume consent",
     exact: true,
   });
+  await expect(
+    page
+      .getByRole("region", { name: "Exact delegation receipt", exact: true })
+      .getByRole("region", { name: "Same-run resume consent", exact: true }),
+  ).toHaveCount(0);
   await expect(panel).toBeVisible();
   return { state, panel, v1state, binding };
 }

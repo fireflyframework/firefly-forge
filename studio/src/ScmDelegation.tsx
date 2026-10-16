@@ -808,14 +808,16 @@ export function ScmDelegation({
           <button className="secondary" onClick={() => setReceipt(null)}>
             Close receipt
           </button>
-          <ScmResumeConsent
-            connection={connection}
-            session={session}
-            project={project}
-            binding={receipt}
-            personName={known(receipt.request.native_user_id)}
-          />
         </section>
+      )}
+      {receipt && (
+        <ScmResumeConsent
+          connection={connection}
+          session={session}
+          project={project}
+          binding={receipt}
+          personName={known(receipt.request.native_user_id)}
+        />
       )}
       {open && (
         <dialog
