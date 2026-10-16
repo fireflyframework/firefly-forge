@@ -1507,13 +1507,14 @@ def knowledge() -> None:
 @knowledge.command("bootstrap")
 @click.option("--data-dir", type=click.Path(path_type=Path), required=True)
 @click.option("--service-dir", type=click.Path(path_type=Path), required=True)
-def knowledge_bootstrap(data_dir: Path, service_dir: Path) -> None:
+@click.option("--endpoint", help="New installation only: HTTPS loopback URL for the local knowledge service")
+def knowledge_bootstrap(data_dir: Path, service_dir: Path, endpoint: str | None) -> None:
     """Create one-time private service credentials without resetting existing settings."""
     from firefly_forge.configuration import ConfigurationStore
     from firefly_forge.managed_knowledge import bootstrap_knowledge
 
     try:
-        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir)
+        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir, endpoint=endpoint)
         if result["state"] == "external":
             raise ValueError(
                 "Existing knowledge settings retained; use the existing service instead of the managed stack"

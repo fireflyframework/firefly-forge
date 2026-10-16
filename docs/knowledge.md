@@ -74,6 +74,27 @@ Initialization checks embedding-backed retrieval against the admitted sources. I
 
 Compose runs bootstrap and initialization for the managed setup. Keep the original service bundle with the installation: repeated bootstrap preserves its credentials and validates the files. Repeated initialization reuses recorded source IDs and checks matching server receipts. A source admission with an unknown outcome and no matching server evidence blocks repetition. A missing or changed managed bundle requires restoration of its original files. Bootstrap refuses an existing externally configured knowledge connection and keeps its settings intact. Continue operating that service through its existing deployment, or plan an explicit migration after backing up the retained configuration and data. The managed Compose bootstrap cannot invent credentials for an external service. Keep private keys, passwords and connection revisions outside Git and product workspaces.
 
+### Initialize a new managed connection on the host
+
+When forge and an existing local flycanon runtime run directly on the host, select its HTTPS loopback address at first bootstrap:
+
+```sh
+forge knowledge bootstrap --data-dir .forge --service-dir .forge-knowledge \
+  --endpoint https://127.0.0.1:8500
+```
+
+The option accepts a literal loopback IP or `localhost`, with HTTPS and a valid port. Bootstrap creates a matching IP/DNS certificate and saves its private CA with the connection. Hostname and CA verification remain enabled. The default Compose endpoint remains `https://knowledge:8500` when the option is omitted on a new installation.
+
+Bootstrap prepares credentials and configuration; it starts no server and acquires no database, embedding model or runtime. Start the approved flycanon runtime on that exact loopback address using the generated `server.crt` and `server.key`. Configure its platform API key from the private `service.json`, its dedicated PostgreSQL/pgvector connection and its available local embedding backend. The bundle's database URL targets the Compose service; a host deployment supplies its actual private database URL through flycanon's standard configuration without editing the issued bundle. Keep original-object storage separate from other corpora.
+
+Once the authenticated TLS service and its dependencies are running, use the same initializer:
+
+```sh
+forge knowledge initialize --data-dir .forge
+```
+
+Check the returned source citations before starting work. Authentication or a version response alone does not establish retrieval. A later bootstrap without `--endpoint` preserves the saved host address. A different endpoint, CA or issued API key is refused without rewriting configuration or rotating credentials. Restore the original installation or review an explicit migration; retrying bootstrap is not a connection editor. Other saved settings and frozen run revisions remain intact.
+
 ## Upgrade or use an existing Flycanon service
 
 Before upgrading, back up factory state and Flycanon data together. An existing connection keeps its endpoint, keys, framework workspace and previous `required` / `auto_memory` settings. Review those settings in **Knowledge**; a restart does not silently replace an external service or rewrite an admitted run's snapshots.
