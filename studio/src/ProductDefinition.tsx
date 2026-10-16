@@ -33,6 +33,12 @@ import {
   type ProductDesignReview,
   type Repository,
 } from "./api";
+import {
+  ProductDraftBook,
+  type ProductDraftSession,
+  useProductDraftField,
+  useProductDraftSession,
+} from "./ProductDrafts";
 import { repositoryLabels } from "./RepositoryLabels";
 import { TextFileInput, validateSvgText } from "./TextFileInput";
 import {
@@ -115,7 +121,11 @@ export function ProductDefinition({
   logicalProject,
   onConfigure,
   onStart,
+  drafts,
+  onRepositoryChange,
 }: {
+  drafts?: ProductDraftBook;
+  onRepositoryChange?: (repositoryId: string) => void;
   connection: Connection;
   connected: boolean;
   repositories: Repository[];
@@ -132,35 +142,52 @@ export function ProductDefinition({
     selected && labels.get(selected.id) !== selected.name
       ? labels.get(selected.id)?.slice(selected.name.length + 3)
       : null;
-  const [snapshot, setSnapshot] = useState<ProductSnapshot | null>(null);
-  const [brand, setBrand] = useState<ProductBrand | null>(null);
-  const [loaded, setLoaded] = useState("");
+  const [fallbackDrafts] = useState(() => new ProductDraftBook());
+  const book = drafts ?? fallbackDrafts;
+  const id = selected?.id;
+  const session = useProductDraftSession(book, id ?? "");
+  const [discarding, setDiscarding] = useState(false);
+  const [snapshot, setSnapshot] = useState<ProductSnapshot | null>(
+    () => session.base,
+  );
+  const [brand, setBrand] = useState<ProductBrand | null>(() => session.brand);
+  const [loaded, setLoaded] = useState(session.observed ? (id ?? "") : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const revision = 0;
-  const [draftSource, setDraftSource] = useState<AIProposalProvenance | null>(
-      null,
-    ),
-    [dirty, setDirty] = useState(false),
-    [savedDraft, setSavedDraft] = useState(false),
-    [reveal, setReveal] = useState(0),
-    [sourceTarget, setSourceTarget] = useState<
-      { conversation_id: string; turn_id: string } | undefined
-    >(),
-    [pendingProposal, setPendingProposal] = useState<DraftProposal | null>(
-      null,
-    );
+  const [draftSource] = useProductDraftField<AIProposalProvenance | null>(
+    session,
+    "draftSource",
+    null,
+  );
+  const [dirty, setDirty] = useProductDraftField(session, "dirty", false);
+  const [savedDraft] = useProductDraftField(session, "savedDraft", false);
+  const [saving] = useProductDraftField(session, "busy", false);
+  const [reveal, setReveal] = useState(0);
+  const [sourceTarget, setSourceTarget] = useState<{
+    conversation_id: string;
+    turn_id: string;
+  }>();
+  const [pendingProposal, setPendingProposal] = useState<DraftProposal | null>(
+    null,
+  );
   const [stepPrompt, setStepPrompt] = useState<{ id: number; text: string }>();
   const promptCount = useRef(0);
   const reader = useRef<(() => CustomerProductDefinition) | null>(null);
-  const [draft, setDraft] = useState<CustomerProductDefinition | null>(null);
+  const [draft] = useProductDraftField<CustomerProductDefinition | null>(
+    session,
+    "draft",
+    null,
+  );
   const [editorKey, setEditorKey] = useState(0);
-  const id = selected?.id;
   const currentProject = useRef(id);
   currentProject.current = id;
   useEffect(() => {
     if (!connected || !id) return;
     const controller = new AbortController();
+    setSnapshot(session.base);
+    setBrand(session.brand);
+    setLoaded(session.observed ? id : "");
     setLoading(true);
     Promise.all([
       request<ProductSnapshot | null>(
@@ -174,8 +201,9 @@ export function ProductDefinition({
     ])
       .then(([product, kit]) => {
         if (!controller.signal.aborted) {
-          setSnapshot(product);
-          setBrand(kit);
+          session.observe(product, kit);
+          setSnapshot(session.base);
+          setBrand(session.brand);
           setLoaded(id);
           setError("");
         }
@@ -187,7 +215,7 @@ export function ProductDefinition({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [connection, connected, id, revision]);
+  }, [connection, connected, id, revision, session]);
   return (
     <section className="product-definition">
       {(!connected || !selected) && (
@@ -253,11 +281,10 @@ export function ProductDefinition({
                         value={selected.id}
                         onChange={(event) => {
                           setProject(event.target.value);
-                          setDraft(null);
                           setStepPrompt(undefined);
-                          setDraftSource(null);
-                          setDirty(false);
-                          setSavedDraft(false);
+                          setPendingProposal(null);
+                          setDiscarding(false);
+                          onRepositoryChange?.(event.target.value);
                           setSourceTarget(undefined);
                           reader.current = null;
                         }}
@@ -281,13 +308,15 @@ export function ProductDefinition({
                   <ProductOrigin
                     source={
                       draftSource ??
-                      (snapshot?.origin?.kind === "ai_assisted"
+                      (loaded === id && snapshot?.origin?.kind === "ai_assisted"
                         ? snapshot.origin
                         : null)
                     }
-                    saved={savedDraft || Boolean(!draft && snapshot)}
+                    saved={
+                      savedDraft || Boolean(!draft && loaded === id && snapshot)
+                    }
                     dirty={dirty}
-                    revision={snapshot?.revision}
+                    revision={loaded === id ? snapshot?.revision : undefined}
                     onSource={() => {
                       const origin = draftSource ?? snapshot?.origin;
                       if (origin?.conversation_id && origin.turn_id) {
@@ -300,18 +329,41 @@ export function ProductDefinition({
                     }}
                   />
                 </div>
+                {(dirty || session.stale) && (
+                  <p className="feature-status">
+                    Unsaved edits stay in this tab while you navigate. Reloading
+                    or signing out clears them.{" "}
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={saving}
+                      onClick={() => setDiscarding(true)}
+                    >
+                      Discard edits
+                    </button>
+                  </p>
+                )}
+                {session.stale && (
+                  <div className="alert" role="alert">
+                    The saved definition changed since this draft was opened.
+                    Your edits and original revision are retained. Saving is
+                    held. Discard this draft only when you are ready to load the
+                    current saved version.
+                  </div>
+                )}
               </>
             }
             reveal={reveal}
             dismiss={editorKey}
             document={
-              loading || loaded !== id ? (
+              loading || loaded !== id || !session.observed ? (
                 <div className="loading" role="status">
                   Loading the product definition…
                 </div>
               ) : (
                 <DefinitionEditor
-                  key={`${id}-${revision}-${editorKey}`}
+                  key={`${id}-${session.id}`}
+                  session={session}
                   connection={connection}
                   repository={selected}
                   snapshot={snapshot}
@@ -328,13 +380,13 @@ export function ProductDefinition({
                   }}
                   onDirty={() => {
                     setDirty(true);
-                    setSavedDraft(false);
                   }}
                   onSaved={(saved) => {
-                    if (currentProject.current === saved.repository_id) {
+                    if (
+                      session.active &&
+                      currentProject.current === saved.repository_id
+                    ) {
                       setSnapshot(saved);
-                      setDirty(false);
-                      setSavedDraft(true);
                     }
                   }}
                   onStart={() => onStart(selected.id)}
@@ -369,23 +421,27 @@ export function ProductDefinition({
               />
             )}
           />
+          {discarding && (
+            <DiscardProductDraft
+              repository={selected.name}
+              onCancel={() => setDiscarding(false)}
+              onDiscard={() => {
+                book.discard(session);
+                setDiscarding(false);
+                setPendingProposal(null);
+                setStepPrompt(undefined);
+                reader.current = null;
+                setEditorKey((value) => value + 1);
+              }}
+            />
+          )}
           {pendingProposal && (
             <ProductProposal
               value={pendingProposal}
               onCancel={() => setPendingProposal(null)}
               onApply={() => {
                 const { definition, source } = pendingProposal;
-                setDraft({
-                  ...definition,
-                  ai_origin: {
-                    conversation_id: source.conversation_id,
-                    turn_id: source.turn_id,
-                    proposal_digest: source.proposal_digest,
-                  },
-                });
-                setDraftSource(source);
-                setDirty(false);
-                setSavedDraft(false);
+                book.apply(session, definition, source);
                 setEditorKey((value) => value + 1);
                 setPendingProposal(null);
               }}
@@ -397,7 +453,58 @@ export function ProductDefinition({
   );
 }
 
+function DiscardProductDraft({
+  repository,
+  onCancel,
+  onDiscard,
+}: {
+  repository: string;
+  onCancel: () => void;
+  onDiscard: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="feature-dialog assistant-recovery-dialog"
+      aria-label="Discard product edits"
+      onCancel={onCancel}
+    >
+      <header>
+        <h2>Discard edits for {repository}?</h2>
+        <button
+          className="quiet"
+          aria-label="Keep product edits"
+          onClick={onCancel}
+        >
+          <X size={20} />
+        </button>
+      </header>
+      <div className="assistant-recovery-body">
+        <p>
+          Your unsaved edits and current step for this product will be cleared.
+          The saved definition and other products will stay unchanged.
+        </p>
+      </div>
+      <footer>
+        <button className="quiet" onClick={onCancel}>
+          Keep editing
+        </button>
+        <button className="primary" onClick={onDiscard}>
+          Discard this draft
+        </button>
+      </footer>
+    </dialog>
+  );
+}
+
 function DefinitionEditor({
+  session,
   connection,
   repository,
   snapshot,
@@ -409,6 +516,7 @@ function DefinitionEditor({
   onDirty,
   onAsk,
 }: {
+  session: ProductDraftSession;
   onAsk: (step: number, definition: CustomerProductDefinition) => void;
   reader: RefObject<(() => CustomerProductDefinition) | null>;
   onDirty: () => void;
@@ -421,49 +529,111 @@ function DefinitionEditor({
   onStart: () => void;
 }) {
   const definition = draft ?? snapshot?.definition;
-  const [step, setStep] = useState(0);
-  const [customer, setCustomer] = useState(definition?.customer ?? "");
-  const [problem, setProblem] = useState(definition?.problem ?? "");
-  const [journey, setJourney] = useState(definition?.journey.join("\n") ?? "");
-  const [stories, setStories] = useState(
+  const [step, setStep] = useProductDraftField(session, "step", 0, false);
+  const [customer, setCustomer] = useProductDraftField(
+    session,
+    "customer",
+    definition?.customer ?? "",
+    true,
+  );
+  const [problem, setProblem] = useProductDraftField(
+    session,
+    "problem",
+    definition?.problem ?? "",
+    true,
+  );
+  const [journey, setJourney] = useProductDraftField(
+    session,
+    "journey",
+    definition?.journey.join("\n") ?? "",
+    true,
+  );
+  const [stories, setStories] = useProductDraftField(
+    session,
+    "stories",
     definition?.user_stories.join("\n") ?? "",
+    true,
   );
-  const [acceptance, setAcceptance] = useState(
+  const [acceptance, setAcceptance] = useProductDraftField(
+    session,
+    "acceptance",
     definition?.acceptance.join("\n") ?? "",
+    true,
   );
-  const [security, setSecurity] = useState(
+  const [security, setSecurity] = useProductDraftField(
+    session,
+    "security",
     definition?.security_requirements.join("\n") ?? "",
+    true,
   );
-  const [nonfunctional, setNonfunctional] = useState(
+  const [nonfunctional, setNonfunctional] = useProductDraftField(
+    session,
+    "nonfunctional",
     definition?.nonfunctional_requirements.join("\n") ?? "",
+    true,
   );
-  const [owners, setOwners] = useState(definition?.owners.join("\n") ?? "");
-  const [architecture, setArchitecture] = useState<ProductArchitecture | null>(
-    definition?.architecture ?? null,
+  const [owners, setOwners] = useProductDraftField(
+    session,
+    "owners",
+    definition?.owners.join("\n") ?? "",
+    true,
   );
-  const [designReview, setDesignReview] = useState<ProductDesignReview | null>(
-    definition?.design_review ?? null,
-  );
-  const [processes, setProcesses] = useState<ProductProcess[]>(
+  const [architecture, setArchitecture] =
+    useProductDraftField<ProductArchitecture | null>(
+      session,
+      "architecture",
+      definition?.architecture ?? null,
+      true,
+    );
+  const [designReview, setDesignReview] =
+    useProductDraftField<ProductDesignReview | null>(
+      session,
+      "designReview",
+      definition?.design_review ?? null,
+      true,
+    );
+  const [processes, setProcesses] = useProductDraftField<ProductProcess[]>(
+    session,
+    "processes",
     definition?.processes ?? [],
+    true,
   );
-  const [features, setFeatures] = useState<FunctionalFeature[]>(
+  const [features, setFeatures] = useProductDraftField<FunctionalFeature[]>(
+    session,
+    "features",
     definition?.features ?? [],
+    true,
   );
-  const [integrations, setIntegrations] = useState<ProductIntegration[]>(
-    definition?.integrations ?? [],
-  );
-  const [reviewArea, setReviewArea] = useState<
+  const [integrations, setIntegrations] = useProductDraftField<
+    ProductIntegration[]
+  >(session, "integrations", definition?.integrations ?? [], true);
+  const [reviewArea, setReviewArea] = useProductDraftField<
     "overview" | "design" | "references"
-  >("overview");
-  const [functionalReviewed, setFunctionalReviewed] = useState(
+  >(session, "reviewArea", "overview", false);
+  const [functionalReviewed, setFunctionalReviewed] = useProductDraftField(
+    session,
+    "functionalReviewed",
     definition?.functional_reviewed ?? false,
+    true,
   );
-  const [visualDesign, setVisualDesign] = useState(
+  const [visualDesign, setVisualDesign] = useProductDraftField(
+    session,
+    "visualDesign",
     normalizeProductDesign(definition?.visual_design),
+    true,
   );
-  const [designPending, setDesignPending] = useState(false);
-  const [designGeneration, setDesignGeneration] = useState(0);
+  const [designPending, setDesignPending] = useProductDraftField(
+    session,
+    "designPending",
+    false,
+    false,
+  );
+  const [designGeneration, setDesignGeneration] = useProductDraftField(
+    session,
+    "designGeneration",
+    0,
+    false,
+  );
   const invalidateDesign = () => {
     setDesignReview(null);
     setDesignPending(false);
@@ -478,44 +648,88 @@ function DefinitionEditor({
     setArchitecture(value);
     invalidateDesign();
   };
-  const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [backend, setBackend] = useState(architecture?.backend ?? "pyfly");
-  const [frontend, setFrontend] = useState(architecture?.frontend ?? "react");
-  const [brand, setBrand] = useState<ProductBrand | null>(initialBrand);
-  const [useBrand, setUseBrand] = useState(Boolean(initialBrand));
-  const [palette, setPalette] = useState({
-    ...defaultBrand,
-    name: initialBrand?.name ?? repository.name,
-    ...Object.fromEntries(
-      [
-        ["primary", "light", "primary"],
-        ["background", "light", "background"],
-        ["text", "light", "text"],
-        ["dark_background", "dark", "background"],
-        ["dark_text", "dark", "text"],
-      ].flatMap(([field, mode, name]) => {
-        const token = (
-          initialBrand?.tokens.color as
-            | Record<string, Record<string, { $value?: { hex?: string } }>>
-            | undefined
-        )?.[mode]?.[name]?.$value?.hex;
-        return token ? [[field, token]] : [];
-      }),
-    ),
-  });
-  const [tokenImport, setTokenImport] = useState(
+  const [proposal, setProposal] = useProductDraftField<Proposal | null>(
+    session,
+    "proposal",
+    null,
+    false,
+  );
+  const [backend, setBackend] = useProductDraftField(
+    session,
+    "backend",
+    architecture?.backend ?? "pyfly",
+    true,
+  );
+  const [frontend, setFrontend] = useProductDraftField(
+    session,
+    "frontend",
+    architecture?.frontend ?? "react",
+    true,
+  );
+  const [brand, setBrand] = useProductDraftField<ProductBrand | null>(
+    session,
+    "brand",
+    initialBrand,
+    false,
+  );
+  const [useBrand, setUseBrand] = useProductDraftField(
+    session,
+    "useBrand",
+    Boolean(initialBrand),
+    true,
+  );
+  const [palette, setPalette] = useProductDraftField(
+    session,
+    "palette",
+    {
+      ...defaultBrand,
+      name: initialBrand?.name ?? repository.name,
+      ...Object.fromEntries(
+        [
+          ["primary", "light", "primary"],
+          ["background", "light", "background"],
+          ["text", "light", "text"],
+          ["dark_background", "dark", "background"],
+          ["dark_text", "dark", "text"],
+        ].flatMap(([field, mode, name]) => {
+          const token = (
+            initialBrand?.tokens.color as
+              | Record<string, Record<string, { $value?: { hex?: string } }>>
+              | undefined
+          )?.[mode]?.[name]?.$value?.hex;
+          return token ? [[field, token]] : [];
+        }),
+      ),
+    },
+    true,
+  );
+  const [tokenImport, setTokenImport] = useProductDraftField(
+    session,
+    "tokenImport",
     initialBrand ? JSON.stringify(initialBrand.tokens, null, 2) : "",
+    true,
   );
-  const [logoImport, setLogoImport] = useState(
+  const [logoImport, setLogoImport] = useProductDraftField(
+    session,
+    "logoImport",
     initialBrand?.files["logo.svg"] ?? "",
+    true,
   );
-  const [darkLogoImport, setDarkLogoImport] = useState(
+  const [darkLogoImport, setDarkLogoImport] = useProductDraftField(
+    session,
+    "darkLogoImport",
     initialBrand?.files["logo-dark.svg"] ?? "",
+    true,
   );
-  const [brandChanged, setBrandChanged] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [brandChanged, setBrandChanged] = useProductDraftField(
+    session,
+    "brandChanged",
+    false,
+    true,
+  );
+  const [busy, setBusy] = useProductDraftField(session, "busy", false);
+  const [error, setError] = useProductDraftField(session, "error", "");
+  const [saved, setSaved] = useProductDraftField(session, "saved", false);
   const fullyReviewed = Boolean(
     functionalReviewed &&
     (!architecture || architecture.reviewed) &&
@@ -661,13 +875,24 @@ function DefinitionEditor({
         throw new Error(
           "Review the proposed architecture before saving the product definition.",
         );
+      if (!session.active || session.stale)
+        throw new Error(
+          "The saved definition changed. Your draft is retained; saving is held.",
+        );
+      const submittedVersion = session.editVersion;
       const result = await request<ProductSnapshot>(
         connection,
         `/repositories/${repository.id}/product`,
         { method: "PUT", body: JSON.stringify(data()) },
       );
-      setSaved(true);
-      onSaved(result);
+      if (session.acceptSaved(result, submittedVersion)) {
+        setSaved(true);
+        onSaved(result);
+      } else if (session.active) {
+        setError(
+          "The earlier save finished, but the draft or observed server revision changed. Your draft is retained.",
+        );
+      }
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1599,7 +1824,7 @@ function DefinitionEditor({
             )}
             <button
               className="primary"
-              disabled={busy || (step === 4 && saved)}
+              disabled={busy || (step === 4 && (saved || session.stale))}
             >
               {step === 4
                 ? fullyReviewed

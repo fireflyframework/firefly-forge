@@ -69,6 +69,7 @@ import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
 import { FactoryWelcome } from "./FactoryWelcome";
+import { useProductDraftBook } from "./ProductDrafts";
 import { ProductDefinition } from "./ProductDefinition";
 import {
   IdentityMenu,
@@ -250,6 +251,10 @@ export default function App() {
     token: "",
   });
   const identity = useIdentity(connection.base);
+  const productDrafts = useProductDraftBook(
+    connection,
+    identity.session?.user.id,
+  );
   const restoredGoal = useRef(false);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [runs, setRuns] = useState<ForgeRun[]>([]);
@@ -820,6 +825,9 @@ export default function App() {
           )}
           {page === "product" && (
             <ProductDefinition
+              key={productDrafts.id}
+              drafts={productDrafts}
+              onRepositoryChange={setRunProject}
               logicalProject={productProject}
               onConfigure={() => {
                 navigate("settings");

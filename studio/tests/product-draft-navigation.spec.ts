@@ -1,0 +1,259 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { expect, test, type Page } from "@playwright/test";
+import type { ProductSnapshot } from "../src/api";
+import { mockIdentity } from "./auth-fixture";
+import { navigate } from "./navigation";
+
+const a = "a".repeat(32),
+  b = "b".repeat(32);
+const product = (repository_id: string, revision = 1): ProductSnapshot => ({
+  repository_id,
+  revision,
+  digest: String(revision).repeat(64),
+  created_at: "2026-10-16T00:00:00Z",
+  origin: { kind: "manual" },
+  definition: {
+    customer: repository_id === a ? "Saved A" : "Saved B",
+    problem: "Manage fictional stock",
+    owners: ["Product owner"],
+    journey: ["Review stock"],
+    user_stories: ["An operator sees stock"],
+    acceptance: ["Stock is visible"],
+    security_requirements: [],
+    nonfunctional_requirements: [],
+    architecture: null,
+    design_review: null,
+  },
+});
+async function setup(page: Page) {
+  let revision = 1,
+    writes = 0;
+  await page.route("**/api/v1/**", async (route) => {
+    if (await mockIdentity(route)) return;
+    const path = new URL(route.request().url()).pathname;
+    let json: unknown = [];
+    if (path.endsWith("/repositories"))
+      json = [a, b].map((id, index) => ({
+        id,
+        name: index ? "Product B" : "Product A",
+        url: `https://github.com/example/product-${index}`,
+        provider: "github",
+        default_branch: "main",
+      }));
+    if (path.endsWith("/product")) {
+      if (route.request().method() === "PUT") writes++;
+      json = product(path.includes(a) ? a : b, revision);
+    }
+    if (path.endsWith("/brand")) json = null;
+    await route.fulfill({ json });
+  });
+  await page.goto("/");
+  await connect(page);
+  await navigate(page, "Product definition");
+  await expect(
+    page.getByLabel("Customer or user", { exact: true }),
+  ).toHaveValue("Saved A");
+  return {
+    changeRevision: () => {
+      revision++;
+    },
+    writes: () => writes,
+  };
+}
+async function connect(page: Page) {
+  await navigate(page, "Connections");
+  await page
+    .getByLabel("API token", { exact: true })
+    .fill("test-bootstrap-at-least-24-characters");
+  await page
+    .getByRole("button", { name: "Save connection", exact: true })
+    .click();
+}
+const customer = (page: Page) =>
+  page.getByLabel("Customer or user", { exact: true });
+const select = (page: Page, id: string) =>
+  page.getByLabel("Product project", { exact: true }).selectOption(id);
+async function unloadPrevented(page: Page) {
+  return page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+}
+
+test("raw edits and steps survive page navigation and remain isolated between products", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await customer(page).fill("Human A");
+  await page
+    .getByLabel("Problem to solve", { exact: true })
+    .fill("  Keep **these edits**\n");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "What does the customer need to do?" }),
+  ).toBeVisible();
+  await select(page, b);
+  await expect(customer(page)).toHaveValue("Saved B");
+  await customer(page).fill("Human B");
+  await navigate(page, "Runs");
+  expect(await unloadPrevented(page)).toBe(true);
+  await navigate(page, "Product definition");
+  await expect(page.getByLabel("Product project", { exact: true })).toHaveValue(
+    b,
+  );
+  await expect(customer(page)).toHaveValue("Human B");
+  await select(page, a);
+  await expect(
+    page.getByRole("heading", { name: "What does the customer need to do?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(customer(page)).toHaveValue("Human A");
+  await expect(
+    page.getByLabel("Problem to solve", { exact: true }),
+  ).toHaveValue("  Keep **these edits**\n");
+  expect(state.writes()).toBe(0);
+});
+
+test("discard requires confirmation and clears only the selected product", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await customer(page).fill("Keep A");
+  await select(page, b);
+  await expect(customer(page)).toHaveValue("Saved B");
+  await customer(page).fill("Discard B");
+  await page
+    .getByRole("button", { name: "Discard edits", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Discard product edits",
+    exact: true,
+  });
+  await expect(dialog).toContainText("Product B");
+  await page.keyboard.press("Escape");
+  await expect(customer(page)).toHaveValue("Discard B");
+  await page
+    .getByRole("button", { name: "Discard edits", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Discard this draft", exact: true })
+    .click();
+  await expect(customer(page)).toHaveValue("Saved B");
+  await select(page, a);
+  await expect(customer(page)).toHaveValue("Keep A");
+  expect(await unloadPrevented(page)).toBe(true);
+  expect(state.writes()).toBe(0);
+});
+
+test("a changed observed server revision holds saving and preserves the local draft", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await customer(page).fill("Retained A");
+  await navigate(page, "Runs");
+  state.changeRevision();
+  await navigate(page, "Product definition");
+  await expect(customer(page)).toHaveValue("Retained A");
+  await expect(page.getByRole("alert")).toContainText(
+    "saved definition changed",
+  );
+  await expect(
+    page.getByText("Editing saved revision 1", { exact: true }),
+  ).toBeVisible();
+  for (let step = 0; step < 3; step++)
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review definition", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save draft definition", exact: true }),
+  ).toBeDisabled();
+  expect(state.writes()).toBe(0);
+});
+
+test("signing out clears the prior identity's drafts and reload warning", async ({
+  page,
+}) => {
+  await setup(page);
+  await customer(page).fill("Previous session private edit");
+  expect(await unloadPrevented(page)).toBe(true);
+  await page
+    .getByRole("button", { name: "Signed in as Test operator", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(
+    page.getByText("Connect your factory first", { exact: true }),
+  ).toBeVisible();
+  expect(await unloadPrevented(page)).toBe(false);
+  await connect(page);
+  await navigate(page, "Product definition");
+  await expect(customer(page)).toHaveValue("Saved A");
+});
+
+for (const view of [
+  { width: 1440, height: 900, theme: "light" },
+  { width: 1440, height: 900, theme: "dark" },
+  { width: 390, height: 844, theme: "dark" },
+  { width: 320, height: 400, theme: "dark" },
+] as const)
+  test(`draft recovery controls ${view.width}x${view.height} ${view.theme}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize(view);
+    await setup(page);
+    await page
+      .getByRole("combobox", { name: "Appearance", exact: true })
+      .selectOption(view.theme);
+    await customer(page).fill("Retained fictional product");
+    await page
+      .getByRole("button", { name: "Discard edits", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Discard product edits",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole("button", { name: "Discard this draft", exact: true })
+      .focus();
+    await expect(
+      dialog.getByRole("button", { name: "Discard this draft", exact: true }),
+    ).toBeFocused();
+    const geometry = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const controls = [...element.querySelectorAll("button")].map((button) =>
+        button.getBoundingClientRect(),
+      );
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: innerWidth,
+        height: innerHeight,
+        overflow: element.scrollWidth > element.clientWidth,
+        controlsInside: controls.every(
+          (control) =>
+            control.left >= rect.left &&
+            control.right <= rect.right &&
+            control.top >= rect.top &&
+            control.bottom <= rect.bottom,
+        ),
+      };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.width);
+    expect(geometry.top).toBeGreaterThanOrEqual(0);
+    expect(geometry.bottom).toBeLessThanOrEqual(geometry.height);
+    expect(geometry.overflow).toBe(false);
+    expect(geometry.controlsInside).toBe(true);
+    await page.screenshot({
+      path: info.outputPath("draft-discard-review.png"),
+    });
+    await dialog
+      .getByRole("button", { name: "Keep editing", exact: true })
+      .click();
+    await expect(customer(page)).toHaveValue("Retained fictional product");
+    await page.screenshot({ path: info.outputPath("draft-retained.png") });
+  });
