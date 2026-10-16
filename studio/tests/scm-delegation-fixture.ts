@@ -112,6 +112,7 @@ export async function setupDelegation(
   page: Page,
   options: {
     reader?: boolean;
+    existingSession?: boolean;
     heads?: DelegationHead[];
     initialReceipt?: DelegationReceipt;
     cut?: string;
@@ -273,12 +274,22 @@ export async function setupDelegation(
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await navigate(page, "Connections");
-  await page
-    .getByLabel("API token", { exact: true })
-    .fill("fictional-scm-bootstrap-token-at-least24");
-  await page
-    .getByRole("button", { name: "Save connection", exact: true })
-    .click();
+  if (options.existingSession) {
+    await expect(
+      page.getByRole("button", {
+        name: `Signed in as ${options.reader ? "Project reader" : "Test operator"}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByLabel("API token", { exact: true })).toHaveCount(0);
+  } else {
+    await page
+      .getByLabel("API token", { exact: true })
+      .fill("fictional-scm-bootstrap-token-at-least24");
+    await page
+      .getByRole("button", { name: "Save connection", exact: true })
+      .click();
+  }
   await navigate(page, "Project access");
   return state;
 }

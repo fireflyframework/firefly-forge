@@ -17,13 +17,14 @@ import type {
 } from "../src/ScmProductChangeConsentData";
 
 // Constructed, Python-model-shaped responses; these browser cases are not native/provider acceptance.
-async function setup(page: Page, reader = false) {
+async function setup(page: Page, reader = false, existingSession = false) {
   const binding = receiptFor({
     ...v1.request,
     expected_project_binding_digest: projectCut,
   } as DelegationInput);
   const v1state = await setupDelegation(page, {
     reader,
+    existingSession,
     heads: [headFor(binding)],
     initialReceipt: binding,
   });
@@ -573,7 +574,7 @@ test("two tabs admit one durable consent request before one POST", async ({
   const first = await setup(page),
     secondPage = await page.context().newPage();
   try {
-    const second = await setup(secondPage);
+    const second = await setup(secondPage, false, true);
     const [a, b] = await Promise.all([review(page), review(secondPage)]);
     await Promise.all([
       a
