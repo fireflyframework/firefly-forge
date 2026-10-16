@@ -1,0 +1,25 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.scm-resume-consent {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+  min-width: 0;
+}
+.scm-resume-consent h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scm-resume-consent article {
+  margin: 16px 0;
+}
+.scm-resume-dialog code,
+.scm-resume-consent code {
+  overflow-wrap: anywhere;
+}
+.scm-resume-dialog .wizard-field-scroll {
+  scroll-padding-bottom: 16px;
+}
+.scm-resume-dialog .scm-delegation-check {
+  padding-right: 8px;
+}
