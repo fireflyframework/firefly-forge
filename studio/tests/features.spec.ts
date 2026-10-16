@@ -90,14 +90,14 @@ test("product wizard retains drafts, reviews architecture and freezes saved revi
   let brandInput: Record<string, unknown> | null = null;
   let runInput: Record<string, unknown> | null = null;
   await fallback(page, (path, method, body) => {
-    if (path.endsWith("/product")) {
+    if (path.endsWith("/product") || path.endsWith("/product/conditional")) {
       if (method === "PUT") {
-        saved = body;
+        saved = body?.definition as Record<string, unknown>;
         snapshot = {
           repository_id: "repo-1",
           revision: 1,
-          definition: body,
-          digest: "product-digest",
+          definition: body?.definition,
+          digest: "b".repeat(64),
           created_at: "2026-10-12T18:00:00Z",
         };
       }

@@ -76,10 +76,12 @@ class AccessRoutes:
             if len(parts) > 2 and parts[2] in {"policies", "collaboration", "agent-roles"} and not safe:
                 permission = "members"
             await self.access.require_repository(user, parts[1], permission)
+            review_body = body.get("definition") if parts[2:] == ["product", "conditional"] else body
+            review_body = review_body if isinstance(review_body, dict) else {}
             if not safe and (
-                body.get("functional_reviewed")
-                or (body.get("design_review") or {}).get("reviewed")
-                or (body.get("architecture") or {}).get("reviewed")
+                review_body.get("functional_reviewed")
+                or (review_body.get("design_review") or {}).get("reviewed")
+                or (review_body.get("architecture") or {}).get("reviewed")
             ):
                 await self.access.require_repository(user, parts[1], "review")
             if not safe and body.get("project_id"):
