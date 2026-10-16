@@ -1239,6 +1239,7 @@ class Collaboration:
             await self.store.assert_ownership()
         if before_write is not None:
             await before_write()
+        self.store.reject_credentials(payload)
         response = await self.scm._request(
             "POST",
             api + self._issue_path(provider, repo, issue),

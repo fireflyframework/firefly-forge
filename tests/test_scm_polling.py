@@ -1083,3 +1083,40 @@ async def test_collaboration_flags_wait_for_current_poll_project_wal_fence(poll_
             await asyncio.gather(operation, blocked, return_exceptions=True)
         assert operation.exception() is None
         assert not c.db["settings"][c.repository].data["enabled"]
+
+
+@pytest.mark.parametrize("registered_after", ["authentication", "final_guard"])
+async def test_current_credentials_guard_feedback_after_the_last_admission_await(
+    poll_case, monkeypatch, registered_after
+):
+    async with poll_case() as c:
+        await c.ready()
+        await c.consent()
+        fictional = "owned-late-feedback-credential-57d64"
+        c.db["runs"][c.run_id].data["worker_request"]["question"] = "Do not disclose " + fictional
+        delivery = await c.new_command("status")
+        authentication = c.scm.issue_authentication
+        local_guard = c.service.authorize_feedback_local
+        reached = []
+
+        async def register_after_authentication(repository, **kwargs):
+            result = await authentication(repository, **kwargs)
+            reached.append(True)
+            if registered_after == "authentication":
+                c.state["credential"] = fictional
+            return result
+
+        async def register_after_final_guard(value):
+            await local_guard(value)
+            if reached and registered_after == "final_guard":
+                c.state["credential"] = fictional
+
+        monkeypatch.setattr(c.scm, "issue_authentication", register_after_authentication)
+        monkeypatch.setattr(c.service, "authorize_feedback_local", register_after_final_guard)
+        result = await c.collaboration.process(delivery["id"])
+        assert reached == [True] and c.state["posts"] == []
+        assert result["action_result"] == {"run_id": c.run_id, "status": "paused"}
+        assert result["feedback_status"] == "needs_reconciliation"
+        await c.collaboration.process(delivery["id"])
+        await c.collaboration.sync_feedback()
+        assert reached == [True] and c.state["posts"] == [] and not c.db["journal"]
