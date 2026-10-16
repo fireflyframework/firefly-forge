@@ -331,9 +331,11 @@ export function ProductDefinition({
                   />
                 </div>
                 {(dirty || session.stale) && (
-                  <p className="feature-status">
-                    Unsaved edits stay in this tab while you navigate. Reloading
-                    or signing out clears them.{" "}
+                  <div className="product-draft-notice" role="status">
+                    <span>
+                      Unsaved edits stay in this tab while you navigate.
+                      Reloading or signing out clears them.
+                    </span>
                     <button
                       type="button"
                       className="text-button"
@@ -342,7 +344,7 @@ export function ProductDefinition({
                     >
                       Discard edits
                     </button>
-                  </p>
+                  </div>
                 )}
                 {session.stale && (
                   <div className="alert" role="alert">

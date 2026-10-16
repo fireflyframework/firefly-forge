@@ -24,6 +24,35 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.product-draft-notice {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.product-draft-notice .text-button {
+  min-height: 36px;
+  white-space: nowrap;
+  justify-self: start;
+}
+.product-workbench-heading > .alert {
+  grid-column: 1/-1;
+}
+@media (max-width: 600px) {
+  .product-draft-notice {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
 .product-step-outcome {
   padding: 12px 16px;
   background: var(--surface-subtle);

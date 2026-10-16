@@ -310,6 +310,29 @@ for (const view of [
       .getByRole("button", { name: "Keep editing", exact: true })
       .click();
     await expect(customer(page)).toHaveValue("Retained fictional product");
+    const notice = await page
+      .getByRole("button", { name: "Discard edits", exact: true })
+      .evaluate((button) => {
+        const element = button.parentElement!;
+        const heading = element.closest(".product-workbench-heading")!;
+        const bounds = element.getBoundingClientRect();
+        const copy = element.querySelector("span")!.getBoundingClientRect();
+        const action = button.getBoundingClientRect();
+        return {
+          width: bounds.width,
+          available: heading.getBoundingClientRect().width,
+          copyWidth: copy.width,
+          separated:
+            copy.right + 4 <= action.left || copy.bottom + 4 <= action.top,
+          overflow: element.scrollWidth > element.clientWidth,
+        };
+      });
+    expect(notice.width).toBeGreaterThanOrEqual(notice.available - 1);
+    expect(notice.copyWidth).toBeGreaterThanOrEqual(
+      Math.min(240, notice.width - 28),
+    );
+    expect(notice.separated).toBe(true);
+    expect(notice.overflow).toBe(false);
     await page.screenshot({ path: info.outputPath("draft-retained.png") });
   });
 
