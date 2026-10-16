@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/component
+version: 1.0.0
+description: Forge implementation component instructions.
+system_template: ''
+user_template: |2-
+
+
+  This run owns only component {{ component_id }} under {{ path }}. Use supplied sibling component contracts as context; source tools stay within your component. All source edits and generated design files must stay under this component root. Responsibility: {{ responsibility }}
+required_variables:
+- component_id
+- path
+- responsibility
+metadata:
+  defaults: {}

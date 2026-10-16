@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_learning_projection_observation_attempt
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read a local v2 attempt; missing, unknown and in-flight receipts never
+  permit replay.
+required_variables: []
+metadata:
+  defaults: {}

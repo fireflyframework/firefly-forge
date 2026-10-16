@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_scm_actor_binding
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly delegate or revoke qualified repository actions for an existing enabled Forge user.
+
+  Requires current administrator authority, exact verified scope and acknowledgment of webhook identity
+  trust. The configured provider's repository grant may be rechecked. This does not grant membership or
+  authenticate a personal provider login. Retain the caller's
+  request ID before dispatch; uncertain results require an exact receipt read, never an automatic retry.
+required_variables: []
+metadata:
+  defaults: {}

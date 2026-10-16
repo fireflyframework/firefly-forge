@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_task_routing
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read explicit task defaults; existing queued invocation snapshots remain
+  unchanged.
+required_variables: []
+metadata:
+  defaults: {}

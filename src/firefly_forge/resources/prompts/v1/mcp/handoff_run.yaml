@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/handoff_run
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Hand paused work to a configured provider while retaining its source
+  and policy snapshot.
+required_variables: []
+metadata:
+  defaults: {}

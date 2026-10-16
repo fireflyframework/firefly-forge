@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/search_text
+version: 1.0.0
+description: Forge tools search_text instructions.
+system_template: ''
+user_template: Search literal text, returning bounded source lines and content hashes.
+required_variables: []
+metadata:
+  defaults: {}

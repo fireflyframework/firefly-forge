@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/security
+version: 1.0.0
+description: Forge roles security instructions.
+system_template: ''
+user_template: |-
+  Mandatory factory guards enforce source, credential and publication boundaries. Security instructions do not claim a penetration test or specialist model review.
+required_variables: []
+metadata:
+  defaults: {}

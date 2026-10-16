@@ -5,6 +5,7 @@ import copy
 
 import pytest
 from pydantic import ValidationError
+from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.agent_roles import (
     ProjectRoles,
@@ -119,15 +120,17 @@ async def test_worker_blocker_is_durable_idempotent_bounded_and_needs_explicit_r
     assert (await reopened.plan(run["id"]))["tasks"][1]["status"] == "paused"
     with pytest.raises(ValueError, match="different"):
         await journal.worker_feedback(run["id"], feedback.model_copy(update={"summary": "Different request"}))
-    await reopened.worker_response(
-        run["id"], "request-1", WorkerResponse(id="response-1", actor="operator", answer="Support owners")
-    )
+    async with authenticated_operator(store):
+        await reopened.worker_response(
+            run["id"], "request-1", WorkerResponse(id="response-1", actor="operator", answer="Support owners")
+        )
     assert (await store.get_run(run["id"]))["status"] == "paused"
     assert (await reopened.worker_messages(run["id"]))[-1]["kind"] == "worker_response"
     with pytest.raises(ValueError, match="resolved"):
-        await reopened.worker_response(
-            run["id"], "request-1", WorkerResponse(id="response-2", actor="operator", answer="Sales")
-        )
+        async with authenticated_operator(store):
+            await reopened.worker_response(
+                run["id"], "request-1", WorkerResponse(id="response-2", actor="operator", answer="Sales")
+            )
     assert reopened.verify_chain(await reopened.entries(run["id"]))
 
 
@@ -169,9 +172,10 @@ async def test_worker_request_budget_does_not_create_an_automatic_loop(store):
                 request=request,
             ),
         )
-        await journal.worker_response(
-            run["id"], request.id, WorkerResponse(id=f"response-{attempt}", actor="operator", answer="Support")
-        )
+        async with authenticated_operator(store):
+            await journal.worker_response(
+                run["id"], request.id, WorkerResponse(id=f"response-{attempt}", actor="operator", answer="Support")
+            )
     with pytest.raises(ValueError, match="budget"):
         await journal.worker_feedback(
             run["id"],
@@ -253,9 +257,10 @@ async def test_worker_response_rejects_private_frozen_provider_credentials(store
     await journal.worker_feedback(run["id"], feedback)
     assert "private-worker-token-for-test" not in str(await journal.worker_messages(run["id"]))
     with pytest.raises(ValueError, match="credential"):
-        await journal.worker_response(
-            run["id"],
-            "request-secret",
-            WorkerResponse(id="response-secret", actor="operator", answer="private-worker-token-for-test"),
-        )
+        async with authenticated_operator(store):
+            await journal.worker_response(
+                run["id"],
+                "request-secret",
+                WorkerResponse(id="response-secret", actor="operator", answer="private-worker-token-for-test"),
+            )
     assert (await store.get_run(run["id"]))["worker_request"]["status"] == "pending"

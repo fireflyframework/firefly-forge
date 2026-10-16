@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/security
+version: 1.0.0
+description: Forge skills security instructions.
+system_template: ''
+user_template: |-
+  Preserve authentication, CSRF and authorization boundaries. Validate input and constrain file access. Never read, generate or print private credentials. Use environment examples with placeholders and preserve safe error handling.
+required_variables: []
+metadata:
+  defaults: {}

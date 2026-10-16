@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/save_repository_runner
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save explicit host/Docker execution defaults, including bounded optional browser/search policies.
+
+  Host mode trusts the service account. Docker selection requires an immutable image and has no host fallback.
+required_variables: []
+metadata:
+  defaults: {}

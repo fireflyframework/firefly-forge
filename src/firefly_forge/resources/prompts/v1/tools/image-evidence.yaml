@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/image-evidence
+version: 1.0.0
+description: Forge tools image evidence instructions.
+system_template: ''
+user_template: 'Actual image evidence: {{ metadata }}'
+required_variables:
+- metadata
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_project_campaign_report_archive
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read an exact immutable saved-report receipt with current access and
+  credential admission.
+required_variables: []
+metadata:
+  defaults: {}

@@ -109,6 +109,48 @@ class SCMConnections:
         if snapshot is not None and self.snapshot(repository) != snapshot:
             raise ValueError("Source-control application or repository authorization changed after admission")
 
+    def delegation_scope(self, repository: Data) -> Data:
+        """Nonsecret configured scope; this local cut is not a provider grant check."""
+        from firefly_forge.journal import digest
+        from firefly_forge.scm_authority_models import canonical_provider_id, exact_origin
+
+        provider = repository.get("connection_provider")
+        if provider not in {"github", "gitlab", "bitbucket"}:
+            raise ValueError("Configure a provider application before delegating SCM authority")
+        definition, record = self._definition(provider), self._record(provider)
+        values = {**definition["defaults"], **record.get("values", {})}
+        if not all(values.get(key) for key in definition["required"]):
+            raise ValueError("Configure a provider application before delegating SCM authority")
+        web_origin = exact_origin(values.get("host", "https://bitbucket.org"))
+        api_origin = (
+            "https://api.github.com"
+            if provider == "github" and web_origin == "https://github.com"
+            else "https://api.bitbucket.org"
+            if provider == "bitbucket"
+            else web_origin
+        )
+        remote = str(repository.get("remote_repository_id", ""))
+        installation = canonical_provider_id("github", values["installation_id"]) if provider == "github" else None
+        return {
+            "provider": provider,
+            "web_origin": web_origin,
+            "api_origin": api_origin,
+            "connection_revision": record["revision"],
+            "connection_scope_digest": digest(
+                {
+                    "provider": provider,
+                    "web_origin": web_origin,
+                    "api_origin": api_origin,
+                    **{
+                        key: values.get(key)
+                        for key in ("app_id", "installation_id", "client_id", "workspace", "grant_type")
+                    },
+                }
+            ),
+            "installation_id": installation,
+            "remote_repository_id": canonical_provider_id(provider, remote),
+        }
+
     def _host(self, provider: str) -> str:
         return self._values(provider).get("host", "https://bitbucket.org")
 

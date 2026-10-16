@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/browser_check
+version: 1.0.0
+description: Forge tools browser_check instructions.
+system_template: ''
+user_template: Inspect the configured isolated project origin at an explicit viewport and theme.
+required_variables: []
+metadata:
+  defaults: {}

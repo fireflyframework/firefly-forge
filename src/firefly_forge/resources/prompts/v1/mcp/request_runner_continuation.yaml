@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_runner_continuation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly admit one original queued command after controller replacement.
+
+  Retain the request ID before calling. Do not retry an uncertain outcome; read that
+  exact operation. Admission acceptance is not command success or source publication.
+required_variables: []
+metadata:
+  defaults: {}

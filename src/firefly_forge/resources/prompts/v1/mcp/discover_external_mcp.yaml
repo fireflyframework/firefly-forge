@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/discover_external_mcp
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Make an explicit bounded remote schema discovery; do not claim tool
+  execution from discovery.
+required_variables: []
+metadata:
+  defaults: {}

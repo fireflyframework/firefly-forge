@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/frontend-react
+version: 1.0.0
+description: Forge implementation frontend react instructions.
+system_template: ''
+user_template: |-
+  Use React 19.3 with TypeScript and Vite 8.3. Build accessible, responsive components, typed API clients and deliberate loading/error/empty states. Keep application logic in testable hooks/services. Configure behavioral Vitest and Testing Library tests, ESLint, tsc --noEmit and a production build.
+required_variables: []
+metadata:
+  defaults: {}

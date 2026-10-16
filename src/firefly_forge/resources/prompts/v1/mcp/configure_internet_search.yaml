@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_internet_search
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Configure the server search key from an explicitly supplied private file on this MCP host.
+
+  The regular mode0600 file must belong to this process owner. The model receives no key.
+  Select Tavily explicitly with its own key. Switching providers requires a new key.
+  Domains restrict citation hosts. This does not verify live provider acceptance.
+required_variables: []
+metadata:
+  defaults: {}

@@ -49,10 +49,11 @@ class Principal:
     subject: str
     display_name: str | None = None
     email: str | None = None
-    authentication_method: Literal["oidc_session", "oidc_bearer", "local_bootstrap"] = "oidc_bearer"
+    authentication_method: Literal["oidc_session", "oidc_bearer", "local_bootstrap", "scm_mapping"] = "oidc_bearer"
     api_roles: frozenset[str] = field(default_factory=frozenset)
     kind: Literal["human", "service", "local_bootstrap"] = "human"
     api_audience: str | None = None
+    scm_delegation: dict[str, Any] | None = None
 
 
 class IdentityConfiguration(BaseModel):

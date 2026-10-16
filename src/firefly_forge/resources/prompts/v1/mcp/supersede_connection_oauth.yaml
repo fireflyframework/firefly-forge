@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/supersede_connection_oauth
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly acknowledge exact unknown effects and admit a new registration as admin.
+
+  Old effects remain unknown. This does not replay them or complete browser consent.
+required_variables: []
+metadata:
+  defaults: {}

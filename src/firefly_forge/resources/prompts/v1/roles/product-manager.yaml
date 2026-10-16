@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/product-manager
+version: 1.0.0
+description: Forge roles product manager instructions.
+system_template: ''
+user_template: |-
+  Validate the approved customer contract and preserve missing fields as pending. Do not invent customer decisions.
+required_variables: []
+metadata:
+  defaults: {}

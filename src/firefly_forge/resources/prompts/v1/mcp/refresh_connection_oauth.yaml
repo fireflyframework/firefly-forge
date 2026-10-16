@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/refresh_connection_oauth
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Request one recorded refresh; reuse its request ID and never retry
+  unknown rotation.
+required_variables: []
+metadata:
+  defaults: {}

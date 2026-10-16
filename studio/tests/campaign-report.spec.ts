@@ -172,7 +172,20 @@ test("explicit report read shows bounded recorded evidence and never dispatches 
 }) => {
   const state = await setup(page);
   state.report = verifiedReport;
+  let planReads = 0;
+  await page.route("**/delivery-plan-revisions", (route) => {
+    expect(route.request().method()).toBe("GET");
+    planReads++;
+    return route.fulfill({
+      json: { project_id: projectId, campaign_id: campaignId, items: [] },
+    });
+  });
   await selectCampaign(page, state);
+  const reviewPlan = page.getByRole("button", {
+    name: "Review a reporting plan",
+    exact: true,
+  });
+  await expect(reviewPlan).toBeDisabled();
   expect(state.reports).toBe(0);
   await page.getByRole("button", { name: "View report", exact: true }).click();
   const report = page.getByRole("region", {
@@ -180,6 +193,7 @@ test("explicit report read shows bounded recorded evidence and never dispatches 
     exact: true,
   });
   await expect(report).toBeVisible();
+  await expect(reviewPlan).toBeEnabled();
   await expect(
     report.getByText(
       "Based on saved checks and execution records. Evidence state and recorded workflow status can differ.",
@@ -207,7 +221,7 @@ test("explicit report read shows bounded recorded evidence and never dispatches 
   await report.getByText("About this report", { exact: true }).click();
   await expect(
     report.getByText(
-      "SCM freshness: not observed. Milestones and waves are not configured.",
+      "SCM freshness: not observed. This report format does not include the separate reporting-plan criteria.",
     ),
   ).toBeVisible();
   await expect(
@@ -219,6 +233,21 @@ test("explicit report read shows bounded recorded evidence and never dispatches 
   await expect(
     report.getByText("Advanced record", { exact: false }),
   ).toHaveCount(0);
+  await expect(
+    page.getByText("No reporting plan is saved for this campaign.", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(planReads).toBe(0);
+  await page
+    .getByRole("button", { name: "Read reporting plans", exact: true })
+    .click();
+  await expect(
+    page.getByText("No reporting plan is saved for this campaign.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(planReads).toBe(1);
   await page.clock.install();
   await page.clock.fastForward(15000);
   expect(state.lists).toBe(1);

@@ -82,3 +82,68 @@ Use the lifecycle explorer to inspect current configuration, the run journal for
 The [learning contracts](learning.md#structure-agent-and-tool-communication) associate each question with its run, task, effective role, actual source, tool result and later verification. A worker can propose a lesson or report a missing reference; native factory services decide eligibility and state changes. Scoped records, policy and projection actions are available through the authenticated API, SDK, CLI and factory MCP. **Knowledge > Learning records** provides read-only inspection in Studio; submission, observation and invalidation use the existing reviewed operator contracts.
 
 The lifecycle projection reports execution bindings and knowledge availability. A recorded citation establishes a particular retrieval result. After actual failed QA, the same-run repair proposal guard can hold another coding dispatch while preserving verification receipts and unresolved effects. Workers cannot change the captured policy or turn a generic failed check into a reusable negative lesson. See [learning decisions](architecture.md#learning-and-structured-knowledge-decisions).
+
+## Answer an agent's question
+
+When an agent needs a decision, it can pause its current task and record a question. Open the run and select **Agent questions**, or use **Open agent questions** on the paused-run notice. The conversation belongs to that run and its recorded task; answering does not create another run.
+
+1. Read the question and expand **Why the agent is asking**. Suggested answers are starting points; select one or write your own in **Your answer**. The Markdown editor supports formatting and preview. Keep passwords, keys and other secrets out of the answer because it becomes part of the execution record.
+2. Select **Review answer**. Check the rendered answer, then use **Edit answer** if it needs correction. No response is sent during editing or review.
+3. Select **Send answer** once. Studio retains the original response identity before dispatch and confirms the result through a matching conversation read. Wait for **Answer recorded** before treating the response as retained.
+
+Sending an answer requires a browser with Web Locks support on HTTPS or localhost. This lets Studio keep one original answer request across open tabs. If coordination is unavailable, the form is held and nothing is sent. Use a supported browser and check the original conversation before continuing.
+
+The screenshots below use a fictional inventory question and controlled API responses. They illustrate the editor and recovery controls; they do not establish a live coding-provider conversation, worker execution or a successful resumed run.
+
+<figure class="forge-shot" markdown="1">
+![Controlled agent question with context, suggested answers and the Markdown answer editor.](assets/screenshots/agent-question-desktop-light.png)
+<figcaption>Read the recorded question before writing. A suggested answer can be edited; it is not an automatic decision.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled review of a formatted answer before sending.](assets/screenshots/agent-answer-review-desktop-light.png)
+<figcaption>Review the exact answer, then send it once. Recording the answer keeps the run paused.</figcaption>
+</figure>
+
+
+Sending records the answer in the write-ahead log and marks that question answered. The run stays paused. Inspect the retained work before using **Resume run**. Each run allows only one pending question at a time and a bounded number of questions; an unanswered question cannot trigger an automatic conversation loop.
+
+The portal retains the API, user, project, repository, run and original response identity before sending. It saves the normalized input digest and question event digest, without saving the answer text or a credential in browser storage. After a connection failure or reload, **Check original answer** reads the existing conversation. A missing response or permission refusal keeps the original identity unresolved. The portal does not resend the answer or create a replacement automatically. Keep browser storage until the original result is reconciled.
+
+If delivery is unconfirmed, use **Check original answer**. A missing result keeps the original request held. Reloading may show the original question without its matching answer; the editor stays unavailable while that response is unresolved. A changed or unreadable stored identity also blocks another answer. Preserve the browser reference and ask an authorized operator to review the retained conversation rather than replacing the request.
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view retaining an unanswered response identity after reload.](assets/screenshots/agent-answer-unresolved-mobile-dark.png)
+<figcaption>The guide first loses delivery, then observes no matching answer. Checking the original result reads evidence without posting again.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled recorded answer with authenticated user attribution.](assets/screenshots/agent-answer-confirmed-desktop-light.png)
+<figcaption>A later matching read confirms the original response. The authenticated user is distinct from the displayed operator label.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Read and review an answer on a phone</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone question and answer editor.](assets/screenshots/agent-question-mobile-dark.png)
+<figcaption>Context, suggested answers and the editor remain in the same run conversation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone review with edit and send controls.](assets/screenshots/agent-answer-review-mobile-dark.png)
+<figcaption>Scroll the conversation to the actions; sending still requires an explicit review.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone presentation of the original recorded answer.](assets/screenshots/agent-answer-confirmed-mobile-dark.png)
+<figcaption>Use Resume run separately after reviewing the retained work.</figcaption>
+</figure>
+
+</details>
+
+Reading requires current access to the run's repository and project, when scoped. A reader can inspect the retained conversation without receiving answer controls. New replies require a current authenticated operator with execute access, and release access for a publishing run. The factory checks authority again during admission and before returning the result. It records `responding_actor` separately from the caller-provided `actor` label. Older events remain readable with their original recorded label; that label alone does not prove who authenticated. A refusal after the answer commits does not undo the immutable event, so use readback to establish its outcome.
+
+For integrations, read `GET /api/v1/runs/{run_id}/worker-messages` and send `POST /api/v1/runs/{run_id}/worker-requests/{request_id}/respond` with a stable `id`, an `actor` label and an `answer`. Reusing an ID with changed content is refused. New responses also bind the ID to the authenticated replying user. SDK clients use `worker_messages` and `respond_worker`; MCP clients use `respond_worker_request`. Keep credentials out of all question and answer fields.
+
+**Execution record references** shows the question and answer event digests. The portal checks each displayed event separately. The filtered conversation omits other execution events; inspect the full **Plan > Execution journal** when you need the complete journal verification.

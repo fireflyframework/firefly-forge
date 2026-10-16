@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/set_project_membership
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Set a registered user's role or explicitly revoke it with role=null.
+
+  Current owner/admin authority and the last-owner safeguard remain server-owned.
+required_variables: []
+metadata:
+  defaults: {}

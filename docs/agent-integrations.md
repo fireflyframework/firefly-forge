@@ -36,6 +36,34 @@ forge run --repository REPOSITORY_ID --project PROJECT_ID --component stock \
 
 A standalone frontend can select `--backend none`. Explicit stack choices must match a configured component. `--roles-file role-selection.json` applies validated role overrides; a run retains the resulting snapshot.
 
+## Delegate repository accounts
+
+SCM delegation connects a recorded provider account to an existing Forge user for explicit project components and actions. It does not create a user, grant project membership or turn a webhook sender into a personal login. The mapped user must remain enabled and retain the required project permission.
+
+Read the verified account references before preparing a delegation. Candidates come from recorded signed deliveries in the configured repository scope; listing them does not contact the provider or discover accounts remotely.
+
+```sh
+forge project scm-actors candidates PROJECT_ID REPOSITORY_ID
+forge project scm-actors list PROJECT_ID REPOSITORY_ID
+forge project scm-actors configure PROJECT_ID REPOSITORY_ID reviewed-delegation.json
+forge project scm-actors get PROJECT_ID REPOSITORY_ID ORIGINAL_REQUEST_ID
+```
+
+The JSON document uses the native `SCMActorBindingInputV1` contract. Keep its stable `request_id`, exact verified receipt and reference digest, existing `native_user_id`, explicit `component_ids` and `allowed_actions`. Copy the candidate page's `project_binding_digest` into `expected_project_binding_digest` to bind approval to the reviewed project configuration. Supply the expected previous digest when revising a mapping. The administrator must explicitly acknowledge that the account identity is asserted through the configured webhook. Set `active` to `false` to request a revoked revision; old receipts remain readable under current access.
+
+The initial delegated actions are `respond`, `status` and `cancel`. A mapping does not approve generated work, authorize publication or substitute for an adoption decision. Other actions require their own admitted native path. Provider origin, installation or workspace scope, repository grants and current mapping are checked by the server.
+
+| Operation | Python SDK | Factory MCP |
+| --- | --- | --- |
+| Read verified accounts | `scm_actor_binding_candidates` | `list_scm_actor_binding_candidates` |
+| Delegate or revoke | `configure_scm_actor_binding` | `configure_scm_actor_binding` |
+| Read current mapping heads | `scm_actor_bindings` | `list_scm_actor_bindings` |
+| Read the original receipt | `scm_actor_binding` | `get_scm_actor_binding` |
+
+All methods take the project and repository IDs. Candidate and current-head reads accept an optional cursor and return at most fifty entries. Pass the returned `next_cursor` unchanged to read another page. A head page lists the current revision of each mapping; it is not a complete revision history. Exact reads take the original request ID and can retrieve an older receipt under current access.
+
+Retain that request ID before configuring a mapping. A timeout, conflict or permission refusal does not establish whether a write committed. Use the exact receipt read to recover the original result; these clients never retry a write, invent another identity or reset the previous digest automatically. MCP marks configuration as an explicit authority-changing operation. Its three reads do not change mappings or invoke provider discovery.
+
 ## Delivery requests and recovery
 
 Publication and cancellation are worker-mediated requests. Python `execution_requests(run_id)` and MCP `get_execution_requests` read their status and events. An accepted request is still pending until its worker result is retained; use the recorded URL and receipts to identify successful publication.

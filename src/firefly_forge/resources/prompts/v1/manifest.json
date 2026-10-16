@@ -1,0 +1,1817 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "id": "assistant/frozen-skills",
+      "version": "1.0.0",
+      "path": "assistant/frozen-skills.yaml",
+      "sha256": "417f04274a7a46a4c87ea7bf0071d36966ca8aa1e39b469ef2ab79afd9aecd35",
+      "field": "user",
+      "variables": {
+        "instructions": "string",
+        "prompt": "string"
+      }
+    },
+    {
+      "id": "assistant/request",
+      "version": "1.0.0",
+      "path": "assistant/request.yaml",
+      "sha256": "f76226ba42f5fe6cea409da52deba3dbc13fd43f199f5a5c685857d753db2fb9",
+      "field": "user",
+      "variables": {
+        "task": "string",
+        "context": "string",
+        "message": "string"
+      }
+    },
+    {
+      "id": "assistant/system",
+      "version": "1.0.0",
+      "path": "assistant/system.yaml",
+      "sha256": "1218996faeffe98209eb3a328a3f06f48377c7cdc36f6080d2b42a8ed113b3d0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "assurance/review",
+      "version": "1.0.0",
+      "path": "assurance/review.yaml",
+      "sha256": "b35256e2bf844e589ad449c809a09565ad9dfc92571953d6b7451693c8789123",
+      "field": "user",
+      "variables": {
+        "schema": "string",
+        "brief": "string",
+        "definition": "string",
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/backend-dotnet",
+      "version": "1.0.0",
+      "path": "implementation/backend-dotnet.yaml",
+      "sha256": "3b4c525ebff4741d4475ed69814f63cd25ef95f1a954e76f9487c56fd5cdb13d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-java",
+      "version": "1.0.0",
+      "path": "implementation/backend-java.yaml",
+      "sha256": "562fa4bfddeb7e353cae62521e280a166d19da34b8e0c40e6a798bdf3c9ac8b8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-larafly",
+      "version": "1.0.0",
+      "path": "implementation/backend-larafly.yaml",
+      "sha256": "481e85b439cf6c82db2a1ec7f5389e0060c5d31d9099ba9b31121c7f60185aaf",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-none",
+      "version": "1.0.0",
+      "path": "implementation/backend-none.yaml",
+      "sha256": "09d01afde1590579a37afdff0b6164fe493b61b3fb479338222e4c7f46f674d3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-pyfly",
+      "version": "1.0.0",
+      "path": "implementation/backend-pyfly.yaml",
+      "sha256": "eb36f8eb3cebcf936852f56d5a595859b4395a5fd7b7f53e3a263ced1bb7f4f1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-rust",
+      "version": "1.0.0",
+      "path": "implementation/backend-rust.yaml",
+      "sha256": "1b0964b0e5228e64783285e7e2f6b43522fc50c47d568950ae231cb0de1984c6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/base",
+      "version": "1.0.0",
+      "path": "implementation/base.yaml",
+      "sha256": "4760ab87bf2abe2bf7019d86d3031f20db8c541369282d59252265dc5deebb3a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/brand",
+      "version": "1.0.0",
+      "path": "implementation/brand.yaml",
+      "sha256": "b5f39bf9f758f32936886ae94f7858b4b723209cd4114a3c73259cd779bf70d0",
+      "field": "user",
+      "variables": {
+        "files": "string"
+      }
+    },
+    {
+      "id": "implementation/browser-qa",
+      "version": "1.0.0",
+      "path": "implementation/browser-qa.yaml",
+      "sha256": "e0a769b1b1df8dc6c1891338b9df7bd2368eaae80944459b3af6cb758deda678",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/campaign",
+      "version": "1.0.0",
+      "path": "implementation/campaign.yaml",
+      "sha256": "e22e1347c87c42a209e0c245f38545afd5884e90513445a36c52920fad444f6e",
+      "field": "user",
+      "variables": {
+        "context": "string"
+      }
+    },
+    {
+      "id": "implementation/component",
+      "version": "1.0.0",
+      "path": "implementation/component.yaml",
+      "sha256": "592c71e511a5abb214ef515ae6f770f8aa5fce64bd2904f568dcf1c52bd49d1f",
+      "field": "user",
+      "variables": {
+        "component_id": "string",
+        "path": "string",
+        "responsibility": "string"
+      }
+    },
+    {
+      "id": "implementation/customer",
+      "version": "1.0.0",
+      "path": "implementation/customer.yaml",
+      "sha256": "a9048a48a28396169f055a7390b2de7032d0404d2afe31a7d11fc07919e7c2b0",
+      "field": "user",
+      "variables": {
+        "revision": "string",
+        "definition": "string",
+        "surface": "string"
+      }
+    },
+    {
+      "id": "implementation/customer-api",
+      "version": "1.0.0",
+      "path": "implementation/customer-api.yaml",
+      "sha256": "a3d6c36ff8b2835588ffe252991c1eb1694d432072ed64572ea7ef9ff3dfa509",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/customer-frontend",
+      "version": "1.0.0",
+      "path": "implementation/customer-frontend.yaml",
+      "sha256": "e148a796467ddef45b475825378940312345f849af0ccb92112e68b33d64ecb0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/design-api",
+      "version": "1.0.0",
+      "path": "implementation/design-api.yaml",
+      "sha256": "990b3428422e21a0ce970a36b7d0c2fe72bd3a5338474dabb9dd1fc88f89d5e5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/design-frontend",
+      "version": "1.0.0",
+      "path": "implementation/design-frontend.yaml",
+      "sha256": "e26f03c445937dbcdd807e9a0a7394e772e29ca4581051c4ec66fe2b42117267",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/external-tools",
+      "version": "1.0.0",
+      "path": "implementation/external-tools.yaml",
+      "sha256": "307b72ce75092e798881f7e4ed897a377446c87e2dd20145f26dfef12e518161",
+      "field": "user",
+      "variables": {
+        "schemas": "string"
+      }
+    },
+    {
+      "id": "implementation/frontend-angular",
+      "version": "1.0.0",
+      "path": "implementation/frontend-angular.yaml",
+      "sha256": "19391b1f20202b5cc3b35d01b7e199c60eff41679cfb7d1150c041f3026393e6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-nextjs",
+      "version": "1.0.0",
+      "path": "implementation/frontend-nextjs.yaml",
+      "sha256": "8af0963edc3bc225f1e911ddf27b586f78f2cd2e37aecf4cf1426c04346f6540",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-none",
+      "version": "1.0.0",
+      "path": "implementation/frontend-none.yaml",
+      "sha256": "0cdfab4fb535cf71b9fda5a1ef3c5e618557ac259c3eaf6f5cb5133338b36256",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-react",
+      "version": "1.0.0",
+      "path": "implementation/frontend-react.yaml",
+      "sha256": "14d500691724a3e003b2f0b4299c3499c5af9e943ae592abcc8c3b6376a77e3b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/frontend-vue",
+      "version": "1.0.0",
+      "path": "implementation/frontend-vue.yaml",
+      "sha256": "dbbb033a4490e5a457d3232602c614a54304fd2aff1cd51dd990296cab7edcd0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/maintenance",
+      "version": "1.0.0",
+      "path": "implementation/maintenance.yaml",
+      "sha256": "15a649cb383aef1b04bae2207df7b63c40c3980f4014e4c1fe170ca218b03b65",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/maintenance-request",
+      "version": "1.0.0",
+      "path": "implementation/maintenance-request.yaml",
+      "sha256": "202e4693f25e8c086813dbf678da04ce2f2ec82c94aebb6bbb0bd83d845bf551",
+      "field": "user",
+      "variables": {
+        "application": "string",
+        "incident": "string",
+        "request": "string"
+      }
+    },
+    {
+      "id": "implementation/operator-response",
+      "version": "1.0.0",
+      "path": "implementation/operator-response.yaml",
+      "sha256": "1711377c42a3831f6a2ffdfde7c44ef1035789dc1a67969568e0cd1e47a71989",
+      "field": "user",
+      "variables": {
+        "response": "string"
+      }
+    },
+    {
+      "id": "implementation/previous-checks",
+      "version": "1.0.0",
+      "path": "implementation/previous-checks.yaml",
+      "sha256": "eb44641d410ba8f856627c1538f5d1ef380fdd0acf17bf13e9fa742b8d47698d",
+      "field": "user",
+      "variables": {
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/reference-descriptors",
+      "version": "1.0.0",
+      "path": "implementation/reference-descriptors.yaml",
+      "sha256": "e11a8e14bc5c22c064ff7ca2995ea30a88d399af04675fba355ab046a6d5a5ef",
+      "field": "user",
+      "variables": {
+        "references": "string"
+      }
+    },
+    {
+      "id": "implementation/repair",
+      "version": "1.0.0",
+      "path": "implementation/repair.yaml",
+      "sha256": "f6afc4c927bf15e98d603d04074a9a53bd09384914607c8c35b3bfd0db8fd9b6",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "checks": "string"
+      }
+    },
+    {
+      "id": "implementation/request",
+      "version": "1.0.0",
+      "path": "implementation/request.yaml",
+      "sha256": "5586b36fc03744ba24fc31e36800ceed83edbef76c4cc44aa6105733d7e6e468",
+      "field": "user",
+      "variables": {
+        "brief": "string"
+      }
+    },
+    {
+      "id": "implementation/resume",
+      "version": "1.0.0",
+      "path": "implementation/resume.yaml",
+      "sha256": "c08af0376cbfe214169644514c60a7f4f7600bf24fc9995dca541135384bd4aa",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/tool-rules",
+      "version": "1.0.0",
+      "path": "implementation/tool-rules.yaml",
+      "sha256": "761e0dcadd0a2b2bbe83770d5e1b7a043b290ff1e87d4ba1a8492773e5e10852",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/verification-request",
+      "version": "1.0.0",
+      "path": "implementation/verification-request.yaml",
+      "sha256": "f263825370c4c37e998ec17d64a765293e7b5200e6aac5c486fba37ceda36b1f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/worker-feedback",
+      "version": "1.0.0",
+      "path": "implementation/worker-feedback.yaml",
+      "sha256": "4da95e9f23b407efe73b03dd0c8ffe73b805e69331e29d193fc7dad014a9f5f0",
+      "field": "user",
+      "variables": {
+        "schema": "string"
+      }
+    },
+    {
+      "id": "mcp/abandon_tool_invocation",
+      "version": "1.0.0",
+      "path": "mcp/abandon_tool_invocation.yaml",
+      "sha256": "aad3748e26174cb5bddf2644f729952aa06543eb7343b23e6c77364caca34ee0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/analyze_project",
+      "version": "1.0.0",
+      "path": "mcp/analyze_project.yaml",
+      "sha256": "8f9642238c91203e62f73286bbcf0dae8608f4833a0b3772ac544ad01925c534",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/apply_product_change",
+      "version": "1.0.0",
+      "path": "mcp/apply_product_change.yaml",
+      "sha256": "b15cb6a6e3ed65cdcfbf4ad3285e66cc6ca3d94921a4d0c3578218c84c7d06f5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/archive_project_campaign_report",
+      "version": "1.0.0",
+      "path": "mcp/archive_project_campaign_report.yaml",
+      "sha256": "addf1e8959dd1abcec5297bbe4a8d9e29d8dc9a18258c5e85fc7c7a094a63022",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/cancel_project_campaign",
+      "version": "1.0.0",
+      "path": "mcp/cancel_project_campaign.yaml",
+      "sha256": "4fd1c49a2fb01db7ecccd4e9bad675443392bab040c8bff909705321f735a187",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/cancel_run",
+      "version": "1.0.0",
+      "path": "mcp/cancel_run.yaml",
+      "sha256": "3b10eb2483054ccf5a403c4e0c12e6bcaabd52d803ea5a976d391bb833121a3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/check_application",
+      "version": "1.0.0",
+      "path": "mcp/check_application.yaml",
+      "sha256": "1fb454a5bb333af2115614f6f409ac5dd9e0856f9a06221cd82be90dc99a24de",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/check_repository_runner",
+      "version": "1.0.0",
+      "path": "mcp/check_repository_runner.yaml",
+      "sha256": "bcc2ffc53e1389cb386fceca9418d0639c7e175df848abe31742310eb389a4a4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/configure_connection_oauth.yaml",
+      "sha256": "86ebfa22ac9d9aa5d9793bbf195d00f37161f651517f01b601af2377cbf1d7be",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_external_mcp",
+      "version": "1.0.0",
+      "path": "mcp/configure_external_mcp.yaml",
+      "sha256": "0b83784edb9636a59174d849981def220c9cf35373a524fea2778fe7715beac6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_internet_search",
+      "version": "1.0.0",
+      "path": "mcp/configure_internet_search.yaml",
+      "sha256": "5809ad1f20f04b9a578c44114328bf1e3ef8991dc31a0a4834e9449e629bf466",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_learning_policy",
+      "version": "1.0.0",
+      "path": "mcp/configure_learning_policy.yaml",
+      "sha256": "94d12174183b98acf7a601f15a72b0980c83af3c4897911c126772b3c84fb48e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_local_oauth_provider_policy",
+      "version": "1.0.0",
+      "path": "mcp/configure_local_oauth_provider_policy.yaml",
+      "sha256": "02ef331251bed112527994237d5444e512ddf952d8ae52f052ee83984a92dd9e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_model_profile",
+      "version": "1.0.0",
+      "path": "mcp/configure_model_profile.yaml",
+      "sha256": "8fa3b56fe2f52b18bd646835595eb70cd5ba47f90d21f9e528398e30144310db",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_project",
+      "version": "1.0.0",
+      "path": "mcp/configure_project.yaml",
+      "sha256": "2dfa73e77a6bd8924002a943868a62693da36a5a1b85de6db096f852eff8e3c6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_scm_actor_binding",
+      "version": "1.0.0",
+      "path": "mcp/configure_scm_actor_binding.yaml",
+      "sha256": "791efea5cb3d6b400a4e5e40104a470c1666dc95b625f4d8b6cb42788c6c771b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_tool_policy",
+      "version": "1.0.0",
+      "path": "mcp/configure_tool_policy.yaml",
+      "sha256": "b59d339a70bb5006e752456ccb97ab6f58b8f8ff29318ec5781c3cd29e31a12c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/connect_granted_repository",
+      "version": "1.0.0",
+      "path": "mcp/connect_granted_repository.yaml",
+      "sha256": "dadb6ad9ad2c3a8df6d8eb398184a7b374db979045802be5b3688159e9f38888",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/connect_repository",
+      "version": "1.0.0",
+      "path": "mcp/connect_repository.yaml",
+      "sha256": "fbbd5a6d5a56c9a664f0613f801b63f5746b1368be114334255dec273e78b7af",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/create_run",
+      "version": "1.0.0",
+      "path": "mcp/create_run.yaml",
+      "sha256": "b2d29bd3ba52edeaafca1f4fdd606832a3da332e1136007aed5929882c496a13",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/deploy_verified_run",
+      "version": "1.0.0",
+      "path": "mcp/deploy_verified_run.yaml",
+      "sha256": "ceb97f4581d6e6234ddc087dc17b566fce758a1470efcd76e104e6a982653a3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/disconnect_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/disconnect_connection_oauth.yaml",
+      "sha256": "c01b4ca28142130576cbdfdaaaa518c814fa188ee7dbd3df71a1dbaf3c7cc927",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/discover_external_mcp",
+      "version": "1.0.0",
+      "path": "mcp/discover_external_mcp.yaml",
+      "sha256": "a1835b06aa3eb86b0ffd9fd64ad57f657b285481ac87c72a3348f87f224c93ef",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/find_project_eligible_users",
+      "version": "1.0.0",
+      "path": "mcp/find_project_eligible_users.yaml",
+      "sha256": "d6d43af860da12ff3e794000546b06cc6b702c96fa63b2fefb2471c1cdbb943c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_agent_role_lifecycle",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_role_lifecycle.yaml",
+      "sha256": "84711aa8faf6cbd6f2c4295abcb8be647af5e6ef304fc0ea2b7fca928938c74c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_agent_roles",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_roles.yaml",
+      "sha256": "5433f1285072595207f9184ff866aa5871392c3c80ab96512bb6a05937e744f4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_application",
+      "version": "1.0.0",
+      "path": "mcp/get_application.yaml",
+      "sha256": "42c43e51625b9e549a8a587761ff63bb81332809813f059180bf1d96c886b25d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_browser_evidence_image",
+      "version": "1.0.0",
+      "path": "mcp/get_browser_evidence_image.yaml",
+      "sha256": "e05e99d005187d76afa4d95f16a96d9642fabaa9c9066c42e254e536053a3f58",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/get_connection_oauth.yaml",
+      "sha256": "3da005b39e54bd8f383bdd09d035b648565b33f3722556899f8b10dc214b03e5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_connection_oauth_effect",
+      "version": "1.0.0",
+      "path": "mcp/get_connection_oauth_effect.yaml",
+      "sha256": "de50a87b99d59745e5c138bcbe4637d3c2881d3afd1b139218639786d7937c4e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_connection_oauth_providers",
+      "version": "1.0.0",
+      "path": "mcp/get_connection_oauth_providers.yaml",
+      "sha256": "2d695343f83b74236a28ff905dc0f70e6859b578e530649384ae441bbfa363a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_development_plan",
+      "version": "1.0.0",
+      "path": "mcp/get_development_plan.yaml",
+      "sha256": "3093e3c030ffc0079aa809b3108f037d378903bbc1a21602e8b753fc9b062467",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_execution_journal",
+      "version": "1.0.0",
+      "path": "mcp/get_execution_journal.yaml",
+      "sha256": "ab2b1a78939e44b633b33b5a971aaab95406fd1dbec7b3a4721e1d0ba3af97a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_execution_requests",
+      "version": "1.0.0",
+      "path": "mcp/get_execution_requests.yaml",
+      "sha256": "fa8eb7d39af67bb48b2091fd7b65f6061dca823ca373d49fdb1edc7c15325b4b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_external_mcp_catalog",
+      "version": "1.0.0",
+      "path": "mcp/get_external_mcp_catalog.yaml",
+      "sha256": "cd04f34f0100f6f90fefbbcb68a5afd6f9ed9b4b2fd36ad45026614a4d399fed",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_external_mcp_grants",
+      "version": "1.0.0",
+      "path": "mcp/get_external_mcp_grants.yaml",
+      "sha256": "6e72a5de2316b58ecd22575cb76966b3d3042d5e03e69c7c2bac6bfdadf0e09e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_identity_administration",
+      "version": "1.0.0",
+      "path": "mcp/get_identity_administration.yaml",
+      "sha256": "8685f81e7524c1a5266c38ecc946d8b2fce826133eb4c492d33544ba0c3dd855",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_identity_configuration",
+      "version": "1.0.0",
+      "path": "mcp/get_identity_configuration.yaml",
+      "sha256": "e06a7e4458186c3069c696597302b5e7bd16fbb3177868b31b97326fe4b0160d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_identity_session",
+      "version": "1.0.0",
+      "path": "mcp/get_identity_session.yaml",
+      "sha256": "3d4ca40aa77744fab7108ce2f52867148a0ba69feaeb9381e2295d693b912b35",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_internet_search_configuration",
+      "version": "1.0.0",
+      "path": "mcp/get_internet_search_configuration.yaml",
+      "sha256": "d4ba1d69801da344e3160dbf65ca883b95b6f67a848393dd114e75cb785fae96",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_learning_invalidation_receipt",
+      "version": "1.0.0",
+      "path": "mcp/get_learning_invalidation_receipt.yaml",
+      "sha256": "d108a2bec50324f21e1f852c557fce0ef9ba082863119821b59f273b63f464b5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_learning_policy",
+      "version": "1.0.0",
+      "path": "mcp/get_learning_policy.yaml",
+      "sha256": "085a400f51d057379f8d476371698bd2206566e0281ddc22030142e72c07660a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_learning_projection",
+      "version": "1.0.0",
+      "path": "mcp/get_learning_projection.yaml",
+      "sha256": "fdd5aafa733f3418d2db8132e9d56d741f4d3aa18388ca7454941defb187c596",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_learning_projection_observation_attempt",
+      "version": "1.0.0",
+      "path": "mcp/get_learning_projection_observation_attempt.yaml",
+      "sha256": "c4a9af2cfa67e3f9b62a735390e29a30028583ce7583215b16743c42c290d97c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_learning_projection_observation_receipt",
+      "version": "1.0.0",
+      "path": "mcp/get_learning_projection_observation_receipt.yaml",
+      "sha256": "010ccb90190a6bddfd3e80354e153dc4bf415a717850987c268d3ffa33965d3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_oauth_provider_policies",
+      "version": "1.0.0",
+      "path": "mcp/get_oauth_provider_policies.yaml",
+      "sha256": "99f2e360e61a0054a85d3dbb074f0cbb7665fc4d8dee89834c1182629f27d569",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_product_attachment",
+      "version": "1.0.0",
+      "path": "mcp/get_product_attachment.yaml",
+      "sha256": "77ddf4b15fc9854ae72725f584e5d55115757a1e59b85ab17357b3cdc80a7532",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_product_conversation",
+      "version": "1.0.0",
+      "path": "mcp/get_product_conversation.yaml",
+      "sha256": "ed79c158be083960c430bf96483d0b1a17ba0ce2e526e5100e4cfb655c3c8680",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_product_conversation_capabilities",
+      "version": "1.0.0",
+      "path": "mcp/get_product_conversation_capabilities.yaml",
+      "sha256": "81f08fdc8d5d498b2bfca6098c4ff283179af28eb21b985f0b65208828e0c691",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_product_definition",
+      "version": "1.0.0",
+      "path": "mcp/get_product_definition.yaml",
+      "sha256": "5482cb19857999fb8dfdded1944547aa49ee6658e513f47ec719e0a5e044e736",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project",
+      "version": "1.0.0",
+      "path": "mcp/get_project.yaml",
+      "sha256": "7011371f5f28617ec999c2e29ab85a8c0eeb17400ee81565ef9680e76040b36e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_campaign",
+      "version": "1.0.0",
+      "path": "mcp/get_project_campaign.yaml",
+      "sha256": "9d83615c7ee37af32418ddae6e8162ea5e7c954ee7c751e4a22c828870372cbc",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_campaign_delivery_plan",
+      "version": "1.0.0",
+      "path": "mcp/get_project_campaign_delivery_plan.yaml",
+      "sha256": "9b7b5dae2bbaf6e345bfec637066071467ba59f238b0f30c7e341108e5549d6e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_campaign_delivery_progress",
+      "version": "1.0.0",
+      "path": "mcp/get_project_campaign_delivery_progress.yaml",
+      "sha256": "c14b9501dd84f246ab5aa9d55c5c983bd085b4cdd728f497550a0dcc0f409a0b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_campaign_report",
+      "version": "1.0.0",
+      "path": "mcp/get_project_campaign_report.yaml",
+      "sha256": "cac749d2262ff35b8b3a84c91b90b92d4da2c455c54a8ef90f458cf82eb700dc",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_campaign_report_archive",
+      "version": "1.0.0",
+      "path": "mcp/get_project_campaign_report_archive.yaml",
+      "sha256": "a6c313eca7271acdbe52deb31987ed1f19a88cc26e6aebb879252d093b9d87f2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_revision",
+      "version": "1.0.0",
+      "path": "mcp/get_project_revision.yaml",
+      "sha256": "1d1153bf3e90cc70bce62c12027d522b60a44989dd1a667dab02502c7c61b5d8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_repository_agent_role_lifecycle",
+      "version": "1.0.0",
+      "path": "mcp/get_repository_agent_role_lifecycle.yaml",
+      "sha256": "01a54abc5d116d6d7fed99ed02272a026b998d67ef75ee097223a0345c9679cd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_repository_agent_roles",
+      "version": "1.0.0",
+      "path": "mcp/get_repository_agent_roles.yaml",
+      "sha256": "4969cbe2136adbf54718d333dc232cbe9c06a8948b19adc312836466232d2ada",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_repository_runner",
+      "version": "1.0.0",
+      "path": "mcp/get_repository_runner.yaml",
+      "sha256": "ccc62a35df41b4de8c553ef8b35b99774cb31b626bc6eb4aa5d0495a46d7f762",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_repository_workflow",
+      "version": "1.0.0",
+      "path": "mcp/get_repository_workflow.yaml",
+      "sha256": "4edbd969776ac895b4c861dde2eb899bb85d1bfaf0f5e7d8a1b6f67c5dd74416",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run",
+      "version": "1.0.0",
+      "path": "mcp/get_run.yaml",
+      "sha256": "e0fdae720c4ecd38bfd58a8d19a49fd558b35f42dc762e1504d1c68fd78b4848",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_tool_invocations",
+      "version": "1.0.0",
+      "path": "mcp/get_run_tool_invocations.yaml",
+      "sha256": "1c6e5f4f73628cedfb502ecffbc2079b97077c01bfca65b3689929c04804bd9e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_runner_continuation",
+      "version": "1.0.0",
+      "path": "mcp/get_runner_continuation.yaml",
+      "sha256": "7cfde542acd18fbe5c704590f9baa011f5b87782ad7f2d189b35360ef789ba23",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_runner_continuation_candidates",
+      "version": "1.0.0",
+      "path": "mcp/get_runner_continuation_candidates.yaml",
+      "sha256": "c10d2dc93e4e90b4c28ef991c7e098472d40ac1eaa14677e4f7d05fff9700eaf",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_actor_binding",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_actor_binding.yaml",
+      "sha256": "996f65c73036bd7f5741c3293ffd71915c30c2a44b5e70384951ea122d33e321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_search_citation",
+      "version": "1.0.0",
+      "path": "mcp/get_search_citation.yaml",
+      "sha256": "fc040fac1352b2ce35be781bde0a426371ad23288a881d2656352a79bfc36939",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_source_analysis",
+      "version": "1.0.0",
+      "path": "mcp/get_source_analysis.yaml",
+      "sha256": "4de23dd9cbcca85b02b678026d4e638464fa5e13763669aca21576cffbea1de5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_task_routing",
+      "version": "1.0.0",
+      "path": "mcp/get_task_routing.yaml",
+      "sha256": "a15066c13c36962ce980dca1df459917e3cb73bff498deaffe661132106a97ac",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_tool_policy",
+      "version": "1.0.0",
+      "path": "mcp/get_tool_policy.yaml",
+      "sha256": "1c5648bfe931b2bd2897c043907573f5b4bdfef61303c12d4a1b43df6b06f834",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_worker_messages",
+      "version": "1.0.0",
+      "path": "mcp/get_worker_messages.yaml",
+      "sha256": "5dd6f1a92a2ff1c572fe7b3026632531966570459862b9401f08dc2564219e72",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/grant_external_mcp",
+      "version": "1.0.0",
+      "path": "mcp/grant_external_mcp.yaml",
+      "sha256": "68ccdbad16822b8e1cc758f6a81d703229f5769b3fd581b3fa67770fd40c8c65",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/handoff_run",
+      "version": "1.0.0",
+      "path": "mcp/handoff_run.yaml",
+      "sha256": "419377064a2ffce902afd817c25dffe08811725f01499cd38e1890b24ff6f30a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/index_verified_source",
+      "version": "1.0.0",
+      "path": "mcp/index_verified_source.yaml",
+      "sha256": "30015d1bad18d4b58c5403ac1b04f5f874b443ad5798a91d5ea09927d09b6139",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/invalidate_learning",
+      "version": "1.0.0",
+      "path": "mcp/invalidate_learning.yaml",
+      "sha256": "05f5bc244d0a940b1e1552cb75fec6c9e508e6fe194d00dd8ed716ae1bc8fa71",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/invite_identity_user",
+      "version": "1.0.0",
+      "path": "mcp/invite_identity_user.yaml",
+      "sha256": "24c14ce39946249b5ccf362a24ef00c00a9f52bc22d5450523f8f8c5e235c3f9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/launch_project_campaign",
+      "version": "1.0.0",
+      "path": "mcp/launch_project_campaign.yaml",
+      "sha256": "e0a3f17008a825213ee70473c241d6f454cba0ac492fd4f3fdf862cc8164cd70",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/link_external_mcp_oauth",
+      "version": "1.0.0",
+      "path": "mcp/link_external_mcp_oauth.yaml",
+      "sha256": "7390ed81dbcae552769fab86761429b2d0fc472ede7fa2709c71c3cbf377f214",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_applications",
+      "version": "1.0.0",
+      "path": "mcp/list_applications.yaml",
+      "sha256": "ad50d9b5640a412268feb228ea02865afb52a432bd18fad15e21d9c90e1b50fd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_cloud_providers",
+      "version": "1.0.0",
+      "path": "mcp/list_cloud_providers.yaml",
+      "sha256": "39b4932726750a2ab1fd0d9b975c9e65ca32f04486661a39898cd80385bb3e93",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/list_connection_oauth.yaml",
+      "sha256": "c9f93a567420d896da79f50a2e94a089201c24cffc40f9b8a705780082c74a0b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_deployment_targets",
+      "version": "1.0.0",
+      "path": "mcp/list_deployment_targets.yaml",
+      "sha256": "1762b2f2a92d705b5463daa5222b1a395f6e71327ee0707710406ee3e9f6f8a8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_identity_operations",
+      "version": "1.0.0",
+      "path": "mcp/list_identity_operations.yaml",
+      "sha256": "635e56fbd57f23c9d6c61acf50fa6c6db08a617e2afd9b3be948e8c6232b833d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_identity_users",
+      "version": "1.0.0",
+      "path": "mcp/list_identity_users.yaml",
+      "sha256": "ba485d10f3a88edc904f6263ac73de71d944db7ce5432211e4cf5aefac906d61",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_incidents",
+      "version": "1.0.0",
+      "path": "mcp/list_incidents.yaml",
+      "sha256": "46f74feaeda662a6fcc2d89cd6d27d116129a404a06bd377769026ccba8bed84",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_learning_records",
+      "version": "1.0.0",
+      "path": "mcp/list_learning_records.yaml",
+      "sha256": "43f3907e7b4d3bb828e781b61495e1ffec3b0a3fd25c6cf42925337b28842194",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_model_profiles",
+      "version": "1.0.0",
+      "path": "mcp/list_model_profiles.yaml",
+      "sha256": "060a1d28821d13e796ef3acff211fe38b10ba6a8a849b6bcec4ba80232a18be9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_product_attachments",
+      "version": "1.0.0",
+      "path": "mcp/list_product_attachments.yaml",
+      "sha256": "a1fe0985f8164e309cb96b4dfff658face286b12d8afa87726ca69b588cbf4f3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_product_conversations",
+      "version": "1.0.0",
+      "path": "mcp/list_product_conversations.yaml",
+      "sha256": "cd04d0bb2c678783efa95d3b24e4b6056a985d52bd1c49a5a982d027f86f6d20",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_project_campaign_delivery_plans",
+      "version": "1.0.0",
+      "path": "mcp/list_project_campaign_delivery_plans.yaml",
+      "sha256": "a0a07961a97f64990f37ff85095e93d1a76a4d8da6ff5f070a9a4f47fe98cacb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_project_campaign_report_archives",
+      "version": "1.0.0",
+      "path": "mcp/list_project_campaign_report_archives.yaml",
+      "sha256": "6b00ae017d4a7c9ad3b7dd7e8e929df46519aaa945f176a9012c1b54edbbe3f0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_project_campaigns",
+      "version": "1.0.0",
+      "path": "mcp/list_project_campaigns.yaml",
+      "sha256": "7c4eb303a6a0b1e610f11c2f833e05dc60ce5eb3d7745f14eff5271f135c3b89",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_project_members",
+      "version": "1.0.0",
+      "path": "mcp/list_project_members.yaml",
+      "sha256": "8677dfe93e5c19f951b71209812dda60d6820c991bd17bd09c38d0e65af57c93",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_projects",
+      "version": "1.0.0",
+      "path": "mcp/list_projects.yaml",
+      "sha256": "d1b25ae2bee79ce475609331110eef3701533b5a9a01475f29fe371ae863603d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_repositories",
+      "version": "1.0.0",
+      "path": "mcp/list_repositories.yaml",
+      "sha256": "6ca882d9a33e564eba68d93cb51b6c6b93f02f7fee7bf5b53c87b9a00ad4101e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_repository_receipts",
+      "version": "1.0.0",
+      "path": "mcp/list_repository_receipts.yaml",
+      "sha256": "3414d8e22d4820dbdb72d4b2308d0526bc927d37b14eb2da802cc26cdaf2f9f2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_scm_actor_binding_candidates",
+      "version": "1.0.0",
+      "path": "mcp/list_scm_actor_binding_candidates.yaml",
+      "sha256": "417505dad3c1edcbc0b611a5e1573926753e0ace15eb78d1c5c650c6287bb5b2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_scm_actor_bindings",
+      "version": "1.0.0",
+      "path": "mcp/list_scm_actor_bindings.yaml",
+      "sha256": "7a0fdb140eed7bd32a5a2334e879a8e793cec13fb0ac78472241e5a8bd9857c1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_source_analyses",
+      "version": "1.0.0",
+      "path": "mcp/list_source_analyses.yaml",
+      "sha256": "3388eea74218350e7fe0f6547bc4445116232f0780f6a96bc5544d3ea47efd8a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_source_connections",
+      "version": "1.0.0",
+      "path": "mcp/list_source_connections.yaml",
+      "sha256": "d63e0b0e738037a73c4bb3bcb4102fe3c5b0432e623d4054eee5041fdd24adad",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_learning_projection",
+      "version": "1.0.0",
+      "path": "mcp/observe_learning_projection.yaml",
+      "sha256": "b820bbe25147c8b75442922ce17facf7e7c513058f206d99a2dd333b24647ca3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_learning_projection_attempt",
+      "version": "1.0.0",
+      "path": "mcp/observe_learning_projection_attempt.yaml",
+      "sha256": "f552d2fc03127ca448d895a68d6a147b0c8101728d7cb81ed1abcf124dd3122c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/prepare_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/prepare_connection_oauth.yaml",
+      "sha256": "d5bcba737aab22d25bb6d1978b9b9beb7f39caff74c14415eb58246e19aa5855",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/preview_product_change",
+      "version": "1.0.0",
+      "path": "mcp/preview_product_change.yaml",
+      "sha256": "387bff4fe44489f82662f200420756d313b5b7e2730398aee4b97e825ab3b74e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/probe_runner",
+      "version": "1.0.0",
+      "path": "mcp/probe_runner.yaml",
+      "sha256": "8dd382a44aefc7ce945332632b2ac388ea30ac9b292da5d0647bf8caa0795da0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/provision_identity_user",
+      "version": "1.0.0",
+      "path": "mcp/provision_identity_user.yaml",
+      "sha256": "2710bcb32eed0f833a608bc3a398313798840211afe604ddc0eae91e36b0c45d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/publish_run",
+      "version": "1.0.0",
+      "path": "mcp/publish_run.yaml",
+      "sha256": "6c56f4910614a33429de246991ab6ea6774b8427d87a0902142bbe9d46324aba",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/reconcile_execution_request",
+      "version": "1.0.0",
+      "path": "mcp/reconcile_execution_request.yaml",
+      "sha256": "1611cdb211176d97cf9610b78de0afc9e6305bda345f872a5bcedab72965eb8e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/reconcile_identity_operation",
+      "version": "1.0.0",
+      "path": "mcp/reconcile_identity_operation.yaml",
+      "sha256": "abc92a18c9fb91569b8d33b2d9f6c2f02a391be2bc10a553ea38ffd538e1a2d4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/recover_identity_operation",
+      "version": "1.0.0",
+      "path": "mcp/recover_identity_operation.yaml",
+      "sha256": "74f500d0c015d544ce535cd3ffa992dd8941f4032c7d2e4cfdbb85afe981582c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/recover_product_design_turn",
+      "version": "1.0.0",
+      "path": "mcp/recover_product_design_turn.yaml",
+      "sha256": "d5cc722cf540886e2bbf3bfd343d8826c9d8350726af1d8a47ea62669f28b43e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/refresh_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/refresh_connection_oauth.yaml",
+      "sha256": "45a204efe0c88d9124707eefcec18d49756200f96a1b803d4757fbfc48ee72f2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/remember_verified_run",
+      "version": "1.0.0",
+      "path": "mcp/remember_verified_run.yaml",
+      "sha256": "e0fed1057992d49b54c3f15e164f8c0008e70973f3a49076643aae6637c2ea9e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/render_cloud_recipe",
+      "version": "1.0.0",
+      "path": "mcp/render_cloud_recipe.yaml",
+      "sha256": "84fd4a1cc1f7fc9a654f50cf2a86b5a82c2496de56b3b99977b46f1d05322804",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_incident_maintenance",
+      "version": "1.0.0",
+      "path": "mcp/request_incident_maintenance.yaml",
+      "sha256": "7e470efb8ff71156bbfdb42c70cabba0a29db5d7a9f4c5f9ea90cf5bea9affa5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_product_design_turn",
+      "version": "1.0.0",
+      "path": "mcp/request_product_design_turn.yaml",
+      "sha256": "0d02dd7875bf5a153d6b889d1214d045c76151e1e0ef6a9e5ecf87374f968a8d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_runner_continuation",
+      "version": "1.0.0",
+      "path": "mcp/request_runner_continuation.yaml",
+      "sha256": "80ee289f968a3325ad0ab2cf5ea99e21a4bc598572d5e022bece5985ee9db9c8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/resolve_incident",
+      "version": "1.0.0",
+      "path": "mcp/resolve_incident.yaml",
+      "sha256": "83e665e52bcb5cd2958d0f7e78ff56996ae3e754c28bd24058a0829c0c88ce8a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/respond_worker_request",
+      "version": "1.0.0",
+      "path": "mcp/respond_worker_request.yaml",
+      "sha256": "02b8c2b7fd99b9430cede20e33080c68367dadc9ddbb8567ae4b435cc1d59876",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/resume_project_campaign",
+      "version": "1.0.0",
+      "path": "mcp/resume_project_campaign.yaml",
+      "sha256": "3adb9b74c947beab6483945c04e8ab3554738a23c5c45c8ea4d137bd7ee0dc30",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/resume_run",
+      "version": "1.0.0",
+      "path": "mcp/resume_run.yaml",
+      "sha256": "3da2631e6370e3505d2468ee4e34cb3df3fa05eeb5bbf30d7e94783df7ed2635",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/retry_project_campaign",
+      "version": "1.0.0",
+      "path": "mcp/retry_project_campaign.yaml",
+      "sha256": "5d60600d04043d35b7c3565f0ff4f69196bc728338a0842410910f43439af101",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/review_external_mcp",
+      "version": "1.0.0",
+      "path": "mcp/review_external_mcp.yaml",
+      "sha256": "7351a2c2a2189c3a0e25da9412b8d921253fb6a9523d6259ada879a22141d2dd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/review_source_analysis",
+      "version": "1.0.0",
+      "path": "mcp/review_source_analysis.yaml",
+      "sha256": "ae491d9c72aeb836ea8d0bd7323d4a6926fb61721ed31d25cc6f302b6c88d5be",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/revoke_external_mcp",
+      "version": "1.0.0",
+      "path": "mcp/revoke_external_mcp.yaml",
+      "sha256": "c7467ce05cebf80cb4b7f016d1a3bbb17ae9750865285cc207ff2af9c8298260",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/rollback_deployment",
+      "version": "1.0.0",
+      "path": "mcp/rollback_deployment.yaml",
+      "sha256": "567dc636a9441f028a8257520c8c88b35c1a36bbfde9b6fd0a57f7032b7380d4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_agent_roles",
+      "version": "1.0.0",
+      "path": "mcp/save_agent_roles.yaml",
+      "sha256": "199be0c9058290ccb453a0f157298be47db79a56d9abb919598bd92593237407",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_product_definition",
+      "version": "1.0.0",
+      "path": "mcp/save_product_definition.yaml",
+      "sha256": "1dc27f4c2345fe5b71fa25d3e6b3cb1880bfd625acbc93dc8016298519e43b6b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_project_campaign_delivery_plan",
+      "version": "1.0.0",
+      "path": "mcp/save_project_campaign_delivery_plan.yaml",
+      "sha256": "801a811db933dfdf824af29566730c0df422d106916ed643b9df9bba24def6e3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_repository_agent_roles",
+      "version": "1.0.0",
+      "path": "mcp/save_repository_agent_roles.yaml",
+      "sha256": "ddd279077ee85207d431e12c94328023e1b9b1a7d10a39e556fe301e5a28adf4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_repository_runner",
+      "version": "1.0.0",
+      "path": "mcp/save_repository_runner.yaml",
+      "sha256": "042f5629033255ae83c5457d939640c458307c61cf46ae80db9b23ac85625cc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/save_task_routing",
+      "version": "1.0.0",
+      "path": "mcp/save_task_routing.yaml",
+      "sha256": "f68fd3ec4e66a58ca05a51a093622c66bf3b4e06e60c2707fc9744c125c21362",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/search_internet",
+      "version": "1.0.0",
+      "path": "mcp/search_internet.yaml",
+      "sha256": "85fba9c818d6d269751b17b24710417fb7340b61c8073ca9698d440dc4457218",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/search_project_knowledge",
+      "version": "1.0.0",
+      "path": "mcp/search_project_knowledge.yaml",
+      "sha256": "b3d31805cf7bed574bdbe7e6f4ea8bff723351c0c7c8f269b00895d7ad7e6bdc",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/set_identity_user_enabled",
+      "version": "1.0.0",
+      "path": "mcp/set_identity_user_enabled.yaml",
+      "sha256": "898cbd3d1e61eecd5f5c2e90024419a8412d882b225c8e57eb8c7fdf0da0a1f9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/set_project_membership",
+      "version": "1.0.0",
+      "path": "mcp/set_project_membership.yaml",
+      "sha256": "3f22704ace291c5b7fc3192dd14019d9fbd64751f42e49420f7c9201316520e5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/start_product_conversation",
+      "version": "1.0.0",
+      "path": "mcp/start_product_conversation.yaml",
+      "sha256": "19a6c3b5d0e6c85fe8609c01bbb3b84e2800e3fd6257dbae358c018dd63ba4f3",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/submit_learning_projection",
+      "version": "1.0.0",
+      "path": "mcp/submit_learning_projection.yaml",
+      "sha256": "8e13c8aaeff9bf7c62d1146a7d565ac0815e8aceb5363fd36ea16ec4a1153bf2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/supersede_connection_oauth",
+      "version": "1.0.0",
+      "path": "mcp/supersede_connection_oauth.yaml",
+      "sha256": "319409091566fb1a6613869c91b6b5c9b42be98aea9d6750fa8c02e18702d566",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/test_internet_search",
+      "version": "1.0.0",
+      "path": "mcp/test_internet_search.yaml",
+      "sha256": "f27f161d68caf207a9277b621653e9ef148ea9bf92089b0e9cefe85d59b2775a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/test_model_profile",
+      "version": "1.0.0",
+      "path": "mcp/test_model_profile.yaml",
+      "sha256": "5d5f1ec8fcc801cbffc37b164d9a168b132efe57190b14f61506b271656a644b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/upload_product_attachment",
+      "version": "1.0.0",
+      "path": "mcp/upload_product_attachment.yaml",
+      "sha256": "1512302ebaee0fc6278e1bf8015d5a54466a071eade4e8bdfed17d6c374dddad",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/architect",
+      "version": "1.0.0",
+      "path": "roles/architect.yaml",
+      "sha256": "d0e59be98b9c0fb82e0f7eaebd0f0ce1a3c62ca30123bf9b4c41a58c28e6e9a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/docs",
+      "version": "1.0.0",
+      "path": "roles/docs.yaml",
+      "sha256": "e9bf2faffe7a6ac09014f3567721a1053045cca129e1dd64eb9543a27dfbdffb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/entry",
+      "version": "1.0.0",
+      "path": "roles/entry.yaml",
+      "sha256": "52c7eecd44e07fbe39e9d3b3daefdb9b90fd76dcc9c72d56c2d2295debdcf4ea",
+      "field": "user",
+      "variables": {
+        "role_id": "string",
+        "execution_mode": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "roles/frozen",
+      "version": "1.0.0",
+      "path": "roles/frozen.yaml",
+      "sha256": "374fe355ff80773aa1a4486e8948533136257674eb1280ae251222a902b91301",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "roles/implementer",
+      "version": "1.0.0",
+      "path": "roles/implementer.yaml",
+      "sha256": "ed13f3be5f1db20c515324c108bb48de02651fc44594d7449a9fdf8cbb932e50",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/product-manager",
+      "version": "1.0.0",
+      "path": "roles/product-manager.yaml",
+      "sha256": "1228278c09136cd9d6affeade39a1032ae40fbd9bf4eb46ce379c202d8e7f74b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/qa",
+      "version": "1.0.0",
+      "path": "roles/qa.yaml",
+      "sha256": "a71354843cd63d1cd73872e029ae5e3052e1250c5812f7905a30fd323a851f6d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/security",
+      "version": "1.0.0",
+      "path": "roles/security.yaml",
+      "sha256": "81a1618518ad1186aee6cc12b6c44f349a6fd1acfd22864d2e3555894ed5967b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "roles/tech-lead",
+      "version": "1.0.0",
+      "path": "roles/tech-lead.yaml",
+      "sha256": "16ff4948f11d8e2f36f2dfd369964e94e668dce272f849486b8bbaedb440f2f9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/accessibility",
+      "version": "1.0.0",
+      "path": "skills/accessibility.yaml",
+      "sha256": "9826c7da79e9d688d998fc3a3dcb2ff4cade276ac5753fad9feca31a61e1a4c5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/documentation",
+      "version": "1.0.0",
+      "path": "skills/documentation.yaml",
+      "sha256": "e0d545b3626de139f5dca5c41faac861778a3cee9b85a48a29c3e316ccf3fce0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/entry",
+      "version": "1.0.0",
+      "path": "skills/entry.yaml",
+      "sha256": "cae9b0f557ae8b9c59c1327310475c500acf045702daa3e17d1264c40567dca9",
+      "field": "user",
+      "variables": {
+        "skill_id": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "skills/implementation",
+      "version": "1.0.0",
+      "path": "skills/implementation.yaml",
+      "sha256": "462c17b903c1fd9a236766335aa513adc2d74bc34ae32295ee92edc18180be43",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/security",
+      "version": "1.0.0",
+      "path": "skills/security.yaml",
+      "sha256": "f52628a3aa65e3035ee1b5c8ebd35c101775b0cd19be149ac1d363b5d73bebc5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "skills/selected",
+      "version": "1.0.0",
+      "path": "skills/selected.yaml",
+      "sha256": "c75fe18d51b6aac0e654f0424aa7a596972a9ffb18297292eb40ea432e8326e7",
+      "field": "user",
+      "variables": {
+        "brief": "string",
+        "instructions": "string"
+      }
+    },
+    {
+      "id": "skills/verification",
+      "version": "1.0.0",
+      "path": "skills/verification.yaml",
+      "sha256": "34625d742115f445d55eca519f1ae75313ff166d462489c54754d0c63574bade",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/checkpoint",
+      "version": "1.0.0",
+      "path": "tasks/checkpoint.yaml",
+      "sha256": "8347d46e3ed60c93224a248725195d67a5a19dce4a58efd51526c6ee9e09fb3e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/prepare",
+      "version": "1.0.0",
+      "path": "tasks/prepare.yaml",
+      "sha256": "bb96bb1ba23f9065aa70241a6e44b3a112cedc7917c27393b31a39a2db531c11",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/reconcile",
+      "version": "1.0.0",
+      "path": "tasks/reconcile.yaml",
+      "sha256": "ae6b23463bfb1dea0f7f7fd7104f6f7f689c4399b69fbb8d3813c14073caffca",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/review",
+      "version": "1.0.0",
+      "path": "tasks/review.yaml",
+      "sha256": "50f45d64c4e9adfaef5810488aa6b11b2083e156873366a6e39597812b648feb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tasks/verify",
+      "version": "1.0.0",
+      "path": "tasks/verify.yaml",
+      "sha256": "541aed307952d0fec30a7e02047999349c93c23332a3335667deb127c74715b1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/browser_check",
+      "version": "1.0.0",
+      "path": "tools/browser_check.yaml",
+      "sha256": "37c2b4eb9c4400e22ba3c486325a3c1b8960782a4aa5b808d217236e22a39d62",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/browser_journey",
+      "version": "1.0.0",
+      "path": "tools/browser_journey.yaml",
+      "sha256": "ae6e8b1e04456595d87a619551a71f0b78fc9541d619603239b7623923abfffd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/edit_lines",
+      "version": "1.0.0",
+      "path": "tools/edit_lines.yaml",
+      "sha256": "d6c18fc0c2803815e702bb86d75c2667520b69d825e4f1ceece9814b3034822f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/execute_command",
+      "version": "1.0.0",
+      "path": "tools/execute_command.yaml",
+      "sha256": "5d5e5fcef8e06b79ce2a1f29bc115b7179b569fb6ab94be415d1d5b032e2cb3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/external_mcp",
+      "version": "1.0.0",
+      "path": "tools/external_mcp.yaml",
+      "sha256": "162b8df289dc184c0e62154d0693ad3ea82b5f09317f47c0cbd126752a36ef13",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/git_diff",
+      "version": "1.0.0",
+      "path": "tools/git_diff.yaml",
+      "sha256": "cffd1a9764312e3b889912fec50819c6f72b41b81a9eba377ee9f136b7a119a5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/image-evidence",
+      "version": "1.0.0",
+      "path": "tools/image-evidence.yaml",
+      "sha256": "4092f540740fe52cdb8779b9dff944559ad07eb20f63320cc09b912c5111e174",
+      "field": "user",
+      "variables": {
+        "metadata": "string"
+      }
+    },
+    {
+      "id": "tools/image-unavailable",
+      "version": "1.0.0",
+      "path": "tools/image-unavailable.yaml",
+      "sha256": "643e6724be370510d551be2d272041a8c8ac8e48ac26f6d2525906fdbf5a90f8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/internet_search",
+      "version": "1.0.0",
+      "path": "tools/internet_search.yaml",
+      "sha256": "14c3fbca4266867631643c6f8943b49a2088a2fdb6422e9db8215db7a78460be",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/knowledge-evidence",
+      "version": "1.0.0",
+      "path": "tools/knowledge-evidence.yaml",
+      "sha256": "a6479268ba6c19f4458d3e9c1310a6f6a04d2ec46243c23b1d03f7037ae0ff0e",
+      "field": "user",
+      "variables": {
+        "hits": "string"
+      }
+    },
+    {
+      "id": "tools/knowledge_lookup",
+      "version": "1.0.0",
+      "path": "tools/knowledge_lookup.yaml",
+      "sha256": "3c02a2f0dfc67e04f8d1361121fa1a24fbf7fdb33599b5d325ef3ed59d0611ea",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/list_files",
+      "version": "1.0.0",
+      "path": "tools/list_files.yaml",
+      "sha256": "d354ab9b91be3726cde8536e44d9e6c94a52f2abae2f23b7d37ebf245021ecc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/profile_php",
+      "version": "1.0.0",
+      "path": "tools/profile_php.yaml",
+      "sha256": "781f92884ba73206b2e54ca2ea3bbc6c6f4fd4b60f9598c3391fa3208a2a10aa",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/profile_python",
+      "version": "1.0.0",
+      "path": "tools/profile_python.yaml",
+      "sha256": "e0290597ca5efd786ad3b69057bea33ff5f15473deaca52b76397ced332ba80b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/read_file",
+      "version": "1.0.0",
+      "path": "tools/read_file.yaml",
+      "sha256": "a3a9044c7ba4fdbdc5ae1070a322f34d3f593ec8741c0ca55b696fa5ae422ca4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/search-evidence",
+      "version": "1.0.0",
+      "path": "tools/search-evidence.yaml",
+      "sha256": "20f17e1be501f5163b77f11a71c8966c84aad7f653f49f1fe742539ef006c3c6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/search_text",
+      "version": "1.0.0",
+      "path": "tools/search_text.yaml",
+      "sha256": "a1d7cf25467d99124e56b3ebc18555800e54ef7db813c1f0efb235248e7fae1b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/trace_python",
+      "version": "1.0.0",
+      "path": "tools/trace_python.yaml",
+      "sha256": "cdad7806a7bb0aa81f5c7ff46f38432ace70f5fbed0fe1f0394865ad2d3e64b9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/write_file",
+      "version": "1.0.0",
+      "path": "tools/write_file.yaml",
+      "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
+      "field": "user",
+      "variables": {}
+    }
+  ]
+}

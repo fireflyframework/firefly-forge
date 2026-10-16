@@ -96,6 +96,7 @@ nav:
       - Choose an agent: agents.md
       - Assign models by task: model-profiles.md
       - Agent roles and feedback: agent-roles.md
+      - Maintain model instructions: prompt-templates.md
       - Lifecycle phases: agent-lifecycle.md
       - Agent tools: agent-tools.md
       - Tool and provider prerequisites: tooling-prerequisites.md

@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/internet_search
+version: 1.0.0
+description: Forge tools internet_search instructions.
+system_template: ''
+user_template: Search the configured server-mediated provider and return bounded cited results.
+required_variables: []
+metadata:
+  defaults: {}

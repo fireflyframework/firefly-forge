@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/list_files
+version: 1.0.0
+description: Forge tools list_files instructions.
+system_template: ''
+user_template: List at most 2000 project source paths; exclude dependencies, credentials and symlinks.
+required_variables: []
+metadata:
+  defaults: {}

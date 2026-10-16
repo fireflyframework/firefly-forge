@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-dotnet
+version: 1.0.0
+description: Forge implementation backend dotnet instructions.
+system_template: ''
+user_template: |-
+  Use .NET 10 (net10.0), nullable references and the Firefly .NET 26.04.01 source contracts. Inspect upstream project references and Directory.Packages.props for real package names; do not invent NuGet APIs. Use framework DI/domain/CQRS components where appropriate. Write xUnit behavioral tests; configure dotnet format --verify-no-changes, dotnet build and dotnet test.
+required_variables: []
+metadata:
+  defaults: {}

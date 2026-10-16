@@ -30,6 +30,7 @@ from firefly_forge.configuration import validate_endpoint
 from firefly_forge.engine import Engine
 from firefly_forge.models import Backend, Command, Frontend, RunInput
 from firefly_forge.operations import DeploymentManager
+from firefly_forge.prompts import prompt_text
 from firefly_forge.store import Store, identifier, now
 
 
@@ -286,8 +287,12 @@ class ApplicationOperations:
                 RunInput(
                     repository_id=incident.data["repository_id"],
                     brief=(
-                        f"Application: {app['name']}\nIncident: {incident.data['summary']}\n"
-                        f"Requested maintenance: {request.brief}"
+                        prompt_text(
+                            "implementation/maintenance-request",
+                            application=f"{app['name']}",
+                            incident=f"{incident.data['summary']}",
+                            request=f"{request.brief}",
+                        )
                     ),
                     agent=request.agent,
                     backend=app.get("backend", "pyfly"),

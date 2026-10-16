@@ -4,7 +4,7 @@
 from contextlib import AbstractAsyncContextManager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from pyfly.data.relational.sqlalchemy import LockMode
 from sqlalchemy import select, text
@@ -53,7 +53,9 @@ class ProjectAccess:
 
     @staticmethod
     def is_admin(user: Principal) -> bool:
-        return user.authentication_method == "local_bootstrap" or "forge-admin" in user.api_roles
+        return user.authentication_method != "scm_mapping" and (
+            user.authentication_method == "local_bootstrap" or "forge-admin" in user.api_roles
+        )
 
     async def current_administrator(self, user: Principal) -> bool:
         if not self.is_admin(user):
@@ -79,6 +81,9 @@ class ProjectAccess:
             ]
 
     async def require_project(self, user: Principal, project_id: str, permission: Permission) -> None:
+        if user.authentication_method == "scm_mapping":
+            await self.authorize_actor(self.actor_snapshot(user), project_id, permission)
+            return
         if await self.current_administrator(user):
             return
         memberships = await self.memberships(user)
@@ -86,6 +91,12 @@ class ProjectAccess:
             raise AccessDenied("Your project role does not allow this action")
 
     async def require_repository(self, user: Principal, repository_id: str, permission: Permission) -> None:
+        if user.authentication_method == "scm_mapping":
+            delegation = user.scm_delegation or {}
+            if delegation.get("repository_id") != repository_id:
+                raise AccessDenied("SCM delegation does not authorize this repository")
+            await self.authorize_actor(self.actor_snapshot(user), delegation.get("project_id"), permission)
+            return
         if await self.current_administrator(user):
             return
         from firefly_forge.project_persistence import ForgeProjectEntity
@@ -205,6 +216,16 @@ class ProjectAccess:
 
     @staticmethod
     def actor_snapshot(user: Principal) -> dict[str, Any]:
+        if user.authentication_method == "scm_mapping":
+            import copy
+
+            return {
+                "user_id": user.id.hex,
+                "authentication_method": "scm_mapping",
+                "global_admin": False,
+                "api_audience": None,
+                "scm_delegation": copy.deepcopy(user.scm_delegation),
+            }
         return {
             "user_id": user.id.hex,
             "authentication_method": user.authentication_method,
@@ -217,6 +238,12 @@ class ProjectAccess:
     ) -> bool:
         if not actor:
             return True
+        if actor.get("authentication_method") == "scm_mapping":
+            from firefly_forge.scm_actor_authority import SCMActorAuthority
+            from firefly_forge.store import Store
+
+            await SCMActorAuthority(cast(Store, self.store)).authorize_snapshot(actor, project_id, permission)
+            return False
         async with self.store._unit():
             user = await ForgeIdentityUserRepository().find_by_id(identifier(actor["user_id"]))
             if actor["authentication_method"] == "local_bootstrap":

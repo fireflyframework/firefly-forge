@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-pyfly
+version: 1.0.0
+description: Forge implementation backend pyfly instructions.
+system_template: ''
+user_template: |-
+  Use pyfly 26.10.1 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApplication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly.web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexagonal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a type checker. Keep business logic in services and typed domain contracts. Depend directly on pyfly[web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.01/pyfly-26.10.1-py3-none-any.whl in the manifest; this release URL is verified. Honor its dependency floors: Pydantic>=2.13.3, Starlette>=1.0.0, Uvicorn>=0.46.0. Do not pin incompatible older dependencies. PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan. For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses.
+required_variables: []
+metadata:
+  defaults: {}

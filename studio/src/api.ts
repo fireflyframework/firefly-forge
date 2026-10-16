@@ -15,6 +15,7 @@ export type Repository = {
 };
 export type ForgeRun = {
   project_id?: string | null;
+  component_id?: string | null;
   publish?: boolean;
   id: string;
   repository_id: string;

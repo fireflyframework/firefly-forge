@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/probe_runner
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Probe a requested runner profile without saving it, pulling images
+  or running project commands.
+required_variables: []
+metadata:
+  defaults: {}

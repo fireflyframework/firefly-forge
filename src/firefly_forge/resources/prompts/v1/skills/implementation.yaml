@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/implementation
+version: 1.0.0
+description: Forge skills implementation instructions.
+system_template: ''
+user_template: |-
+  Inspect existing code and repository instructions first. Implement the brief using real framework imports, dependency injection and service boundaries. Keep the change bounded and avoid unrelated refactors.
+required_variables: []
+metadata:
+  defaults: {}

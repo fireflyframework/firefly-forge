@@ -1,0 +1,16 @@
+{
+  "copyright": "Copyright 2026 Firefly Software Foundation",
+  "license": "Apache-2.0",
+  "captured_at": "2026-10-15T22:11:20.861988+00:00",
+  "source": "GitHub organization installed application settings",
+  "workflow": "Selected-repository GitHub App installation",
+  "status": "installation_confirmed_forge_connection_not_tested",
+  "image": "github-app-installed.jpg",
+  "sha256": "8eb781f564c0f274af4b6c09e2a7be6d224e5832f4fc13a255f78e09486920ff",
+  "contains_credentials": false,
+  "refresh_when": [
+    "GitHub installation UI changes",
+    "Documented setup workflow changes"
+  ],
+  "review": "Directly viewed; one selected fictional private repository, effective permissions and installed application identity are visible. No key or token material appears."
+}

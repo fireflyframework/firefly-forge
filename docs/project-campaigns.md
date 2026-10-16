@@ -197,7 +197,67 @@ The list route is `GET .../report-archives?after=0`; exact readback is `GET .../
 
 The write commits one immutable receipt atomically. Reusing the same ID, actor and selected digest returns that exact receipt; changing its binding refuses. Concurrent different requests can prepare the same next sequence: only one is admitted and the other receives an explicit history-advanced conflict with no insert. Keep the original request identity. A lost response, timeout, cancellation, 404 or conflict text does not prove that an earlier write cannot still commit, and does not authorize automatic resubmission or a new ID. A late loss of execute permission can also refuse the POST response after its receipt has committed; an authorized reader can still read that exact receipt. Read the exact receipt first. Saving a report records evidence; it does not approve delivery or configure milestones, waves or live SCM observation.
 
-The report follows the campaign's frozen component graph. Its original format represents neither the separate reporting plans below nor execution-wave orchestration, so its milestone and wave fields remain `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Project planning before admission, execution-wave orchestration, reports across campaigns and Studio planning controls remain separate work.
+The report follows the campaign's frozen component graph. Its original format represents neither the separate reporting plans below nor execution-wave orchestration, so its milestone and wave fields remain `not_configured`. It never contacts Git or a source-control provider; `scm_freshness` remains `not_observed`. Saved branches and commits do not prove current remote synchronization, a merged pull request, deployment or whole-product integration acceptance. Project planning before admission, execution-wave orchestration and reports across campaigns remain separate work. The separate Studio reporting-plan controls below organize explicit saved criteria; they do not add those fields to the legacy report.
+
+## Review reporting plans in Studio
+
+Select a campaign in **Product projects**. **Read reporting plans** lists its saved revision chain without creating a plan or starting work. Readers can open earlier revisions and inspect their original operator, source references and receipt. To create or revise reporting criteria, a current project user with execute permission first chooses **View report**, then **Review a reporting plan**.
+
+1. In **Waves**, name the plan, add named waves and assign every component from the campaign's frozen graph once. Keep a component's dependencies in the same wave or an earlier wave. The current editable project does not replace that campaign graph.
+2. In **Milestones**, add at least one named milestone to each wave. Choose verified-component or receipted-task conditions from that wave. Test campaigns omit implementation conditions; a campaign without independent review cannot require a review receipt. Existing frozen product links remain visible in a collapsed section and are preserved when revising a plan. New product-reference editing is not available in this Studio slice. The existing clients accept explicit frozen references; Studio preserves those links without editing them.
+3. In **Review**, inspect the groups, conditions and prior revision, then acknowledge that these are reporting criteria. **Save reporting plan** retains its identity before sending one request and confirms it only through the exact receipt read. Saving neither schedules waves nor approves or starts campaign work.
+
+The illustrated flow uses constructed reporting-plan receipts anchored to a controlled saved-report fixture. It shows Studio forms and exact readback; it does not prove native campaign execution, live SCM activity or that these criteria governed earlier admission.
+
+<figure class="forge-shot" markdown="1">
+![Controlled reporting-plan wizard assigning a frozen campaign component to a named wave.](assets/screenshots/campaign-plan-waves-desktop-light.png)
+<figcaption>Name the plan and assign the campaign components. These assignments organize reporting evidence and do not launch waves.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled reporting-plan review with an explicit reporting-only acknowledgment.](assets/screenshots/campaign-plan-review-desktop-light.png)
+<figcaption>Review the milestones and prior revision before saving. The server compares the expected source and previous digest.</figcaption>
+</figure>
+
+After delivery loss or reload, use **Check original reporting plan**. Studio preserves each original identity and its complete context/digest binding. A missing receipt, conflict, permission error or timeout keeps that request unresolved and cannot authorize another save. A refusal before insertion can leave no receipt; the current interface keeps the identity for review and offers no reset. A confirmed revision can be followed by another explicit review with a fresh identity and the checked prior digest. A concurrent revision makes that stale comparison fail; Studio does not silently rebase or retry.
+
+For progress, open an exact saved report in **Saved reports**, open a reporting-plan revision and choose **Read delivery progress**. The read uses those two immutable selections and never archives a live report automatically. Expand a wave or milestone to inspect its conditions, component and task attempts, and receipt references. **Dependency blocked** separates a later wave's observed evidence from its unresolved predecessors. Unknown evidence remains unknown; counts are recorded categories, without invented percentages or current SCM claims. A changed selection cancels a pending progress read, and denied current access clears private display while preserving original request markers.
+
+
+<figure class="forge-shot" markdown="1">
+![Controlled saved-cut progress for an exact plan and report selection.](assets/screenshots/campaign-plan-progress-desktop-light.png)
+<figcaption>Expand the wave and milestone to see which recorded evidence satisfies each condition. This example remains in progress.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Choose milestones, recover a save and inspect the phone layout</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled milestone editor with a component-verified condition.](assets/screenshots/campaign-plan-milestones-desktop-light.png)
+<figcaption>Choose a component or an available task phase from the frozen campaign. A test-only campaign cannot require implementation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view retaining an unresolved reporting-plan identity.](assets/screenshots/campaign-plan-unresolved-mobile-dark.png)
+<figcaption>Reload and check the original plan request. A missing receipt never authorizes another save.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone reporting-plan component assignment.](assets/screenshots/campaign-plan-waves-mobile-dark.png)
+<figcaption>The wizard keeps its actions reachable while the component fields scroll inside the form.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone review of reporting criteria.](assets/screenshots/campaign-plan-review-mobile-dark.png)
+<figcaption>The explicit acknowledgment separates saving criteria from execution approval.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone saved-cut progress with milestone evidence.](assets/screenshots/campaign-plan-progress-mobile-dark.png)
+<figcaption>Both the selected plan and saved report retain their exact references. Changing either selection clears the old progress.</figcaption>
+</figure>
+
+</details>
 
 ## Define reporting milestones and waves
 
@@ -254,4 +314,4 @@ Use `ForgeClient.save_campaign_delivery_plan`, `campaign_delivery_plans`, `campa
 
 Limits are 20 waves, 20 milestones, 200 total conditions and 50 immutable revisions per campaign. Each receipt with its summary and the bounded summary history must fit 1 MiB. Selected plan and report bodies with their summaries, and the resulting progress, must fit the 16 MiB aggregate bound before materialization. Existing report row and time limits still apply; an unavailable or integrity-limited report cannot establish a plan's source. A coherent report with unknown component evidence can be selected without inventing completion.
 
-This API does not yet configure project or product plans before campaign launch, orchestrate execution waves, or add a Studio planning flow. Those remain separate delivery requirements. The original campaign report and its digest remain unchanged; use this separate progress response for explicit reporting criteria.
+Project or product planning before campaign launch and execution-wave orchestration remain separate delivery requirements. Studio supports the reporting-plan review and saved-evidence progress flow described above. The original campaign report and its digest remain unchanged; use this separate progress response for explicit reporting criteria.

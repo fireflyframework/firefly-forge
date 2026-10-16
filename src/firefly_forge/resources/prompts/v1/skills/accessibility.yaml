@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/accessibility
+version: 1.0.0
+description: Forge skills accessibility instructions.
+system_template: ''
+user_template: |-
+  Use semantic controls with labels, visible keyboard focus, accessible errors and status announcements. Check narrow screens, keyboard navigation and loading/error states. Test actual user actions rather than component existence.
+required_variables: []
+metadata:
+  defaults: {}

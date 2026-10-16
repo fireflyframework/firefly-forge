@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/entry
+version: 1.0.0
+description: Forge roles entry instructions.
+system_template: ''
+user_template: '[{{ role_id }}; {{ execution_mode }}] {{ instructions }}'
+required_variables:
+- role_id
+- execution_mode
+- instructions
+metadata:
+  defaults: {}

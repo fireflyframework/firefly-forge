@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/reconcile_execution_request
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Reconcile an uncertain delivery request using retained server proof and a stable ID.
+
+  The server verifies authority and immutable receipts; this tool cannot assert an outcome
+  or trigger a remote effect. Truly unknown results remain blocked for investigation.
+required_variables: []
+metadata:
+  defaults: {}

@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from firefly_forge.prompts import prompt_text
+
 _BACKENDS = [
     {
         "id": "none",
@@ -14,8 +16,7 @@ _BACKENDS = [
         "version": "No backend",
         "detail": "A standalone browser application connected to documented service contracts.",
         "source": "",
-        "instruction": "Do not create a backend. Implement the selected frontend against documented API contracts. "
-        "Keep credentials server-side in the authorized service; do not embed service secrets in the browser.",
+        "instruction": prompt_text("implementation/backend-none"),
     },
     {
         "id": "pyfly",
@@ -23,23 +24,7 @@ _BACKENDS = [
         "version": "26.10.1 · Python 3.13+",
         "detail": "Native PyFly DI, controllers, typed contracts and async services; Starlette ASGI.",
         "source": "https://github.com/fireflyframework/fireflyframework-pyfly/releases/tag/v26.10.01",
-        "instruction": (
-            "Use pyfly 26.10.1 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApp"
-            "lication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly"
-            ".web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexago"
-            "nal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an"
-            " assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a "
-            "type checker. Keep business logic in services and typed domain contracts."
-            " Depend directly on pyfly[web] @ "
-            "https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/"
-            "v26.10.01/pyfly-26.10.1-py3-none-any.whl in the manifest; this release URL is verified."
-            " Honor its dependency floors: Pydantic>=2.13.3, Starlette>=1.0.0, Uvicorn>=0.46.0. "
-            "Do not pin incompatible older dependencies."
-            " PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), "
-            "not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan."
-            " For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. "
-            "Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses."
-        ),
+        "instruction": prompt_text("implementation/backend-pyfly"),
     },
     {
         "id": "java",
@@ -47,14 +32,7 @@ _BACKENDS = [
         "version": "Parent 26.07.06 · Java 25 · Spring Boot 3.5.10",
         "detail": "Reactive Firefly Spring Boot services with Maven, WebFlux and framework starters.",
         "source": "https://github.com/fireflyframework/fireflyframework-parent/blob/main/pom.xml",
-        "instruction": (
-            "Use Java 25 and Firefly Framework parent 26.07.06 (org.fireflyframework:fireflyf"
-            "ramework-parent), Spring Boot 3.5.10, reactive WebFlux and appropriate Firefly s"
-            "tarters. Reuse flywork core/domain/application/library archetypes after inspecti"
-            "ng their templates; disable git initialization. Write JUnit behavioral tests and"
-            " use Maven verify. Do not invent Firefly artifact coordinates; inspect upstream "
-            "starter POMs."
-        ),
+        "instruction": prompt_text("implementation/backend-java"),
     },
     {
         "id": "larafly",
@@ -62,13 +40,7 @@ _BACKENDS = [
         "version": "26.10.1 · PHP 8.3+ · Laravel 13",
         "detail": "Laravel-native Firefly attributes, services, repositories, CQRS and typed contracts.",
         "source": "https://github.com/fireflyframework/fireflyframework-php/blob/main/composer.json",
-        "instruction": (
-            "Use PHP >=8.3, Laravel/Illuminate 13 and fireflyframework/larafly. Inspect the o"
-            "fficial bundled skeleton and CLI make stubs for exact namespaces. Reuse firefly "
-            "new --api or --web --no-git --no-interaction; never --force. Write Pest/PHPUnit "
-            "behavioral tests; configure Laravel Pint and PHPStan/Larastan. Use native Firefl"
-            "y attributes and service composition."
-        ),
+        "instruction": prompt_text("implementation/backend-larafly"),
     },
     {
         "id": "rust",
@@ -76,13 +48,7 @@ _BACKENDS = [
         "version": "26.6.36 · Rust 1.88+",
         "detail": "Typed Firefly Rust services; upstream source inspected, live product verification pending.",
         "source": "https://github.com/fireflyframework/fireflyframework-rust/blob/main/Cargo.toml",
-        "instruction": (
-            "Use Rust >=1.88 and the Firefly Rust 26.6.36 workspace contracts. Inspect upstre"
-            "am crates/firefly and starter-core/application/domain before selecting crate coo"
-            "rdinates; do not invent APIs. Pin exact upstream revisions when using git depend"
-            "encies. Write behavioral cargo tests, run cargo fmt --check, cargo clippy --all-"
-            "targets -- -D warnings and cargo test."
-        ),
+        "instruction": prompt_text("implementation/backend-rust"),
     },
     {
         "id": "dotnet",
@@ -90,13 +56,7 @@ _BACKENDS = [
         "version": ".NET 10 · Framework 26.04.01",
         "detail": "Firefly .NET enterprise services; upstream source inspected, live product verification pending.",
         "source": "https://github.com/fireflyframework/fireflyframework-dotnet/blob/main/Directory.Build.props",
-        "instruction": (
-            "Use .NET 10 (net10.0), nullable references and the Firefly .NET 26.04.01 source "
-            "contracts. Inspect upstream project references and Directory.Packages.props for "
-            "real package names; do not invent NuGet APIs. Use framework DI/domain/CQRS compo"
-            "nents where appropriate. Write xUnit behavioral tests; configure dotnet format -"
-            "-verify-no-changes, dotnet build and dotnet test."
-        ),
+        "instruction": prompt_text("implementation/backend-dotnet"),
     },
 ]
 
@@ -107,19 +67,7 @@ _FRONTENDS = [
         "version": "Angular 22.0.4 · TypeScript 6.0.3 · Hub 22.x",
         "detail": "Current Firefly product-template with ng-hub-ui components and Playbook conventions.",
         "source": "https://github.com/fireflyframework/firefly-product-template/blob/develop/package.json",
-        "instruction": (
-            "Follow the current firefly-frontend-playbook main doctrine and firefly-product-t"
-            "emplate develop v0.3.0. Use Angular ^22.0.4, TypeScript ~6.0.3, and ng-hub-ui hu"
-            "b-* components; ff-* components are deprecated. Inspect the Hub component catalo"
-            "g and Angular checklist before coding. Use standalone components, lazy feature r"
-            "outes, typed services, accessible semantics, tokens, page/section composition an"
-            "d the matching PageBase. Preserve the core/layout, shared/ui, features/<name>/ui"
-            " convention. Pin and record the template revision. Do not run init.sh unchanged:"
-            " it creates an initial commit. Explicitly materialize self-contained or detached"
-            " topology as requested. Embedded mode is not implemented; auth provider flags ar"
-            "e metadata only and require real implementation. Add behavioral Vitest tests, li"
-            "nt/type checks, production build, and Playwright user-flow checks."
-        ),
+        "instruction": prompt_text("implementation/frontend-angular"),
     },
     {
         "id": "react",
@@ -127,12 +75,7 @@ _FRONTENDS = [
         "version": "React 19.3 · Vite 8.3",
         "detail": "Typed React application with accessible components and a production build.",
         "source": "https://react.dev/learn",
-        "instruction": (
-            "Use React 19.3 with TypeScript and Vite 8.3. Build accessible, responsive compon"
-            "ents, typed API clients and deliberate loading/error/empty states. Keep applicat"
-            "ion logic in testable hooks/services. Configure behavioral Vitest and Testing Li"
-            "brary tests, ESLint, tsc --noEmit and a production build."
-        ),
+        "instruction": prompt_text("implementation/frontend-react"),
     },
     {
         "id": "nextjs",
@@ -140,12 +83,7 @@ _FRONTENDS = [
         "version": "Next.js 16.4 · React 19.3",
         "detail": "Next.js App Router with explicit server/client boundaries.",
         "source": "https://nextjs.org/docs/app",
-        "instruction": (
-            "Use Next.js 16.4, React 19.3 and TypeScript. Use the App Router; make server/cli"
-            "ent boundaries explicit and keep secrets on the server. Build accessible, respon"
-            "sive components with loading/error states. Configure behavioral unit tests, ESLi"
-            "nt, tsc --noEmit, production next build and Playwright critical-path tests."
-        ),
+        "instruction": prompt_text("implementation/frontend-nextjs"),
     },
     {
         "id": "vue",
@@ -153,12 +91,7 @@ _FRONTENDS = [
         "version": "Vue 3.5.43 · Vite 8.3",
         "detail": "Vue Composition API, typed components and an accessible application shell.",
         "source": "https://vuejs.org/guide/introduction.html",
-        "instruction": (
-            "Use Vue 3.5.43 with TypeScript, Composition API, script setup, Vue Router and Vi"
-            "te 8.3. Build accessible, responsive components and typed API clients. Configure"
-            " behavioral Vitest/Vue Test Utils tests, ESLint, vue-tsc --noEmit and a producti"
-            "on build."
-        ),
+        "instruction": prompt_text("implementation/frontend-vue"),
     },
     {
         "id": "none",
@@ -166,10 +99,7 @@ _FRONTENDS = [
         "version": "",
         "detail": "No browser frontend.",
         "source": "",
-        "instruction": (
-            "Do not generate a browser frontend. Deliver the requested service or library wit"
-            "h runnable entry points and documented API contracts."
-        ),
+        "instruction": prompt_text("implementation/frontend-none"),
     },
 ]
 
@@ -207,22 +137,9 @@ def build_instruction(brief: str, backend: str, frontend: str) -> str:
         raise ValueError("Select at least one backend or frontend profile")
     return "\n\n".join(
         [
-            "You are implementing a real software product inside an isolated factory workspace. "
-            "Read existing files and repository AGENTS.md before editing; reuse existing patterns. "
-            "Implement the arbitrary product brief fully as real runnable source code. "
-            "A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. "
-            "Do not commit, push, publish, deploy, alter git metadata, read credentials "
-            "or edit outside this workspace. "
-            "Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, "
-            "a runnable entry point, a README with exact launch/verification instructions "
-            "and .env.example where needed. "
-            "Use environment configuration for secrets; never hardcode credentials. "
-            "Install only declared project dependencies if the environment permits, then run "
-            "actual build/tests/lint/type checks. "
-            "Report failed checks and environmental limitations honestly. "
-            "Do not turn live integrations into mock claims.",
+            prompt_text("implementation/base"),
             *selected,
-            "PRODUCT BRIEF:\n" + brief,
+            prompt_text("implementation/request", brief=brief),
         ]
     )
 

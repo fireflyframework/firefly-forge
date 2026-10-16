@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tasks/reconcile
+version: 1.0.0
+description: Forge tasks reconcile instructions.
+system_template: ''
+user_template: Record the external effect's actual outcome before retrying it.
+required_variables: []
+metadata:
+  defaults: {}

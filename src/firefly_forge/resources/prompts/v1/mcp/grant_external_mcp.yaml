@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/grant_external_mcp
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Grant exact reviewed tools to a registered project repository and implementation
+  role.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/save_product_definition
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Save a new customer definition revision; queued runs keep their original
+  revision.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_scm_actor_binding_candidates
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read at most fifty retained verified SCM account references under current project authority.
+
+  This does not discover accounts remotely, create users or grant project membership.
+required_variables: []
+metadata:
+  defaults: {}

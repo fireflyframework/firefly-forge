@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/entry
+version: 1.0.0
+description: Forge skills entry instructions.
+system_template: ''
+user_template: '[{{ skill_id }}] {{ instructions }}'
+required_variables:
+- skill_id
+- instructions
+metadata:
+  defaults: {}

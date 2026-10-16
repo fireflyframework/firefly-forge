@@ -473,6 +473,86 @@ In a run's **Plan** tab, choose **Request continuation** under **Original runner
 
 Open **Product projects**, select the product and choose **Load campaigns**. Select a campaign, then **View report**. Compare its recorded status with the retained evidence state. Select a component for its tasks, checks, source and journal references. The [campaign walkthrough](project-campaigns.md#read-a-report-in-studio) shows the summary and component details; its fixtures do not establish a live campaign run.
 
+## 10. Delegate specific source-control requests
+
+Open Administration → Project access, choose the product project, then find **Source-control delegation**. Choose the repository that contains the relevant components. **Read current delegations** loads the server's current head records. The displayed state distinguishes a recorded active setting, revocation, a changed project and a changed application connection. An active setting does not establish current provider grants or the delegated person's permissions.
+
+A factory administrator can select **Review a delegation** and complete three steps:
+
+1. **Account:** choose a retained signed delivery. The factory verified the configured webhook sender's signature; the account was asserted by that sender. This is separate from a personal OAuth login. If no current delivery is available, open Connections and check the application setup before continuing.
+2. **Scope:** find an existing registered person, then select components in this repository and the allowed requests: answer an agent question, read run status or request cancellation. Clear the active setting to record revocation. This form creates no user or project membership.
+3. **Review:** check the person, component scope and actions, review the application trust, then acknowledge the webhook assertion and select **Save delegation**. The request includes the reviewed project cut and previous revision; the server can refuse a changed cut. Saving does not answer a question, resume a run or cancel work.
+
+Studio retains the request identity and input digest before sending once. It confirms the result through the exact receipt read, including after a successful save response. If delivery is lost, return to the same project and repository and select **Check original delegation**. A receipt records the original administrator and revision; authorized readers can inspect that historical evidence even when the current head is revoked or stale. Later actions still require current native permissions and application access.
+
+A conflict may be refused before a receipt is inserted, leaving the exact read unavailable. Studio preserves that original request and holds further saves. Keep the reference and ask an administrator to check the current project and delegation. A missing receipt, access error or timeout does not authorize a replacement request or an automatic retry. The retained list contains this browser's references, not the complete server history.
+
+The following screenshots use constructed, model-bound fixtures. They demonstrate the Studio forms and exact readback, without establishing a live provider delivery or a provider account grant.
+
+<figure class="forge-shot" markdown="1">
+
+![Select the reported account](assets/screenshots/scm-delegation-account-desktop-light.png)
+
+<figcaption>Choose an account from a retained signed delivery. The configured sender asserted the account; this is separate from personal OAuth.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Choose the person and scope](assets/screenshots/scm-delegation-scope-desktop-light.png)
+
+<figcaption>Find an existing registered person and select repository components and allowed requests. No project membership is created.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Review the delegation](assets/screenshots/scm-delegation-review-desktop-light.png)
+
+<figcaption>Check the person, actions and application trust, then acknowledge the assertion before saving once.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Read the exact receipt](assets/screenshots/scm-delegation-confirmed-desktop-light.png)
+
+<figcaption>The exact request read confirms this recorded revision. Its historical receipt does not establish current permissions or provider grants.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow delegation review on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Select the reported account](assets/screenshots/scm-delegation-account-mobile-light.png)
+
+<figcaption>Choose an account from a retained signed delivery. The configured sender asserted the account; this is separate from personal OAuth.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Choose the person and scope](assets/screenshots/scm-delegation-scope-mobile-light.png)
+
+<figcaption>Find an existing registered person and select repository components and allowed requests. No project membership is created.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Review the delegation](assets/screenshots/scm-delegation-review-mobile-light.png)
+
+<figcaption>Check the person, actions and application trust, then acknowledge the assertion before saving once.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the exact receipt](assets/screenshots/scm-delegation-confirmed-mobile-light.png)
+
+<figcaption>The exact request read confirms this recorded revision. Its historical receipt does not establish current permissions or provider grants.</figcaption>
+</figure>
+
+</div>
+</details>
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).

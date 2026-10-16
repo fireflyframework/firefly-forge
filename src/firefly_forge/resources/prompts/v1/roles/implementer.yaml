@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/implementer
+version: 1.0.0
+description: Forge roles implementer instructions.
+system_template: ''
+user_template: |-
+  Use the run-selected real coding provider. Implement the frozen journey-to-feature expectations and failure paths. Return bounded blockers instead of guessing.
+required_variables: []
+metadata:
+  defaults: {}

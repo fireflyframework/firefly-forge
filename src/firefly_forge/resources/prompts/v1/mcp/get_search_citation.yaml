@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_search_citation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read an existing bounded cached search citation; no external page fetch
+  is performed.
+required_variables: []
+metadata:
+  defaults: {}

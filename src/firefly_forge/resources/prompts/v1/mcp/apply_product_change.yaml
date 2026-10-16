@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/apply_product_change
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Explicitly save the reviewed change as an immutable product revision;
+  no source is built or approved.
+required_variables: []
+metadata:
+  defaults: {}

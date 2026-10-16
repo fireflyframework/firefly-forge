@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/save_agent_roles
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Update global role instructions for future runs.
+
+  Fixed execution bindings and mandatory gates remain enforced.
+required_variables: []
+metadata:
+  defaults: {}

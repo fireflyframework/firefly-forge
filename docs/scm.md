@@ -54,6 +54,75 @@ write** and **Pull requests: read and write**. Install it on the selected
 repositories. Save its app ID, installation ID and unencrypted RSA private key
 in forge. The optional app slug provides a direct installation link.
 
+### Walk through registration
+
+Start in your organization's **Settings → Developer settings → GitHub Apps →
+New GitHub App**. Give the application a name that identifies its purpose and
+set its homepage to your factory's documentation. For a local acceptance test,
+use a separate test application and a repository containing fictional data.
+
+<figure class="forge-shot" markdown="1">
+![GitHub confirms registration of the firefly forge local acceptance application.](assets/provider-guides/github-app-registration.jpg)
+<figcaption>Captured from GitHub during the local acceptance setup. The registration banner confirms that the application exists. Installation and a successful connection check are separate steps. Use your own application identifiers; the values shown belong to this test application.</figcaption>
+</figure>
+
+Configure these repository permissions before installing the application:
+
+| Permission | Access | Purpose |
+| --- | --- | --- |
+| Contents | Read and write | Clone source and publish reviewed branches. |
+| Pull requests | Read and write | Open pull requests and post feedback in pull-request conversations. |
+| Issues | Read and write, when using issue conversations | Post status and questions back to the issue that requested the work. |
+| Metadata | Read-only | Discover the repositories granted to the installation. GitHub marks this permission as mandatory. |
+
+Organization and account permissions are not needed for this installation-token
+flow. GitHub user authorization is separate from the factory's sign-in and from
+the repository's signed conversation-command settings.
+
+Complete setup in this order:
+
+1. In **Credentials → Key pairs → New key**, generate an RSA private key. Keep
+   the downloaded key out of source control, screenshots and shared support
+   reports. Supply it only to forge's write-only private-key field. If the
+   download is interrupted, check the browser's downloads and the application's
+   existing key list before creating another key.
+   [Verify the downloaded key](#verify-the-downloaded-key) before supplying it to forge.
+2. Open **Install App**, select the intended account and choose **Only select
+   repositories**. Select the test repository and inspect the permission summary
+   before confirming the installation. Record its installation ID.
+3. In forge, save the app ID, installation ID, private key and optional app slug.
+   Choose **Check access**, then **Find granted repositories**. Check the returned
+   repository name before connecting it.
+4. Configure signed inbound commands using [Repository workflow](repository-workflow.md).
+   A local forge server needs a reachable delivery route before GitHub can send
+   webhooks to it. Registration and repository discovery do not establish webhook
+   delivery. Keep the webhook inactive during a staged setup until its receiving
+   route and signature secret are ready.
+
+### Verify the downloaded key
+
+In the GitHub App's **Credentials → Key pairs**, find the public SHA256 fingerprint for the key pair. On your own machine, run this in Bash or Zsh with the path to the downloaded PEM file:
+
+```bash
+set -o pipefail
+openssl rsa -in "/path/to/downloaded-key.pem" -pubout -outform DER |
+  openssl sha256 -binary |
+  openssl base64
+```
+
+This fingerprints the public key's DER SubjectPublicKeyInfo bytes; it does not print the private key. Compare the base64 result with GitHub's displayed fingerprint. If any command fails or the values differ, stop and check the file, application and selected key pair. Do not retry authentication or generate another key to work around a mismatch. A matching fingerprint identifies the key pair; installation and repository access still require their own checks. See [GitHub's private-key verification instructions](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps#verifying-private-keys).
+
+<figure class="forge-shot" markdown="1">
+![The installed GitHub App has read and write permissions on one selected private acceptance repository.](assets/provider-guides/github-app-installed.jpg)
+<figcaption>After installation, GitHub shows the effective permissions and the selected repository. This acceptance application is restricted to one private repository containing fictional data. The image records the provider installation; a forge grant check and webhook delivery still need their own evidence.</figcaption>
+</figure>
+
+These captures record registration and installation. A complete acceptance
+record also needs a real grant check, a confirmed inbound command and its
+outbound feedback. Replace screenshots when the provider changes its screens
+or the documented workflow changes; review every image for credentials before
+publishing it.
+
 forge signs a short-lived app JWT. Repository discovery uses an installation
 token with metadata permission. Git execution and pull requests use a token
 restricted to the selected repository ID, with the two write permissions above.
@@ -192,3 +261,76 @@ provider paths and Host headers to the local fixture; it does not test provider
 DNS, TLS, organizational installation, or consent on a real provider account.
 Live acceptance requires the real application registration, provider consent,
 repository grant and successful remote operation for each account.
+
+## Explicit SCM delegation
+
+After a delegated `respond`, `status`, or `cancel` action completes, Forge retains
+its result and schedules a comment in the same issue or pull-request conversation.
+The comment includes the action result and delivery receipt reference. Answering
+a worker question records the answer; it leaves the run paused and does not grant
+permission to resume, publish, or merge.
+
+Later status comments show the current run status separately from the original
+action result. A recorded answer can still say that the run was paused when it
+was accepted while the current status reports a subsequent failure. A cancellation
+acknowledgment does not by itself prove that the worker has drained.
+
+Forge records the outbound intent before contacting the provider. If delivery is
+uncertain, the completed action and its original receipt remain available with
+feedback marked `needs_reconciliation`. Processing the same receipt again does not
+post another comment. An operator must check the provider outcome and record an
+explicit reconciliation; an unknown delivery is never an invitation to retry it.
+
+Signed comments identify a configured channel; they do not sign a user into Forge.
+A factory administrator can explicitly map a verified provider account to an existing,
+enabled Forge user for selected components and actions in one project and repository.
+The mapping grants no project membership or global administrator privileges.
+
+The first scoped adapters support answering a paused worker question, reading a specific
+run's status, and requesting cancellation through the existing delivery-request runtime.
+Answering leaves the run paused. It does not resume work. Cancellation is admission of a
+request, not proof that the worker has drained. Other actions in a repository with SCM
+delegation configured report setup required until their native authorization adapter is
+available. Creating a new project from an unmapped provider account is separate work.
+
+Use `GET /api/v1/projects/{project_id}/repositories/{repository_id}/scm-actor-bindings/candidates`
+to select an already retained, verified account reference. This read does not contact the
+provider. Submit the reviewed `version: 1` mapping to the same path without `/candidates`.
+Include one durable request ID, the reviewed project-binding digest, the verified-reference
+digest, the existing native user, explicit component IDs, allowed actions, and the previous
+mapping digest for an update.
+The webhook trust acknowledgment must be `true`: anyone holding that channel's webhook
+credential can construct a sender claim. The mapping does not establish personal OAuth
+authentication.
+
+After a lost response, read `/scm-actor-bindings/requests/{request_id}` using the original
+project, repository and request ID. A timeout, denial or missing receipt does not authorize
+another write identity. Permission to return a receipt is checked after commit; denial
+can therefore leave a committed mapping. The base GET lists current-head summaries with
+an optional `cursor` and pages of at most 50 items, rather than a partial revision history.
+Each item reports active, revoked, stale-project or stale-connection status. Active means
+a saved mapping head; it does not establish current provider grants or native permissions.
+Historical requests remain available through their exact request GET. Mapping revisions are immutable; limits are 100 bindings
+per repository, 50 revisions per binding, 5,000 requests and 16 MiB of retained mapping
+history. Each receipt envelope is limited to 64 KiB. Limits refuse rather than prune.
+
+Connection or webhook-key rotation invalidates the mapping's pinned verification cut.
+Review a fresh signed candidate and explicitly update the mapping. Legacy receipts remain
+readable, but cannot be promoted into verification evidence. Legacy actor-label-only worker
+responses are refused as `scm_authority_setup_required` before an action intent is recorded.
+An uncertain outcome after an admitted action remains uncertain and is not replayed.
+
+SCM worker answers carry `responding_actor` version 2 and a mapping/delivery reference.
+Ordinary authenticated answers retain version 1; historical answers without attribution
+retain their original bytes. A delegated answer cannot confirm a pending manual version-1
+answer marker. Historical delegation is recorded evidence, not a statement that the
+mapping remains active or that provider grants were freshly checked by the reader.
+
+Provider verification follows the documented raw-body contracts:
+[GitHub delivery signatures](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries),
+[GitHub App issue-comment installations](https://docs.github.com/en/webhooks/webhook-events-and-payloads#issue_comment),
+[GitLab signing tokens](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens),
+and [Bitbucket Cloud signatures](https://support.atlassian.com/bitbucket-cloud/docs/manage-webhooks/).
+New GitLab delegation requires its timestamped signing-token signature; the legacy shared
+token remains supported for old ingress but does not qualify a new delegation candidate.
+Local signed-fixture tests are separate from live provider installation acceptance.

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: roles/docs
+version: 1.0.0
+description: Forge roles docs instructions.
+system_template: ''
+user_template: |-
+  When enabled, documentation instructions go to the same implementation provider; this does not start another worker.
+required_variables: []
+metadata:
+  defaults: {}

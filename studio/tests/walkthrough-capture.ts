@@ -80,6 +80,12 @@ export async function captureWalkthrough(
     "learning-observation-source": "Source",
     "learning-observation-review": "Review",
     "campaign-report-save-review": "Review",
+    "campaign-plan-waves": "Waves",
+    "campaign-plan-milestones": "Milestones",
+    "campaign-plan-review": "Review",
+    "scm-delegation-account": "Account",
+    "scm-delegation-scope": "Scope",
+    "scm-delegation-review": "Review",
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
     "source-analysis-scope": "Scope",
@@ -208,6 +214,9 @@ export async function captureWalkthrough(
     "studio/tests/campaign-report-fixture.ts",
     "studio/tests/campaign-report-history-fixture.ts",
     "studio/tests/campaign-report-archive-fixture.json",
+    "studio/tests/campaign-delivery-plan-fixture.ts",
+    "studio/tests/campaign-delivery-browser-fixture.ts",
+    "studio/tests/worker-dialogue-contract-fixture.json",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",

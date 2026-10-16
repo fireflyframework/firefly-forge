@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tasks/prepare
+version: 1.0.0
+description: Forge tasks prepare instructions.
+system_template: ''
+user_template: |-
+  Clone the selected repository and record its authorized origin, original HEAD and isolated workspace.
+required_variables: []
+metadata:
+  defaults: {}
