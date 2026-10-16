@@ -179,6 +179,8 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
+from firefly_forge.scm_resume_service import SCMResumeAuthority
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store
@@ -629,6 +631,18 @@ class FactoryConfiguration:
         return SCMActorAuthority(store, connections)
 
     @bean
+    def scm_resume_authority(
+        self,
+        store: Store,
+        authority: SCMActorAuthority,
+        journal: Journal,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMResumeAuthority:
+        return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -839,8 +853,9 @@ class FactoryConfiguration:
         products: ForgeProductDefinitionRepository,
         analysis: ReverseEngineering,
         assistant: ProductAssistant,
+        resume_authority: SCMResumeAuthority,
     ) -> Collaboration:
-        collaboration = Collaboration(store, scm, deployments, settings_records, inbox, products)
+        collaboration = Collaboration(store, scm, deployments, settings_records, inbox, products, resume_authority)
         collaboration.analysis_manager = analysis
         collaboration.product_assistant = assistant
         deployments.secret_registries.append(collaboration)
@@ -951,6 +966,7 @@ def create_runtime(
         ForgeProductDefinitionRepository,
         CollaborationController,
         SCMActorAuthorityController,
+        SCMResumeAuthorityController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,
