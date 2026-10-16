@@ -28,6 +28,7 @@ from firefly_forge import __version__
 from firefly_forge.access_controllers import AccessController
 from firefly_forge.access_persistence import ForgeAccessEventRepository, ForgeMembershipRepository
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agent_role_controllers import AgentRoleController
 from firefly_forge.agent_roles import RoleRegistry
 from firefly_forge.analysis_context import ReviewedAnalysisContext
@@ -1008,6 +1009,7 @@ def create_runtime(
         KnowledgeController,
         LearningController,
         LearningObservationAttempts,
+        AgentCheckpoints,
         JournalController,
         BridgeCompletionController,
         RunEvidenceController,
