@@ -686,6 +686,24 @@ class ForgeClient:
             )
         )
 
+    def run_evidence(self, identifier: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from firefly_forge.run_evidence import EvidenceQuery
+
+        selected = EvidenceQuery.model_validate(query or {})
+        return dict(
+            self.request("GET", f"runs/{self._id(identifier)}/evidence", params=selected.model_dump(exclude_none=True))
+        )
+
+    def export_run_evidence(self, identifier: str, expected_cut: str) -> bytes:
+        from firefly_forge.run_evidence import EvidenceExportInput
+
+        selected = EvidenceExportInput(expected_cut=expected_cut)
+        response = self.http.get(
+            f"runs/{self._id(identifier)}/evidence.zip", params={"expected_cut": selected.expected_cut}
+        )
+        response.raise_for_status()
+        return response.content
+
     def export(self, identifier: str) -> bytes:
         response = self.http.get(f"runs/{identifier}/artifacts/changes.zip")
         response.raise_for_status()

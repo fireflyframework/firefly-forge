@@ -306,6 +306,11 @@ async def execute_agentic(
         await emit("file", result)
         return result
 
+    async def read_run_evidence(query: dict[str, Any]) -> dict[str, Any]:
+        if context.read_run_evidence is None:
+            raise ValueError("Retained run evidence is not configured")
+        return await context.read_run_evidence(query)
+
     handlers: dict[str, Callable[..., Any]] = {
         "list_files": tools.list_files,
         "read_file": read_source,
@@ -314,6 +319,8 @@ async def execute_agentic(
         "edit_lines": tools.edit_lines,
         "git_diff": tools.git_diff,
     }
+    if context.read_run_evidence is not None:
+        handlers["read_run_evidence"] = read_run_evidence
     if context.command_executor is not None:
         handlers["execute_command"] = execute_command
     if context.browser_runner is not None:

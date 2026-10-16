@@ -163,6 +163,8 @@ from firefly_forge.projects import Projects
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
+from firefly_forge.run_evidence import RunEvidence
+from firefly_forge.run_evidence_controllers import RunEvidenceController
 from firefly_forge.runner_backends import RunnerBackends
 from firefly_forge.runner_configuration import RunnerConfiguration, RunnerController
 from firefly_forge.runner_continuation_controllers import RunnerContinuationController
@@ -763,6 +765,10 @@ class FactoryConfiguration:
         )
 
     @bean
+    def run_evidence(self, store: Store) -> RunEvidence:
+        return RunEvidence(store)
+
+    @bean
     def campaign_reports(self, store: Store, campaigns: ProjectCampaigns, journal: Journal) -> CampaignReports:
         return CampaignReports(store, campaigns, journal)
 
@@ -961,6 +967,7 @@ def create_runtime(
         LearningController,
         LearningObservationAttempts,
         JournalController,
+        RunEvidenceController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
         ForgeProductDefinitionRepository,

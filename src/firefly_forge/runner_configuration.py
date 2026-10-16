@@ -134,6 +134,7 @@ class RunnerConfiguration:
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
             tools = tool_catalog(
                 {
+                    "read_run_evidence": True,
                     "execute_command": True,
                     "profile_python": profile_available(sandbox),
                     "trace_python": profile_available(sandbox),
@@ -169,6 +170,7 @@ class RunnerConfiguration:
             browser_available = bool((await self.executor.probe(browser_snapshot))["available"])
         return tool_catalog(
             {
+                "read_run_evidence": True,
                 "execute_command": command["available"],
                 "profile_python": profile_available(sandbox),
                 "trace_python": profile_available(sandbox),

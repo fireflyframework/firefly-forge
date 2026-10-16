@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/read_run_evidence
+version: 1.0.0
+description: Retained run evidence read contract
+system_template: ""
+user_template: |
+  Read retained evidence for this executing run only. Supply a bounded query; continue pages with the exact returned cut and filter digests. Read original WAL and tool results without executing or replaying them. A preview is incomplete when omitted_bytes is positive; unknown or withheld outcomes require explicit review.
+required_variables: []
+metadata:
+  defaults: {}

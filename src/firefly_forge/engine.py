@@ -627,8 +627,16 @@ class Engine:
                         ),
                     )
 
+                async def read_run_evidence(query: dict[str, Any]) -> dict[str, Any]:
+                    from firefly_forge.run_evidence import EvidenceQuery, RunEvidence
+
+                    return await RunEvidence(self.store).for_worker(
+                        identifier, EvidenceQuery.model_validate(query), task_id="implement"
+                    )
+
                 provider.configure_runtime(
                     scope_root=scope,
+                    read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
                     repository_root=workspace,
                     allowed_tools=frozenset(grants or ()),
                     knowledge_lookup=knowledge_lookup

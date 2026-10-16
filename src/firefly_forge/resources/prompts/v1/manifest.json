@@ -1836,6 +1836,22 @@
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "mcp/query_run_evidence",
+      "version": "1.0.0",
+      "path": "mcp/query_run_evidence.yaml",
+      "sha256": "51a8d98b6c82eeca836823be9b82d9ec786ab871b07492bffd2f86d092280669",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/read_run_evidence",
+      "version": "1.0.0",
+      "path": "tools/read_run_evidence.yaml",
+      "sha256": "d36c263ee23205073b7bae519a601500f7d84c825cb5728a7d83c75aae809f1a",
+      "field": "user",
+      "variables": {}
     }
   ]
 }
