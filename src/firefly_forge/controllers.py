@@ -90,7 +90,9 @@ class RunService:
 
     async def retry(self, identifier: str) -> dict[str, Any]:
         run = await self.store.get_run(identifier)
-        if run.get("pause", {}).get("kind") == "provider_outcome_unknown":
+        if run.get("bridge_completion_hold"):
+            raise ValueError("Bridge completion history needs a graph checkpoint before retrying")
+        if run.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
             raise ValueError("Bridge outcome requires reconciliation before retrying")
         if run.get("campaign_context", {}).get("campaign_id"):
             raise ValueError("Retry this component through its project campaign to preserve frozen admission")

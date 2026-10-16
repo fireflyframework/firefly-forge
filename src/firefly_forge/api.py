@@ -44,6 +44,8 @@ from firefly_forge.assistant_persistence import (
     ForgeAssistantTurnRepository,
 )
 from firefly_forge.assurance import Assurance
+from firefly_forge.bridge_completion_controllers import BridgeCompletionController
+from firefly_forge.bridge_completions import BridgeCompletions
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.campaign_delivery_plan_controllers import CampaignDeliveryPlanController
 from firefly_forge.campaign_delivery_plan_persistence import ForgeCampaignDeliveryPlanRepository
@@ -669,6 +671,10 @@ class FactoryConfiguration:
         return Journal(store, plans=plans, tasks=tasks, records=records, sandboxes=sandboxes)
 
     @bean
+    def bridge_completions(self, store: Store, journal: Journal) -> BridgeCompletions:
+        return BridgeCompletions(store, journal)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -983,6 +989,7 @@ def create_runtime(
         LearningController,
         LearningObservationAttempts,
         JournalController,
+        BridgeCompletionController,
         RunEvidenceController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
