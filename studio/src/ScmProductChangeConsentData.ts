@@ -392,7 +392,8 @@ export async function readProductChangeOperation(
       command.version === 1 &&
       command.action === "product_change" &&
       row.authentication_method === "scm_mapping" &&
-      grant.request.active,
+      grant.request.active &&
+      binding.request.active,
   );
   check(
     row.project_id === scope.project &&

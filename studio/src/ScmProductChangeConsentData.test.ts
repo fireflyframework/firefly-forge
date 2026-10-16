@@ -297,6 +297,7 @@ describe("separate whole-product consent", () => {
 
 describe("signed product result readback", () => {
   it("binds the original command result without confusing a later comment payload with the original mapping", async () => {
+    expect(binding.request.active).toBe(true);
     expect(
       await readProductChangeOperation(
         packet.operation,
@@ -309,6 +310,56 @@ describe("signed product result readback", () => {
     expect(packet.operation.verified_reference.payload_digest).not.toBe(
       binding.verified_reference.payload_digest,
     );
+  });
+  it("rejects an inactive original mapping even when all historical links are resealed", async () => {
+    const source = structuredClone(binding),
+      grant = structuredClone(packet.receipt) as ProductChangeReceipt,
+      value = structuredClone(packet.operation);
+    source.request.active = false;
+    source.request_digest = await attemptDigest(source.request);
+    const { digest: ignored, ...unsigned } = source;
+    void ignored;
+    source.digest = await attemptDigest(unsigned);
+    grant.request.expected_binding_digest = source.digest;
+    await reseal(grant);
+    value.binding_digest = source.digest;
+    value.grant_digest = grant.digest;
+    value.request.expected_grant_digest = grant.digest;
+    value.request_digest = await attemptDigest(value.request);
+    const { digest: oldDigest, ...operation } = value;
+    void oldDigest;
+    value.digest = await attemptDigest(operation);
+    await expect(
+      readProductChangeOperation(
+        value,
+        grant,
+        source,
+        scope,
+        value.request.change.request_id,
+      ),
+    ).rejects.toThrow();
+  });
+  it("a later recorded revocation does not invalidate an authorized historical edit", async () => {
+    const revocation = structuredClone(packet.receipt) as ProductChangeReceipt;
+    revocation.event_id = "c".repeat(32);
+    revocation.revision = 2;
+    revocation.previous_digest = packet.receipt.digest;
+    revocation.request.expected_previous_digest = packet.receipt.digest;
+    revocation.request.request_id = "b".repeat(32);
+    revocation.request.active = false;
+    await reseal(revocation);
+    expect(await readProductChangeReceipt(revocation, binding, scope)).toEqual(
+      revocation,
+    );
+    expect(
+      await readProductChangeOperation(
+        packet.operation,
+        packet.receipt,
+        binding,
+        scope,
+        packet.operation.request.change.request_id,
+      ),
+    ).toEqual(packet.operation);
   });
   it.each([
     "user",
