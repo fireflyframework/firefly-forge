@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Host contracts for retained evidence, without execution or a database."""
+"""Host evidence contracts with controlled models, no database or recorded-effect replay."""
 
 import copy
 import importlib.util
@@ -12,6 +12,72 @@ import pytest
 from firefly_forge.journal import ZERO_HASH, digest
 
 RUN, REPO = "a" * 32, "b" * 32
+
+
+@pytest.mark.parametrize("granted", [True, False])
+async def test_actual_agentic_runtime_registers_only_the_granted_evidence_reader(tmp_path, granted):
+    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from firefly_forge.agentic_runtime import execute_agentic
+    from firefly_forge.workspace_tools import ToolRuntimeContext
+
+    calls = []
+
+    async def read(query):
+        calls.append(query)
+        return {"items": [{"id": "journal:1", "payload": {"preview": "Fictional retained evidence"}}]}
+
+    def model(messages, info):
+        expected = "read_run_evidence" if granted else "read_file"
+        assert [tool.name for tool in info.function_tools] == [expected]
+        if granted and not calls:
+            return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {"limit": 1}})])
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    json.dumps(
+                        {
+                            "summary": "Retained evidence tool grant checked",
+                            "worker_feedback": {
+                                "id": "evidence-review",
+                                "role_id": "implementer",
+                                "task_id": "implement",
+                                "attempt": 1,
+                                "disposition": "clarification",
+                                "summary": "Review retained facts",
+                                "request": {
+                                    "id": "owner-review",
+                                    "kind": "product_definition",
+                                    "question": "Proceed with this evidence?",
+                                    "context": "Fictional fixture",
+                                },
+                            },
+                        }
+                    )
+                )
+            ]
+        )
+
+    async def emit(*args):
+        pass
+
+    await execute_agentic(
+        tmp_path,
+        "Read retained evidence",
+        "pyfly",
+        "none",
+        emit,
+        model=FunctionModel(model),
+        settings={},
+        runtime_context=ToolRuntimeContext(
+            tmp_path,
+            tmp_path,
+            allowed_tools=frozenset({"read_run_evidence" if granted else "read_file"}),
+            read_run_evidence=read,
+        ),
+    )
+    assert calls == ([{"limit": 1}] if granted else [])
 
 
 def module():

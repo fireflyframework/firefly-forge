@@ -364,6 +364,7 @@ async def execute_agentic(
         "internet_search",
         "external_mcp",
         "knowledge_lookup",
+        "read_run_evidence",
         "profile_python",
         "trace_python",
         "profile_php",
