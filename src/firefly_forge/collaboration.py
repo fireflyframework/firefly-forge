@@ -561,7 +561,15 @@ class Collaboration:
                 if not reason:
                     command = RepositoryCommand.parse(event.pop("text"))
                     event["command"] = command.model_dump(exclude_none=True)
-                    if command.action not in [*settings["allowed_commands"], *settings.get("channel_commands", [])]:
+                    versioned_resume = (
+                        isinstance(command, SCMResumeCommandV2)
+                        and verified_reference is not None
+                        and self.resume_authority is not None
+                    )
+                    if not versioned_resume and command.action not in [
+                        *settings["allowed_commands"],
+                        *settings.get("channel_commands", []),
+                    ]:
                         reason = "command_disabled"
             except (ValueError, KeyError, TypeError):
                 event.pop("text", None)

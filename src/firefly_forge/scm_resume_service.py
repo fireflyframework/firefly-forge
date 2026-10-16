@@ -388,7 +388,11 @@ class SCMResumeAuthority:
         if (
             not settings.get("enabled")
             or delivery["actor"] not in settings.get("trusted_actors", [])
-            or command["action"] not in [*settings.get("allowed_commands", []), *settings.get("channel_commands", [])]
+            or (
+                command["action"] not in consent.allowed_actions
+                and command["action"]
+                not in [*settings.get("allowed_commands", []), *settings.get("channel_commands", [])]
+            )
             or identity is None
             or not identity.enabled
             or not any(

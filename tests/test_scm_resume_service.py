@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from test_scm_resume_cut import answered_cut  # noqa: F401
 
-from firefly_forge.collaboration import RepositoryCommand
+from firefly_forge.collaboration import CollaborationSettings, RepositoryCommand
 from firefly_forge.journal import digest
 from firefly_forge.project_access import AccessDenied
 
@@ -268,7 +268,9 @@ async def current_context(tmp_path, monkeypatch):
         "verification": reference,
         "command": {"version": 2, "action": "resume", "run_id": run["id"], "expected_grant_digest": grant["digest"]},
     }
-    settings = {"enabled": True, "trusted_actors": [delivery["actor"]], "channel_commands": ["resume"]}
+    settings = CollaborationSettings(
+        enabled=True, trusted_actors=[delivery["actor"]], allowed_commands=["status"]
+    ).model_dump(mode="json", exclude={"webhook_secret"})
 
     @asynccontextmanager
     async def unit():
@@ -290,6 +292,8 @@ async def current_context(tmp_path, monkeypatch):
         return SimpleNamespace(data=copy.deepcopy(settings))
 
     async def identity(*args):
+        if state.get("missing_user"):
+            return None
         return SimpleNamespace(id=UUID(grant["native_user_id"]), enabled=state["enabled"])
 
     async def memberships(*args):
@@ -328,10 +332,23 @@ async def current_context(tmp_path, monkeypatch):
 
 
 async def test_current_v2_context_uses_registered_user_and_current_project_execute_permission(current_context):
-    service, delivery, binding, _, _, _ = current_context
+    service, delivery, binding, _, settings, _ = current_context
+    assert settings["channel_commands"] == []
     context = await service._context(delivery)
     assert context["user_id"] == binding["request"]["native_user_id"]
     assert context["binding"]["digest"] == binding["digest"]
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+async def test_v2_status_still_requires_the_current_status_policy(current_context, allowed):
+    service, delivery, _, _, settings, _ = current_context
+    delivery["command"]["action"] = "status"
+    settings["allowed_commands"] = ["status"] if allowed else []
+    if allowed:
+        await service._context(delivery)
+    else:
+        with pytest.raises(AccessDenied):
+            await service._context(delivery)
 
 
 @pytest.mark.parametrize(
@@ -340,7 +357,9 @@ async def test_current_v2_context_uses_registered_user_and_current_project_execu
         "v1_inactive",
         "v1_changed",
         "v2_inactive",
+        "v2_missing",
         "native_disabled",
+        "native_missing",
         "viewer",
         "settings_disabled",
         "untrusted_actor",
@@ -355,8 +374,16 @@ async def test_real_context_checks_reject_revocation_without_authority_from_comm
         binding["digest"] = "c" * 64
     elif mutation == "v2_inactive":
         grant["request"]["active"] = False
+    elif mutation == "v2_missing":
+
+        async def missing(*args, **kwargs):
+            return None
+
+        service._grant = missing
     elif mutation == "native_disabled":
         state["enabled"] = False
+    elif mutation == "native_missing":
+        state["missing_user"] = True
     elif mutation == "viewer":
         state["role"] = "viewer"
     elif mutation == "settings_disabled":
