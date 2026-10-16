@@ -180,7 +180,10 @@ class AgentCheckpoints:
     async def exact(self, run_id: str, request_id: str) -> Data:
         """Read immutable checkpoint receipts without returning a completion or issuing a restore ticket."""
         with prepared_credential_rejection(self.store):
-            return await self._exact(run_id, request_id)
+            result = await self._exact(run_id, request_id)
+            _outside_unit()
+            self.store.reject_credentials(result)
+            return result
 
     async def _exact(self, run_id: str, request_id: str) -> Data:
         _outside_unit()

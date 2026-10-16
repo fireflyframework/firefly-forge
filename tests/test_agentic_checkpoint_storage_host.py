@@ -625,3 +625,61 @@ async def test_registry_change_after_commit_refuses_exposure_without_rearming(tm
         else:
             await scope.response(intent, response)
     assert [row.data for row in journal.records.rows] == before and current_unit_of_work() is None
+
+
+@pytest.mark.parametrize("consumed", [False, True])
+async def test_exact_read_rejects_late_real_registry_change_without_rearming(tmp_path, monkeypatch, consumed):
+    from types import MethodType
+
+    from firefly_forge.store import Store
+
+    store, journal, manager, service, scope, descriptor, checkpoint, body, response = await setup(tmp_path, monkeypatch)
+    registered = {}
+    resolve = store.configuration.resolve
+    acquire = type(store.configuration.lock).acquire
+    reads, locks = [], []
+
+    def outside_resolve(provider):
+        assert current_unit_of_work() is None, "Exact read performed credential configuration I/O under its unit"
+        reads.append(provider)
+        return resolve(provider)
+
+    def outside_lock(lock, *args, **kwargs):
+        assert current_unit_of_work() is None, "Exact read acquired a credential FileLock under its unit"
+        locks.append(lock.lock_file)
+        return acquire(lock, *args, **kwargs)
+
+    def credentials():
+        assert current_unit_of_work() is None, "Exact read invoked its credential callback under its unit"
+        return {**store.configuration.resolve("bridge"), **registered}
+
+    monkeypatch.setattr(store.configuration, "resolve", outside_resolve)
+    monkeypatch.setattr(type(store.configuration.lock), "acquire", outside_lock)
+    store.credential_registry = credentials
+    monkeypatch.setattr(store, "reject_credentials", MethodType(Store.reject_credentials, store))
+    intent = await scope.admit(descriptor, body)
+    if consumed:
+        await scope.response(intent, response)
+    before = copy.deepcopy(([row.data for row in journal.records.rows], store.run.data))
+    reader_calls = 0
+
+    async def reader(run_id, actor, **kwargs):
+        nonlocal reader_calls
+        reader_calls += 1
+        if reader_calls == 2:
+            assert current_unit_of_work() is not None
+            registered["CURRENT_TOKEN"] = "Fictional storage fixture"
+        return await store.get_run(run_id)
+
+    monkeypatch.setattr(service.completions, "_reader", reader)
+    with pytest.raises(ValueError, match="configured credentials"):
+        await service.exact(RUN, intent["idempotency_key"])
+    assert reader_calls == 2 and reads and locks and current_unit_of_work() is None
+    assert ([row.data for row in journal.records.rows], store.run.data) == before
+    assert sum(row.kind == "agent_consume" for row in journal.records.rows) == int(consumed)
+    assert store.run.data.get("bridge_completion_hold")
+    if consumed:
+        registered.clear()
+        with pytest.raises(ValueError, match="consum"):
+            await scope.response(intent, response)
+        assert ([row.data for row in journal.records.rows], store.run.data) == before
