@@ -185,6 +185,7 @@ export function ProductDefinition({
   useEffect(() => {
     if (!connected || !id) return;
     const controller = new AbortController();
+    const observationEpoch = session.observationEpoch;
     setSnapshot(session.base);
     setBrand(session.brand);
     setLoaded(session.observed ? id : "");
@@ -201,7 +202,7 @@ export function ProductDefinition({
     ])
       .then(([product, kit]) => {
         if (!controller.signal.aborted) {
-          session.observe(product, kit);
+          session.observe(product, kit, observationEpoch);
           setSnapshot(session.base);
           setBrand(session.brand);
           setLoaded(id);
@@ -1791,6 +1792,7 @@ function DefinitionEditor({
               repository={repository.id}
               definition={data()}
               value={designReview}
+              pending={designPending}
               onChange={setDesignReview}
               onPending={setDesignPending}
             />

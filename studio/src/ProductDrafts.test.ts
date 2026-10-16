@@ -111,6 +111,33 @@ describe("tab-scoped product drafts", () => {
     expect(session.stale).toBe(true);
     expect(session.dirty).toBe(true);
   });
+  it("ignores a delayed pre-save GET that carries an older revision", () => {
+    const session = new ProductDraftBook().repository(a);
+    session.observe(snapshot(), null);
+    session.write("customer", "Submitted", true);
+    const readEpoch = session.observationEpoch;
+    expect(session.acceptSaved(snapshot(a, 2), session.editVersion)).toBe(true);
+    session.observe(snapshot(), null, readEpoch);
+    expect(session.base?.revision).toBe(2);
+    expect(session.stale).toBe(false);
+    expect(session.dirty).toBe(false);
+  });
+  it("still observes a genuinely newer cut from an earlier GET", () => {
+    const session = new ProductDraftBook().repository(a);
+    session.observe(snapshot(), null);
+    const readEpoch = session.observationEpoch;
+    session.acceptSaved(snapshot(a, 2), session.editVersion);
+    session.observe(snapshot(a, 3), null, readEpoch);
+    expect(session.base?.revision).toBe(2);
+    expect(session.stale).toBe(true);
+  });
+  it("still holds a changed current-epoch read instead of ignoring every older revision", () => {
+    const session = new ProductDraftBook().repository(a);
+    session.observe(snapshot(), null);
+    session.acceptSaved(snapshot(a, 2), session.editVersion);
+    session.observe(snapshot(), null, session.observationEpoch);
+    expect(session.stale).toBe(true);
+  });
   it("clears the exact submitted session after save without clearing another product", () => {
     const book = new ProductDraftBook(),
       session = book.repository(a);

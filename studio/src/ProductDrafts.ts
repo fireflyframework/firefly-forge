@@ -31,6 +31,10 @@ export class ProductDraftSession {
   brand: ProductBrand | null = null;
   private latest: ProductSnapshot | null = null;
   editVersion = 0;
+  private saveEpoch = 0;
+  get observationEpoch() {
+    return this.saveEpoch;
+  }
   constructor(repository: string) {
     this.repository = repository;
   }
@@ -68,13 +72,22 @@ export class ProductDraftSession {
     }
     this.changed();
   }
-  observe(snapshot: ProductSnapshot | null, brand: ProductBrand | null) {
+  observe(
+    snapshot: ProductSnapshot | null,
+    brand: ProductBrand | null,
+    epoch = this.saveEpoch,
+  ) {
     if (this.closed) return;
     if (
       (snapshot && snapshot.repository_id !== this.repository) ||
       (brand && brand.repository_id !== this.repository)
     )
       throw new Error("The product response belongs to another repository.");
+    if (
+      epoch !== this.saveEpoch &&
+      (!snapshot || (this.latest && snapshot.revision < this.latest.revision))
+    )
+      return;
     this.latest = structuredClone(snapshot);
     if (!this.observed) {
       this.base = structuredClone(snapshot);
@@ -86,6 +99,7 @@ export class ProductDraftSession {
   proposalSession() {
     const next = new ProductDraftSession(this.repository);
     next.observed = this.observed;
+    next.saveEpoch = this.saveEpoch;
     next.base = structuredClone(this.base);
     next.latest = structuredClone(this.latest);
     next.brand = structuredClone(this.brand);
@@ -95,6 +109,7 @@ export class ProductDraftSession {
     if (this.closed) return false;
     if (snapshot.repository_id !== this.repository)
       throw new Error("The saved product belongs to another repository.");
+    this.saveEpoch++;
     const changedCut = this.stale && cut(this.latest) !== cut(snapshot);
     if (!changedCut) this.latest = structuredClone(snapshot);
     if (version !== this.editVersion || changedCut) {
@@ -177,6 +192,11 @@ export class ProductDraftBook {
     );
     next.write("draftSource", source);
     this.replace(session, next);
+  }
+  clear() {
+    for (const session of this.sessions.values()) session.close();
+    this.sessions.clear();
+    for (const listener of this.listeners) listener();
   }
   dispose() {
     this.closed = true;
