@@ -1121,7 +1121,11 @@ class Journal:
                 "last_pause": pause,
                 "pause": {},
                 "error": None,
-                "retry_count": int(run.data.get("retry_count", 0)) + int(auto),
+                **(
+                    {"retry_count": int(run.data.get("retry_count", 0)) + int(auto)}
+                    if auto or "retry_count" in run.data
+                    else {}
+                ),
                 "checkpoint": run.data.get("checkpoint", {}),
                 "updated_at": now(),
             }
