@@ -16,6 +16,9 @@ from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
 
+# A process-local write cut; callers still re-admit external sources before exposure.
+_write_generations: dict[str, object] = {}
+
 FIELDS: dict[str, dict[str, str]] = {
     "codex": {
         "model": "FORGE_CODEX_MODEL",
@@ -127,6 +130,12 @@ class ConfigurationStore:
             raise ValueError("Revision directory must be a real directory")
         self.revisions.chmod(0o700)
         self.lock = FileLock(str(self.directory / "settings.lock"))
+        self._generation_key = str(self.directory.resolve())
+        _write_generations.setdefault(self._generation_key, object())
+
+    @property
+    def write_generation(self) -> object:
+        return _write_generations[self._generation_key]
 
     def _read(self, path: Path) -> dict[str, Any]:
         try:
@@ -154,6 +163,7 @@ class ConfigurationStore:
                 target.flush()
                 os.fsync(target.fileno())
             os.replace(filename, path)
+            _write_generations[self._generation_key] = object()
         finally:
             Path(filename).unlink(missing_ok=True)
 

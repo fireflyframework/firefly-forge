@@ -94,6 +94,7 @@ class Journal:
                 run_id,
                 extra=len(json.dumps(payload, ensure_ascii=False).encode()) + 4096,
                 consume=kind == "bridge_request_response",
+                checkpoint_consume=kind == "agent_consume",
             )
         entries = await self.records.find_for_run(identifier(run_id))
         existing = next((entry for entry in entries if entry.idempotency_key == key and entry.kind == kind), None)
@@ -287,12 +288,18 @@ class Journal:
             result["checkpoint"] = run.get("checkpoint", {})
             return result
 
-    async def _bridge_read_bound(self, run_id: str, *, extra: int = 0, consume: bool = False) -> None:
+    async def _bridge_read_bound(
+        self, run_id: str, *, extra: int = 0, consume: bool = False, checkpoint_consume: bool = False
+    ) -> None:
         budget = await self.records.bridge_budget(identifier(run_id))
         if (
             budget["rows"] > 10000
             or budget["max_intent_bytes"] > 16384
-            or budget["bytes"] + max(budget["intents"] - budget["responses"] - int(consume), 0) * 532480 + extra
+            or budget["bytes"]
+            + max(budget["intents"] - budget["responses"] - int(consume), 0) * 532480
+            + max(budget.get("checkpoints", 0) - budget.get("checkpoint_consumes", 0) - int(checkpoint_consume), 0)
+            * 4096
+            + extra
             > 16 * 1024 * 1024
         ):
             raise ValueError("Run completion evidence exceeds its reserved read bound")
@@ -324,6 +331,8 @@ class Journal:
                     "bridge_request_intent",
                     "bridge_request_observation",
                     "bridge_request_response",
+                    "agent_checkpoint",
+                    "agent_consume",
                 }
             ]
             if protected:
