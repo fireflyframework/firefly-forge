@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read one exact immutable V2 resume consent receipt under current read authority.
+  
+  Use the original request ID after uncertain delivery. Missing or denied evidence does not authorize another POST, a new identity, or a signed run action. This read neither refreshes provider grants nor resumes a run.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_scm_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save or revoke explicit V2 consent for signed same-run resume requests under an exact reviewed V1 binding.
+  
+  Requires current native administrator authority, reviewed project and binding digests, scoped components, and explicit acknowledgment. The provider repository grant may be rechecked. This saves consent; it does not fabricate a signed command or resume a run. Retain the caller request ID before one POST. After loss, refusal or conflict, read the exact original request; never retry automatically or replace its identity.
+required_variables: []
+metadata:
+  defaults: {}

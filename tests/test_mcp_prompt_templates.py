@@ -11,6 +11,8 @@ from mcp.types import ListToolsResult
 from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
+NEW_TOOLS = {"configure_scm_resume_grant", "get_scm_resume_grant", "get_current_scm_resume_grant"}
+
 
 def _baseline():
     return json.loads((Path(__file__).parent / "fixtures/mcp-prompt-baseline-v1.json").read_text())
@@ -18,8 +20,10 @@ def _baseline():
 
 async def test_actual_mcp_wire_metadata_stays_byte_exact():
     tools = await create_server().list_tools()
-    assert len(tools) == 142
-    assert ListToolsResult(tools=tools).model_dump_json(by_alias=True, exclude_none=True) == _baseline()["wire_json"]
+    assert len(tools) == 145
+    original = [tool for tool in tools if tool.name not in NEW_TOOLS]
+    assert len(original) == 142
+    assert ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True) == _baseline()["wire_json"]
 
 
 def test_all_mcp_descriptions_are_empty_variable_native_resources():
@@ -32,7 +36,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 219
+    assert len(catalog.registry) == 222
 
 
 def test_mcp_callbacks_preserve_the_original_executable_ast():
@@ -47,7 +51,10 @@ def test_mcp_callbacks_preserve_the_original_executable_ast():
             if ast.get_docstring(node, clean=False) is not None:
                 node.body = node.body[1:]
             callbacks[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
-    assert callbacks == _baseline()["callback_ast_sha256"]
+    assert {name: value for name, value in callbacks.items() if name not in NEW_TOOLS} == _baseline()[
+        "callback_ast_sha256"
+    ]
+    assert set(callbacks) == set(_baseline()["callback_ast_sha256"]) | NEW_TOOLS
 
 
 def test_mcp_descriptions_have_one_packaged_source():
@@ -75,4 +82,4 @@ def test_mcp_descriptions_have_one_packaged_source():
                 )
             )
             names.add(node.name)
-    assert names == {tool["name"] for tool in json.loads(_baseline()["wire_json"])["tools"]}
+    assert names == {tool["name"] for tool in json.loads(_baseline()["wire_json"])["tools"]} | NEW_TOOLS

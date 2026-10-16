@@ -7,7 +7,7 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 Forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 219 templates: the original 77 instructions and 142 factory MCP descriptions. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 222 templates: the original 77 instructions and 145 factory MCP descriptions. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 

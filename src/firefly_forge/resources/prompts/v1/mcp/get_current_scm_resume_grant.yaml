@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_current_scm_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read current V2 resume consent for an exact retained V1 binding under current read authority.
+  
+  This is a consent reference, not proof that a signed resume can execute now. Current mapping, user access, source and run state remain server checks at action admission. This read does not fabricate commands or dispatch work.
+required_variables: []
+metadata:
+  defaults: {}
