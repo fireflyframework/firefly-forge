@@ -364,7 +364,8 @@ for (const viewport of [
       });
       await ack.scrollIntoViewIfNeeded();
       await ack.focus();
-      await page.keyboard.press("Space");
+      await expect(ack).toBeFocused();
+      await expect(ack).not.toBeChecked();
       await page.keyboard.press("Space");
       await expect(ack).toBeChecked();
       const measures = await modal.evaluate((node) => {
