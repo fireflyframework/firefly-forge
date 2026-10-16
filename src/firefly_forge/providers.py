@@ -15,6 +15,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -70,6 +71,34 @@ class ProviderOutcomeUnknown(ProviderError):
     def __init__(self, message: str, *, observation: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.observation = observation or {}
+
+
+class ProviderSubmissionCancelled(asyncio.CancelledError):
+    """Local cancellation cannot establish the outcome of an attempted Bridge submission."""
+
+
+@dataclass
+class _BridgeInvocation:
+    pending: set[object] = field(default_factory=set)
+
+
+@dataclass
+class _BridgeAttempt:
+    invocation: _BridgeInvocation | None
+    key: object = field(default_factory=object)
+
+    def dispatch(self) -> None:
+        if self.invocation is not None:
+            self.invocation.pending.add(self.key)
+
+    def complete(self) -> None:
+        if self.invocation is not None:
+            self.invocation.pending.discard(self.key)
+
+
+# Graph subtasks inherit the object, so their mutations survive cancellation unwrapping.
+_bridge_invocation: ContextVar[_BridgeInvocation | None] = ContextVar("bridge_invocation", default=None)
+_bridge_attempt: ContextVar[_BridgeAttempt | None] = ContextVar("bridge_attempt", default=None)
 
 
 def _bridge_failure(exc: Exception) -> ProviderError | None:
@@ -507,11 +536,33 @@ class BridgeProvider(ConfiguredProvider):
         ):
             headers["X-Bridge-Image-Revision"] = revision
 
+        class BridgeClient(AsyncOpenAI):
+            async def _send_request(self, request: Any, **kwargs: Any) -> Any:
+                completion = request.method == "POST" and request.url.path.rstrip("/").endswith("/chat/completions")
+                if completion and (attempt := _bridge_attempt.get()) is not None:
+                    attempt.dispatch()
+                try:
+                    return await super()._send_request(request, **kwargs)
+                except asyncio.CancelledError as exc:
+                    if completion:
+                        raise ProviderSubmissionCancelled(
+                            "Bridge submission cancelled before its outcome was known"
+                        ) from exc
+                    raise
+
         class BridgeStreamedResponse(OpenAIStreamedResponse):
+            bridge_complete = False
+            bridge_attempt: _BridgeAttempt | None = None
+
             async def _get_event_iterator(self) -> AsyncIterator[Any]:
                 try:
                     async for event in super()._get_event_iterator():
                         yield event
+                    self.bridge_complete = True
+                    if self.bridge_attempt is not None:
+                        self.bridge_attempt.complete()
+                except asyncio.CancelledError as exc:
+                    raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
                 except Exception as exc:
                     raise (
                         _bridge_failure(exc)
@@ -535,7 +586,12 @@ class BridgeProvider(ConfiguredProvider):
 
             async def _process_streamed_response(self, *args: Any, **kwargs: Any) -> Any:
                 try:
-                    return await super()._process_streamed_response(*args, **kwargs)
+                    response = await super()._process_streamed_response(*args, **kwargs)
+                    assert isinstance(response, BridgeStreamedResponse)
+                    response.bridge_attempt = _bridge_attempt.get()
+                    return response
+                except asyncio.CancelledError as exc:
+                    raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
                 except Exception as exc:
                     raise (
                         _bridge_failure(exc)
@@ -545,27 +601,48 @@ class BridgeProvider(ConfiguredProvider):
                     ) from exc
 
             async def request(self, *args: Any, **kwargs: Any) -> Any:
+                attempt = _BridgeAttempt(_bridge_invocation.get())
+                token = _bridge_attempt.set(attempt)
                 try:
-                    return await super().request(*args, **kwargs)
+                    response = await super().request(*args, **kwargs)
+                    attempt.complete()
+                    return response
                 except Exception as exc:
                     if failure := _bridge_failure(exc):
+                        if isinstance(failure, ProviderLimitError):
+                            attempt.complete()
                         raise failure from exc
                     raise
+                finally:
+                    _bridge_attempt.reset(token)
 
             @asynccontextmanager
             async def request_stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+                stream = None
+                attempt = _BridgeAttempt(_bridge_invocation.get())
+                token = _bridge_attempt.set(attempt)
                 try:
                     async with super().request_stream(*args, **kwargs) as stream:
                         yield stream
+                except ProviderSubmissionCancelled:
+                    raise
+                except asyncio.CancelledError as exc:
+                    if stream is not None and not getattr(stream, "bridge_complete", False):
+                        raise ProviderSubmissionCancelled("Bridge stream cancelled before completion") from exc
+                    raise
                 except Exception as exc:
                     if failure := _bridge_failure(exc):
+                        if isinstance(failure, ProviderLimitError):
+                            attempt.complete()
                         raise failure from exc
                     raise
+                finally:
+                    _bridge_attempt.reset(token)
 
         return BridgeChatModel(
             name,
             provider=OpenAIProvider(
-                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
+                openai_client=BridgeClient(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
             ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
@@ -574,19 +651,28 @@ class BridgeProvider(ConfiguredProvider):
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         from firefly_forge.agentic_runtime import execute_agentic
 
-        await emit("provider", "Connecting Firefly Agentic to the configured OpenAI-compatible bridge")
-        summary, usage = await execute_agentic(
-            workspace,
-            brief,
-            backend,
-            frontend,
-            emit,
-            model=self.model(),
-            allow_output_token_cap=False,
-            settings=self.settings,
-            runtime_context=self.runtime_context,
-        )
-        return AgentResult(summary, "bridge", usage)
+        invocation = _BridgeInvocation()
+        token = _bridge_invocation.set(invocation)
+        try:
+            await emit("provider", "Connecting Firefly Agentic to the configured OpenAI-compatible bridge")
+            summary, usage = await execute_agentic(
+                workspace,
+                brief,
+                backend,
+                frontend,
+                emit,
+                model=self.model(),
+                allow_output_token_cap=False,
+                settings=self.settings,
+                runtime_context=self.runtime_context,
+            )
+            return AgentResult(summary, "bridge", usage)
+        except asyncio.CancelledError as exc:
+            if invocation.pending:
+                raise ProviderSubmissionCancelled("Bridge submission cancelled before its outcome was known") from exc
+            raise
+        finally:
+            _bridge_invocation.reset(token)
 
 
 @lru_cache(maxsize=8)

@@ -364,6 +364,31 @@ class Engine:
         async def emit(stage: str, message: str) -> None:
             (await self.store.event(identifier, stage, safe(message)))
 
+        async def retain_unknown(message: str, observation: dict[str, Any]) -> None:
+            if self.journal and active_key:
+                await self.journal.fail(
+                    identifier,
+                    active_key,
+                    "provider_outcome_unknown",
+                    safe(message),
+                    observation=safe_data(observation),
+                )
+            else:
+                current_pause = (await self.store.get_run(identifier)).get("pause", {})
+                await self.store.update(
+                    identifier,
+                    status="needs_reconciliation",
+                    error=safe(message),
+                    pause={
+                        **current_pause,
+                        "kind": "provider_outcome_unknown",
+                        "automatic": False,
+                        "retry_at": None,
+                        "provider_observation": safe_data(observation),
+                    },
+                )
+            await emit("needs_reconciliation", "Bridge outcome requires reconciliation; no automatic resubmission")
+
         try:
             run = await self.store.get_run(identifier)
             from firefly_forge.project_access import ProjectAccess
@@ -959,7 +984,11 @@ class Engine:
             await self._remember_knowledge(identifier, emit)
             if run["publish"]:
                 await self.publish(identifier)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as exc:
+            from firefly_forge.providers import ProviderSubmissionCancelled
+
+            if isinstance(exc, ProviderSubmissionCancelled):
+                await retain_unknown("Bridge submission cancelled before its outcome was known", {})
             (await self.store.finish(identifier, "interrupted" if self.stopping else "cancelled"))
             raise
         except Exception as exc:
@@ -968,29 +997,7 @@ class Engine:
 
             classification = classify_provider_failure(exc)
             if isinstance(exc, ProviderOutcomeUnknown):
-                if self.journal and active_key:
-                    await self.journal.fail(
-                        identifier,
-                        active_key,
-                        "provider_outcome_unknown",
-                        safe(str(exc)),
-                        observation=safe_data(exc.observation),
-                    )
-                else:
-                    current_pause = (await self.store.get_run(identifier)).get("pause", {})
-                    await self.store.update(
-                        identifier,
-                        status="needs_reconciliation",
-                        error=safe(str(exc)),
-                        pause={
-                            **current_pause,
-                            "kind": "provider_outcome_unknown",
-                            "automatic": False,
-                            "retry_at": None,
-                            "provider_observation": safe_data(exc.observation),
-                        },
-                    )
-                await emit("needs_reconciliation", "Bridge outcome requires reconciliation; no automatic resubmission")
+                await retain_unknown(str(exc), exc.observation)
             elif self.journal and active_key and classification:
                 await self.journal.fail(
                     identifier,
