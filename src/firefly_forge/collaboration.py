@@ -12,6 +12,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote, urlsplit
@@ -40,7 +41,7 @@ from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
-from firefly_forge.store import Store, identifier, now
+from firefly_forge.store import Store, identifier, now, prepared_credential_rejection
 from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_process_references
 
 if TYPE_CHECKING:
@@ -329,6 +330,7 @@ class Collaboration:
 
     async def settings(self, repository_id: str) -> Data:
         repo = await self.store.repository(repository_id)
+        secret_configured = bool(self._secret(repository_id))
         async with self.store._unit():
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
@@ -339,7 +341,7 @@ class Collaboration:
             return {
                 **data,
                 "repository_id": repository_id,
-                "webhook_secret_configured": bool(self._secret(repository_id)),
+                "webhook_secret_configured": secret_configured,
                 "capabilities": {
                     "issue_authoring": repo.get("connection_provider") in {"github", "gitlab"},
                     "issue_comments": repo.get("connection_provider") in {"github", "gitlab"},
@@ -772,6 +774,30 @@ class Collaboration:
         row.status = row.data["status"]
         await self.inbox.save(row)
 
+    async def _legacy_run_request(self, receipt_id: str, event: Data, repo: Data, settings: Data) -> RunInput:
+        command = RepositoryCommand.model_validate(event["command"])
+        snapshot = await self.product(repo["id"])
+        architecture = ProductDefinition.model_validate(snapshot["definition"]).architecture if snapshot else None
+        return RunInput(
+            repository_id=repo["id"],
+            brief=command.brief or prompt_text("implementation/verification-request"),
+            backend=architecture.backend if architecture else settings["backend"],
+            frontend=architecture.frontend if architecture else settings["frontend"],
+            agent=settings["agent"],
+            publish=settings["publish"],
+            operation=cast(
+                Literal["build", "test", "maintain"], "build" if command.action == "run" else command.action
+            ),
+            commands=settings["test_commands"],
+            product_definition=snapshot,
+            issue_context={
+                "provider": event["provider"],
+                "receipt_id": receipt_id,
+                "actor": event["actor"],
+                **event["issue"],
+            },
+        )
+
     async def process(self, receipt_id: str) -> Data:
         initial = await self.receipt(receipt_id)
         if (initial.get("command") or {}).get("action") == "product_change":
@@ -859,103 +885,141 @@ class Collaboration:
                     return copy.deepcopy(row.data)
         if (initial.get("command") or {}).get("action") not in {"run", "test", "maintain", "status", "deploy"}:
             return await self._process_channel(receipt_id)
-        async with self.store._unit():
-            row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
-            if row is None:
-                raise KeyError("Delivery receipt not found")
-            if row.status != "received":
-                return copy.deepcopy(row.data)
-            repo = await self.store.repository(row.data["repository_id"])
-            settings = await self.settings(row.data["repository_id"])
-            reason = self._allowed(repo, settings, row.data, row.provider)
-            command = RepositoryCommand.model_validate(row.data["command"])
-            if command.action not in settings["allowed_commands"]:
-                reason = "command_disabled"
-            if reason:
-                await self._write_row(row, status="denied", reason=reason)
-                return copy.deepcopy(row.data)
-            if command.action in {"run", "test", "maintain"}:
-                snapshot = await self.product(repo["id"])
-                if command.product_revision and (not snapshot or snapshot["revision"] != command.product_revision):
-                    await self._write_row(row, status="denied", reason="product_revision_mismatch")
-                    return copy.deepcopy(row.data)
-                architecture = (
-                    ProductDefinition.model_validate(snapshot["definition"]).architecture if snapshot else None
-                )
-                run = await self.store.create_run(
-                    RunInput(
-                        repository_id=repo["id"],
-                        brief=command.brief or prompt_text("implementation/verification-request"),
-                        backend=architecture.backend if architecture else settings["backend"],
-                        frontend=architecture.frontend if architecture else settings["frontend"],
-                        agent=settings["agent"],
-                        publish=settings["publish"],
-                        operation=cast(
-                            Literal["build", "test", "maintain"], "build" if command.action == "run" else command.action
-                        ),
-                        commands=settings["test_commands"],
-                        product_definition=snapshot,
-                        issue_context={
-                            "provider": row.provider,
-                            "receipt_id": receipt_id,
-                            "actor": row.data["actor"],
-                            **row.data["issue"],
-                        },
-                    )
-                )
-                await self._write_row(
-                    row, status="processed", run_id=run["id"], feedback_status="pending", feedback_stage="queued"
-                )
-                await self.store.event(
-                    run["id"], "repository_command", "Trusted repository command accepted: " + receipt_id
-                )
-            elif command.action == "status":
-                candidates = await self.store.runs()
-                status_run = next(
-                    (
-                        run
-                        for run in candidates
-                        if run["repository_id"] == repo["id"]
-                        and (
-                            run["id"] == command.run_id
-                            if command.run_id
-                            else (run.get("issue_context") or {}).get("number") == row.data["issue"]["number"]
-                        )
-                    ),
-                    None,
-                )
-                if status_run is None:
-                    await self._write_row(row, status="denied", reason="issue_run_not_found")
-                    return copy.deepcopy(row.data)
-                await self._write_row(
-                    row,
-                    status="processed",
-                    run_id=status_run["id"],
-                    feedback_status="pending",
-                    feedback_stage=status_run["status"],
-                )
-            else:
+        prepared_run = None
+        prepared_settings = None
+        prepared_channel = None
+        if (initial.get("command") or {}).get("action") in {"run", "test", "maintain"}:
+            prepared_repo = await self.store.repository(initial["repository_id"])
+            prepared_settings = await self.settings(initial["repository_id"])
+            if initial.get("global_ingress"):
+                prepared_channel = self.store.configuration._read(
+                    self.store.configuration.directory / "channel-bootstrap.json"
+                ).get(initial["provider"], {})
+            reason = self._allowed(
+                prepared_repo, prepared_settings, initial, initial["provider"], channel_snapshot=prepared_channel
+            )
+            if not reason and initial["command"]["action"] in prepared_settings["allowed_commands"]:
+                prepared_input = await self._legacy_run_request(receipt_id, initial, prepared_repo, prepared_settings)
+                requested_revision = initial["command"].get("product_revision")
                 if (
-                    not settings["deploy_enabled"]
-                    or command.target_id not in settings["deploy_targets"]
-                    or self.deployments is None
+                    not requested_revision
+                    or (prepared_input.product_definition or {}).get("revision") == requested_revision
                 ):
-                    await self._write_row(row, status="denied", reason="deployment_not_enabled")
+                    prepared_run = await self.store.prepare_run(prepared_input)
+        with prepared_credential_rejection(self.store) if prepared_run is not None else nullcontext():
+            async with self.store._unit():
+                if prepared_run is not None:
+                    await self.store.fence_prepared_runs([prepared_run])
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is None:
+                    raise KeyError("Delivery receipt not found")
+                if row.status != "received":
                     return copy.deepcopy(row.data)
-                assert command.run_id and command.target_id
-                run = await self.store.get_run(command.run_id)
-                if run["repository_id"] != repo["id"]:
-                    await self._write_row(row, status="denied", reason="deployment_repository_mismatch")
+                if prepared_run is not None and (row.data != initial or row.provider != initial["provider"]):
+                    raise ValueError("Repository command changed during run preflight")
+                repo = await self.store.repository(row.data["repository_id"])
+                if prepared_run is not None:
+                    assert prepared_settings is not None
+                    settings = prepared_settings
+                    current = await self.settings_records.find_for_repository(identifier(repo["id"]))
+                    raw_settings = (
+                        copy.deepcopy(current.data)
+                        if current
+                        else CollaborationSettings().model_dump(exclude={"webhook_secret"})
+                    )
+                    if authority_state(raw_settings)["heads"]:
+                        raise ValueError("SCM authority changed during run preflight")
+                    for key in (
+                        "_github_poll_v1",
+                        "_scm_authority_v1",
+                        "_scm_resume_authority_v2",
+                        "_scm_product_change_authority_v1",
+                    ):
+                        raw_settings.pop(key, None)
+                    if raw_settings != {
+                        key: value
+                        for key, value in settings.items()
+                        if key not in {"repository_id", "webhook_secret_configured", "capabilities"}
+                    }:
+                        raise ValueError("Collaboration settings changed during run preflight")
+                else:
+                    settings = await self.settings(row.data["repository_id"])
+                reason = self._allowed(repo, settings, row.data, row.provider, channel_snapshot=prepared_channel)
+                command = RepositoryCommand.model_validate(row.data["command"])
+                if command.action not in settings["allowed_commands"]:
+                    reason = "command_disabled"
+                if reason:
+                    await self._write_row(row, status="denied", reason=reason)
                     return copy.deepcopy(row.data)
-                job = await self.deployments.create(command.run_id, command.target_id)
-                await self._write_row(
-                    row,
-                    status="processed",
-                    run_id=run["id"],
-                    deployment_id=job["id"],
-                    feedback_status="pending",
-                    feedback_stage="deployment_queued",
-                )
+                if command.action in {"run", "test", "maintain"}:
+                    snapshot = await self.product(repo["id"])
+                    if command.product_revision and (not snapshot or snapshot["revision"] != command.product_revision):
+                        await self._write_row(row, status="denied", reason="product_revision_mismatch")
+                        return copy.deepcopy(row.data)
+                    if prepared_run is None:
+                        raise ValueError("Prepare the repository run before entering the native transaction")
+                    current_input = await self._legacy_run_request(
+                        receipt_id, {**row.data, "provider": row.provider}, repo, settings
+                    )
+                    if current_input.model_dump(mode="json", exclude_unset=True) != prepared_run.unpack()["request"]:
+                        raise ValueError("Repository command changed during run preflight")
+                    run = await self.store.insert_prepared_run_locked(prepared_run)
+                    await self._write_row(
+                        row, status="processed", run_id=run["id"], feedback_status="pending", feedback_stage="queued"
+                    )
+                    await self.store.event(
+                        run["id"], "repository_command", "Trusted repository command accepted: " + receipt_id
+                    )
+                elif command.action == "status":
+                    candidates = await self.store.runs()
+                    status_run = next(
+                        (
+                            run
+                            for run in candidates
+                            if run["repository_id"] == repo["id"]
+                            and (
+                                run["id"] == command.run_id
+                                if command.run_id
+                                else (run.get("issue_context") or {}).get("number") == row.data["issue"]["number"]
+                            )
+                        ),
+                        None,
+                    )
+                    if status_run is None:
+                        await self._write_row(row, status="denied", reason="issue_run_not_found")
+                        return copy.deepcopy(row.data)
+                    await self._write_row(
+                        row,
+                        status="processed",
+                        run_id=status_run["id"],
+                        feedback_status="pending",
+                        feedback_stage=status_run["status"],
+                    )
+                else:
+                    if (
+                        not settings["deploy_enabled"]
+                        or command.target_id not in settings["deploy_targets"]
+                        or self.deployments is None
+                    ):
+                        await self._write_row(row, status="denied", reason="deployment_not_enabled")
+                        return copy.deepcopy(row.data)
+                    assert command.run_id and command.target_id
+                    run = await self.store.get_run(command.run_id)
+                    if run["repository_id"] != repo["id"]:
+                        await self._write_row(row, status="denied", reason="deployment_repository_mismatch")
+                        return copy.deepcopy(row.data)
+                    job = await self.deployments.create(command.run_id, command.target_id)
+                    await self._write_row(
+                        row,
+                        status="processed",
+                        run_id=run["id"],
+                        deployment_id=job["id"],
+                        feedback_status="pending",
+                        feedback_stage="deployment_queued",
+                    )
+        if prepared_run is not None:
+            await self.store.admit_credentials(run)
+            await self.store._prepared_run_actor(prepared_run)
         await self.feedback(receipt_id)
         return await self.receipt(receipt_id)
 

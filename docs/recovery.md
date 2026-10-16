@@ -115,3 +115,11 @@ Checkpoint payloads are limited to 192 KiB, journal envelopes to 256 KiB and con
 Checkpoint operations prepare an immutable credential registry outside native units. Locked rejection scans that registry and checks a process-local configuration-write cut without taking a file lock or reading settings. A local configuration write invalidates the cut and refuses the writer transaction. External credential sources are read again outside the transaction before exposure; a refusal after consumption remains consumed. This does not establish atomic cross-process configuration admission.
 
 This storage service is registered in native dependency injection and remains unused by execution. Durable graph restoration, restore tickets, configuration activation and Engine/Assurance wiring require a later implementation and native qualification. Current Bridge completion holds remain in place. Reading a terminal result or a checkpoint never resumes a graph or enables generic resume, handoff or Retry.
+
+## Internal run-admission boundary
+
+Run admission prepares runner capabilities, provider settings, policies, roles and reviewed design files before taking the insertion locks. `Store.prepare_run` retains immutable bytes and original field presence. The locked insert checks the current native actor, project/component and repository/product cuts, then saves the queued run and its first event together. Campaign and incident admissions prepare before entering their own atomic write.
+
+Credential matching uses the prepared registry and process-local configuration generation, with current native OAuth evidence checked inside the transaction. Fresh credential and authority checks also apply before returning the committed result. A refusal after commit does not establish that nothing was saved. These guards do not serialize configuration files written by another process.
+
+This boundary provides no new public request identity or exact creation receipt. Ordinary `POST /runs` retains its existing contract; recovery of a lost creation response needs the separate original-request protocol. It must not be inferred from a matching brief or the latest run list.

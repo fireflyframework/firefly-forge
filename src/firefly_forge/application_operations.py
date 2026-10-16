@@ -31,7 +31,7 @@ from firefly_forge.engine import Engine
 from firefly_forge.models import Backend, Command, Frontend, RunInput
 from firefly_forge.operations import DeploymentManager
 from firefly_forge.prompts import prompt_text
-from firefly_forge.store import Store, identifier, now
+from firefly_forge.store import Store, identifier, now, prepared_credential_rejection
 
 
 class MetricThreshold(BaseModel):
@@ -277,37 +277,55 @@ class ApplicationOperations:
 
     async def maintenance(self, incident_id: str, request: MaintenanceRequest) -> dict[str, Any]:
         async with self.store._unit():
-            incident = await self.incident_records.find_by_id(identifier(incident_id), lock=LockMode.PESSIMISTIC_WRITE)
+            incident = await self.incident_records.find_by_id(identifier(incident_id))
             if not incident:
                 raise KeyError("Incident not found")
             if incident.status != "open":
                 raise ValueError("Maintenance requires an open incident")
-            app = self._configuration()[incident.application_id]
-            run = await self.store.create_run(
-                RunInput(
-                    repository_id=incident.data["repository_id"],
-                    brief=(
-                        prompt_text(
-                            "implementation/maintenance-request",
-                            application=f"{app['name']}",
-                            incident=f"{incident.data['summary']}",
-                            request=f"{request.brief}",
-                        )
-                    ),
-                    agent=request.agent,
-                    backend=app.get("backend", "pyfly"),
-                    frontend=app.get("frontend", "react"),
-                    operation="maintain",
-                    commands=request.commands,
-                    publish=False,
-                )
+            original = copy.deepcopy(incident.data)
+            application_id = incident.application_id
+        app = self._configuration()[application_id]
+        prepared = await self.store.prepare_run(
+            RunInput(
+                repository_id=incident.data["repository_id"],
+                brief=(
+                    prompt_text(
+                        "implementation/maintenance-request",
+                        application=f"{app['name']}",
+                        incident=f"{incident.data['summary']}",
+                        request=f"{request.brief}",
+                    )
+                ),
+                agent=request.agent,
+                backend=app.get("backend", "pyfly"),
+                frontend=app.get("frontend", "react"),
+                operation="maintain",
+                commands=request.commands,
+                publish=False,
             )
-            incident.data = {
-                **incident.data,
-                "maintenance_run_ids": [*incident.data["maintenance_run_ids"], run["id"]],
-                "updated_at": now(),
-            }
-            await self.incident_records.save(incident)
+        )
+        with prepared_credential_rejection(self.store):
+            async with self.store._unit():
+                await self.store.fence_prepared_runs([prepared])
+                incident = await self.incident_records.find_by_id(
+                    identifier(incident_id), lock=LockMode.PESSIMISTIC_WRITE
+                )
+                if (
+                    incident is None
+                    or incident.status != "open"
+                    or incident.data != original
+                    or incident.application_id != application_id
+                ):
+                    raise ValueError("The incident changed during maintenance preflight")
+                run = await self.store.insert_prepared_run_locked(prepared)
+                incident.data = {
+                    **incident.data,
+                    "maintenance_run_ids": [*incident.data["maintenance_run_ids"], run["id"]],
+                    "updated_at": now(),
+                }
+                await self.incident_records.save(incident)
+        await self.store.admit_credentials(run)
+        await self.store._prepared_run_actor(prepared)
         return run
 
     async def resolve(self, incident_id: str, resolution: str) -> dict[str, Any]:

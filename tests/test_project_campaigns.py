@@ -86,14 +86,14 @@ async def test_campaign_snapshot_drift_rolls_back_every_child_and_header(store, 
             }
         )
     )
-    original = store.create_run
+    original = store.insert_prepared_run_locked
 
     async def changing_settings(request):
         run = await original(request)
         store.configuration.update("codex", ProviderConfiguration(values={"model": "changed-during-admission"}))
         return run
 
-    monkeypatch.setattr(store, "create_run", changing_settings)
+    monkeypatch.setattr(store, "insert_prepared_run_locked", changing_settings)
 
     async def source_base(repository):
         return "1" * 40
@@ -359,15 +359,15 @@ async def test_campaign_refuses_a_transient_changed_credential_even_after_settin
         )
     )
     store.configuration.update("codex", ProviderConfiguration(values={"model": "initial-model"}))
-    original = store.create_run
+    original = store.prepare_run
 
-    async def temporarily_changed(request):
+    async def temporarily_changed(request, **kwargs):
         store.configuration.update("codex", ProviderConfiguration(values={"model": "temporary-model"}))
-        run = await original(request)
+        run = await original(request, **kwargs)
         store.configuration.update("codex", ProviderConfiguration(values={"model": "initial-model"}))
         return run
 
-    monkeypatch.setattr(store, "create_run", temporarily_changed)
+    monkeypatch.setattr(store, "prepare_run", temporarily_changed)
 
     async def source_base(repository):
         return "1" * 40
