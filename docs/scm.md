@@ -344,10 +344,10 @@ V1 mappings still allow only `respond`, `status` and `cancel`. A separate V2 gra
 
 ```mermaid
 flowchart LR
-  A[Administrator reviews mapping and consent] --> Q[Mapped person answers the paused question]
-  Q --> S[Signed status request returns a sealed review]
-  S --> R[Explicit resume request rechecks the same cut]
-  R --> C[Original run queued with retained completion]
+  A["Administrator:<br/>review consent"] --> Q["Mapped person:<br/>answer question"]
+  Q --> S["Signed status:<br/>inspect sealed cut"]
+  S --> R["Explicit resume:<br/>recheck cut"]
+  R --> C["Original run:<br/>queue continuation"]
 ```
 
 </div>
