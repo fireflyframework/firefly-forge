@@ -59,10 +59,15 @@ export function useIdentity(base: string) {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const previousBase = useRef(base);
+  const activeRead = useRef<AbortController | null>(null);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
-  const forgetSession = useCallback(() => setSession(null), []);
+  const forgetSession = useCallback(() => {
+    activeRead.current?.abort();
+    setSession(null);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
+    activeRead.current = controller;
     const connection: Connection = { base, token: "" };
     setLoading(true);
     if (previousBase.current !== base) {
@@ -108,7 +113,10 @@ export function useIdentity(base: string) {
       }
     }
     void read();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (activeRead.current === controller) activeRead.current = null;
+    };
   }, [base, revision]);
   useEffect(() => {
     const onFocus = () => {

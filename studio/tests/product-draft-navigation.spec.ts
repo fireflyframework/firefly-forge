@@ -1,5 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import type { ProductSnapshot } from "../src/api";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
@@ -431,4 +431,85 @@ test("a re-entry GET captured before save completion cannot regress the saved re
   await expect(
     page.getByText("Editing saved revision 2", { exact: true }),
   ).toBeVisible();
+});
+
+test("confirmed logout cancels an older identity read before a failed replacement refresh", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await customer(page).fill("Prior session unsaved edit");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let heldRequest: Request | null = null;
+  let holdNext = true;
+  await page.route("**/auth/session", async (route) => {
+    if (!holdNext) {
+      await route.fallback();
+      return;
+    }
+    holdNext = false;
+    heldRequest = route.request();
+    await gate;
+    if (route.request().failure()?.errorText === "net::ERR_ABORTED") return;
+    try {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: "f".repeat(32),
+            display_name: "Test operator",
+            email: null,
+            authentication_method: "local_bootstrap",
+          },
+          global_admin: true,
+          memberships: [],
+          roles: {
+            owner: ["read", "edit", "execute", "review", "release", "members"],
+            maintainer: ["read", "edit", "execute", "review", "release"],
+            developer: ["read", "edit", "execute"],
+            reviewer: ["read", "review"],
+            viewer: ["read"],
+          },
+        },
+      });
+    } catch (cause) {
+      if (route.request().failure()?.errorText !== "net::ERR_ABORTED")
+        throw cause;
+    }
+  });
+  try {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => heldRequest !== null).toBe(true);
+    state.failIdentityRefresh();
+    await page
+      .getByRole("button", { name: "Signed in as Test operator", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await expect.poll(state.identityFailures).toBeGreaterThan(0);
+    release();
+    await expect
+      .poll(() => heldRequest?.failure()?.errorText)
+      .toBe("net::ERR_ABORTED");
+    await expect(
+      page.getByRole("button", {
+        name: "Signed in as Test operator",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    expect(await unloadPrevented(page)).toBe(false);
+    state.restoreIdentity();
+    const reloaded = page.waitForRequest(
+      (request) =>
+        request.method() === "GET" &&
+        new URL(request.url()).pathname === "/api/v1/repositories",
+    );
+    await connect(page);
+    await reloaded;
+    await navigate(page, "Product definition");
+    await expect(customer(page)).toHaveValue("Saved A");
+  } finally {
+    release();
+  }
 });
