@@ -76,6 +76,7 @@ import {
   useProductDraftSession,
 } from "./ProductDrafts";
 import { ProductDefinition } from "./ProductDefinition";
+import { selectStandaloneRunSource } from "./RunDrafts";
 import {
   IdentityMenu,
   SignIn,
@@ -488,6 +489,12 @@ export default function App() {
     if (next === "product") setProductProject(null);
     if (next === "settings") setSetupStep(null);
   }
+  function startStandalone(repository: string) {
+    selectStandaloneRunSource(runDrafts, repository);
+    setRunProject(repository);
+    setRunComponent(null);
+    navigate("new");
+  }
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
   const projectRuns = runs.filter((run) => run.repository_id === floorProject);
@@ -714,11 +721,7 @@ export default function App() {
                 runs={runs}
                 theme={theme}
                 onOpen={(run) => void openRun(run)}
-                onCreate={() => {
-                  setRunProject(floorProject);
-                  setRunComponent(null);
-                  navigate("new");
-                }}
+                onCreate={() => startStandalone(floorProject)}
                 onProjectChange={setFloorProject}
               />
               <div className="metrics">
@@ -854,11 +857,7 @@ export default function App() {
               connected={connected}
               repositories={repositories}
               initialRepository={runProject}
-              onStart={(id) => {
-                setRunProject(id);
-                setRunComponent(null);
-                navigate("new");
-              }}
+              onStart={startStandalone}
             />
           )}
           {page === "knowledge" && (
@@ -961,11 +960,7 @@ export default function App() {
                       </div>
                       <button
                         className="quiet"
-                        onClick={() => {
-                          setRunProject(repository.id);
-                          setRunComponent(null);
-                          navigate("new");
-                        }}
+                        onClick={() => startStandalone(repository.id)}
                       >
                         Start a run
                         <ArrowRight size={15} />

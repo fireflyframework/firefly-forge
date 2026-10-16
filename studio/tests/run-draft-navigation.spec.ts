@@ -103,7 +103,7 @@ test("unfinished run retains raw fields, checks, step and policy choices through
   const text = "  Keep **these fictional run instructions**\n";
   const commands = '  [["pytest", "-q"]]\n';
   await brief(page).fill(text);
-  await page.getByLabel("Source repository", { exact: true }).selectOption(a);
+  await page.getByLabel("Source repository", { exact: true }).selectOption(b);
   await page
     .getByLabel("Run purpose", { exact: true })
     .selectOption("maintain");
@@ -155,7 +155,7 @@ test("unfinished run retains raw fields, checks, step and policy choices through
   );
   await expect(
     page.getByLabel("Source repository", { exact: true }),
-  ).toHaveValue(a);
+  ).toHaveValue(b);
   expect(state.writes()).toBe(0);
 });
 
@@ -165,6 +165,7 @@ test("explicit source launches keep their unfinished run drafts isolated", async
   const state = await setup(page);
   await startSource(page, "Product A");
   await brief(page).fill("Retained fictional A instructions");
+  await page.getByLabel("Source repository", { exact: true }).selectOption(b);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await startSource(page, "Product B");
   await expect(brief(page)).toHaveValue("");
@@ -175,6 +176,9 @@ test("explicit source launches keep their unfinished run drafts isolated", async
   ).toBeVisible();
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(brief(page)).toHaveValue("Retained fictional A instructions");
+  await expect(
+    page.getByLabel("Source repository", { exact: true }),
+  ).toHaveValue(a);
   await startSource(page, "Product B");
   await expect(brief(page)).toHaveValue("Retained fictional B instructions");
   expect(state.writes()).toBe(0);
