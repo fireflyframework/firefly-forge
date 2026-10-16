@@ -17,6 +17,7 @@ import {
 } from "./api";
 import type { IdentitySession } from "./Identity";
 import { Wizard } from "./Wizard";
+import { ScmResumeConsent } from "./ScmResumeConsent";
 import { attemptDigest } from "./LearningObservationAttemptData";
 import {
   delegationBindingKey,
@@ -808,6 +809,15 @@ export function ScmDelegation({
             Close receipt
           </button>
         </section>
+      )}
+      {receipt && (
+        <ScmResumeConsent
+          connection={connection}
+          session={session}
+          project={project}
+          binding={receipt}
+          personName={known(receipt.request.native_user_id)}
+        />
       )}
       {open && (
         <dialog

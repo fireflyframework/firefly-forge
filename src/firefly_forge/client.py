@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+    from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
         AdministrationReconciliation,
@@ -337,6 +338,37 @@ class ForgeClient:
         """Read the exact original administrative receipt after an uncertain response."""
         path = self._scm_actor_path(project_id, repository_id)
         return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def _scm_resume_grant_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-resume-grants"
+
+    def configure_scm_resume_grant(
+        self, project_id: str, repository_id: str, request: SCMResumeGrantInputV2 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit one explicit V2 consent; preserve its request identity after an uncertain result."""
+        from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
+
+        path = self._scm_resume_grant_path(project_id, repository_id)
+        try:
+            value = request.model_dump(warnings=False) if isinstance(request, SCMResumeGrantInputV2) else request
+            body = SCMResumeGrantInputV2.model_validate(value)
+        except ValueError:
+            raise ValueError(
+                "Use a bounded V2 resume consent with exact reviewed scope and request identities"
+            ) from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_resume_grant(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact retained consent; missing evidence never authorizes another write."""
+        path = self._scm_resume_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def current_scm_resume_grant(self, project_id: str, repository_id: str, binding_request_id: str) -> dict[str, Any]:
+        """Read the current consent for an exact V1 binding without dispatching a run action."""
+        path = self._scm_resume_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
 
     def configure_project(
         self, definition: ProjectDefinition | dict[str, Any], project_id: str | None = None

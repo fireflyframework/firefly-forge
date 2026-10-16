@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import time
 import uuid
 from collections.abc import Callable
@@ -615,9 +616,27 @@ class Journal:
             await self.store.run_records.save(run)
             return record
 
-    async def fail(self, run_id: str, key: str, kind: str, message: str, *, retry_after: float | None = None) -> Data:
+    async def fail(
+        self,
+        run_id: str,
+        key: str,
+        kind: str,
+        message: str,
+        *,
+        retry_after: float | None = None,
+        observation: Data | None = None,
+    ) -> Data:
         kind = FAILURE_ALIASES.get(kind, kind)
-        if kind not in {"rate_limit", "quota", "authentication", "transient", "verification", "source_invalid"}:
+        if kind not in {
+            "rate_limit",
+            "quota",
+            "authentication",
+            "transient",
+            "verification",
+            "source_invalid",
+            "provider_paused",
+            "provider_outcome_unknown",
+        }:
             raise ValueError("Unknown execution failure classification")
         async with self.store._unit():
             run = await self._run(run_id)
@@ -646,12 +665,32 @@ class Journal:
                 "retry_at": time.time() + delay if automatic else None,
                 "retry_count": retry_count,
             }
+            if observation:
+                if set(observation) - {"job_id", "retry_after"}:
+                    raise ValueError("Unknown provider observation field")
+                if "job_id" in observation and (
+                    not isinstance(observation["job_id"], str)
+                    or len(observation["job_id"]) != 36
+                    or str(uuid.UUID(observation["job_id"])) != observation["job_id"]
+                ):
+                    raise ValueError("Invalid provider job reference")
+                delay_observed = observation.get("retry_after")
+                if "retry_after" in observation and (
+                    not isinstance(delay_observed, (float, int))
+                    or isinstance(delay_observed, bool)
+                    or not 0 <= delay_observed <= 86400
+                    or not math.isfinite(delay_observed)
+                ):
+                    raise ValueError("Invalid provider retry observation")
+                pause["provider_observation"] = copy.deepcopy(observation)
             record = await self._append(run_id, task.task_id, key, "error", pause)
             task.status = "paused" if kind not in {"verification", "source_invalid"} else "failed"
+            if kind == "provider_outcome_unknown":
+                task.status = "needs_reconciliation"
             task.data = {**task.data, "error": pause}
             await self.tasks.save(task)
             if task.task_id in LOCAL_TASKS or run.status not in TERMINAL:
-                run.status = "paused" if task.status == "paused" else "failed"
+                run.status = task.status if task.status in {"paused", "needs_reconciliation"} else "failed"
             run.data = {
                 **run.data,
                 "status": run.status,
@@ -661,6 +700,10 @@ class Journal:
                 else message[:8000],
                 "display_status": run.status
                 if run.status in TERMINAL
+                else "needs_reconciliation"
+                if kind == "provider_outcome_unknown"
+                else "provider_paused"
+                if kind == "provider_paused"
                 else "paused_" + kind
                 if task.status == "paused"
                 else "failed",
@@ -1001,6 +1044,8 @@ class Journal:
         handoff = agent is not None
         ProjectAccess.require_provider_isolation(current, agent or current.get("agent"))
         await ProjectAccess(self.store).authorize_execution(current)
+        if current.get("pause", {}).get("kind") == "provider_outcome_unknown":
+            raise ValueError("Bridge outcome requires reconciliation before resuming")
         async with self.store._unit():
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
@@ -1009,6 +1054,8 @@ class Journal:
             if run.data.get("worker_request", {}).get("status") == "pending":
                 raise ValueError("Answer the pending worker question before explicitly resuming this run")
             pause = run.data.get("pause", {})
+            if pause.get("kind") == "provider_outcome_unknown":
+                raise ValueError("Bridge outcome requires reconciliation before resuming")
             if auto and (not pause.get("automatic") or (pause.get("retry_at") or float("inf")) > time.time()):
                 raise ValueError("This run requires an explicit operator resume")
             if run.data.get("publication_status") == "publishing":
@@ -1074,7 +1121,11 @@ class Journal:
                 "last_pause": pause,
                 "pause": {},
                 "error": None,
-                "retry_count": int(run.data.get("retry_count", 0)) + int(auto),
+                **(
+                    {"retry_count": int(run.data.get("retry_count", 0)) + int(auto)}
+                    if auto or "retry_count" in run.data
+                    else {}
+                ),
                 "checkpoint": run.data.get("checkpoint", {}),
                 "updated_at": now(),
             }

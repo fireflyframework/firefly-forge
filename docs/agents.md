@@ -68,4 +68,12 @@ Compatible API and bridge tests request `/models`. A hosted provider without an 
 
 Generation defaults to a 1,800-second wall timeout. Native Agentic also bounds requests and tool calls; its optional output-token limit is available for direct APIs. Subscription bridge execution omits that cap because the bridge cannot implement it. Verification has its own per-command timeouts.
 
+The bridge submits each model request once. It disables SDK retries and HTTP redirect forwarding independently. A redirect leaves the outcome unknown for reconciliation; it cannot authorize a second request. A structured `quota_exhausted` response pauses the run for an operator; `execution_paused` also requires an explicit review of the retained native session. A supplied job reference and numeric retry delay are saved as observations, and neither schedules an automatic resume. A missing reset time remains unknown.
+
+An unclassified bridge server error, transport failure, or unusable completion response (including an empty stream) leaves the run and its active intent in `needs_reconciliation`, with its workspace retained. Forge cannot tell whether the bridge finished that submission. Resume, provider handoff and Retry run refuse this unresolved outcome, including after cancellation or an interrupted or failed status.
+
+Cancellation while sending a completion or reading an unfinished stream retains the same hold before local cancellation finishes. The hold survives cancellation through the native Agentic task graph. Each invocation tracks its own pending submissions; a completed earlier response cannot clear another pending submission. Cancellation before a submission attempt and known quota or verification failures keep their existing recovery rules. Stopping local scheduling does not establish whether the Bridge submission finished.
+
+Recovery of the same bridge job is not implemented in this cut; inspect its retained records before deciding how to continue. These rules apply to the bridge connection; direct API providers retain their existing failure handling.
+
 A useful first acceptance brief is a small inventory service: list stock, create an item, reserve a positive quantity, and reject overselling. Require meaningful service/API tests and an executable `make check`. For browser products, exercise the actual cookies, forms, validation and conflict feedback. [pyfly](pyfly.md) and [larafly](larafly.md) cover the primary framework paths.

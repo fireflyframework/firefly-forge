@@ -334,7 +334,7 @@ Factory lists the work. Select the inventory run to open its state, timeline and
 
 ![Factory overview and fixture run](assets/screenshots/factory-overview-desktop-light.png)
 
-<figcaption>Factory overview: select Fixture reservation verification to open its retained detail. The floor illustration describes the factory; its animation does not establish a job outcome.</figcaption>
+<figcaption>Factory overview: select Fixture reservation verification to open its retained detail. The camera starts with the whole floor; use Focus selected stage for a closer view and Show full floor to return. Animation does not establish a job outcome.</figcaption>
 </figure>
 
 <figure class="forge-shot" markdown="1">

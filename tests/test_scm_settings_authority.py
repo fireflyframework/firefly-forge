@@ -10,8 +10,13 @@ async def test_settings_update_preserves_private_mapping_head_without_public_ref
     from firefly_forge.collaboration import Collaboration, CollaborationSettings
 
     authority = {"version": 1, "heads": {"head": {"digest": "a" * 64}}, "requests": {}}
+    resume_grants = {"version": 2, "heads": {"resume-head": {"digest": "b" * 64}}, "requests": {}}
     row = SimpleNamespace(
-        data={**CollaborationSettings().model_dump(exclude={"webhook_secret"}), "_scm_authority_v1": authority}
+        data={
+            **CollaborationSettings().model_dump(exclude={"webhook_secret"}),
+            "_scm_authority_v1": authority,
+            "_scm_resume_authority_v2": copy.deepcopy(resume_grants),
+        }
     )
 
     @asynccontextmanager
@@ -39,4 +44,6 @@ async def test_settings_update_preserves_private_mapping_head_without_public_ref
     result = await service.configure("a" * 32, CollaborationSettings(enabled=True))
     assert row.data["_scm_authority_v1"] == before
     assert "_scm_authority_v1" not in result
+    assert row.data["_scm_resume_authority_v2"] == resume_grants
+    assert "_scm_resume_authority_v2" not in result
     assert result["enabled"] is True

@@ -41,7 +41,9 @@ export function ContinueRun({
   const [agent, setAgent] = useState(run.agent ?? "codex");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const unknownOutcome = run.pause?.kind === "provider_outcome_unknown";
   async function resume(handoff: boolean) {
+    if (unknownOutcome) return;
     setBusy(true);
     setError("");
     try {
@@ -58,8 +60,35 @@ export function ContinueRun({
       setBusy(false);
     }
   }
-  if (!["paused", "needs_reconciliation", "interrupted"].includes(run.status))
+  if (
+    !unknownOutcome &&
+    !["paused", "needs_reconciliation", "interrupted"].includes(run.status)
+  )
     return null;
+  if (unknownOutcome)
+    return (
+      <section
+        className="continuation-panel"
+        aria-label="Review the original Bridge execution"
+      >
+        <div>
+          <h2>Execution result needs review</h2>
+          <p>
+            The bridge may have completed the original request. Inspect its
+            retained job and this execution record before making another
+            request.
+          </p>
+          <p>
+            Resume and provider handoff are held to prevent duplicate work.
+            Automatic recovery of that Bridge job is not available here.
+          </p>
+          <small>
+            The workspace, original intent and recorded results remain attached
+            to this run.
+          </small>
+        </div>
+      </section>
+    );
   return (
     <section className="continuation-panel" aria-label="Continue retained work">
       <div>

@@ -219,10 +219,11 @@ async def test_assistant_bridge_transport_carries_verified_image_revision(monkey
             },
         )
 
-    def client(**kwargs):
-        return original(**kwargs, http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)))
+    class Client(original):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs, http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)))
 
-    monkeypatch.setattr(openai, "AsyncOpenAI", client)
+    monkeypatch.setattr(openai, "AsyncOpenAI", Client)
     stream = io.BytesIO()
     Image.new("RGB", (24, 24), "white").save(stream, format="PNG")
     receipt = {"status": "verified", "model": "bridge/default", "config_revision": "a" * 64}

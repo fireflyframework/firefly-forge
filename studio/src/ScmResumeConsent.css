@@ -1,0 +1,68 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.scm-resume-consent {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+  min-width: 0;
+}
+.scm-resume-consent h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scm-resume-consent article {
+  margin: 16px 0;
+}
+.scm-resume-dialog code,
+.scm-resume-consent code {
+  overflow-wrap: anywhere;
+}
+.scm-resume-dialog .wizard-field-scroll {
+  scroll-padding-bottom: 16px;
+}
+.scm-resume-dialog .scm-delegation-check {
+  padding-right: 8px;
+}
+.scm-resume-dialog[data-compact="true"] {
+  container: scm-resume-consent / inline-size;
+  display: block;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scroll-padding-block: 12px;
+}
+.scm-resume-dialog[data-compact="true"] .access-dialog-heading h2 {
+  min-width: 0;
+}
+.scm-resume-dialog[data-compact="true"] .wizard,
+.scm-resume-dialog[data-compact="true"] .wizard-body,
+.scm-resume-dialog[data-compact="true"] .wizard-content,
+.scm-resume-dialog[data-compact="true"] .wizard-form {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-field-scroll {
+  overflow: visible;
+  max-height: none;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-actions {
+  position: static;
+}
+.scm-resume-dialog[data-compact="true"] .wizard-actions button {
+  scroll-margin-block: 4px;
+}
+@media (max-width: 640px) {
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container scm-resume-consent (max-width: 240px) {
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"] .wizard-content,
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-field-scroll,
+  .scm-resume-dialog.scm-delegation-dialog[data-compact="true"]
+    .wizard-actions {
+    padding-inline: 0;
+  }
+}

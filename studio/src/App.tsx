@@ -676,12 +676,10 @@ export default function App() {
           )}
           {page === "overview" && connected && (
             <>
-              <div className="page-heading">
+              <div className="page-heading factory-overview-heading">
                 <div>
-                  <h1>Your software factory.</h1>
-                  <p>
-                    Give an idea a brief. Follow the work. Review the evidence.
-                  </p>
+                  <h1>Your factory.</h1>
+                  <p>Follow work. Review evidence.</p>
                 </div>
                 <button className="primary" onClick={() => navigate("product")}>
                   <Plus size={17} />
@@ -1143,7 +1141,8 @@ export default function App() {
                       ? "Cancellation requested"
                       : "Cancel run"}
                   </button>
-                ) : ["failed", "cancelled"].includes(selected.status) ? (
+                ) : ["failed", "cancelled"].includes(selected.status) &&
+                  selected.pause?.kind !== "provider_outcome_unknown" ? (
                   <button
                     className="secondary"
                     disabled={busy}
