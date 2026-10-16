@@ -80,3 +80,17 @@ it("renders the observed revision hold without mixing the newer server body", ()
   expect(html).toContain('value="Retained A"');
   expect(html).not.toContain("New server content");
 });
+
+it("offers explicit removal when an interrupted reference review outlives its bundle", () => {
+  const book = new ProductDraftBook(),
+    session = book.repository(a);
+  session.observe(snapshot(a), null);
+  session.write("step", 4);
+  session.write("reviewArea", "references");
+  session.write("designPending", true);
+  const html = render(book, a);
+  expect(html).toContain("Reference review was interrupted");
+  expect(html).toContain("Remove reference review");
+  expect(html).not.toContain('aria-label="Journey reference viewer"');
+  expect(session.read("designPending", false)).toBe(true);
+});

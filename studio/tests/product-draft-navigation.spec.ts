@@ -27,10 +27,24 @@ const product = (repository_id: string, revision = 1): ProductSnapshot => ({
 });
 async function setup(page: Page) {
   let revision = 1,
-    writes = 0;
+    writes = 0,
+    identityUnavailable = false,
+    identityFailures = 0;
   await page.route("**/api/v1/**", async (route) => {
-    if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
+    if (
+      identityUnavailable &&
+      path.includes("/auth/") &&
+      !path.endsWith("/logout")
+    ) {
+      identityFailures++;
+      await route.fulfill({
+        status: 503,
+        json: { detail: "Identity temporarily unavailable" },
+      });
+      return;
+    }
+    if (await mockIdentity(route)) return;
     let json: unknown = [];
     if (path.endsWith("/repositories"))
       json = [a, b].map((id, index) => ({
@@ -41,8 +55,42 @@ async function setup(page: Page) {
         default_branch: "main",
       }));
     if (path.endsWith("/product")) {
-      if (route.request().method() === "PUT") writes++;
       json = product(path.includes(a) ? a : b, revision);
+      if (route.request().method() === "PUT") {
+        writes++;
+        json = {
+          ...product(path.includes(a) ? a : b, ++revision),
+          definition: route.request().postDataJSON(),
+        };
+      }
+    }
+    if (path.endsWith("/design/preview")) {
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844"><title>Fictional stock reference</title></svg>';
+      json = {
+        digest: "c".repeat(64),
+        definition_digest: "1".repeat(64),
+        brand_digest: null,
+        method: "wireframe",
+        font_family: "Manrope",
+        coverage: { journeys: 1, screen_count: 1 },
+        screens: [
+          {
+            id: "stock",
+            title: "Review stock",
+            desktop_svg: svg,
+            desktop_dark_svg: svg,
+            mobile_svg: svg,
+            mobile_dark_svg: svg,
+            interaction_contract: {
+              journey: "Review stock",
+              acceptance_ids: ["acceptance-1"],
+              primary_action: "Read stock",
+              states: ["default"],
+            },
+          },
+        ],
+      };
     }
     if (path.endsWith("/brand")) json = null;
     await route.fulfill({ json });
@@ -58,6 +106,13 @@ async function setup(page: Page) {
       revision++;
     },
     writes: () => writes,
+    identityFailures: () => identityFailures,
+    failIdentityRefresh: () => {
+      identityUnavailable = true;
+    },
+    restoreIdentity: () => {
+      identityUnavailable = false;
+    },
   };
 }
 async function connect(page: Page) {
@@ -257,3 +312,123 @@ for (const view of [
     await expect(customer(page)).toHaveValue("Retained fictional product");
     await page.screenshot({ path: info.outputPath("draft-retained.png") });
   });
+
+test("unfinished reference review can be explicitly removed after navigation", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  for (let step = 0; step < 3; step++)
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review definition", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Review reference views", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Generate wireframes", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Journey reference viewer", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Done reviewing journeys", exact: true })
+    .click();
+  await navigate(page, "Runs");
+  await navigate(page, "Product definition");
+  await expect(
+    page.getByText("Reference review was interrupted.", { exact: false }),
+  ).toBeVisible();
+  expect(state.writes()).toBe(0);
+  await page
+    .getByRole("button", { name: "Remove reference review", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save draft definition", exact: true })
+    .click();
+  await expect(
+    page.getByText("Product definition saved.", { exact: true }),
+  ).toBeVisible();
+  expect(state.writes()).toBe(1);
+});
+
+test("confirmed logout clears drafts even when the following identity refresh fails", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await customer(page).fill("Prior identity private edit");
+  state.failIdentityRefresh();
+  await page
+    .getByRole("button", { name: "Signed in as Test operator", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(
+    page.getByText("Connect your factory first", { exact: true }),
+  ).toBeVisible();
+  expect(await unloadPrevented(page)).toBe(false);
+  await expect.poll(state.identityFailures).toBeGreaterThan(0);
+  state.restoreIdentity();
+  await connect(page);
+  await navigate(page, "Product definition");
+  await expect(customer(page)).toHaveValue("Saved A");
+});
+
+test("a re-entry GET captured before save completion cannot regress the saved revision", async ({
+  page,
+}) => {
+  await setup(page);
+  let acceptPut!: () => void, acceptRead!: () => void;
+  const putGate = new Promise<void>((resolve) => {
+    acceptPut = resolve;
+  });
+  const readGate = new Promise<void>((resolve) => {
+    acceptRead = resolve;
+  });
+  let putStarted = false,
+    readStarted = false;
+  await page.route(`**/repositories/${a}/product`, async (route) => {
+    if (route.request().method() === "PUT") {
+      putStarted = true;
+      const definition = route.request().postDataJSON();
+      await putGate;
+      await route.fulfill({ json: { ...product(a, 2), definition } });
+    } else {
+      readStarted = true;
+      const older = product(a);
+      await readGate;
+      await route.fulfill({ json: older });
+    }
+  });
+  await customer(page).fill("Submitted A");
+  for (let step = 0; step < 3; step++)
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review definition", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save draft definition", exact: true })
+    .click();
+  await expect.poll(() => putStarted).toBe(true);
+  await navigate(page, "Runs");
+  await navigate(page, "Product definition");
+  await expect.poll(() => readStarted).toBe(true);
+  const savedResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      response.url().endsWith(`/repositories/${a}/product`),
+  );
+  acceptPut();
+  await savedResponse;
+  await expect.poll(() => unloadPrevented(page)).toBe(false);
+  acceptRead();
+  await expect(
+    page.getByText("Product definition saved.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  for (let step = 0; step < 4; step++)
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(customer(page)).toHaveValue("Submitted A");
+  await expect(
+    page.getByText("Editing saved revision 2", { exact: true }),
+  ).toBeVisible();
+});
