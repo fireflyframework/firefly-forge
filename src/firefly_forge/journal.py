@@ -83,6 +83,13 @@ class Journal:
 
     async def _append(self, run_id: str, task_id: str, key: str, kind: str, payload: Data) -> Data:
         run_id = identifier(run_id).hex
+        current = await self.store.get_run(run_id)
+        if current.get("bridge_completion_hold"):
+            await self._bridge_read_bound(
+                run_id,
+                extra=len(json.dumps(payload, ensure_ascii=False).encode()) + 4096,
+                consume=kind == "bridge_request_response",
+            )
         entries = await self.records.find_for_run(identifier(run_id))
         existing = next((entry for entry in entries if entry.idempotency_key == key and entry.kind == kind), None)
         if existing is not None:
@@ -275,6 +282,16 @@ class Journal:
             result["checkpoint"] = run.get("checkpoint", {})
             return result
 
+    async def _bridge_read_bound(self, run_id: str, *, extra: int = 0, consume: bool = False) -> None:
+        budget = await self.records.bridge_budget(identifier(run_id))
+        if (
+            budget["rows"] > 10000
+            or budget["max_intent_bytes"] > 16384
+            or budget["bytes"] + max(budget["intents"] - budget["responses"] - int(consume), 0) * 532480 + extra
+            > 16 * 1024 * 1024
+        ):
+            raise ValueError("Run completion evidence exceeds its reserved read bound")
+
     async def entries(self, run_id: str) -> list[Data]:
         from pyfly.data.transaction import Propagation, TransactionTemplate, current_unit_of_work
 
@@ -285,6 +302,8 @@ class Journal:
         async with self.store._unit():
             run = await self.store.get_run(run_id)
             scope = self._worker_scope(run)
+            if run.get("bridge_completion_hold"):
+                await self._bridge_read_bound(run_id)
             entries = [
                 {**copy.deepcopy(entry.data), "digest": entry.digest}
                 for entry in await self.records.find_for_run(identifier(run_id))
@@ -292,7 +311,15 @@ class Journal:
             protected = [
                 entry["payload"]
                 for entry in entries
-                if entry["kind"] in {"diagnostic_observation", "worker_feedback", "worker_response"}
+                if entry["kind"]
+                in {
+                    "diagnostic_observation",
+                    "worker_feedback",
+                    "worker_response",
+                    "bridge_request_intent",
+                    "bridge_request_observation",
+                    "bridge_request_response",
+                }
             ]
             if protected:
                 await self._diagnostic_reader(run, reader)
@@ -636,6 +663,7 @@ class Journal:
             "source_invalid",
             "provider_paused",
             "provider_outcome_unknown",
+            "bridge_admission_refused",
         }:
             raise ValueError("Unknown execution failure classification")
         async with self.store._unit():
@@ -652,7 +680,18 @@ class Journal:
                 None,
             )
             if existing is not None:
+                if kind == "bridge_admission_refused" and (
+                    existing.data["payload"]["kind"] != kind
+                    or observation is not None
+                    and existing.data["payload"].get("provider_observation") != observation
+                ):
+                    raise ValueError("Known Bridge refusal cannot replace a retained failure")
                 return copy.deepcopy(existing.data)
+            if kind == "bridge_admission_refused" and (
+                observation is None
+                or set(observation) != {"completion_request_id", "intent_digest", "principal_id", "admission", "code"}
+            ):
+                raise ValueError("Known Bridge admission refusal requires its original completion identity")
             retry_count = int(run.data.get("retry_count", 0))
             automatic = kind in {"rate_limit", "transient"} and retry_count < 3
             if kind == "rate_limit" and retry_after is None:
@@ -666,7 +705,15 @@ class Journal:
                 "retry_count": retry_count,
             }
             if observation:
-                if set(observation) - {"job_id", "retry_after"}:
+                if set(observation) - {
+                    "job_id",
+                    "retry_after",
+                    "completion_request_id",
+                    "intent_digest",
+                    "principal_id",
+                    "admission",
+                    "code",
+                }:
                     raise ValueError("Unknown provider observation field")
                 if "job_id" in observation and (
                     not isinstance(observation["job_id"], str)
@@ -682,10 +729,29 @@ class Journal:
                     or not math.isfinite(delay_observed)
                 ):
                     raise ValueError("Invalid provider retry observation")
+                if "completion_request_id" in observation:
+                    from pydantic import TypeAdapter
+
+                    from firefly_forge.bridge_completion_models import Digest, RequestID
+
+                    TypeAdapter(RequestID).validate_python(observation["completion_request_id"], strict=True)
+                    TypeAdapter(Digest).validate_python(observation.get("intent_digest"), strict=True)
+                    principal = observation.get("principal_id")
+                    if not isinstance(principal, str) or not 1 <= len(principal) <= 64:
+                        raise ValueError("Invalid Bridge principal reference")
+                if ("admission" in observation or "code" in observation) and (
+                    kind != "bridge_admission_refused"
+                    or observation.get("admission") != "admission_refused"
+                    or observation.get("code") != "completion_recovery_full"
+                    or "completion_request_id" not in observation
+                    or "job_id" in observation
+                    or "retry_after" in observation
+                ):
+                    raise ValueError("Invalid known Bridge admission refusal")
                 pause["provider_observation"] = copy.deepcopy(observation)
             record = await self._append(run_id, task.task_id, key, "error", pause)
             task.status = "paused" if kind not in {"verification", "source_invalid"} else "failed"
-            if kind == "provider_outcome_unknown":
+            if kind in {"provider_outcome_unknown", "bridge_admission_refused"}:
                 task.status = "needs_reconciliation"
             task.data = {**task.data, "error": pause}
             await self.tasks.save(task)
@@ -701,7 +767,7 @@ class Journal:
                 "display_status": run.status
                 if run.status in TERMINAL
                 else "needs_reconciliation"
-                if kind == "provider_outcome_unknown"
+                if kind in {"provider_outcome_unknown", "bridge_admission_refused"}
                 else "provider_paused"
                 if kind == "provider_paused"
                 else "paused_" + kind
@@ -1044,7 +1110,9 @@ class Journal:
         handoff = agent is not None
         ProjectAccess.require_provider_isolation(current, agent or current.get("agent"))
         await ProjectAccess(self.store).authorize_execution(current)
-        if current.get("pause", {}).get("kind") == "provider_outcome_unknown":
+        if current.get("bridge_completion_hold"):
+            raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
+        if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
             raise ValueError("Bridge outcome requires reconciliation before resuming")
         async with self.store._unit():
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
@@ -1054,7 +1122,9 @@ class Journal:
             if run.data.get("worker_request", {}).get("status") == "pending":
                 raise ValueError("Answer the pending worker question before explicitly resuming this run")
             pause = run.data.get("pause", {})
-            if pause.get("kind") == "provider_outcome_unknown":
+            if run.data.get("bridge_completion_hold"):
+                raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
+            if pause.get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
                 raise ValueError("Bridge outcome requires reconciliation before resuming")
             if auto and (not pause.get("automatic") or (pause.get("retry_at") or float("inf")) > time.time()):
                 raise ValueError("This run requires an explicit operator resume")

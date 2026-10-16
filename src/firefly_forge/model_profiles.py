@@ -9,10 +9,17 @@ from collections.abc import Callable
 from typing import Any, Literal, cast
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pyfly.container import service
 
-from firefly_forge.configuration import FIELDS, SECRETS, ConfigurationStore, public_settings, validate_endpoint
+from firefly_forge.configuration import (
+    FIELDS,
+    SECRETS,
+    ConfigurationStore,
+    public_settings,
+    validate_completion_recovery,
+    validate_endpoint,
+)
 from firefly_forge.product_provenance import content_digest
 from firefly_forge.secrets import contains_known_credential
 
@@ -38,6 +45,16 @@ class ModelProfileInput(BaseModel):
     values: dict[str, str] = Field(default_factory=dict, max_length=10)
     clear_secrets: list[str] = Field(default_factory=list, max_length=2)
     inherit_credentials: bool = False
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def recovery_choice(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "completion_recovery" in values:
+            value = values["completion_recovery"]
+            if not isinstance(value, str):
+                raise ValueError("Completion recovery must be legacy or required")
+            validate_completion_recovery(value)
+        return values
 
 
 def profile_id(value: str) -> str:
@@ -139,6 +156,8 @@ class ModelProfiles:
         for name, value in request.values.items():
             if len(value) > 16000 or "\x00" in value:
                 raise ValueError("Model profile configuration exceeds limits")
+            if name == "completion_recovery":
+                value = validate_completion_recovery(value)
             if name in SECRETS and not value:
                 continue
             if name in {"model", "executable"} and any(ord(char) < 32 for char in value):
@@ -150,6 +169,8 @@ class ModelProfiles:
             settings[fields[name]] = value
         for name in request.clear_secrets:
             settings[fields[name]] = ""
+        if "FORGE_BRIDGE_COMPLETION_RECOVERY" in settings:
+            validate_completion_recovery(settings["FORGE_BRIDGE_COMPLETION_RECOVERY"])
         endpoint = fields.get("endpoint")
         if endpoint and settings.get(endpoint):
             settings[endpoint] = validate_endpoint(settings[endpoint])

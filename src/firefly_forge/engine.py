@@ -812,13 +812,24 @@ class Engine:
                         raise ReconciliationRequired(
                             "A prior tool invocation needs reconciliation before implementation"
                         )
-                    result = await provider.execute(
-                        workspace,
-                        brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
-                        run["backend"],
-                        run["frontend"],
-                        emit,
+                    from firefly_forge.bridge_completion_scope import bridge_completion_scope
+                    from firefly_forge.bridge_completions import BridgeCompletions
+
+                    completion_scope = (
+                        BridgeCompletions(self.store, self.journal).scope(
+                            current, implementation, assert_ownership=self.assert_ownership
+                        )
+                        if self.journal
+                        else None
                     )
+                    with bridge_completion_scope(completion_scope):
+                        result = await provider.execute(
+                            workspace,
+                            brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
+                            run["backend"],
+                            run["frontend"],
+                            emit,
+                        )
                     if self.tool_broker and await self.tool_broker.unresolved(identifier):
                         raise ReconciliationRequired("Tool execution has an unresolved outcome; delivery is blocked")
                     completed_rounds += 1
@@ -995,13 +1006,18 @@ class Engine:
         except asyncio.CancelledError as exc:
             from firefly_forge.providers import ProviderSubmissionCancelled
 
-            if isinstance(exc, ProviderSubmissionCancelled):
+            if isinstance(exc, ProviderSubmissionCancelled) and not getattr(exc, "native_retained", False):
                 await retain_unknown("Bridge submission cancelled before its outcome was known", {})
             (await self.store.finish(identifier, "interrupted" if self.stopping else "cancelled"))
             raise
         except Exception as exc:
             from firefly_forge.assurance import ReviewPending
-            from firefly_forge.providers import ProviderLimitError, ProviderOutcomeUnknown, classify_provider_failure
+            from firefly_forge.providers import (
+                ProviderAdmissionRefused,
+                ProviderLimitError,
+                ProviderOutcomeUnknown,
+                classify_provider_failure,
+            )
 
             classification = classify_provider_failure(exc)
             if isinstance(exc, ProviderOutcomeUnknown):
@@ -1015,7 +1031,7 @@ class Engine:
                     retry_after=classification[1],
                     **(
                         {"observation": safe_data(exc.observation)}
-                        if isinstance(exc, ProviderLimitError) and exc.observation
+                        if isinstance(exc, (ProviderLimitError, ProviderAdmissionRefused)) and exc.observation
                         else {}
                     ),
                 )

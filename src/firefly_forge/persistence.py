@@ -8,7 +8,20 @@ from uuid import UUID
 
 from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import BaseEntity, Repository
-from sqlalchemy import BigInteger, ForeignKey, Identity, Index, String, UniqueConstraint, func, select, text
+from sqlalchemy import (
+    BigInteger,
+    ForeignKey,
+    Identity,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    case,
+    cast,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -221,6 +234,86 @@ class ForgeTaskRepository(Repository[ForgeTaskEntity, UUID]):
 
 @repository
 class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
+    async def bridge_budget(self, run_id: UUID) -> dict[str, int]:
+        row = (
+            await self._require_session().execute(
+                select(
+                    func.count(),
+                    func.coalesce(func.sum(func.octet_length(cast(ForgeJournalEntity.data, Text))), 0),
+                    func.coalesce(func.sum(case((ForgeJournalEntity.kind == "bridge_request_intent", 1), else_=0)), 0),
+                    func.coalesce(
+                        func.max(
+                            case(
+                                (
+                                    ForgeJournalEntity.kind == "bridge_request_intent",
+                                    func.octet_length(cast(ForgeJournalEntity.data, Text)),
+                                ),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ),
+                    func.coalesce(
+                        func.sum(case((ForgeJournalEntity.kind == "bridge_request_response", 1), else_=0)), 0
+                    ),
+                ).where(ForgeJournalEntity.run_id == run_id)
+            )
+        ).one()
+        return {
+            "rows": int(row[0]),
+            "bytes": int(row[1]),
+            "intents": int(row[2]),
+            "max_intent_bytes": int(row[3]),
+            "responses": int(row[4]),
+        }
+
+    async def bridge_record(self, run_id: UUID, key: str, kind: str) -> ForgeJournalEntity | None:
+        predicate = (
+            ForgeJournalEntity.run_id == run_id,
+            ForgeJournalEntity.idempotency_key == key,
+            ForgeJournalEntity.kind == kind,
+        )
+        size = await self._require_session().scalar(
+            select(func.octet_length(cast(ForgeJournalEntity.data, Text))).where(*predicate)
+        )
+        if size is None:
+            return None
+        if size > 532480:
+            raise ValueError("Bridge journal record exceeds its bounded read")
+        return await self._require_session().scalar(select(ForgeJournalEntity).where(*predicate))
+
+    async def bridge_intents(self, run_id: UUID, after: int, limit: int) -> list[dict[str, Any]]:
+        rows = await self._require_session().execute(
+            select(
+                ForgeJournalEntity.sequence,
+                ForgeJournalEntity.data,
+                ForgeJournalEntity.run_id,
+                ForgeJournalEntity.task_id,
+                ForgeJournalEntity.idempotency_key,
+                ForgeJournalEntity.kind,
+                ForgeJournalEntity.digest,
+            )
+            .where(
+                ForgeJournalEntity.run_id == run_id,
+                ForgeJournalEntity.kind == "bridge_request_intent",
+                ForgeJournalEntity.sequence > after,
+            )
+            .order_by(ForgeJournalEntity.sequence)
+            .limit(limit)
+        )
+        return [
+            {
+                "sequence": row[0],
+                "data": row[1],
+                "run_id": row[2].hex,
+                "task_id": row[3],
+                "idempotency_key": row[4],
+                "kind": row[5],
+                "digest": row[6],
+            }
+            for row in rows
+        ]
+
     async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
         return list(
             await self._require_session().scalars(
