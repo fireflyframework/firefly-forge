@@ -415,20 +415,8 @@ The polling workflow supports an existing run with an explicit project and compo
 
 ```mermaid
 flowchart LR
-  subgraph SetupPhase["Setup"]
-    direction TB
-    App["Connect App"] --> Config["Enable polling"]
-  end
-  subgraph ConsentPhase["Review"]
-    direction TB
-    Baseline["Finish baseline"] --> Consent["Record consent"]
-  end
-  subgraph ReplyPhase["Use"]
-    direction TB
-    Comment["New comment"] --> Evidence["Check reply and WAL"]
-  end
-  Config --> Baseline
-  Consent --> Comment
+  Setup["1. Connect App<br/>Enable polling"] --> Review["2. Finish baseline<br/>Record consent"]
+  Review --> Use["3. New comment<br/>Read reply and WAL"]
 ```
 
 </div>
