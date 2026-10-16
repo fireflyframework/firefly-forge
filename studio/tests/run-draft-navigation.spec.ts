@@ -195,8 +195,8 @@ test("confirmed sign-out clears unfinished run work despite a failed identity re
     .getByRole("button", { name: "Signed in as Test operator", exact: true })
     .click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  expect(await unloadPrevented(page)).toBe(false);
   await expect.poll(state.identityFailures).toBeGreaterThan(0);
+  await expect.poll(() => unloadPrevented(page)).toBe(false);
   state.restoreIdentity();
   await connect(page);
   await navigate(page, "Start a run");
@@ -210,6 +210,7 @@ test("changing the API connection clears the prior connection's unfinished run",
   const state = await setup(page);
   await brief(page).fill("Private first-connection instructions");
   await navigate(page, "Connections");
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   const base = new URL("/second/api/v1", page.url()).href;
   await page.getByLabel("API address", { exact: true }).fill(base);
   await page
