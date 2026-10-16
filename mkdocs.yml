@@ -98,6 +98,7 @@ nav:
       - Agent roles and feedback: agent-roles.md
       - Maintain model instructions: prompt-templates.md
       - Lifecycle phases: agent-lifecycle.md
+      - Retained run evidence: run-evidence.md
       - Agent tools: agent-tools.md
       - Tool and provider prerequisites: tooling-prerequisites.md
       - External tool setup walkthrough: external-tools-tour.md

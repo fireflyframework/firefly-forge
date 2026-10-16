@@ -1,0 +1,51 @@
+<!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
+# Read and export run evidence
+
+A run's evidence reader collects its retained activity, development plan, task state, WAL and tool results. It returns a consistent cut with exact record references. Reading evidence does not execute commands, replay tools, resume a run or resolve an unknown outcome.
+
+Start with a small page:
+
+```bash
+forge evidence query RUN_ID --limit 10
+```
+
+The response contains a manifest, its `digest`, a `filter_digest`, matching records and `next_after`. Keep both digests when requesting another page:
+
+```bash
+forge evidence query RUN_ID --expected-cut CUT_DIGEST \
+  --expected-filter FILTER_DIGEST --after NEXT_AFTER --limit 10
+```
+
+Use `--kind journal`, `--task-id implement` or `--text 'literal text'` to narrow a query. Text matching is literal and local; it does not call a search provider or model. Filters never expand access to other runs or repositories. A preview reports `payload_bytes` and `omitted_bytes`. Read the exact record when the preview omits content:
+
+```bash
+forge evidence query RUN_ID --expected-cut CUT_DIGEST --record-id journal:3
+```
+
+The query and its output are bounded. Exact records can be at most 1 MiB. A page has at most 50 records and 1 MiB of JSON. The full cut permits 2,048 journal entries, 4,096 activity entries, 1,000 tool rows, 128 tasks, 128 artifact references and 16 MiB of source JSON, with a ten-second snapshot timeout. Oversized or inconsistent evidence is withheld. A cut that changes before another page or export returns `evidence_cut_changed`; read a new cut explicitly. The server does not keep a separate history of these query snapshots.
+
+## Export the reviewed cut
+
+```bash
+forge evidence export RUN_ID --expected-cut CUT_DIGEST --output run-evidence.zip
+```
+
+The output file must not already exist. The ZIP contains `manifest.json`, `run.json`, `plan.json`, `tasks.json`, `activity.json`, `journal.json`, `tools.json` and `artifacts.json`. The manifest lists each data member's byte length and SHA256. Its own `digest` seals its canonical JSON fields except `digest`; the HTTP `X-Content-SHA256` header identifies the complete ZIP. Repeating an export of the same unchanged cut with the same Python/zlib runtime produces the same bytes. Entries use fixed timestamps, Unix file modes and empty comments/extra fields; compressed bytes are not promised identical across different compression implementations or versions.
+
+The WAL retains its original payloads and chain hashes. Activity and task rows carry observed state; they do not become immutable receipts merely by appearing in an export. The plan includes an explicit projection and the original plan digest. An execution actor copied from the run is labeled `observed_run_row` rather than presented as an immutable historical attribution.
+
+`artifacts.json` contains references. A reference is `receipt_bound` only when its SHA256 appears in a matching immutable receipt. Older `changes.zip` records have no historical byte hash and are labeled `not_historically_bound`. Their bytes are not copied, rebuilt or certified by this export. The existing source ZIP endpoint remains available separately.
+
+## Current access and withheld evidence
+
+The reader needs a current native identity, project read permission and read access to all historical repositories named by the verified project revision. Unassigned executions require a factory administrator. A delegated SCM status or answer permission does not grant evidence export.
+
+Forge checks current credentials before returning a page or download and rechecks access afterward. A newly registered credential in retained output causes the evidence to be withheld; the original sealed payload stays unchanged. Credential admission failure, a revoked reader, integrity errors or timeout cannot yield a partially verified download. The service refuses calls made inside an existing transaction so credential checks do not wait while that caller holds database locks.
+
+## Agents and clients
+
+`ForgeClient.run_evidence` and `export_run_evidence` use the same authenticated endpoints. The factory MCP tool `query_run_evidence` supports the typed query, including exact record reads.
+
+The native Agentic tool `read_run_evidence` is an explicit implementation-stage role grant for API and Bridge workers. Existing default workspace grants stay unchanged. Its callback is bound to the current run and task by the server, checks that task's frozen grant, the original execution identity and current read permissions, and limits output to ten records and 32 KiB. It accepts no alternate actor, project, run or task. Independent review and design providers do not receive this callback. Larger records remain available to authorized operators through the bounded HTTP reader. This tool reads retained records without invoking ToolBroker callbacks or writing query events into the WAL it reads.
+
+Native PostgreSQL, authenticated API and artifact-origin query/export acceptance remain pending for this feature branch. Controlled host contracts do not establish live provider execution or complete D04 acceptance.

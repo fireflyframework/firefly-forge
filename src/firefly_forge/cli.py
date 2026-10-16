@@ -1646,3 +1646,36 @@ def learning_observation_attempt(record_id: str, attempt_id: str) -> None:
     """Read exact local evidence. Only not_dispatched permits an explicit fresh request."""
     with client() as connection:
         display(connection.learning_projection_observation_attempt(record_id, attempt_id))
+
+
+@main.group()
+def evidence() -> None:
+    """Read retained run evidence without executing or resuming work."""
+
+
+@evidence.command("query")
+@click.argument("run_id")
+@click.option("--expected-cut")
+@click.option("--expected-filter")
+@click.option("--after", type=click.IntRange(0, 8192), default=0)
+@click.option("--limit", type=click.IntRange(1, 50), default=50)
+@click.option("--kind", type=click.Choice(["all", "journal", "activity", "tool", "artifact"]), default="all")
+@click.option("--task-id")
+@click.option("--text", default="")
+@click.option("--record-id")
+def query_run_evidence(run_id: str, **values: Any) -> None:
+    with client() as connection:
+        display(connection.run_evidence(run_id, {k: v for k, v in values.items() if v is not None}))
+
+
+@evidence.command("export")
+@click.argument("run_id")
+@click.option("--expected-cut", required=True)
+@click.option("--output", type=click.Path(path_type=Path), required=True)
+def export_run_evidence(run_id: str, expected_cut: str, output: Path) -> None:
+    with client() as connection:
+        content = connection.export_run_evidence(run_id, expected_cut)
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(descriptor, "wb") as target:
+        target.write(content)
+    click.echo(str(output))

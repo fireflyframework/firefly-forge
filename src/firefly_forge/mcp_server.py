@@ -23,6 +23,7 @@ from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
 from firefly_forge.prompts import prompt_text
+from firefly_forge.run_evidence import EvidenceQuery
 from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.scm_authority_models import SCMActorBindingInputV1
@@ -54,6 +55,7 @@ CampaignReportArchiveCursor = Annotated[Any, WithJsonSchema({"type": "integer", 
 CampaignDeliveryPlanRequest = SkipValidation[CampaignDeliveryPlanInput]
 SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 SCMResumeGrantRequest = SkipValidation[SCMResumeGrantInputV2]
+RunEvidenceRequest = Annotated[Any, WithJsonSchema(EvidenceQuery.model_json_schema())]
 
 
 def create_server() -> MCPServer:
@@ -195,6 +197,18 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.plan(identifier)
+
+    @server.tool(
+        description=prompt_text("mcp/query_run_evidence"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def query_run_evidence(identifier: str, query: RunEvidenceRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_evidence(identifier, query)
 
     @server.tool(description=prompt_text("mcp/get_execution_journal"))
     def get_execution_journal(identifier: str) -> dict[str, Any]:
