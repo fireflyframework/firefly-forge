@@ -60,6 +60,7 @@ export function useIdentity(base: string) {
   const [revision, setRevision] = useState(0);
   const previousBase = useRef(base);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const forgetSession = useCallback(() => setSession(null), []);
   useEffect(() => {
     const controller = new AbortController();
     const connection: Connection = { base, token: "" };
@@ -120,7 +121,7 @@ export function useIdentity(base: string) {
       window.removeEventListener("forge-session-expired", refresh);
     };
   }, [refresh]);
-  return { configuration, session, loading, error, refresh };
+  return { configuration, session, loading, error, refresh, forgetSession };
 }
 
 export function SignIn({
