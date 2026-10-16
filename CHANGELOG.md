@@ -2,6 +2,16 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.19 — 2026-10-16
+
+- Let separately authorized source-control users revise an existing product contract through signed ingress; preserve the reviewed base, original execution identity and exact change receipt.
+- Add GitHub App issue polling for status and answers to existing paused runs, with a durable baseline, separate account consent, current permission checks and historical answer attribution.
+- Fence polling policy changes and collaboration revocation against in-flight WAL commits, and recheck credentials before sending feedback. An uncertain reply stays held without an automatic repost.
+- Query and export a bounded, consistent cut of retained run evidence; explicitly granted implementation agents can read a small page from their own current run.
+- Add opt-in Bridge original-request correlation, committed intent and read-only pending/terminal observations. Evidence recovery keeps the graph-continuation hold in place.
+- Support verified local HTTPS knowledge bootstrap while preserving required retrieval, existing credentials and queued configuration snapshots.
+- Keep narrow product-consent actions stacked and aligned, and document polling setup, permissions and exact-request recovery step by step.
+
 ## 0.2.18 — 2026-10-15
 
 - Add separate administrator consent for signed same-run continuation after an answered agent question, bound to current mapping, component scope, original execution identity, plan and WAL.

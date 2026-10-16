@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.19
+
+An administrator can configure GitHub App issue polling when GitHub cannot reach a local webhook. After the baseline and separate account consent, `status` reads an existing scoped run and `respond` answers its exact pending question. The answer records the mapped native user and historical consent while leaving the run paused. Current project permissions, App access and local policy remain required. Polling does not create a product or run, resume work or provide full GitFlow. Follow the [six-step polling guide](scm.md#use-github-issue-comments-from-a-local-factory).
+
+Signed source-control ingress can separately admit reviewed changes to an existing product definition. The saved request binds the original base revision, permitted component scope and explicit change; replay reads its retained result. The Studio consent wizard keeps actions stacked on narrow screens. [Product-change consent](scm.md#change-an-existing-functional-product) has its own contract and does not grant polling authority.
+
+Operators can [query and export run evidence](run-evidence.md) under current access checks. The reader binds activity, tasks, WAL and tool output to a consistent, bounded cut. An explicitly granted implementation-stage Agentic tool can read a small page from its own run; it cannot choose another actor or run, execute tools or resolve an unknown operation.
+
+Required-mode [Bridge completion recovery](bridge.md) commits an original-request identity before submission and retains read-only observations of that original job. The local integration journey uses actual Bridge HTTP/SQLite, forge PostgreSQL and the real SDK with one deliberately fictional worker result. It verifies a single submission across a timeout and pending/terminal reads. It does not establish live provider inference or restore an Agentic checkpoint. Resume, handoff and retry remain blocked by the original graph-continuation hold.
+
+Managed knowledge bootstrap supports verified local HTTPS and preserves existing credentials and admitted run snapshots. Required retrieval stays enabled; a server package alone does not establish that embeddings, indexing and cited retrieval work in an installation. Complete the [knowledge setup and checks](knowledge.md).
+
 ## 0.2.18
 
 Administrators can record separate consent for a mapped source-control user to request continuation after answering an agent's question. A three-step review covers the mapping, component scope and consent. On short screens, the full review scrolls so its text and action buttons remain reachable at increased zoom. Studio retains the original request before one POST and confirms it through its exact receipt; a lost response or missing receipt blocks a replacement request. Consent alone does not resume work. Signed ingress still checks the answered question, current permissions, original execution identity, frozen plan and WAL before admitting continuation of the same run. See [source-control consent](scm.md) and [SDK, CLI and MCP operations](agent-integrations.md#consent-to-signed-same-run-resume).
