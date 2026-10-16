@@ -91,6 +91,8 @@ When an agent needs a decision, it can pause its current task and record a quest
 2. Select **Review answer**. Check the rendered answer, then use **Edit answer** if it needs correction. No response is sent during editing or review.
 3. Select **Send answer** once. Studio retains the original response identity before dispatch and confirms the result through a matching conversation read. Wait for **Answer recorded** before treating the response as retained.
 
+Sending an answer requires a browser with Web Locks support on HTTPS or localhost. This lets Studio keep one original answer request across open tabs. If coordination is unavailable, the form is held and nothing is sent. Use a supported browser and check the original conversation before continuing.
+
 The screenshots below use a fictional inventory question and controlled API responses. They illustrate the editor and recovery controls; they do not establish a live coding-provider conversation, worker execution or a successful resumed run.
 
 <figure class="forge-shot" markdown="1">

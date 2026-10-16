@@ -13,6 +13,7 @@ import {
   workerReply,
   workerThreads,
   type ReplyMarker,
+  type ReplyLockManager,
 } from "./WorkerDialogueData";
 const run = "2".repeat(32);
 async function seal<T extends Record<string, unknown>>(body: T) {
@@ -79,6 +80,9 @@ function storage() {
     },
   };
 }
+const immediateLocks: ReplyLockManager = {
+  request: async (_name, _options, callback) => callback(),
+};
 describe("agent conversation boundaries", () => {
   const delegatedScope = {
     project: delegation.receipt.project_id,
@@ -378,7 +382,13 @@ describe("agent conversation boundaries", () => {
       questionDigest: q.digest,
       inputDigest: await attemptDigest(a.payload),
     };
-    retainReplyMarker(store, marker, new Set());
+    await retainReplyMarker(
+      store,
+      marker,
+      new Set(),
+      immediateLocks,
+      () => true,
+    );
     expect(store.getItem(store.key(0)!)).not.toContain("14 items");
     expect(readReplyMarkers(store, marker)).toEqual([marker]);
     const pending = await confirmReplyMarkers(
@@ -386,9 +396,15 @@ describe("agent conversation boundaries", () => {
       await workerThreads([q], run),
     );
     expect(pending.size).toBe(0);
-    expect(() =>
-      retainReplyMarker(store, { ...marker, responseId: "a2" }, pending),
-    ).toThrow();
+    await expect(
+      retainReplyMarker(
+        store,
+        { ...marker, responseId: "a2" },
+        pending,
+        immediateLocks,
+        () => true,
+      ),
+    ).rejects.toThrow();
     expect(
       await confirmReplyMarkers([marker], await workerThreads([q, a], run)),
     ).toEqual(new Set([replyMarkerBinding(marker)]));
@@ -420,7 +436,13 @@ describe("agent conversation boundaries", () => {
         questionDigest: q.digest,
         inputDigest: await attemptDigest(a.payload),
       };
-      retainReplyMarker(store, marker, new Set());
+      await retainReplyMarker(
+        store,
+        marker,
+        new Set(),
+        immediateLocks,
+        () => true,
+      );
       const confirmed = await confirmReplyMarkers(
         [marker],
         await workerThreads([q, a], run),
@@ -430,17 +452,19 @@ describe("agent conversation boundaries", () => {
         [field]: field === "requestId" ? "other-question" : "0".repeat(64),
       };
       store.setItem(store.key(0)!, JSON.stringify(changed));
-      expect(() =>
+      await expect(
         retainReplyMarker(
           store,
           { ...marker, responseId: "a2", requestId: "next-question" },
           confirmed,
+          immediateLocks,
+          () => true,
         ),
-      ).toThrow();
+      ).rejects.toThrow();
       expect(readReplyMarkers(store, marker)).toEqual([changed]);
     },
   );
-  it("refuses storage loss before dispatch and malformed saved marker bindings", () => {
+  it("refuses storage loss before dispatch and malformed saved marker bindings", async () => {
     const broken = {
       ...storage(),
       setItem() {
@@ -459,7 +483,9 @@ describe("agent conversation boundaries", () => {
       questionDigest: "a".repeat(64),
       inputDigest: "b".repeat(64),
     };
-    expect(() => retainReplyMarker(broken, marker, new Set())).toThrow();
+    await expect(
+      retainReplyMarker(broken, marker, new Set(), immediateLocks, () => true),
+    ).rejects.toThrow();
     expect(() =>
       readReplyMarkers(storage(), {
         ...marker,
@@ -499,4 +525,173 @@ describe("agent conversation boundaries", () => {
       confirmReplyMarkers([marker], await workerThreads([q, foreign], run)),
     ).rejects.toThrow();
   });
+});
+
+describe("exclusive worker reply claims", () => {
+  const original: ReplyMarker = {
+    version: 1,
+    base: "https://forge.example.test/api/v1",
+    actor: "f".repeat(32),
+    project: null,
+    repository: "3".repeat(32),
+    run,
+    requestId: "limit",
+    responseId: "answer-1",
+    questionDigest: "a".repeat(64),
+    inputDigest: "b".repeat(64),
+  };
+  function controlledLocks() {
+    const names: string[] = [];
+    const waiting: (() => void)[] = [];
+    const manager: ReplyLockManager = {
+      request<T>(
+        name: string,
+        options: { mode: "exclusive" },
+        callback: () => T,
+      ) {
+        expect(options).toEqual({ mode: "exclusive" });
+        names.push(name);
+        return new Promise<T>((resolve, reject) => {
+          waiting.push(() => {
+            try {
+              resolve(callback());
+            } catch (cause) {
+              reject(cause);
+            }
+          });
+        });
+      },
+    };
+    return { manager, names, grant: () => waiting.shift()!() };
+  }
+  it("does not read or retain an identity before the exclusive lock is granted", async () => {
+    const locks = controlledLocks(),
+      store = storage();
+    let reads = 0;
+    const guarded = {
+      ...store,
+      get length() {
+        reads++;
+        return store.length;
+      },
+    };
+    const retained = retainReplyMarker(
+      guarded,
+      original,
+      new Set(),
+      locks.manager,
+      () => true,
+    );
+    expect(reads).toBe(0);
+    expect(store.length).toBe(0);
+    expect(locks.names).toEqual([
+      "forge.worker-reply.v1:https%3A%2F%2Fforge.example.test%2Fapi%2Fv1:" +
+        "f".repeat(32) +
+        ":unassigned:" +
+        "3".repeat(32) +
+        ":" +
+        run +
+        ":",
+    ]);
+    locks.grant();
+    await expect(retained).resolves.toEqual(original);
+    expect(readReplyMarkers(store, original)).toEqual([original]);
+  });
+  it("holds a second identity after the first claim releases the same scope", async () => {
+    const locks = controlledLocks(),
+      store = storage();
+    const first = retainReplyMarker(
+      store,
+      original,
+      new Set(),
+      locks.manager,
+      () => true,
+    );
+    const second = retainReplyMarker(
+      store,
+      { ...original, responseId: "answer-2" },
+      new Set(),
+      locks.manager,
+      () => true,
+    );
+    const result = Promise.allSettled([first, second]);
+    expect(store.length).toBe(0);
+    expect(locks.names[0]).toBe(locks.names[1]);
+    locks.grant();
+    await first;
+    locks.grant();
+    expect((await result).map((item) => item.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(readReplyMarkers(store, original)).toEqual([original]);
+  });
+  it("rechecks current context after waiting without retaining an obsolete identity", async () => {
+    const locks = controlledLocks(),
+      store = storage();
+    let current = true;
+    const retained = retainReplyMarker(
+      store,
+      original,
+      new Set(),
+      locks.manager,
+      () => current,
+    );
+    current = false;
+    const refused = expect(retained).rejects.toThrow();
+    locks.grant();
+    await refused;
+    expect(store.length).toBe(0);
+  });
+  it("refuses missing coordination instead of writing with an unprotected storage fallback", async () => {
+    const store = storage();
+    await expect(
+      retainReplyMarker(store, original, new Set(), undefined, () => true),
+    ).rejects.toThrow();
+    expect(store.length).toBe(0);
+  });
+  it("refuses a denied lock request without touching storage", async () => {
+    const store = storage();
+    const locks: ReplyLockManager = {
+      request: async () => {
+        throw new Error("denied");
+      },
+    };
+    await expect(
+      retainReplyMarker(store, original, new Set(), locks, () => true),
+    ).rejects.toThrow();
+    expect(store.length).toBe(0);
+  });
+  it.each([
+    { base: "https://other.example.test/api/v1" },
+    { actor: "e".repeat(32) },
+    { project: "7".repeat(32) },
+    { repository: "8".repeat(32) },
+    { run: "9".repeat(32) },
+  ])(
+    "separates unrelated scopes without using per-answer lock names %j",
+    async (changes) => {
+      const locks = controlledLocks(),
+        store = storage();
+      const first = retainReplyMarker(
+        store,
+        original,
+        new Set(),
+        locks.manager,
+        () => true,
+      );
+      const second = retainReplyMarker(
+        store,
+        { ...original, ...changes, responseId: "answer-2" },
+        new Set(),
+        locks.manager,
+        () => true,
+      );
+      expect(locks.names[0]).not.toBe(locks.names[1]);
+      locks.grant();
+      locks.grant();
+      await Promise.all([first, second]);
+      expect(store.length).toBe(2);
+    },
+  );
 });

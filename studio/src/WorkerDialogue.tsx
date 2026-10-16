@@ -237,6 +237,14 @@ export function WorkerDialogue({
     setBusy(true);
     setError("");
     let saved: ReplyMarker;
+    if (!navigator.locks) {
+      setHeld(true);
+      setError(
+        "This browser cannot safely coordinate answer requests across tabs. Use a supported browser on HTTPS or localhost, then check the original conversation before continuing. No answer was sent.",
+      );
+      setBusy(false);
+      return;
+    }
     try {
       const inputDigest = await attemptDigest({
         ...review,
@@ -244,7 +252,7 @@ export function WorkerDialogue({
       });
       if (generation.current !== cycle || currentScope.current !== binding)
         return;
-      saved = retainReplyMarker(
+      saved = await retainReplyMarker(
         localStorage,
         {
           ...scope,
@@ -255,7 +263,11 @@ export function WorkerDialogue({
           inputDigest,
         },
         confirmed,
+        navigator.locks,
+        () => generation.current === cycle && currentScope.current === binding,
       );
+      if (generation.current !== cycle || currentScope.current !== binding)
+        return;
       setMarkers((current) => [...current, saved]);
     } catch {
       if (generation.current === cycle && currentScope.current === binding) {

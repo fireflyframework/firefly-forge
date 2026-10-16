@@ -46,6 +46,13 @@ export type ReplyMarker = ReplyContext & {
   questionDigest: string;
   inputDigest: string;
 };
+export type ReplyLockManager = {
+  request<T>(
+    name: string,
+    options: { mode: "exclusive" },
+    callback: () => T,
+  ): Promise<T>;
+};
 type MarkerStorage = Pick<Storage, "length" | "key" | "getItem" | "setItem">;
 const id = /^[a-f0-9]{32}$/,
   hash = /^[a-f0-9]{64}$/,
@@ -376,23 +383,29 @@ export function readReplyMarkers(
   }
   return result;
 }
-export function retainReplyMarker(
+export async function retainReplyMarker(
   storage: MarkerStorage,
   input: ReplyMarker,
   confirmed: ReadonlySet<string>,
-): ReplyMarker {
+  locks: ReplyLockManager | undefined,
+  isCurrent: () => boolean,
+): Promise<ReplyMarker> {
   const value = marker(input);
-  const prior = readReplyMarkers(storage, value);
-  assert(
-    prior.length < 100 &&
-      prior.every((item) => confirmed.has(replyMarkerBinding(item))),
-  );
-  const key = prefix(value) + value.responseId;
-  assert(storage.getItem(key) === null);
-  const encoded = JSON.stringify(value);
-  storage.setItem(key, encoded);
-  assert(storage.getItem(key) === encoded);
-  return marker(JSON.parse(encoded));
+  assert(locks && typeof locks.request === "function");
+  return locks.request(prefix(value), { mode: "exclusive" }, () => {
+    assert(isCurrent());
+    const prior = readReplyMarkers(storage, value);
+    assert(
+      prior.length < 100 &&
+        prior.every((item) => confirmed.has(replyMarkerBinding(item))),
+    );
+    const key = prefix(value) + value.responseId;
+    assert(storage.getItem(key) === null);
+    const encoded = JSON.stringify(value);
+    storage.setItem(key, encoded);
+    assert(storage.getItem(key) === encoded);
+    return marker(JSON.parse(encoded));
+  });
 }
 export async function confirmReplyMarkers(
   markers: ReplyMarker[],

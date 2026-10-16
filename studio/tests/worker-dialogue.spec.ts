@@ -307,6 +307,47 @@ test("unavailable durable tracking refuses the write before dispatch", async ({
   expect(state.posts).toBe(0);
 });
 
+async function holdReplyScope(page: Page): Promise<string> {
+  return page.evaluate(
+    async ({ actor, repository, runId }) => {
+      const base = new URL("/api/v1", location.origin).href;
+      const name = `forge.worker-reply.v1:${encodeURIComponent(base)}:${actor}:unassigned:${repository}:${runId}:`;
+      let acquired!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        acquired = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        (
+          window as typeof window & { releaseReplyClaim: () => void }
+        ).releaseReplyClaim = resolve;
+      });
+      void navigator.locks.request(name, { mode: "exclusive" }, async () => {
+        acquired();
+        await gate;
+      });
+      await ready;
+      return name;
+    },
+    { actor: "f".repeat(32), repository: run.repository_id, runId: run.id },
+  );
+}
+async function releaseReplyScope(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (
+      window as typeof window & { releaseReplyClaim: () => void }
+    ).releaseReplyClaim();
+  });
+}
+async function pendingReplyClaims(page: Page, name: string): Promise<number> {
+  return page.evaluate(
+    async (name) =>
+      (await navigator.locks.query()).pending!.filter(
+        (lock) => lock.name === name,
+      ).length,
+    name,
+  );
+}
+
 test("two open tabs retain one original answer before either can dispatch", async ({
   page,
 }) => {
@@ -325,11 +366,22 @@ test("two open tabs retain one original answer before either can dispatch", asyn
       .getByRole("button", { name: "Review answer", exact: true })
       .click();
   }
+  const lockName = await holdReplyScope(page);
   await Promise.all(
     [page, second].map((tab) =>
       tab.getByRole("button", { name: "Send answer", exact: true }).click(),
     ),
   );
+  await expect.poll(() => pendingReplyClaims(page, lockName)).toBe(2);
+  expect(state.posts).toBe(0);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((key) =>
+        key.startsWith("forge.worker-reply.v1:"),
+      ),
+    ),
+  ).toHaveLength(0);
+  await releaseReplyScope(page);
   await expect.poll(() => state.posts).toBe(1);
   await expect
     .poll(async () =>
@@ -351,6 +403,69 @@ test("two open tabs retain one original answer before either can dispatch", asyn
     )
     .toEqual(["held", "recorded"]);
   expect(state.posts).toBe(1);
+});
+
+test("a queued reply claim cannot retain or dispatch after navigation changes its context", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await page.getByLabel("Your answer", { exact: true }).fill("14 items");
+  await page
+    .getByRole("button", { name: "Review answer", exact: true })
+    .click();
+  const lockName = await holdReplyScope(page);
+  await page.getByRole("button", { name: "Send answer", exact: true }).click();
+  await expect.poll(() => pendingReplyClaims(page, lockName)).toBe(1);
+  await navigate(page, "Connections");
+  await expect(
+    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+  ).toBeVisible();
+  await releaseReplyScope(page);
+  await expect.poll(() => pendingReplyClaims(page, lockName)).toBe(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async (name) =>
+          (await navigator.locks.query()).held!.filter(
+            (lock) => lock.name === name,
+          ).length,
+        lockName,
+      ),
+    )
+    .toBe(0);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((key) =>
+        key.startsWith("forge.worker-reply.v1:"),
+      ),
+    ),
+  ).toHaveLength(0);
+  expect(state.posts).toBe(0);
+});
+
+test("missing browser coordination holds the original form without storage or dispatch", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await page.getByLabel("Your answer", { exact: true }).fill("14 items");
+  await page
+    .getByRole("button", { name: "Review answer", exact: true })
+    .click();
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "locks", { value: undefined }),
+  );
+  await page.getByRole("button", { name: "Send answer", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "This browser cannot safely coordinate answer requests across tabs. Use a supported browser on HTTPS or localhost, then check the original conversation before continuing. No answer was sent.",
+  );
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((key) =>
+        key.startsWith("forge.worker-reply.v1:"),
+      ),
+    ),
+  ).toHaveLength(0);
+  expect(state.posts).toBe(0);
 });
 
 test("a changed confirmed marker holds the next question before review or another POST", async ({
