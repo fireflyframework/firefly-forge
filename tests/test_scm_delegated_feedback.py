@@ -225,3 +225,18 @@ async def test_denied_or_unknown_delegated_action_does_not_report_completion(del
     result = await service.process(RECEIPT)
     assert result["action_status"] == "needs_reconciliation"
     assert result["feedback_status"] == "not_requested" and sent == []
+
+
+async def test_run_transition_reports_current_status_without_rewriting_retained_action(delegated_feedback):
+    service, row, run, sent, _ = delegated_feedback
+    received(row, "respond")
+    await service.process(RECEIPT)
+    original = copy.deepcopy(row.data["action_result"])
+    assert original["status"] == "paused"
+    run["status"] = "failed"
+    await service.sync_feedback()
+    assert len(sent) == 2 and "failed" in sent[-1]["body"]
+    assert "paused" in sent[-1]["body"]
+    assert row.data["action_result"] == original
+    await service.sync_feedback()
+    assert len(sent) == 2

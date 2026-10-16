@@ -270,6 +270,11 @@ The comment includes the action result and delivery receipt reference. Answering
 a worker question records the answer; it leaves the run paused and does not grant
 permission to resume, publish, or merge.
 
+Later status comments show the current run status separately from the original
+action result. A recorded answer can still say that the run was paused when it
+was accepted while the current status reports a subsequent failure. A cancellation
+acknowledgment does not by itself prove that the worker has drained.
+
 Forge records the outbound intent before contacting the provider. If delivery is
 uncertain, the completed action and its original receipt remain available with
 feedback marked `needs_reconciliation`. Processing the same receipt again does not

@@ -1156,6 +1156,8 @@ class Collaboration:
                         "Any product proposal remains UNREVIEWED; no run, approval or source change was requested.\n"
                     )
                 message += summary[:5000]
+                if run:
+                    message += "\nCurrent run status: " + run["status"] + "."
                 if len(summary) > 5000:
                     message += "\nSummary shortened; the receipt retains the full action result."
                 reference = data["action_result"].get("remote_reference") or {}
