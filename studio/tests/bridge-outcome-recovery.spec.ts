@@ -8,7 +8,7 @@ for (const width of [1440, 390]) {
   for (const theme of ["light", "dark"]) {
     test(`unknown Bridge outcome holds replay actions at ${width}px in ${theme}`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       const writes: string[] = [];
       const run = {
@@ -84,7 +84,19 @@ for (const width of [1440, 390]) {
         (node) => node.scrollWidth > node.clientWidth + 1,
       );
       expect(overflow).toBe(false);
+      const panelBounds = await panel.boundingBox();
+      const footerBounds = await page.locator("footer").boundingBox();
+      expect(panelBounds).not.toBeNull();
+      expect(footerBounds).not.toBeNull();
+      expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
+      expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(width);
+      expect(panelBounds!.y + panelBounds!.height).toBeLessThanOrEqual(
+        footerBounds!.y + 1,
+      );
       expect(writes).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath("bridge-outcome-fixture.png"),
+      });
     });
   }
 }
