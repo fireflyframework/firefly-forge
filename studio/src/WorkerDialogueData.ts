@@ -495,7 +495,7 @@ export function workerAttributionSummary(event: WorkerEvent): string {
   const identity = object(attribution);
   if (identity.version === 3) {
     assert(object(identity.provenance).transport === "github_rest_poll_v1");
-    return "Delegated through an API-observed GitHub account to a mapped Forge user.";
+    return "Delegated through an API-observed GitHub account to a mapped forge user.";
   }
   if (identity.version === 2) {
     const names = {

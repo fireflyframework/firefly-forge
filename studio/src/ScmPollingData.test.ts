@@ -80,7 +80,7 @@ it("renders historical REST attribution with an exact historical read and no cur
   });
   expect(reads).toEqual([scope.requestId]);
   expect(workerAttributionSummary(parsed[0].response!)).toBe(
-    "Delegated through an API-observed GitHub account to a mapped Forge user.",
+    "Delegated through an API-observed GitHub account to a mapped forge user.",
   );
 });
 it("rejects a fully resigned inactive original rather than certifying historical attribution", async () => {

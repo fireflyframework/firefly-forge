@@ -11,7 +11,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote, urlsplit
@@ -346,9 +346,22 @@ class Collaboration:
                 or redact_secrets(content, self.scm.redaction_settings()) != content
             ):
                 raise ValueError("Test commands must use server credential configuration, not inline secrets")
-        async with self.store._unit():
+        from sqlalchemy import text
+
+        from firefly_forge.scm_polling import state_of
+
+        async with self.store._unit() as session:
+            before = await self.settings_records.find_for_repository(identifier(repository_id))
+            pointer = state_of(before.data if before else {})["configuration"]
+            if pointer is not None:
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {"key": self.store.schema + ":members:" + pointer["project_id"]},
+                )
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
+            if state_of(row.data if row else {})["configuration"] != pointer:
+                raise ValueError("Polling configuration changed during collaboration admission")
             data = request.model_dump(exclude={"webhook_secret"})
             for key in (
                 "_scm_authority_v1",
@@ -1210,13 +1223,22 @@ class Collaboration:
         kind = "pullrequests" if issue["kind"] == "pull_request" else "issues"
         return base + "/" + kind + "/" + str(issue["number"]) + "/comments"
 
-    async def _remote_write(self, repo: Data, payload: Data, issue: Data | None = None) -> Data:
+    async def _remote_write(
+        self,
+        repo: Data,
+        payload: Data,
+        issue: Data | None = None,
+        *,
+        before_write: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
         provider = str(repo["connection_provider"])
         token, api = await self.scm.issue_authentication(
             repo, pull_request=bool(issue and issue["kind"] == "pull_request")
         )
         if self.deployments is not None and self.deployments.engine.poller is not None:
             await self.store.assert_ownership()
+        if before_write is not None:
+            await before_write()
         response = await self.scm._request(
             "POST",
             api + self._issue_path(provider, repo, issue),
@@ -1321,7 +1343,12 @@ class Collaboration:
                 await self.resume_authority.authorize_feedback(receipt_id)
             if polled:
                 await self.polling.authorize_feedback(data)
-            remote = await self._remote_write(repo, payload, data["issue"])
+            if polled:
+                remote = await self._remote_write(
+                    repo, payload, data["issue"], before_write=lambda: self.polling.authorize_feedback_local(data)
+                )
+            else:
+                remote = await self._remote_write(repo, payload, data["issue"])
         except Exception:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)

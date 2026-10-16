@@ -212,10 +212,11 @@ class SCMPolling:
     async def _latest(self, project: str, repository: str, kind: str, key: str | None = None) -> str | None:
         event = ForgeAccessEventEntity
         query = select(event.id).where(
-            event.project_id == identifier(project),
             event.data["kind"].as_string() == kind,
             event.data["receipt"]["repository_id"].as_string() == repository,
         )
+        if kind != CONFIG_KIND:
+            query = query.where(event.project_id == identifier(project))
         if key is not None:
             query = query.where(event.data["receipt"]["binding_key"].as_string() == key)
         async with self.store._unit() as session:
@@ -264,18 +265,27 @@ class SCMPolling:
             project = await self.authority._project(policy["project_id"], repository)
             if digest(project) != policy["request"]["expected_project_binding_digest"]:
                 raise AccessDenied("The configured project cut changed; review polling setup")
-            row, _ = await self._state(repository)
+            row, current = await self._state(repository)
+            if current["configuration"] != {
+                "event_id": policy["event_id"],
+                "digest": policy["digest"],
+                "project_id": policy["project_id"],
+            }:
+                raise AccessDenied("The polling configuration changed during authorization")
             if not row.data.get("enabled") or not policy["request"]["enabled"]:
                 raise AccessDenied("GitHub polling or repository collaboration is disabled")
         return repo
 
     @asynccontextmanager
-    async def _locked(self, project: str, repository: str, user_ids: list[str]) -> AsyncIterator[None]:
+    async def _locked(
+        self, project: str, repository: str, user_ids: list[str], *, previous_project: str | None = None
+    ) -> AsyncIterator[None]:
         async with self.store._unit() as session:
-            await session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
-                {"key": self.store.schema + ":members:" + project},
-            )
+            for scope in sorted({value for value in (project, previous_project) if value is not None}):
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {"key": self.store.schema + ":members:" + scope},
+                )
             for user_id in sorted(set(user_ids)):
                 user = await self.users.find_by_id(identifier(user_id), lock=LockMode.PESSIMISTIC_WRITE)
                 if user is None or not user.enabled:
@@ -337,6 +347,9 @@ class SCMPolling:
                 raise AccessDenied("The configuration request belongs to another actor or input")
             return await self._return(actor, project, repository, retained, admin=True)
         previous = await self._policy(repository) if state["configuration"] else None
+        previous_pointer = copy.deepcopy(state["configuration"])
+        if (previous_pointer["digest"] if previous_pointer else None) != request.expected_previous_digest:
+            raise ValueError("Polling configuration conflict; preserve the request identity")
         project_cut = await self.authority._project(project, repository)
         repo = await self.store.repository(repository)
         scope = self.scm.delegation_scope(repo)
@@ -348,9 +361,13 @@ class SCMPolling:
             raise AccessDenied("Select the exact current GitHub connection and project cut")
         if (await self.scm.github_poll_read(repo, "issues")).status_code != 200:
             raise AccessDenied("The current GitHub issue read grant is unavailable")
-        async with self._locked(project, repository, [actor.id.hex]):
+        async with self._locked(
+            project, repository, [actor.id.hex], previous_project=previous[0]["project_id"] if previous else None
+        ):
             await self.authority._reader(actor, project, repository, admin=True)
             row, state = await self._state(repository)
+            if state["configuration"] != previous_pointer:
+                raise ValueError("Polling configuration changed during admission; preserve the request identity")
             if (
                 self.scm.delegation_scope(await self.store.repository(repository)) != scope
                 or digest(await self.authority._project(project, repository)) != request.expected_project_binding_digest
@@ -949,6 +966,8 @@ class SCMPolling:
             raise AccessDenied("The polling principal cannot exercise this authority")
         repository = context["repository_id"]
         policy, state = await self._policy(repository)
+        if policy["project_id"] != project:
+            raise AccessDenied("The current polling configuration belongs to another exact project")
         await self._scope(repository, policy)
         pointer = state["heads"].get(context["binding_key"])
         if not state["cursor"]["ready"] or pointer is None or pointer["digest"] != context["binding_digest"]:
@@ -992,9 +1011,19 @@ class SCMPolling:
                 for r in memberships
             ):
                 raise AccessDenied("The native user's current project permission is insufficient")
-            row, _ = await self._state(repository)
+            row, current = await self._state(repository)
+            if current["configuration"] != {
+                "event_id": policy["event_id"],
+                "digest": policy["digest"],
+                "project_id": project,
+            }:
+                raise AccessDenied("The polling configuration changed before authorization completed")
             allowed = [*row.data.get("allowed_commands", []), *row.data.get("channel_commands", [])]
-            if delivery["actor"] not in row.data.get("trusted_actors", []) or context["action"] not in allowed:
+            if (
+                not row.data.get("enabled")
+                or delivery["actor"] not in row.data.get("trusted_actors", [])
+                or context["action"] not in allowed
+            ):
                 raise AccessDenied("The current repository actor or action is not enabled")
             run = await self.store.get_run(context["run_id"])
             if (run.get("project_id"), run["repository_id"], run.get("component_id")) != (
@@ -1005,19 +1034,22 @@ class SCMPolling:
                 raise AccessDenied("The delegated run scope changed")
         self.store.reject_credentials({"actor": actor, "receipt": receipt})
 
-    async def authorize_feedback(self, delivery: Data) -> None:
+    async def authorize_feedback_local(self, delivery: Data) -> None:
         actor = delivery.get("scm_execution_actor")
         if not actor:
             raise AccessDenied("The original polling action authority is unavailable")
-        await self.authorize_snapshot(
-            actor,
-            actor["scm_delegation"]["project_id"],
-            "read" if actor["scm_delegation"]["action"] == "status" else "execute",
-        )
         context = actor["scm_delegation"]
-        if context["action"] == "respond" and (await self.store.get_run(context["run_id"])).get("publish"):
-            await self.authorize_snapshot(actor, context["project_id"], "release")
+        async with self._locked(context["project_id"], delivery["repository_id"], [actor["user_id"]]):
+            await self.authorize_snapshot(
+                actor, context["project_id"], "read" if context["action"] == "status" else "execute"
+            )
+            if context["action"] == "respond" and (await self.store.get_run(context["run_id"])).get("publish"):
+                await self.authorize_snapshot(actor, context["project_id"], "release")
+
+    async def authorize_feedback(self, delivery: Data) -> None:
+        await self.authorize_feedback_local(delivery)
         await self._fresh(delivery, await self.store.repository(delivery["repository_id"]))
+        await self.authorize_feedback_local(delivery)
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:

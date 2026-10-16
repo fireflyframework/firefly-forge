@@ -433,6 +433,8 @@ forge project scm-polling configuration PROJECT_ID REPOSITORY_ID REQUEST_ID
 forge project scm-polling status PROJECT_ID REPOSITORY_ID
 ```
 
+Each repository has one current polling project. Reconfiguring it for another project invalidates the previous project's action snapshots while preserving authorized historical receipts. Configuration changes and collaboration trust/enable changes share the project membership fence used by Journal responses.
+
 The execution-owning worker performs the scan through its normal lifecycle. An API-only process does not poll. Existing comments are retained without dispatch while the initial baseline completes. Wait for `ready: true`, then publish a **new comment** for each command. A new configuration restarts the baseline without deleting existing evidence. Restarting the same configuration resumes its retained scan.
 
 ### Review a separate API-observed account consent

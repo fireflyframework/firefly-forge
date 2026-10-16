@@ -1,6 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Controlled host persistence and signed App-token HTTP transport, never live GitHub."""
 
+import asyncio
 import copy
 import importlib
 import importlib.util
@@ -69,6 +70,8 @@ def poll_case(tmp_path, monkeypatch):
                 self.kind = kind
 
             async def find_by_id(self, value, **kwargs):
+                if kwargs.get("lock") is not None:
+                    state.setdefault("lock_trace", []).append((self.kind, value.hex))
                 return db[self.kind].get(value.hex)
 
             async def save(self, row):
@@ -126,7 +129,12 @@ def poll_case(tmp_path, monkeypatch):
 
         class Session:
             async def execute(self, *args, **kwargs):
-                pass
+                if len(args) > 1 and "pg_advisory_xact_lock" in str(args[0]):
+                    key = args[1]["key"]
+                    state.setdefault("lock_trace", []).append(("members", key))
+                    if state.get("held_members") == key:
+                        state["members_blocked"].set()
+                        await state["release_members"].wait()
 
             async def scalar(self, statement, *args, **kwargs):
                 params = list(statement.compile().params.values())
@@ -950,3 +958,128 @@ async def test_polling_configuration_cannot_admit_an_orphan_consent_for_another_
         assert not any(
             k.startswith(other + ":") for k in c.db["settings"][c.repository].data["_github_poll_v1"]["requests"]
         )
+
+
+async def test_reconfigured_project_cannot_reauthorize_a_retained_previous_project_snapshot(poll_case):
+    from firefly_forge.project_access import ProjectAccess
+
+    async with poll_case() as c:
+        await c.ready()
+        await c.consent()
+        delivery = await c.new_command("status")
+        principal = await c.service.resolve(delivery)
+        snapshot = ProjectAccess.actor_snapshot(principal)
+        other = uuid4().hex
+        definition = {**copy.deepcopy(c.definition), "id": other}
+        c.db["projects"][other] = SimpleNamespace(id=UUID(other), data=definition)
+        setup = await c.service.setup(other, c.repository)
+        await c.service.configure(
+            other,
+            c.repository,
+            c.models.PollConfigurationV1(
+                version=1,
+                request_id=uuid4().hex,
+                expected_previous_digest=setup["expected_previous_digest"],
+                expected_project_binding_digest=setup["project_binding_digest"],
+                expected_connection_revision=setup["connection_revision"],
+                enabled=True,
+            ),
+        )
+        await c.service.step(c.repository)
+        await c.service.step(c.repository)
+        assert (await c.service.status(other, c.repository))["ready"]
+        with pytest.raises(AccessDenied, match="project scope"):
+            await c.service.resolve(delivery)
+        with pytest.raises(AccessDenied, match="exact project"):
+            await c.service.authorize_snapshot(snapshot, c.project, "read")
+        assert not c.db["journal"] and not c.state["posts"]
+
+
+async def test_project_switch_waits_for_previous_project_wal_fence_before_native_writes(poll_case):
+    async with poll_case() as c:
+        await c.ready()
+        old = await c.service.setup(c.project, c.repository)
+        other = uuid4().hex
+        definition = {**copy.deepcopy(c.definition), "id": other}
+        c.db["projects"][other] = SimpleNamespace(id=UUID(other), data=definition)
+        request = c.models.PollConfigurationV1(
+            version=1,
+            request_id=uuid4().hex,
+            expected_previous_digest=old["expected_previous_digest"],
+            expected_project_binding_digest=digest(definition),
+            expected_connection_revision=old["connection_revision"],
+            enabled=True,
+        )
+        held_key = c.store.schema + ":members:" + c.project
+        c.state.update(
+            held_members=held_key, members_blocked=asyncio.Event(), release_members=asyncio.Event(), lock_trace=[]
+        )
+        operation = asyncio.create_task(c.service.configure(other, c.repository, request))
+        blocked = asyncio.create_task(c.state["members_blocked"].wait())
+        try:
+            done, _ = await asyncio.wait([operation, blocked], timeout=2, return_when=asyncio.FIRST_COMPLETED)
+            assert blocked in done and not operation.done(), (
+                "Project switch crossed the previous project's held WAL fence"
+            )
+            assert (
+                c.db["settings"][c.repository].data["_github_poll_v1"]["configuration"]["digest"]
+                == old["expected_previous_digest"]
+            )
+            assert all(kind == "members" for kind, _ in c.state["lock_trace"])
+        finally:
+            c.state["release_members"].set()
+            if not blocked.done():
+                blocked.cancel()
+            await asyncio.gather(operation, blocked, return_exceptions=True)
+        assert operation.exception() is None
+        assert c.state["lock_trace"][:2] == [
+            ("members", c.store.schema + ":members:" + p) for p in sorted([c.project, other])
+        ]
+
+
+async def test_head_change_after_policy_await_cannot_reauthorize_the_old_snapshot(poll_case, monkeypatch):
+    from firefly_forge.project_access import ProjectAccess
+
+    async with poll_case() as c:
+        await c.ready()
+        await c.consent()
+        delivery = await c.new_command("status")
+        actor = await c.service.resolve(delivery)
+        original = c.service._scope
+
+        async def change_after_scope(repository, policy):
+            result = await original(repository, policy)
+            state = c.db["settings"][c.repository].data["_github_poll_v1"]
+            state["configuration"] = {**state["configuration"], "digest": "f" * 64}
+            return result
+
+        monkeypatch.setattr(c.service, "_scope", change_after_scope)
+        with pytest.raises(AccessDenied, match="configuration"):
+            await c.service.authorize_snapshot(ProjectAccess.actor_snapshot(actor), c.project, "read")
+        assert not c.db["journal"] and not c.state["posts"]
+
+
+async def test_collaboration_flags_wait_for_current_poll_project_wal_fence(poll_case):
+    from firefly_forge.collaboration import CollaborationSettings
+
+    async with poll_case() as c:
+        await c.ready()
+        c.state.update(
+            held_members=c.store.schema + ":members:" + c.project,
+            members_blocked=asyncio.Event(),
+            release_members=asyncio.Event(),
+            lock_trace=[],
+        )
+        operation = asyncio.create_task(c.collaboration.configure(c.repository, CollaborationSettings(enabled=False)))
+        blocked = asyncio.create_task(c.state["members_blocked"].wait())
+        try:
+            done, _ = await asyncio.wait([operation, blocked], timeout=2, return_when=asyncio.FIRST_COMPLETED)
+            assert blocked in done and not operation.done(), "Collaboration flags crossed the held polling WAL fence"
+            assert c.db["settings"][c.repository].data["enabled"]
+        finally:
+            c.state["release_members"].set()
+            if not blocked.done():
+                blocked.cancel()
+            await asyncio.gather(operation, blocked, return_exceptions=True)
+        assert operation.exception() is None
+        assert not c.db["settings"][c.repository].data["enabled"]
