@@ -151,7 +151,7 @@ test("raw edits and steps survive page navigation and remain isolated between pr
   await select(page, b);
   await expect(customer(page)).toHaveValue("Saved B");
   await customer(page).fill("Human B");
-  await navigate(page, "Runs");
+  await navigate(page, "Connections");
   expect(await unloadPrevented(page)).toBe(true);
   await navigate(page, "Product definition");
   await expect(page.getByLabel("Product project", { exact: true })).toHaveValue(
@@ -206,7 +206,7 @@ test("a changed observed server revision holds saving and preserves the local dr
 }) => {
   const state = await setup(page);
   await customer(page).fill("Retained A");
-  await navigate(page, "Runs");
+  await navigate(page, "Connections");
   state.changeRevision();
   await navigate(page, "Product definition");
   await expect(customer(page)).toHaveValue("Retained A");
@@ -334,7 +334,7 @@ test("unfinished reference review can be explicitly removed after navigation", a
   await page
     .getByRole("button", { name: "Done reviewing journeys", exact: true })
     .click();
-  await navigate(page, "Runs");
+  await navigate(page, "Connections");
   await navigate(page, "Product definition");
   await expect(
     page.getByText("Reference review was interrupted.", { exact: false }),
@@ -409,7 +409,7 @@ test("a re-entry GET captured before save completion cannot regress the saved re
     .getByRole("button", { name: "Save draft definition", exact: true })
     .click();
   await expect.poll(() => putStarted).toBe(true);
-  await navigate(page, "Runs");
+  await navigate(page, "Connections");
   await navigate(page, "Product definition");
   await expect.poll(() => readStarted).toBe(true);
   const savedResponse = page.waitForResponse(
