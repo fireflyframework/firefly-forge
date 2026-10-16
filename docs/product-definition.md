@@ -57,6 +57,16 @@ Use Markdown formatting for longer text and switch to **Preview** when checking 
 
 API clients create a conversation at `POST /api/v1/repositories/{id}/assistant/conversations` with `{"agent":"bridge"}` or `{"agent":"agentic"}`. Send a turn at `POST .../conversations/{conversation_id}/turns` with a 32-character hexadecimal `request_id` and `message`. Replaying that ID with the same message returns the existing turn; changing the message under that ID is rejected. Inspect a quota-paused or interrupted turn before making a new explicit request. The factory does not repeat it automatically.
 
+## Keep and discard a working draft
+
+The form keeps unsaved fields and the current step while you move to another product or Studio page. Returning to that product restores its draft, including an applied AI proposal's source. Drafts are separate for each repository within the current factory connection and signed-in user.
+
+Use **Discard edits** to start again from the saved definition. Review the product name in the confirmation dialog. **Keep editing** or Escape returns to the draft; discarding affects only that product.
+
+Reloading, closing the tab, changing the factory connection or signing out clears working drafts. The browser shows an unload warning if any product has unsaved edits, including when you are on another Studio page. Save a revision before leaving when you need to keep the work.
+
+When Studio reads a newer saved revision, your earlier fields and base revision stay in place and saving is held. Discard the draft when you are ready to load the current saved version. This browser check cannot detect an unobserved concurrent save atomically; the save endpoint has no compare-and-swap revision contract.
+
 ## Freeze the run's contract
 
 Repository commands copy the latest saved revision into `RunInput.product_definition` when they create a run. The snapshot includes `repository_id`, `revision`, `definition`, `digest`, and `created_at`. New saves also retain an `origin` record for manual or AI-assisted definitions. Later edits create another revision; they do not change an existing run's input or its audit history.
