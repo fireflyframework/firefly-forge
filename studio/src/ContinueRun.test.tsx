@@ -26,7 +26,13 @@ function render(status: string, kind: string) {
 }
 
 describe("retained run continuation", () => {
-  it.each(["needs_reconciliation", "paused"])(
+  it.each([
+    "needs_reconciliation",
+    "paused",
+    "cancelled",
+    "failed",
+    "interrupted",
+  ])(
     "does not offer resume or handoff for an unknown Bridge outcome in %s",
     (status) => {
       const html = render(status, "provider_outcome_unknown");

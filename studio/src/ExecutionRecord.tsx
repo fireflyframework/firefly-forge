@@ -60,7 +60,10 @@ export function ContinueRun({
       setBusy(false);
     }
   }
-  if (!["paused", "needs_reconciliation", "interrupted"].includes(run.status))
+  if (
+    !unknownOutcome &&
+    !["paused", "needs_reconciliation", "interrupted"].includes(run.status)
+  )
     return null;
   if (unknownOutcome)
     return (

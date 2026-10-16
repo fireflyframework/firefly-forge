@@ -575,3 +575,68 @@ async def test_bridge_partial_stream_decoding_failure_is_unknown_not_consumer_fa
         assert len(calls) == 2
     finally:
         await model.client.close()
+
+
+def retry_boundary_store(status, kind):
+    store = MemoryStore()
+    store.run.status = status
+    store.run.data = {
+        "status": status,
+        "repository_id": UUID(int=2).hex,
+        "brief": "Offline Bridge outcome boundary",
+        "pause": {"kind": kind, "automatic": False, "retry_at": None},
+    }
+    created = []
+
+    async def create_run(request):
+        created.append(request)
+        return {"id": UUID(int=3).hex, "status": "queued"}
+
+    store.create_run = create_run
+    return store, created
+
+
+@pytest.mark.parametrize("kind", ["provider_outcome_unknown", "quota"])
+async def test_cancelled_bridge_outcome_does_not_escape_origin_retry_hold(tmp_path, kind):
+    from types import MethodType
+
+    from firefly_forge.controllers import RunService
+    from firefly_forge.store import Store
+
+    store, created = retry_boundary_store(
+        "needs_reconciliation" if kind == "provider_outcome_unknown" else "paused", kind
+    )
+    store.finish = MethodType(Store.finish, store)
+    engine = Engine(store, tmp_path)
+    await engine.cancel_effect(UUID(int=1).hex)
+    assert store.run.status == "cancelled"
+    assert store.run.data["pause"]["kind"] == kind
+    if kind == "provider_outcome_unknown":
+        with pytest.raises(ValueError, match="Bridge.*reconcil"):
+            await RunService(store, engine).retry(UUID(int=1).hex)
+        assert created == []
+    else:
+        result = await RunService(store, engine).retry(UUID(int=1).hex)
+        assert result["status"] == "queued" and len(created) == 1
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled", "interrupted"])
+async def test_terminal_unknown_bridge_outcome_cannot_create_retry_run(tmp_path, status):
+    from firefly_forge.controllers import RunService
+
+    store, created = retry_boundary_store(status, "provider_outcome_unknown")
+    before = dict(store.run.data)
+    with pytest.raises(ValueError, match="Bridge.*reconcil"):
+        await RunService(store, Engine(store, tmp_path)).retry(UUID(int=1).hex)
+    assert created == [] and store.run.data == before
+
+
+@pytest.mark.parametrize("status", ["failed", "interrupted"])
+async def test_known_terminal_failure_still_creates_explicit_retry_run(tmp_path, status):
+    from firefly_forge.controllers import RunService
+
+    store, created = retry_boundary_store(status, "verification")
+    result = await RunService(store, Engine(store, tmp_path)).retry(UUID(int=1).hex)
+    assert result["status"] == "queued" and len(created) == 1
+    assert created[0].repository_id == UUID(int=2).hex
+    assert created[0].brief == store.run.data["brief"]

@@ -1143,7 +1143,8 @@ export default function App() {
                       ? "Cancellation requested"
                       : "Cancel run"}
                   </button>
-                ) : ["failed", "cancelled"].includes(selected.status) ? (
+                ) : ["failed", "cancelled"].includes(selected.status) &&
+                  selected.pause?.kind !== "provider_outcome_unknown" ? (
                   <button
                     className="secondary"
                     disabled={busy}
