@@ -36,10 +36,17 @@ async def test_signed_mapped_operator_answers_exact_question_without_resume(stor
         .decode()
     )
 
+    comments = []
+
     def provider(request):
         from pyfly.data.transaction import current_unit_of_work
 
         assert current_unit_of_work() is None
+        if request.method == "POST" and request.url.path == "/repos/team/product/issues/3/comments":
+            comments.append(json.loads(request.content))
+            return httpx.Response(
+                201, json={"id": 92, "html_url": "https://github.com/team/product/issues/3#issuecomment-92"}
+            )
         if request.url.path == "/app/installations/34/access_tokens":
             return httpx.Response(
                 201,
@@ -180,6 +187,9 @@ async def test_signed_mapped_operator_answers_exact_question_without_resume(stor
         # No ambient native operator: authority comes only from the retained verified mapping.
         result = await collaboration.process(delivery["id"])
         assert result["status"] == "processed"
+        assert result["feedback_status"] == "sent"
+        assert len(comments) == 1 and "Forge respond: paused" in comments[0]["body"]
+        assert delivery["id"] in comments[0]["body"]
         current = await store.get_run(run["id"])
         assert current["status"] == "paused" and current["worker_request"]["status"] == "answered"
         messages = await journal.worker_messages(run["id"])
@@ -188,6 +198,7 @@ async def test_signed_mapped_operator_answers_exact_question_without_resume(stor
         assert reply["user_id"] == owner.id.hex
         assert reply["provenance"]["binding_digest"] == first["digest"]
         assert await collaboration.process(delivery["id"]) == result
+        assert len(comments) == 1
         assert await journal.worker_messages(run["id"]) == messages
     finally:
         await client.aclose()

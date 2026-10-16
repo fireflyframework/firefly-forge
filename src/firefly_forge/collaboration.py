@@ -674,7 +674,9 @@ class Collaboration:
             configured = await self.settings_records.find_for_repository(identifier(initial["repository_id"]))
             mapped_repository = bool(authority_state(configured.data if configured else {})["heads"])
         if mapped_repository or (initial.get("command") or {}).get("action") == "respond":
-            return await self._process_delegated(receipt_id)
+            await self._process_delegated(receipt_id)
+            await self.feedback(receipt_id)
+            return await self.receipt(receipt_id)
         if initial.get("global_ingress"):
             repo = await self.store.repository(initial["repository_id"])
             settings = await self.settings(repo["id"])
@@ -896,6 +898,8 @@ class Collaboration:
                             action_status="completed",
                             action_result={"request_id": result["id"], "status": result["status"]},
                             run_id=context["run_id"],
+                            feedback_status="pending",
+                            feedback_stage=locked.data["status"],
                         )
                         return copy.deepcopy(row.data)
             except AccessDenied:
@@ -951,6 +955,8 @@ class Collaboration:
                         action_status="completed",
                         action_result=result,
                         run_id=context["run_id"],
+                        feedback_status="pending",
+                        feedback_stage=result["status"],
                     )
         finally:
             CURRENT_PRINCIPAL.reset(token)

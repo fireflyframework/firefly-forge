@@ -264,6 +264,18 @@ repository grant and successful remote operation for each account.
 
 ## Explicit SCM delegation
 
+After a delegated `respond`, `status`, or `cancel` action completes, Forge retains
+its result and schedules a comment in the same issue or pull-request conversation.
+The comment includes the action result and delivery receipt reference. Answering
+a worker question records the answer; it leaves the run paused and does not grant
+permission to resume, publish, or merge.
+
+Forge records the outbound intent before contacting the provider. If delivery is
+uncertain, the completed action and its original receipt remain available with
+feedback marked `needs_reconciliation`. Processing the same receipt again does not
+post another comment. An operator must check the provider outcome and record an
+explicit reconciliation; an unknown delivery is never an invitation to retry it.
+
 Signed comments identify a configured channel; they do not sign a user into Forge.
 A factory administrator can explicitly map a verified provider account to an existing,
 enabled Forge user for selected components and actions in one project and repository.
