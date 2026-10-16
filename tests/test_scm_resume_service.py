@@ -417,7 +417,11 @@ async def test_native_completion_reader_checks_real_journal_envelopes(answered_c
     async def save(row):
         rows.append(row)
 
-    journal = Journal(SimpleNamespace(), records=SimpleNamespace(find_for_run=find, save=save))
+    async def get_run(run_id):
+        assert run_id == answered_cut["run"]["id"]
+        return copy.deepcopy(answered_cut["run"])
+
+    journal = Journal(SimpleNamespace(get_run=get_run), records=SimpleNamespace(find_for_run=find, save=save))
     cut = module.resume_cut(**answered_cut)
     result = {
         "version": 2,

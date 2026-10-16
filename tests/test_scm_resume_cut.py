@@ -35,7 +35,6 @@ async def answered_cut():
     async def save(row):
         rows.append(row)
 
-    journal = Journal(SimpleNamespace(), records=SimpleNamespace(find_for_run=find, save=save))
     inputs = RunInput(
         repository_id=REPO,
         project_id=PROJECT,
@@ -74,9 +73,6 @@ async def answered_cut():
         tasks=[dict(id="implement", kind="local")],
     )
     plan["digest"] = digest(plan)
-    await journal._append(RUN, "plan", "plan-1", "plan", {"revision": 1, "digest": plan["digest"]})
-    await journal._append(RUN, "implement", "worker-feedback:feedback-1", "worker_feedback", feedback)
-    await journal._append(RUN, "implement", "worker-response:answer-1", "worker_response", response)
     run = {
         **inputs,
         "id": RUN,
@@ -96,6 +92,15 @@ async def answered_cut():
         },
         "pause": {"kind": "worker_request", "automatic": False},
     }
+
+    async def get_run(run_id):
+        assert run_id == RUN
+        return copy.deepcopy(run)
+
+    journal = Journal(SimpleNamespace(get_run=get_run), records=SimpleNamespace(find_for_run=find, save=save))
+    await journal._append(RUN, "plan", "plan-1", "plan", {"revision": 1, "digest": plan["digest"]})
+    await journal._append(RUN, "implement", "worker-feedback:feedback-1", "worker_feedback", feedback)
+    await journal._append(RUN, "implement", "worker-response:answer-1", "worker_response", response)
     tasks = [dict(task_id="implement", status="paused", attempt=1, data={"known_worker_response": True})]
     return dict(
         run=run,
@@ -206,7 +211,11 @@ async def test_any_wal_head_advance_invalidates_the_reviewed_cut(answered_cut):
     async def save(row):
         rows.append(row)
 
-    journal = Journal(SimpleNamespace(), records=SimpleNamespace(find_for_run=find, save=save))
+    async def get_run(run_id):
+        assert run_id == answered_cut["run"]["id"]
+        return copy.deepcopy(answered_cut["run"])
+
+    journal = Journal(SimpleNamespace(get_run=get_run), records=SimpleNamespace(find_for_run=find, save=save))
     await journal._append(RUN, "implement", "note-1", "decision_noted", {"note": "Another observed decision"})
     answered_cut["entries"] = [copy.deepcopy(row.data) for row in rows]
     assert eligibility()(**answered_cut)["digest"] != original["digest"]
