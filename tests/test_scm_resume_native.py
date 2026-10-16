@@ -353,9 +353,12 @@ def test_native_v1_revocation_invalidates_the_reviewed_v2_resume(native_resume):
 def test_native_journal_head_change_refuses_the_old_review_cut(native_resume):
     case = native_resume
     command = case.review(case.consent())
-    case.http.portal.call(
-        case.journal._append, case.run["id"], "verify", "native-review-note", "observation", {"fixture": True}
-    )
+
+    async def record_review_note():
+        async with case.store._unit():
+            await case.journal._append(case.run["id"], "verify", "native-review-note", "observation", {"fixture": True})
+
+    case.http.portal.call(record_review_note)
     before = case.http.portal.call(case.journal.entries, case.run["id"])
     result = case.process(case.receive("resume", command))
     assert result["status"] == "denied"
