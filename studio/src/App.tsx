@@ -69,7 +69,12 @@ import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
 import { FactoryWelcome } from "./FactoryWelcome";
-import { useProductDraftBook } from "./ProductDrafts";
+import {
+  type ProductDraftBook,
+  useProductDraftBook,
+  useProductDraftField,
+  useProductDraftSession,
+} from "./ProductDrafts";
 import { ProductDefinition } from "./ProductDefinition";
 import {
   IdentityMenu,
@@ -237,10 +242,6 @@ function Empty({
 export default function App() {
   const { appearance, setAppearance, theme } = useAppearance();
   const [page, setPage] = useState<Page>("overview");
-  const [runProject, setRunProject] = useState("");
-  const [runComponent, setRunComponent] = useState<ComponentRunContext | null>(
-    null,
-  );
   const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
     null,
   );
@@ -255,6 +256,19 @@ export default function App() {
     connection,
     identity.session?.user.id,
   );
+  const runDrafts = useProductDraftBook(connection, identity.session?.user.id);
+  const runContext = useProductDraftSession(runDrafts, "run:context");
+  const [runProject, setRunProject] = useProductDraftField(
+    runContext,
+    "repository",
+    "",
+  );
+  const [runComponent, setRunComponent] =
+    useProductDraftField<ComponentRunContext | null>(
+      runContext,
+      "component",
+      null,
+    );
   const restoredGoal = useRef(false);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [runs, setRuns] = useState<ForgeRun[]>([]);
@@ -471,7 +485,6 @@ export default function App() {
   function navigate(next: Page) {
     setPage(next);
     setError("");
-    if (next === "new") setRunComponent(null);
     if (next === "product") setProductProject(null);
     if (next === "settings") setSetupStep(null);
   }
@@ -624,6 +637,7 @@ export default function App() {
                 onAccess={() => navigate("access")}
                 onSignedOut={() => {
                   productDrafts.clear();
+                  runDrafts.clear();
                   identity.forgetSession();
                   restoredGoal.current = false;
                   identity.refresh();
@@ -702,6 +716,7 @@ export default function App() {
                 onOpen={(run) => void openRun(run)}
                 onCreate={() => {
                   setRunProject(floorProject);
+                  setRunComponent(null);
                   navigate("new");
                 }}
                 onProjectChange={setFloorProject}
@@ -841,6 +856,7 @@ export default function App() {
               initialRepository={runProject}
               onStart={(id) => {
                 setRunProject(id);
+                setRunComponent(null);
                 navigate("new");
               }}
             />
@@ -872,10 +888,12 @@ export default function App() {
           {page === "new" && (
             <NewProduct
               key={
-                runComponent
-                  ? `${runComponent.project.id}/${runComponent.component.id}`
-                  : "standalone"
+                `${runDrafts.id}/` +
+                (runComponent
+                  ? `${runComponent.project.id}/${runComponent.project.revision}/${runComponent.component.id}`
+                  : `standalone/${runProject}`)
               }
+              drafts={runDrafts}
               initialComponent={runComponent}
               onStandalone={() => setRunComponent(null)}
               initialRepository={runProject}
@@ -945,6 +963,7 @@ export default function App() {
                         className="quiet"
                         onClick={() => {
                           setRunProject(repository.id);
+                          setRunComponent(null);
                           navigate("new");
                         }}
                       >
@@ -1272,7 +1291,8 @@ function Loading() {
     </div>
   );
 }
-function NewProduct({
+export function NewProduct({
+  drafts,
   initialComponent,
   onStandalone,
   initialRepository,
@@ -1284,6 +1304,7 @@ function NewProduct({
   onConnection,
   onCreated,
 }: {
+  drafts: ProductDraftBook;
   initialComponent: ComponentRunContext | null;
   onStandalone: () => void;
   initialRepository: string;
@@ -1296,26 +1317,56 @@ function NewProduct({
   onCreated: (run: ForgeRun) => void;
 }) {
   const projectLabels = repositoryLabels(repositories);
-  const [step, setStep] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [brief, setBrief] = useState("");
-  const [backend, setBackend] = useState(
+  const session = useProductDraftSession(
+    drafts,
+    initialComponent
+      ? `run:component:${initialComponent.project.id}/${initialComponent.project.revision}/${initialComponent.component.id}`
+      : `run:standalone:${initialRepository}`,
+  );
+  const [step, setStep] = useProductDraftField(session, "step", 0);
+  const [busy, setBusy] = useProductDraftField(session, "busy", false);
+  const [error, setError] = useProductDraftField(session, "error", "");
+  const [brief, setBrief] = useProductDraftField(session, "brief", "", true);
+  const [backend, setBackend] = useProductDraftField(
+    session,
+    "backend",
     initialComponent?.component.backend ?? "pyfly",
+    true,
   );
-  const [frontend, setFrontend] = useState(
+  const [frontend, setFrontend] = useProductDraftField(
+    session,
+    "frontend",
     initialComponent?.component.frontend ?? "react",
+    true,
   );
-  const [agent, setAgent] = useState("codex");
-  const [operation, setOperation] = useState("build");
-  const [commands, setCommands] = useState(
+  const [agent, setAgent] = useProductDraftField(
+    session,
+    "agent",
+    "codex",
+    true,
+  );
+  const [operation, setOperation] = useProductDraftField(
+    session,
+    "operation",
+    "build",
+    true,
+  );
+  const [commands, setCommands] = useProductDraftField(
+    session,
+    "commands",
     initialComponent
       ? JSON.stringify(
           initialComponent.component.verification.map((item) => item.argv),
         )
       : "",
+    true,
   );
-  const [repositoryId, setRepositoryId] = useState(initialRepository);
+  const [repositoryId, setRepositoryId] = useProductDraftField(
+    session,
+    "repositoryId",
+    initialRepository,
+    true,
+  );
   const productRepositoryId =
     initialComponent?.project.definition.product_repository_id || repositoryId;
   const [product, setProduct] = useState<ProductSnapshot | null>(null);
@@ -1343,8 +1394,8 @@ function NewProduct({
           value?.repository_id === productRepositoryId &&
           value.definition.architecture
         ) {
-          setBackend(value.definition.architecture.backend);
-          setFrontend(value.definition.architecture.frontend);
+          session.write("backend", value.definition.architecture.backend);
+          session.write("frontend", value.definition.architecture.frontend);
         }
         setProductLoaded(productRepositoryId);
       })
@@ -1352,11 +1403,26 @@ function NewProduct({
         if (!controller.signal.aborted) setError(errorText(cause));
       });
     return () => controller.abort();
-  }, [connection, productRepositoryId, initialComponent]);
+  }, [connection, productRepositoryId, initialComponent, session, setError]);
   const [skillCatalog, setSkillCatalog] = useState<Policy[]>([]);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [overridePolicies, setOverridePolicies] = useState(false);
-  const [reviewAgent, setReviewAgent] = useState("");
+  const [selectedSkills, setSelectedSkills] = useProductDraftField<string[]>(
+    session,
+    "selectedSkills",
+    [],
+    true,
+  );
+  const [overridePolicies, setOverridePolicies] = useProductDraftField(
+    session,
+    "overridePolicies",
+    false,
+    true,
+  );
+  const [reviewAgent, setReviewAgent] = useProductDraftField(
+    session,
+    "reviewAgent",
+    "",
+    true,
+  );
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -1370,7 +1436,7 @@ function NewProduct({
         if (!controller.signal.aborted) setError(errorText(cause));
       });
     return () => controller.abort();
-  }, [connection, connected]);
+  }, [connection, connected, setError]);
   useEffect(() => {
     if (!repositoryId) return;
     const controller = new AbortController();
@@ -1380,20 +1446,27 @@ function NewProduct({
       { signal: controller.signal },
     )
       .then((result) => {
-        setSelectedSkills(Array.isArray(result.skills) ? result.skills : []);
-        setOverridePolicies(false);
+        if (controller.signal.aborted) return;
+        if (session.read("policyRepository", "") === repositoryId) return;
+        session.write("policyRepository", repositoryId);
+        session.write(
+          "selectedSkills",
+          Array.isArray(result.skills) ? result.skills : [],
+        );
+        session.write("overridePolicies", false);
       })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(errorText(cause));
       });
     return () => controller.abort();
-  }, [connection, repositoryId]);
+  }, [connection, repositoryId, session, setError]);
   const frozenArchitecture =
     !initialComponent && productLoaded === productRepositoryId
       ? product?.definition.architecture
       : null;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!session.active || session.read("busy", false)) return;
     setError("");
     try {
       const checks = parseCommands(commands);
@@ -1406,32 +1479,35 @@ function NewProduct({
         return;
       }
       setBusy(true);
-      onCreated(
-        await post<ForgeRun>(connection, "/runs", {
-          repository_id: repositoryId,
-          brief:
-            brief.trim() ||
-            "Verify the current product using its executable checks.",
-          operation,
-          backend,
-          frontend,
-          agent: operation === "test" ? "codex" : agent,
-          ...(initialComponent
-            ? {
-                project_id: initialComponent.project.id,
-                component_id: initialComponent.component.id,
-              }
-            : { commands: checks }),
-          publish: false,
-          ...(!initialComponent &&
-          productLoaded === productRepositoryId &&
-          product
-            ? { product_definition: product }
-            : {}),
-          ...(overridePolicies ? { skills: selectedSkills } : {}),
-          ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
-        }),
-      );
+      const submittedVersion = session.editVersion;
+      const run = await post<ForgeRun>(connection, "/runs", {
+        repository_id: repositoryId,
+        brief:
+          brief.trim() ||
+          "Verify the current product using its executable checks.",
+        operation,
+        backend,
+        frontend,
+        agent: operation === "test" ? "codex" : agent,
+        ...(initialComponent
+          ? {
+              project_id: initialComponent.project.id,
+              component_id: initialComponent.component.id,
+            }
+          : { commands: checks }),
+        publish: false,
+        ...(!initialComponent &&
+        productLoaded === productRepositoryId &&
+        product
+          ? { product_definition: product }
+          : {}),
+        ...(overridePolicies ? { skills: selectedSkills } : {}),
+        ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
+      });
+      if (session.active) {
+        if (session.editVersion === submittedVersion) drafts.discard(session);
+        onCreated(run);
+      }
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -1701,9 +1777,10 @@ function NewProduct({
                     <input
                       type="checkbox"
                       checked={overridePolicies}
-                      onChange={(event) =>
-                        setOverridePolicies(event.target.checked)
-                      }
+                      onChange={(event) => {
+                        session.write("policyRepository", repositoryId);
+                        setOverridePolicies(event.target.checked);
+                      }}
                     />
                     Override project policies for this run
                   </label>
