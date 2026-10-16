@@ -624,6 +624,7 @@ export default function App() {
                 onAccess={() => navigate("access")}
                 onSignedOut={() => {
                   productDrafts.clear();
+                  identity.forgetSession();
                   restoredGoal.current = false;
                   identity.refresh();
                   setConnected(false);

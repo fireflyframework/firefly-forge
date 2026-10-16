@@ -6,6 +6,9 @@ const state = vi.hoisted(() => ({
   book: null as ProductDraftBook | null,
   signedOut: null as (() => void) | null,
   refreshSawUnsaved: null as boolean | null,
+  forgotSession: false,
+  forgetSawUnsaved: null as boolean | null,
+  refreshSawForgotten: null as boolean | null,
 }));
 vi.mock("./ProductDrafts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./ProductDrafts")>();
@@ -31,7 +34,12 @@ vi.mock("./Identity", async (importOriginal) => {
       loading: false,
       error: "Identity refresh unavailable",
       configuration: null,
+      forgetSession: () => {
+        state.forgetSawUnsaved = state.book!.hasUnsaved;
+        state.forgotSession = true;
+      },
       refresh: () => {
+        state.refreshSawForgotten = state.forgotSession;
         state.refreshSawUnsaved = state.book!.hasUnsaved;
       },
     }),
@@ -54,7 +62,11 @@ it("successful logout clears drafts before an identity refresh that retains the 
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
   renderToStaticMarkup(<App />);
   expect(state.signedOut).toBeTypeOf("function");
+  expect(state.book.hasUnsaved).toBe(true);
+  expect(state.forgotSession).toBe(false);
   state.signedOut!();
+  expect(state.forgetSawUnsaved).toBe(false);
+  expect(state.refreshSawForgotten).toBe(true);
   expect(state.refreshSawUnsaved).toBe(false);
   expect(state.book.hasUnsaved).toBe(false);
   expect(prior.active).toBe(false);
