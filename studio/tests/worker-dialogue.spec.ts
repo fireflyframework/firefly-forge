@@ -5,6 +5,7 @@ import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import contract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 import delegation from "./scm-delegation-contract-fixture.json" with { type: "json" };
+import polling from "./scm-polling-contract-fixture.json" with { type: "json" };
 
 const run = {
   id: "2".repeat(32),
@@ -33,13 +34,17 @@ const feedback = contract.feedback;
 async function setup(
   page: Page,
   lost = false,
-  delegated?: { deny?: boolean; delay?: boolean },
+  delegated?: { deny?: boolean; delay?: boolean; polling?: boolean },
 ) {
+  const mapping = delegated?.polling ? polling.receipt : delegation.receipt;
+  const bindingPath = delegated?.polling
+    ? "/scm-polling/bindings/requests/"
+    : "/scm-actor-bindings/requests/";
   const viewedRun = delegated
     ? {
         ...run,
-        project_id: delegation.receipt.project_id,
-        repository_id: delegation.receipt.repository_id,
+        project_id: mapping.project_id,
+        repository_id: mapping.repository_id,
         component_id: "api",
       }
     : run;
@@ -68,22 +73,24 @@ async function setup(
         payload: {
           ...event.payload,
           actor: "7",
-          responding_actor: {
-            version: 2,
-            user_id: delegation.request.native_user_id,
-            authentication_method: "scm_mapping",
-            provenance: {
-              binding_request_id: delegation.request.request_id,
-              binding_digest: delegation.receipt.digest,
-              verified_receipt_id: "3".repeat(32),
-              provider: reference.provider,
-              api_origin: reference.api_origin,
-              connection_revision: reference.connection_revision,
-              installation_id: reference.installation_id,
-              remote_repository_id: reference.remote_repository_id,
-              external_actor_id: reference.external_actor_id,
-            },
-          },
+          responding_actor: delegated.polling
+            ? polling.responding_actor
+            : {
+                version: 2,
+                user_id: delegation.request.native_user_id,
+                authentication_method: "scm_mapping",
+                provenance: {
+                  binding_request_id: delegation.request.request_id,
+                  binding_digest: delegation.receipt.digest,
+                  verified_receipt_id: "3".repeat(32),
+                  provider: reference.provider,
+                  api_origin: reference.api_origin,
+                  connection_revision: reference.connection_revision,
+                  installation_id: reference.installation_id,
+                  remote_repository_id: reference.remote_repository_id,
+                  external_actor_id: reference.external_actor_id,
+                },
+              },
         },
       }),
     );
@@ -91,17 +98,17 @@ async function setup(
   await page.context().route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
-    if (path.includes("/scm-actor-bindings/requests/")) {
+    if (path.includes(bindingPath)) {
       expect(route.request().method()).toBe("GET");
       expect(path).toBe(
-        `/api/v1/projects/${delegation.receipt.project_id}/repositories/${delegation.receipt.repository_id}/scm-actor-bindings/requests/${delegation.request.request_id}`,
+        `/api/v1/projects/${mapping.project_id}/repositories/${mapping.repository_id}${bindingPath}${mapping.request.request_id}`,
       );
       state.bindingReads++;
       await bindingGate;
       return route.fulfill(
         state.bindingDenied
           ? { status: 403, json: { detail: "private-mapping-denial-canary" } }
-          : { json: delegation.receipt },
+          : { json: mapping },
       );
     }
     if (path.endsWith("/respond")) {
@@ -657,6 +664,101 @@ test("late historical mapping responses cannot repaint a different view", async 
   );
   await expect(
     page.getByText("Delegated via GitHub", { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Recorded answer", exact: true }),
+  ).toHaveCount(0);
+  expect(state.posts).toBe(0);
+});
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 600 },
+  { width: 320, height: 400 },
+]) {
+  for (const theme of ["light", "dark"]) {
+    test(`API-observed GitHub attribution fits ${viewport.width}x${viewport.height} ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      const state = await setup(page, false, { polling: true });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      const attribution = page.getByText(
+        "Delegated through an API-observed GitHub account to a mapped forge user.",
+        { exact: false },
+      );
+      await expect(attribution).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Recorded answer", exact: true }),
+      ).toBeVisible();
+      await attribution.scrollIntoViewIfNeeded();
+      const bounds = await attribution.boundingBox();
+      const footer = await page.getByRole("contentinfo").boundingBox();
+      const header = await page.locator(".topbar").boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(footer).not.toBeNull();
+      expect(header).not.toBeNull();
+      expect(bounds!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footer!.y);
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(viewport.width);
+      expect(state.bindingReads).toBe(1);
+      expect(state.posts).toBe(0);
+      await expect(
+        page.getByRole("button", { name: "Review answer", exact: true }),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `polling-answer-${viewport.width}-${theme}.png`,
+        ),
+        fullPage: true,
+      });
+    });
+  }
+}
+
+test("denied API-observed consent reads clear the historical answer without sending", async ({
+  page,
+}) => {
+  const state = await setup(page, false, { polling: true, deny: true });
+  await expect(
+    page.getByText(
+      "Your current session cannot read this conversation. Sign in or ask the project owner to review your access.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recorded answer", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("private-mapping-denial-canary")).toHaveCount(0);
+  expect(state.bindingReads).toBe(1);
+  expect(state.posts).toBe(0);
+});
+
+test("late API-observed consent reads cannot repaint another view", async ({
+  page,
+}) => {
+  const state = await setup(page, false, { polling: true, delay: true });
+  await expect.poll(() => state.bindingReads).toBe(1);
+  await navigate(page, "Connections");
+  await expect(
+    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+  ).toBeVisible();
+  const delivery = page.waitForResponse((response) =>
+    response.url().includes("/scm-polling/bindings/requests/"),
+  );
+  state.releaseBinding();
+  await (await delivery).finished();
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
+  );
+  await expect(
+    page.getByText("Delegated through an API-observed GitHub account", {
+      exact: false,
+    }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Recorded answer", exact: true }),
