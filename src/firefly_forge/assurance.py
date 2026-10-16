@@ -245,17 +245,33 @@ class Assurance:
         try:
             await provider.execute(directory, brief, run["backend"], run["frontend"], emit)
         except Exception as exc:
-            from firefly_forge.providers import classify_provider_failure
+            from firefly_forge.providers import ProviderLimitError, ProviderOutcomeUnknown, classify_provider_failure
 
             kind = classify_provider_failure(exc)
-            if self.journal and intent and kind and kind[0] in {"quota", "rate_limit", "authentication"}:
+            if (
+                self.journal
+                and intent
+                and kind
+                and kind[0] in {"quota", "rate_limit", "authentication", "provider_paused", "provider_outcome_unknown"}
+            ):
                 await self.journal.fail(
                     run["id"],
                     intent["idempotency_key"],
                     kind[0],
                     redact_secrets(redact_environment(str(exc)), settings),
                     retry_after=kind[1],
+                    **(
+                        {
+                            "observation": json.loads(
+                                redact_secrets(redact_environment(json.dumps(exc.observation)), settings)
+                            )
+                        }
+                        if isinstance(exc, (ProviderLimitError, ProviderOutcomeUnknown)) and exc.observation
+                        else {}
+                    ),
                 )
+            if isinstance(exc, ProviderOutcomeUnknown):
+                raise
             raise ReviewPending(
                 "Independent review did not return a durable result; inspect its paused or unknown outcome"
             ) from None

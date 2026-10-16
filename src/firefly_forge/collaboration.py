@@ -38,6 +38,7 @@ from firefly_forge.product_lifecycle import IntegrationContract, validate_integr
 from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 from firefly_forge.store import Store, identifier, now
 from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_process_references
 
@@ -155,7 +156,17 @@ class RepositoryCommand(BaseModel):
         return self
 
     @classmethod
-    def parse(cls, text: str) -> RepositoryCommand | ChannelCommand:
+    def parse(cls, text: str) -> RepositoryCommand | ChannelCommand | SCMResumeCommandV2 | SCMResumeStatusV2:
+        from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
+
+        versioned = re.fullmatch(r"/forge (status|resume) ([^\r\n]+)", text.strip())
+        if versioned:
+            options = json.loads(versioned[2])
+            if isinstance(options, dict) and options.get("version") == 2:
+                model = SCMResumeStatusV2 if versioned[1] == "status" else SCMResumeCommandV2
+                if "action" in options:
+                    raise ValueError("Command options cannot override the action")
+                return model.model_validate({"action": versioned[1], **options})
         match = re.fullmatch(r"/forge (run|test|maintain|status|deploy)(?: ([^\r\n]+))?", text.strip())
         if match is None:
             from firefly_forge.channel_actions import ChannelCommand
@@ -251,8 +262,10 @@ class Collaboration:
         settings_records: ForgeCollaborationSettingsRepository | None = None,
         inbox: ForgeWebhookInboxRepository | None = None,
         products: ForgeProductDefinitionRepository | None = None,
+        resume_authority: Any = None,
     ) -> None:
         self.store = store
+        self.resume_authority = resume_authority
         self.scm = scm or SCMConnections(store)
         self.deployments = deployments
         self.settings_records = settings_records or ForgeCollaborationSettingsRepository()
@@ -289,6 +302,7 @@ class Collaboration:
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = copy.deepcopy(row.data) if row else CollaborationSettings().model_dump(exclude={"webhook_secret"})
             data.pop("_scm_authority_v1", None)
+            data.pop("_scm_resume_authority_v2", None)
             return {
                 **data,
                 "repository_id": repository_id,
@@ -320,8 +334,9 @@ class Collaboration:
             await self._repo_lock(repository_id)
             row = await self.settings_records.find_for_repository(identifier(repository_id))
             data = request.model_dump(exclude={"webhook_secret"})
-            if row is not None and "_scm_authority_v1" in row.data:
-                data["_scm_authority_v1"] = copy.deepcopy(row.data["_scm_authority_v1"])
+            for key in ("_scm_authority_v1", "_scm_resume_authority_v2"):
+                if row is not None and key in row.data:
+                    data[key] = copy.deepcopy(row.data[key])
             if row is None:
                 row = ForgeCollaborationSettingsEntity(
                     id=uuid.uuid4(), repository_id=identifier(repository_id), data=data
@@ -546,7 +561,15 @@ class Collaboration:
                 if not reason:
                     command = RepositoryCommand.parse(event.pop("text"))
                     event["command"] = command.model_dump(exclude_none=True)
-                    if command.action not in [*settings["allowed_commands"], *settings.get("channel_commands", [])]:
+                    versioned_resume = (
+                        isinstance(command, SCMResumeCommandV2)
+                        and verified_reference is not None
+                        and self.resume_authority is not None
+                    )
+                    if not versioned_resume and command.action not in [
+                        *settings["allowed_commands"],
+                        *settings.get("channel_commands", []),
+                    ]:
                         reason = "command_disabled"
             except (ValueError, KeyError, TypeError):
                 event.pop("text", None)
@@ -666,6 +689,30 @@ class Collaboration:
 
     async def process(self, receipt_id: str) -> Data:
         initial = await self.receipt(receipt_id)
+        if (initial.get("command") or {}).get("version") == 2:
+            if self.resume_authority is None:
+                raise ValueError("The native V2 resume service is unavailable")
+            try:
+                await self.resume_authority.process(receipt_id)
+            except Exception:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    denied = bool(
+                        row is not None
+                        and row.status == "received"
+                        and row.data.get("action_status") in {None, "not_dispatched"}
+                    )
+                    if denied and row is not None:
+                        await self._write_row(
+                            row, status="denied", action_status="not_dispatched", reason="scm_resume_authority_required"
+                        )
+                return {
+                    "id": receipt_id,
+                    "status": "denied" if denied else "withheld",
+                    "reason": "scm_resume_authority_required",
+                }
+            await self.feedback(receipt_id)
+            return await self.receipt(receipt_id)
         if initial["status"] != "received":
             return initial
         from firefly_forge.scm_actor_authority import authority_state
@@ -1125,6 +1172,15 @@ class Collaboration:
         }
 
     async def feedback(self, receipt_id: str) -> None:
+        initial = await self.receipt(receipt_id)
+        versioned = (initial.get("command") or {}).get("version") == 2
+        if versioned:
+            try:
+                if self.resume_authority is None:
+                    return
+                await self.resume_authority.authorize_feedback(receipt_id)
+            except Exception:
+                return
         async with self.store._unit():
             row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None or row.data.get("feedback_status") != "pending":
@@ -1194,6 +1250,8 @@ class Collaboration:
             if data.get("deployment_id"):
                 message += " Deployment " + data["deployment_id"] + "."
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
+            if versioned:
+                await self.resume_authority.authorize_feedback(receipt_id)
             remote = await self._remote_write(repo, payload, data["issue"])
         except Exception:
             async with self.store._unit():

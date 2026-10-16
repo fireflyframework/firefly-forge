@@ -6,13 +6,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import os
 import shutil
 import signal
 import subprocess
 import time
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -52,15 +54,71 @@ class ProviderLimitError(ProviderError):
         self,
         message: str,
         *,
-        kind: Literal["rate_limit", "quota", "authentication", "transient"],
+        kind: Literal["rate_limit", "quota", "authentication", "transient", "provider_paused"],
         retry_after: float | None = None,
+        observation: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.kind = kind
         self.retry_after = retry_after
+        self.observation = observation or {}
+
+
+class ProviderOutcomeUnknown(ProviderError):
+    """A Bridge submission has no reliable terminal result; never submit it again implicitly."""
+
+    def __init__(self, message: str, *, observation: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.observation = observation or {}
+
+
+def _bridge_failure(exc: Exception) -> ProviderError | None:
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+
+    if not isinstance(exc, ModelAPIError):
+        return None
+    headers = getattr(exc, "headers", None) or {}
+    body = getattr(exc, "body", None)
+    body = body.get("error", body) if isinstance(body, dict) else {}
+    body = body if isinstance(body, dict) else {}
+    observation: dict[str, Any] = {}
+    job = body.get("job_id") or headers.get("x-bridge-job-id")
+    if isinstance(job, str) and len(job) == 36:
+        with suppress(ValueError):
+            observation["job_id"] = str(uuid.UUID(job))
+    try:
+        retry_after = float(headers.get("retry-after", "nan"))
+        if math.isfinite(retry_after) and 0 <= retry_after <= 86400:
+            observation["retry_after"] = retry_after
+    except (ValueError, TypeError):
+        pass
+    if isinstance(exc, ModelHTTPError):
+        code = body.get("code")
+        if exc.status_code == 429 and code == "quota_exhausted":
+            return ProviderLimitError(
+                "Bridge quota is exhausted; inspect the retained job before an explicit resume",
+                kind="quota",
+                retry_after=observation.get("retry_after"),
+                observation=observation,
+            )
+        if exc.status_code == 503 and code == "execution_paused":
+            return ProviderLimitError(
+                "Bridge execution is paused; inspect the retained native session before an explicit resume",
+                kind="provider_paused",
+                retry_after=observation.get("retry_after"),
+                observation=observation,
+            )
+        if exc.status_code < 500:
+            return None
+    return ProviderOutcomeUnknown(
+        "Bridge execution outcome is unknown; reconcile the retained job before continuing",
+        observation=observation,
+    )
 
 
 def classify_provider_failure(exc: Exception) -> tuple[str, float | None] | None:
+    if isinstance(exc, ProviderOutcomeUnknown):
+        return "provider_outcome_unknown", exc.observation.get("retry_after")
     if isinstance(exc, ProviderLimitError):
         return exc.kind, exc.retry_after
     if isinstance(exc, SearchProviderError) and exc.kind in {"rate_limit", "quota", "authentication"}:
@@ -448,10 +506,30 @@ class BridgeProvider(ConfiguredProvider):
             and all(character in "0123456789abcdef" for character in revision)
         ):
             headers["X-Bridge-Image-Revision"] = revision
-        return OpenAIChatModel(
+
+        class BridgeChatModel(OpenAIChatModel):
+            async def request(self, *args: Any, **kwargs: Any) -> Any:
+                try:
+                    return await super().request(*args, **kwargs)
+                except Exception as exc:
+                    if failure := _bridge_failure(exc):
+                        raise failure from exc
+                    raise
+
+            @asynccontextmanager
+            async def request_stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+                try:
+                    async with super().request_stream(*args, **kwargs) as stream:
+                        yield stream
+                except Exception as exc:
+                    if failure := _bridge_failure(exc):
+                        raise failure from exc
+                    raise
+
+        return BridgeChatModel(
             name,
             provider=OpenAIProvider(
-                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers)
+                openai_client=AsyncOpenAI(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
             ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),

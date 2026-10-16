@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.18
+
+Administrators can record separate consent for a mapped source-control user to request continuation after answering an agent's question. A three-step review covers the mapping, component scope and consent. Studio retains the original request before one POST and confirms it through its exact receipt; a lost response or missing receipt blocks a replacement request. Consent alone does not resume work. Signed ingress still checks the answered question, current permissions, original execution identity, frozen plan and WAL before admitting continuation of the same run. See [source-control consent](scm.md) and [SDK, CLI and MCP operations](agent-integrations.md#consent-to-signed-same-run-resume).
+
+Bridge inference calls no longer use the SDK's automatic retries. A structured quota limit or context pause requires deliberate recovery. An ambiguous transport or stream outcome keeps the original intent as needing reconciliation; generic resume and handoff refuse that state. This prevents an unknown outcome from being presented as a successful or failed execution. Automatic recovery of the same Bridge job remains separate work. See [agent failure and recovery](agents.md).
+
 ## 0.2.17
 
 Studio connects an agent’s pending question to a Markdown answer editor, review and recorded-response recovery. It retains the full API, user, project, repository, run, question and normalized answer binding before sending. A changed or unresolved marker blocks another answer. Reload and missing readback preserve the original identity without resubmitting it. Sending an answer leaves the run paused; resume remains a separate decision. See [answer an agent’s question](agent-lifecycle.md#answer-an-agents-question).

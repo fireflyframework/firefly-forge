@@ -964,12 +964,45 @@ class Engine:
             raise
         except Exception as exc:
             from firefly_forge.assurance import ReviewPending
-            from firefly_forge.providers import classify_provider_failure
+            from firefly_forge.providers import ProviderLimitError, ProviderOutcomeUnknown, classify_provider_failure
 
             classification = classify_provider_failure(exc)
-            if self.journal and active_key and classification:
+            if isinstance(exc, ProviderOutcomeUnknown):
+                if self.journal and active_key:
+                    await self.journal.fail(
+                        identifier,
+                        active_key,
+                        "provider_outcome_unknown",
+                        safe(str(exc)),
+                        observation=safe_data(exc.observation),
+                    )
+                else:
+                    current_pause = (await self.store.get_run(identifier)).get("pause", {})
+                    await self.store.update(
+                        identifier,
+                        status="needs_reconciliation",
+                        error=safe(str(exc)),
+                        pause={
+                            **current_pause,
+                            "kind": "provider_outcome_unknown",
+                            "automatic": False,
+                            "retry_at": None,
+                            "provider_observation": safe_data(exc.observation),
+                        },
+                    )
+                await emit("needs_reconciliation", "Bridge outcome requires reconciliation; no automatic resubmission")
+            elif self.journal and active_key and classification:
                 await self.journal.fail(
-                    identifier, active_key, classification[0], safe(str(exc)), retry_after=classification[1]
+                    identifier,
+                    active_key,
+                    classification[0],
+                    safe(str(exc)),
+                    retry_after=classification[1],
+                    **(
+                        {"observation": safe_data(exc.observation)}
+                        if isinstance(exc, ProviderLimitError) and exc.observation
+                        else {}
+                    ),
                 )
                 await emit("paused", "Execution paused: " + classification[0])
             elif isinstance(exc, WorkerAttention):

@@ -64,6 +64,26 @@ All methods take the project and repository IDs. Candidate and current-head read
 
 Retain that request ID before configuring a mapping. A timeout, conflict or permission refusal does not establish whether a write committed. Use the exact receipt read to recover the original result; these clients never retry a write, invent another identity or reset the previous digest automatically. MCP marks configuration as an explicit authority-changing operation. Its three reads do not change mappings or invoke provider discovery.
 
+## Consent to signed same-run resume
+
+V2 resume consent is a separate administrator decision tied to an exact current V1 mapping. Prepare a `SCMResumeGrantInputV2` document with a caller-owned `request_id`, `expected_project_binding_digest`, `expected_binding_request_id`, `expected_binding_digest`, and explicit `component_ids`. Set `version` to `2`, `allowed_actions` to `["resume"]`, and `acknowledge_same_run_resume` to `true`. Supply `expected_previous_digest` from the current consent when revising it, or `null` for its first revision. Use `active: true` to enable consent or `active: false` to request revocation under the server's current admission checks.
+
+```sh
+forge project scm-resume-grants current PROJECT_ID REPOSITORY_ID V1_BINDING_REQUEST_ID
+forge project scm-resume-grants configure PROJECT_ID REPOSITORY_ID reviewed-consent.json
+forge project scm-resume-grants get PROJECT_ID REPOSITORY_ID ORIGINAL_REQUEST_ID
+```
+
+| Operation | Python SDK | Factory MCP |
+| --- | --- | --- |
+| Save or revoke consent | `configure_scm_resume_grant` | `configure_scm_resume_grant` |
+| Read an exact consent receipt | `scm_resume_grant` | `get_scm_resume_grant` |
+| Read current consent for a V1 binding | `current_scm_resume_grant` | `get_current_scm_resume_grant` |
+
+Each method takes project and repository IDs. The write takes the reviewed document; exact reads take its original request ID, and current reads take the V1 binding's request ID. These adapters save or read consent. They do not create signed status or resume commands, dispatch work, change run identity, or provide a shortcut around signed ingress. The server still checks the mapping, native user, current access, provider grant, question and run state before admitting an action.
+
+Keep the complete reviewed document and its request ID before one POST. After a timeout, permission refusal or conflict, read that exact request. A 404 leaves the outcome unresolved and never authorizes another POST or a new request ID. The SDK, CLI and MCP tools do not retry, generate identities or reset the previous digest. A current-consent read identifies retained consent; it does not prove that an external account is personally authenticated or that its next action is authorized.
+
 ## Delivery requests and recovery
 
 Publication and cancellation are worker-mediated requests. Python `execution_requests(run_id)` and MCP `get_execution_requests` read their status and events. An accepted request is still pending until its worker result is retained; use the recorded URL and receipts to identify successful publication.

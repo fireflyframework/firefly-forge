@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.18 — 2026-10-15
+
+- Add separate administrator consent for signed same-run continuation after an answered agent question, bound to current mapping, component scope, original execution identity, plan and WAL.
+- Guide consent and revocation through a three-step Studio review with retained-request recovery, exact receipt checks and coordination between browser tabs.
+- Expose consent save, exact read and current read through the SDK, CLI and three native-template-backed MCP tools; keep existing V1 delegation contracts unchanged.
+- Suppress automatic Bridge inference retries and retain structured quota/context pauses for deliberate recovery.
+- Retain ambiguous Bridge transport outcomes as needing reconciliation, preserving the original intent and refusing generic resume or handoff.
+
 ## 0.2.17 — 2026-10-15
 
 - Add a guided agent-question answer flow with Markdown editing, review and recovery from the original response identity.

@@ -469,6 +469,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/configure_scm_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/configure_scm_resume_grant.yaml",
+      "sha256": "b61f71bb2ce8e8d45a26405ac882d25eeb26e0de1d62b85bcdfb16d4851e9c40",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/configure_tool_policy",
       "version": "1.0.0",
       "path": "mcp/configure_tool_policy.yaml",
@@ -585,6 +593,14 @@
       "version": "1.0.0",
       "path": "mcp/get_connection_oauth_providers.yaml",
       "sha256": "2d695343f83b74236a28ff905dc0f70e6859b578e530649384ae441bbfa363a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_current_scm_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_current_scm_resume_grant.yaml",
+      "sha256": "535a5654e9138781466d66da320f06ac7aef9c37772363afe48051891564f16b",
       "field": "user",
       "variables": {}
     },
@@ -865,6 +881,14 @@
       "version": "1.0.0",
       "path": "mcp/get_scm_actor_binding.yaml",
       "sha256": "996f65c73036bd7f5741c3293ffd71915c30c2a44b5e70384951ea122d33e321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_resume_grant.yaml",
+      "sha256": "2ab5c7f07806ce647335ddc04b02e938a339e16f87d4783c23175a4eba47587f",
       "field": "user",
       "variables": {}
     },
