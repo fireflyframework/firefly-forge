@@ -120,6 +120,9 @@ for (const view of [
       page.getByRole("button", { name: "Save draft definition", exact: true }),
     ).toBeDisabled();
     expect(state.writes()).toBe(1);
+    await expect(
+      page.getByText("Discard this draft only when", { exact: false }),
+    ).not.toBeVisible();
     const recovery = page.locator(".product-save-recovery");
     const layout = await recovery.evaluate((element) => {
       const bounds = element.getBoundingClientRect();

@@ -347,7 +347,7 @@ export function ProductDefinition({
                     </button>
                   </div>
                 )}
-                {session.stale && (
+                {session.stale && !session.saveHeld && (
                   <div className="alert" role="alert">
                     The saved definition changed since this draft was opened.
                     Your edits and original revision are retained. Saving is
