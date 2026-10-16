@@ -13,7 +13,7 @@ Bridge inference calls no longer use the SDK's automatic retries. A structured q
 
 Explicit manual continuation preserves the original retry-counter shape, including when the run has no counter. Automatic retries still increment their counter. This keeps the run consistent with the source-control consent review.
 
-The factory overview uses a compact heading and responsive production scene. Select a project and run to inspect recorded stages; open **How stages work** for the full guide. Stage details remain reachable through the page on a phone.
+The factory overview uses a compact heading and responsive production scene. Select a project and run to inspect recorded stages; open **How stages work** for the full guide. The camera starts with the whole floor. **Focus selected stage** and **Show full floor** let you change the view without changing the selected stage. Stage details remain reachable through the page on a phone.
 
 ## 0.2.17
 

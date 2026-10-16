@@ -84,9 +84,11 @@ website constructors and brand schemas are not distributed.
 Actual plan receipts and deployment records supply station states. Only active
 stations animate. Paused work, reduced-motion preferences and a background tab
 stop motion. The output carrier moves after an observed stage-state change;
-mechanical cycles do not estimate completion. Selecting a station opens its
-recorded detail, with a closer camera on narrow screens. Keyboard stage controls
-remain available when WebGL fails or loses its context, alongside the static SVG.
+mechanical cycles do not estimate completion. The camera initially shows the
+whole floor at every screen width. Selecting a station opens its recorded detail;
+**Focus selected stage** zooms in when requested. **Show full floor** restores the
+overview without changing the selected station. Keyboard stage controls remain
+available when WebGL fails or loses its context, alongside the static SVG.
 
 `assets/factory/operational-model-provenance.json` records the source revision,
 machine layout, source hashes and compressed/uncompressed snapshot digests.
