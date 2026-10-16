@@ -61,13 +61,13 @@
   gap: 8px;
   align-items: stretch;
 }
-.product-save-recovery button {
+.product-save-recovery.alert button {
   margin-left: 0;
   max-width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
   text-decoration: none;
   white-space: normal;
 }

@@ -34,7 +34,7 @@ async def test_native_product_conditional_concurrent_duplicate_can_insert_once(s
     assert sum(isinstance(result, dict) for result in results) == 1
     assert sum(isinstance(result, ValueError) for result in results) == 1
     current = await service.product(repo["id"])
-    assert current["revision"] == 1 and current["definition"] == product().model_dump()
+    assert current["revision"] == 1 and current["definition"] == request.definition.model_dump(mode="json")
     with pytest.raises(ValueError, match="changed"):
         await service.save_product(repo["id"], request.definition, condition=request)
     assert await service.product(repo["id"]) == current
@@ -69,7 +69,8 @@ def test_native_product_conditional_registered_api_and_old_endpoint(tmp_path, po
         url = f"/api/v1/repositories/{repo}/product"
         body = {"expected_revision": 0, "expected_digest": None, "definition": product().model_dump(mode="json")}
         assert client.put(url + "/conditional", json=body).status_code == 401
-        assert client.get(url, headers=headers).json() is None
+        missing = client.get(url, headers=headers)
+        assert missing.status_code == 204 and missing.content == b""
         first = client.put(url + "/conditional", headers=headers, json=body)
         assert first.status_code == 200, first.text
         assert first.json()["revision"] == 1
