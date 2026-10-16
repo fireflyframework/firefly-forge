@@ -6,9 +6,11 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from decimal import Decimal, InvalidOperation
 from importlib.metadata import version
 from pathlib import PurePosixPath
 from typing import Any, Literal, cast
@@ -31,6 +33,7 @@ from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 MAX_PAYLOAD = 192 * 1024
+MAX_COUNTER = 2**53 - 1
 USAGE = TypeAdapter(RunUsage)
 LIMITS = TypeAdapter(UsageLimits)
 
@@ -49,6 +52,54 @@ def _native_round_trip(adapter: TypeAdapter[Any], value: dict[str, Any]) -> None
         raise ValueError("Checkpoint usage or limits contain unsupported fields")
 
 
+def _counter(value: Any, label: str) -> None:
+    if type(value) is not int or not 0 <= value <= MAX_COUNTER:
+        raise ValueError("Checkpoint " + label + " must be a bounded nonnegative integer")
+
+
+def _cost(value: Any, label: str) -> None:
+    if value is None:
+        return
+    if type(value) is not str or not 1 <= len(value) <= 128:
+        raise ValueError("Checkpoint " + label + " must retain native decimal encoding")
+    try:
+        amount = Decimal(value)
+    except InvalidOperation:
+        raise ValueError("Checkpoint " + label + " is invalid") from None
+    if not amount.is_finite() or not 0 <= amount <= MAX_COUNTER:
+        raise ValueError("Checkpoint " + label + " must be finite, bounded and nonnegative")
+
+
+def _budgets(usage: dict[str, Any], limits: dict[str, Any]) -> None:
+    if set(usage) != {field.name for field in dataclasses.fields(RunUsage)}:
+        raise ValueError("Checkpoint usage has missing or unknown counters")
+    for name, value in usage.items():
+        if name == "cost":
+            _cost(value, "usage cost")
+        elif name == "audio_seconds":
+            if type(value) not in {int, float} or not 0 <= value <= MAX_COUNTER or not math.isfinite(value):
+                raise ValueError("Checkpoint usage duration must be finite, bounded and nonnegative")
+        elif name == "details":
+            if type(value) is not dict or len(value) > 128:
+                raise ValueError("Checkpoint usage details exceed their bound")
+            for key, count in value.items():
+                if type(key) is not str or not 1 <= len(key) <= 128:
+                    raise ValueError("Checkpoint usage detail name exceeds its bound")
+                _counter(count, "usage detail")
+        else:
+            _counter(value, "usage " + name)
+    if set(limits) != {field.name for field in dataclasses.fields(UsageLimits)}:
+        raise ValueError("Checkpoint limits have missing or unknown fields")
+    for name, value in limits.items():
+        if name == "cost_limit":
+            _cost(value, "limits cost")
+        elif name == "count_tokens_before_request":
+            if type(value) is not bool:
+                raise ValueError("Checkpoint limits token-count selection must be boolean")
+        elif value is not None:
+            _counter(value, "limits " + name)
+
+
 def _history(messages: list[ModelMessage]) -> None:
     if not messages or type(messages[-1]) is not ModelRequest:
         raise ValueError("Checkpoint needs a pending model request")
@@ -57,6 +108,8 @@ def _history(messages: list[ModelMessage]) -> None:
     for message in messages:
         if type(message) not in {ModelRequest, ModelResponse}:
             raise ValueError("Unsupported checkpoint message")
+        if message.state != "complete":
+            raise ValueError("Checkpoint history has an incomplete message lifecycle")
         if isinstance(message, ModelResponse) and message.finish_reason not in {None, "stop", "tool_call"}:
             raise ValueError("Unsupported checkpoint response state")
         for part in message.parts:
@@ -121,8 +174,14 @@ class BoundaryCheckpoint:
     payload: bytes
     digest: str
 
+    def __post_init__(self) -> None:
+        if type(self.payload) is not bytes:
+            raise ValueError("Checkpoint payload must be immutable bytes")
+
     @classmethod
     def decode(cls, payload: bytes, digest: str) -> BoundaryCheckpoint:
+        if type(payload) is not bytes:
+            raise ValueError("Checkpoint payload must be immutable bytes")
         if not 1 <= len(payload) <= MAX_PAYLOAD or hashlib.sha256(payload).hexdigest() != digest:
             raise ValueError("Checkpoint size or digest differs")
         record = _Record.model_validate_json(payload)
@@ -134,6 +193,7 @@ class BoundaryCheckpoint:
             raise ValueError("Request-only history cannot restore the agent graph")
         _native_round_trip(USAGE, record.usage)
         _native_round_trip(LIMITS, record.limits)
+        _budgets(record.usage, record.limits)
         if (
             len(record.wire_sha256) != 64
             or any(char not in "0123456789abcdef" for char in record.wire_sha256)
@@ -240,6 +300,8 @@ class AgenticBoundary(AbstractCapability[Any]):
         return request_context
 
     def capture(self, wire: bytes) -> BoundaryCheckpoint:
+        if type(wire) is not bytes:
+            raise ValueError("Checkpoint wire must be immutable bytes")
         current = self.current()
         invocation = self._invocation.get()
         if invocation is None or current is None:
@@ -290,13 +352,21 @@ class OriginalCompletion:
         consume: Callable[[str, str], Awaitable[None]],
     ) -> None:
         self.checkpoint = BoundaryCheckpoint.decode(checkpoint.payload, checkpoint.digest)
+        if type(response) is not bytes:
+            raise ValueError("Original completion must be immutable bytes")
         if not 1 <= len(response) <= 262144:
             raise ValueError("Original completion exceeds its response bound")
-        self.response = response
+        self._response = response
         self.consume = consume
         self.claimed = False
 
+    @property
+    def response(self) -> bytes:
+        return self._response
+
     async def expose(self, wire: bytes) -> bytes:
+        if type(wire) is not bytes:
+            raise ValueError("Restored request wire must be immutable bytes")
         if self.claimed:
             raise ValueError("Original completion consumption was already attempted")
         if (
@@ -305,5 +375,6 @@ class OriginalCompletion:
         ):
             raise ValueError("Restored request wire differs from the original")
         self.claimed = True
-        await self.consume(self.checkpoint.digest, hashlib.sha256(self.response).hexdigest())
-        return self.response
+        response = self.response
+        await self.consume(self.checkpoint.digest, hashlib.sha256(response).hexdigest())
+        return response

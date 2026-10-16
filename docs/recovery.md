@@ -100,4 +100,6 @@ The internal `AgenticBoundary` helper supports an explicit, in-memory model-requ
 
 The first restored request must match the original body and state. Its original response passes a one-use consumption callback before reaching the ordinary SDK parser. Earlier tool calls stay in history; genuinely new tool calls and model requests may follow. An invocation-local shared context keeps this distinction across native task boundaries.
 
+Checkpoint messages must have complete native lifecycle states. Usage and numeric limits must be finite, nonnegative and bounded; integer counters cannot exceed `2^53 - 1`. Payloads and responses use immutable bytes, and the response returned after consumption is the exact byte sequence whose digest was consumed.
+
 This helper refuses unfinished tools, retries, vision, deferred or changing tools, dynamic instructions and unsupported message parts. It has no configuration switch, public endpoint, durable checkpoint storage, source/authority admission or restart claim. Its consumption gate is process-local; a later persistence layer must make the callback atomic and enforce ownership. Current Bridge completion holds remain in place, and reading an original terminal result still does not resume a graph. Product Assistant and operator clients do not use this helper.
