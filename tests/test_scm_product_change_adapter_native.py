@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from click.testing import CliRunner
 from test_scm_product_change_native import native_product  # noqa: F401
+from test_scm_resume_native import native_resume  # noqa: F401
 
 from firefly_forge import cli
 from firefly_forge.client import ForgeClient

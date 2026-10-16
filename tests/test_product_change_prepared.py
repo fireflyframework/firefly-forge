@@ -1,6 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Prepared/locked primitive with explicit host persistence seams, never native acceptance."""
 
+import asyncio
 import copy
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from test_collaboration import product
 
 from firefly_forge.product_lifecycle import FeatureChangeInput, ProductLifecycle
 from firefly_forge.product_provenance import content_digest
+from firefly_forge.store import Store
 
 
 @pytest.fixture
@@ -32,9 +34,13 @@ async def lifecycle_harness(monkeypatch):
     @asynccontextmanager
     async def unit():
         prior = state["locked"]
+        before = copy.deepcopy(state["rows"])
         state["locked"] = True
         try:
             yield
+        except BaseException:
+            state["rows"] = before
+            raise
         finally:
             state["locked"] = prior
 
@@ -107,3 +113,29 @@ async def test_prepared_replay_requires_same_native_actor(lifecycle_harness):
         with pytest.raises(ValueError, match="actor|replay"):
             await lifecycle.apply_prepared_locked("a" * 32, request, prepared, actor_id=UUID(int=2))
     assert len(state["rows"]) == 1
+
+
+async def test_prepared_write_rechecks_real_credentials_registered_during_save(lifecycle_harness, monkeypatch):
+    lifecycle, state, previous, request, original_product = lifecycle_harness
+    prepared = await lifecycle.prepare("a" * 32, request)
+    admissions = state["admissions"]
+    registry = {}
+    store = SimpleNamespace(
+        credential_registry=lambda: registry, configuration=SimpleNamespace(resolve=lambda provider: {})
+    )
+    monkeypatch.setattr(lifecycle.store, "reject_credentials", lambda value: Store.reject_credentials(store, value))
+    original = lifecycle._save_prepared
+
+    async def save_then_register(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        await asyncio.sleep(0)
+        registry["OWNED_FIXTURE_API_KEY"] = "Escalate ticket"
+        return result
+
+    monkeypatch.setattr(lifecycle, "_save_prepared", save_then_register)
+    with pytest.raises(ValueError, match="configured credentials"):
+        async with lifecycle.store._unit():
+            await lifecycle.apply_prepared_locked("a" * 32, request, prepared, actor_id=UUID(int=1))
+    assert state["admissions"] == admissions
+    assert state["rows"] == [] and previous.data == original_product
+    assert "change_receipt" not in previous.data
