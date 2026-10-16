@@ -57,6 +57,7 @@ class ExecutionRequests:
         self.records = records or ForgeExecutionRequestRepository()
         self.journal = journal or ForgeExecutionRequestEventRepository()
         self.runner_continuations: RunnerContinuations | None = None
+        self.agent_restores: Any = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
         self.poller: asyncio.Task[None] | None = None
@@ -575,6 +576,8 @@ class ExecutionRequests:
         await self.recover()
         if self.runner_continuations is not None:
             await self.runner_continuations.recover()
+        if self.agent_restores is not None:
+            await self.agent_restores.recover()
         self.poller = asyncio.create_task(self._poll())
 
     async def stop(self) -> None:
@@ -596,11 +599,17 @@ class ExecutionRequests:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="runner_continue")
                     ]
+                if self.agent_restores is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="agent_restore")
+                    ]
             for row in queued:
                 if row["kind"] == "cancel":
                     await self.execute(row["id"])
                 elif not self.active:
-                    if row["kind"] == "runner_continue":
+                    if row["kind"] == "agent_restore":
+                        action = self.agent_restores.execute
+                    elif row["kind"] == "runner_continue":
                         if self.runner_continuations is None:
                             continue
                         action = self.runner_continuations.execute

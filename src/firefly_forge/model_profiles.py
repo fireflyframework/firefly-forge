@@ -17,6 +17,7 @@ from firefly_forge.configuration import (
     SECRETS,
     ConfigurationStore,
     public_settings,
+    validate_checkpoints,
     validate_completion_recovery,
     validate_endpoint,
 )
@@ -160,6 +161,8 @@ class ModelProfiles:
                 value = validate_completion_recovery(value)
             if name in SECRETS and not value:
                 continue
+            if name == "checkpoints" and not value:
+                continue
             if name in {"model", "executable"} and any(ord(char) < 32 for char in value):
                 raise ValueError("Model profile configuration contains control characters")
             if name in {"timeout", "max_tokens"} and (
@@ -174,6 +177,7 @@ class ModelProfiles:
         endpoint = fields.get("endpoint")
         if endpoint and settings.get(endpoint):
             settings[endpoint] = validate_endpoint(settings[endpoint])
+        validate_checkpoints(settings, provider=request.provider)
         return settings
 
     def _prepared_record(self, name: str, request: ModelProfileInput, document: Data) -> Data:
@@ -268,6 +272,7 @@ class ModelProfiles:
     async def snapshot(self, name: str, task: str) -> Data:
         record, image_input = await self.validate_selection(name, task)
         provider, settings = record["provider"], record["settings"]
+        validate_checkpoints(settings, task=task, provider=provider)
         revision = uuid4().hex
         self.private._write(self.private.revisions / f"{revision}.json", settings)
         snapshot = {

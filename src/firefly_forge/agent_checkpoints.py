@@ -13,7 +13,13 @@ from openai.types.chat import ChatCompletion
 from pyfly.container import service
 from pyfly.data.transaction import current_unit_of_work
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayload, ConsumePayload
+from firefly_forge.agent_checkpoint_models import (
+    CheckpointPayload,
+    CheckpointPayloadV2,
+    ConsumePayload,
+    ConsumePayloadV2,
+    RestoreInput,
+)
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.bridge_completion_models import CompletionResponsePayload
 from firefly_forge.bridge_completion_scope import BridgeCompletionScope
@@ -78,7 +84,12 @@ class AgentCheckpoints:
                 "idempotency_key": row.idempotency_key,
             },
         )
-        payload = (CheckpointPayload if kind == CHECKPOINT else ConsumePayload).model_validate(data["payload"])
+        schema = (
+            (CheckpointPayloadV2 if data["payload"].get("version") == 2 else CheckpointPayload)
+            if kind == CHECKPOINT
+            else (ConsumePayloadV2 if data["payload"].get("version") == 2 else ConsumePayload)
+        )
+        payload = schema.model_validate(data["payload"])
         if payload.request_id != request_id:
             raise ValueError("Checkpoint record identity differs from its envelope")
         return data
@@ -93,6 +104,7 @@ class AgentCheckpoints:
         task: Data,
         *,
         capture: Callable[[bytes], BoundaryCheckpoint],
+        capture_context: Callable[[], Awaitable[Data]] | None = None,
         review: bool = False,
         assert_ownership: Callable[[], Awaitable[None]] | None = None,
     ) -> BridgeCompletionScope:
@@ -118,9 +130,11 @@ class AgentCheckpoints:
             if checkpoint.wire_sha256 != hashlib.sha256(body).hexdigest() or checkpoint.record.wire_bytes != len(body):
                 raise ValueError("Checkpoint differs from the original wire request")
             snapshot = checkpoint.payload.decode("utf-8")
-            await self.store.admit_credentials(snapshot)
+            invocation = await capture_context() if capture_context is not None else None
+            credential_payload = snapshot if invocation is None else {"snapshot": snapshot, "invocation": invocation}
+            await self.store.admit_credentials(credential_payload)
             await current()
-            self.store.reject_credentials(snapshot)
+            self.store.reject_credentials(credential_payload)
 
             async def retain(intent: Data, wire: bytes) -> None:
                 if current_unit_of_work() is None:
@@ -128,12 +142,16 @@ class AgentCheckpoints:
                 await current()
                 request_id = intent["idempotency_key"]
                 await self._unconsumed(frozen["id"], request_id)
-                payload = CheckpointPayload(
-                    version=1,
+                fields = dict(
                     request_id=request_id,
                     intent_digest=intent["digest"],
                     checkpoint_digest=checkpoint.digest,
                     snapshot=snapshot,
+                )
+                payload = (
+                    CheckpointPayloadV2.model_validate({"version": 2, **fields, "invocation": invocation})
+                    if invocation is not None
+                    else CheckpointPayload.model_validate({"version": 1, **fields})
                 ).model_dump(mode="json")
                 prior = await self._record(frozen["id"], request_id, CHECKPOINT)
                 if prior is not None:
@@ -150,14 +168,14 @@ class AgentCheckpoints:
                     if _size(record) > ENVELOPE_LIMIT:
                         raise ValueError("Checkpoint envelope exceeds 256 KiB")
                 await current()
-                self.store.reject_credentials(snapshot)
+                self.store.reject_credentials(credential_payload)
 
             scoped = self.completions.scope(
                 frozen, frozen_task, review=review, assert_ownership=assert_ownership, retain_intent=retain
             )
             record = await scoped.admit(raw, body)
             await current()
-            self.store.reject_credentials(snapshot)
+            self.store.reject_credentials(credential_payload)
             self.store.reject_credentials(body.decode("utf-8"))
             return record
 
@@ -290,3 +308,118 @@ class AgentCheckpoints:
             self.store.reject_credentials(bundle)
         await current()
         self.store.reject_credentials(bundle)
+
+    async def restore_bundle(
+        self, run_id: str, request_id: str, request: RestoreInput
+    ) -> tuple[Data, Data, Data, bytes]:
+        """Internal exact selection; caller must enforce ticket and current operator authority."""
+        _outside_unit()
+        from firefly_forge.bridge_completion_models import validate_remote_snapshot
+        from firefly_forge.bridge_completions import OBSERVATION
+
+        async with self.store._unit():
+            intent = await self.completions._record(run_id, request_id)
+            checkpoint = await self._record(run_id, request_id, CHECKPOINT)
+            if (
+                checkpoint is None
+                or checkpoint["payload"]["version"] != 2
+                or checkpoint["digest"] != request.expected_checkpoint_digest
+                or intent["digest"] != request.expected_intent_digest
+                or checkpoint["payload"]["intent_digest"] != intent["digest"]
+            ):
+                raise ValueError("Restoration requires the exact version-2 checkpoint and intent")
+            source = request.source
+            record = await self.completions._record(
+                run_id,
+                source.observation_id or request_id,
+                OBSERVATION if source.kind == "bridge_observation" else RESPONSE,
+            )
+            if (
+                record["digest"] != source.record_digest
+                or record["payload"]["intent_digest"] != intent["digest"]
+                or record["task_id"] != intent["task_id"]
+            ):
+                raise ValueError("Original result record differs from the selected immutable source")
+        self._validate_checkpoint(checkpoint, intent)
+        if source.kind == "http_response":
+            body = CompletionResponsePayload.model_validate(record["payload"]).response.encode("utf-8")
+        else:
+            snapshot = validate_remote_snapshot(record["payload"]["snapshot"], intent["payload"]["descriptor"])
+            terminal = snapshot.get("terminal")
+            if (
+                snapshot["state"] != "terminal"
+                or not terminal
+                or terminal["status"] != "succeeded"
+                or terminal["digest"] != source.terminal_digest
+                or "result_json" not in terminal
+                or record["payload"]["request_id"] != request_id
+            ):
+                raise ValueError("Only the selected original successful terminal result can restore")
+            body = terminal["result_json"].encode("utf-8")
+        completion = ChatCompletion.model_validate_json(body, strict=True)
+        if (
+            not 1 <= len(body) <= 262144
+            or completion.model != intent["payload"]["descriptor"]["model"]
+            or not completion.choices
+            or any(c.finish_reason not in {"stop", "tool_calls"} for c in completion.choices)
+        ):
+            raise ValueError("Original result is not a supported successful completion")
+        self.store.reject_credentials([intent, checkpoint, record])
+        return intent, checkpoint, record, body
+
+    async def consume_restored(
+        self,
+        run: Data,
+        request_id: str,
+        request: RestoreInput,
+        generation: str,
+        guard: Callable[[], Awaitable[None]],
+        *,
+        reader: Any = None,
+        outside_guard: Callable[[], Awaitable[None]] | None = None,
+    ) -> bytes:
+        _outside_unit()
+        with prepared_credential_rejection(self.store):
+            bundle = await self.restore_bundle(run["id"], request_id, request)
+            await self.store.admit_credentials(bundle[:3])
+            await guard()
+            if outside_guard is not None:
+                await outside_guard()
+            async with self.store._unit():
+                await self.completions._writer(run, reader)
+                await self.journal._run(run["id"])
+                await guard()
+                # Database-only repeat: native decoding/metadata reads stay outside this unit.
+                for record in bundle[:3]:
+                    current = (
+                        await self._record(run["id"], record["idempotency_key"], CHECKPOINT)
+                        if record["kind"] == CHECKPOINT
+                        else await self.completions._record(run["id"], record["idempotency_key"], record["kind"])
+                    )
+                    if current != record:
+                        raise ValueError("Restoration source changed during admission")
+                await self._unconsumed(run["id"], request_id)
+                task = await self.journal._effect_task(run["id"], bundle[0]["payload"]["task_key"])
+                if task.status != "running" or task.attempt != bundle[0]["payload"]["task_attempt"]:
+                    raise ValueError("Restoration needs the original running task attempt")
+                body = bundle[3]
+                payload = ConsumePayloadV2(
+                    version=2,
+                    request_id=request_id,
+                    intent_digest=bundle[0]["digest"],
+                    checkpoint_record_digest=bundle[1]["digest"],
+                    source=request.source,
+                    response_sha256=hashlib.sha256(body).hexdigest(),
+                    response_bytes=len(body),
+                    restore_request_id=request.request_id,
+                    generation=generation,
+                ).model_dump(mode="json")
+                await self._budget(run["id"], extra=_size(payload) + 4096, consume=True)
+                record = await self.journal._append(run["id"], task.task_id, request_id, CONSUME, payload)
+                if _size(record) > CONSUME_RESERVE:
+                    raise ValueError("Restoration consume exceeds its reserved envelope")
+                await guard()
+                self.store.reject_credentials(bundle[:3])
+            await guard()
+            self.store.reject_credentials(bundle[:3])
+            return body
