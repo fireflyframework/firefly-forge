@@ -48,15 +48,19 @@ test("recorded design response seeds an unapproved wizard draft without saving o
       path.endsWith("/deployment-targets")
     )
       json = [];
-    if (path.endsWith("/product") || path.endsWith("/brand")) {
+    if (
+      path.endsWith("/product") ||
+      path.endsWith("/product/conditional") ||
+      path.endsWith("/brand")
+    ) {
       if (req.method() === "PUT") {
         writes++;
-        savedInput = req.postDataJSON();
+        savedInput = req.postDataJSON().definition;
         json = {
           repository_id: "a".repeat(32),
           revision: 1,
           digest: "b".repeat(64),
-          definition: req.postDataJSON(),
+          definition: req.postDataJSON().definition,
           created_at: "2026-10-12T00:00:00Z",
         };
       } else json = null;

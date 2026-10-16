@@ -90,6 +90,7 @@ export function DesignReview({
   repository,
   definition,
   value,
+  pending = false,
   onChange,
   onPending,
 }: {
@@ -97,6 +98,7 @@ export function DesignReview({
   repository: string;
   definition: CustomerProductDefinition;
   value: ProductDesignReview | null;
+  pending?: boolean;
   onChange: (review: ProductDesignReview | null) => void;
   onPending: (pending: boolean) => void;
 }) {
@@ -220,6 +222,14 @@ export function DesignReview({
     }
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
+  function removeReferenceReview() {
+    setBundle(null);
+    setReviewed([]);
+    setViewed({});
+    onChange(null);
+    onPending(false);
+    setViewerOpen(false);
+  }
   const grid = bundle?.requirements?.grid;
   const layout = grid?.[viewport];
   return (
@@ -261,6 +271,22 @@ export function DesignReview({
           Review the architecture first so references match the definition you
           will save.
         </p>
+      )}
+      {pending && !bundle && (
+        <div className="alert" role="status">
+          <p>
+            Reference review was interrupted. The unfinished views are no longer
+            available in this editor. Generate them again, or remove the
+            unfinished review to save a draft without it.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={removeReferenceReview}
+          >
+            Remove reference review
+          </button>
+        </div>
       )}
       {value && !bundle && (
         <p>
@@ -627,14 +653,7 @@ export function DesignReview({
           <button
             type="button"
             className="quiet"
-            onClick={() => {
-              setBundle(null);
-              setReviewed([]);
-              setViewed({});
-              onChange(null);
-              onPending(false);
-              setViewerOpen(false);
-            }}
+            onClick={removeReferenceReview}
           >
             Remove reference review
           </button>

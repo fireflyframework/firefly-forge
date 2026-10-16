@@ -24,6 +24,62 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.product-draft-notice {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.product-draft-notice .text-button {
+  min-height: 36px;
+  white-space: nowrap;
+  justify-self: start;
+}
+.product-workbench-heading > .alert {
+  grid-column: 1/-1;
+}
+.product-save-recovery.alert {
+  display: grid;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+.product-save-recovery p {
+  margin: 0;
+}
+.product-save-recovery .feature-actions {
+  margin: 0;
+  gap: 8px;
+  align-items: stretch;
+}
+.product-save-recovery.alert button {
+  margin-left: 0;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  white-space: normal;
+}
+@media (max-width: 600px) {
+  .product-save-recovery .feature-actions button {
+    flex: 1 1 100%;
+  }
+  .product-draft-notice {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
 .product-step-outcome {
   padding: 12px 16px;
   background: var(--surface-subtle);
@@ -40,7 +96,7 @@
   border-radius: 12px;
   background: var(--surface);
   padding: 16px;
-  container: product-assistant / inline-size;
+  container: product-assistant / size;
   overflow: hidden;
 }
 .product-assistant-panel .product-assistant {
@@ -221,6 +277,16 @@
   margin: 0;
   order: 1;
   display: none;
+}
+@container product-assistant (max-height: 480px) {
+  .product-assistant .assistant-composer {
+    gap: 4px;
+    padding-top: 4px;
+  }
+  .product-assistant .assistant-composer textarea {
+    min-height: 40px;
+    height: 40px;
+  }
 }
 .assistant-empty {
   font-size: 14px;

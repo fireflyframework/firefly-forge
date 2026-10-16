@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.20
+
+Product-definition drafts retain their form fields, wizard step and AI source while you move between products or Studio pages. Drafts belong to the current user and factory connection. Reloading or signing out clears them; **Discard edits** asks for confirmation and affects only the selected product. See [working drafts](product-definition.md#keep-and-discard-a-working-draft).
+
+**Start a run** also retains its fields, selected source, step and policy choices while you navigate. An explicit launch from a repository card selects that repository and preserves the draft. Successful submission clears only the submitted version; later edits remain. This retention does not reconcile a lost run-creation response.
+
+Studio saves product definitions through a conditional endpoint that checks the expected revision and digest under the repository lock. An uncertain response retains the original submission. Inspect the current definition or explicitly retry that same submission; Studio does not resend automatically. A stale original request cannot overwrite a later revision. The legacy unconditional endpoint keeps its existing behavior. See [conditional save and recovery](product-definition.md#design-with-the-assistant-in-studio).
+
+Worker feedback and answers can use the full existing 80-character message identifier. Journal keys that would exceed the storage column use a deterministic digest of the message kind and identifier. Existing short keys, payload identifiers and replay checks remain unchanged. No database migration is required.
+
 ## 0.2.19
 
 An administrator can configure GitHub App issue polling when GitHub cannot reach a local webhook. After the baseline and separate account consent, `status` reads an existing scoped run and `respond` answers its exact pending question. The answer records the mapped native user and historical consent while leaving the run paused. Current project permissions, App access and local policy remain required. Polling does not create a product or run, resume work or provide full GitFlow. Follow the [six-step polling guide](scm.md#use-github-issue-comments-from-a-local-factory).

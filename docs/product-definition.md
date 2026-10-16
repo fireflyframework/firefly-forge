@@ -41,6 +41,14 @@ Open **Product definition** and select the product project. Work through five st
 
 Each step states its required inputs. Back preserves the working draft. Saving creates a product revision; it does not start a coding run.
 
+Studio saves through `PUT /api/v1/repositories/ID/product/conditional`, with the definition and its expected prior revision and digest. A new product uses revision `0` and a null digest. The server checks both values under the repository lock before inserting. A conflicting save is refused. The original `/product` endpoint keeps its existing unconditional behavior for current clients.
+
+A readable authentication, permission, missing-endpoint or validation rejection leaves the fields editable. Business validation and stale-cut refusals from the conditional endpoint carry `code: product_save_not_applied`, emitted only before inserting a revision; an unqualified conflict remains uncertain. A rejected retry does not settle an earlier uncertain request. Studio never retries automatically.
+
+If a response is lost or cannot be read, Studio retains the submitted input and holds further edits from being saved. Navigating away and back does not remove that hold. **Inspect saved definition** performs a GET without repeating the write. An unchanged or unavailable result keeps the hold. A later matching definition confirms the content currently saved; it does not establish which request wrote it. The original conditional request can no longer overwrite that later revision. If the later definition differs, your edits remain held for review before you discard or replace them.
+
+**Retry original conditional save** is an explicit choice. It sends the retained original input and revision condition, including after you type newer edits. Two requests with that same condition can insert at most one revision. Studio does not retry automatically or fall back to the unconditional endpoint. Reloading or signing out clears the input retained in this tab. These conditions protect conditional writes; they do not add an immutable request identity, exact operation-receipt lookup or general idempotency to the older endpoint.
+
 Optional architecture and design settings retain the backend/frontend choice, product brand, tokens, grid and review references. A service-only product can describe API processes without adding a frontend journey.
 
 On a wide screen, the AI assistant opens beside the editor in a collapsible panel. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft.
@@ -56,6 +64,16 @@ Review the proposal comparison before applying it to the document. If the draft 
 Use Markdown formatting for longer text and switch to **Preview** when checking its rendering. Journeys, owners and acceptance criteria have separate entries. Map each feature to its journeys and expected behavior, including failures. Attach notes, contracts or wireframes through **Files** when needed; [Conversation files](assistant-files.md) explains their scope and model-input limits. Review the functional contract, architecture and attached design references before saving.
 
 API clients create a conversation at `POST /api/v1/repositories/{id}/assistant/conversations` with `{"agent":"bridge"}` or `{"agent":"agentic"}`. Send a turn at `POST .../conversations/{conversation_id}/turns` with a 32-character hexadecimal `request_id` and `message`. Replaying that ID with the same message returns the existing turn; changing the message under that ID is rejected. Inspect a quota-paused or interrupted turn before making a new explicit request. The factory does not repeat it automatically.
+
+## Keep and discard a working draft
+
+The form keeps unsaved fields and the current step while you move to another product or Studio page. Returning to that product restores its draft, including an applied AI proposal's source. Drafts are separate for each repository within the current factory connection and signed-in user.
+
+Use **Discard edits** to start again from the saved definition. Review the product name in the confirmation dialog. **Keep editing** or Escape returns to the draft; discarding affects only that product.
+
+Reloading, closing the tab, changing the factory connection or signing out clears working drafts. The browser shows an unload warning if any product has unsaved edits, including when you are on another Studio page. Save a revision before leaving when you need to keep the work.
+
+When Studio reads a newer saved revision, your earlier fields and base revision stay in place and saving is held. Discard the draft when you are ready to load the current saved version. The conditional save checks that same base under the server's repository lock, including concurrent saves the browser has not yet observed. An uncertain submission must be inspected or explicitly retried before its draft can be discarded.
 
 ## Freeze the run's contract
 

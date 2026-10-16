@@ -11,7 +11,13 @@ from pyfly.web import Body, PathVar, QueryParam, get_mapping, post_mapping, put_
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from firefly_forge.collaboration import Collaboration, CollaborationSettings, ProductDefinition
+from firefly_forge.collaboration import (
+    Collaboration,
+    CollaborationSettings,
+    ConditionalProductSave,
+    ConditionalProductSaveRejected,
+    ProductDefinition,
+)
 from firefly_forge.models import Backend, Frontend
 from firefly_forge.product_architecture import ProductArchitectureService
 
@@ -64,6 +70,14 @@ class CollaborationController:
     @put_mapping("/repositories/{id}/product")
     async def save_product(self, id: PathVar[str], body: Body[ProductDefinition]) -> dict[str, Any]:
         return await self.collaboration.save_product(id, body)
+
+    @put_mapping("/repositories/{id}/product/conditional")
+    async def save_product_conditionally(self, id: PathVar[str], body: Body[ConditionalProductSave]) -> Response:
+        try:
+            result = await self.collaboration.save_product(id, body.definition, condition=body)
+        except ConditionalProductSaveRejected as exc:
+            return JSONResponse({"detail": str(exc), "code": "product_save_not_applied"}, status_code=409)
+        return JSONResponse(result)
 
     @post_mapping("/repositories/{id}/issues", status_code=201)
     async def create_issue(self, id: PathVar[str], body: Body[IssueDraft]) -> dict[str, Any]:
