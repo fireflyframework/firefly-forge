@@ -63,6 +63,8 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/campaign-delivery-plan-fixture.ts": "fixture operator guide input",
                 "studio/tests/campaign-delivery-browser-fixture.ts": "fixture operator guide input",
                 "studio/tests/worker-dialogue-contract-fixture.json": "fixture operator guide input",
+                "studio/tests/agent-checkpoint-recovery-fixture.ts": "fixture checkpoint recovery",
+                "studio/tests/run-creation-cancellation-fixture.ts": "fixture request cancellation",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -100,6 +102,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/campaign-delivery-plan-fixture.ts",
                     "studio/tests/campaign-delivery-browser-fixture.ts",
                     "studio/tests/worker-dialogue-contract-fixture.json",
+                    "studio/tests/agent-checkpoint-recovery-fixture.ts",
+                    "studio/tests/run-creation-cancellation-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -146,6 +150,8 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/campaign-delivery-plan-fixture.ts", "capture helper"),
                 ("studio/tests/campaign-delivery-browser-fixture.ts", "capture helper"),
                 ("studio/tests/worker-dialogue-contract-fixture.json", "capture helper"),
+                ("studio/tests/agent-checkpoint-recovery-fixture.ts", "capture helper"),
+                ("studio/tests/run-creation-cancellation-fixture.ts", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/playwright.docs.config.ts", "capture config"),
             ]:
@@ -308,6 +314,8 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/campaign-delivery-plan-fixture.ts",
                 "studio/tests/campaign-delivery-browser-fixture.ts",
                 "studio/tests/worker-dialogue-contract-fixture.json",
+                "studio/tests/agent-checkpoint-recovery-fixture.ts",
+                "studio/tests/run-creation-cancellation-fixture.ts",
             ]
             for name in operator_inputs:
                 (root / name).write_text("fixture operator guide input")
