@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Prepared for the sole native operator: populated revision 26 to revision 27."""
+"""Prepared for the sole native operator: populated revision 26 to the current schema."""
 
 import hashlib
 import importlib.util
@@ -45,7 +45,7 @@ async def test_populated_actual_schema26_upgrade_preserves_execution_and_receipt
     assert spec is not None and spec.loader is not None
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
-    assert legacy.SCHEMA_REVISION == 26 and SCHEMA_REVISION == 27
+    assert legacy.SCHEMA_REVISION == 26 and SCHEMA_REVISION == 28
     monkeypatch.setattr(store_module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema26" / "factory.db")
     async with store._unit() as session:
@@ -66,7 +66,7 @@ async def test_populated_actual_schema26_upgrade_preserves_execution_and_receipt
             revisions = list(
                 await session.scalars(text("SELECT revision FROM forge_schema_migrations ORDER BY revision"))
             )
-            assert revisions == [26, 27]
+            assert revisions == [26, 28]
             assert await session.scalar(text("SELECT to_regclass('forge_run_creation_requests')")) is not None
             assert await session.scalar(text("SELECT count(*) FROM forge_run_creation_requests")) == 0
         assert await snapshot(store) == before

@@ -109,3 +109,110 @@ async def test_new_envelope_limit_does_not_widen_legacy_or_unclassified_routes(p
     await RequestLimits(downstream)({"type": "http", "path": path}, receive, send)
     assert ("accepted" in events) is accepted
     assert (413 in events) is not accepted
+
+
+async def test_cancel_route_accepts_read_scope_after_execute_is_lost():
+    calls = []
+
+    async def administrator(actor):
+        return False
+
+    async def require(actor, value, permission):
+        assert permission == "read", "Cancellation must not require execute or release"
+        calls.append(value)
+
+    async def receive():
+        return {
+            "type": "http.request",
+            "body": json.dumps(
+                {
+                    "version": 1,
+                    "request_digest": "c" * 64,
+                    "project_id": "b" * 32,
+                    "repository_id": "a" * 32,
+                    "component_id": "api",
+                }
+            ).encode(),
+        }
+
+    request = Request(
+        {"type": "http", "headers": [], "method": "POST", "path": "/api/v1/run-creation-requests/" + ID + "/cancel"},
+        receive,
+    )
+    await AccessRoutes(
+        SimpleNamespace(current_administrator=administrator, require_project=require, require_repository=require),
+        SimpleNamespace(),
+    ).authorize(SimpleNamespace(), request)
+    assert calls == ["b" * 32, "a" * 32]
+
+
+async def test_cancel_body_is_bounded_before_json_materialization():
+    observed = []
+
+    async def downstream(scope, receive, send):
+        observed.append("unbounded")
+
+    async def receive():
+        return {"type": "http.request", "body": b"x" * 4097}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            observed.append(message["status"])
+
+    await RequestLimits(downstream)(
+        {"type": "http", "path": "/api/v1/run-creation-requests/" + ID + "/cancel"}, receive, send
+    )
+    assert observed == [413]
+
+
+async def test_cancel_and_decision_controllers_keep_exact_terminal_readback_bytes():
+    from firefly_forge.run_creation_controllers import RunCreationController
+    from firefly_forge.run_creation_models import RunCreationCancelInput
+
+    decision = {"version": 1, "outcome": "cancelled", "cancellation": {"request_id": ID}}
+    calls = []
+
+    async def cancel(request_id, body):
+        calls.append((request_id, body))
+        return decision, len(calls) == 1
+
+    async def read(request_id):
+        return dict(reversed(list(decision.items())))
+
+    controller = RunCreationController(SimpleNamespace(cancel=cancel, decision=read))
+    body = RunCreationCancelInput(
+        version=1, request_digest="c" * 64, repository_id="a" * 32, project_id=None, component_id=None
+    )
+    first, repeat = await controller.cancel(ID, body), await controller.cancel(ID, body)
+    result = await controller.decision(ID)
+    assert (first.status_code, repeat.status_code, result.status_code) == (201, 200, 200)
+    assert first.body == repeat.body == result.body
+
+
+@pytest.mark.parametrize(
+    "method,suffix,allowed",
+    [
+        ("GET", "decision", True),
+        ("POST", "decision", False),
+        ("GET", "cancel", False),
+        ("DELETE", "cancel", False),
+        ("GET", "other", False),
+    ],
+)
+async def test_terminal_routes_allow_only_exact_decision_read_and_cancel_write(method, suffix, allowed):
+    async def administrator(actor):
+        return False
+
+    async def receive():
+        return {"type": "http.request", "body": b"{}"}
+
+    request = Request(
+        {"type": "http", "headers": [], "method": method, "path": "/api/v1/run-creation-requests/" + ID + "/" + suffix},
+        receive,
+    )
+    routes = AccessRoutes(SimpleNamespace(current_administrator=administrator), SimpleNamespace())
+    if allowed:
+        await routes.authorize(SimpleNamespace(), request)
+    else:
+        with pytest.raises(AccessDenied):
+            await routes.authorize(SimpleNamespace(), request)

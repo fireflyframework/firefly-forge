@@ -12,3 +12,12 @@ These tests are prepared for the sole PostgreSQL/API operator. They have not bee
 executed by the authoring lane. Each native fixture requires the existing isolated
 `FORGE_TEST_DATABASE_URL` ending in `_test` and owns its disposable schema; it does
 not acquire models, images, cloud resources, or external identity services.
+
+For the additive revision28 gate, `schema27_migrations.py` and
+`schema27_requests.py` are byte-exact source fixtures from
+`917f1bff8c5535d5c8d98af68809e3e18b57c6f8`. The upgrade test creates a real
+revision27 schema, admits an original receipt with that previous service, and
+only then applies revision28. Neither fixture imports the new control protocol.
+Their SHA-256 values are pinned in the test. The archived revision26 migrator
+remains byte-identical. The current revision26-to-latest test now expects28;
+the frozen e436 revision26-to27 qualification source remains unchanged.

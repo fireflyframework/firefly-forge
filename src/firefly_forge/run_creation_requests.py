@@ -18,8 +18,20 @@ from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectRepository
-from firefly_forge.run_creation_models import MAX_ENVELOPE_BYTES, CreationActor, RunCreationInput, RunCreationReceipt
-from firefly_forge.run_creation_persistence import ForgeRunCreationRequestEntity, ForgeRunCreationRequestRepository
+from firefly_forge.run_creation_control import RunCreationControls
+from firefly_forge.run_creation_models import (
+    MAX_ENVELOPE_BYTES,
+    CreationActor,
+    RunCreationCancelInput,
+    RunCreationInput,
+    RunCreationReceipt,
+)
+from firefly_forge.run_creation_persistence import (
+    ForgeRunCreationCancellationRepository,
+    ForgeRunCreationRequestEntity,
+    ForgeRunCreationRequestRepository,
+    ForgeRunCreationReservationRepository,
+)
 from firefly_forge.store import Store, identifier, prepared_credential_rejection
 
 Data = dict[str, Any]
@@ -47,9 +59,20 @@ def _context(actor: Principal) -> None:
 
 @service
 class RunCreationRequests:
-    def __init__(self, store: Store, records: ForgeRunCreationRequestRepository | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        records: ForgeRunCreationRequestRepository | None = None,
+        reservations: ForgeRunCreationReservationRepository | None = None,
+        cancellations: ForgeRunCreationCancellationRepository | None = None,
+    ) -> None:
         self.store = store
         self.records = records or ForgeRunCreationRequestRepository()
+        self.controls = RunCreationControls(
+            self,
+            reservations or ForgeRunCreationReservationRepository(),
+            cancellations or ForgeRunCreationCancellationRepository(),
+        )
 
     @staticmethod
     def _actor() -> Principal:
@@ -199,20 +222,22 @@ class RunCreationRequests:
         request = RunCreationInput.model_validate(raw)
         original = request.input.model_dump(mode="json", exclude_unset=True)
         request_digest = digest({"version": 1, "input": original})
-        async with self.store._unit():
-            await self._lock_actor(actor, request.input.project_id)
-            await self._scope(actor, original, write=True)
-            previous = await self._load(request_id)
+        binding = {**original, "request_digest": request_digest}
+        previous = await self.controls.reserve(actor, request_id, binding)
         _context(actor)
         if previous is not None:
             self._owner(actor, previous, request_digest)
             return await self._return(actor, previous, write=True), False
+        async with self.store._unit():
+            await self._lock_actor(actor, request.input.project_id)
+            await self._scope(actor, original, write=True)
         prepared = await self.store.prepare_run(request.input)
         _context(actor)
         created = False
         with prepared_credential_rejection(self.store):
             async with self.store._unit():
                 await self._lock_actor(actor, request.input.project_id, request_id)
+                await self.controls.eligible(actor, request_id, binding)
                 await self.store.fence_prepared_runs([prepared])
                 await self._scope(actor, original, write=True)
                 previous = await self._load(request_id)
@@ -261,3 +286,13 @@ class RunCreationRequests:
                 self.store.assert_prepared_run_settings(prepared)
                 self.store.reject_credentials(receipt)
         return await self._return(actor, receipt, write=True), created
+
+    async def cancel(self, request_id: str, body: RunCreationCancelInput) -> tuple[Data, bool]:
+        _outside()
+        _request_id(request_id)
+        return await self.controls.cancel(self._actor(), request_id, body)
+
+    async def decision(self, request_id: str) -> Data:
+        _outside()
+        _request_id(request_id)
+        return await self.controls.decision(self._actor(), request_id)

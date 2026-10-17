@@ -69,7 +69,11 @@ from firefly_forge.project_campaign_persistence import (
     ForgeCampaignEventEntity,
 )
 from firefly_forge.project_persistence import ForgeAnalysisEntity, ForgeProjectEntity, ForgeProjectRevisionEntity
-from firefly_forge.run_creation_persistence import ForgeRunCreationRequestEntity
+from firefly_forge.run_creation_persistence import (
+    ForgeRunCreationCancellationEntity,
+    ForgeRunCreationRequestEntity,
+    ForgeRunCreationReservationEntity,
+)
 from firefly_forge.runtime_role_persistence import ForgeRuntimeTopologyEntity
 from firefly_forge.sandbox_persistence import ForgeSandboxEntity
 from firefly_forge.tool_persistence import ForgeToolInvocationEntity
@@ -78,7 +82,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 27
+SCHEMA_REVISION = 28
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -105,6 +109,8 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeExecutionRequestEntity,
                 ForgeExecutionRequestEventEntity,
                 ForgeRunCreationRequestEntity,
+                ForgeRunCreationReservationEntity,
+                ForgeRunCreationCancellationEntity,
                 ForgeRepositoryEntity,
                 ForgeRunEntity,
                 ForgeEventEntity,
@@ -214,6 +220,8 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             "forge_runtime_topology",
             "forge_execution_request_events",
             "forge_run_creation_requests",
+            "forge_run_creation_reservations",
+            "forge_run_creation_cancellations",
             "forge_plans",
             "forge_journal",
             "forge_observations",

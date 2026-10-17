@@ -25,17 +25,20 @@ async def creation(admission, monkeypatch):
     actor = Principal(UUID("f" * 32), "local:bootstrap", "operator", authentication_method="local_bootstrap")
     identity = SimpleNamespace(id=actor.id, enabled=True, issuer=actor.issuer, subject=actor.subject)
     retained = {}
+    reservations, cancellations = {}, {}
+    state["reservations"], state["cancellations"] = reservations, cancellations
     parent_unit = store._unit
 
     @asynccontextmanager
     async def unit(**kwargs):
-        before = copy.deepcopy(retained)
+        before = copy.deepcopy((retained, reservations, cancellations))
         try:
             async with parent_unit(**kwargs) as session:
                 yield session
         except BaseException:
-            retained.clear()
-            retained.update(before)
+            for destination, previous in zip((retained, reservations, cancellations), before, strict=True):
+                destination.clear()
+                destination.update(previous)
             raise
 
     async def current_identity(value, **kwargs):
@@ -45,7 +48,7 @@ async def creation(admission, monkeypatch):
         return identity.enabled
 
     async def require_repository(access, principal, repository, permission):
-        assert principal == actor and repository == REPOSITORY and permission in {"read", "execute", "release"}
+        assert principal.id == actor.id and repository == REPOSITORY and permission in {"read", "execute", "release"}
 
     async def find(value, **kwargs):
         return retained.get(value.hex)
@@ -55,7 +58,7 @@ async def creation(admission, monkeypatch):
         return len(json.dumps(row.data).encode()) if row is not None else None
 
     async def save(row):
-        assert state["depth"] and len(state["rows"]) == len(state["events"]) == 1
+        assert state["depth"] and len(state["rows"]) == len(state["events"]) >= 1
         assert row.id.hex not in retained
         retained[row.id.hex] = row
 
@@ -69,7 +72,30 @@ async def creation(admission, monkeypatch):
     monkeypatch.setattr(ProjectAccess, "require_repository", require_repository)
     monkeypatch.setattr(store, "_unit", unit)
     records = SimpleNamespace(find_by_id=find, envelope_bytes=size, save=save)
-    manager = RunCreationRequests(store, records=records)
+
+    def control(rows):
+        async def find(value, **kwargs):
+            return rows.get(value.hex)
+
+        async def size(value):
+            row = rows.get(value.hex)
+            return len(json.dumps(row.data, ensure_ascii=False).encode()) if row is not None else None
+
+        async def save(row):
+            assert state["depth"] and row.id.hex not in rows
+            rows[row.id.hex] = row
+
+        async def pending(actor_id):
+            return sum(
+                row.actor_id == actor_id and key not in retained and key not in cancellations
+                for key, row in reservations.items()
+            )
+
+        return SimpleNamespace(find_by_id=find, envelope_bytes=size, save=save, pending_for_actor=pending)
+
+    manager = RunCreationRequests(
+        store, records=records, reservations=control(reservations), cancellations=control(cancellations)
+    )
     import firefly_forge.run_creation_requests as module
 
     monkeypatch.setattr(module, "current_unit_of_work", lambda: object() if state["depth"] else None)

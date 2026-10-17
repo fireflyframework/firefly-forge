@@ -1,6 +1,8 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Explicit creation identities without changing the legacy RunInput wire contract."""
 
+from __future__ import annotations
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -46,3 +48,60 @@ class RunCreationReceipt(VersionOne):
     admitted_at: str = Field(min_length=1, max_length=80)
     admission_digest: str = Field(pattern=HASH)
     digest: str = Field(pattern=HASH)
+
+
+MAX_CONTROL_BYTES = 4096
+MAX_PENDING_RESERVATIONS = 50
+
+
+class RunCreationCancelInput(VersionOne):
+    request_digest: str = Field(pattern=HASH)
+    repository_id: str = Field(pattern=ID)
+    project_id: str | None = Field(pattern=ID)
+    component_id: str | None = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def bounded_control(cls, value: Any) -> Any:
+        import json
+
+        if isinstance(value, dict) and len(json.dumps(value, ensure_ascii=False).encode()) > MAX_CONTROL_BYTES:
+            raise ValueError("Run creation control exceeds 4 KiB")
+        return value
+
+    @model_validator(mode="after")
+    def paired_scope(self) -> RunCreationCancelInput:
+        if bool(self.project_id) != bool(self.component_id):
+            raise ValueError("Choose both a product project and one of its components")
+        return self
+
+
+class RunCreationReservation(RunCreationCancelInput):
+    request_id: str = Field(pattern=ID)
+    original_actor: CreationActor
+    reserved_at: str = Field(min_length=1, max_length=80)
+    digest: str = Field(pattern=HASH)
+
+
+class RunCreationCancellation(RunCreationCancelInput):
+    request_id: str = Field(pattern=ID)
+    original_actor: CreationActor
+    cancelled_by: CreationActor
+    cancelled_at: str = Field(min_length=1, max_length=80)
+    digest: str = Field(pattern=HASH)
+
+    @model_validator(mode="after")
+    def same_owner(self) -> RunCreationCancellation:
+        if self.original_actor.user_id != self.cancelled_by.user_id:
+            raise ValueError("Cancellation belongs to another native user")
+        return self
+
+
+class RunCreationAdmittedDecision(VersionOne):
+    outcome: Literal["admitted"]
+    receipt: RunCreationReceipt
+
+
+class RunCreationCancelledDecision(VersionOne):
+    outcome: Literal["cancelled"]
+    cancellation: RunCreationCancellation

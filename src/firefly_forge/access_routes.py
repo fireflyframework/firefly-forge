@@ -87,6 +87,16 @@ class AccessRoutes:
             if not safe and body.get("project_id"):
                 await self.access.require_project(user, body["project_id"], "edit")
             return
+        if parts[0] == "run-creation-requests" and len(parts) == 3:
+            if request.method == "GET" and parts[2] == "decision":
+                return  # Exact decisions enforce native ownership and fresh read authority.
+            if request.method != "POST" or parts[2] != "cancel":
+                raise AccessDenied("Unsupported run creation operation")
+            if not body.get("project_id") or not body.get("repository_id"):
+                raise AccessDenied("Select an authorized product project before cancelling its request")
+            await self.access.require_project(user, body["project_id"], "read")
+            await self.access.require_repository(user, body["repository_id"], "read")
+            return
         if parts[0] == "run-creation-requests" and len(parts) == 2:
             if safe:
                 return  # Exact controller reads enforce original ownership and fresh resource authority.
