@@ -242,18 +242,26 @@ class ProductLifecycle:
         after = {item.id: item.model_dump() for item in definition.features}
         changed = sorted(key for key in set(before) | set(after) if before.get(key) != after.get(key))
         unchanged = sorted(key for key in before if before[key] == after.get(key))
+        integration_before = {item["id"]: item for item in original["integrations"]}
+        integration_after = {item.id: item.model_dump() for item in definition.integrations}
+        changed_integrations = {item.id for item in request.integration_upserts} | set(request.remove_integration_ids)
         impact = {
             "changed_feature_ids": changed,
             "unchanged_feature_ids": unchanged,
             "unchanged_feature_digests": {key: content_digest(before[key]) for key in unchanged},
-            "changed_integration_ids": sorted(
-                {item.id for item in request.integration_upserts} | set(request.remove_integration_ids)
-            ),
+            "changed_integration_ids": sorted(changed_integrations),
             "affected_journeys": sorted(
                 {
                     journey
                     for key in changed
                     for item in (before.get(key), after.get(key))
+                    if item
+                    for journey in item["journey_refs"]
+                }
+                | {
+                    journey
+                    for key in changed_integrations
+                    for item in (integration_before.get(key), integration_after.get(key))
                     if item
                     for journey in item["journey_refs"]
                 }
