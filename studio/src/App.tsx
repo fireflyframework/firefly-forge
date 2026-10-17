@@ -63,7 +63,7 @@ import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { WorkerDialogue } from "./WorkerDialogue";
-import { EvidenceView, UnifiedDiff } from "./ExecutionPresentation";
+import { EvidenceView, UnifiedDiff, OutputView } from "./ExecutionPresentation";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -77,6 +77,19 @@ import {
 } from "./ProductDrafts";
 import { ProductDefinition } from "./ProductDefinition";
 import { selectStandaloneRunSource } from "./RunDrafts";
+import {
+  makeCreationMarker,
+  readCreationMarker,
+  retainCreationMarker,
+  clearCreationMarker,
+  sendCreation,
+  recoverCreation,
+  readCreatedRun,
+  normalizeRunBrief,
+  type CreationMarker,
+  type CreationReceipt,
+  type RunCreationScope,
+} from "./RunCreationData";
 import {
   IdentityMenu,
   SignIn,
@@ -1455,6 +1468,161 @@ export function NewProduct({
       });
     return () => controller.abort();
   }, [connection, repositoryId, session, setError]);
+  const [retainedCreation, setCreation] =
+    useProductDraftField<CreationMarker | null>(session, "creation", null);
+  const [retainedAdmission, setAdmitted] =
+    useProductDraftField<CreationReceipt | null>(session, "admitted", null);
+  const scope: RunCreationScope = {
+    base:
+      normalizeBase(connection.base) === "/api/v1" &&
+      typeof location !== "undefined"
+        ? new URL("/api/v1", location.origin).href
+        : normalizeBase(connection.base),
+    actor: drafts.scope?.user ?? "",
+    repository: repositoryId,
+    project: initialComponent?.project.id ?? null,
+    component: initialComponent?.component.id ?? null,
+  };
+  const creation =
+    retainedCreation &&
+    ["base", "actor", "repository", "project", "component"].every(
+      (key) =>
+        retainedCreation[key as keyof RunCreationScope] ===
+        scope[key as keyof RunCreationScope],
+    )
+      ? retainedCreation
+      : null;
+  const admitted =
+    creation && retainedAdmission?.request_id === creation.requestId
+      ? retainedAdmission
+      : null;
+  const [missingRequest, setMissingRequest] = useProductDraftField(
+    session,
+    "creationMissing",
+    "",
+  );
+  const missingOriginal = Boolean(
+    creation && missingRequest === creation.requestId,
+  );
+  const binding = JSON.stringify([
+    drafts.id,
+    session.id,
+    scope,
+    connection.token,
+  ]);
+  const live = useRef(binding);
+  live.current = binding;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () =>
+    mounted.current && session.active && live.current === binding;
+  useEffect(() => {
+    let active = true;
+    void readCreationMarker(localStorage, scope)
+      .then((value) => {
+        if (active && isCurrent() && !session.read("busy", false) && value)
+          setCreation((previous) =>
+            previous &&
+            ["base", "actor", "repository", "project", "component"].every(
+              (key) =>
+                previous[key as keyof RunCreationScope] ===
+                scope[key as keyof RunCreationScope],
+            )
+              ? previous
+              : value,
+          );
+      })
+      .catch((cause) => {
+        if (active && isCurrent()) setError(errorText(cause));
+      });
+    return () => {
+      active = false;
+    };
+    // The serialized binding includes the draft, connection, actor and component scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binding]);
+  async function finishCreation(
+    original: CreationMarker,
+    receipt: CreationReceipt,
+    version: number,
+  ) {
+    setAdmitted(receipt);
+    const run = await readCreatedRun(connection, receipt, isCurrent);
+    await clearCreationMarker(
+      localStorage,
+      original,
+      navigator.locks,
+      isCurrent,
+    );
+    if (!isCurrent()) return;
+    setCreation(null);
+    setAdmitted(null);
+    if (session.editVersion === version) drafts.discard(session);
+    onCreated(run);
+  }
+  async function checkOriginal() {
+    if (!creation || session.read("busy", false) || !isCurrent()) return;
+    setBusy(true);
+    setError("");
+    setMissingRequest("");
+    try {
+      const receipt = await recoverCreation(connection, creation, isCurrent);
+      await finishCreation(
+        creation,
+        receipt,
+        session.read("creationVersion", -1),
+      );
+    } catch (cause) {
+      if (isCurrent()) {
+        setMissingRequest(
+          cause instanceof ApiError && cause.status === 404
+            ? creation.requestId
+            : "",
+        );
+        setError(errorText(cause));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function retryOriginal() {
+    if (
+      !creation ||
+      !missingOriginal ||
+      session.read("busy", false) ||
+      !isCurrent()
+    )
+      return;
+    setBusy(true);
+    setError("");
+    setMissingRequest("");
+    try {
+      const retained = await readCreationMarker(localStorage, scope);
+      if (
+        !retained ||
+        retained.requestId !== creation.requestId ||
+        retained.inputDigest !== creation.inputDigest
+      )
+        throw new Error(
+          "The retained request changed. Check the original result again.",
+        );
+      const receipt = await sendCreation(connection, retained, isCurrent);
+      await finishCreation(
+        retained,
+        receipt,
+        session.read("creationVersion", -1),
+      );
+    } catch (cause) {
+      if (isCurrent()) setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
   const frozenArchitecture =
     !initialComponent && productLoaded === productRepositoryId
       ? product?.definition.architecture
@@ -1475,10 +1643,18 @@ export function NewProduct({
       }
       setBusy(true);
       const submittedVersion = session.editVersion;
-      const run = await post<ForgeRun>(connection, "/runs", {
+      const retained =
+        creation ?? (await readCreationMarker(localStorage, scope));
+      if (retained) {
+        if (isCurrent()) setCreation(retained);
+        throw new Error(
+          "A run request is already retained. Check its original result before starting more work.",
+        );
+      }
+      const original = await makeCreationMarker(scope, {
         repository_id: repositoryId,
         brief:
-          brief.trim() ||
+          normalizeRunBrief(brief) ||
           "Verify the current product using its executable checks.",
         operation,
         backend,
@@ -1499,12 +1675,19 @@ export function NewProduct({
         ...(overridePolicies ? { skills: selectedSkills } : {}),
         ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
       });
-      if (session.active) {
-        if (session.editVersion === submittedVersion) drafts.discard(session);
-        onCreated(run);
-      }
+      await retainCreationMarker(
+        localStorage,
+        original,
+        navigator.locks,
+        isCurrent,
+      );
+      if (!isCurrent()) return;
+      setCreation(original);
+      session.write("creationVersion", submittedVersion);
+      const receipt = await sendCreation(connection, original, isCurrent);
+      await finishCreation(original, receipt, submittedVersion);
     } catch (cause) {
-      setError(errorText(cause));
+      if (isCurrent()) setError(errorText(cause));
     } finally {
       setBusy(false);
     }
@@ -1876,6 +2059,59 @@ export function NewProduct({
               </div>
             </dl>
           )}
+          {creation && (
+            <section
+              className="integration-section"
+              aria-label="Original run request"
+            >
+              <h3>
+                {admitted
+                  ? "Run admission confirmed"
+                  : "Original run request retained"}
+              </h3>
+              <p>
+                {admitted
+                  ? "The original request has a recorded run. Check its result to open that run."
+                  : "The outcome is not confirmed. Checking uses the original request identity and does not start another run. A missing result does not prove the request was rejected."}
+              </p>
+              <dl>
+                <div>
+                  <dt>Request</dt>
+                  <dd>{creation.requestId}</dd>
+                </div>
+                {admitted && (
+                  <div>
+                    <dt>Run</dt>
+                    <dd>{admitted.run_id}</dd>
+                  </div>
+                )}
+              </dl>
+              <button
+                type="button"
+                disabled={busy || !connected}
+                onClick={() => void checkOriginal()}
+              >
+                Check original result
+              </button>
+              {missingOriginal && (
+                <button
+                  type="button"
+                  disabled={busy || !connected}
+                  onClick={() => void retryOriginal()}
+                >
+                  Send original request again
+                </button>
+              )}
+              <details>
+                <summary>Review original input</summary>
+                <OutputView
+                  value={creation.body}
+                  label="Original run input"
+                  copyLabel="Copy original run input"
+                />
+              </details>
+            </section>
+          )}
           {error && (
             <div className="alert" role="alert">
               {error}
@@ -1897,7 +2133,9 @@ export function NewProduct({
             )}
             <button
               className="primary"
-              disabled={busy || !connected || !repositories.length}
+              disabled={
+                busy || Boolean(creation) || !connected || !repositories.length
+              }
             >
               {busy ? (
                 <Loader2 size={17} className="spin" />
