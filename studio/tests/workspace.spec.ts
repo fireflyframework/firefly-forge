@@ -2,6 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
+import { retainedRunCreation } from "./run-creation-cancellation-fixture";
 test("verified run exposes diff, checks, artifact download and explicit publication", async ({
   page,
 }) => {
@@ -94,7 +95,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
   page,
 }) => {
   const repository = {
-    id: "repo-1",
+    id: "a".repeat(32),
     name: "Meeting rooms",
     url: "/owned/source",
     provider: "git",
@@ -102,8 +103,8 @@ test("connect, register a generic repository, create a local run, cancel and ret
   };
   let registered = false;
   const run = {
-    id: "run-1",
-    repository_id: "repo-1",
+    id: "b".repeat(32),
+    repository_id: repository.id,
     brief: "Build a meeting-room service",
     backend: "pyfly",
     frontend: "none",
@@ -118,6 +119,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
     ],
   };
   let submitted: Record<string, unknown> | null = null;
+  const creation = retainedRunCreation(run.id);
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     expect(route.request().headers().authorization).toBeUndefined();
@@ -150,17 +152,19 @@ test("connect, register a generic repository, create a local run, cancel and ret
         ],
         frontends: [],
       };
-    else if (path.endsWith("/runs")) {
-      if (route.request().method() === "POST") {
-        submitted = route.request().postDataJSON();
-        body = run;
-      } else body = submitted ? [run] : [];
+    else if (/\/run-creation-requests\/[a-f0-9]{32}$/.test(path)) {
+      expect(route.request().method()).toBe("POST");
+      body = await creation.admit(path, route.request().postDataJSON());
+      submitted = creation.input;
+    } else if (path.endsWith("/runs")) {
+      expect(route.request().method()).toBe("GET");
+      body = submitted ? [run] : [];
     } else if (path.endsWith("/cancel")) {
       run.status = "cancelled";
       body = run;
     } else if (path.endsWith("/retry")) {
       run.status = "queued";
-      body = { ...run, id: "run-2" };
+      body = { ...run, id: "c".repeat(32) };
     } else body = run;
     await route.fulfill({ json: body });
   });
@@ -209,7 +213,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
   await page.getByLabel("What should this change accomplish?").fill(run.brief);
   await page
     .getByLabel("Source repository", { exact: true })
-    .selectOption("repo-1");
+    .selectOption(repository.id);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Frontend", { exact: true }).selectOption("none");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -224,7 +228,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
   await expect(page.getByRole("heading", { name: run.brief })).toBeVisible();
   expect(submitted).toMatchObject({
     publish: false,
-    repository_id: "repo-1",
+    repository_id: repository.id,
     backend: "pyfly",
     frontend: "none",
     commands: [{ argv: ["make", "check"], timeout: 120 }],
@@ -235,7 +239,9 @@ test("connect, register a generic repository, create a local run, cancel and ret
   await page.getByRole("button", { name: "Cancel run" }).click();
   await expect(page.getByRole("button", { name: "Retry run" })).toBeVisible();
   await page.getByRole("button", { name: "Retry run" }).click();
-  await expect(page.getByText("Run run-2", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(`Run ${"c".repeat(32)}`, { exact: true }),
+  ).toBeVisible();
 });
 test("phone navigation, empty form and connection error remain usable", async ({
   page,

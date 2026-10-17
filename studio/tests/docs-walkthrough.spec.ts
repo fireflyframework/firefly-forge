@@ -10,6 +10,7 @@ import {
   open as openRunCreation,
   submit as submitRunCreation,
   markers as runCreationMarkers,
+  retainedRunCreation,
 } from "./run-creation-cancellation-fixture";
 import { setup as setupOriginalResult } from "./agent-checkpoint-recovery-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
@@ -25,7 +26,7 @@ import {
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
-  id: "fixture-repo",
+  id: "1".repeat(32),
   name: "Fixture Inventory API",
   provider: "git",
   url: "/local/fixture-inventory",
@@ -68,9 +69,9 @@ const failureCandidate = {
   },
 };
 const run = {
-  id: "fixture-run",
+  id: "2".repeat(32),
   repository_id: repository.id,
-  brief: "Fixture reservation verification",
+  brief: "Implement stock reservation and reject over-reservation",
   backend: "pyfly",
   frontend: "none",
   agent: "codex",
@@ -102,7 +103,7 @@ const run = {
     {
       name: "changes.zip",
       size: 2048,
-      url: "/api/v1/runs/fixture-run/artifacts/changes.zip",
+      url: `/api/v1/runs/${"2".repeat(32)}/artifacts/changes.zip`,
     },
   ],
 };
@@ -131,6 +132,7 @@ for (const device of ["desktop", "mobile"])
       );
       let product: unknown = null;
       let admitted = false;
+      const creation = retainedRunCreation(run.id);
       let searchSettings: Record<string, unknown> = {
         provider: "brave",
         endpoint: "https://api.search.brave.com/res/v1/web/search",
@@ -363,12 +365,20 @@ for (const device of ["desktop", "mobile"])
                   },
                 ],
               };
-        else if (path.endsWith("/runs")) {
-          if (request.method() === "POST") {
-            admitted = true;
-            json = run;
-          } else json = admitted ? [run] : [];
-        } else if (path.endsWith("/runs/fixture-run")) json = run;
+        else if (/\/run-creation-requests\/[a-f0-9]{32}$/.test(path)) {
+          expect(request.method()).toBe("POST");
+          json = await creation.admit(path, request.postDataJSON());
+          expect(creation.input).toMatchObject({
+            repository_id: repository.id,
+            brief: run.brief,
+            publish: false,
+          });
+          admitted = true;
+        } else if (path.endsWith("/runs")) {
+          expect(request.method()).toBe("GET");
+          json = admitted ? [{ ...creation.run, ...run }] : [];
+        } else if (path.endsWith(`/runs/${run.id}`))
+          json = { ...creation.run, ...run };
         else if (path.endsWith("/plan"))
           json = {
             revision: 1,
@@ -512,7 +522,7 @@ for (const device of ["desktop", "mobile"])
       await page.getByRole("button", { name: /Start run.*revision 1/ }).click();
       await page
         .getByLabel("What should this change accomplish?")
-        .fill("Implement stock reservation and reject over-reservation");
+        .fill(run.brief);
       await capture(page, "run-brief", theme, device);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await capture(page, "run-foundation", theme, device);
@@ -565,9 +575,7 @@ for (const device of ["desktop", "mobile"])
       expect(floorBounds.bottom).toBeLessThanOrEqual(floorBounds.footerTop);
       expect(floorBounds.height).toBeGreaterThanOrEqual(180);
       await capture(page, "factory-overview", theme, device);
-      await page
-        .getByRole("button", { name: /Fixture reservation verification/ })
-        .click();
+      await page.getByRole("button", { name: new RegExp(run.brief) }).click();
       await capture(page, "run-context", theme, device);
       for (const tab of ["Changes", "Verification", "Plan", "Artifacts"]) {
         await page.getByRole("tab", { name: tab, exact: true }).click();
