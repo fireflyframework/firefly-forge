@@ -553,6 +553,10 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Start building", exact: true })
         .click();
       await expect.poll(() => admitted).toBe(true);
+      expect(creation.run).toMatchObject({ id: run.id, status: "queued" });
+      await expect(
+        page.getByText("Your run has been opened.", { exact: true }),
+      ).toBeVisible();
       await navigate(page, "Factory");
       await page.evaluate(() => document.fonts.ready);
       const floorBounds = await page
@@ -594,7 +598,7 @@ for (const device of ["desktop", "mobile"])
         await capture(page, `evidence-${tab.toLowerCase()}`, theme, device);
       }
       await expect(
-        page.getByText("Your run has been queued.", { exact: true }),
+        page.getByText("Your run has been opened.", { exact: true }),
       ).toBeVisible();
       await page
         .getByRole("button", { name: "Dismiss notification", exact: true })
