@@ -2418,7 +2418,7 @@ function Connections({
               "Your server session determines identity and project access. Change servers or sign in explicitly.",
               "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
               "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
-              "Optionally connect flycanon for cited framework guidance, project source and verified run memory.",
+              "Connect flycanon for cited framework guidance, project source and verified run memory.",
             ][step]
           }
         >
