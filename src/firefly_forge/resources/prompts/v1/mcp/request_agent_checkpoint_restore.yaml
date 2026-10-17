@@ -1,0 +1,17 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_agent_checkpoint_restore
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Request continuation from one explicitly reviewed original implementation result.
+
+  Save the restore request ID before calling. Supply the exact run and fbr1_
+  completion IDs, checkpoint and intent digests and selected tagged source. The
+  restore body has no version field. A bridge observation also needs its original
+  observation ID and terminal digest. Admission may queue continuation; it is not
+  execution success. After an uncertain response, read that exact restore ticket
+  separately. Never retry, choose another ID, observe a result or consume it here.
+required_variables: []
+metadata:
+  defaults: {}

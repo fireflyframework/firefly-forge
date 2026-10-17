@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_run_creation_request
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the original admission receipt for one saved run-creation request ID.
+
+  This read does not submit work. A missing receipt leaves the outcome unresolved;
+  it does not authorize resubmission, a replacement ID or a legacy create_run call.
+  Keep the returned actor, input, scope and digests with the original request.
+required_variables: []
+metadata:
+  defaults: {}
