@@ -48,9 +48,10 @@ for (const width of [1440, 390])
       await page.screenshot({
         path: info.outputPath(`original-result-${width}-${theme}-viewport.png`),
       });
-      await panel.screenshot({
-        path: info.outputPath(`original-result-${width}-${theme}-panel.png`),
-      });
+      if (width >= 640)
+        await panel.screenshot({
+          path: info.outputPath(`original-result-${width}-${theme}-panel.png`),
+        });
     });
 for (const kind of ["restore", "observation"] as const)
   test(`lost ${kind} response and exact404 keep one original identity across reload`, async ({
@@ -344,8 +345,5 @@ test("original result review scrolls within a short viewport without footer over
   expect(state.posts).toBe(0);
   await page.screenshot({
     path: info.outputPath("original-result-short-viewport.png"),
-  });
-  await panel.screenshot({
-    path: info.outputPath("original-result-short-panel.png"),
   });
 });

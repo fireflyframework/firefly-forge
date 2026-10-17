@@ -416,8 +416,7 @@ export function AgentCheckpointRecovery({
                 {items.map((c) => (
                   <option key={c.completion_id} value={c.completion_id}>
                     Attempt {c.attempt}
-                    {c.ordinal ? `, result ${c.ordinal}` : ""}:{" "}
-                    {labels[c.state]}
+                    {c.ordinal ? ` · Result ${c.ordinal}` : ""}
                   </option>
                 ))}
               </select>
