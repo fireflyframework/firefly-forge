@@ -305,7 +305,7 @@ async def test_native_revision_quota_and_schema25_upgrade_preserve_archives(stor
         assert SCHEMA_REVISION == 27
         async with store._unit() as session:
             await session.execute(text("DROP TABLE forge_campaign_delivery_plan_revisions"))
-            await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision=26"))
+            await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision>25"))
             await session.execute(
                 text("INSERT INTO forge_schema_migrations(revision) VALUES (25) ON CONFLICT DO NOTHING")
             )
