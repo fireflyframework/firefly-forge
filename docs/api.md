@@ -69,6 +69,52 @@ The [original-result recovery guide](recovery.md#explicit-closed-text-implementa
 
 The [uncertain run-submission guide](recovery.md#settle-an-uncertain-run-submission) explains exact admission, cancellation and decision readback. The same enabled user can read or settle cancellation with current read access after signing in again. Replaying admission also requires the original authentication method and current execution authority.
 
+## Use explicit recovery from the Python SDK
+
+`ForgeClient` exposes the same original-request and checkpoint contracts. Retain
+the request ID and submitted input before calling a write method. These methods
+use the client's existing authenticated identity; they do not choose another
+identity, retry a request or fall back to legacy `create_run`.
+
+| SDK method | HTTP operation |
+| --- | --- |
+| `request_run_creation(request_id, request)` | POST the original `{"version": 1, "input": ...}` envelope to `/run-creation-requests/{request_id}` |
+| `run_creation_request(request_id)` | GET `/run-creation-requests/{request_id}` for the original admission receipt |
+| `cancel_run_creation_request(request_id, request)` | POST the original version-1 digest and repository/project/component scope to `/run-creation-requests/{request_id}/cancel` |
+| `run_creation_decision(request_id)` | GET `/run-creation-requests/{request_id}/decision` without submitting cancellation or admission |
+| `agent_checkpoint_candidates(run_id)` | GET `/runs/{run_id}/agent-checkpoints/candidates` without continuing work |
+| `request_agent_checkpoint_restore(run_id, completion_id, request)` | POST the explicitly reviewed restore input to `/runs/{run_id}/agent-checkpoints/{completion_id}/restores` |
+| `agent_checkpoint_restore(run_id, completion_id, request_id)` | GET that exact restore ticket without dispatching another request |
+
+Write methods accept the corresponding native `RunCreationInput`,
+`RunCreationCancelInput` or `RestoreInput` model, or a dictionary validated by
+that model. Run creation keeps omitted `RunInput` fields omitted, including
+default policy selection; an explicit empty `skills` list remains explicit.
+Request, run and restore IDs must be lowercase 32-character hexadecimal values;
+the original completion ID retains its `fbr1_` prefix.
+
+Cancellation requires the retained `request_digest`, `repository_id`,
+`project_id` and `component_id`; unassigned project/component fields are
+explicitly null. Do not recompute the digest from current form edits. An
+`admitted` cancellation decision identifies an already admitted run and does
+not cancel that run.
+
+Restore input contains the retained `request_id`,
+`expected_checkpoint_digest`, `expected_intent_digest` and the selected tagged
+`source`; it has no additional version field. An `http_response` source carries
+its `record_digest`. A `bridge_observation` also carries its original
+`observation_id` and `terminal_digest`. Discovery and readback do not select,
+observe or consume a result on the caller's behalf.
+
+HTTP errors retain the existing SDK `RuntimeError` behavior; transport errors
+propagate from HTTPX. A missing result or uncertain response leaves the outcome
+unresolved. Choose exact readback as a separate call, retaining the same IDs;
+the SDK never generates a replacement ID or automatically resubmits. Successful
+methods return the server's JSON dictionary without projecting or rewriting
+receipt actor, input, scope or digest fields. They do not return raw HTTP bytes
+or independently verify receipt cryptography. CLI and MCP exposure of these
+new methods remains separate work.
+
 ## Register a repository
 
 ```json
