@@ -1589,7 +1589,6 @@ export function NewProduct({
   async function finishDecision(
     original: CreationMarker,
     decision: CreationDecision,
-    version: number,
     epoch: number,
   ) {
     const current = () => isAction(epoch, original.requestId);
@@ -1619,7 +1618,15 @@ export function NewProduct({
       setCreationNotice("Request cancelled. You can edit and start again.");
       return;
     }
-    if (session.editVersion === version) drafts.discard(session);
+    const submitted = session.read<{
+      requestId: string;
+      version: number;
+    } | null>("creationSubmission", null);
+    if (
+      submitted?.requestId === original.requestId &&
+      session.editVersion === submitted.version
+    )
+      drafts.discard(session);
     onCreated(
       run!,
       run!.status === "queued"
@@ -1642,12 +1649,7 @@ export function NewProduct({
       const decision = await recoverCreationDecision(connection, creation, () =>
         isAction(epoch, creation.requestId),
       );
-      await finishDecision(
-        creation,
-        decision,
-        session.read("creationVersion", -1),
-        epoch,
-      );
+      await finishDecision(creation, decision, epoch);
     } catch (cause) {
       if (isAction(epoch, creation.requestId)) {
         setMissingRequest(
@@ -1683,7 +1685,6 @@ export function NewProduct({
       await finishDecision(
         retained,
         { version: 1, outcome: "admitted", receipt },
-        session.read("creationVersion", -1),
         epoch,
       );
     } catch (cause) {
@@ -1710,12 +1711,7 @@ export function NewProduct({
         current,
       );
       const decision = await cancelCreation(connection, retained, current);
-      await finishDecision(
-        retained,
-        decision,
-        session.read("creationVersion", -1),
-        epoch,
-      );
+      await finishDecision(retained, decision, epoch);
     } catch (cause) {
       if (current()) setError(errorText(cause));
     } finally {
@@ -1786,14 +1782,16 @@ export function NewProduct({
         kind: "send",
         requestId: original.requestId,
       });
-      session.write("creationVersion", submittedVersion);
+      session.write("creationSubmission", {
+        requestId: original.requestId,
+        version: submittedVersion,
+      });
       const receipt = await sendCreation(connection, original, () =>
         isAction(submittedEpoch, original.requestId),
       );
       await finishDecision(
         original,
         { version: 1, outcome: "admitted", receipt },
-        submittedVersion,
         submittedEpoch,
       );
     } catch (cause) {

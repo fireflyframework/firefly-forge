@@ -717,3 +717,63 @@ it("ignores a cancellation response after sign-out and retains its durable origi
   expect(c.received).toEqual([]);
   expect(c.book.hasUnsaved).toBe(false);
 });
+
+it("does not discard this tab's unsent form when an adopted other-tab request is later admitted", async () => {
+  const c = await setup();
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const decisionA = await cancelledDecision(c);
+  const original = JSON.parse([...c.values.values()][0]);
+  c.render();
+  let resolve!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementationOnce(
+    () =>
+      new Promise<Response>((done) => {
+        resolve = done;
+      }),
+  );
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  const newer = await makeCreationMarker(original, {
+    repository_id: repository,
+    brief: "Different input from another tab",
+  });
+  c.values.set([...c.values.keys()][0], JSON.stringify(newer));
+  resolve(new Response(JSON.stringify(decisionA)));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  expect(c.session.read("creation", null)).toEqual(newer);
+  const unsigned = {
+    version: 1,
+    request_id: newer.requestId,
+    original_actor: {
+      user_id: newer.actor,
+      authentication_method: "local_bootstrap",
+    },
+    request_digest: newer.inputDigest,
+    input: JSON.parse(newer.body).input,
+    repository_id: newer.repository,
+    project_id: newer.project,
+    component_id: newer.component,
+    run_id: c.run.id,
+    admitted_at: "2026-10-17T00:00:00+00:00",
+    admission_digest: "c".repeat(64),
+  };
+  const receiptB = { ...unsigned, digest: await attemptDigest(unsigned) };
+  c.render();
+  vi.mocked(fetch).mockImplementation(
+    async (url) =>
+      new Response(
+        JSON.stringify(
+          String(url).endsWith("/decision")
+            ? { version: 1, outcome: "admitted", receipt: receiptB }
+            : c.run,
+        ),
+      ),
+  );
+  state.buttons.get("Check original result")!();
+  await vi.waitFor(() => expect(c.received).toEqual([c.run]));
+  expect(c.session.active).toBe(true);
+  expect(c.book.repository(`run:standalone:${repository}`)).toBe(c.session);
+  expect(c.session.read("brief", "")).toBe("  Verify fictional stock\n");
+  expect(c.session.dirty).toBe(true);
+});
