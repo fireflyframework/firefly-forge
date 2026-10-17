@@ -1,0 +1,65 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.agent-checkpoint-recovery {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.agent-checkpoint-recovery .field {
+  margin-top: 18px;
+}
+.agent-checkpoint-recovery select {
+  width: 100%;
+  max-width: 560px;
+}
+.agent-checkpoint-recovery .card-actions {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.agent-checkpoint-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 18px 0;
+}
+.agent-checkpoint-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.agent-checkpoint-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.agent-checkpoint-review {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.agent-checkpoint-review ol {
+  padding-left: 22px;
+  line-height: 1.7;
+}
+.agent-checkpoint-review .check-choice {
+  margin: 20px 0;
+  align-items: flex-start;
+}
+.agent-checkpoint-recovery :focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .agent-checkpoint-recovery {
+    padding: 18px;
+  }
+  .agent-checkpoint-facts {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .agent-checkpoint-recovery .card-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -53,6 +53,7 @@ export type ForgeRun = {
   };
   issue_context?: IssueContext | null;
   product_definition?: ProductSnapshot | null;
+  bridge_completion_hold?: { reason?: string };
   pause?: {
     message: string;
     kind: string;

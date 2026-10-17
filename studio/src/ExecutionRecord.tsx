@@ -9,6 +9,7 @@ import {
 } from "./ExecutionPresentation";
 
 import { RunnerContinuation } from "./RunnerContinuation";
+import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import type { IdentitySession } from "./Identity";
 
 type Journal = {
@@ -41,7 +42,9 @@ export function ContinueRun({
   const [agent, setAgent] = useState(run.agent ?? "codex");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const unknownOutcome = run.pause?.kind === "provider_outcome_unknown";
+  const unknownOutcome =
+    run.pause?.kind === "provider_outcome_unknown" ||
+    (run.agent === "bridge" && !!run.bridge_completion_hold);
   async function resume(handoff: boolean) {
     if (unknownOutcome) return;
     setBusy(true);
@@ -74,9 +77,9 @@ export function ContinueRun({
         <div>
           <h2>Execution result needs review</h2>
           <p>
-            The bridge may have completed the original request. Inspect its
-            retained job and this execution record before making another
-            request.
+            Bridge may have completed the original request. Open the Plan tab
+            and review Original model result to check the saved response and any
+            existing continuation request.
           </p>
           <p>
             Resume and provider handoff are held to prevent duplicate work.
@@ -190,6 +193,26 @@ export function ExecutionRecord({
     <div className="execution-record">
       {session && (
         <RunnerContinuation
+          key={JSON.stringify([
+            connection.base,
+            connection.token,
+            session.user.id,
+            session.global_admin,
+            session.memberships,
+            run.id,
+            run.repository_id,
+            run.project_id,
+            run.publish,
+            run.status,
+            run.cancel_request?.status,
+          ])}
+          run={run}
+          connection={connection}
+          session={session}
+        />
+      )}
+      {session && (
+        <AgentCheckpointRecovery
           key={JSON.stringify([
             connection.base,
             connection.token,
