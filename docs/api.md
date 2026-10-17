@@ -67,6 +67,8 @@ running application's OpenAPI document is the authoritative schema.
 
 The [original-result recovery guide](recovery.md#explicit-closed-text-implementation-continuation) describes the checkpoint, intent and tagged result bindings required by the restore routes. Candidate discovery returns at most 16 saved implementation references and no model history or response body. Retain the original 32-character hexadecimal request ID before a restore POST; exact readback after an uncertain response never creates a replacement request.
 
+The [uncertain run-submission guide](recovery.md#settle-an-uncertain-run-submission) explains exact admission, cancellation and decision readback. The same enabled user can read or settle cancellation with current read access after signing in again. Replaying admission also requires the original authentication method and current execution authority.
+
 ## Register a repository
 
 ```json

@@ -5,6 +5,13 @@ import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
+import {
+  fixture as setupRunCreation,
+  open as openRunCreation,
+  submit as submitRunCreation,
+  markers as runCreationMarkers,
+} from "./run-creation-cancellation-fixture";
+import { setup as setupOriginalResult } from "./agent-checkpoint-recovery-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
 import { setupDelivery } from "./campaign-delivery-browser-fixture";
 import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
@@ -3045,3 +3052,208 @@ for (const device of ["desktop", "mobile"])
       expect(exactReads).toHaveLength(1);
       expect(receipt?.request_digest).toBe(archiveFixtureDigest(original));
     });
+
+// Controlled recovery guides share the regression fixtures; no native run or model executes.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"] as const) {
+    test(`guided fixture journey original run request ${device} ${theme}`, async ({
+      page,
+      context,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const fixture = await setupRunCreation(context);
+      await openRunCreation(page, true);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await submitRunCreation(
+        page,
+        "Keep fictional inventory reservations within available stock.",
+      );
+      const [original] = await runCreationMarkers(page);
+      const panel = page.getByRole("region", {
+        name: "Original run request",
+        exact: true,
+      });
+      await panel
+        .getByRole("button", { name: "Check original result", exact: true })
+        .click();
+      await expect(
+        panel.getByRole("button", {
+          name: "Send original request again",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        panel.getByRole("button", { name: "Cancel this request", exact: true }),
+      ).toBeVisible();
+      expect((await runCreationMarkers(page))[0].requestId).toBe(
+        original.requestId,
+      );
+      expect(
+        fixture.calls.filter((call) => call.action === "original"),
+      ).toHaveLength(1);
+      await capture(page, "recovery-run-request-held", theme, device, {
+        resetFields: false,
+        actionSelector: '[aria-label="Original run request"] > button',
+      });
+      for (let step = 0; step < 3; step++)
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      const editedBrief =
+        "Keep my revised fictional reservation rules for the next request.";
+      await page
+        .getByLabel("What should this change accomplish?", { exact: true })
+        .fill(editedBrief);
+      await panel
+        .getByRole("button", { name: "Cancel this request", exact: true })
+        .click();
+      await expect(
+        page.getByText("Request cancelled. You can edit and start again.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByLabel("What should this change accomplish?", { exact: true }),
+      ).toHaveValue(editedBrief);
+      expect(await runCreationMarkers(page)).toEqual([]);
+      expect(fixture.calls.map((call) => call.action)).toEqual([
+        "original",
+        "decision",
+        "cancel",
+      ]);
+      await expect(
+        page.getByRole("button", { name: "Continue", exact: true }),
+      ).toBeEnabled();
+      await capture(page, "recovery-run-request-cancelled", theme, device, {
+        resetFields: false,
+      });
+    });
+
+    test(`guided fixture journey original model result ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupOriginalResult(page, "restore", "lost", theme);
+      const panel = page.getByRole("region", {
+        name: "Original model result",
+        exact: true,
+      });
+      const review = panel.getByRole("button", {
+        name: "Review original result",
+        exact: true,
+      });
+      await expect(
+        panel.getByLabel("Original implementation attempt"),
+      ).toBeVisible();
+      await expect(
+        panel.getByText("Original result saved", { exact: true }),
+      ).toBeVisible();
+      expect(state.posts).toBe(0);
+      await alignOperatorGuide(page, ".agent-checkpoint-recovery h2");
+      await capture(page, "recovery-original-result-ready", theme, device, {
+        actionSelector: ".agent-checkpoint-recovery > button",
+      });
+      await review.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Review continuation",
+          exact: true,
+        }),
+      ).toBeFocused();
+      const continuation = panel.getByRole("button", {
+        name: "Continue from original result",
+        exact: true,
+      });
+      await expect(continuation).toBeDisabled();
+      await panel.getByRole("checkbox").check();
+      await expect(continuation).toBeEnabled();
+      expect(state.posts).toBe(0);
+      await capture(page, "recovery-original-result-review", theme, device, {
+        actionSelector: ".agent-checkpoint-review button.primary",
+      });
+      await continuation.click();
+      await expect(
+        page.getByText(/Existing request identities stay held/),
+      ).toBeVisible();
+      const requestId = state.request;
+      await panel
+        .getByRole("button", { name: "Read exact saved request", exact: true })
+        .click();
+      await expect(
+        page.getByText(/This does not prove the request was not accepted/),
+      ).toBeVisible();
+      expect(state.posts).toBe(1);
+      expect(state.reads).toBe(1);
+      expect(state.request).toBe(requestId);
+      const saved = await page.evaluate(
+        () =>
+          Object.entries(sessionStorage).find(([key]) =>
+            key.startsWith("forge.agent-checkpoint.v1:"),
+          )?.[1],
+      );
+      expect(saved).toContain(requestId);
+      await expect(
+        panel.getByRole("button", {
+          name: "Continue from original result",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await capture(page, "recovery-original-result-held", theme, device, {
+        actionSelector: ".agent-checkpoint-recovery .card-actions button",
+      });
+
+      const provider = {
+        id: "bridge",
+        name: "Bridge",
+        ready: true,
+        detail: "Controlled recovery configuration fixture",
+        config: { model: "bridge/default" },
+        fields: ["model", "completion_recovery", "checkpoints"].map((key) => ({
+          key,
+          label: key === "model" ? "Model" : key,
+          secret: false,
+          required: false,
+          placeholder: "",
+        })),
+      };
+      let configurationWrites = 0,
+        probes = 0;
+      await page.route("**/api/v1/providers**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/test")) probes++;
+        if (route.request().method() !== "GET") configurationWrites++;
+        await route.fulfill({
+          json: path.endsWith("/providers") ? [provider] : provider,
+        });
+      });
+      await page.reload();
+      await navigate(page, "Connections");
+      await page
+        .getByRole("button", { name: "Configure", exact: true })
+        .click();
+      await expect(
+        page.getByLabel("Original model result recovery", { exact: true }),
+      ).toHaveValue("");
+      await expect(
+        page.getByLabel("Implementation checkpoints", { exact: true }),
+      ).toHaveValue("");
+      await page
+        .getByLabel("Original model result recovery", { exact: true })
+        .selectOption("required");
+      await page
+        .getByLabel("Implementation checkpoints", { exact: true })
+        .selectOption("required");
+      await capture(page, "recovery-bridge-choices", theme, device, {
+        actionSelector: ".provider-config-form button.primary",
+      });
+      expect(configurationWrites).toBe(0);
+      expect(probes).toBe(0);
+    });
+  }

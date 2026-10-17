@@ -179,7 +179,7 @@ flowchart LR
 
 </div>
 
-<p class="forge-flow-caption" id="original-result-flow-guide">Read the committed boundaries from left to right. On a narrow screen, scroll or focus the diagram and use the arrow keys. Checking an original result and consuming it are separate operations.</p>
+<p class="forge-flow-caption" id="original-result-flow-guide">Save the original checkpoint and intent before submitting to Bridge. If the result is uncertain, retain its identity, read or check the original result, then review one continuation. Continuing commits the one-use consume receipt before native parsing, followed by implementation and verification. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
 
 The restore ticket binds the original checkpoint, intent and selected result record. The execution owner repeats authority, source, configuration and deadline checks before restoring native Agentic history with `prompt=None`. The selected response is consumed once before the SDK parser receives it. A failure after that commit cannot authorize replay. A later repair keeps its own task identity; its mutable task key cannot replace the original implementation receipt. Owner recovery retains a committed consume boundary and holds unfinished tickets for reconciliation. See the [operator recovery journey](recovery.md#review-a-held-result-in-studio) for supported file tools and current limits.
 
