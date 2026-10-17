@@ -13,7 +13,19 @@ import { attemptDigest } from "./LearningObservationAttemptData";
 const state = vi.hoisted(() => ({
   submit: null as ((event: FormEvent<HTMLFormElement>) => void) | null,
   buttons: new Map<string, () => void>(),
+  captureEffects: false,
+  effects: [] as Array<() => void | (() => void)>,
 }));
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return {
+    ...actual,
+    useEffect: (...args: Parameters<typeof actual.useEffect>) => {
+      actual.useEffect(...args);
+      if (state.captureEffects) state.effects.push(args[0]);
+    },
+  };
+});
 vi.mock("./Wizard", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./Wizard")>();
   return {
@@ -59,7 +71,8 @@ async function setup() {
   };
   const book = new ProductDraftBook(scope),
     session = book.repository(`run:standalone:${repository}`),
-    received: ForgeRun[] = [];
+    received: ForgeRun[] = [],
+    notices: string[] = [];
   session.write("brief", "  Verify fictional stock\n", true);
   session.write("commands", '[["pytest", "-q"]]', true);
   session.write("step", 3);
@@ -85,7 +98,10 @@ async function setup() {
         onStandalone={() => {}}
         onRepository={() => {}}
         onConnection={() => {}}
-        onCreated={(run) => received.push(run)}
+        onCreated={(run, notice) => {
+          received.push(run);
+          notices.push(notice);
+        }}
       />,
     );
   const values = new Map<string, string>();
@@ -157,17 +173,22 @@ async function setup() {
     );
     return value;
   }
-  return { book, session, received, finish, run, render, values };
+  return { book, session, received, notices, finish, run, render, values };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  state.captureEffects = false;
+  state.effects = [];
+  vi.unstubAllGlobals();
+});
 
 it("clears only the submitted run draft after a successful queue response", async () => {
-  const { book, session, received, finish, run } = await setup();
+  const { book, session, received, notices, finish, run } = await setup();
   book.repository("run:standalone:other").write("brief", "Keep B", true);
   expect(session.read("busy", false)).toBe(true);
   await finish();
   await vi.waitFor(() => expect(received).toEqual([run]));
+  expect(notices).toEqual(["Your run has been queued."]);
   expect(session.active).toBe(false);
   expect(
     book.repository(`run:standalone:${repository}`).read("brief", ""),
@@ -385,5 +406,67 @@ it.each([403, 409, 422, 503, 200])(
     expect(JSON.parse([...c.values.values()][0]).requestId).toBe(requestId);
     expect(c.session.read("brief", "")).toBe("  Verify fictional stock\n");
     expect(c.received).toEqual([]);
+  },
+);
+
+it.each([
+  { repository: "", actor: "f".repeat(32), retained: null, failed: false },
+  { repository, actor: undefined, retained: null, failed: false },
+  { repository, actor: "f".repeat(32), retained: "{}", failed: true },
+])(
+  "reads retained recovery state only with a selected source and owner: %j",
+  async (selection) => {
+    const book = new ProductDraftBook({
+      base: "https://forge.example/api/v1",
+      user: selection.actor,
+      credentialPresent: false,
+    });
+    const draft = book.repository(`run:standalone:${selection.repository}`);
+    vi.stubGlobal("localStorage", { getItem: () => selection.retained });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ skills: [] }))),
+    );
+    state.captureEffects = true;
+    renderToStaticMarkup(
+      <NewProduct
+        drafts={book}
+        initialComponent={null}
+        initialRepository={selection.repository}
+        repositories={[]}
+        profiles={null}
+        connected
+        connection={{ base: "https://forge.example/api/v1", token: "" }}
+        onStandalone={() => {}}
+        onRepository={() => {}}
+        onConnection={() => {}}
+        onCreated={() => {}}
+      />,
+    );
+    state.captureEffects = false;
+    const cleanup = state.effects.map((effect) => effect());
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(Boolean(draft.read("error", ""))).toBe(selection.failed);
+    cleanup.forEach((value) => value?.());
+  },
+);
+
+it.each(["succeeded", "failed", "cancelled"])(
+  "opens an originally admitted %s run without claiming it was queued again",
+  async (status) => {
+    const c = await setup();
+    const receipt = await c.finish(new Response("{}", { status: 503 }));
+    await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+    c.run.status = status;
+    c.render();
+    vi.mocked(fetch).mockImplementation(
+      async (url) =>
+        new Response(
+          JSON.stringify(String(url).includes("/runs/") ? c.run : receipt),
+        ),
+    );
+    state.buttons.get("Check original result")!();
+    await vi.waitFor(() => expect(c.received).toEqual([c.run]));
+    expect(c.notices).toEqual(["Your run has been opened."]);
   },
 );

@@ -40,7 +40,7 @@ const id = /^[a-f0-9]{32}$/,
   hash = /^[a-f0-9]{64}$/;
 const failure = () =>
   new Error(
-    "The original run request could not be confirmed. Keep its identity and check the original result before sending more work.",
+    "We could not confirm whether this run started. Keep this request and check its result before starting another run.",
   );
 function check(value: unknown): asserts value {
   if (!value) throw failure();

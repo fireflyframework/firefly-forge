@@ -915,8 +915,8 @@ export default function App() {
               connection={connection}
               onRepository={() => navigate("repositories")}
               onConnection={() => navigate("settings")}
-              onCreated={(run) => {
-                setNotice("Your run has been queued.");
+              onCreated={(run, notice) => {
+                setNotice(notice);
                 void refresh();
                 void openRun(run);
               }}
@@ -1322,7 +1322,7 @@ export function NewProduct({
   connection: Connection;
   onRepository: () => void;
   onConnection: () => void;
-  onCreated: (run: ForgeRun) => void;
+  onCreated: (run: ForgeRun, notice: string) => void;
 }) {
   const projectLabels = repositoryLabels(repositories);
   const session = useProductDraftSession(
@@ -1522,6 +1522,7 @@ export function NewProduct({
   const isCurrent = () =>
     mounted.current && session.active && live.current === binding;
   useEffect(() => {
+    if (!scope.actor || !scope.repository) return;
     let active = true;
     void readCreationMarker(localStorage, scope)
       .then((value) => {
@@ -1563,7 +1564,12 @@ export function NewProduct({
     setCreation(null);
     setAdmitted(null);
     if (session.editVersion === version) drafts.discard(session);
-    onCreated(run);
+    onCreated(
+      run,
+      run.status === "queued"
+        ? "Your run has been queued."
+        : "Your run has been opened.",
+    );
   }
   async function checkOriginal() {
     if (!creation || session.read("busy", false) || !isCurrent()) return;
