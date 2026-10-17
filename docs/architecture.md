@@ -160,7 +160,7 @@ Bridge completion requests follow the same uncertainty rule. A transport failure
 
 Opt-in implementation checkpoints support explicit continuation at the original model boundary. The checkpoint and Bridge intent commit together before the completion POST. A bounded, read-only candidate projection verifies the retained journal, current authority and original ticket bindings before Studio offers a review. The projection makes no Bridge call and writes no ticket or consume receipt.
 
-<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Original model result recovery diagram" aria-describedby="original-result-flow-guide" tabindex="0" markdown="1">
+<div class="forge-flow forge-flow--original-result" role="region" aria-label="Original model result recovery diagram" aria-describedby="original-result-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
 ---
@@ -169,12 +169,12 @@ config:
     wrappingWidth: 96
 ---
 flowchart LR
-    A["Save original checkpoint<br/>and completion intent"] --> B["Submit original<br/>Bridge completion"]
-    B --> C["Hold an uncertain result<br/>with its original identity"]
-    C --> D["Read saved evidence<br/>or check original result"]
-    D --> E["Operator reviews<br/>one continuation"]
-    E --> F["Commit consume receipt<br/>before native parsing"]
-    F --> G["Continue implementation<br/>then verify its outcome"]
+    A["Save checkpoint<br/>and request intent"] --> B["Send original<br/>Bridge request"]
+    B --> C["Hold uncertain<br/>original result"]
+    C --> D["Read or check<br/>original result"]
+    D --> E["Review<br/>continuation"]
+    E --> F["Commit one-use receipt<br/>before native parsing"]
+    F --> G["Continue implementation<br/>and verify"]
 ```
 
 </div>

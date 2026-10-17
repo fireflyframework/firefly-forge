@@ -225,6 +225,9 @@
 .md-typeset .forge-flow--dependencies .mermaid {
   min-width: 900px;
 }
+.md-typeset .forge-flow--original-result .mermaid {
+  min-width: 1280px;
+}
 .md-typeset .forge-flow-caption {
   color: var(--md-default-fg-color--light);
   font-size: 14px;
