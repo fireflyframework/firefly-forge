@@ -218,6 +218,13 @@ export function ProductDefinition({
       });
     return () => controller.abort();
   }, [connection, connected, id, revision, session]);
+  const saved = savedDraft || Boolean(!draft && loaded === id && snapshot);
+  const savedOrigin =
+    loaded === id && snapshot?.origin?.kind === "ai_assisted"
+      ? snapshot.origin
+      : null;
+  const origin =
+    saved && !dirty && savedOrigin ? savedOrigin : (draftSource ?? savedOrigin);
   return (
     <section className="product-definition">
       {(!connected || !selected) && (
@@ -308,19 +315,11 @@ export function ProductDefinition({
                     </>,
                   )}
                   <ProductOrigin
-                    source={
-                      draftSource ??
-                      (loaded === id && snapshot?.origin?.kind === "ai_assisted"
-                        ? snapshot.origin
-                        : null)
-                    }
-                    saved={
-                      savedDraft || Boolean(!draft && loaded === id && snapshot)
-                    }
+                    source={origin}
+                    saved={saved}
                     dirty={dirty}
                     revision={loaded === id ? snapshot?.revision : undefined}
                     onSource={() => {
-                      const origin = draftSource ?? snapshot?.origin;
                       if (origin?.conversation_id && origin.turn_id) {
                         setSourceTarget({
                           conversation_id: origin.conversation_id,
