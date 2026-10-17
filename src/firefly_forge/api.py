@@ -168,6 +168,13 @@ from firefly_forge.projects import Projects
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
+from firefly_forge.run_creation_controllers import RunCreationController
+from firefly_forge.run_creation_persistence import (
+    ForgeRunCreationCancellationRepository,
+    ForgeRunCreationRequestRepository,
+    ForgeRunCreationReservationRepository,
+)
+from firefly_forge.run_creation_requests import RunCreationRequests
 from firefly_forge.run_evidence import RunEvidence
 from firefly_forge.run_evidence_controllers import RunEvidenceController
 from firefly_forge.runner_backends import RunnerBackends
@@ -1007,6 +1014,11 @@ def create_runtime(
         ForgeJournalRepository,
         ProviderService,
         RunService,
+        RunCreationRequests,
+        ForgeRunCreationRequestRepository,
+        ForgeRunCreationReservationRepository,
+        ForgeRunCreationCancellationRepository,
+        RunCreationController,
         OperatorErrors,
         CatalogController,
         RepositoryController,

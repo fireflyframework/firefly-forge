@@ -398,7 +398,7 @@ async def test_upgrade_from_revision24_adds_immutable_archive_without_changing_c
 
     project, manager, journal, campaign, token = await seeded(store, tmp_path)
     try:
-        assert SCHEMA_REVISION == 26
+        assert SCHEMA_REVISION == 28
         before = await manager.campaign(project["id"], campaign["id"])
         async with store._unit() as session:
             await session.execute(text("DROP TABLE forge_campaign_report_archives"))
