@@ -238,6 +238,68 @@ def reconcile_execution_request(identifier: str, request_id: str, reconciliation
         display(connection.reconcile_execution_request(identifier, request_id, reconciliation_id))
 
 
+@main.command("request-run-creation")
+@click.argument("request_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def request_run_creation(request_id: str, document: Path) -> None:
+    """Submit the retained version-1 input under its original request ID once."""
+    with client() as connection:
+        display(connection.request_run_creation(request_id, json_document(document)))
+
+
+@main.command("run-creation-request")
+@click.argument("request_id")
+def run_creation_request(request_id: str) -> None:
+    """Read the original admission receipt without submitting work."""
+    with client() as connection:
+        display(connection.run_creation_request(request_id))
+
+
+@main.command("cancel-run-creation-request")
+@click.argument("request_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def cancel_run_creation_request(request_id: str, document: Path) -> None:
+    """Settle a delayed submission using its exact version, input digest and scope."""
+    with client() as connection:
+        display(connection.cancel_run_creation_request(request_id, json_document(document)))
+
+
+@main.command("run-creation-decision")
+@click.argument("request_id")
+def run_creation_decision(request_id: str) -> None:
+    """Read the admitted or cancelled decision without choosing either action."""
+    with client() as connection:
+        display(connection.run_creation_decision(request_id))
+
+
+@main.command("agent-checkpoint-candidates")
+@click.argument("identifier")
+def agent_checkpoint_candidates(identifier: str) -> None:
+    """Inspect original-result references without observing or continuing work."""
+    with client() as connection:
+        display(connection.agent_checkpoint_candidates(identifier))
+
+
+@main.command("request-agent-checkpoint-restore")
+@click.argument("identifier")
+@click.argument("completion_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def request_agent_checkpoint_restore(identifier: str, completion_id: str, document: Path) -> None:
+    """Admit the explicitly selected original result with the retained restore ID."""
+    with client() as connection:
+        display(connection.request_agent_checkpoint_restore(identifier, completion_id, json_document(document)))
+
+
+@main.command("agent-checkpoint-restore")
+@click.argument("identifier")
+@click.argument("completion_id")
+@click.argument("request_id")
+def agent_checkpoint_restore(identifier: str, completion_id: str, request_id: str) -> None:
+    """Read the exact restore ticket without dispatching another request."""
+    with client() as connection:
+        display(connection.agent_checkpoint_restore(identifier, completion_id, request_id))
+
+
 @main.command("request-runner-continuation")
 @click.argument("identifier")
 @click.option("--request-id", required=True)

@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_run_creation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Submit the saved version-1 run input under its original request ID.
+
+  Save the lowercase 32-character request ID and exact input before calling. Supply
+  version 1 explicitly. An uncertain response does not authorize a new ID, a retry
+  or the legacy create_run tool. Read the same request or decision separately.
+  Admission is not execution success or publication.
+required_variables: []
+metadata:
+  defaults: {}

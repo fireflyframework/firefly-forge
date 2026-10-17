@@ -1884,6 +1884,62 @@
       "sha256": "d36c263ee23205073b7bae519a601500f7d84c825cb5728a7d83c75aae809f1a",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "mcp/request_run_creation",
+      "version": "1.0.0",
+      "path": "mcp/request_run_creation.yaml",
+      "sha256": "931f9510644d4f1c881c4a971c5b3ab913286fd1892ffaa4ade5d1deca8de943",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_creation_request",
+      "version": "1.0.0",
+      "path": "mcp/get_run_creation_request.yaml",
+      "sha256": "41a1fa384435f6db9852b7a1abbcb3f6d3bff90d9185045f1c555ebc3bf0db2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/cancel_run_creation_request",
+      "version": "1.0.0",
+      "path": "mcp/cancel_run_creation_request.yaml",
+      "sha256": "d8d37d5787d96833c741a6e40098cdfd9284367d7dd1707ab3624b90bdc8e1cc",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_creation_decision",
+      "version": "1.0.0",
+      "path": "mcp/get_run_creation_decision.yaml",
+      "sha256": "e93f09efecbf4fb6907d7f5dc5bad4a185230c490cce51614977ac9a75600b18",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_agent_checkpoint_candidates",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_checkpoint_candidates.yaml",
+      "sha256": "9913ffa4101977bc4b86a2db122850f59f316f624d343842fd7e17aec98cf57d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_agent_checkpoint_restore",
+      "version": "1.0.0",
+      "path": "mcp/request_agent_checkpoint_restore.yaml",
+      "sha256": "c075c879bd0d19d74318cb37537b4fa9d965457914915331d9117372ebf0d975",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_agent_checkpoint_restore",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_checkpoint_restore.yaml",
+      "sha256": "c113d237bf628a91fed374e9cdf9afa24616d9077147ac4ba81d87b934b9eb8a",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

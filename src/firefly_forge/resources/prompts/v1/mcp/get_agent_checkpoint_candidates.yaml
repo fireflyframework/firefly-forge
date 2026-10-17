@@ -1,0 +1,16 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_agent_checkpoint_candidates
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Inspect saved original-result references for one run without continuing it.
+
+  The bounded list contains at most 16 implementation references and no model
+  history or response body. Discovery does not select a result, observe a remote
+  completion, consume a response or request a restore. Review the original
+  completion ID, checkpoint and intent digests and tagged source before a separate
+  explicit restore request.
+required_variables: []
+metadata:
+  defaults: {}

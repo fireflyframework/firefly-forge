@@ -1,0 +1,16 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/cancel_run_creation_request
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Explicitly settle cancellation of one delayed original run submission.
+
+  Use its saved request ID, exact input digest and repository/project/component
+  scope. Supply version 1 and include both scope fields, using null for each when
+  there is no project component. This changes the original request's decision; it
+  does not cancel a run already admitted. Read the same decision separately after
+  an uncertain response. Never choose a replacement ID or automatically retry.
+required_variables: []
+metadata:
+  defaults: {}
