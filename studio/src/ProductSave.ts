@@ -8,7 +8,12 @@ import {
 } from "./api";
 import type { ProductDraftSession } from "./ProductDrafts";
 
+export type ProductChangeBinding = {
+  request_id: string;
+  request_digest: string;
+};
 export type ProductSaveAttempt = {
+  change?: ProductChangeBinding;
   id: number;
   expected_revision: number;
   expected_digest: string | null;
@@ -18,11 +23,11 @@ export type ProductSaveAttempt = {
   phase: "sending" | "unknown";
 };
 let sequence = 0;
-const stable = (value: unknown): string =>
+export const stable = (value: unknown): string =>
   JSON.stringify(value, (_key, item: unknown) =>
     item && typeof item === "object" && !Array.isArray(item)
       ? Object.fromEntries(
-          Object.entries(item).sort(([a], [b]) => a.localeCompare(b)),
+          Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
         )
       : item,
   );
@@ -68,6 +73,7 @@ export async function saveProductDefinition(
   connection: Connection,
   definition: CustomerProductDefinition,
   retry = false,
+  change?: { body: string; binding: ProductChangeBinding },
 ): Promise<ProductSnapshot> {
   active(session);
   if (session.saveHeld && !retry)
@@ -87,7 +93,8 @@ export async function saveProductDefinition(
     attempt = {
       id: ++sequence,
       ...input,
-      body: JSON.stringify(input),
+      body: change?.body ?? JSON.stringify(input),
+      ...(change ? { change: structuredClone(change.binding) } : {}),
       editVersion: session.editVersion,
       phase: "sending",
     };
@@ -100,8 +107,8 @@ export async function saveProductDefinition(
     const value = snapshot(
       await request<unknown>(
         connection,
-        `/repositories/${session.repository}/product/conditional`,
-        { method: "PUT", body: attempt.body },
+        `/repositories/${session.repository}/product/${attempt.change ? "changes" : "conditional"}`,
+        { method: attempt.change ? "POST" : "PUT", body: attempt.body },
       ),
       session.repository,
     );
@@ -109,6 +116,10 @@ export async function saveProductDefinition(
     if (!value || value.revision !== attempt.expected_revision + 1)
       throw new Error(
         "The conditional save returned an unexpected revision. Inspect the saved definition.",
+      );
+    if (attempt.change && !matchesProductChange(value, attempt))
+      throw new Error(
+        "The product change response does not match its original request. Inspect the saved definition.",
       );
     if (session.releaseSave(attempt.id))
       session.acceptSaved(value, attempt.editVersion);
@@ -144,6 +155,15 @@ export async function reconcileProductSave(
   );
   if (!session.active || session.saveAttempt?.id !== attempt.id) return null;
   if (!value || value.revision <= attempt.expected_revision) return null;
+  if (attempt.change) {
+    if (matchesProductChange(value, attempt)) {
+      session.releaseSave(attempt.id);
+      session.acceptSaved(value, attempt.editVersion);
+      return value;
+    }
+    session.observe(value, session.brand);
+    return null;
+  }
   // The original conditional write now has a stale cut and cannot overwrite a later edit.
   if (stable(value.definition) === stable(attempt.definition)) {
     session.releaseSave(attempt.id);
@@ -153,4 +173,20 @@ export async function reconcileProductSave(
   session.observe(value, session.brand);
   session.releaseSave(attempt.id);
   return null;
+}
+
+function matchesProductChange(
+  value: ProductSnapshot,
+  attempt: ProductSaveAttempt,
+) {
+  const receipt = value.change_receipt;
+  return (
+    value.revision === attempt.expected_revision + 1 &&
+    receipt?.request_id === attempt.change?.request_id &&
+    receipt?.request_digest === attempt.change?.request_digest &&
+    receipt?.base_revision === attempt.expected_revision &&
+    receipt?.base_digest === attempt.expected_digest &&
+    receipt?.implementation_status === "not_started" &&
+    stable(value.definition) === stable(attempt.definition)
+  );
 }

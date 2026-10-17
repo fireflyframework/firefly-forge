@@ -90,6 +90,12 @@ Retry declarations allow at most five attempts and name their retryable failures
 
 ## Preview an incremental change
 
+In Studio, edit the saved product's features or integrations in the existing form, then open **Review**. Under **Change selected contracts**, explain why the contract is changing and choose **Preview contract change**. The preview names changed and untouched features, affected journeys, regression criteria and the reviews required. Editing the draft or observing another saved revision invalidates that preview.
+
+Choose **Save contract change** to apply the reviewed patch. This creates a revision through the incremental change API; it does not start implementation. The form can append journeys, acceptance criteria and stories through this path. Use the existing **Save definition** action for context, process, design or architecture edits, or to replace or reorder existing entries.
+
+If a save response is lost, Studio retains that original request ID, body and digest in the current tab's product session. Ordinary saves, discard and proposal replacement remain held. **Inspect saved definition** reads the current product and confirms success only when its change receipt matches the original request, base and definition. A matching definition without that receipt keeps the hold. **Retry original contract change** explicitly sends the retained original request; newer typing never changes its body. Navigation preserves this state; reload, a factory connection change or sign-out clears it. Studio does not repeat either request automatically or store the product body in durable browser storage.
+
 Read `/api/v1/repositories/{id}/product` to obtain the current revision and digest. Create a fresh 32-character hexadecimal `request_id`, then post a `FeatureChangeInput` to `/api/v1/repositories/{id}/product/changes/preview`.
 
 | Field | Meaning |
