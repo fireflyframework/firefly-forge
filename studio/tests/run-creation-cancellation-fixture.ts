@@ -9,7 +9,7 @@ function canonical(value: unknown): unknown {
   if (value && typeof value === "object")
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([key, item]) => [key, canonical(item)]),
     );
   return value;
@@ -22,6 +22,72 @@ async function digest(value: unknown) {
   return Array.from(new Uint8Array(bytes), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+export function retainedRunCreation(runId: string) {
+  let saved: {
+    envelope: Record<string, unknown>;
+    receipt: Record<string, unknown>;
+    run: Record<string, unknown>;
+  } | null = null;
+  return {
+    get input() {
+      return saved
+        ? structuredClone(saved.envelope.input as Record<string, unknown>)
+        : null;
+    },
+    get run() {
+      return saved ? structuredClone(saved.run) : null;
+    },
+    async admit(path: string, envelope: Record<string, unknown> | null) {
+      const requestId = path.match(
+        /\/run-creation-requests\/([a-f0-9]{32})$/,
+      )?.[1];
+      expect(requestId).toBeDefined();
+      expect(runId).toMatch(/^[a-f0-9]{32}$/);
+      expect(envelope).toEqual({ version: 1, input: expect.any(Object) });
+      const original = structuredClone(envelope!);
+      const input = original.input as Record<string, unknown>;
+      expect(input.repository_id).toMatch(/^[a-f0-9]{32}$/);
+      expect(input.brief).toBe((input.brief as string).trim());
+      expect(input.project_id ?? null).toEqual(
+        input.component_id ? expect.stringMatching(/^[a-f0-9]{32}$/) : null,
+      );
+      if (saved) {
+        expect(saved.receipt.request_id).toBe(requestId);
+        expect(original).toEqual(saved.envelope);
+        return structuredClone(saved.receipt);
+      }
+      const run = {
+        ...input,
+        repository_id: input.repository_id,
+        id: runId,
+        project_id: input.project_id ?? null,
+        component_id: input.component_id ?? null,
+        status: "queued",
+        created_at: "2026-10-17T00:00:00+00:00",
+      };
+      const receipt: Record<string, unknown> = {
+        version: 1,
+        request_id: requestId,
+        original_actor: {
+          user_id: "f".repeat(32),
+          authentication_method: "local_bootstrap",
+        },
+        request_digest: await digest(original),
+        input,
+        repository_id: run.repository_id,
+        project_id: run.project_id,
+        component_id: run.component_id,
+        run_id: run.id,
+        admitted_at: run.created_at,
+        admission_digest: await digest(run),
+      };
+      receipt.digest = await digest(receipt);
+      saved = { envelope: original, receipt, run };
+      return structuredClone(receipt);
+    },
+  };
 }
 
 export async function fixture(context: BrowserContext) {
