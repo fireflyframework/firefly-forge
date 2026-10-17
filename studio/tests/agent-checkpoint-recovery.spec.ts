@@ -36,6 +36,7 @@ async function setup(
   page: Page,
   kind: "restore" | "observation" = "restore",
   outcome: "lost" | "denied" | "valid" = "lost",
+  theme?: "light" | "dark",
 ) {
   const state = {
     posts: 0,
@@ -168,6 +169,10 @@ async function setup(
     return route.fulfill({ json });
   });
   await page.goto("/");
+  if (theme) {
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  }
   await navigate(page, "Connections");
   await page
     .getByLabel("API token", { exact: true })
@@ -202,41 +207,49 @@ async function continueOriginal(page: Page) {
     .click();
 }
 for (const width of [1440, 390])
-  test(`one-use original result review is readable and keyboard reachable at ${width}px`, async ({
-    page,
-  }, info) => {
-    await page.setViewportSize({ width, height: 900 });
-    const state = await setup(page, "restore", "valid");
-    const panel = page.getByRole("region", {
-      name: "Original model result",
-      exact: true,
+  for (const theme of ["light", "dark"] as const)
+    test(`one-use original result review is readable and keyboard reachable at ${width}px in ${theme}`, async ({
+      page,
+    }, info) => {
+      await page.setViewportSize({ width, height: 900 });
+      const state = await setup(page, "restore", "valid", theme);
+      const panel = page.getByRole("region", {
+        name: "Original model result",
+        exact: true,
+      });
+      await expect(
+        panel.getByLabel("Original implementation attempt"),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Review original result", exact: true })
+        .focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Review continuation",
+          exact: true,
+        }),
+      ).toBeFocused();
+      const action = page.getByRole("button", {
+        name: "Continue from original result",
+        exact: true,
+      });
+      await expect(action).toBeDisabled();
+      await panel.getByRole("checkbox").focus();
+      await page.keyboard.press("Space");
+      await expect(action).toBeEnabled();
+      expect(state.posts).toBe(0);
+      expect(
+        await panel.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
+      ).toBe(false);
+      await action.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: info.outputPath(`original-result-${width}-${theme}-viewport.png`),
+      });
+      await panel.screenshot({
+        path: info.outputPath(`original-result-${width}-${theme}-panel.png`),
+      });
     });
-    await expect(
-      panel.getByLabel("Original implementation attempt"),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Review original result", exact: true })
-      .focus();
-    await page.keyboard.press("Enter");
-    await expect(
-      panel.getByRole("heading", { name: "Review continuation", exact: true }),
-    ).toBeFocused();
-    const action = page.getByRole("button", {
-      name: "Continue from original result",
-      exact: true,
-    });
-    await expect(action).toBeDisabled();
-    await panel.getByRole("checkbox").focus();
-    await page.keyboard.press("Space");
-    await expect(action).toBeEnabled();
-    expect(state.posts).toBe(0);
-    expect(
-      await panel.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
-    ).toBe(false);
-    await panel.screenshot({
-      path: info.outputPath(`original-result-${width}.png`),
-    });
-  });
 for (const kind of ["restore", "observation"] as const)
   test(`lost ${kind} response and exact404 keep one original identity across reload`, async ({
     page,
@@ -479,4 +492,58 @@ test("a different server-discovered ticket remains readable while the local unce
       exact: true,
     }),
   ).toHaveCount(0);
+});
+
+test("original result review scrolls within a short viewport without footer overlap", async ({
+  page,
+}, info) => {
+  const viewport = { width: 390, height: 560 };
+  await page.setViewportSize(viewport);
+  const state = await setup(page, "restore", "valid", "dark");
+  const panel = page.getByRole("region", {
+    name: "Original model result",
+    exact: true,
+  });
+  await panel
+    .getByRole("button", { name: "Review original result", exact: true })
+    .click();
+  await panel.getByRole("checkbox").check();
+  const action = panel.getByRole("button", {
+    name: "Continue from original result",
+    exact: true,
+  });
+  await action.scrollIntoViewIfNeeded();
+  await action.focus();
+  await expect(action).toBeFocused();
+  await expect(action).toBeEnabled();
+  const main = page.locator(".workspace-main > main");
+  const bounds = await action.boundingBox(),
+    mainBounds = await main.boundingBox(),
+    footer = await page.locator(".workspace-main > footer").boundingBox();
+  expect(bounds && mainBounds && footer).toBeTruthy();
+  expect(mainBounds!.y + mainBounds!.height).toBeLessThanOrEqual(footer!.y + 1);
+  expect(bounds!.y).toBeGreaterThanOrEqual(mainBounds!.y);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footer!.y);
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+  expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height + 1);
+  expect(await main.evaluate((node) => node.scrollTop > 0)).toBe(true);
+  expect(
+    await main.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  expect(
+    await action.evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      return node.contains(
+        document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
+      );
+    }),
+  ).toBe(true);
+  expect(state.posts).toBe(0);
+  await page.screenshot({
+    path: info.outputPath("original-result-short-viewport.png"),
+  });
+  await panel.screenshot({
+    path: info.outputPath("original-result-short-panel.png"),
+  });
 });
