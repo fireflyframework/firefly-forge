@@ -2,15 +2,26 @@
 import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
-test("recorded design response seeds an unapproved wizard draft without saving or executing it", async ({
+test("recorded proposal retains human editing through save, reload and original-source readback", async ({
   page,
-}) => {
+}, info) => {
   const conversationId = "c".repeat(32),
     turnId = "d".repeat(32);
   let savedInput: Record<string, unknown> | null = null;
   let sessions: Record<string, unknown>[] = [];
   let sent: Record<string, unknown> | null = null;
-  let writes = 0;
+  let writes = 0,
+    modelCalls = 0;
+  let savedSnapshot: Record<string, unknown> | null = null;
+  const provenance = {
+    kind: "ai_generated",
+    provider: "bridge",
+    model: "bridge/default",
+    generated_at: "2026-10-12T00:00:00Z",
+    conversation_id: conversationId,
+    turn_id: turnId,
+    proposal_digest: "e".repeat(64),
+  };
   const proposal = {
     customer: "Warehouse supervisors",
     problem: "Reserve inventory safely",
@@ -48,22 +59,25 @@ test("recorded design response seeds an unapproved wizard draft without saving o
       path.endsWith("/deployment-targets")
     )
       json = [];
-    if (
-      path.endsWith("/product") ||
-      path.endsWith("/product/conditional") ||
-      path.endsWith("/brand")
-    ) {
+    if (path.endsWith("/brand")) json = null;
+    if (path.endsWith("/product") || path.endsWith("/product/conditional")) {
       if (req.method() === "PUT") {
         writes++;
+        expect(req.postDataJSON()).toMatchObject({
+          expected_revision: 0,
+          expected_digest: null,
+        });
         savedInput = req.postDataJSON().definition;
-        json = {
+        savedSnapshot = {
           repository_id: "a".repeat(32),
           revision: 1,
           digest: "b".repeat(64),
-          definition: req.postDataJSON().definition,
+          definition: savedInput,
+          origin: { ...provenance, kind: "ai_assisted", edited: true },
           created_at: "2026-10-12T00:00:00Z",
         };
-      } else json = null;
+      }
+      json = savedSnapshot;
     }
     if (path.endsWith("/assistant/conversations")) {
       if (req.method() === "POST") {
@@ -85,6 +99,8 @@ test("recorded design response seeds an unapproved wizard draft without saving o
         journal: { verified: true, head: "b".repeat(64), entries: [] },
       };
     if (path.endsWith("/turns")) {
+      expect(req.method()).toBe("POST");
+      modelCalls++;
       sent = req.postDataJSON();
       turn = {
         id: turnId,
@@ -100,15 +116,7 @@ test("recorded design response seeds an unapproved wizard draft without saving o
           citation_ids: ["source-1"],
         },
         detail: "Proposal retained; no definition was changed",
-        provenance: {
-          kind: "ai_generated",
-          provider: "bridge",
-          model: "bridge/default",
-          generated_at: "2026-10-12T00:00:00Z",
-          conversation_id: conversationId,
-          turn_id: turnId,
-          proposal_digest: "e".repeat(64),
-        },
+        provenance,
       };
       json = turn;
     }
@@ -286,6 +294,97 @@ test("recorded design response seeds an unapproved wizard draft without saving o
     turn_id: turnId,
     proposal_digest: "e".repeat(64),
   });
+  const origin = page.locator(".product-origin");
+  await expect(origin).toContainText("AI-assisted · human-edited");
+  await origin
+    .getByRole("button", { name: "View AI source", exact: true })
+    .click();
+  await expect(page.locator(`#assistant-turn-${turnId}`)).toContainText(
+    "Review this bounded proposal.",
+  );
+  await page
+    .getByRole("list", { name: "Setup progress", exact: true })
+    .getByRole("button", { name: /Context/ })
+    .click();
+  await page
+    .getByLabel("Customer or user", { exact: true })
+    .fill("Another unsaved refinement");
+  await expect(origin).toContainText("AI-assisted draft · review needed");
+  await expect(origin).not.toContainText("human-edited");
+  for (const theme of ["light", "dark"]) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.reload();
+    await navigate(page, "Product definition");
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(
+      page.getByLabel("Customer or user", { exact: true }),
+    ).toHaveValue("Edited supervisors");
+    await expect(origin).toContainText("AI-assisted · human-edited");
+    const sourceAction = origin.getByRole("button", {
+      name: "View AI source",
+      exact: true,
+    });
+    await sourceAction.scrollIntoViewIfNeeded();
+    await sourceAction.focus();
+    await expect(sourceAction).toBeFocused();
+    const geometry = await origin.evaluate((element) => {
+      const label = element
+          .querySelector(":scope > span")!
+          .getBoundingClientRect(),
+        button = element.querySelector("button")!,
+        action = button.getBoundingClientRect(),
+        header = document
+          .querySelector(".workspace-main > header")!
+          .getBoundingClientRect(),
+        footer = document
+          .querySelector(".workspace-main > footer")!
+          .getBoundingClientRect();
+      return {
+        labelFits:
+          label.left >= 0 &&
+          label.right <= innerWidth &&
+          label.top >= header.bottom &&
+          label.bottom <= footer.top,
+        actionFits:
+          action.left >= 0 &&
+          action.right <= innerWidth &&
+          action.top >= header.bottom &&
+          action.bottom <= footer.top,
+        actionHit: button.contains(
+          document.elementFromPoint(
+            action.x + action.width / 2,
+            action.y + action.height / 2,
+          ),
+        ),
+      };
+    });
+    expect(geometry).toEqual({
+      labelFits: true,
+      actionFits: true,
+      actionHit: true,
+    });
+    await page.screenshot({
+      path: info.outputPath(
+        `product-origin-human-edited-390-${theme}-viewport.png`,
+      ),
+    });
+    await sourceAction.click();
+    await expect(
+      page.getByRole("dialog", {
+        name: "Product design assistant",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const originalTurn = page.locator(`#assistant-turn-${turnId}`);
+    await expect(originalTurn).toContainText("Review this bounded proposal.");
+    await expect(
+      originalTurn.locator(".assistant-source-label"),
+    ).toHaveAttribute("title", /AI-generated · bridge · bridge\/default/);
+    expect(writes).toBe(1);
+    expect(modelCalls).toBe(1);
+  }
 });
 
 test("new conversation task selection leaves recorded dialogue and edited draft unchanged", async ({
