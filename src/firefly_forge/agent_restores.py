@@ -407,11 +407,39 @@ class AgentRestores:
             restored = RestoreExecution(self, ticket, bundle)
             await restored.guard_source()
             await self.engine.continue_agent_checkpoint(restored)
-            task = await self.journal._effect_task(run_id, bundle[0]["payload"]["task_key"])
-            if task.status != "done":
-                raise ValueError("Restoration did not reach its original implementation receipt")
+            async with self.store._unit():
+                await self.journal._bridge_read_bound(run_id)
+                rows = await self.journal.records.find_for_run(identifier(run_id))
+                if not self.journal.verify_chain([row.data for row in rows]):
+                    raise ValueError("Restoration implementation receipt chain differs")
+                receipts = [
+                    row
+                    for row in rows
+                    if row.kind == "receipt" and row.idempotency_key == bundle[0]["payload"]["task_key"]
+                ]
+                if len(receipts) != 1:
+                    raise ValueError("Restoration did not reach its original implementation receipt")
+                row = receipts[0]
+                receipt = self.completions._validate_record(
+                    row.data,
+                    run_id,
+                    bundle[0]["payload"]["task_key"],
+                    "receipt",
+                    {
+                        "digest": row.digest,
+                        "task_id": row.task_id,
+                        "sequence": row.sequence,
+                        "run_id": row.run_id.hex,
+                        "kind": row.kind,
+                        "idempotency_key": row.idempotency_key,
+                    },
+                )
+                if receipt["task_id"] != "implement" or receipt["payload"].get("implementation_round") != context.round:
+                    raise ValueError("Restoration receipt does not belong to its original implementation round")
             await self.finish(
-                request_id, "completed", {"task_key": bundle[0]["payload"]["task_key"], "attempt": task.attempt}
+                request_id,
+                "completed",
+                {"task_key": bundle[0]["payload"]["task_key"], "attempt": bundle[0]["payload"]["task_attempt"]},
             )
         except BaseException:
             await asyncio.shield(
@@ -434,8 +462,17 @@ class AgentRestores:
                 run = await self.journal._run(row.run_id.hex)
                 completion_id = row.data["request"]["completion_request_id"]
                 intent = await self.completions._record(row.run_id.hex, completion_id)
-                task = await self.journal._effect_task(row.run_id.hex, intent["payload"]["task_key"])
-                if task.status == "running" and task.attempt == intent["payload"]["task_attempt"]:
+                task = next(
+                    (
+                        task
+                        for task in await self.journal.tasks.find_for_run(row.run_id)
+                        if task.task_id == "implement"
+                        and task.data.get("idempotency_key") == intent["payload"]["task_key"]
+                        and task.attempt == intent["payload"]["task_attempt"]
+                    ),
+                    None,
+                )
+                if task is not None and task.status == "running":
                     task.status = "needs_reconciliation"
                     await self.journal.tasks.save(task)
                 if run.status not in {"succeeded", "cancelled", "failed"}:
