@@ -83,11 +83,14 @@ import {
   retainCreationMarker,
   clearCreationMarker,
   sendCreation,
-  recoverCreation,
+  recoverCreationDecision,
+  cancelCreation,
+  prepareCreationAction,
   readCreatedRun,
   normalizeRunBrief,
   type CreationMarker,
   type CreationReceipt,
+  type CreationDecision,
   type RunCreationScope,
 } from "./RunCreationData";
 import {
@@ -1547,44 +1550,108 @@ export function NewProduct({
     // The serialized binding includes the draft, connection, actor and component scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binding]);
-  async function finishCreation(
-    original: CreationMarker,
-    receipt: CreationReceipt,
-    version: number,
+  const [action, setAction] = useProductDraftField<{
+    epoch: number;
+    kind: "send" | "check" | "cancel" | null;
+    requestId: string | null;
+  }>(session, "creationAction", { epoch: 0, kind: null, requestId: null });
+  const [creationNotice, setCreationNotice] = useProductDraftField(
+    session,
+    "creationNotice",
+    "",
+  );
+  function beginAction(
+    kind: "send" | "check" | "cancel",
+    requestId: string | null,
   ) {
-    setAdmitted(receipt);
-    const run = await readCreatedRun(connection, receipt, isCurrent);
-    await clearCreationMarker(
+    const previous = session.read("creationAction", action);
+    const epoch = previous.epoch + 1;
+    setAction({ epoch, kind, requestId });
+    setBusy(true);
+    setError("");
+    setCreationNotice("");
+    return epoch;
+  }
+  function isAction(epoch: number, requestId?: string) {
+    const current = session.read("creationAction", action);
+    return (
+      isCurrent() &&
+      current.epoch === epoch &&
+      (requestId === undefined || current.requestId === requestId)
+    );
+  }
+  function endAction(epoch: number) {
+    const current = session.read("creationAction", action);
+    if (!session.active || current.epoch !== epoch) return;
+    setBusy(false);
+    setAction({ ...current, kind: null });
+  }
+  async function finishDecision(
+    original: CreationMarker,
+    decision: CreationDecision,
+    epoch: number,
+  ) {
+    const current = () => isAction(epoch, original.requestId);
+    if (!current()) return;
+    let run: ForgeRun | null = null;
+    if (decision.outcome === "admitted") {
+      setAdmitted(decision.receipt);
+      run = await readCreatedRun(connection, decision.receipt, current);
+    }
+    const pending = await clearCreationMarker(
       localStorage,
       original,
       navigator.locks,
-      isCurrent,
+      current,
     );
-    if (!isCurrent()) return;
-    setCreation(null);
+    if (!current()) return;
+    setCreation(pending);
     setAdmitted(null);
-    if (session.editVersion === version) drafts.discard(session);
+    setMissingRequest("");
+    if (pending) {
+      setCreationNotice(
+        "This request is resolved. Another request is waiting; check its result before starting again.",
+      );
+      return;
+    }
+    if (decision.outcome === "cancelled") {
+      setCreationNotice("Request cancelled. You can edit and start again.");
+      return;
+    }
+    const submitted = session.read<{
+      requestId: string;
+      version: number;
+    } | null>("creationSubmission", null);
+    if (
+      submitted?.requestId === original.requestId &&
+      session.editVersion === submitted.version
+    )
+      drafts.discard(session);
     onCreated(
-      run,
-      run.status === "queued"
+      run!,
+      run!.status === "queued"
         ? "Your run has been queued."
         : "Your run has been opened.",
     );
   }
   async function checkOriginal() {
-    if (!creation || session.read("busy", false) || !isCurrent()) return;
-    setBusy(true);
-    setError("");
+    if (
+      !creation ||
+      !isCurrent() ||
+      ["cancel", "check"].includes(
+        session.read("creationAction", action).kind ?? "",
+      )
+    )
+      return;
+    const epoch = beginAction("check", creation.requestId);
     setMissingRequest("");
     try {
-      const receipt = await recoverCreation(connection, creation, isCurrent);
-      await finishCreation(
-        creation,
-        receipt,
-        session.read("creationVersion", -1),
+      const decision = await recoverCreationDecision(connection, creation, () =>
+        isAction(epoch, creation.requestId),
       );
+      await finishDecision(creation, decision, epoch);
     } catch (cause) {
-      if (isCurrent()) {
+      if (isAction(epoch, creation.requestId)) {
         setMissingRequest(
           cause instanceof ApiError && cause.status === 404
             ? creation.requestId
@@ -1593,7 +1660,7 @@ export function NewProduct({
         setError(errorText(cause));
       }
     } finally {
-      setBusy(false);
+      endAction(epoch);
     }
   }
   async function retryOriginal() {
@@ -1604,29 +1671,51 @@ export function NewProduct({
       !isCurrent()
     )
       return;
-    setBusy(true);
-    setError("");
+    const epoch = beginAction("send", creation.requestId);
+    const current = () => isAction(epoch, creation.requestId);
     setMissingRequest("");
     try {
-      const retained = await readCreationMarker(localStorage, scope);
-      if (
-        !retained ||
-        retained.requestId !== creation.requestId ||
-        retained.inputDigest !== creation.inputDigest
-      )
-        throw new Error(
-          "The retained request changed. Check the original result again.",
-        );
-      const receipt = await sendCreation(connection, retained, isCurrent);
-      await finishCreation(
+      const retained = await prepareCreationAction(
+        localStorage,
+        creation,
+        navigator.locks,
+        current,
+      );
+      const receipt = await sendCreation(connection, retained, current);
+      await finishDecision(
         retained,
-        receipt,
-        session.read("creationVersion", -1),
+        { version: 1, outcome: "admitted", receipt },
+        epoch,
       );
     } catch (cause) {
-      if (isCurrent()) setError(errorText(cause));
+      if (current()) setError(errorText(cause));
     } finally {
-      setBusy(false);
+      endAction(epoch);
+    }
+  }
+  async function cancelOriginal() {
+    if (
+      !creation ||
+      !isCurrent() ||
+      session.read("creationAction", action).kind === "cancel"
+    )
+      return;
+    const epoch = beginAction("cancel", creation.requestId);
+    const current = () => isAction(epoch, creation.requestId);
+    setMissingRequest("");
+    try {
+      const retained = await prepareCreationAction(
+        localStorage,
+        creation,
+        navigator.locks,
+        current,
+      );
+      const decision = await cancelCreation(connection, retained, current);
+      await finishDecision(retained, decision, epoch);
+    } catch (cause) {
+      if (current()) setError(errorText(cause));
+    } finally {
+      endAction(epoch);
     }
   }
   const frozenArchitecture =
@@ -1637,6 +1726,7 @@ export function NewProduct({
     event.preventDefault();
     if (!session.active || session.read("busy", false)) return;
     setError("");
+    let epoch: number | null = null;
     try {
       const checks = parseCommands(commands);
       if (step === 1 && frozenArchitecture && !frozenArchitecture.reviewed)
@@ -1647,7 +1737,8 @@ export function NewProduct({
         setStep(step + 1);
         return;
       }
-      setBusy(true);
+      epoch = beginAction("send", null);
+      const submittedEpoch = epoch;
       const submittedVersion = session.editVersion;
       const retained =
         creation ?? (await readCreationMarker(localStorage, scope));
@@ -1681,21 +1772,33 @@ export function NewProduct({
         ...(overridePolicies ? { skills: selectedSkills } : {}),
         ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
       });
-      await retainCreationMarker(
-        localStorage,
-        original,
-        navigator.locks,
-        isCurrent,
+      await retainCreationMarker(localStorage, original, navigator.locks, () =>
+        isAction(submittedEpoch),
       );
-      if (!isCurrent()) return;
+      if (!isAction(submittedEpoch)) return;
       setCreation(original);
-      session.write("creationVersion", submittedVersion);
-      const receipt = await sendCreation(connection, original, isCurrent);
-      await finishCreation(original, receipt, submittedVersion);
+      setAction({
+        epoch: submittedEpoch,
+        kind: "send",
+        requestId: original.requestId,
+      });
+      session.write("creationSubmission", {
+        requestId: original.requestId,
+        version: submittedVersion,
+      });
+      const receipt = await sendCreation(connection, original, () =>
+        isAction(submittedEpoch, original.requestId),
+      );
+      await finishDecision(
+        original,
+        { version: 1, outcome: "admitted", receipt },
+        submittedEpoch,
+      );
     } catch (cause) {
-      if (isCurrent()) setError(errorText(cause));
+      if (epoch === null ? isCurrent() : isAction(epoch))
+        setError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (epoch !== null) endAction(epoch);
     }
   }
   const titles = [
@@ -2094,7 +2197,11 @@ export function NewProduct({
               </dl>
               <button
                 type="button"
-                disabled={busy || !connected}
+                disabled={
+                  action.kind === "cancel" ||
+                  action.kind === "check" ||
+                  !connected
+                }
                 onClick={() => void checkOriginal()}
               >
                 Check original result
@@ -2108,6 +2215,17 @@ export function NewProduct({
                   Send original request again
                 </button>
               )}
+              <p>
+                If this request already started a run, we’ll open that run.
+                Otherwise, cancelling prevents it from starting later.
+              </p>
+              <button
+                type="button"
+                disabled={action.kind === "cancel" || !connected}
+                onClick={() => void cancelOriginal()}
+              >
+                Cancel this request
+              </button>
               <details>
                 <summary>Review original input</summary>
                 <OutputView
@@ -2118,6 +2236,7 @@ export function NewProduct({
               </details>
             </section>
           )}
+          {creationNotice && <p role="status">{creationNotice}</p>}
           {error && (
             <div className="alert" role="alert">
               {error}
