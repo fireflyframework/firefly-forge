@@ -16,6 +16,9 @@ from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
 
+# A process-local write cut; callers still re-admit external sources before exposure.
+_write_generations: dict[str, object] = {}
+
 FIELDS: dict[str, dict[str, str]] = {
     "codex": {
         "model": "FORGE_CODEX_MODEL",
@@ -32,6 +35,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "endpoint": "FORGE_BRIDGE_URL",
         "token": "FORGE_BRIDGE_TOKEN",
         "completion_recovery": "FORGE_BRIDGE_COMPLETION_RECOVERY",
+        "checkpoints": "FORGE_AGENTIC_CHECKPOINTS",
         "timeout": "FORGE_PROVIDER_TIMEOUT",
     },
     "agentic": {
@@ -49,13 +53,25 @@ DEFAULTS = {
     "FORGE_BRIDGE_MODEL": "bridge/default",
 }
 SECRETS = {"token", "api_key"}
-OPTIONAL_SETTINGS = {"FORGE_BRIDGE_COMPLETION_RECOVERY"}
+OPTIONAL_SETTINGS = {"FORGE_BRIDGE_COMPLETION_RECOVERY", "FORGE_AGENTIC_CHECKPOINTS"}
 
 
 def validate_completion_recovery(value: str) -> str:
     if value not in {"legacy", "required"}:
         raise ValueError("Completion recovery must be legacy or required")
     return value
+
+
+def validate_checkpoints(settings: dict[str, str], *, task: str = "implementation", provider: str = "bridge") -> None:
+    value = settings.get("FORGE_AGENTIC_CHECKPOINTS", "disabled")
+    if value not in {"disabled", "required"}:
+        raise ValueError("Agentic checkpoints must be disabled or required")
+    if value == "required" and (
+        provider != "bridge"
+        or task != "implementation"
+        or settings.get("FORGE_BRIDGE_COMPLETION_RECOVERY") != "required"
+    ):
+        raise ValueError("Required checkpoints support only Bridge implementation with required completion recovery")
 
 
 class ProviderConfiguration(BaseModel):
@@ -127,6 +143,12 @@ class ConfigurationStore:
             raise ValueError("Revision directory must be a real directory")
         self.revisions.chmod(0o700)
         self.lock = FileLock(str(self.directory / "settings.lock"))
+        self._generation_key = str(self.directory.resolve())
+        _write_generations.setdefault(self._generation_key, object())
+
+    @property
+    def write_generation(self) -> object:
+        return _write_generations[self._generation_key]
 
     def _read(self, path: Path) -> dict[str, Any]:
         try:
@@ -154,6 +176,7 @@ class ConfigurationStore:
                 target.flush()
                 os.fsync(target.fileno())
             os.replace(filename, path)
+            _write_generations[self._generation_key] = object()
         finally:
             Path(filename).unlink(missing_ok=True)
 
@@ -191,6 +214,8 @@ class ConfigurationStore:
                 raise ValueError("Configuration value exceeds limits")
             if key in SECRETS and not value:
                 continue
+            if key == "checkpoints" and not value:
+                continue
             if key == "completion_recovery":
                 value = validate_completion_recovery(value)
             if key == "endpoint" and value:
@@ -204,6 +229,7 @@ class ConfigurationStore:
             values[FIELDS[provider][key]] = value
         with self.lock:
             data = self._read(self.path)
+            validate_checkpoints({**data.get(provider, {}), **values}, provider=normalize_provider(provider))
             data[provider] = {**data.get(provider, {}), **values}
             for key in request.clear_secrets:
                 data[provider][FIELDS[provider][key]] = ""
@@ -212,6 +238,7 @@ class ConfigurationStore:
 
     def snapshot(self, provider: str) -> dict[str, Any]:
         settings = self.resolve(provider)
+        validate_checkpoints(settings, provider=normalize_provider(provider))
         if "FORGE_BRIDGE_COMPLETION_RECOVERY" in settings:
             validate_completion_recovery(settings["FORGE_BRIDGE_COMPLETION_RECOVERY"])
         endpoint_name = FIELDS[normalize_provider(provider)].get("endpoint")

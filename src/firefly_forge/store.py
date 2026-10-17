@@ -8,8 +8,10 @@ import copy
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, nullcontext
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager, nullcontext
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +19,7 @@ from typing import Any, cast
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode, SessionProvider
 from pyfly.data.relational.sqlalchemy.transaction_manager import SqlAlchemyTransactionManager
+from pyfly.data.transaction import current_unit_of_work
 from pyfly.data.transaction.registry import TransactionManagerRegistry
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -45,6 +48,40 @@ from firefly_forge.secrets import contains_known_credential
 
 Data = dict[str, Any]
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
+
+
+@dataclass(frozen=True)
+class _CredentialCut:
+    store: Store
+    source: Callable[[], dict[str, str]]
+    generation: object
+    registry: tuple[tuple[str, str], ...]
+
+
+_credential_cut: ContextVar[_CredentialCut | None] = ContextVar("prepared_credential_cut", default=None)
+
+
+def _credential_registry(store: Store) -> dict[str, str]:
+    registry = {**store.credential_registry()}
+    for provider in ("codex", "claude", "bridge", "agentic"):
+        registry.update(store.configuration.resolve(provider))
+    return registry
+
+
+@contextmanager
+def prepared_credential_rejection(store: Store) -> Iterator[None]:
+    if current_unit_of_work() is not None:
+        raise ValueError("Prepare credential rejection outside the native transaction")
+    generation = store.configuration.write_generation
+    source = store.credential_registry
+    registry = tuple(_credential_registry(store).items())
+    if generation is not store.configuration.write_generation or source is not store.credential_registry:
+        raise ValueError("Credential sources changed during preparation")
+    token = _credential_cut.set(_CredentialCut(store, source, generation, registry))
+    try:
+        yield
+    finally:
+        _credential_cut.reset(token)
 
 
 def now() -> str:
@@ -480,9 +517,17 @@ class Store:
             return await self.get_run(data["id"])
 
     def reject_credentials(self, value: Any) -> None:
-        registry = {**self.credential_registry()}
-        for provider in ("codex", "claude", "bridge", "agentic"):
-            registry.update(self.configuration.resolve(provider))
+        cut = _credential_cut.get()
+        if cut is not None and current_unit_of_work() is not None:
+            if (
+                cut.store is not self
+                or cut.source is not self.credential_registry
+                or cut.generation is not self.configuration.write_generation
+            ):
+                raise ValueError("Credential sources changed after preparation")
+            registry = dict(cut.registry)
+        else:
+            registry = _credential_registry(self)
         if contains_known_credential(value, registry):
             raise ValueError(
                 "Do not place configured credentials in product briefs, definitions or worker instructions"

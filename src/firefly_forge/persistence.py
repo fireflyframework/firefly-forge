@@ -256,6 +256,8 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
                     func.coalesce(
                         func.sum(case((ForgeJournalEntity.kind == "bridge_request_response", 1), else_=0)), 0
                     ),
+                    func.coalesce(func.sum(case((ForgeJournalEntity.kind == "agent_checkpoint", 1), else_=0)), 0),
+                    func.coalesce(func.sum(case((ForgeJournalEntity.kind == "agent_consume", 1), else_=0)), 0),
                 ).where(ForgeJournalEntity.run_id == run_id)
             )
         ).one()
@@ -265,7 +267,43 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
             "intents": int(row[2]),
             "max_intent_bytes": int(row[3]),
             "responses": int(row[4]),
+            "checkpoints": int(row[5]),
+            "checkpoint_consumes": int(row[6]),
         }
+
+    async def checkpoint_budget(self, run_id: UUID) -> dict[str, int]:
+        size = func.octet_length(cast(ForgeJournalEntity.data, Text))
+        row = (
+            await self._require_session().execute(
+                select(
+                    func.coalesce(func.sum(case((ForgeJournalEntity.kind == "agent_checkpoint", 1), else_=0)), 0),
+                    func.coalesce(func.sum(case((ForgeJournalEntity.kind == "agent_consume", 1), else_=0)), 0),
+                    func.coalesce(func.sum(size), 0),
+                    func.coalesce(func.max(size), 0),
+                ).where(
+                    ForgeJournalEntity.run_id == run_id,
+                    ForgeJournalEntity.kind.in_(["agent_checkpoint", "agent_consume"]),
+                )
+            )
+        ).one()
+        return dict(zip(("count", "consumes", "bytes", "max_bytes"), (int(value) for value in row), strict=True))
+
+    async def checkpoint_record(self, run_id: UUID, key: str, kind: str) -> ForgeJournalEntity | None:
+        if kind not in {"agent_checkpoint", "agent_consume"}:
+            raise ValueError("Unsupported checkpoint record kind")
+        predicate = (
+            ForgeJournalEntity.run_id == run_id,
+            ForgeJournalEntity.idempotency_key == key,
+            ForgeJournalEntity.kind == kind,
+        )
+        size = await self._require_session().scalar(
+            select(func.octet_length(cast(ForgeJournalEntity.data, Text))).where(*predicate)
+        )
+        if size is None:
+            return None
+        if size > (4096 if kind == "agent_consume" else 262144):
+            raise ValueError("Agent checkpoint record exceeds its bounded read")
+        return await self._require_session().scalar(select(ForgeJournalEntity).where(*predicate))
 
     async def bridge_record(self, run_id: UUID, key: str, kind: str) -> ForgeJournalEntity | None:
         predicate = (
@@ -313,6 +351,50 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
             }
             for row in rows
         ]
+
+    async def checkpoint_candidates(self, run_id: UUID) -> list[str]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeJournalEntity.idempotency_key)
+                .where(ForgeJournalEntity.run_id == run_id, ForgeJournalEntity.kind == "agent_checkpoint")
+                .order_by(ForgeJournalEntity.sequence.desc())
+                .limit(16)
+            )
+        )
+
+    async def checkpoint_observations(self, run_id: UUID, completion_id: str) -> list[str]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeJournalEntity.idempotency_key)
+                .where(
+                    ForgeJournalEntity.run_id == run_id,
+                    ForgeJournalEntity.kind == "bridge_request_observation",
+                    ForgeJournalEntity.data["payload"]["request_id"].astext == completion_id,
+                )
+                .order_by(ForgeJournalEntity.sequence.desc())
+                .limit(1)
+            )
+        )
+
+    async def checkpoint_restore_tickets(self, run_id: UUID) -> list[dict[str, str]]:
+        from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity as Ticket
+
+        session = self._require_session()
+        budget = (
+            await session.execute(
+                select(func.count(), func.coalesce(func.max(func.octet_length(cast(Ticket.data, Text))), 0)).where(
+                    Ticket.run_id == run_id, Ticket.kind == "agent_restore"
+                )
+            )
+        ).one()
+        if int(budget[0]) > 50 or int(budget[1]) > 65536:
+            raise ValueError("Checkpoint restore tickets exceed their bounded read")
+        rows = await session.execute(
+            select(Ticket.id, Ticket.request_key, Ticket.status)
+            .where(Ticket.run_id == run_id, Ticket.kind == "agent_restore")
+            .limit(50)
+        )
+        return [{"id": row[0].hex, "completion_id": row[1], "status": row[2]} for row in rows]
 
     async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
         return list(

@@ -1,5 +1,9 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { AgentLifecycle } from "./AgentLifecycle";
+import {
+  BridgeRecoveryChoices,
+  bridgeRecoveryValues,
+} from "./BridgeRecoveryChoices";
 import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -75,15 +79,20 @@ export function ProviderConfiguration({
     setNotice("");
     const data = new FormData(event.currentTarget);
     const values = Object.fromEntries(
-      (current.fields ?? []).map((field) => [
-        field.key,
-        String(data.get(field.key) ?? "").trim(),
-      ]),
+      (current.fields ?? [])
+        .filter(
+          (field) =>
+            current.id !== "bridge" ||
+            !["completion_recovery", "checkpoints"].includes(field.key),
+        )
+        .map((field) => [field.key, String(data.get(field.key) ?? "").trim()]),
     );
     const clear_secrets = (current.fields ?? [])
       .filter((field) => field.secret && data.get("clear-" + field.key))
       .map((field) => field.key);
     try {
+      if (current.id === "bridge")
+        Object.assign(values, bridgeRecoveryValues(data));
       const result = await request<CodingProvider>(
         connection,
         `/providers/${current.id}/configuration`,
@@ -192,33 +201,46 @@ export function ProviderConfiguration({
           className="provider-config-form"
           onSubmit={(event) => void save(event)}
         >
-          {(current.fields ?? []).map((field) => (
-            <div className="field" key={field.key}>
-              <label htmlFor={`${current.id}-${field.key}`}>
-                {field.label}
-              </label>
-              <input
-                id={`${current.id}-${field.key}`}
-                name={field.key}
-                type={field.secret ? "password" : "text"}
-                defaultValue={
-                  field.secret ? "" : String(current.config?.[field.key] ?? "")
-                }
-                autoComplete="off"
-                placeholder={
-                  field.secret && current.config?.[field.key + "_configured"]
-                    ? "Configured; leave blank to keep it"
-                    : field.placeholder
-                }
-              />
-              {field.secret && current.config?.[field.key + "_configured"] && (
-                <label className="check-choice">
-                  <input type="checkbox" name={"clear-" + field.key} />
-                  Remove the stored {field.label.toLowerCase()}
+          {(current.fields ?? [])
+            .filter(
+              (field) =>
+                current.id !== "bridge" ||
+                !["completion_recovery", "checkpoints"].includes(field.key),
+            )
+            .map((field) => (
+              <div className="field" key={field.key}>
+                <label htmlFor={`${current.id}-${field.key}`}>
+                  {field.label}
                 </label>
-              )}
-            </div>
-          ))}
+                <input
+                  id={`${current.id}-${field.key}`}
+                  name={field.key}
+                  type={field.secret ? "password" : "text"}
+                  defaultValue={
+                    field.secret
+                      ? ""
+                      : String(current.config?.[field.key] ?? "")
+                  }
+                  autoComplete="off"
+                  placeholder={
+                    field.secret && current.config?.[field.key + "_configured"]
+                      ? "Configured; leave blank to keep it"
+                      : field.placeholder
+                  }
+                />
+                {field.secret &&
+                  current.config?.[field.key + "_configured"] && (
+                    <label className="check-choice">
+                      <input type="checkbox" name={"clear-" + field.key} />
+                      Remove the stored {field.label.toLowerCase()}
+                    </label>
+                  )}
+              </div>
+            ))}
+          {current.id === "bridge" &&
+            (current.fields ?? []).some(
+              (field) => field.key === "checkpoints",
+            ) && <BridgeRecoveryChoices config={current.config ?? {}} />}
           <small>
             Secrets are stored on the server and never returned to this page.
           </small>

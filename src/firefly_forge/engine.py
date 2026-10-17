@@ -341,10 +341,44 @@ class Engine:
         await self.store.finish(identifier, "cancelled")
         return {"status": "cancelled", "worker_drained": True}
 
-    async def execute_run(self, identifier: str) -> None:
+    async def restore_capacity(self, identifier: str) -> bool:
+        run = await self.store.get_run(identifier)
+        return (
+            not self.stopping
+            and identifier not in self.active
+            and len([task for task in self.active.values() if not task.done()]) < self.concurrency
+            and run["repository_id"] not in self.active_projects.values()
+        )
+
+    async def reserve_agent_restore(self, identifier: str) -> bool:
+        run = await self.store.get_run(identifier)
+        if not await self.restore_capacity(identifier):
+            return False
+        task = asyncio.current_task()
+        assert task is not None
+        self.active[identifier] = task
+        self.active_projects[identifier] = run["repository_id"]
+        return True
+
+    def release_agent_restore(self, identifier: str) -> None:
+        if self.active.get(identifier) is asyncio.current_task():
+            self.active.pop(identifier, None)
+            self.active_projects.pop(identifier, None)
+
+    async def continue_agent_checkpoint(self, restoration: Any) -> None:
+        identifier = restoration.run_id
+        if self.active.get(identifier) is not asyncio.current_task():
+            raise ValueError("The checkpoint worker does not own its reserved execution workspace")
+        await restoration.guard_source()
+        await self.execute_run(identifier, restoration=restoration)
+
+    async def execute_run(self, identifier: str, *, restoration: Any = None) -> None:
         await self.assert_ownership()
-        if not (await self.store.claim(identifier)):
-            return
+        if restoration is None:
+            if not (await self.store.claim(identifier)):
+                return
+        else:
+            await restoration.guard_source()
         workspace = self.workspaces / identifier
         settings: dict[str, str] = {}
         active_key: str | None = None
@@ -443,44 +477,51 @@ class Engine:
             ):
                 git_env = await self.connections.git_environment(repository)
                 settings.update(git_env)
-            branch = f"forge/{identifier[:12]}"
-            prepare = await self._begin_task(identifier, "prepare", workspace, settings)
-            active_key = prepare.get("idempotency_key")
-            if run.get("resume_existing") or prepare["disposition"] == "completed":
-                observed = await self._inspect_workspace(identifier, workspace, settings)
-                base = observed["base_revision"]
-                run = await self.store.get_run(identifier)
-                await emit("preparing", "Continuing the retained authorized workspace")
+            if restoration is not None:
+                base = run["base_revision"]
+                self.git_metadata[workspace.resolve()] = run["git_metadata_digest"]
+                active_key = restoration.intent["payload"]["task_key"]
             else:
-                await emit("preparing", "Creating isolated repository workspace")
-                base = await clone(
-                    repository,
-                    workspace,
-                    branch,
-                    env=git_env,
-                    revision=run.get("campaign_context", {}).get("source_base"),
+                branch = f"forge/{identifier[:12]}"
+                prepare = await self._begin_task(identifier, "prepare", workspace, settings)
+                active_key = prepare.get("idempotency_key")
+                if run.get("resume_existing") or prepare["disposition"] == "completed":
+                    observed = await self._inspect_workspace(identifier, workspace, settings)
+                    base = observed["base_revision"]
+                    run = await self.store.get_run(identifier)
+                    await emit("preparing", "Continuing the retained authorized workspace")
+                else:
+                    await emit("preparing", "Creating isolated repository workspace")
+                    base = await clone(
+                        repository,
+                        workspace,
+                        branch,
+                        env=git_env,
+                        revision=run.get("campaign_context", {}).get("source_base"),
+                    )
+                if not run.get("git_metadata_digest"):
+                    exclusions = workspace / ".git" / "info" / "exclude"
+                    existing = exclusions.read_text() if exclusions.exists() else ""
+                    exclusions.write_text(
+                        existing + "\n.venv/\nnode_modules/\nvendor/\n__pycache__/\n*.pyc\n"
+                        "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n"
+                    )
+                    baseline_metadata = metadata_digest(workspace)
+                    self.git_metadata[workspace.resolve()] = baseline_metadata
+                    await self.store.update(identifier, git_metadata_digest=baseline_metadata)
+                (await self.store.update(identifier, base_revision=base, branch=branch))
+                tracked = await checked(["git", "ls-files", "-z"], workspace)
+                if any(credential_path(path) for path in tracked.split("\x00") if path):
+                    raise ValueError(
+                        "Repository contains tracked private credential files; remove them before execution"
+                    )
+                await self._receipt(
+                    identifier,
+                    active_key,
+                    {"base_revision": base, "branch": branch, "origin": repository["url"]},
+                    checkpoint={"base_revision": base, "branch": branch},
                 )
-            if not run.get("git_metadata_digest"):
-                exclusions = workspace / ".git" / "info" / "exclude"
-                existing = exclusions.read_text() if exclusions.exists() else ""
-                exclusions.write_text(
-                    existing + "\n.venv/\nnode_modules/\nvendor/\n__pycache__/\n*.pyc\n"
-                    "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n"
-                )
-                baseline_metadata = metadata_digest(workspace)
-                self.git_metadata[workspace.resolve()] = baseline_metadata
-                await self.store.update(identifier, git_metadata_digest=baseline_metadata)
-            (await self.store.update(identifier, base_revision=base, branch=branch))
-            tracked = await checked(["git", "ls-files", "-z"], workspace)
-            if any(credential_path(path) for path in tracked.split("\x00") if path):
-                raise ValueError("Repository contains tracked private credential files; remove them before execution")
-            await self._receipt(
-                identifier,
-                active_key,
-                {"base_revision": base, "branch": branch, "origin": repository["url"]},
-                checkpoint={"base_revision": base, "branch": branch},
-            )
-            active_key = None
+                active_key = None
             if run.get("operation") == "test":
                 await self._test(identifier, workspace, base, run, safe, emit, settings)
                 await self._remember_knowledge(identifier, emit)
@@ -681,83 +722,86 @@ class Engine:
                     if self.search and run.get("search_snapshot") and "internet_search" in (grants or ())
                     else None,
                 )
-            source_brief = (
-                inject_policy_snapshot(run["brief"], run["policy_snapshot"])
-                if run.get("policy_snapshot")
-                else inject_skills(run["brief"], run.get("skills", DEFAULT_SKILLS))
-            )
-            if run.get("role_snapshot"):
-                from firefly_forge.agent_roles import WorkerFeedback, inject_role_snapshot
+            if restoration is not None:
+                source_brief = restoration.binding.brief
+            else:
+                source_brief = (
+                    inject_policy_snapshot(run["brief"], run["policy_snapshot"])
+                    if run.get("policy_snapshot")
+                    else inject_skills(run["brief"], run.get("skills", DEFAULT_SKILLS))
+                )
+                if run.get("role_snapshot"):
+                    from firefly_forge.agent_roles import WorkerFeedback, inject_role_snapshot
 
-                source_brief = inject_role_snapshot(source_brief, run["role_snapshot"])
-                source_brief += prompt_text(
-                    "implementation/worker-feedback", schema=json.dumps(WorkerFeedback.model_json_schema())
-                )
-            if (run.get("mcp_snapshot") or {}).get("grants"):
-                source_brief += prompt_text(
-                    "implementation/external-tools",
-                    schemas=json.dumps(
-                        [
-                            {key: item[key] for key in ("connector", "tools", "scope", "roles", "stages")}
-                            for item in run["mcp_snapshot"]["grants"]
-                        ]
-                    ),
-                )
-            if run.get("worker_response"):
-                source_brief += prompt_text(
-                    "implementation/operator-response", response=safe(json.dumps(run["worker_response"]))
-                )
-            if run.get("component_snapshot"):
-                component = run["component_snapshot"]
-                source_brief += prompt_text(
-                    "implementation/component",
-                    component_id=component["id"],
-                    path=component["path"],
-                    responsibility=component["responsibility"],
-                )
-            if run.get("campaign_context"):
-                source_brief += prompt_text(
-                    "implementation/campaign", context=safe(json.dumps(run["campaign_context"], ensure_ascii=False))
-                )
-            if run.get("product_definition"):
-                from firefly_forge.collaboration import customer_instruction
-
-                source_brief += customer_instruction(run["product_definition"])
-            if run.get("branding_snapshot"):
-                branding = run["branding_snapshot"]
-                source_brief += prompt_text(
-                    "implementation/brand", files=json.dumps(branding["files"], ensure_ascii=False)
-                )
-            if run.get("design_snapshot"):
-                if run["design_snapshot"]["method"] == "process_map" or run["frontend"] == "none":
-                    source_brief += prompt_text("implementation/design-api")
-                else:
-                    source_brief += prompt_text("implementation/design-frontend")
-            if run.get("operation") == "maintain":
-                source_brief += prompt_text("implementation/maintenance")
-            if run.get("resume_existing"):
-                previous = [item for item in run.get("verification", []) if item["exit_code"] != 0][-5:]
-                source_brief += prompt_text("implementation/resume")
-                if previous:
-                    source_brief += prompt_text("implementation/previous-checks", checks=safe(json.dumps(previous)))
-            if self.knowledge and "knowledge_context" in run:
-                source_brief += run["knowledge_context"]
-            elif self.knowledge:
-                retrieved = await self.knowledge.retrieve(run)
-                await self.store.update(
-                    identifier,
-                    knowledge_citations=retrieved["citations"],
-                    knowledge_warnings=retrieved["warnings"],
-                    knowledge_context=retrieved["context"],
-                    knowledge_context_digest=hashlib.sha256(retrieved["context"].encode()).hexdigest(),
-                )
-                for warning in retrieved["warnings"]:
-                    await emit("knowledge", warning)
-                if retrieved["citations"]:
-                    await emit(
-                        "knowledge", f"Retrieved {len(retrieved['citations'])} cited project/framework references"
+                    source_brief = inject_role_snapshot(source_brief, run["role_snapshot"])
+                    source_brief += prompt_text(
+                        "implementation/worker-feedback", schema=json.dumps(WorkerFeedback.model_json_schema())
                     )
-                source_brief += retrieved["context"]
+                if (run.get("mcp_snapshot") or {}).get("grants"):
+                    source_brief += prompt_text(
+                        "implementation/external-tools",
+                        schemas=json.dumps(
+                            [
+                                {key: item[key] for key in ("connector", "tools", "scope", "roles", "stages")}
+                                for item in run["mcp_snapshot"]["grants"]
+                            ]
+                        ),
+                    )
+                if run.get("worker_response"):
+                    source_brief += prompt_text(
+                        "implementation/operator-response", response=safe(json.dumps(run["worker_response"]))
+                    )
+                if run.get("component_snapshot"):
+                    component = run["component_snapshot"]
+                    source_brief += prompt_text(
+                        "implementation/component",
+                        component_id=component["id"],
+                        path=component["path"],
+                        responsibility=component["responsibility"],
+                    )
+                if run.get("campaign_context"):
+                    source_brief += prompt_text(
+                        "implementation/campaign", context=safe(json.dumps(run["campaign_context"], ensure_ascii=False))
+                    )
+                if run.get("product_definition"):
+                    from firefly_forge.collaboration import customer_instruction
+
+                    source_brief += customer_instruction(run["product_definition"])
+                if run.get("branding_snapshot"):
+                    branding = run["branding_snapshot"]
+                    source_brief += prompt_text(
+                        "implementation/brand", files=json.dumps(branding["files"], ensure_ascii=False)
+                    )
+                if run.get("design_snapshot"):
+                    if run["design_snapshot"]["method"] == "process_map" or run["frontend"] == "none":
+                        source_brief += prompt_text("implementation/design-api")
+                    else:
+                        source_brief += prompt_text("implementation/design-frontend")
+                if run.get("operation") == "maintain":
+                    source_brief += prompt_text("implementation/maintenance")
+                if run.get("resume_existing"):
+                    previous = [item for item in run.get("verification", []) if item["exit_code"] != 0][-5:]
+                    source_brief += prompt_text("implementation/resume")
+                    if previous:
+                        source_brief += prompt_text("implementation/previous-checks", checks=safe(json.dumps(previous)))
+                if self.knowledge and "knowledge_context" in run:
+                    source_brief += run["knowledge_context"]
+                elif self.knowledge:
+                    retrieved = await self.knowledge.retrieve(run)
+                    await self.store.update(
+                        identifier,
+                        knowledge_citations=retrieved["citations"],
+                        knowledge_warnings=retrieved["warnings"],
+                        knowledge_context=retrieved["context"],
+                        knowledge_context_digest=hashlib.sha256(retrieved["context"].encode()).hexdigest(),
+                    )
+                    for warning in retrieved["warnings"]:
+                        await emit("knowledge", warning)
+                    if retrieved["citations"]:
+                        await emit(
+                            "knowledge", f"Retrieved {len(retrieved['citations'])} cited project/framework references"
+                        )
+                    source_brief += retrieved["context"]
             brief = source_brief
             if run.get("repair_halt"):
                 raise ValueError(run["repair_halt"])
@@ -783,23 +827,30 @@ class Engine:
                     start_round = completed_rounds + 1
             elif run.get("implementation_pending"):
                 start_round = completed_rounds + 1
+            if restoration is not None:
+                start_round = restoration.binding.round
+                repair_failures = []
             if start_round > repairs + 1:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, repairs + 2):
+                restored_receipt = restoration
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
                 await self.store.admit_credentials(brief)
                 (await self.store.update(identifier, status="developing", attempt=attempt))
-                implementation = await self._begin_task(
-                    identifier, "implement", workspace, settings, implementation_failures
+                implementation = (
+                    {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
+                    if restoration is not None
+                    else await self._begin_task(identifier, "implement", workspace, settings, implementation_failures)
                 )
                 active_key = implementation.get("idempotency_key")
                 if implementation["disposition"] != "completed":
                     if completed_rounds >= repairs + 1:
                         raise ValueError("The frozen implementation attempt budget is exhausted")
                     await self.store.update(identifier, implementation_pending=True)
-                    await self._materialize_design(identifier, workspace)
+                    if restoration is None:
+                        await self._materialize_design(identifier, workspace)
                     if contains_known_credential(brief, {**settings, **self.credential_registry()}):
                         raise ValueError(
                             "The composed worker context contains a configured credential; execution blocked"
@@ -822,16 +873,59 @@ class Engine:
                         if self.journal
                         else None
                     )
-                    with bridge_completion_scope(completion_scope):
+                    from firefly_forge.agentic_checkpoint_invocation import (
+                        CheckpointInvocation,
+                        checkpoint_invocation,
+                        invocation_cut,
+                    )
+
+                    frozen_cut = invocation_cut(current)
+                    restored_execution = restoration
+
+                    async def checkpoint_guard(
+                        frozen_cut: str = frozen_cut, restored_execution: Any = restored_execution
+                    ) -> None:
+                        await self.assert_ownership()
+                        current_run = await self.store.get_run(identifier)
+                        await ProjectAccess(self.store).authorize_execution(current_run)
+                        if current_run.get("cancel_request", {}).get("status") == "requested":
+                            raise asyncio.CancelledError()
+                        if invocation_cut(current_run) != frozen_cut:
+                            raise ReconciliationRequired("Checkpoint frozen execution context changed")
+                        if restored_execution is not None:
+                            await restored_execution.guard()
+
+                    native_invocation = (
+                        CheckpointInvocation(
+                            self.store,
+                            self.journal,
+                            current,
+                            implementation,
+                            workspace,
+                            checkpoint_guard,
+                            restored=restoration,
+                        )
+                        if settings.get("FORGE_AGENTIC_CHECKPOINTS") == "required" and self.journal
+                        else None
+                    )
+                    with bridge_completion_scope(completion_scope), checkpoint_invocation(native_invocation):
                         result = await provider.execute(
                             workspace,
-                            brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
+                            brief
+                            if restoration is not None
+                            else brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
                             run["backend"],
                             run["frontend"],
                             emit,
                         )
                     if self.tool_broker and await self.tool_broker.unresolved(identifier):
                         raise ReconciliationRequired("Tool execution has an unresolved outcome; delivery is blocked")
+                    if restoration is not None:
+                        suffix = "\nCurrent implementation attempt: " + str(attempt) + "."
+                        if not brief.endswith(suffix):
+                            raise ReconciliationRequired("Retained implementation invocation framing differs")
+                        brief = brief[: -len(suffix)]
+                        restoration = None
                     completed_rounds += 1
                     await self.store.update(
                         identifier, implementation_rounds=completed_rounds, implementation_pending=False
@@ -849,12 +943,12 @@ class Engine:
                 files, diff, tree = await self._snapshot(
                     workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
                 )
-                await self._receipt(
-                    identifier,
-                    active_key,
-                    {"source_tree": tree, "changed_files": files, "implementation_round": attempt},
-                    checkpoint={"base_revision": base, "source_tree": tree},
-                )
+                evidence = {"source_tree": tree, "changed_files": files, "implementation_round": attempt}
+                source_checkpoint = {"base_revision": base, "source_tree": tree}
+                if restored_receipt is not None:
+                    await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
+                else:
+                    await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
                 active_key = None
                 (
                     await self.store.update(
@@ -1020,6 +1114,9 @@ class Engine:
             )
 
             classification = classify_provider_failure(exc)
+            if restoration is not None:
+                await self.store.update(identifier, status="needs_reconciliation", error=safe(str(exc)))
+                return
             if isinstance(exc, ProviderOutcomeUnknown):
                 await retain_unknown(str(exc), exc.observation)
             elif self.journal and active_key and classification:

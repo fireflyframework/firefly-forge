@@ -39,7 +39,9 @@ The server never returns the token. Responses contain `token_configured` or `api
 | --- | --- |
 | `codex`, `claude` | `executable`, `model`, `timeout` |
 | `agentic` | `model`, `endpoint`, `api_key`, `timeout`, `max_tokens` |
-| `bridge` | `model`, `endpoint`, `token`, `timeout` |
+| `bridge` | `model`, `endpoint`, `token`, `timeout`, optional `completion_recovery`, optional `checkpoints` |
+
+For the restricted [closed-text implementation continuation](recovery.md#explicit-closed-text-implementation-continuation), `checkpoints` accepts `disabled` or `required`; required also needs `completion_recovery: required`. Absence does not insert a default into queued snapshots. Review and other tasks do not support required checkpoints.
 
 `api` remains an alias for `agentic`. Timeout values range from 1 to 7,200 seconds. Direct API output-token limits range from 1 to 131,072. The provider's actual model may impose a lower limit. Generation request and tool budgets remain bounded.
 
