@@ -25,6 +25,7 @@ import {
   Circle,
   ExternalLink,
   FileDiff,
+  FileText,
   FolderGit2,
   GitBranch,
   Hammer,
@@ -1831,6 +1832,7 @@ export function NewProduct({
       <Wizard
         locked={busy}
         className="run-wizard"
+        minimumFieldHeight={creation ? 480 : 160}
         steps={["Brief", "Foundation", "Checks", "Review"]}
         active={step}
         onStep={setStep}
@@ -2170,7 +2172,7 @@ export function NewProduct({
           )}
           {creation && (
             <section
-              className="integration-section"
+              className="run-creation-recovery"
               aria-label="Original run request"
             >
               <h3>
@@ -2186,16 +2188,21 @@ export function NewProduct({
               <dl>
                 <div>
                   <dt>Request</dt>
-                  <dd>{creation.requestId}</dd>
+                  <dd>
+                    <code>{creation.requestId}</code>
+                  </dd>
                 </div>
                 {admitted && (
                   <div>
                     <dt>Run</dt>
-                    <dd>{admitted.run_id}</dd>
+                    <dd>
+                      <code>{admitted.run_id}</code>
+                    </dd>
                   </div>
                 )}
               </dl>
               <button
+                className="secondary"
                 type="button"
                 disabled={
                   action.kind === "cancel" ||
@@ -2204,14 +2211,17 @@ export function NewProduct({
                 }
                 onClick={() => void checkOriginal()}
               >
+                <FileText size={16} aria-hidden="true" />
                 Check original result
               </button>
               {missingOriginal && (
                 <button
+                  className="secondary"
                   type="button"
                   disabled={busy || !connected}
                   onClick={() => void retryOriginal()}
                 >
+                  <RefreshCw size={16} aria-hidden="true" />
                   Send original request again
                 </button>
               )}
@@ -2220,10 +2230,12 @@ export function NewProduct({
                 Otherwise, cancelling prevents it from starting later.
               </p>
               <button
+                className="secondary"
                 type="button"
                 disabled={action.kind === "cancel" || !connected}
                 onClick={() => void cancelOriginal()}
               >
+                <X size={16} aria-hidden="true" />
                 Cancel this request
               </button>
               <details>

@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useState } from "react";
+import "./BridgeRecoveryChoices.css";
 export function bridgeRecoveryValues(data: FormData): Record<string, string> {
   const recovery = String(data.get("completion_recovery") ?? ""),
     checkpoints = String(data.get("checkpoints") ?? "");
@@ -37,28 +38,35 @@ export function BridgeRecoveryChoices({
         <select
           id="bridge-completion-recovery"
           name="completion_recovery"
+          aria-describedby="bridge-completion-recovery-help"
           value={recovery}
           onChange={(e) => setRecovery(e.target.value)}
         >
-          <option value="">Keep current default (unset)</option>
+          <option value="">Use current default</option>
           <option value="legacy">Legacy</option>
-          <option value="required">Required: retain the original result</option>
+          <option value="required">Required</option>
         </select>
+        <small id="bridge-completion-recovery-help">
+          Required retains the original result. Use current default leaves this
+          setting unset.
+        </small>
       </div>
       <div className="field">
         <label htmlFor="bridge-checkpoints">Implementation checkpoints</label>
         <select
           id="bridge-checkpoints"
           name="checkpoints"
+          aria-describedby="bridge-checkpoints-help"
           value={checkpoints}
           onChange={(e) => setCheckpoints(e.target.value)}
         >
-          <option value="">Keep current default (unset)</option>
+          <option value="">Use current default</option>
           <option value="disabled">Disabled</option>
-          <option value="required">
-            Required: save implementation checkpoints
-          </option>
+          <option value="required">Required</option>
         </select>
+        <small id="bridge-checkpoints-help">
+          Required saves implementation checkpoints.
+        </small>
       </div>
       <p className="subtle">
         Checkpoints support the Bridge implementation with text and static file
