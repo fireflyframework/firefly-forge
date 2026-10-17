@@ -29,7 +29,7 @@ from firefly_forge.access_controllers import AccessController
 from firefly_forge.access_persistence import ForgeAccessEventRepository, ForgeMembershipRepository
 from firefly_forge.access_routes import AccessRoutes
 from firefly_forge.agent_checkpoints import AgentCheckpoints
-from firefly_forge.agent_restore_controllers import AgentRestoreController
+from firefly_forge.agent_restore_controllers import AgentCheckpointCandidateController, AgentRestoreController
 from firefly_forge.agent_restores import AgentRestores
 from firefly_forge.agent_role_controllers import AgentRoleController
 from firefly_forge.agent_roles import RoleRegistry
@@ -1019,6 +1019,7 @@ def create_runtime(
         LearningObservationAttempts,
         AgentCheckpoints,
         AgentRestoreController,
+        AgentCheckpointCandidateController,
         JournalController,
         BridgeCompletionController,
         RunEvidenceController,

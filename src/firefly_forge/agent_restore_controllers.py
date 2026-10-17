@@ -25,3 +25,14 @@ class AgentRestoreController:
     @get_mapping("/{request_id}")
     async def get(self, run_id: PathVar[str], completion_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self.restores.get(run_id, completion_id, request_id)
+
+
+@rest_controller
+@request_mapping("/api/v1/runs/{run_id}/agent-checkpoints")
+class AgentCheckpointCandidateController:
+    def __init__(self, restores: AgentRestores) -> None:
+        self.restores = restores
+
+    @get_mapping("/candidates")
+    async def candidates(self, run_id: PathVar[str]) -> dict[str, Any]:
+        return await self.restores.candidates(run_id)

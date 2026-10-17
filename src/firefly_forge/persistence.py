@@ -352,6 +352,50 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
             for row in rows
         ]
 
+    async def checkpoint_candidates(self, run_id: UUID) -> list[str]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeJournalEntity.idempotency_key)
+                .where(ForgeJournalEntity.run_id == run_id, ForgeJournalEntity.kind == "agent_checkpoint")
+                .order_by(ForgeJournalEntity.sequence.desc())
+                .limit(16)
+            )
+        )
+
+    async def checkpoint_observations(self, run_id: UUID, completion_id: str) -> list[str]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeJournalEntity.idempotency_key)
+                .where(
+                    ForgeJournalEntity.run_id == run_id,
+                    ForgeJournalEntity.kind == "bridge_request_observation",
+                    ForgeJournalEntity.data["payload"]["request_id"].astext == completion_id,
+                )
+                .order_by(ForgeJournalEntity.sequence.desc())
+                .limit(1)
+            )
+        )
+
+    async def checkpoint_restore_tickets(self, run_id: UUID) -> list[dict[str, str]]:
+        from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity as Ticket
+
+        session = self._require_session()
+        budget = (
+            await session.execute(
+                select(func.count(), func.coalesce(func.max(func.octet_length(cast(Ticket.data, Text))), 0)).where(
+                    Ticket.run_id == run_id, Ticket.kind == "agent_restore"
+                )
+            )
+        ).one()
+        if int(budget[0]) > 50 or int(budget[1]) > 65536:
+            raise ValueError("Checkpoint restore tickets exceed their bounded read")
+        rows = await session.execute(
+            select(Ticket.id, Ticket.request_key, Ticket.status)
+            .where(Ticket.run_id == run_id, Ticket.kind == "agent_restore")
+            .limit(50)
+        )
+        return [{"id": row[0].hex, "completion_id": row[1], "status": row[2]} for row in rows]
+
     async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
         return list(
             await self._require_session().scalars(

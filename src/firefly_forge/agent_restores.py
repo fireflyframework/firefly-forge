@@ -100,6 +100,11 @@ class AgentRestores:
         self.completions = BridgeCompletions(store, self.journal)
         self.checkpoints = AgentCheckpoints(self.completions)
 
+    async def candidates(self, run_id: str) -> dict[str, Any]:
+        from firefly_forge.agent_checkpoint_candidates import candidates
+
+        return await candidates(self, run_id)
+
     def workspace(self, run_id: str) -> Path:
         return Path(self.engine.workspaces) / identifier(run_id).hex
 
