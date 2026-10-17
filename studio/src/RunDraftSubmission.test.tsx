@@ -45,12 +45,13 @@ vi.mock("./Wizard", async (importOriginal) => {
             )
           )
             return;
-          if (
-            child.type === "button" &&
-            typeof child.props.children === "string" &&
-            child.props.onClick
-          )
-            state.buttons.set(child.props.children, child.props.onClick);
+          if (child.type === "button" && child.props.onClick) {
+            const label = Children.toArray(child.props.children)
+              .filter((node) => typeof node === "string")
+              .join("")
+              .trim();
+            state.buttons.set(label, child.props.onClick);
+          }
           inspect(child.props.children);
         });
       }
@@ -180,6 +181,28 @@ afterEach(() => {
   state.captureEffects = false;
   state.effects = [];
   vi.unstubAllGlobals();
+});
+
+it("renders held recovery actions with shared button treatment and the full request identity", async () => {
+  const c = await setup();
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const html = c.render();
+  const panel = html.match(
+    /<section[^>]*aria-label="Original run request"[\s\S]*?<\/section>/,
+  )![0];
+  const request = c.session.read<{ requestId: string }>("creation", {
+    requestId: "",
+  });
+  expect(panel).toContain(`<code>${request.requestId}</code>`);
+  for (const label of ["Check original result", "Cancel this request"]) {
+    const control = [...panel.matchAll(/<button[\s\S]*?<\/button>/g)].find(
+      ([markup]) => markup.includes(label),
+    )![0];
+    expect(control).toContain('class="secondary"');
+    expect(control).toContain('aria-hidden="true"');
+    expect(control).toContain('type="button"');
+  }
 });
 
 it("clears only the submitted run draft after a successful queue response", async () => {

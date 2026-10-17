@@ -3107,6 +3107,54 @@ for (const device of ["desktop", "mobile"])
       expect(
         fixture.calls.filter((call) => call.action === "original"),
       ).toHaveLength(1);
+      await expect(panel.locator("dd code").first()).toHaveText(
+        original.requestId,
+      );
+      expect(
+        await panel.evaluate((element) => {
+          const scroll = element.closest(".wizard-field-scroll")!;
+          return (
+            element.scrollWidth <= element.clientWidth &&
+            scroll.scrollWidth <= scroll.clientWidth &&
+            document.documentElement.scrollWidth <= innerWidth &&
+            (innerWidth > 600 ||
+              getComputedStyle(scroll).overflowY === "visible")
+          );
+        }),
+      ).toBe(true);
+      for (const button of await panel.locator(":scope > button").all()) {
+        await button.scrollIntoViewIfNeeded();
+        await button.focus();
+        await expect(button).toBeFocused();
+        const geometry = await button.evaluate((element) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return {
+            inFrame:
+              box.left >= 0 &&
+              box.right <= innerWidth &&
+              box.top >= header.bottom &&
+              box.bottom <= footer.top,
+            hit: element.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            ),
+            touchHeight: box.height >= 44,
+          };
+        });
+        expect(geometry).toEqual({
+          inFrame: true,
+          hit: true,
+          touchHeight: true,
+        });
+      }
       await capture(page, "recovery-run-request-held", theme, device, {
         resetFields: false,
         actionSelector: '[aria-label="Original run request"] > button',
@@ -3219,7 +3267,23 @@ for (const device of ["desktop", "mobile"])
       ).toHaveCount(0);
       await capture(page, "recovery-original-result-held", theme, device, {
         actionSelector: ".agent-checkpoint-recovery .card-actions button",
+        focusSelector: ".agent-checkpoint-recovery",
       });
+      expect(
+        await panel.evaluate((element) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return (
+            box.height > footer.top - header.bottom - 32 ||
+            box.top >= header.bottom + 8
+          );
+        }),
+      ).toBe(true);
 
       const provider = {
         id: "bridge",
@@ -3262,9 +3326,80 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByLabel("Implementation checkpoints", { exact: true })
         .selectOption("required");
-      await capture(page, "recovery-bridge-choices", theme, device, {
-        actionSelector: ".provider-config-form button.primary",
+      const choices = page.getByRole("group", {
+        name: "Original model results",
+        exact: true,
       });
+      for (const select of await choices.locator("select").all()) {
+        await expect(select.locator("option:checked")).toHaveText("Required");
+        await select.scrollIntoViewIfNeeded();
+        await select.focus();
+        await expect(select).toBeFocused();
+        expect(
+          await select.evaluate((element) => {
+            const style = getComputedStyle(element),
+              context = document.createElement("canvas").getContext("2d")!,
+              box = element.getBoundingClientRect();
+            context.font = style.font;
+            return (
+              context.measureText(element.selectedOptions[0].textContent!)
+                .width <=
+                element.clientWidth -
+                  parseFloat(style.paddingLeft) -
+                  parseFloat(style.paddingRight) &&
+              element.contains(
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ),
+              )
+            );
+          }),
+        ).toBe(true);
+      }
+      const choicesFit = await choices.evaluate((element) => {
+        const scroll = element.closest(".wizard-field-scroll")!,
+          header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect(),
+          footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
+        return (
+          element.getBoundingClientRect().height <=
+          Math.min(
+            footer.top - header.bottom - 32,
+            scroll.scrollHeight > scroll.clientHeight
+              ? scroll.clientHeight - 16
+              : Infinity,
+          )
+        );
+      });
+      await capture(page, "recovery-bridge-choices", theme, device, {
+        actionSelector: choicesFit
+          ? ".bridge-recovery-choices"
+          : ".bridge-recovery-choices .field",
+        focusSelector: ".bridge-recovery-choices",
+        resetFields: false,
+      });
+      expect(
+        await choices.evaluate((element, fit) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return (
+            box.left >= 0 &&
+            box.right <= innerWidth &&
+            (!fit || (box.top >= header.bottom && box.bottom <= footer.top)) &&
+            element.scrollWidth <= element.clientWidth &&
+            document.documentElement.scrollWidth <= innerWidth
+          );
+        }, choicesFit),
+      ).toBe(true);
       expect(configurationWrites).toBe(0);
       expect(probes).toBe(0);
     });

@@ -12,6 +12,12 @@ it("shows explicit recovery/checkpoint choices and the supported implementation 
   expect(html).toContain("static file");
   expect(html).toContain("<select");
   expect(html).toContain('value="" selected=""');
+  expect(html).toContain(">Use current default</option>");
+  expect(html).toContain('value="required">Required</option>');
+  expect(html).toContain('aria-describedby="bridge-completion-recovery-help"');
+  expect(html).toContain('aria-describedby="bridge-checkpoints-help"');
+  expect(html).toContain("Required retains the original result.");
+  expect(html).toContain("Required saves implementation checkpoints.");
 });
 it("preserves absent selections and refuses checkpoints without required recovery", () => {
   const data = new FormData();
