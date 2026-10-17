@@ -170,6 +170,11 @@ async def _read(service: AgentRestores, run: Data, page: Data) -> tuple[Data, li
             ticket = await service.get(run_id, completion_id, selected["id"])
             if ticket["status"] != selected["status"]:
                 raise ValueError("Checkpoint ticket changed during discovery")
+            selected_input = RestoreInput.model_validate(ticket["request"]["input"])
+            if selected_input.request_id != ticket["id"]:
+                raise ValueError("Checkpoint ticket input has a different original request identity")
+            ticket_bundle = await service.checkpoints.restore_bundle(run_id, completion_id, selected_input)
+            retained.append(ticket_bundle[:3])
             ticket_ref = {"id": ticket["id"], "status": ticket["status"]}
             retained.append(ticket)
             state = "ticket_recorded"

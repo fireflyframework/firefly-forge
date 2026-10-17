@@ -9,6 +9,7 @@ from pyfly.data.transaction import current_unit_of_work
 from test_agentic_checkpoint_activation_host import activated, lost_completion, queue_original
 from test_bridge_inflight_cancel import RUN
 
+from firefly_forge.api import create_runtime
 from firefly_forge.project_access import AccessDenied
 
 
@@ -155,3 +156,34 @@ async def test_candidate_scalar_budget_precedes_body_selector(tmp_path, monkeypa
         assert page["state"] == "evidence_unavailable" and page["items"] == []
     finally:
         await env.model.client.close()
+
+
+@pytest.mark.parametrize("binding", ["expected_checkpoint_digest", "expected_intent_digest", "source", "request_id"])
+async def test_candidate_rejects_a_chained_ticket_bound_to_other_checkpoint_evidence(tmp_path, monkeypatch, binding):
+    from firefly_forge.execution_requests import digest
+
+    env = await activated(tmp_path, monkeypatch)
+    try:
+        await queue_original(env, monkeypatch, source="http_response")
+        await selectors(env)
+        row = env.requests.records.rows[0]
+        if binding == "source":
+            row.data["request"]["input"]["source"]["record_digest"] = "e" * 64
+        else:
+            row.data["request"]["input"][binding] = "e" * (32 if binding == "request_id" else 64)
+        row.data["request_digest"] = digest(row.data["request"])
+        event = env.requests.journal.rows[0]
+        event.data["evidence"] = {"request_digest": row.data["request_digest"]}
+        event.data["digest"] = digest({k: v for k, v in event.data.items() if k != "digest"})
+        assert env.requests.verify_chain([event.data])
+        page = await projection(env)
+        assert page["state"] == "evidence_unavailable" and page["items"] == []
+    finally:
+        await env.model.client.close()
+
+
+def test_candidate_route_is_registered_in_the_real_api_container_without_startup(tmp_path):
+    from firefly_forge.agent_restore_controllers import AgentCheckpointCandidateController
+
+    runtime = create_runtime(tmp_path, "owned-bootstrap-fixture-at-least-24-characters", role="api")
+    assert runtime.context.container.contains_type(AgentCheckpointCandidateController)
