@@ -43,6 +43,8 @@ The server never returns the token. Responses contain `token_configured` or `api
 
 For the restricted [closed-text implementation continuation](recovery.md#explicit-closed-text-implementation-continuation), `checkpoints` accepts `disabled` or `required`; required also needs `completion_recovery: required`. Absence does not insert a default into queued snapshots. Review and other tasks do not support required checkpoints.
 
+Studio groups these choices under **Original model results** in the Bridge configuration form. Choose required result recovery before required checkpoints. **Keep current default (unset)** omits that field from the save; saving an unrelated model setting does not opt existing configurations into checkpoint recovery. Configure the independent review profile separately. See [reviewing a held result](recovery.md#review-a-held-result-in-studio) for the later operator steps.
+
 `api` remains an alias for `agentic`. Timeout values range from 1 to 7,200 seconds. Direct API output-token limits range from 1 to 131,072. The provider's actual model may impose a lower limit. Generation request and tool budgets remain bounded.
 
 Settings are owner-private plaintext files with mode `0600` under the data directory's `configuration/` directory, which has mode `0700`. This installation does not provide encryption at rest or a hosted secret manager. Use a dedicated operating-system identity and protect backups accordingly. Private configuration refuses symlinked files and unexpected permissions.
