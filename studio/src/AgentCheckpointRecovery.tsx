@@ -91,7 +91,6 @@ export function AgentCheckpointRecovery({
       completion: string;
     } | null>(null);
   const live = useRef(true),
-    inflight = useRef(false),
     active = useRef<AbortController | null>(null),
     reviewHeading = useRef<HTMLHeadingElement | null>(null),
     reviewOpener = useRef<HTMLButtonElement | null>(null),
@@ -194,19 +193,22 @@ export function AgentCheckpointRecovery({
     setSelected((value) => value || page.items[0]?.completion_id || "");
   }
   async function work(action: (signal: AbortSignal) => Promise<void>) {
-    if (inflight.current) return;
-    inflight.current = true;
-    setBusy(true);
-    setError("");
+    if (active.current && !active.current.signal.aborted) return;
     const controller = new AbortController();
     active.current = controller;
+    setBusy(true);
+    setError("");
     try {
       await action(controller.signal);
     } catch (cause) {
-      if (!controller.signal.aborted) failure(cause);
+      if (active.current === controller && !controller.signal.aborted)
+        failure(cause);
     } finally {
-      inflight.current = false;
-      if (live.current) setBusy(false);
+      // A cancelled setup may finish after Strict Mode has started a new read.
+      if (active.current === controller) {
+        active.current = null;
+        if (live.current) setBusy(false);
+      }
     }
   }
   async function refresh() {
