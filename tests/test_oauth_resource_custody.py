@@ -139,9 +139,9 @@ async def test_current_native_resource_fences_reject_before_bearer_dispatch(stor
             await effect(store)
         elif change == "owner_disabled":
             async with store._unit() as session:
-                session.add(
-                    ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=False)
-                )
+                identity = await session.get(ForgeIdentityUserEntity, user.id, with_for_update=True)
+                assert identity is not None
+                identity.enabled = False
         elif change == "expired":
             async with store._unit() as session:
                 grant = await session.scalar(select(OAuthGrantEntity))
@@ -221,9 +221,9 @@ async def test_resource_http_releases_native_locks_and_rejects_postdispatch_owne
                             {"key": store.schema + ":connection-oauth:design"},
                         )
                         assert acquired is True
-                        session.add(
-                            ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=False)
-                        )
+                        identity = await session.get(ForgeIdentityUserEntity, user.id, with_for_update=True)
+                        assert identity is not None
+                        identity.enabled = False
 
                 async with asyncio.timeout(5):
                     await asyncio.create_task(revoke(), context=Context())

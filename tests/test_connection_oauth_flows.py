@@ -120,6 +120,10 @@ async def setup(store, origin, *, connection_name="design", key=None):
         allow_loopback_http=True,
     )
     user = actor()
+    from firefly_forge.identity_persistence import ForgeIdentityUserEntity
+
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=True))
     await service.configure(
         connection_name,
         OAuthConnectionInput(
