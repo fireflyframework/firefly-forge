@@ -47,8 +47,8 @@ export function BridgeRecoveryChoices({
           <option value="required">Required</option>
         </select>
         <small id="bridge-completion-recovery-help">
-          Required retains the original result. Use current default leaves this
-          setting unset.
+          Required retains the original result. Use current default keeps the
+          existing configuration.
         </small>
       </div>
       <div className="field">
