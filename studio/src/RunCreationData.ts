@@ -214,20 +214,23 @@ export async function clearCreationMarker(
   value: CreationMarker,
   locks: CreationLocks | undefined,
   isCurrent: () => boolean,
-): Promise<void> {
+): Promise<CreationMarker | null> {
   const frozen = await marker(value, value);
   check(locks && typeof locks.request === "function");
-  await locks.request(scopeKey(frozen), { mode: "exclusive" }, async () => {
+  return locks.request(scopeKey(frozen), { mode: "exclusive" }, async () => {
     check(isCurrent());
     const current = await readCreationMarker(disk, frozen);
-    check(
-      isCurrent() &&
-        current?.requestId === frozen.requestId &&
-        current.inputDigest === frozen.inputDigest &&
-        current.body === frozen.body,
-    );
+    check(isCurrent());
+    if (current === null) return null;
+    if (
+      current.requestId !== frozen.requestId ||
+      current.inputDigest !== frozen.inputDigest ||
+      current.body !== frozen.body
+    )
+      return current;
     disk.removeItem(scopeKey(frozen));
     check(disk.getItem(scopeKey(frozen)) === null);
+    return null;
   });
 }
 async function receipt(
@@ -254,8 +257,9 @@ async function receipt(
   keys(actor, ["user_id", "authentication_method"]);
   check(
     actor.user_id === original.actor &&
+      typeof actor.authentication_method === "string" &&
       ["oidc_session", "oidc_bearer", "local_bootstrap"].includes(
-        String(actor.authentication_method),
+        actor.authentication_method,
       ),
   );
   check(
@@ -341,4 +345,156 @@ export async function readCreatedRun(
       (run.component_id ?? null) === value.component_id,
   );
   return run;
+}
+
+export type CreationCancellation = {
+  version: 1;
+  request_id: string;
+  original_actor: CreationReceipt["original_actor"];
+  request_digest: string;
+  repository_id: string;
+  project_id: string | null;
+  component_id: string | null;
+  cancelled_by: CreationReceipt["original_actor"];
+  cancelled_at: string;
+  digest: string;
+};
+export type CreationDecision =
+  | { version: 1; outcome: "admitted"; receipt: CreationReceipt }
+  | { version: 1; outcome: "cancelled"; cancellation: CreationCancellation };
+
+async function decision(
+  value: unknown,
+  original: CreationMarker,
+): Promise<CreationDecision> {
+  const row = object(value);
+  check(row.version === 1);
+  if (row.outcome === "admitted") {
+    keys(row, ["version", "outcome", "receipt"]);
+    return {
+      version: 1,
+      outcome: "admitted",
+      receipt: await receipt(row.receipt, original),
+    };
+  }
+  check(row.outcome === "cancelled");
+  keys(row, ["version", "outcome", "cancellation"]);
+  const cancelled = object(row.cancellation);
+  check(bytes(JSON.stringify(cancelled)) <= 4096);
+  keys(cancelled, [
+    "version",
+    "request_id",
+    "original_actor",
+    "request_digest",
+    "repository_id",
+    "project_id",
+    "component_id",
+    "cancelled_by",
+    "cancelled_at",
+    "digest",
+  ]);
+  for (const actor of [cancelled.original_actor, cancelled.cancelled_by]) {
+    const selected = object(actor);
+    keys(selected, ["user_id", "authentication_method"]);
+    check(
+      selected.user_id === original.actor &&
+        typeof selected.authentication_method === "string" &&
+        ["oidc_session", "oidc_bearer", "local_bootstrap"].includes(
+          selected.authentication_method,
+        ),
+    );
+  }
+  check(
+    cancelled.version === 1 &&
+      cancelled.request_id === original.requestId &&
+      cancelled.request_digest === original.inputDigest &&
+      cancelled.repository_id === original.repository &&
+      cancelled.project_id === original.project &&
+      cancelled.component_id === original.component &&
+      typeof cancelled.cancelled_at === "string" &&
+      cancelled.cancelled_at.length > 0 &&
+      cancelled.cancelled_at.length <= 80 &&
+      typeof cancelled.digest === "string" &&
+      hash.test(cancelled.digest),
+  );
+  const unsigned = { ...cancelled };
+  delete unsigned.digest;
+  check((await attemptDigest(unsigned)) === cancelled.digest);
+  return {
+    version: 1,
+    outcome: "cancelled",
+    cancellation: structuredClone(cancelled) as CreationCancellation,
+  };
+}
+
+export async function prepareCreationAction(
+  disk: Disk,
+  value: CreationMarker,
+  locks: CreationLocks | undefined,
+  isCurrent: () => boolean,
+): Promise<CreationMarker> {
+  const frozen = await marker(value, value);
+  check(locks && typeof locks.request === "function");
+  return locks.request(scopeKey(frozen), { mode: "exclusive" }, async () => {
+    check(isCurrent());
+    const retained = await readCreationMarker(disk, frozen);
+    check(isCurrent());
+    if (retained) {
+      check(
+        retained.requestId === frozen.requestId &&
+          retained.inputDigest === frozen.inputDigest &&
+          retained.body === frozen.body,
+      );
+    } else {
+      const encoded = JSON.stringify(frozen);
+      check(bytes(encoded) <= 600 * 1024);
+      disk.setItem(scopeKey(frozen), encoded);
+      check(disk.getItem(scopeKey(frozen)) === encoded);
+    }
+    return frozen;
+  });
+}
+
+export async function recoverCreationDecision(
+  connection: Connection,
+  value: CreationMarker,
+  isCurrent: () => boolean,
+): Promise<CreationDecision> {
+  const frozen = await marker(value, value);
+  connected(connection, frozen);
+  check(isCurrent());
+  const answer = await request<unknown>(
+    connection,
+    "/run-creation-requests/" + frozen.requestId + "/decision",
+  );
+  const result = await decision(answer, frozen);
+  check(isCurrent());
+  return result;
+}
+
+export async function cancelCreation(
+  connection: Connection,
+  value: CreationMarker,
+  isCurrent: () => boolean,
+): Promise<CreationDecision> {
+  const frozen = await marker(value, value);
+  connected(connection, frozen);
+  check(isCurrent());
+  const answer = await request<unknown>(
+    connection,
+    "/run-creation-requests/" + frozen.requestId + "/cancel",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        version: 1,
+        request_digest: frozen.inputDigest,
+        repository_id: frozen.repository,
+        project_id: frozen.project,
+        component_id: frozen.component,
+      }),
+    },
+  );
+  const result = await decision(answer, frozen);
+  check(isCurrent());
+  return result;
 }

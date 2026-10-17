@@ -8,6 +8,9 @@ import {
   sendCreation,
   readCreationMarker,
   clearCreationMarker,
+  prepareCreationAction,
+  cancelCreation,
+  recoverCreationDecision,
   type CreationLocks,
 } from "./RunCreationData";
 const scope = {
@@ -225,11 +228,169 @@ it("does not clear a different retained request or an inactive owner", async () 
   const first = await makeCreationMarker(scope, body);
   const other = await makeCreationMarker(scope, body);
   await retainCreationMarker(disk, first, locks, () => true);
-  await expect(
-    clearCreationMarker(disk, other, locks, () => true),
-  ).rejects.toThrow();
+  expect(await clearCreationMarker(disk, other, locks, () => true)).toEqual(
+    first,
+  );
   await expect(
     clearCreationMarker(disk, first, locks, () => false),
   ).rejects.toThrow();
   expect(await readCreationMarker(disk, scope)).toEqual(first);
+});
+
+async function cancelled(
+  original: Awaited<ReturnType<typeof makeCreationMarker>>,
+) {
+  const unsigned = {
+    version: 1,
+    request_id: original.requestId,
+    original_actor: {
+      user_id: original.actor,
+      authentication_method: "oidc_bearer",
+    },
+    request_digest: original.inputDigest,
+    repository_id: original.repository,
+    project_id: original.project,
+    component_id: original.component,
+    cancelled_by: {
+      user_id: original.actor,
+      authentication_method: "oidc_session",
+    },
+    cancelled_at: "2026-10-17T00:00:00+00:00",
+  };
+  return {
+    version: 1,
+    outcome: "cancelled",
+    cancellation: { ...unsigned, digest: await attemptDigest(unsigned) },
+  };
+}
+
+it("sends only the original digest and scope when explicitly cancelling, then reads the exact decision", async () => {
+  const original = await makeCreationMarker(scope, body);
+  const answer = await cancelled(original);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify(answer))),
+  );
+  const connection = { base: scope.base, token: "live-private-credential" };
+  expect(await cancelCreation(connection, original, () => true)).toEqual(
+    answer,
+  );
+  expect(
+    await recoverCreationDecision(connection, original, () => true),
+  ).toEqual(answer);
+  const calls = vi.mocked(fetch).mock.calls;
+  expect(calls[0][0]).toBe(
+    scope.base + "/run-creation-requests/" + original.requestId + "/cancel",
+  );
+  expect(JSON.parse(String(calls[0][1]?.body))).toEqual({
+    version: 1,
+    request_digest: original.inputDigest,
+    repository_id: scope.repository,
+    project_id: null,
+    component_id: null,
+  });
+  expect(calls[1][0]).toBe(
+    scope.base + "/run-creation-requests/" + original.requestId + "/decision",
+  );
+  expect(calls[1][1]?.method ?? "GET").toBe("GET");
+  expect(original.body).not.toContain(connection.token);
+});
+
+it("does not accept foreign, mismatched, extra or unknown cancellation decisions even when re-signed", async () => {
+  const original = await makeCreationMarker(scope, body);
+  const answer = await cancelled(original);
+  for (const changed of [
+    { request_id: "b".repeat(32) },
+    { request_digest: "0".repeat(64) },
+    { repository_id: "b".repeat(32) },
+    { project_id: "c".repeat(32) },
+    { component_id: "other-api" },
+    {
+      original_actor: {
+        user_id: "b".repeat(32),
+        authentication_method: "oidc_bearer",
+      },
+    },
+    {
+      cancelled_by: {
+        user_id: "b".repeat(32),
+        authentication_method: "oidc_session",
+      },
+    },
+    {
+      original_actor: {
+        user_id: scope.actor,
+        authentication_method: ["oidc_bearer"],
+      },
+    },
+    {
+      cancelled_by: {
+        user_id: scope.actor,
+        authentication_method: ["oidc_session"],
+      },
+    },
+    { unexpected: "refuse" },
+    { version: true },
+  ]) {
+    const value = { ...answer.cancellation, ...changed };
+    const unsigned: Record<string, unknown> = { ...value };
+    delete unsigned.digest;
+    value.digest = await attemptDigest(unsigned);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ...answer, cancellation: value })),
+      ),
+    );
+    await expect(
+      recoverCreationDecision(
+        { base: scope.base, token: "" },
+        original,
+        () => true,
+      ),
+    ).rejects.toThrow();
+  }
+  for (const changed of [
+    { ...answer, outcome: "refused" },
+    { ...answer, version: true },
+    { ...answer, extra: true },
+  ]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(changed))),
+    );
+    await expect(
+      recoverCreationDecision(
+        { base: scope.base, token: "" },
+        original,
+        () => true,
+      ),
+    ).rejects.toThrow();
+  }
+});
+
+it("restores the same missing marker before an explicit action and leaves a newer tab marker untouched", async () => {
+  const disk = storage(),
+    locks = serial();
+  const original = await makeCreationMarker(scope, body),
+    other = await makeCreationMarker(scope, body);
+  expect(
+    await prepareCreationAction(disk, original, locks, () => true),
+  ).toEqual(original);
+  expect(await readCreationMarker(disk, scope)).toEqual(original);
+  expect(
+    await clearCreationMarker(disk, original, locks, () => true),
+  ).toBeNull();
+  expect(
+    await clearCreationMarker(disk, original, locks, () => true),
+  ).toBeNull();
+  await retainCreationMarker(disk, other, locks, () => true);
+  await expect(
+    prepareCreationAction(disk, original, locks, () => true),
+  ).rejects.toThrow();
+  expect(await clearCreationMarker(disk, original, locks, () => true)).toEqual(
+    other,
+  );
+  expect(await readCreationMarker(disk, scope)).toEqual(other);
 });

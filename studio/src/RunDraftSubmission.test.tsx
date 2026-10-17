@@ -270,7 +270,13 @@ it("recovers the original admitted run after response loss using GET only", asyn
   vi.mocked(fetch).mockImplementation(
     async (url) =>
       new Response(
-        JSON.stringify(String(url).includes("/runs/") ? c.run : value),
+        JSON.stringify(
+          String(url).includes("/runs/")
+            ? c.run
+            : String(url).endsWith("/decision")
+              ? { version: 1, outcome: "admitted", receipt: value }
+              : value,
+        ),
       ),
   );
   state.buttons.get("Check original result")!();
@@ -295,7 +301,13 @@ it("holds a missing exact read and only retries the same original input on expli
   vi.mocked(fetch).mockImplementation(
     async (url) =>
       new Response(
-        JSON.stringify(String(url).includes("/runs/") ? c.run : value),
+        JSON.stringify(
+          String(url).includes("/runs/")
+            ? c.run
+            : String(url).endsWith("/decision")
+              ? { version: 1, outcome: "admitted", receipt: value }
+              : value,
+        ),
       ),
   );
   state.buttons.get("Send original request again")!();
@@ -462,7 +474,13 @@ it.each(["succeeded", "failed", "cancelled"])(
     vi.mocked(fetch).mockImplementation(
       async (url) =>
         new Response(
-          JSON.stringify(String(url).includes("/runs/") ? c.run : receipt),
+          JSON.stringify(
+            String(url).includes("/runs/")
+              ? c.run
+              : String(url).endsWith("/decision")
+                ? { version: 1, outcome: "admitted", receipt }
+                : receipt,
+          ),
         ),
     );
     state.buttons.get("Check original result")!();
@@ -470,3 +488,232 @@ it.each(["succeeded", "failed", "cancelled"])(
     expect(c.notices).toEqual(["Your run has been opened."]);
   },
 );
+
+async function cancelledDecision(c: Awaited<ReturnType<typeof setup>>) {
+  const original = JSON.parse([...c.values.values()][0]);
+  const unsigned = {
+    version: 1,
+    request_id: original.requestId,
+    original_actor: {
+      user_id: original.actor,
+      authentication_method: "local_bootstrap",
+    },
+    request_digest: original.inputDigest,
+    repository_id: original.repository,
+    project_id: original.project,
+    component_id: original.component,
+    cancelled_by: {
+      user_id: original.actor,
+      authentication_method: "local_bootstrap",
+    },
+    cancelled_at: "2026-10-17T00:00:00+00:00",
+  };
+  return {
+    version: 1,
+    outcome: "cancelled",
+    cancellation: { ...unsigned, digest: await attemptDigest(unsigned) },
+  };
+}
+
+it("explicitly cancels an unresolved original before allowing newer input to submit with a new ID", async () => {
+  const c = await setup();
+  const originalUrl = vi.mocked(fetch).mock.calls[0][0];
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const decision = await cancelledDecision(c);
+  c.session.write("brief", "Newer unsent work", true);
+  c.render();
+  vi.mocked(fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify(decision), { status: 201 }),
+  );
+  expect(state.buttons.has("Cancel this request")).toBe(true);
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(c.values.size).toBe(0));
+  expect(c.session.read("brief", "")).toBe("Newer unsent work");
+  expect(c.session.active).toBe(true);
+  expect(c.render()).toContain(
+    "Request cancelled. You can edit and start again.",
+  );
+  vi.mocked(fetch).mockImplementation(() => new Promise<Response>(() => {}));
+  state.submit!({ preventDefault() {} } as FormEvent<HTMLFormElement>);
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  const calls = vi.mocked(fetch).mock.calls;
+  expect(calls[1][0]).toBe(String(originalUrl) + "/cancel");
+  expect(calls[2][0]).not.toBe(originalUrl);
+  expect(JSON.parse(String(calls[2][1]?.body)).input.brief).toBe(
+    "Newer unsent work",
+  );
+  expect(c.values.size).toBe(1);
+  expect(c.received).toEqual([]);
+});
+
+it("can cancel while the original HTTP response waits and fences its late callbacks from a newer request", async () => {
+  const c = await setup();
+  const decision = await cancelledDecision(c);
+  c.render();
+  vi.mocked(fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify(decision)),
+  );
+  expect(state.buttons.has("Cancel this request")).toBe(true);
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(c.values.size).toBe(0));
+  c.session.write("brief", "New request after explicit cancellation", true);
+  c.render();
+  vi.mocked(fetch).mockImplementation(() => new Promise<Response>(() => {}));
+  state.submit!({ preventDefault() {} } as FormEvent<HTMLFormElement>);
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  const pending = [...c.values.values()][0];
+  await c.finish();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(c.received).toEqual([]);
+  expect([...c.values.values()]).toEqual([pending]);
+  expect(c.session.read("busy", false)).toBe(true);
+  expect(c.session.read("brief", "")).toBe(
+    "New request after explicit cancellation",
+  );
+});
+
+it("recovers a lost cancellation response by exact decision GET without another POST", async () => {
+  const c = await setup();
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const decision = await cancelledDecision(c);
+  c.render();
+  vi.mocked(fetch).mockRejectedValueOnce(
+    new Error("Lost cancellation response"),
+  );
+  expect(state.buttons.has("Cancel this request")).toBe(true);
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  expect(c.values.size).toBe(1);
+  c.render();
+  vi.mocked(fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify(decision)),
+  );
+  state.buttons.get("Check original result")!();
+  await vi.waitFor(() => expect(c.values.size).toBe(0));
+  const calls = vi.mocked(fetch).mock.calls;
+  expect(calls.map((call) => call[1]?.method ?? "GET")).toEqual([
+    "POST",
+    "POST",
+    "GET",
+  ]);
+  expect(calls[2][0]).toBe(String(calls[0][0]) + "/decision");
+  expect(c.received).toEqual([]);
+});
+
+it.each([404, 403, 409, 200])(
+  "keeps the exact original after an unresolved cancellation response %i",
+  async (status) => {
+    const c = await setup();
+    await c.finish(new Response("{}", { status: 503 }));
+    await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+    const retained = [...c.values.values()][0];
+    c.render();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        status === 200 ? JSON.stringify({ outcome: "cancelled" }) : "{}",
+        { status },
+      ),
+    );
+    state.buttons.get("Cancel this request")!();
+    await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+    c.render();
+    state.submit!({ preventDefault() {} } as FormEvent<HTMLFormElement>);
+    await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+    expect([...c.values.values()]).toEqual([retained]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(c.received).toEqual([]);
+  },
+);
+
+it("adopts another tab's newer marker without deleting it or discarding edits after cancellation", async () => {
+  const c = await setup();
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const decision = await cancelledDecision(c);
+  const original = JSON.parse([...c.values.values()][0]);
+  c.render();
+  let resolve!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementationOnce(
+    () =>
+      new Promise<Response>((done) => {
+        resolve = done;
+      }),
+  );
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  const newer = await makeCreationMarker(original, {
+    repository_id: repository,
+    brief: "Other tab's input",
+  });
+  c.values.set([...c.values.keys()][0], JSON.stringify(newer));
+  c.session.write("brief", "Keep this tab's edits", true);
+  resolve(new Response(JSON.stringify(decision)));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  expect(JSON.parse([...c.values.values()][0])).toEqual(newer);
+  expect(c.session.read("creation", null)).toEqual(newer);
+  expect(c.session.read("brief", "")).toBe("Keep this tab's edits");
+  expect(c.received).toEqual([]);
+  expect(c.render()).toContain("Another request is waiting");
+});
+
+it("releases an in-memory hold on a verified terminal decision when another tab already removed the marker", async () => {
+  const c = await setup();
+  await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  const decision = await cancelledDecision(c);
+  c.values.clear();
+  c.render();
+  vi.mocked(fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify(decision)),
+  );
+  state.buttons.get("Check original result")!();
+  await vi.waitFor(() => expect(c.session.read("creation", "held")).toBeNull());
+  expect(c.values.size).toBe(0);
+  expect(c.received).toEqual([]);
+});
+
+it("opens the existing admission when cancellation loses the admission race", async () => {
+  const c = await setup();
+  const receipt = await c.finish(new Response("{}", { status: 503 }));
+  await vi.waitFor(() => expect(c.session.read("busy", true)).toBe(false));
+  c.render();
+  vi.mocked(fetch).mockImplementation(
+    async (url) =>
+      new Response(
+        JSON.stringify(
+          String(url).endsWith("/cancel")
+            ? { version: 1, outcome: "admitted", receipt }
+            : c.run,
+        ),
+      ),
+  );
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(c.received).toEqual([c.run]));
+  expect(c.values.size).toBe(0);
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(c.notices).toEqual(["Your run has been queued."]);
+});
+
+it("ignores a cancellation response after sign-out and retains its durable original", async () => {
+  const c = await setup();
+  const decision = await cancelledDecision(c);
+  const retained = [...c.values.values()][0];
+  c.render();
+  let resolve!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementationOnce(
+    () =>
+      new Promise<Response>((done) => {
+        resolve = done;
+      }),
+  );
+  state.buttons.get("Cancel this request")!();
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  c.book.clear();
+  resolve(new Response(JSON.stringify(decision)));
+  await new Promise<void>((done) => setTimeout(done, 20));
+  expect([...c.values.values()]).toEqual([retained]);
+  expect(c.received).toEqual([]);
+  expect(c.book.hasUnsaved).toBe(false);
+});
