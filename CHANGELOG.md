@@ -6,7 +6,7 @@
 
 - Retain the original run-creation request and immutable admission receipt. Check or retry that exact submission after a lost response; coordinate browser tabs and preserve later form edits.
 - Cancel an unresolved creation request through a recorded terminal decision. Serialize cancellation against admission, bound pending requests per user, and preserve existing admission receipts through additive schema upgrades.
-- Add opt-in recovery of a saved Bridge implementation result through native Agentic checkpoints. Commit one-use consumption before restoring the original task; refuse unsupported tools, changed authority and uncertain outcomes.
+- Add opt-in recovery of a saved Bridge implementation result through native Agentic checkpoints. Commit one-use consumption before parsing the original result; refuse unsupported tools, changed authority and uncertain outcomes.
 - Guide original-result inspection and continuation in Studio, with current permission checks, retained request identities and reachable controls on narrow or short screens. Keep optional recovery settings unset until explicitly selected.
 - Document the original-request and original-result workflows, their permission boundaries and the local controlled-fixture walkthroughs.
 
