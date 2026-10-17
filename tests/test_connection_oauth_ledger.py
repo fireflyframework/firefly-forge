@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select, text
 
 from firefly_forge.identity import Principal
+from firefly_forge.migrations import SCHEMA_REVISION
 
 
 def module():
@@ -50,7 +51,7 @@ async def test_native_schema_additive_revision_and_encrypted_registration(store)
     result = await svc.configure("design", configuration(client_secret="private-secret"), user)
     assert result["revision"] == 1 and result["status"] == "authorization_required"
     async with store._unit() as session:
-        assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == 26
+        assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == SCHEMA_REVISION
         from firefly_forge.connection_oauth_persistence import OAuthRegistrationEntity
 
         row = await session.scalar(select(OAuthRegistrationEntity))
