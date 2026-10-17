@@ -7,7 +7,7 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 ## 0.2.21
 
-**Start a run** records an original submission identity before sending it. If the response is lost, Studio keeps that identity and offers an exact check or retry. An unresolved request blocks a replacement. A verified cancellation allows a new submission; a run admitted before cancellation keeps its original receipt. Browser tabs coordinate those decisions, and successful admission clears only the form version that produced that request. See [run creation and recovery](console-tour.md#start-and-recover-an-original-submission).
+**Start a run** records an original submission identity before sending it. If the response is lost, Studio keeps that identity and offers an exact check or retry. An unresolved request blocks a replacement. A verified cancellation allows a new submission; a run admitted before cancellation keeps its original receipt. Browser tabs coordinate those decisions, and successful admission clears only the form version that produced that request. See [run creation and recovery](recovery.md#settle-an-uncertain-run-submission).
 
 Cancellation and admission share a database decision boundary. Preparation reads an immutable configuration cut, then rechecks current authority before committing a run. Pending reservations are bounded per user. Additive migrations preserve existing receipts and reject changes to retained decisions. See the [recovery contract](recovery.md).
 
