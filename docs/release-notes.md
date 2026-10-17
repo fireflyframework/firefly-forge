@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.22
+
+A saved, clean AI-assisted product definition shows **AI-assisted · human-edited** when the server records `edited: true`. A false or missing flag keeps the neutral label. Further edits return the form to draft review state, with the original AI source available from the same header. See [product definitions](product-definition.md#design-with-the-assistant-in-studio).
+
+The SDK, CLI and MCP expose seven explicit recovery operations: submit or read an original run request, cancel it or read its decision, inspect checkpoint candidates, request a restore and read its exact ticket. Callers retain the original IDs, input, scope and digests. The adapters make one operation per call, without automatic retries, replacement IDs or readback after a write. Restore admission may queue continuation; it does not prove execution success. See the [client contracts](api.md#explicit-cli-commands-and-mcp-tools).
+
+Recovery controls and Bridge settings use readable labels and responsive layouts. Architecture diagrams now reflect 157 factory MCP tools. Controlled host and browser fixtures do not establish live provider inference or customer acceptance.
+
 ## 0.2.21
 
 **Start a run** records an original submission identity before sending it. If the response is lost, Studio keeps that identity and offers an exact check or retry. An unresolved request blocks a replacement. A verified cancellation allows a new submission; a run admitted before cancellation keeps its original receipt. Browser tabs coordinate those decisions, and successful admission clears only the form version that produced that request. See [run creation and recovery](recovery.md#settle-an-uncertain-run-submission).

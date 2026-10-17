@@ -65,6 +65,10 @@ Use Markdown formatting for longer text and switch to **Preview** when checking 
 
 API clients create a conversation at `POST /api/v1/repositories/{id}/assistant/conversations` with `{"agent":"bridge"}` or `{"agent":"agentic"}`. Send a turn at `POST .../conversations/{conversation_id}/turns` with a 32-character hexadecimal `request_id` and `message`. Replaying that ID with the same message returns the existing turn; changing the message under that ID is rejected. Inspect a quota-paused or interrupted turn before making a new explicit request. The factory does not repeat it automatically.
 
+After saving a clean AI-assisted definition, the header uses the saved server origin. An `ai_assisted` origin with `edited: true` shows **AI-assisted · human-edited**. A false or missing edit flag shows **AI-assisted definition**; it does not establish that the proposal was unchanged or identify who edited it.
+
+Further typing returns the header to **AI-assisted draft · review needed**. An applied proposal keeps its recorded provider, model, time and source while you edit. **View AI source** opens the conversation and turn belonging to that same displayed origin. The saved editing label is not inferred from local typing or an unsaved proposal.
+
 ## Keep and discard a working draft
 
 The form keeps unsaved fields and the current step while you move to another product or Studio page. Returning to that product restores its draft, including an applied AI proposal's source. Drafts are separate for each repository within the current factory connection and signed-in user.

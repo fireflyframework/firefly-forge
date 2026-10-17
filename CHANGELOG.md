@@ -2,6 +2,12 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.22 — 2026-10-17
+
+- Show server-recorded human editing on a saved, clean AI-assisted product definition. Keep draft review state and its original AI source together after further edits.
+- Expose seven explicit original-request and checkpoint-recovery operations through the SDK, CLI and MCP. Preserve caller-supplied identities, input presence and receipts without automatic retries, replacement requests or read-after-write actions.
+- Keep recovery controls and Bridge choices readable on narrow screens, and update architecture diagrams for the 157 factory MCP tools.
+
 ## 0.2.21 — 2026-10-17
 
 - Retain the original run-creation request and immutable admission receipt. Check or retry that exact submission after a lost response; coordinate browser tabs and preserve later form edits.
