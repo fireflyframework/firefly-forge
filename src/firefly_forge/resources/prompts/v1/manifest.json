@@ -2092,7 +2092,7 @@
       "id": "implementation/automatic-verification",
       "version": "1.0.0",
       "path": "implementation/automatic-verification.yaml",
-      "sha256": "11688b30fe1d7e28ccde6ceacae4602f79c53b5ee2ff204f8cb7dba064675a6a",
+      "sha256": "b258605c3a29f73c2fe2106defef517a8a0aac2841315fe07d80b0f1352a8337",
       "field": "user",
       "variables": {
         "policy": "string",
@@ -2103,7 +2103,7 @@
       "id": "implementation/verification-result",
       "version": "1.0.0",
       "path": "implementation/verification-result.yaml",
-      "sha256": "1a88ca4377a6c316015f9972c86b4c63e383c7681291282b83a98dfc1a3ee79f",
+      "sha256": "827e21bf5c6b2d08a8a199a14220cd796540a0f1e003084cf7930c8389672936",
       "field": "user",
       "variables": {
         "count": "string",
