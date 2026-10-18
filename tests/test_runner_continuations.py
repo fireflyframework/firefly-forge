@@ -731,11 +731,18 @@ async def test_global_pending_bound_serializes_different_run_admissions(store, t
         ForgeExecutionRequestEntity,
         ForgeExecutionRequestRepository,
     )
+    from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
     from firefly_forge.project_access import CURRENT_PRINCIPAL
 
     (tmp_path / "first").mkdir()
     (tmp_path / "second").mkdir()
     first = await waiting(store, tmp_path / "first")
+    actor = CURRENT_PRINCIPAL.get()
+    assert actor is not None
+    async with store._unit():
+        await ForgeIdentityUserRepository().save(
+            ForgeIdentityUserEntity(id=actor.user_id, issuer=actor.issuer, subject=actor.subject, enabled=True)
+        )
     second = await waiting(store, tmp_path / "second")
     first_count, release_count, second_count = asyncio.Event(), asyncio.Event(), asyncio.Event()
     requests = []
