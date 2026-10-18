@@ -65,7 +65,13 @@ import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { activeVerificationRequest } from "./VerificationHandoff";
 import { WorkerDialogue } from "./WorkerDialogue";
-import { EvidenceView, UnifiedDiff, OutputView } from "./ExecutionPresentation";
+import {
+  EvidenceView,
+  UnifiedDiff,
+  OutputView,
+  TimelineEventView,
+} from "./ExecutionPresentation";
+import { RunVerification } from "./RunVerification";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -2678,7 +2684,6 @@ function RunDetail({
     { id: "artifacts" as const, icon: Box, label: "Artifacts" },
     { id: "deployment" as const, icon: Box, label: "Deployment" },
   ];
-  const verification = records(run.verification);
   const [downloadError, setDownloadError] = useState("");
   async function download() {
     try {
@@ -2839,25 +2844,7 @@ function RunDetail({
                     <Circle size={10} />
                   </span>
                   <div>
-                    <h3>
-                      {human(
-                        event.message ??
-                          event.type ??
-                          event.event ??
-                          "Run event",
-                      )}
-                    </h3>
-                    <EvidenceView
-                      value={event}
-                      omitFields={[
-                        "message",
-                        "type",
-                        "event",
-                        "timestamp",
-                        "at",
-                        "created_at",
-                      ]}
-                    />
+                    <TimelineEventView event={event} />
                     <time>
                       {date(
                         String(
@@ -2898,25 +2885,20 @@ function RunDetail({
             )}
           </>
         )}
-        {tab === "verification" &&
-          (verification.length ? (
-            verification.map(([name, result]) => (
-              <EvidenceView
-                key={name}
-                value={result}
-                title={
-                  Array.isArray(result.argv) || result.command
-                    ? undefined
-                    : name
-                }
-              />
-            ))
-          ) : (
-            <Empty
-              title="No verification evidence yet"
-              body="Add verification commands when starting a run. Agent completion alone does not prove that a change works."
-            />
-          ))}
+        {tab === "verification" && (
+          <RunVerification
+            key={JSON.stringify([
+              run.id,
+              connection.base,
+              connection.token,
+              session?.user.id,
+              session?.global_admin,
+              session?.memberships,
+            ])}
+            run={run}
+            connection={connection}
+          />
+        )}
         {tab === "artifacts" &&
           (run.artifacts?.length ? (
             <div className="artifact-list">

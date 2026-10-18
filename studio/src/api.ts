@@ -21,6 +21,7 @@ export type ForgeRun = {
   repository_id: string;
   brief: string;
   status: string;
+  active_task?: string;
   backend?: string;
   frontend?: string;
   agent?: string;

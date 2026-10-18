@@ -143,6 +143,12 @@ async function setup(page: Page, mode = "lost") {
     .getByRole("button", { name: /Owned continuation fixture/ })
     .click();
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
+  await expect(
+    page.getByRole("region", {
+      name: "Original runner command continuation",
+      exact: true,
+    }),
+  ).toHaveCount(1);
   return state;
 }
 async function review(page: Page) {
