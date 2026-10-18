@@ -30,3 +30,11 @@ it("leaves measured wizards to choose their layout after mounting", () => {
   const html = renderToStaticMarkup(<Wizard {...props} />);
   expect(html).not.toContain('data-layout="flow"');
 });
+
+it("leaves a parent-managed wizard outside the global flow layout", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} parentLayout />);
+  expect(html).toContain('data-layout="parent"');
+  expect(html).not.toContain('data-layout="flow"');
+  expect(html).toContain('aria-label="Scoped token"');
+  expect(html).toContain("Continue");
+});
