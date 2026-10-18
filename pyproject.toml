@@ -25,7 +25,7 @@ dependencies = [
   "PyYAML>=6.0.3,<7",
   "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl",
   "fireflyframework-agentic @ https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl",
-  "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.4/flycanon_sdk-26.10.4-py3-none-any.whl",
+  "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.5/flycanon_sdk-26.10.5-py3-none-any.whl",
   "fonttools[woff]>=4.62,<5",
   "pypdf>=6.20.1,<7",
   "pillow>=12,<13",
