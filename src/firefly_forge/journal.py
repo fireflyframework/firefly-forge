@@ -1048,6 +1048,267 @@ class Journal:
             self.store.reject_credentials(record)
         return record
 
+    async def verification_begin(self, run_id: str, intent: Data, *, check_current: Callable[[], None]) -> Data:
+        from firefly_forge.project_access import ProjectAccess
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            request = run.data.get("worker_request", {})
+            task = await self._task(run_id, "implement")
+            retained = run.data.get("verification_handoff", {})
+            if (
+                run.status not in {"paused", "needs_reconciliation"}
+                or request.get("kind") != "verification"
+                or request.get("status") != "pending"
+                or request.get("task_id") != "implement"
+                or request.get("id") != intent["request_id"]
+                or digest(request) != intent["request_digest"]
+                or digest({"commands": run.data.get("commands", [])}) != intent["commands_digest"]
+                or task.attempt != intent["parent_attempt"]
+                or request.get("attempt") != task.attempt
+                or not 1 <= task.attempt < 4
+                or (run.data.get("cancel_request") or {}).get("status") == "requested"
+            ):
+                raise ValueError("Automatic verification request or stage changed")
+            entries = await self.records.find_for_run(run.id)
+            previous = next(
+                (
+                    entry
+                    for entry in entries
+                    if entry.kind == "verification_handoff_intent" and entry.idempotency_key == intent["id"]
+                ),
+                None,
+            )
+            if previous:
+                if (
+                    previous.data["payload"] != intent
+                    or retained.get("id") != intent["id"]
+                    or retained.get("status") != "running"
+                ):
+                    raise ValueError("Automatic verification intent changed or requires explicit attention")
+            else:
+                used = sum(entry.kind == "verification_handoff_intent" for entry in entries)
+                if (
+                    task.status != "paused"
+                    or used + 1 != intent["continuation"]
+                    or not 1 <= used + 1 <= intent["max_continuations"] <= 3
+                ):
+                    raise ValueError("Automatic verification continuation budget exhausted")
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current()
+            await self._append(run_id, "implement", intent["id"], "verification_handoff_intent", intent)
+            check_current()
+            state = {
+                **{
+                    key: value
+                    for key, value in intent.items()
+                    if key not in {"ordinals", "workspace", "cwd", "parent_attempt", "request_digest"}
+                },
+                "status": "running",
+                "completed_commands": retained.get("completed_commands", 0) if previous else 0,
+                "failed_commands": retained.get("failed_commands", 0) if previous else 0,
+            }
+            task.status = "running"
+            task.data = {**task.data, "verification_handoff": intent["id"]}
+            await self.tasks.save(task)
+            run.data = {
+                **run.data,
+                "verification_handoff": state,
+                "display_status": "automatic_verification",
+                "updated_at": now(),
+            }
+            await self.store.run_records.save(run)
+            return copy.deepcopy(state)
+
+    async def verification_effect_authority(self, run_id: str, task_id: str, payload: Data) -> None:
+        run = await self._run(run_id)
+        task = await self._task(run_id, task_id)
+        handoff_id = task.data.get("verification_handoff")
+        if not handoff_id:
+            return
+        entries = await self.records.find_for_run(run.id)
+        entry = next(
+            (
+                item
+                for item in entries
+                if item.kind == "verification_handoff_intent" and item.idempotency_key == handoff_id
+            ),
+            None,
+        )
+        if entry is None:
+            raise ValueError("Automatic verification slot has no immutable intent")
+        intent = entry.data["payload"]
+        state = run.data.get("verification_handoff", {})
+        if (
+            state.get("id") != handoff_id
+            or state.get("status") != "running"
+            or payload.get("ordinal") not in intent["ordinals"]
+        ):
+            raise ValueError("Automatic verification slot is outside its admitted handoff")
+        index = intent["ordinals"].index(payload["ordinal"])
+        request = payload.get("request", {})
+        if (
+            task_id != "implement"
+            or payload.get("parent_attempt") != intent["parent_attempt"]
+            or request.get("argv") != run.data["commands"][index]["argv"]
+            or request.get("workspace") != intent["workspace"]
+            or request.get("cwd") != intent["cwd"]
+            or digest(run.data.get("worker_request", {})) != intent["request_digest"]
+        ):
+            raise ValueError("Command differs from the frozen verification handoff")
+
+    async def verification_command(
+        self, run_id: str, intent: Data, index: int, *, check_current: Callable[[], None]
+    ) -> Data:
+        from firefly_forge.project_access import ProjectAccess
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            state = run.data.get("verification_handoff", {})
+            if state.get("id") != intent["id"] or state.get("status") != "running":
+                raise ValueError("Automatic verification is not active")
+            receipt = next(
+                (
+                    row
+                    for row in await self.sandbox_executions(run_id)
+                    if row["task_id"] == "implement"
+                    and row["parent_attempt"] == intent["parent_attempt"]
+                    and row["ordinal"] == intent["ordinals"][index]
+                ),
+                None,
+            )
+            evidence = (receipt or {}).get("effects", {}).get("start", {})
+            if evidence.get("status") != "done" or type(evidence.get("evidence", {}).get("exit_code")) is not int:
+                raise ValueError("Automatic verification requires a known native command receipt")
+            assert receipt is not None
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current()
+            payload = {
+                "version": 1,
+                "id": intent["id"],
+                "request_id": intent["request_id"],
+                "command_index": index + 1,
+                "ordinal": intent["ordinals"][index],
+                "execution_id": receipt["execution_id"],
+                "exit_code": evidence["evidence"]["exit_code"],
+                "outcome": "completed",
+            }
+            await self._append(
+                run_id, "implement", intent["id"] + ":" + str(index), "verification_handoff_command", payload
+            )
+            entries = await self.records.find_for_run(run.id)
+            commands = [
+                item.data["payload"]
+                for item in entries
+                if item.kind == "verification_handoff_command" and item.data["payload"].get("id") == intent["id"]
+            ]
+            check_current()
+            state = {
+                **state,
+                "completed_commands": len(commands),
+                "failed_commands": sum(item["exit_code"] != 0 for item in commands),
+            }
+            run.data = {**run.data, "verification_handoff": state, "updated_at": now()}
+            await self.store.run_records.save(run)
+            return copy.deepcopy(state)
+
+    async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[], None]) -> Data:
+        from firefly_forge.project_access import ProjectAccess
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            state = run.data.get("verification_handoff", {})
+            if (
+                state.get("id") != intent["id"]
+                or state.get("status") != "running"
+                or state.get("completed_commands") != intent["commands_count"]
+            ):
+                raise ValueError("All frozen verification commands require known receipts before continuation")
+            if digest(run.data.get("worker_request", {})) != intent["request_digest"]:
+                raise ValueError("Pending verification request changed")
+            receipts = await self.sandbox_executions(run_id)
+            outputs: list[str] = []
+            for ordinal in intent["ordinals"]:
+                receipt = next(
+                    (
+                        row
+                        for row in receipts
+                        if row["task_id"] == "implement"
+                        and row["parent_attempt"] == intent["parent_attempt"]
+                        and row["ordinal"] == ordinal
+                    ),
+                    None,
+                )
+                evidence = (receipt or {}).get("effects", {}).get("start", {})
+                if evidence.get("status") != "done" or type(evidence.get("evidence", {}).get("exit_code")) is not int:
+                    raise ValueError("Native verification receipt is unavailable")
+                outputs.append(
+                    f"Command {len(outputs) + 1}: exit {evidence['evidence']['exit_code']}\n"
+                    + evidence["evidence"].get("output", "")[:1500]
+                )
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current()
+            answer = self._worker_payload(
+                run,
+                f"Factory verification: {len(outputs)} commands recorded, {state['failed_commands']} failed.\n"
+                + "\n".join(outputs),
+            )
+            state = {**state, "status": "completed"}
+            await self._append(run_id, "implement", intent["id"] + ":outcome", "verification_handoff_outcome", state)
+            task = await self._task(run_id, "implement")
+            check_current()
+            task.status = "paused"
+            task.data = {key: value for key, value in task.data.items() if key != "verification_handoff"}
+            await self.tasks.save(task)
+            run.status = "paused"
+            run.data = {
+                **run.data,
+                "status": "paused",
+                "verification_handoff": state,
+                "worker_request": {
+                    **run.data["worker_request"],
+                    "status": "answered",
+                    "response_source": "factory_verification",
+                },
+                "worker_response": {
+                    "id": intent["id"],
+                    "request_id": intent["request_id"],
+                    "actor": "Forge verification",
+                    "source": "factory_verification",
+                    "verification_handoff_id": intent["id"],
+                    "answer": answer,
+                },
+                "updated_at": now(),
+            }
+            await self.store.run_records.save(run)
+            return copy.deepcopy(state)
+
+    async def verification_hold(self, run_id: str, handoff_id: str) -> None:
+        async with self.store._unit():
+            run = await self._run(run_id)
+            state = run.data.get("verification_handoff", {})
+            if state.get("id") != handoff_id or state.get("status") == "held":
+                return
+            state = {
+                **state,
+                "status": "held",
+                "error": "Verification needs explicit reconciliation or renewed authority before continuation.",
+            }
+            await self._append(run_id, "implement", handoff_id + ":held", "verification_handoff_outcome", state)
+            task = await self._task(run_id, "implement")
+            task.status = "paused"
+            task.data = {key: value for key, value in task.data.items() if key != "verification_handoff"}
+            await self.tasks.save(task)
+            run.status = "paused"
+            run.data = {
+                **run.data,
+                "status": "paused",
+                "display_status": "paused_worker_request",
+                "verification_handoff": state,
+                "updated_at": now(),
+            }
+            await self.store.run_records.save(run)
+
     async def recover(self) -> int:
         async with self.store._unit():
             pending = await self.tasks.find_pending_recovery()
@@ -1254,6 +1515,7 @@ class Journal:
         async with self.store._unit():
             run = await self._run(run_id)
             task = await self._task(run_id, task_id)
+            await self.verification_effect_authority(run_id, task_id, payload)
             existing = await self.sandboxes.find_by_id(execution)
             if existing is None:
                 if effect != "create" or task.status != "running":

@@ -25,6 +25,7 @@ from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier, now
 from firefly_forge.tool_persistence import ForgeToolInvocationEntity, ForgeToolInvocationRepository
+from firefly_forge.verification_models import AutomaticVerificationPolicy
 
 Data = dict[str, Any]
 
@@ -39,6 +40,7 @@ class ToolPolicyInput(BaseModel):
     per_tool_limit: int = Field(default=10, ge=1, le=30, strict=True)
     timeout_seconds: int = Field(default=30, ge=1, le=60, strict=True)
     max_result_bytes: int = Field(default=256_000, ge=1024, le=750_000, strict=True)
+    automatic_verification: AutomaticVerificationPolicy = Field(default_factory=AutomaticVerificationPolicy)
 
 
 def tool_policy_snapshot(directory: Path | ConfigurationStore) -> Data:
