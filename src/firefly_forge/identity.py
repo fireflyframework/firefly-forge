@@ -274,6 +274,24 @@ class IdentityService:
             )
         return LoginChallenge(response.headers["location"], nonce)
 
+    async def _bootstrap_user(self) -> ForgeIdentityUserEntity:
+        user_id = uuid5(NAMESPACE_URL, "firefly-forge:local-bootstrap")
+        async with self.store._unit() as unit:
+            await unit.execute(
+                insert(ForgeIdentityUserEntity)
+                .values(id=user_id, issuer="local:bootstrap", subject="operator", enabled=True)
+                .on_conflict_do_nothing()
+            )
+            user = await self.users.subject("local:bootstrap", "operator")
+            if (
+                user is None
+                or user.id != user_id
+                or (user.issuer, user.subject) != ("local:bootstrap", "operator")
+                or not user.enabled
+            ):
+                raise ValueError("Local bootstrap identity is unavailable or suspended")
+            return user
+
     async def login_bootstrap(self, token: str, request: Request) -> LoginSession:
         if (
             self.config.mode != "local_bootstrap"
@@ -283,21 +301,8 @@ class IdentityService:
             or not hmac.compare_digest(token.encode(), self.config.bootstrap_token.get_secret_value().encode())
         ):
             raise ValueError("Local bootstrap login failed")
-        user_id = uuid5(NAMESPACE_URL, "firefly-forge:local-bootstrap")
-        async with self.store._unit() as unit:
-            await unit.execute(
-                insert(ForgeIdentityUserEntity)
-                .values(
-                    id=user_id,
-                    issuer="local:bootstrap",
-                    subject="operator",
-                    enabled=True,
-                )
-                .on_conflict_do_nothing(index_elements=["issuer", "subject"])
-            )
-            user = await self.users.find_by_id(user_id)
-            if user is None or not user.enabled:
-                raise ValueError("Local bootstrap identity is suspended")
+        async with self.store._unit():
+            user = await self._bootstrap_user()
             cookie = secrets.token_urlsafe(48)
             expiry = datetime.now(UTC) + timedelta(seconds=self.config.session_seconds)
             await self.sessions.save(
@@ -312,7 +317,7 @@ class IdentityService:
                 )
             )
         principal = Principal(
-            user_id, "local:bootstrap", "operator", authentication_method="local_bootstrap", kind="local_bootstrap"
+            user.id, user.issuer, user.subject, authentication_method="local_bootstrap", kind="local_bootstrap"
         )
         return LoginSession(cookie, principal, self.config.session_seconds)
 
@@ -542,10 +547,14 @@ class IdentityService:
                     authorization.encode(), ("Bearer " + self.config.bootstrap_token.get_secret_value()).encode()
                 )
             ):
+                try:
+                    bootstrap_user = await self._bootstrap_user()
+                except ValueError:
+                    return None
                 return Principal(
-                    uuid5(NAMESPACE_URL, "firefly-forge:local-bootstrap"),
-                    "local:bootstrap",
-                    "operator",
+                    bootstrap_user.id,
+                    bootstrap_user.issuer,
+                    bootstrap_user.subject,
                     authentication_method="local_bootstrap",
                     kind="local_bootstrap",
                 )
