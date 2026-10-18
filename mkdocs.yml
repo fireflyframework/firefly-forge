@@ -117,7 +117,7 @@ nav:
       - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
-      - Structured analytics architecture: structured-knowledge.md
+      - Structured project analytics: structured-knowledge.md
       - Learning and knowledge reuse: learning.md
       - DevSecOps pipelines: devsecops.md
   - Operations:
