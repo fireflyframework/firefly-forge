@@ -1217,7 +1217,8 @@
     display: flex;
     max-height: none;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-actions {
+  .wizard-frame:not(.access-member-dialog *):not([data-layout="flow"])
+    .wizard-actions {
     position: sticky;
     bottom: 0;
     padding: 12px 0;
