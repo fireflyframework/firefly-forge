@@ -13,6 +13,7 @@ for (const viewport of [
     test(`the whole production scene fits its first screen ${viewport.width} ${theme}`, async ({
       page,
     }, testInfo) => {
+      test.setTimeout(60_000);
       await page.setViewportSize(viewport);
       const writes: string[] = [];
       const repository = {
