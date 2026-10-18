@@ -1945,7 +1945,7 @@
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "7c9953f51f8e2ac838b7f71c5db8328b46b95fe20a66a715e7e435d4f60de1f2",
+      "sha256": "ed97a70e83f5b380c7edca3b2e7019c4548992b3aedeac08b98c8d0c6609b2d6",
       "field": "user",
       "variables": {}
     },

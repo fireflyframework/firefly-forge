@@ -68,7 +68,18 @@ def _link(value: object, host: str, repository: Data, *, reference: bool = False
     ):
         return ""
     # A review link must name this repository, not merely share a trusted hostname.
-    remote = urlsplit(str(repository.get("url", ""))).path.removesuffix(".git").rstrip("/")
+    clone = str(repository.get("url", ""))
+    scp = re.fullmatch(r"git@([A-Za-z0-9.-]+):([A-Za-z0-9_./-]+)", clone)
+    if scp:
+        if scp[1].lower() != allowed.hostname:
+            return ""
+        remote = "/" + scp[2]
+    else:
+        parsed_clone = urlsplit(clone)
+        if parsed_clone.scheme not in {"https", "ssh"} or parsed_clone.hostname != allowed.hostname:
+            return ""
+        remote = parsed_clone.path
+    remote = remote.removesuffix(".git").rstrip("/")
     if not remote or not parsed.path.startswith(remote + "/"):
         return ""
     suffix = (
@@ -190,7 +201,12 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     state = "question" if request.get("status") == "pending" and status not in TERMINAL else status
     description = copy["states"].get(state, copy["states"]["unknown"])
     stage = run.get("active_task")
-    if status == "running" and stage in copy["stages"]:
+    active_stages = {
+        "running": STAGES,
+        "developing": {"implement"},
+        "validating": {"verify", "review", "checkpoint"},
+    }
+    if stage in active_stages.get(status, set()):
         description = copy["stages"][stage]
     sections = []
     result = data.get("action_result") or {}

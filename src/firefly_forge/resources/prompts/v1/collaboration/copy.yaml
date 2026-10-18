@@ -11,7 +11,8 @@ user_template: "{\n  \"states\": {\n    \"queued\": \"The request is queued. Wor
   \ recorded work remains available for diagnosis.\",\n    \"cancelled\": \"The run was cancelled.\",\n    \"interrupted\"\
   : \"The run was interrupted. Check its retained state before continuing.\",\n    \"unknown\": \"The receipt is recorded.\
   \ No current execution outcome is available.\",\n    \"recorded\": \"The requested action has a retained receipt. Its recorded\
-  \ result appears below.\"\n  },\n  \"stages\": {\n    \"prepare\": \"Preparing the workspace\",\n    \"implement\": \"Implementing\
+  \ result appears below.\",\n    \"developing\": \"The run entered implementation.\",\n    \"validating\": \"The run entered\
+  \ verification.\"\n  },\n  \"stages\": {\n    \"prepare\": \"Preparing the workspace\",\n    \"implement\": \"Implementing\
   \ the requested change\",\n    \"verify\": \"Running the configured verification checks\",\n    \"review\": \"Reviewing\
   \ the recorded source\",\n    \"checkpoint\": \"Retaining the source checkpoint\"\n  },\n  \"actions\": {\n    \"run\":\
   \ \"The run request was admitted.\",\n    \"test\": \"The verification request was admitted.\",\n    \"maintain\": \"The\

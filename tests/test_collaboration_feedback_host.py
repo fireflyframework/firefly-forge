@@ -431,3 +431,34 @@ async def test_displayed_request_identifiers_remain_exact_copyable_native_values
     await service.process(RECEIPT)
     assert "Request: `owner-decision_1`" in sent[0]["body"]
     assert "owner\\-decision" not in sent[0]["body"]
+
+
+@pytest.mark.parametrize(
+    "status,task,description",
+    [
+        ("developing", "implement", "Implementing the requested change"),
+        ("validating", "verify", "Running the configured verification checks"),
+    ],
+)
+async def test_actual_engine_states_render_native_phase_activity(delegated_feedback, status, task, description):
+    service, row, run, sent, _ = delegated_feedback
+    received(row, "status")
+    run.update(status=status, active_task=task, worker_request={})
+    await service.process(RECEIPT)
+    assert description in sent[0]["body"]
+    assert "No current execution outcome" not in sent[0]["body"]
+
+
+@pytest.mark.parametrize("remote", ["git@github.com:team/product.git", "ssh://git@github.com/team/product.git"])
+def test_confirmed_review_link_accepts_the_exact_ssh_repository(remote):
+    from firefly_forge.collaboration_feedback import feedback_card
+
+    run = dict(id="2" * 32, status="succeeded", pr_url="https://github.com/team/product/pull/9")
+    body = feedback_card(
+        dict(id=RECEIPT, command={"action": "status"}), run, {"url": remote}, "https://github.com", lambda x: x
+    )
+    assert run["pr_url"] in body
+    run["pr_url"] = "https://github.com/other/project/pull/9"
+    assert run["pr_url"] not in feedback_card(
+        dict(id=RECEIPT, command={"action": "status"}), run, {"url": remote}, "https://github.com", lambda x: x
+    )
