@@ -337,7 +337,9 @@ async def test_signed_configuration_actor_can_answer_worker_request_without_auto
         )
         posted = []
 
-        async def comment(repo, payload, issue):
+        async def comment(repo, payload, issue, *, before_write=None):
+            if before_write is not None:
+                await before_write()
             posted.append(payload)
             return {"id": "comment-1"}
 
@@ -463,7 +465,9 @@ async def test_project_channel_configuration_requires_every_member_actor_and_gra
         ),
     )
 
-    async def write(repo, payload, issue):
+    async def write(repo, payload, issue, *, before_write=None):
+        if before_write is not None:
+            await before_write()
         return {"id": "comment-1"}
 
     monkeypatch.setattr(collaboration, "_remote_write", write)
@@ -545,7 +549,9 @@ async def product_channel(store, monkeypatch):
     )
     posted = []
 
-    async def write(repo, payload, issue):
+    async def write(repo, payload, issue, *, before_write=None):
+        if before_write is not None:
+            await before_write()
         posted.append(payload)
         return {"id": "comment-1"}
 
