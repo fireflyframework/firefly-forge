@@ -87,6 +87,31 @@ A task marked done has a completion receipt. Inspect its evidence: completing a 
 
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
 
+## Inspect a factory verification handoff
+
+A pending implementation request with typed `kind: "verification"` can use the run's frozen automatic-verification grant. forge executes all explicit approved commands through the existing authorized runner. It records each intent and known result before supplying protected factory feedback and admitting a bounded continuation. Question text and request IDs never choose commands or expand permissions.
+
+New runs default to `automatic_verification: {enabled: true, max_continuations: 1}` in their frozen tool-policy settings. Administrators can set a strict maximum of three. Each completed handoff grants one additional coding task separately from `repair_budget`; it preserves attempt history and the existing four-attempt ceiling. A snapshot without that explicit setting remains manual. Older SDK/MCP policy writes that omit the setting preserve its current value.
+
+Read `verification_handoff` on the run and its matching journal entries:
+
+| State | Meaning |
+| --- | --- |
+| `pending` | The handoff is awaiting factory verification; no completed result is recorded |
+| `running` | The factory is collecting command results under that intent |
+| `completed` | Every configured command has a known result, including any failures |
+| `held` | The handoff cannot continue safely; inspect its retained evidence |
+
+Known failing checks become feedback for the allowed coding continuation. Completed does not establish product acceptance. Unknown command or continuation effects are held without automatic replay. A refusal before intent has its own `verification_handoff_refused` event and leaves the original question pending. Changed source, revoked authority, changed policy/provider or exhausted limits cannot authorize another coding task. Product decisions and credentials remain manual questions.
+
+### Adopt one older paused request
+
+An authenticated native operator can explicitly adopt an older pending verification question. Read `GET /api/v1/runs/{run_id}/verification-handoffs/candidates?agent=codex`, selecting the configured provider explicitly. Review the returned source, command and configuration digests before admission.
+
+Retain a new 32-character hexadecimal `request_id`, then POST `/api/v1/runs/{run_id}/verification-handoffs/adoptions` with that ID, `agent`, and the exact `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest` and `provider_digest` from the candidate read. The receipt binds only this pending question and partial source. Explicit provider selection captures its current configuration through the normal native handoff; earlier snapshots stay immutable. Host coding still requires current administrator authority.
+
+After a lost response, GET `/api/v1/runs/{run_id}/verification-handoffs/adoptions/{request_id}`. Preserve the original identity while the result is missing or uncertain. Do not create a replacement ID, retry a command or assume that admission failed. Reusing an ID with changed content is refused. HTTP admission records the adoption for the normal execution owner; it does not execute commands inline. See the [HTTP contract](api.md#automatic-verification-handoffs) for SDK methods and authority boundaries.
+
 ## Resume the same run
 
 Send `POST /api/v1/runs/{id}/resume` with `{}`. Resume preserves the workspace, original brief, policy content and provider revision. Local reconciliation inspects the Git root, authorized origin, HEAD and source tree before continuing an unfinished task.
@@ -135,7 +160,7 @@ A retained rejection before dispatch can settle a request as failed. Publication
 
 ## Understand automatic limits
 
-Eligible rate-limit and transient pauses use their recorded delay and a budget of at most three automatic retries. Other pauses require an operator decision. Local concurrency is bounded globally and per project; work is selected across projects rather than filling both worker slots with one backlog.
+Eligible rate-limit and transient pauses use their recorded delay and a budget of at most three automatic retries. Typed factory verification uses its separate frozen grant and continuation limit. Other pauses require an operator decision. Local concurrency is bounded globally and per project; work is selected across projects rather than filling both worker slots with one backlog.
 
 The journal's hash chain detects a changed record sequence or payload. It is an integrity check within the operator's PostgreSQL ledger, not an external signature or protection against a database administrator replacing the entire history.
 

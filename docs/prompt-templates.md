@@ -7,13 +7,14 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 Forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 235 templates: the original 77 instructions, 157 factory MCP descriptions and the opt-in native execution-evidence tool description. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 251 templates: the original 235 resources, two factory verification instructions and fourteen source-control feedback templates. The original resources include 77 instructions, 157 factory MCP descriptions and the opt-in native execution-evidence tool description. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 
 | Directory | Instructions |
 | --- | --- |
-| `implementation/` | Framework profiles, implementation context, repair and retained continuation |
+| `implementation/` | Framework profiles, implementation context, repair, retained continuation and factory verification feedback |
+| `collaboration/` | Source-control replies and proactive milestone feedback from native run facts |
 | `assistant/` | Tool-free product dialogue and frozen instruction skills |
 | `assurance/` | Independent review of an immutable source copy |
 | `roles/`, `skills/` | First-party defaults and composition framing |
@@ -22,6 +23,8 @@ The resources cover implementation profiles, default roles and skills, product d
 | `mcp/` | Factory MCP descriptions exposed to external coding agents |
 
 `manifest.json` lists each ID, version, relative YAML path, source SHA256, native output field and string-variable contract. Forge checks that manifest before registering or rendering a resource. The catalog digest identifies those packaged bytes; it is not a receipt proving which prompt a historical model call received.
+
+`implementation/automatic-verification` describes the typed capability and its finite continuation allowance. `implementation/verification-result` projects known command receipts into bounded factory feedback and marks execution output as untrusted data. The fourteen `collaboration/` resources format recorded actions, questions, checks, recovery states and publication references without another model call. These additions leave the 157 factory MCP tools and their existing policy wire contract unchanged; the automatic-verification policy setting is additive on HTTP.
 
 ## Edit a template
 
