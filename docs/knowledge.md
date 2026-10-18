@@ -68,7 +68,9 @@ This command writes configuration and the service bundle; it does not start Flyc
 forge knowledge initialize --data-dir /data
 ```
 
-Initialization creates the authenticated framework workspace and admits the starter catalog plus 14 licensed core manuals: seven for [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.1 and seven for [larafly](https://fireflyframework.org/frameworks/php/) 26.10.1. Each framework bundle covers getting started, architecture, dependency injection, web, relational data, transactions and testing. The bundled Markdown retains its original source URI, pinned revision, SHA-256 and Apache-2.0 license.
+Initialization creates the authenticated framework workspace and admits the starter catalog plus 14 licensed core manuals: seven for [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.6 and seven for [larafly](https://fireflyframework.org/frameworks/php/) 26.10.1. Each framework bundle covers getting started, architecture, dependency injection, web, relational data, transactions and testing. The bundled Markdown retains its original source URI, pinned revision, SHA-256 and Apache-2.0 license.
+
+The default pyfly generation profile targets the published 26.10.6 wheel and uses backend prompt revision `1.0.1`. Its dependency floors and the bundled manual revisions match that release. This is an explicit supported pin, not a request to fetch an unreviewed latest version at runtime. Review both the implementation profile and its source manuals before targeting another release.
 
 Initialization checks embedding-backed retrieval against the admitted sources. It fails while the configured local `nomic-embed-text` model is unavailable or retrieval cannot return the expected source citations. The core bundle is bounded; additional framework modules and another product's framework version need their reviewed manuals imported into the appropriate scope. Framework initialization retains per-document admission and source receipts in private installation state. Run-level source indexing and memory use the execution journal described below; keep both records with the installation backup.
 

@@ -157,7 +157,7 @@ def test_catalog_limits_resource_bytes(tmp_path):
         PromptCatalog(tmp_path)
 
 
-def test_legacy_defaults_and_composed_profiles_stay_literal():
+def test_reviewed_defaults_and_composed_profiles_stay_literal():
     import json
     from pathlib import Path
 
@@ -166,7 +166,7 @@ def test_legacy_defaults_and_composed_profiles_stay_literal():
     from firefly_forge.qa import qa_instructions
     from firefly_forge.skills import inject_skills, skill_catalog
 
-    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v1.json").read_text())
+    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v2.json").read_text())
     assert profile_catalog() == baseline["profile_catalog"]
     assert skill_catalog() == baseline["skill_catalog"]
     assert _default_document().model_dump(mode="json") == baseline["role_document"]
@@ -182,18 +182,20 @@ def test_legacy_defaults_and_composed_profiles_stay_literal():
         assert inject_skills(case["brief"], case["selected"]) == case["text"]
 
 
-def test_every_packaged_resource_matches_its_original_text_vector():
+def test_every_packaged_resource_matches_its_reviewed_text_vector():
     import json
     from pathlib import Path
 
     from firefly_forge.prompts import prompt_catalog
 
-    fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v1.json").read_text())
+    fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
     assert len(catalog.registry) == 235
     for vector in fixture["vectors"]:
-        assert catalog.text(vector["id"], **vector["variables"]) == vector["text"], vector["id"]
+        assert (
+            catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]
+        ), vector["id"]
 
 
 async def test_actual_builder_and_designer_model_inputs_keep_roles_order_and_tool_schemas(tmp_path):
@@ -207,7 +209,7 @@ async def test_actual_builder_and_designer_model_inputs_keep_roles_order_and_too
     from firefly_forge.product_assistant_runtime import design_reply
     from firefly_forge.workspace_tools import ToolRuntimeContext
 
-    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-model-inputs-v1.json").read_text())["observed"]
+    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-model-inputs-v2.json").read_text())["observed"]
     observed = {}
     brief = "Fictional Café {{ never_evaluate }}\n{% opaque owner data %}"
     feedback = {
@@ -366,7 +368,7 @@ def test_packaged_manifest_lists_every_yaml_and_retained_task_instruction():
     assert {item["path"] for item in manifest["templates"]} == {
         file.relative_to(Path(str(root))).as_posix() for file in Path(str(root)).rglob("*.yaml")
     }
-    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v1.json").read_text())
+    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v2.json").read_text())
     assert {
         prompt_catalog().text("tasks/" + name) for name in ("prepare", "verify", "checkpoint", "review", "reconcile")
     } == set(baseline["static_tasks"])

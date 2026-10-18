@@ -79,9 +79,9 @@
     },
     {
       "id": "implementation/backend-pyfly",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "path": "implementation/backend-pyfly.yaml",
-      "sha256": "eb36f8eb3cebcf936852f56d5a595859b4395a5fd7b7f53e3a263ced1bb7f4f1",
+      "sha256": "04887ee99b14b3209ebe8d910424827039fba682c756782c18c5b842937a17ee",
       "field": "user",
       "variables": {}
     },

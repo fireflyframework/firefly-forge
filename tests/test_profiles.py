@@ -31,9 +31,9 @@ def test_instructions_preserve_arbitrary_brief_and_source_constraints():
     assert "barcode scanning" in prompt
     assert "FireflyAgent" not in prompt
     assert "pyfly" in prompt.lower()
-    assert "releases/download/v26.10.01/pyfly-26.10.1-py3-none-any.whl" in prompt
-    assert "Pydantic>=2.13.3" in prompt
-    assert "Uvicorn>=0.46.0" in prompt
+    assert "releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl" in prompt
+    assert "Pydantic>=2.13.5" in prompt
+    assert "Uvicorn>=0.54.0" in prompt
     assert "hub-*" in prompt
     assert "Do not commit" in prompt
     assert "tests" in prompt
@@ -59,3 +59,21 @@ def test_verification_commands_use_project_scripts_and_package_manager(tmp_path)
 def test_no_verification_configuration_is_not_a_passing_gate(tmp_path):
     with pytest.raises(ValueError, match="verification"):
         verification_commands(tmp_path, "none", "none")
+
+
+def test_generation_profile_and_framework_manuals_target_the_same_pyfly_release():
+    from firefly_forge.managed_knowledge import framework_documents
+
+    backends = {p["id"]: p for p in profile_catalog()["backends"]}
+    assert backends["pyfly"]["name"] == "pyfly · Python"
+    assert backends["larafly"]["name"] == "larafly · PHP"
+    assert backends["pyfly"]["version"].startswith("26.10.6 ·")
+    assert backends["pyfly"]["source"].endswith("/releases/tag/v26.10.06")
+    manuals = [d for d in framework_documents() if d["framework"] == "pyfly"]
+    assert len(manuals) == 7
+    assert {d["version"] for d in manuals} == {"26.10.6"}
+    assert {d["revision"] for d in manuals} == {"d5ebb028e785477025055e468a64291601837fc1"}
+    assert all(d["revision"] in d["source_uri"] and d["license"] == "Apache-2.0" for d in manuals)
+    prompt = build_instruction("Create contacts with unique email addresses.", "pyfly", "react")
+    assert "Starlette>=1.7.0" in prompt
+    assert "26.10.1" not in prompt
