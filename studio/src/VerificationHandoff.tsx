@@ -159,7 +159,7 @@ export function VerificationHandoff({
       <div className="record-command-heading">
         <FlaskConical size={20} aria-hidden="true" />
         <h4>{heading}</h4>
-        <span className="badge">{status}</span>
+        <span className="record-outcome">{status}</span>
       </div>
       <p>
         {state === "held"
