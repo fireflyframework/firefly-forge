@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_agent_checkpoint_restore
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the exact saved restore ticket for an original implementation result.
+
+  Use the same run, fbr1_ completion and restore request IDs. This read does not
+  dispatch continuation, observe a remote result or consume a response. A missing
+  ticket leaves the outcome unresolved and does not authorize another submission.
+required_variables: []
+metadata:
+  defaults: {}

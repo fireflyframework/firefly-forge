@@ -69,6 +69,103 @@ The [original-result recovery guide](recovery.md#explicit-closed-text-implementa
 
 The [uncertain run-submission guide](recovery.md#settle-an-uncertain-run-submission) explains exact admission, cancellation and decision readback. The same enabled user can read or settle cancellation with current read access after signing in again. Replaying admission also requires the original authentication method and current execution authority.
 
+## Use explicit recovery from the Python SDK
+
+`ForgeClient` exposes the same original-request and checkpoint contracts. Retain
+the request ID and submitted input before calling a write method. These methods
+use the client's existing authenticated identity; they do not choose another
+identity, retry a request or fall back to legacy `create_run`.
+
+| SDK method | HTTP operation |
+| --- | --- |
+| `request_run_creation(request_id, request)` | POST the original `{"version": 1, "input": ...}` envelope to `/run-creation-requests/{request_id}` |
+| `run_creation_request(request_id)` | GET `/run-creation-requests/{request_id}` for the original admission receipt |
+| `cancel_run_creation_request(request_id, request)` | POST the original version-1 digest and repository/project/component scope to `/run-creation-requests/{request_id}/cancel` |
+| `run_creation_decision(request_id)` | GET `/run-creation-requests/{request_id}/decision` without submitting cancellation or admission |
+| `agent_checkpoint_candidates(run_id)` | GET `/runs/{run_id}/agent-checkpoints/candidates` without continuing work |
+| `request_agent_checkpoint_restore(run_id, completion_id, request)` | POST the explicitly reviewed restore input to `/runs/{run_id}/agent-checkpoints/{completion_id}/restores` |
+| `agent_checkpoint_restore(run_id, completion_id, request_id)` | GET that exact restore ticket without dispatching another request |
+
+Write methods accept the corresponding native `RunCreationInput`,
+`RunCreationCancelInput` or `RestoreInput` model, or a dictionary validated by
+that model. Run creation keeps omitted `RunInput` fields omitted, including
+default policy selection; an explicit empty `skills` list remains explicit.
+Request, run and restore IDs must be lowercase 32-character hexadecimal values;
+the original completion ID retains its `fbr1_` prefix.
+
+Cancellation requires the retained `request_digest`, `repository_id`,
+`project_id` and `component_id`; unassigned project/component fields are
+explicitly null. Do not recompute the digest from current form edits. An
+`admitted` cancellation decision identifies an already admitted run and does
+not cancel that run.
+
+Restore input contains the retained `request_id`,
+`expected_checkpoint_digest`, `expected_intent_digest` and the selected tagged
+`source`; it has no additional version field. An `http_response` source carries
+its `record_digest`. A `bridge_observation` also carries its original
+`observation_id` and `terminal_digest`. Discovery and readback do not select,
+observe or consume a result on the caller's behalf.
+
+HTTP errors retain the existing SDK `RuntimeError` behavior; transport errors
+propagate from HTTPX. A missing result or uncertain response leaves the outcome
+unresolved. Choose exact readback as a separate call, retaining the same IDs;
+the SDK never generates a replacement ID or automatically resubmits. Successful
+methods return the server's JSON dictionary without projecting or rewriting
+receipt actor, input, scope or digest fields. They do not return raw HTTP bytes
+or independently verify receipt cryptography.
+
+### Explicit CLI commands and MCP tools
+
+The CLI and MCP tools below call those same SDK methods once under the caller's
+existing authentication. Every ID is supplied by the caller; none is generated.
+CLI write commands take a saved JSON object document, capped at 1 MB before the
+native request validation. They preserve omitted input fields and explicit nulls.
+MCP writes take the same native object in a required `request` argument.
+
+| CLI command (after `forge`) | MCP tool | SDK method |
+| --- | --- | --- |
+| `request-run-creation REQUEST_ID DOCUMENT` | `request_run_creation(request_id, request)` | `request_run_creation` |
+| `run-creation-request REQUEST_ID` | `get_run_creation_request(request_id)` | `run_creation_request` |
+| `cancel-run-creation-request REQUEST_ID DOCUMENT` | `cancel_run_creation_request(request_id, request)` | `cancel_run_creation_request` |
+| `run-creation-decision REQUEST_ID` | `get_run_creation_decision(request_id)` | `run_creation_decision` |
+| `agent-checkpoint-candidates RUN_ID` | `get_agent_checkpoint_candidates(identifier)` | `agent_checkpoint_candidates` |
+| `request-agent-checkpoint-restore RUN_ID COMPLETION_ID DOCUMENT` | `request_agent_checkpoint_restore(identifier, completion_id, request)` | `request_agent_checkpoint_restore` |
+| `agent-checkpoint-restore RUN_ID COMPLETION_ID REQUEST_ID` | `get_agent_checkpoint_restore(identifier, completion_id, request_id)` | `agent_checkpoint_restore` |
+
+Run and request IDs must be lowercase 32-character hexadecimal strings;
+completion IDs must be `fbr1_` followed by 32 lowercase hexadecimal characters.
+The creation document is the exact `{"version": 1, "input": ...}` envelope.
+Cancellation requires version 1, the original `request_digest`, `repository_id`,
+and both `project_id` and `component_id`; use explicit nulls for both when no
+project component applies. It settles delayed admission and does not cancel an
+already admitted run. Reading its decision is always a separate read command.
+
+The restore document contains its saved `request_id`, the two expected digests
+and the selected tagged `source` described above, with no version field. Candidate
+discovery never selects a source or requests restoration. Restore submission
+can queue continuation; ticket acceptance does not prove execution success.
+
+For example, submit a previously retained creation envelope, then choose exact
+readback as a separate action if the response is uncertain:
+
+```shell
+forge request-run-creation "$REQUEST_ID" saved-run-envelope.json
+forge run-creation-request "$REQUEST_ID"
+forge run-creation-decision "$REQUEST_ID"
+```
+
+Neither surface automatically retries, reads after a write, allocates a
+replacement ID, falls back to legacy `run`/`create_run`, observes a remote result,
+or consumes a response. A 404 or transport failure leaves the outcome unresolved.
+The four read tools advertise read-only, idempotent behavior; the three explicit
+write tools conservatively advertise non-idempotent behavior to avoid prompting
+automatic retries. Cancellation additionally advertises its destructive effect.
+All seven descriptions are packaged native Agentic YAML templates. Existing
+tools and their description bytes remain unchanged. CLI prints the returned JSON
+and MCP returns its structured dictionary; neither preserves HTTP serialization
+or independently verifies receipt cryptography. Local adapter tests establish
+wire behavior, not live-provider or execution acceptance.
+
 ## Register a repository
 
 ```json

@@ -25,23 +25,26 @@ export function ProductOrigin({
   revision?: number;
   onSource: () => void;
 }) {
+  const aiSource = source?.kind === "manual" ? null : source;
   return (
     <div className="product-origin" role="status">
       <span>
         <Sparkles size={18} />
-        {source
+        {aiSource
           ? saved && !dirty
-            ? "AI-assisted definition"
+            ? aiSource.kind === "ai_assisted" && aiSource.edited === true
+              ? "AI-assisted · human-edited"
+              : "AI-assisted definition"
             : "AI-assisted draft · review needed"
           : revision
             ? `Saved revision ${revision}`
             : "Manual draft · review needed"}
       </span>
-      {source ? (
+      {aiSource ? (
         <small>
-          {source.provider} · {source.model || "model not recorded"} ·{" "}
-          {source.generated_at
-            ? new Date(source.generated_at).toLocaleString()
+          {aiSource.provider} · {aiSource.model || "model not recorded"} ·{" "}
+          {aiSource.generated_at
+            ? new Date(aiSource.generated_at).toLocaleString()
             : "time not recorded"}
         </small>
       ) : (
@@ -51,7 +54,7 @@ export function ProductOrigin({
             : "Save creates a definition; starting a run is separate."}
         </small>
       )}
-      {source?.conversation_id && (
+      {aiSource?.conversation_id && (
         <button
           className="text-button"
           onClick={onSource}

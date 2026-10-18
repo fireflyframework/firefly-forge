@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_run_creation_decision
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the admitted or cancelled decision for one original run-creation request.
+
+  Use the saved request ID. This read neither admits nor cancels work. A missing
+  decision leaves the outcome unresolved and does not authorize a write or retry.
+  Keep the original receipt or cancellation fields unchanged.
+required_variables: []
+metadata:
+  defaults: {}

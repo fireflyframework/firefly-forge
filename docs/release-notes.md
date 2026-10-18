@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.22
+
+A saved, clean AI-assisted product definition shows **AI-assisted · human-edited** when the server records `edited: true`. A false or missing flag keeps the neutral label. Further edits return the form to draft review state, with the original AI source available from the same header. See [product definitions](product-definition.md#design-with-the-assistant-in-studio).
+
+The SDK, CLI and MCP expose seven explicit recovery operations: submit or read an original run request, cancel it or read its decision, inspect checkpoint candidates, request a restore and read its exact ticket. Callers retain the original IDs, input, scope and digests. The adapters make one operation per call, without automatic retries, replacement IDs or readback after a write. Restore admission may queue continuation; it does not prove execution success. See the [client contracts](api.md#explicit-cli-commands-and-mcp-tools).
+
+Recovery controls and Bridge settings use readable labels and responsive layouts. Architecture diagrams now reflect 157 factory MCP tools. Controlled host and browser fixtures do not establish live provider inference or customer acceptance.
+
 ## 0.2.21
 
 Loopback bearer access and browser login now establish the same persistent local operator identity. API tooling can admit work without first opening a browser session. A suspended or mismatched identity remains blocked; authenticating again does not restore it. See [local bootstrap](identity.md#local-bootstrap).

@@ -16,6 +16,7 @@ from firefly_forge.models import RepositoryInput, RunInput
 
 if TYPE_CHECKING:
     from firefly_forge.access_controllers import MembershipInput
+    from firefly_forge.agent_checkpoint_models import RestoreInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.reverse_engineering import AnalysisReview
+    from firefly_forge.run_creation_models import RunCreationCancelInput, RunCreationInput
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
@@ -72,6 +74,72 @@ class ForgeClient:
 
     def create_run(self, request: RunInput) -> dict[str, Any]:
         return dict(self.request("POST", "runs", json=request.model_dump(exclude_unset=True)))
+
+    @staticmethod
+    def _recovery_identifier(value: str) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{32}", value):
+            raise ValueError("Use an exact lowercase 32-character factory identifier")
+        return value
+
+    @staticmethod
+    def _recovery_body(model: type[BaseModel], request: BaseModel | dict[str, Any]) -> dict[str, Any]:
+        try:
+            value = (
+                request.model_dump(exclude_unset=True, warnings=False) if isinstance(request, BaseModel) else request
+            )
+            return model.model_validate(value).model_dump(mode="json", exclude_unset=True)
+        except ValueError:
+            raise ValueError("Use the original recovery request with its exact identities, scope and digests") from None
+
+    def request_run_creation(self, request_id: str, request: RunCreationInput | dict[str, Any]) -> dict[str, Any]:
+        """Submit one retained version-1 envelope; uncertain delivery never selects a follow-up action."""
+        from firefly_forge.run_creation_models import RunCreationInput
+
+        path = f"run-creation-requests/{self._recovery_identifier(request_id)}"
+        body = self._recovery_body(RunCreationInput, request)
+        return dict(self.request("POST", path, json=body))
+
+    def run_creation_request(self, request_id: str) -> dict[str, Any]:
+        """Read the original admission receipt without replaying a missing request."""
+        return dict(self.request("GET", f"run-creation-requests/{self._recovery_identifier(request_id)}"))
+
+    def cancel_run_creation_request(
+        self, request_id: str, request: RunCreationCancelInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Explicitly settle the original input digest and scope; this does not cancel an admitted run."""
+        from firefly_forge.run_creation_models import RunCreationCancelInput
+
+        path = f"run-creation-requests/{self._recovery_identifier(request_id)}/cancel"
+        body = self._recovery_body(RunCreationCancelInput, request)
+        return dict(self.request("POST", path, json=body))
+
+    def run_creation_decision(self, request_id: str) -> dict[str, Any]:
+        """Read an admitted/cancelled decision; a missing decision remains unresolved."""
+        return dict(self.request("GET", f"run-creation-requests/{self._recovery_identifier(request_id)}/decision"))
+
+    def agent_checkpoint_candidates(self, identifier: str) -> dict[str, Any]:
+        """Inspect retained original-result references without requesting continuation or consumption."""
+        return dict(self.request("GET", f"runs/{self._recovery_identifier(identifier)}/agent-checkpoints/candidates"))
+
+    def _agent_checkpoint_restore_path(self, identifier: str, completion_id: str) -> str:
+        if not isinstance(completion_id, str) or not re.fullmatch(r"fbr1_[a-f0-9]{32}", completion_id):
+            raise ValueError("Use the exact original completion request identifier")
+        return f"runs/{self._recovery_identifier(identifier)}/agent-checkpoints/{completion_id}/restores"
+
+    def request_agent_checkpoint_restore(
+        self, identifier: str, completion_id: str, request: RestoreInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Admit only the caller's retained restore request and explicitly selected original result."""
+        from firefly_forge.agent_checkpoint_models import RestoreInput
+
+        path = self._agent_checkpoint_restore_path(identifier, completion_id)
+        body = self._recovery_body(RestoreInput, request)
+        return dict(self.request("POST", path, json=body))
+
+    def agent_checkpoint_restore(self, identifier: str, completion_id: str, request_id: str) -> dict[str, Any]:
+        """Read the same restore ticket without retrying admission or consuming a result."""
+        path = self._agent_checkpoint_restore_path(identifier, completion_id)
+        return dict(self.request("GET", path + "/" + self._recovery_identifier(request_id)))
 
     def get_run(self, identifier: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{identifier}"))

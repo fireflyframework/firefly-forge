@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import SkipValidation, WithJsonSchema
 
 from firefly_forge.access_controllers import MembershipInput
+from firefly_forge.agent_checkpoint_models import RestoreInput
 from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
 from firefly_forge.campaign_report_history import CampaignReportArchiveInput
@@ -23,6 +24,7 @@ from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.product_lifecycle import FeatureChangeInput
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
 from firefly_forge.prompts import prompt_text
+from firefly_forge.run_creation_models import RunCreationCancelInput, RunCreationInput
 from firefly_forge.run_evidence import EvidenceQuery
 from firefly_forge.runner_continuations import RunnerContinuationInput
 from firefly_forge.sandbox_models import SandboxInput
@@ -58,6 +60,11 @@ SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 SCMResumeGrantRequest = SkipValidation[SCMResumeGrantInputV2]
 RunEvidenceRequest = Annotated[Any, WithJsonSchema(EvidenceQuery.model_json_schema())]
 SCMProductChangeGrantRequest = SkipValidation[SCMProductChangeGrantInputV1]
+RecoveryIdentifier = Annotated[Any, WithJsonSchema({"type": "string", "pattern": r"^[a-f0-9]{32}$"})]
+CompletionIdentifier = Annotated[Any, WithJsonSchema({"type": "string", "pattern": r"^fbr1_[a-f0-9]{32}$"})]
+RunCreationRequest = SkipValidation[RunCreationInput]
+RunCreationCancelRequest = SkipValidation[RunCreationCancelInput]
+AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
 
 
 def create_server() -> MCPServer:
@@ -121,6 +128,96 @@ def create_server() -> MCPServer:
         )
         with client() as connection:
             return connection.create_run(request)
+
+    @server.tool(
+        description=prompt_text("mcp/request_run_creation"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def request_run_creation(request_id: RecoveryIdentifier, request: RunCreationRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_run_creation(request_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_run_creation_request"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_run_creation_request(request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_creation_request(request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/cancel_run_creation_request"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def cancel_run_creation_request(
+        request_id: RecoveryIdentifier, request: RunCreationCancelRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.cancel_run_creation_request(request_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_run_creation_decision"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_run_creation_decision(request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_creation_decision(request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_agent_checkpoint_candidates"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_agent_checkpoint_candidates(identifier: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.agent_checkpoint_candidates(identifier)
+
+    @server.tool(
+        description=prompt_text("mcp/request_agent_checkpoint_restore"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def request_agent_checkpoint_restore(
+        identifier: RecoveryIdentifier, completion_id: CompletionIdentifier, request: AgentCheckpointRestoreRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_agent_checkpoint_restore(identifier, completion_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_agent_checkpoint_restore"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_agent_checkpoint_restore(
+        identifier: RecoveryIdentifier, completion_id: CompletionIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.agent_checkpoint_restore(identifier, completion_id, request_id)
 
     @server.tool(description=prompt_text("mcp/get_run"))
     def get_run(identifier: str) -> dict[str, Any]:
