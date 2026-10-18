@@ -298,7 +298,7 @@ async def test_bitbucket_pullrequest_comments_use_workspace_and_slug(store, monk
 
     def handle(request):
         paths.append(request.url.path)
-        assert "Forge run" in json.loads(request.content)["content"]["raw"]
+        assert "### forge" in json.loads(request.content)["content"]["raw"]
         return httpx.Response(201, json={"id": 19})
 
     scm = SCMConnections(store, client=httpx.AsyncClient(transport=httpx.MockTransport(handle)))

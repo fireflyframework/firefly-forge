@@ -3,21 +3,31 @@ name: collaboration/card
 version: 1.0.0
 description: Deterministic repository feedback card.
 system_template: ''
-user_template: '### Forge {{ action }}: {{ status }}
-
+user_template: |-
+  ### forge · {{ title }}
 
   {{ description }}
 
-
   {{ sections }}
 
+  <details>
+  <summary>Run details</summary>
 
-  {{ run_reference }}Receipt: `{{ receipt_id }}`'
+  Request: `{{ action }}`
+
+  State: `{{ status }}`
+
+  {{ details }}
+
+  {{ run_reference }} Receipt: `{{ receipt_id }}`
+  </details>
 required_variables:
-- action
-- status
+- title
 - description
 - sections
+- action
+- status
+- details
 - run_reference
 - receipt_id
 metadata:

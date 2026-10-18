@@ -1534,7 +1534,7 @@ class Collaboration:
             if row is None or row.data.get("feedback_status") != "pending":
                 return
             data = copy.deepcopy(row.data)
-            await self._write_row(row, feedback_status="writing")
+            await self._write_row(row, feedback_status="writing", feedback_intent=None)
             self._active_writes.add(receipt_id)
         try:
             repo = await self.store.repository(data["repository_id"])

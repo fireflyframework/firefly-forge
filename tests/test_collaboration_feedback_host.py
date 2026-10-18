@@ -19,10 +19,11 @@ async def test_status_uses_a_markdown_card_without_serialized_action_data(delega
     received(row, "status")
     await service.process(RECEIPT)
     body = sent[0]["body"]
-    assert body.startswith("### Forge status:")
-    assert "Waiting for an answer" in body and "Which result is expected?" in body
+    assert body.startswith("### forge · Your decision is needed")
+    assert "needs an answer" in body and "Which result is expected?" in body
     assert '"run_id"' not in body and '"worker_request"' not in body
     assert RECEIPT in body
+    assert body.index(RECEIPT) > body.index("<details>")
 
 
 async def test_native_stages_are_proactive_and_unchanged_ticks_are_quiet(delegated_feedback):
@@ -253,11 +254,11 @@ async def test_typed_factory_verification_is_distinct_from_a_manual_decision(del
     )
     await service.process(RECEIPT)
     body = sent[0]["body"]
-    assert "Factory verification" in body or "factory is running" in body
+    assert "factory" in body.lower() and "checks" in body
     if status in {"pending", "running", "completed"}:
         assert "Decision needed" not in body and "/forge respond" not in body
     else:
-        assert "operator attention" in body and "Decision needed" in body
+        assert "operator needs to review" in body and "Decision needed" in body
 
 
 async def test_handoff_from_another_question_cannot_hide_a_pending_decision(delegated_feedback):
@@ -284,7 +285,7 @@ async def test_review_links_are_confined_to_the_current_app_repository(delegated
     service.scm._host = lambda _: "https://github.com"
     run.update(status="succeeded", worker_request={}, pr_url=url)
     await service.process(RECEIPT)
-    assert "Open the recorded pull request" not in sent[0]["body"]
+    assert "Open the pull request" not in sent[0]["body"]
     assert url not in sent[0]["body"]
 
 
@@ -360,11 +361,12 @@ def test_assistant_card_preserves_unreviewed_reference_without_raw_proposal_json
             "status": "completed",
             "reply": "A" * 11000,
             "proposal": {"secret_field": "not-public"},
+            "proposal_status": "unreviewed",
             "remote_reference": {"published": True, "url": "https://github.com/team/product/tree/forge-reference"},
         },
     )
     body = feedback_card(data, {}, {"url": "https://github.com/team/product.git"}, "https://github.com", lambda x: x)
-    assert len(body) <= 6000 and "UNREVIEWED" in body[:300] and "Reference files:" in body
+    assert len(body) <= 6000 and "unreviewed proposal" in body[:300] and "Reference files:" in body
     assert "not-public" not in body and '"reply"' not in body
     assert "A" * 1200 in body
 
@@ -383,7 +385,7 @@ def test_hostile_question_card_is_bounded_without_cutting_the_receipt():
         ),
     )
     body = feedback_card(dict(id=RECEIPT, command={"action": "status"}), run, {}, "", lambda x: x)
-    assert len(body) <= 6000 and body.endswith(f"Receipt: `{RECEIPT}`")
+    assert len(body) <= 6000 and f"Receipt: `{RECEIPT}`" in body and body.endswith("</details>")
     assert "<@**" not in body
 
 
@@ -401,7 +403,7 @@ async def test_answered_manual_question_does_not_ask_for_the_same_answer(delegat
     received(row, "respond")
     run["pause"] = {"kind": "worker_request"}
     await service.process(RECEIPT)
-    assert "answer was recorded" in sent[0]["body"]
+    assert "answer is recorded" in sent[0]["body"]
     assert "needs an authorized answer" not in sent[0]["body"]
 
 
@@ -419,8 +421,8 @@ async def test_native_pre_admission_refusal_explains_hold_without_claiming_comma
     )
     await service.sync_feedback()
     assert len(sent) == 2
-    assert "held before command admission" in sent[-1]["body"]
-    assert "No command execution or source verification is established" in sent[-1]["body"]
+    assert "could not start the requested checks" in sent[-1]["body"]
+    assert "An operator needs to review the original question" in sent[-1]["body"]
     assert "Decision needed" in sent[-1]["body"] and "private diagnostic" not in sent[-1]["body"]
 
 
@@ -437,7 +439,7 @@ async def test_displayed_request_identifiers_remain_exact_copyable_native_values
     "status,task,description",
     [
         ("developing", "implement", "Implementing the requested change"),
-        ("validating", "verify", "Running the configured verification checks"),
+        ("validating", "verify", "Checking the result"),
     ],
 )
 async def test_actual_engine_states_render_native_phase_activity(delegated_feedback, status, task, description):
@@ -462,3 +464,33 @@ def test_confirmed_review_link_accepts_the_exact_ssh_repository(remote):
     assert run["pr_url"] not in feedback_card(
         dict(id=RECEIPT, command={"action": "status"}), run, {"url": remote}, "https://github.com", lambda x: x
     )
+
+
+async def test_failed_card_preparation_cannot_reuse_a_previous_delivered_intent(delegated_feedback):
+    service, row, run, sent, _ = delegated_feedback
+    received(row, "status")
+    run.update(status="queued", worker_request={})
+    await service.process(RECEIPT)
+    previous = copy.deepcopy(row.data["feedback_intent"])
+    run.update(status="paused", worker_request=dict(id="question-2", status="pending", question="retained-secret"))
+
+    def reject(value):
+        if "retained-secret" in str(value):
+            raise ValueError("Credential-bearing card")
+
+    service.store.reject_credentials = reject
+    await service.sync_feedback()
+    assert len(sent) == 1 and row.data["feedback_status"] == "needs_reconciliation"
+    assert row.data["feedback_intent"] is None
+    await service.reconcile(RECEIPT, "posted", "Checked the provider's actual outcome explicitly")
+    assert len(row.data["feedback_history"]) == 1
+    assert row.data["feedback_key"] == previous["key"]
+
+
+async def test_requeued_partial_work_does_not_claim_it_never_started(delegated_feedback):
+    service, row, run, sent, _ = delegated_feedback
+    received(row, "status")
+    run.update(status="queued", worker_request={"id": "question-1", "status": "answered"}, implementation_rounds=1)
+    await service.process(RECEIPT)
+    assert "queued for execution" in sent[0]["body"]
+    assert "not started" not in sent[0]["body"]

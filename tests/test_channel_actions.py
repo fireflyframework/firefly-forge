@@ -782,5 +782,5 @@ async def test_signed_action_keeps_full_unreviewed_proposal_and_feedback_prefix(
     encoded = next(value for key, value in sources.items() if key.endswith(".json"))
     assert json.loads(encoded)["reply"]["message"] == "A" * 11000 and json.loads(encoded)["status"] == "unreviewed"
     comment = posted[-1]["body"]
-    assert len(comment) <= 6000 and "UNREVIEWED" in comment[:300] and "Reference files:" in comment
+    assert len(comment) <= 6000 and "unreviewed proposal" in comment[:300] and "Reference files:" in comment
     assert not await collaboration.product(second["id"]) and not await store.runs()

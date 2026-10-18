@@ -193,7 +193,7 @@ async def test_completed_delegated_action_posts_retained_result_once(delegated_f
     result = await service.process(RECEIPT)
     assert result["status"] == "processed" and result["action_status"] == "completed"
     assert result["feedback_status"] == "sent"
-    assert len(sent) == 1 and f"Forge {action}:" in sent[0]["body"] and RECEIPT in sent[0]["body"]
+    assert len(sent) == 1 and f"Request: `{action}`" in sent[0]["body"] and RECEIPT in sent[0]["body"]
     assert result["feedback_remote"]["id"] == 91
     if action == "respond":
         assert run["status"] == "paused" and run["worker_request"]["status"] == "answered"

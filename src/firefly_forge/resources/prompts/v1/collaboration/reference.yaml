@@ -3,7 +3,8 @@ name: collaboration/reference
 version: 1.0.0
 description: Deterministic repository feedback reference.
 system_template: ''
-user_template: 'Reference files: [Open the retained reference branch]({{ url }}).'
+user_template: |-
+  Reference files: [Open the retained reference branch]({{ url }}).
 required_variables:
 - url
 metadata:

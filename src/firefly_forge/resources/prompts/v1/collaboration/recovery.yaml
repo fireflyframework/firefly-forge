@@ -3,10 +3,8 @@ name: collaboration/recovery
 version: 1.0.0
 description: Deterministic repository feedback recovery.
 system_template: ''
-user_template: '#### What happens next
-
-
-  {{ explanation }}'
+user_template: |-
+  {{ explanation }}
 required_variables:
 - explanation
 metadata:

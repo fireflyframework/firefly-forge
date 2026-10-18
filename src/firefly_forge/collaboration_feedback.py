@@ -193,12 +193,14 @@ def feedback_due(data: Data, run: Data) -> bool:
 
 def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Callable[[str], str]) -> str:
     copy = _copy()
-    status = str(run.get("status") or (data.get("action_result") or {}).get("status") or "recorded")
+    result = data.get("action_result") or {}
+    status = str(run.get("status") or result.get("status") or "recorded")
     action = str((data.get("command") or {}).get("action", "status"))
     request = run.get("worker_request") or {}
     handoff = verification_handoff(run)
     refused = verification_refusal(run)
     state = "question" if request.get("status") == "pending" and status not in TERMINAL else status
+    title = copy["titles"].get(state, copy["titles"]["unknown"])
     description = copy["states"].get(state, copy["states"]["unknown"])
     stage = run.get("active_task")
     active_stages = {
@@ -207,17 +209,19 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         "validating": {"verify", "review", "checkpoint"},
     }
     if stage in active_stages.get(status, set()):
-        description = copy["stages"][stage]
-    sections = []
-    result = data.get("action_result") or {}
+        title, description = copy["stage_titles"][stage], copy["stages"][stage]
+    sections, details = [], []
     if result:
-        sections.append(
+        details.append(
             prompt_text(
                 "collaboration/action",
                 summary=copy["actions"].get(action, copy["actions"]["other"]),
                 status=_text(result.get("status", "recorded"), safe, 80),
             )
         )
+    proposal = action == "assistant" and result.get("proposal_status") == "unreviewed"
+    if proposal:
+        title, description = copy["proposal_title"], copy["proposal_description"]
     if action == "assistant" and isinstance(result.get("reply"), str):
         sections.append(prompt_text("collaboration/reply", reply=_text(result["reply"], safe)))
     facts = []
@@ -225,8 +229,10 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         value = result.get(field)
         if type(value) is int and value >= 0 or isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", value):
             facts.append(label + ": `" + _identifier(value, safe) + "`")
+    if request.get("status") == "pending" and status not in TERMINAL:
+        facts.append(copy["facts"]["request_id"] + ": `" + _identifier(request.get("id"), safe) + "`")
     if facts:
-        sections.append(prompt_text("collaboration/facts", facts="\n".join(facts)))
+        details.append(prompt_text("collaboration/facts", facts="\n".join(facts)))
     reference = result.get("remote_reference") or {}
     reference_url = _link(reference.get("url"), host, repository, reference=True) if reference.get("published") else ""
     if reference_url:
@@ -244,9 +250,11 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
                 failed=str(handoff.get("failed_commands", 0)),
             )
         )
-        if request.get("status") == "pending" and handoff["status"] in {"pending", "running", "completed"}:
-            description = copy["handoff"][handoff["status"]]
+        if request.get("status") == "pending":
+            title = copy["handoff_titles"][handoff["status"]]
+            description = ""
     if refused:
+        title = copy["handoff_titles"]["held"]
         sections.append(prompt_text("collaboration/recovery", explanation=copy["verification_refused"]))
     if (
         status not in TERMINAL
@@ -258,7 +266,6 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
             prompt_text(
                 "collaboration/question",
                 question=_text(request.get("question", ""), safe),
-                request_id=_identifier(request.get("id", ""), safe),
                 choices=(
                     copy["choices_heading"]
                     + "\n"
@@ -282,21 +289,26 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     url = _link(run.get("pr_url"), host, repository)
     if url:
         safe(url)
+        if status == "succeeded":
+            title = copy["review_title"]
         sections.append(prompt_text("collaboration/review", url=url))
     elif run.get("publication_error"):
+        title = copy["publication_held_title"]
         sections.append(prompt_text("collaboration/publication-held"))
-    if action == "assistant":
+    if proposal:
         sections.append(prompt_text("collaboration/proposal"))
     return prompt_text(
         "collaboration/card",
+        title=title,
         action=action if action in copy["actions"] else "status",
         description=description,
         status=_text(status, safe, 80),
+        sections="\n\n".join(sections),
+        details="\n\n".join(details),
         run_reference=(
             prompt_text("collaboration/run", run_id=_identifier(run.get("id", data.get("run_id", "")), safe))
             if run.get("id") or data.get("run_id")
             else ""
         ),
         receipt_id=_identifier(data["id"], safe),
-        sections="\n\n".join(sections),
     )

@@ -3,8 +3,8 @@ name: collaboration/proposal
 version: 1.0.0
 description: Deterministic repository feedback proposal.
 system_template: ''
-user_template: Product proposals remain **unreviewed** until an authorized owner reviews them. The assistant reply does not
-  approve a product change or start a run.
+user_template: |-
+  This proposal is waiting for review.
 required_variables: []
 metadata:
   defaults: {}

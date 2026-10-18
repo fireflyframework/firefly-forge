@@ -3,11 +3,8 @@ name: collaboration/publication-held
 version: 1.0.0
 description: Deterministic repository feedback publication-held.
 system_template: ''
-user_template: '#### Publication needs attention
-
-
-  The run retained a publication failure. A pull request has not been confirmed. Inspect the native publication intent and
-  provider outcome before authorizing any retry.'
+user_template: |-
+  The run recorded a publication failure. An operator needs to check whether a pull request was created before trying again.
 required_variables: []
 metadata:
   defaults: {}

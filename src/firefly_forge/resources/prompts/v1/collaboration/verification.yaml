@@ -3,11 +3,8 @@ name: collaboration/verification
 version: 1.0.0
 description: Deterministic repository feedback verification.
 system_template: ''
-user_template: '#### Verification
-
-
-  **{{ passed }}/{{ total }} configured checks passed.** This count reports retained exit codes; it does not establish unrun
-  browser journeys, production deployment or product acceptance.'
+user_template: |-
+  **{{ passed }}/{{ total }} checks passed.**
 required_variables:
 - passed
 - total

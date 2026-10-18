@@ -1945,7 +1945,7 @@
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "ed97a70e83f5b380c7edca3b2e7019c4548992b3aedeac08b98c8d0c6609b2d6",
+      "sha256": "0687533909b71ba23252b8e58ab1983080d6ed93d090482a1db32eede4512d7a",
       "field": "user",
       "variables": {}
     },
@@ -1953,13 +1953,15 @@
       "id": "collaboration/card",
       "version": "1.0.0",
       "path": "collaboration/card.yaml",
-      "sha256": "dfde6ef185ba81fa6d987299661ea9e5d6f5bb5b1c36b946f401811ab37317e4",
+      "sha256": "b5f4017405bf020ed48f3fa52db49de223111d2eeb6faff643ba1a0ec7eb30ae",
       "field": "user",
       "variables": {
-        "action": "string",
-        "status": "string",
+        "title": "string",
         "description": "string",
         "sections": "string",
+        "action": "string",
+        "status": "string",
+        "details": "string",
         "run_reference": "string",
         "receipt_id": "string"
       }
@@ -1968,7 +1970,7 @@
       "id": "collaboration/action",
       "version": "1.0.0",
       "path": "collaboration/action.yaml",
-      "sha256": "af4666c249495b8c6df82a91ff8d957e9ffd2f368f2f3ac6ba99e79db3250fa0",
+      "sha256": "1c321d7bd330a4e1ebc21c240a20425c3ce6880ea6eeb39abdec6bb7fb49e377",
       "field": "user",
       "variables": {
         "summary": "string",
@@ -1979,11 +1981,10 @@
       "id": "collaboration/question",
       "version": "1.0.0",
       "path": "collaboration/question.yaml",
-      "sha256": "57288664f5cff5fcc2b4a5b229e1050616ca27d66339c4ab8369fb92ac3e9b31",
+      "sha256": "a9c59b934dd4495c7dc3c06e7a6f19691eb87b90fa05789b55d9224082c49bd7",
       "field": "user",
       "variables": {
         "question": "string",
-        "request_id": "string",
         "choices": "string"
       }
     },
@@ -1991,7 +1992,7 @@
       "id": "collaboration/recovery",
       "version": "1.0.0",
       "path": "collaboration/recovery.yaml",
-      "sha256": "507af0fe088a7858420904a2370f874399f86b03f69573af5641c89608394d7f",
+      "sha256": "ff287ec19b61c8e80120ee74cb406c2cbe5886280f2b0088a6264b38ffa74c6d",
       "field": "user",
       "variables": {
         "explanation": "string"
@@ -2001,7 +2002,7 @@
       "id": "collaboration/verification",
       "version": "1.0.0",
       "path": "collaboration/verification.yaml",
-      "sha256": "396456fea9bdf3d7a7498a41028fcf3ec6ab2de122118020fc74841092bdb7fe",
+      "sha256": "c0c9134c723ab7113ea9f39452908e12a1d2b5b86428cf43380837bd2d1418f1",
       "field": "user",
       "variables": {
         "passed": "string",
@@ -2012,7 +2013,7 @@
       "id": "collaboration/review",
       "version": "1.0.0",
       "path": "collaboration/review.yaml",
-      "sha256": "f608f0b877f61900cb0db424ed97354f5c3fd81eaac78f32eaf3aaae9a8f070c",
+      "sha256": "75f55a0e395bc6ca12fa900d51020fa8931b11421fdebdf9571f7ccbd5e0763f",
       "field": "user",
       "variables": {
         "url": "string"
@@ -2022,7 +2023,7 @@
       "id": "collaboration/proposal",
       "version": "1.0.0",
       "path": "collaboration/proposal.yaml",
-      "sha256": "922ba1d0ea9e3d25e7fcb3a8e41f4739712ecf250b3742f17d1cb5709ae3938d",
+      "sha256": "fe8e4b9c405620022d36a74eb1904881f12d5e3f3afea60b2bd6ab10ce600f79",
       "field": "user",
       "variables": {}
     },
@@ -2030,20 +2031,20 @@
       "id": "collaboration/handoff",
       "version": "1.0.0",
       "path": "collaboration/handoff.yaml",
-      "sha256": "3a927e7388e7634aa0769ada1581bc2d29223c63fad85bb37fadae678d63e63a",
+      "sha256": "ace623f79d300f03daed600360f9bd2f983bb1bd2f51de70494a71dcf7738035",
       "field": "user",
       "variables": {
         "explanation": "string",
         "completed": "string",
-        "failed": "string",
-        "total": "string"
+        "total": "string",
+        "failed": "string"
       }
     },
     {
       "id": "collaboration/publication-held",
       "version": "1.0.0",
       "path": "collaboration/publication-held.yaml",
-      "sha256": "f99fc3f241c384450ad620748b70a281f83d42bbdf6672fae383ddddc9126cf2",
+      "sha256": "dbbce1e843da6de07f80c5189fc24045f55f2155e09291641f437c33551a520d",
       "field": "user",
       "variables": {}
     },
@@ -2051,7 +2052,7 @@
       "id": "collaboration/reply",
       "version": "1.0.0",
       "path": "collaboration/reply.yaml",
-      "sha256": "a5c5c9c28d6e4123a21c9eab278546d9332ad0ba664408575e9ed5c277e3ae0e",
+      "sha256": "d5c225447b66fbceff45dffb4cca36b244f760cd7e28a577d8aec8ea7549960e",
       "field": "user",
       "variables": {
         "reply": "string"
@@ -2061,7 +2062,7 @@
       "id": "collaboration/facts",
       "version": "1.0.0",
       "path": "collaboration/facts.yaml",
-      "sha256": "183ef310972a331a42ee25421f25a2b64c72ee721301e834288b3a6e83269572",
+      "sha256": "140a2e17a7c33e3973f737b1c1bf6413d1736296bd7065a833f6ea283dac3c7d",
       "field": "user",
       "variables": {
         "facts": "string"
@@ -2071,7 +2072,7 @@
       "id": "collaboration/reference",
       "version": "1.0.0",
       "path": "collaboration/reference.yaml",
-      "sha256": "3fc69de06c1b39b08af5a35f3d1f5e36905b2dad8ddfa991b45b3a3273a3e8f7",
+      "sha256": "b7dc8137af0c8d039e64aad789e40a46a5e17eacbe1b74c613f73310b527b0f4",
       "field": "user",
       "variables": {
         "url": "string"
@@ -2081,7 +2082,7 @@
       "id": "collaboration/run",
       "version": "1.0.0",
       "path": "collaboration/run.yaml",
-      "sha256": "80e6c944889b7296c2cf6772e86225bd0cf8cc636fa4ea126942dd24e836bc71",
+      "sha256": "67ca4b594ea6de0e83eae7254a03ec3993c1346b6204a3b077bf5b4f724ddea4",
       "field": "user",
       "variables": {
         "run_id": "string"

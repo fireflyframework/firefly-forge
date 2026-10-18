@@ -268,7 +268,7 @@ multi-repository intake, attachment retrieval or execution permission.
 ## Automatic conversation updates
 
 After an authorized repository command binds a run to an issue or pull-request
-conversation, Forge posts concise Markdown cards for the admitted request,
+conversation, forge posts concise Markdown cards for the admitted request,
 meaningful native execution stages, a recorded worker decision, and the final
 verification or publication outcome. An authorized `/forge status` request can
 establish this binding for an existing run in its permitted project. A URL in a
@@ -299,7 +299,7 @@ requires operator attention. Legacy worker questions still require an authorized
 answer. An answer, a successful check, a published pull request, product acceptance
 and merge approval remain separate decisions.
 
-Before a post, Forge rechecks current repository, actor, project and application
+Before a post, forge rechecks current repository, actor, project and application
 permissions using the existing source-control authority. It records the exact
 milestone and body digest before the provider request, then retains the confirmed
 remote reference. An interrupted or uncertain write remains held for explicit

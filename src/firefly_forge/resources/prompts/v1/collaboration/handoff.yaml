@@ -3,18 +3,14 @@ name: collaboration/handoff
 version: 1.0.0
 description: Deterministic repository feedback handoff.
 system_template: ''
-user_template: '#### Factory verification
-
-
+user_template: |-
   {{ explanation }}
 
-
-  Recorded command counts: {{ completed }} completed, {{ failed }} failed, {{ total }} configured. Pending or running counts
-  are not final results.'
+  {{ completed }} of {{ total }} checks completed; {{ failed }} failed.
 required_variables:
 - explanation
 - completed
-- failed
 - total
+- failed
 metadata:
   defaults: {}

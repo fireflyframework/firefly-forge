@@ -3,7 +3,8 @@ name: collaboration/action
 version: 1.0.0
 description: Deterministic repository feedback action.
 system_template: ''
-user_template: '{{ summary }} Original action result: **{{ status }}**.'
+user_template: |-
+  {{ summary }} Original result: **{{ status }}**.
 required_variables:
 - summary
 - status
