@@ -230,7 +230,7 @@ export function Wizard({
       ref={frame}
       className={`wizard wizard-frame ${className}`}
       aria-label={title}
-      data-layout={flow ? "flow" : undefined}
+      data-layout={pageFlow || flow ? "flow" : undefined}
       style={
         {
           "--wizard-frame-height": height ? `${height}px` : undefined,
