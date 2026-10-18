@@ -41,7 +41,7 @@ Lifecycle ordering initializes `Store` before topology and execution consumers. 
 
 The connection owns authenticated SDK transport and TLS trust. The manager chooses the frozen connection revision, confines repository scope and handles source/canonical receipts. `KnowledgeFirst` combines those cited references with eligible PostgreSQL procedure outcomes before considering configured web search. It cannot treat a search hit as an approved procedure.
 
-Flycanon's server runs in a separate environment, with its own migration and ingestion worker. Installing the Python SDK into forge supplies the client; the managed server image installs the released server independently. No flyquery bean, controller, client dependency or analytics worker is registered in this runtime.
+Flycanon's server runs in a separate environment, with its own migration and ingestion worker. Installing the Python SDK into forge supplies the client; the managed server image installs the released server independently. The optional flyquery catalog integration has separate connection and project-read services; it does not replace required knowledge or start an analytics worker.
 
 Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`FactoryConfiguration`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
 
@@ -342,9 +342,15 @@ Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/m
 
 ### Structured analytics boundary
 
-The optional [flyquery](https://github.com/fireflyframework/flyquery) architecture would query explicit, versioned project snapshots through an independently authorized service. It would never receive a direct connection to the factory ledger, retained private directory or flycanon database. Query results remain untrusted analytical evidence; factory records and cited canonical memory retain their existing authority.
+`FactoryConfiguration.analytics_connection()` injects the private configuration store into `AnalyticsConnection`. `project_analytics()` injects that connection, `Store`, `ProjectAccess` and `ForgeAnalyticsBindingRepository` into `ProjectAnalytics`. The registered `ProjectAnalyticsController` provides typed configuration and read mappings. The optional `analytics` dependency group supplies flyquery SDK 26.10.4; a missing SDK prevents remote reads and does not prevent a locally authorized disable.
 
-The [structured analytics design](structured-knowledge.md) records the assessed pipeline, known execution gaps, proposed native service boundaries and required authorization, snapshot and write-ahead checks. This release has no forge adapter or managed flyquery deployment.
+Configuration admission compares the expected revision under the project lock and native transaction. Schema 29 adds the project binding head and append-only configuration receipts; database triggers reject receipt updates and deletes. Private token files are retained separately from public settings and receipts. There are 32 ordinary revisions, with one unchanged-scope terminal disable from enabled revision 32 to disabled revision 33. A terminal binding cannot be edited or re-enabled.
+
+Before a remote read, the service captures the current native actor, project authority, binding and credential revision. The SDK GET executes outside the database unit of work. The service then rechecks that cut and refuses changed identity, authorization, configuration or credentials before returning the result. Responses are bounded to 256 KiB, with a ten-second remote deadline and three-second connection limit. One read per project/actor is active in each API worker. This is a worker-local bound, not a distributed semaphore.
+
+Catalog access returns at most 50 tables in one complete page. A table or exact schema object must match the saved tenant, workspace and dataset; an object also matches its parent table's reported current snapshot. The observation retains a response digest and timestamp. Remote snapshot identity does not establish content integrity or an atomic data cut. The adapter does not execute SQL, call a model, export the factory ledger, publish memory or use user-tier query routes as an agent-token fallback.
+
+The [structured analytics guide](structured-knowledge.md) covers the actual Studio wizard and reader. Its later sections describe future snapshot export and query execution, including isolation and write-ahead admission requirements. No managed flyquery server or query worker is provisioned by the current adapter.
 
 ## Runner ownership, collection and takeover
 

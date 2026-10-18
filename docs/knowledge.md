@@ -19,9 +19,9 @@ Workspace creation requires the body `id` to equal `X-Workspace-Id`. The knowled
 | --- | --- | --- |
 | forge PostgreSQL and journal | Run admission, project permissions, verified source/check evidence and learning eligibility | Current factory records authorize work and retain observed outcomes. |
 | flycanon | Cited framework manuals, admitted project documents and canonical versions of verified memory | Source/chunk/version receipts establish provenance within the selected workspace. |
-| flyquery, assessed optional integration | Questions over explicit structured snapshots, such as check durations or procedure outcomes | No forge adapter, managed service or configuration screen is implemented. |
+| flyquery, optional read integration | Project-scoped catalog, table and known schema-object observations | Native adapter and Studio configuration/explorer; no query execution, snapshot export or managed flyquery server. |
 
-A structured query result cannot change a run's status, approve source, satisfy a delivery gate or create verified memory. [Structured analytics architecture](structured-knowledge.md) defines the proposed flyquery boundary and its admission prerequisites. Keep flycanon required for the managed factory.
+A structured observation cannot change a run's status, approve source, satisfy a delivery gate or create verified memory. [Structured project analytics](structured-knowledge.md) explains the optional read path and the separate prerequisites for future query execution. Keep flycanon required for the managed factory.
 
 ## Set up knowledge from a fresh installation
 
@@ -31,7 +31,7 @@ A structured query result cannot change a run's status, approve source, satisfy 
 4. Select **Check knowledge access**, then choose the registered repository under **Try a project search**. Inspect the expected framework or project citation, including its workspace and source identity.
 5. Run a small project with executable acceptance checks. Inspect its source/checkpoint evidence, index an explicit verified path when needed, then retrieve its saved memory from the same repository scope.
 
-Studio's Knowledge setup is a settings form followed by an authentication check, project search and source explorer. **Save knowledge settings** retains configuration; **Check knowledge access** tests platform authentication. Neither button installs a server or downloads an embedding model. The private CA is configured through the API; the current form has no CA input. There is no flyquery setup wizard.
+Studio's Knowledge setup is a settings form followed by an authentication check, project search and source explorer. **Save knowledge settings** retains configuration; **Check knowledge access** tests platform authentication. Neither button installs a server or downloads an embedding model. The private CA is configured through the API; the current form has no CA input. The separate **Administration → Structured analytics** wizard configures optional flyquery reads.
 
 ## Structured learning evidence
 
