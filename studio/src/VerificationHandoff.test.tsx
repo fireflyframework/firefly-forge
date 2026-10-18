@@ -172,6 +172,16 @@ describe("automatic verification continuation controls", () => {
     expect(view(run)).not.toContain("Hand off run");
   });
 
+  it("keeps a recovering handoff owned by the factory until its result is known", () => {
+    expect(
+      view({
+        ...run,
+        status: "needs_reconciliation",
+        verification_handoff: { ...handoff, status: "running" },
+      }),
+    ).not.toContain("Resume run");
+  });
+
   it("keeps review controls when automatic handling is held", () => {
     expect(
       view({ ...run, verification_handoff: { ...handoff, status: "held" } }),

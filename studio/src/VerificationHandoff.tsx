@@ -55,7 +55,7 @@ export function verificationInProgress(value: unknown) {
 
 export function activeVerificationRequest(run: ForgeRun) {
   return (
-    run.status === "paused" &&
+    ["paused", "needs_reconciliation"].includes(run.status) &&
     run.pause?.kind === "worker_request" &&
     !run.bridge_completion_hold &&
     run.worker_request?.kind === "verification" &&
