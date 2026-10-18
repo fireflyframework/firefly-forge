@@ -137,13 +137,19 @@ A coding agent may need checks that its own sandbox cannot perform, such as conn
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="Automatic verification handoff diagram" aria-describedby="automatic-verification-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 32
+---
 flowchart LR
-    Q[Agent: verification request] --> I[Journal: handoff intent]
-    I --> R[Runner: approved commands]
-    R --> K{Known outcomes?}
-    K -->|Recorded| A[Journal: factory answer]
-    A --> C[Engine: bounded continuation]
-    K -->|Uncertain or revoked| H[Hold for review]
+    Q["Agent<br/>check request"] --> I["Journal<br/>intent"]
+    I --> R["Runner<br/>approved checks"]
+    R --> K{"Known<br/>outcomes?"}
+    K -->|Yes| A["Journal<br/>factory answer"]
+    A --> C["Engine<br/>continue"]
+    K -->|No or revoked| H["Hold for<br/>review"]
 ```
 
 </div>
