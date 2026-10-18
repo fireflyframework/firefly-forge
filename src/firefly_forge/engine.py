@@ -155,6 +155,7 @@ class Engine:
         self.search: Any = None
         self.tool_broker: Any = None
         self.verification_handoffs: Any = None
+        self.provider_recoveries: Any = None
         self.external_mcp: Any = None
         self.learning: Any = None
         self.knowledge_first: Any = None
@@ -431,6 +432,9 @@ class Engine:
             from firefly_forge.project_access import ProjectAccess
 
             await ProjectAccess(self.store).authorize_execution(run)
+            recovery = await self.provider_recoveries.begin(identifier) if self.provider_recoveries else None
+            if recovery is not None and restoration is not None:
+                raise ReconciliationRequired("Provider recovery cannot replace a checkpoint restoration")
             if self.store.runtime_roles and self.store.runners:
                 from firefly_forge.agent_roles import stage_allowed_tools
 
@@ -489,7 +493,12 @@ class Engine:
                 prepare = await self._begin_task(identifier, "prepare", workspace, settings)
                 active_key = prepare.get("idempotency_key")
                 if run.get("resume_existing") or prepare["disposition"] == "completed":
-                    observed = await self._inspect_workspace(identifier, workspace, settings)
+                    if recovery is not None:
+                        observed = await self.provider_recoveries.prepare_workspace(
+                            identifier, lambda: self._inspect_workspace(identifier, workspace, settings)
+                        )
+                    else:
+                        observed = await self._inspect_workspace(identifier, workspace, settings)
                     base = observed["base_revision"]
                     run = await self.store.get_run(identifier)
                     await emit("preparing", "Continuing the retained authorized workspace")
@@ -860,6 +869,11 @@ class Engine:
             if restoration is not None:
                 start_round = restoration.binding.round
                 repair_failures = []
+            if recovery is not None:
+                start_round = implementation_limit = recovery["attempt"]
+                if not 1 <= start_round <= 4:
+                    raise ReconciliationRequired("The reserved provider dispatch exceeds its finite bound")
+                repair_failures = []
             if start_round > implementation_limit:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
@@ -870,9 +884,15 @@ class Engine:
                 await self.store.admit_credentials(brief)
                 (await self.store.update(identifier, status="developing", attempt=attempt))
                 implementation = (
-                    {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
-                    if restoration is not None
-                    else await self._begin_task(identifier, "implement", workspace, settings, implementation_failures)
+                    recovery
+                    if recovery is not None
+                    else (
+                        {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
+                        if restoration is not None
+                        else await self._begin_task(
+                            identifier, "implement", workspace, settings, implementation_failures
+                        )
+                    )
                 )
                 active_key = implementation.get("idempotency_key")
                 if implementation["disposition"] != "completed":
@@ -941,6 +961,7 @@ class Engine:
                     if (
                         self.journal
                         and restoration is None
+                        and recovery is None
                         and hasattr(self.journal, "verification_provider_admission")
                     ):
                         try:
@@ -950,16 +971,56 @@ class Engine:
                             if current_handoff.get("id"):
                                 await self.journal.verification_hold(identifier, current_handoff["id"])
                             raise ReconciliationRequired(str(exc)) from exc
-                    with bridge_completion_scope(completion_scope), checkpoint_invocation(native_invocation):
-                        result = await provider.execute(
-                            workspace,
-                            brief
-                            if restoration is not None
-                            else brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
-                            run["backend"],
-                            run["frontend"],
-                            emit,
-                        )
+                    from firefly_forge.providers import cli_dispatch_scope
+
+                    official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
+                    if official_dispatch:
+                        if recovery is not None:
+                            await official_dispatch.dispatch(identifier, active_key)
+                        else:
+                            await official_dispatch.normal_dispatch(identifier, active_key)
+
+                    async def launch_guard(
+                        dispatch: Any = official_dispatch, task_key: str | None = active_key
+                    ) -> None:
+                        await self.assert_ownership()
+                        if dispatch:
+                            await dispatch.assert_launch(identifier, task_key)
+
+                    try:
+                        with (
+                            bridge_completion_scope(completion_scope),
+                            checkpoint_invocation(native_invocation),
+                            cli_dispatch_scope(launch_guard if official_dispatch else None),
+                        ):
+                            result = await provider.execute(
+                                workspace,
+                                brief
+                                if restoration is not None
+                                else brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
+                                run["backend"],
+                                run["frontend"],
+                                emit,
+                            )
+                    except BaseException as exc:
+                        if official_dispatch:
+                            known = await official_dispatch.record_process(
+                                identifier, active_key, getattr(exc, "process_outcome", None)
+                            )
+                            if not known and not isinstance(exc, asyncio.CancelledError):
+                                raise ReconciliationRequired(
+                                    "The native provider outcome requires reconciliation"
+                                ) from exc
+                        raise
+                    if official_dispatch:
+                        from firefly_forge.provider_recovery_models import ProviderAttemptClosed
+
+                        try:
+                            await official_dispatch.assert_result(identifier, active_key)
+                        except ProviderAttemptClosed:
+                            raise
+                        except ValueError as exc:
+                            raise ReconciliationRequired(str(exc)) from exc
                     if self.tool_broker and await self.tool_broker.unresolved(identifier):
                         raise ReconciliationRequired("Tool execution has an unresolved outcome; delivery is blocked")
                     if restoration is not None:
@@ -991,6 +1052,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if self.provider_recoveries and recovery is not None:
+                    await self.provider_recoveries.complete(identifier, active_key)
+                    recovery = None
                 active_key = None
                 (
                     await self.store.update(
@@ -1148,6 +1212,7 @@ class Engine:
             raise
         except Exception as exc:
             from firefly_forge.assurance import ReviewPending
+            from firefly_forge.provider_recovery_models import ProviderAttemptClosed
             from firefly_forge.providers import (
                 ProviderAdmissionRefused,
                 ProviderLimitError,
@@ -1155,6 +1220,8 @@ class Engine:
                 classify_provider_failure,
             )
 
+            if isinstance(exc, ProviderAttemptClosed):
+                return
             classification = classify_provider_failure(exc)
             if restoration is not None:
                 await self.store.update(identifier, status="needs_reconciliation", error=safe(str(exc)))

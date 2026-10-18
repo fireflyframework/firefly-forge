@@ -81,11 +81,28 @@ These controlled Studio fixtures show a missing decision followed by a confirmed
 | `paused`, authentication | The selected access failed | Fix access and choose a fresh configured provider snapshot through handoff |
 | `interrupted` | The worker stopped before completion | Inspect the retained workspace and task journal |
 | `needs_reconciliation` | An intent lacks a trustworthy completion receipt | Establish the actual local or remote outcome first |
-| `failed` | The implementation or verification did not complete successfully | Inspect failure evidence; a fresh retry creates a separate run |
+| `failed` | The implementation or verification did not complete successfully | Inspect failure evidence; a fresh retry creates a separate run. An eligible official-CLI failure has a separate same-run recovery below. |
 
 A task marked done has a completion receipt. Inspect its evidence: completing a verification command can record a failing exit status. Overall success requires the final passing checks and matching source snapshot.
 
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
+
+## Recover a known failed official CLI attempt
+
+A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration; it does not change workers or repeat a verification handoff.
+
+Read `GET /api/v1/runs/{id}/provider-recoveries/candidate?agent=codex` (or `claude`). Review its exact source, failure, operator and policy binding. Keep a new 32-character hexadecimal request ID, then POST `/api/v1/runs/{id}/provider-recoveries` with that `request_id`, the returned `candidate_digest`, the same `agent`, and exactly one process proof:
+
+- For a native known failure, supply its returned `native_process_digest`.
+- For a historical failure without the new dispatch protocol, supply `legacy_attestation` with `provenance: "legacy_operator_attestation"`, the sealed external receipt's SHA-256 as `evidence_digest`, its nonzero `exit_code`, and explicit `true` acknowledgments for `trusted_operator_observation`, `process_terminated`, `process_group_drained` and `no_accepted_final_result`.
+
+The legacy option records an administrator's trusted observation. It does not establish that the server inspected the old process. A new-protocol dispatch with absent or uncertain native evidence cannot use this option. Unknown descendants, an uncertain external effect, current execution or changed authority keep recovery held.
+
+An admission returns HTTP201 with an immutable receipt and queues one reserved dispatch. After a lost response, read `GET /api/v1/runs/{id}/provider-recoveries/{request_id}`. An identical POST returns the original receipt; different content or a replacement ID cannot consume the old failure again. Preserve the original ID and body while settling an uncertain response.
+
+The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. Every implementation intent counts toward a maximum of four dispatch reservations, including failed or unreceipted attempts. Consuming a reservation does not renew the repair or verification budget.
+
+Future official-CLI failures retain typed native process evidence separately from provider output. A known nonzero exit requires the leader to have exited, both streams to have drained and its own process group to be absent. A zero exit without a valid final report, missing receipt or uncertain group remains unresolved. Provider output cannot assert those facts. This HTTP surface has no Studio, CLI or SDK recovery shortcut in this change.
 
 ## Inspect a factory verification handoff
 

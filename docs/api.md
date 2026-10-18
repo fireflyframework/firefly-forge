@@ -74,6 +74,12 @@ The Python SDK exposes `verification_handoff_candidates`,
 perform one explicit request each and do not create IDs, apply a fallback or
 resume a run implicitly.
 
+## Failed official-provider recovery
+
+A native factory administrator can review `GET /runs/{id}/provider-recoveries/candidate?agent=codex` or `claude`, explicitly POST the returned candidate digest under one caller-owned request ID to `/runs/{id}/provider-recoveries`, and read its exact receipt at `/runs/{id}/provider-recoveries/{request_id}`. Admission reserves one dispatch in the same run. It does not execute a model in the request or reset repair and verification budgets.
+
+The strict body requires exactly one native process digest or explicit historical operator attestation. New-protocol unknown outcomes stay held. Current authority, source, provider and policy are checked again before launch, and all implementation intents count toward the four-dispatch limit. See [failed official CLI recovery](recovery.md#recover-a-known-failed-official-cli-attempt) for the proof fields, provenance and lost-response procedure. This change exposes HTTP endpoints only.
+
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |

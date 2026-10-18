@@ -168,6 +168,8 @@ from firefly_forge.project_persistence import (
     ForgeProjectRevisionRepository,
 )
 from firefly_forge.projects import Projects
+from firefly_forge.provider_recoveries import ProviderRecoveries
+from firefly_forge.provider_recovery_controllers import ProviderRecoveryController
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
@@ -622,6 +624,12 @@ class FactoryConfiguration:
         handoffs = VerificationHandoffs(store, journal, engine)
         engine.verification_handoffs = handoffs
         return handoffs
+
+    @bean
+    def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
+        recoveries = ProviderRecoveries(store, journal, engine)
+        engine.provider_recoveries = recoveries
+        return recoveries
 
     @bean
     def assurance(self, store: Store, journal: Journal) -> Assurance:
@@ -1107,6 +1115,7 @@ def create_runtime(
         AgentCheckpointCandidateController,
         JournalController,
         VerificationHandoffController,
+        ProviderRecoveryController,
         BridgeCompletionController,
         RunEvidenceController,
         ForgeCollaborationSettingsRepository,

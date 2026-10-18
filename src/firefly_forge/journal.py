@@ -876,6 +876,12 @@ class Journal:
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
             task = await self._task(run_id, feedback.task_id)
+            if (
+                run.data.get("provider_recovery")
+                and feedback.task_id == "implement"
+                and feedback.attempt != task.attempt
+            ):
+                raise ValueError("Late worker feedback cannot replace the reserved current provider attempt")
             stages = BINDINGS[feedback.role_id][1]
             if feedback.task_id not in stages and not (feedback.role_id == "qa" and feedback.task_id == "review"):
                 raise ValueError("Worker role is not bound to this planned stage")
@@ -1563,6 +1569,12 @@ class Journal:
             count = 0
             for candidate in pending:
                 run = await self._run(candidate.run_id.hex)
+                if (
+                    run.status == "failed"
+                    and candidate.task_id == "implement"
+                    and run.data.get("agent") in {"codex", "claude"}
+                ):
+                    continue
                 task = await self._task(run.id.hex, candidate.task_id)
                 if task.status != "running":
                     continue
