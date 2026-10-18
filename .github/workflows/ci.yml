@@ -11,6 +11,7 @@ jobs:
   python:
     runs-on: ubuntu-24.04
     env:
+      PYTEST_ADDOPTS: '-n 2 --dist=loadfile --max-worker-restart=0'
       FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
       FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
     services:
