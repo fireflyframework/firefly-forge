@@ -54,6 +54,9 @@ export type ForgeRun = {
   issue_context?: IssueContext | null;
   product_definition?: ProductSnapshot | null;
   bridge_completion_hold?: { reason?: string };
+  verification_handoff?: unknown;
+  verification_refusal?: unknown;
+  worker_request?: { id: string; kind: string; status: string };
   pause?: {
     message: string;
     kind: string;

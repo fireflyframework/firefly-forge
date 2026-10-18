@@ -105,6 +105,32 @@ function matches(value: unknown, pattern: RegExp): string {
   assert(pattern.test(result));
   return result;
 }
+
+function factoryVerificationAnswer(payload: Record<string, unknown>) {
+  const identity = object(payload.responding_actor);
+  assert(
+    Object.keys(identity).sort().join(",") ===
+      "authentication_method,commands_digest,handoff_id,policy_digest,provider_digest,source_digest,version",
+  );
+  assert(
+    identity.version === 4 &&
+      identity.authentication_method === "factory_verification",
+  );
+  const handoff = matches(identity.handoff_id, id);
+  assert(
+    payload.source === "factory_verification" &&
+      payload.actor === "Forge verification" &&
+      payload.id === handoff &&
+      payload.verification_handoff_id === handoff,
+  );
+  for (const key of [
+    "source_digest",
+    "commands_digest",
+    "policy_digest",
+    "provider_digest",
+  ])
+    matches(identity[key], hash);
+}
 export function normalizeWorkerText(value: string): string {
   // Match the Pydantic model's Unicode whitespace; U+001C–U+001F and U+FEFF are retained.
   return value.replace(
@@ -224,7 +250,21 @@ export async function workerThreads(
         response: null,
       });
     } else {
-      const { responding_actor: attribution, ...answer } = payload;
+      const { responding_actor: attribution, ...originalAnswer } = payload;
+      const factory =
+        attribution !== undefined && object(attribution).version === 4;
+      let answer = originalAnswer;
+      if (factory) {
+        factoryVerificationAnswer(payload);
+        const {
+          source: _source,
+          verification_handoff_id: _handoff,
+          ...publicAnswer
+        } = originalAnswer;
+        void _source;
+        void _handoff;
+        answer = publicAnswer;
+      }
       assert(
         Object.keys(answer).sort().join(",") === "actor,answer,id,request_id",
       );
@@ -240,7 +280,7 @@ export async function workerThreads(
       );
       responseIds.add(reply.id);
       matches(answer.request_id, identifier);
-      if (attribution !== undefined) {
+      if (attribution !== undefined && !factory) {
         const identity = object(attribution);
         matches(identity.user_id, id);
         if (identity.version === 2) {
@@ -369,6 +409,7 @@ export async function workerThreads(
       assert(
         thread && !thread.response && thread.event.task_id === event.task_id,
       );
+      if (factory) assert(thread.question.kind === "verification");
       thread.response = event;
     }
   }
@@ -493,6 +534,10 @@ export function workerAttributionSummary(event: WorkerEvent): string {
   if (attribution === undefined)
     return "This label does not establish authenticated authorship.";
   const identity = object(attribution);
+  if (identity.version === 4) {
+    factoryVerificationAnswer(event.payload);
+    return "Handled by forge using the approved verification runner.";
+  }
   if (identity.version === 3) {
     assert(object(identity.provenance).transport === "github_rest_poll_v1");
     return "Delegated through an API-observed GitHub account to a mapped forge user.";

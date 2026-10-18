@@ -63,6 +63,7 @@ import { SourceControl } from "./SourceControl";
 import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
+import { activeVerificationRequest } from "./VerificationHandoff";
 import { WorkerDialogue } from "./WorkerDialogue";
 import { EvidenceView, UnifiedDiff, OutputView } from "./ExecutionPresentation";
 import { DeliverySetup, RunDelivery } from "./Delivery";
@@ -2707,20 +2708,22 @@ function RunDetail({
   }
   return (
     <section className="panel run-detail">
-      {run.pause?.kind === "worker_request" && (
-        <div className="worker-run-question">
-          <MessageSquare size={20} />
-          <div>
-            <strong>Review the agent’s question</strong>
-            <p>
-              The conversation records the decision needed to continue this run.
-            </p>
+      {run.pause?.kind === "worker_request" &&
+        !activeVerificationRequest(run) && (
+          <div className="worker-run-question">
+            <MessageSquare size={20} />
+            <div>
+              <strong>Review the agent’s question</strong>
+              <p>
+                The conversation records the decision needed to continue this
+                run.
+              </p>
+            </div>
+            <button className="secondary" onClick={() => setTab("questions")}>
+              Open agent questions
+            </button>
           </div>
-          <button className="secondary" onClick={() => setTab("questions")}>
-            Open agent questions
-          </button>
-        </div>
-      )}
+        )}
       <div className="detail-tabs" role="tablist" aria-label="Run evidence">
         {tabs.map((item) => (
           <button

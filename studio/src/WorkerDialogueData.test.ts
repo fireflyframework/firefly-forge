@@ -84,6 +84,70 @@ const immediateLocks: ReplyLockManager = {
   request: async (_name, _options, callback) => callback(),
 };
 describe("agent conversation boundaries", () => {
+  async function factoryConversation() {
+    const original = await question();
+    const { digest: _digest, ...body } = original;
+    void _digest;
+    const q = await seal({
+      ...body,
+      payload: {
+        ...body.payload,
+        request: { ...body.payload.request, kind: "verification" },
+      },
+    });
+    const prior = await response();
+    const { digest: _answerDigest, ...answerBody } = prior;
+    void _answerDigest;
+    const handoffId = "f".repeat(32);
+    const a = await seal({
+      ...answerBody,
+      idempotency_key: `worker-response:${handoffId}`,
+      payload: {
+        ...answerBody.payload,
+        id: handoffId,
+        actor: "Forge verification",
+        answer: "Two approved commands completed.",
+        source: "factory_verification",
+        verification_handoff_id: handoffId,
+        responding_actor: {
+          version: 4,
+          authentication_method: "factory_verification",
+          handoff_id: handoffId,
+          source_digest: "1".repeat(64),
+          commands_digest: "2".repeat(64),
+          policy_digest: "3".repeat(64),
+          provider_digest: "4".repeat(64),
+        },
+      },
+    });
+    return { q, a };
+  }
+
+  it("attributes a protected factory verification answer separately from a person", async () => {
+    const { q, a } = await factoryConversation();
+    const threads = await workerThreads([q, a], run);
+    expect(threads[0].response?.payload.source).toBe("factory_verification");
+    expect(workerAttributionSummary(threads[0].response!)).toContain(
+      "approved verification runner",
+    );
+  });
+
+  it("rejects mismatched factory handoff identities", async () => {
+    const { q, a } = await factoryConversation();
+    const { digest: _digest, ...body } = a;
+    void _digest;
+    const changed = await seal({
+      ...body,
+      payload: { ...body.payload, verification_handoff_id: "e".repeat(32) },
+    });
+    await expect(workerThreads([q, changed], run)).rejects.toThrow();
+  });
+
+  it("does not accept a factory verification answer for a product decision", async () => {
+    const { a } = await factoryConversation();
+    await expect(workerThreads([await question(), a], run)).rejects.toThrow();
+  });
+
   const delegatedScope = {
     project: delegation.receipt.project_id,
     repository: delegation.receipt.repository_id,

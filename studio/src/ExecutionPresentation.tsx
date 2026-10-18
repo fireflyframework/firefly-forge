@@ -17,6 +17,7 @@ import {
 } from "./ExecutionFormat";
 import "./ExecutionPresentation.css";
 import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
+import { VerificationHandoff } from "./VerificationHandoff";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [state, setState] = useState("");
@@ -202,6 +203,8 @@ export function EvidenceView({
   advanced?: boolean;
   omitFields?: string[];
 }) {
+  if (kind?.startsWith("verification_handoff_"))
+    return <VerificationHandoff kind={kind} value={value} />;
   if (kind === "repair_proposal") {
     title ??= "Repair proposal";
     omitFields = [
