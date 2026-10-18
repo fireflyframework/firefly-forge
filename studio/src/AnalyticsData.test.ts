@@ -372,18 +372,16 @@ it("allows only unchanged-scope terminal disable from enabled32 and keeps disabl
 
 it("confirms terminal33 from one exact disable PUT and never submits another terminal change", async () => {
   const full = analyticsConfiguration({ ...settings, revision: 32 }, project);
-  const fetch = vi
-    .fn()
-    .mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          ...settings,
-          revision: 33,
-          status: "disabled",
-          configuration: { ...scope, enabled: false },
-        }),
-      ),
-    );
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        ...settings,
+        revision: 33,
+        status: "disabled",
+        configuration: { ...scope, enabled: false },
+      }),
+    ),
+  );
   vi.stubGlobal("fetch", fetch);
   const disabled = await saveAnalyticsConfiguration(connection, project, full, {
     ...scope,
