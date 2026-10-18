@@ -128,7 +128,7 @@ async def delegated_feedback(tmp_path, monkeypatch):
         repository_records=SimpleNamespace(find_by_id=find_repository),
         run_records=SimpleNamespace(find_by_id=find_run),
         execution_requests=SimpleNamespace(request_cancel=cancel),
-        configuration=SimpleNamespace(directory=tmp_path, _read=lambda _: {}),
+        configuration=SimpleNamespace(directory=tmp_path, _read=lambda _: {}, settings_generation=0),
     )
 
     def transport(request):

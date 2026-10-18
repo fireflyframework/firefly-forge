@@ -9,6 +9,7 @@ from test_campaign_reports import seeded, service
 
 from firefly_forge.campaign_report_history import CampaignReportHistory
 from firefly_forge.campaign_report_history_persistence import ForgeCampaignReportArchiveRepository
+from firefly_forge.identity_persistence import ForgeIdentityUserEntity
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 
 
@@ -475,7 +476,10 @@ async def test_actual_git_and_python_receipts_satisfy_only_the_explicit_saved_pr
         return await checked(["git", "rev-parse", "HEAD"], source)
 
     manager = ProjectCampaigns(store, engine, journal, source_resolver=resolve)
-    token = CURRENT_PRINCIPAL.set(Principal(uuid4(), "local", "owned-plan", authentication_method="local_bootstrap"))
+    actor = Principal(uuid4(), "local", "owned-plan", authentication_method="local_bootstrap")
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True))
+    token = CURRENT_PRINCIPAL.set(actor)
     try:
         campaign = await manager.launch(
             project["id"], CampaignLaunch(request_id=uuid4().hex, brief="Verify owned stock", operation="test")
