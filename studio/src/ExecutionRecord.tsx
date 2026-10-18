@@ -212,6 +212,7 @@ export function ExecutionRecord({
       {session && (
         <RunnerContinuation
           key={JSON.stringify([
+            "runner-continuation",
             connection.base,
             connection.token,
             session.user.id,
@@ -232,6 +233,7 @@ export function ExecutionRecord({
       {session && (
         <AgentCheckpointRecovery
           key={JSON.stringify([
+            "agent-checkpoint-recovery",
             connection.base,
             connection.token,
             session.user.id,
