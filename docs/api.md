@@ -349,8 +349,13 @@ not a user login token. Remote authorization still applies to every read.
 Read configuration first. Use its exact `revision` as `expected_revision` when
 saving; use zero only for the first binding. Every save supplies the complete
 scope and write-only `agent_token`, including a save with `enabled: false`.
-A conflicting revision is refused. There are at most 32 configuration changes per
-project; each committed change has an immutable native receipt. Credentials stay
+A conflicting revision is refused. There are at most 32 ordinary configuration
+changes per project. An enabled revision 32 permits one final disable at revision
+33, using `expected_revision: 32`, `enabled: false`, the unchanged endpoint, tenant,
+workspace and dataset, and an explicitly supplied token. This terminal binding
+cannot be edited or re-enabled. A connection already disabled at revision 32 has
+no further changes. Disabling does not import the SDK or contact Flyquery. Each
+committed change has an immutable native receipt. Credentials stay
 in owner-private revision files, never in public configuration or native receipts.
 `configured` means settings were saved; it does not mean remote access was tested.
 
@@ -362,6 +367,8 @@ A factory administrator can select **Set up Flyquery** or **Edit connection**:
 2. Enter the HTTPS origin, tenant, workspace UUID and dataset UUID. Enter a token
    for this save; the form never loads a saved token. Clear the enable checkbox
    to disable reads, supplying the complete scope and token again.
+   At revision 32, **Disable connection** locks the existing scope and permits
+   only the terminal disable. Disabled revision 33 remains readable.
 3. Review the scope and expected revision, then select **Save connection** once.
    The browser clears the token on submission. A missing or inconsistent response
    leaves the save unconfirmed; explicitly reload the saved configuration before

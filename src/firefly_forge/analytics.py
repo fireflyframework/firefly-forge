@@ -216,12 +216,29 @@ class ProjectAnalytics:
         self._outside(actor)
         return self._public(project_id, binding)
 
+    @staticmethod
+    def _configuration_revision(binding: Data | None, request: AnalyticsConfigurationInput) -> None:
+        revision = (binding or {}).get("revision", 0)
+        if revision != request.expected_revision:
+            raise ValueError("Analytics configuration revision changed")
+        if revision < 32:
+            return
+        if (
+            revision != 32
+            or not binding
+            or not binding["enabled"]
+            or request.enabled
+            or any(
+                binding[key] != getattr(request, key) for key in ("endpoint", "tenant_id", "workspace_id", "dataset_id")
+            )
+        ):
+            raise ValueError("At the analytics history limit, only one unchanged-scope terminal disable is allowed")
+
     async def configure(self, project_id: str, request: AnalyticsConfigurationInput, actor: Principal) -> Data:
         self._outside(actor)
         project_id = identifier(project_id).hex
         binding = await self._binding(project_id, actor, admin=True)
-        if (binding or {}).get("revision", 0) != request.expected_revision or request.expected_revision >= 32:
-            raise ValueError("Analytics configuration revision changed or history bound reached")
+        self._configuration_revision(binding, request)
         self._outside(actor)
         secret = self.connection.prepare(request.agent_token.get_secret_value())
         data = {**request.model_dump(exclude={"agent_token", "expected_revision"}), **secret}
@@ -229,8 +246,7 @@ class ProjectAnalytics:
             head = await self.records.for_project(identifier(project_id))
             if CURRENT_PRINCIPAL.get() != actor:
                 raise AccessDenied("Analytics caller context changed")
-            if (head.revision if head else 0) != request.expected_revision:
-                raise ValueError("Analytics configuration revision changed")
+            self._configuration_revision({**head.data, "revision": head.revision} if head else None, request)
             revision = request.expected_revision + 1
             if head is None:
                 head = ForgeAnalyticsBindingEntity(project_id=identifier(project_id), revision=revision, data=data)

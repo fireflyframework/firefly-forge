@@ -208,3 +208,44 @@ it("keeps the table read's own digest available alongside the earlier catalog ob
   expect(html).toContain(catalog.response_digest);
   expect(html).toContain(digest);
 });
+
+it("presents only an explicit terminal disable at32, with locked scope and an editable fresh token", () => {
+  const current32 = { ...current, revision: 32 };
+  const disabledDraft = { ...draft, enabled: false };
+  const first = renderToStaticMarkup(
+    <AnalyticsWizard
+      {...wizard}
+      current={current32}
+      draft={disabledDraft}
+      reviewed={false}
+    />,
+  );
+  expect(first).toContain("terminal revision 33");
+  expect(first).toContain("Disabling does not contact Flyquery");
+  expect(first).not.toMatch(/type="checkbox"[^>]*disabled=""/);
+  const fields = renderToStaticMarkup(
+    <AnalyticsWizard
+      {...wizard}
+      current={current32}
+      draft={disabledDraft}
+      step={1}
+    />,
+  );
+  for (const name of ["endpoint", "tenant", "workspace", "dataset"])
+    expect(fields).toMatch(
+      new RegExp(`id="analytics-${name}"[^>]*disabled=""`),
+    );
+  expect(fields).not.toMatch(/id="analytics-token"[^>]*disabled=""/);
+  expect(fields).toMatch(/type="checkbox"[^>]*disabled=""/);
+  const review = renderToStaticMarkup(
+    <AnalyticsWizard
+      {...wizard}
+      current={current32}
+      draft={disabledDraft}
+      step={2}
+    />,
+  );
+  expect(review).toContain("Review terminal disable");
+  expect(review).toContain("Disable connection");
+  expect(review).not.toContain("Save connection");
+});

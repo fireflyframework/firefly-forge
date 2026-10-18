@@ -277,7 +277,11 @@ function AnalyticsProject({
   }
   function edit() {
     if (!saved || uncertain || busy) return;
-    setDraft({ ...(saved.configuration ?? emptyDraft), agent_token: "" });
+    setDraft({
+      ...(saved.configuration ?? emptyDraft),
+      ...(saved.revision === 32 ? { enabled: false } : {}),
+      agent_token: "",
+    });
     setEditing(true);
     setStep(0);
     setReviewed(false);
@@ -434,7 +438,7 @@ function AnalyticsProject({
             <h2>Project connection</h2>
             <p>
               {saved
-                ? `${saved.status === "configured" ? "Configured" : "Disabled"} · revision ${saved.revision}. Saving does not verify remote access.`
+                ? `${saved.status === "configured" ? "Configured" : "Disabled"} · revision ${saved.revision}. ${saved.revision >= 32 ? (saved.configuration?.enabled ? "History is full. Only disabling this unchanged connection is available." : "History is full. This connection cannot be edited or re-enabled.") : "Saving does not verify remote access."}`
                 : "Read the saved configuration before editing."}
             </p>
             {saved?.configuration && (
@@ -444,10 +448,22 @@ function AnalyticsProject({
           <div className="analytics-actions">
             <button
               className="primary"
-              disabled={!saved || Boolean(busy) || uncertain || editing}
+              disabled={
+                !saved ||
+                Boolean(busy) ||
+                uncertain ||
+                editing ||
+                (saved.revision >= 32 && !saved.configuration?.enabled)
+              }
               onClick={edit}
             >
-              {saved?.revision ? "Edit connection" : "Set up Flyquery"}
+              {saved?.revision === 32 && saved.configuration?.enabled
+                ? "Disable connection"
+                : saved && saved.revision >= 32
+                  ? "Connection disabled"
+                  : saved?.revision
+                    ? "Edit connection"
+                    : "Set up Flyquery"}
               <ArrowRight size={16} />
             </button>
             <button
@@ -564,6 +580,7 @@ export function AnalyticsWizard({
   const update = (change: Partial<AnalyticsDraft>) =>
     onChange({ ...draft, ...change });
   const locked = busy || blocked;
+  const terminalDisable = current.revision === 32;
   return (
     <Wizard
       pageFlow
@@ -575,16 +592,28 @@ export function AnalyticsWizard({
       locked={locked}
       title={
         [
-          "Prepare read-only access",
-          "Bind this project to Flyquery",
-          "Review the project connection",
+          terminalDisable
+            ? "Prepare terminal disable"
+            : "Prepare read-only access",
+          terminalDisable
+            ? "Disable the saved connection"
+            : "Bind this project to Flyquery",
+          terminalDisable
+            ? "Review terminal disable"
+            : "Review the project connection",
         ][step]
       }
       description={
         [
-          "Confirm the service, SDK and scoped token before saving anything.",
-          "A factory administrator chooses the exact remote scope. Readers cannot override it.",
-          "Save one configuration revision. The catalog is read only when you choose Read catalog.",
+          terminalDisable
+            ? "Review the final disable. The remote service does not need to be available."
+            : "Confirm the service, SDK and scoped token before saving anything.",
+          terminalDisable
+            ? "Keep the saved scope unchanged and supply a token explicitly. This operation does not read the remote service."
+            : "A factory administrator chooses the exact remote scope. Readers cannot override it.",
+          terminalDisable
+            ? "Commit terminal disabled revision 33. This binding cannot be edited or re-enabled afterward."
+            : "Save one configuration revision. The catalog is read only when you choose Read catalog.",
         ][step]
       }
       guide={
@@ -592,8 +621,9 @@ export function AnalyticsWizard({
           <Database size={32} />
           <h3>One project, one data scope</h3>
           <p>
-            Use an already provisioned Flyquery service and dataset. The
-            analytics extra must be installed in Forge.
+            {terminalDisable
+              ? "Disabling uses only the saved binding and current native administrator authority. It does not import the SDK or contact Flyquery."
+              : "Use an already provisioned Flyquery service and dataset. The analytics extra must be installed in Forge."}
           </p>
           <p>
             The supported connection is an HTTPS origin on port 443 with a
@@ -611,20 +641,42 @@ export function AnalyticsWizard({
         {step === 0 && (
           <section className="form-section">
             <h3>Before you connect</h3>
+            {terminalDisable && (
+              <p>
+                The 32 ordinary revisions are used. You can disable this saved
+                scope once, in terminal revision 33. It cannot be edited or
+                re-enabled afterward. Disabling does not contact Flyquery.
+              </p>
+            )}
             <ul className="analytics-requirements">
-              <li>
-                Flyquery 26.10.4 with an existing tenant, workspace and dataset.
-              </li>
-              <li>
-                Forge’s optional analytics SDK, installed by the operator.
-              </li>
-              <li>
-                A scoped agent token granting <code>flyquery.schema:read</code>{" "}
-                for the intended workspace.
-              </li>
-              <li>
-                Current factory administrator access to save this binding.
-              </li>
+              {terminalDisable ? (
+                <>
+                  <li>Current factory administrator access.</li>
+                  <li>The existing scope stays unchanged.</li>
+                  <li>
+                    Supply a scoped token explicitly, as required for every
+                    save. It will not be checked with Flyquery.
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    Flyquery 26.10.4 with an existing tenant, workspace and
+                    dataset.
+                  </li>
+                  <li>
+                    Forge’s optional analytics SDK, installed by the operator.
+                  </li>
+                  <li>
+                    A scoped agent token granting{" "}
+                    <code>flyquery.schema:read</code> for the intended
+                    workspace.
+                  </li>
+                  <li>
+                    Current factory administrator access to save this binding.
+                  </li>
+                </>
+              )}
             </ul>
             <label className="analytics-choice">
               <input
@@ -652,7 +704,7 @@ export function AnalyticsWizard({
                 maxLength={2048}
                 placeholder="https://analytics.example"
                 onChange={(e) => update({ endpoint: e.target.value })}
-                disabled={locked}
+                disabled={locked || terminalDisable}
               />
             </div>
             <div className="field">
@@ -663,7 +715,7 @@ export function AnalyticsWizard({
                 value={draft.tenant_id}
                 maxLength={128}
                 onChange={(e) => update({ tenant_id: e.target.value })}
-                disabled={locked}
+                disabled={locked || terminalDisable}
               />
             </div>
             <div className="two-columns">
@@ -675,7 +727,7 @@ export function AnalyticsWizard({
                   value={draft.workspace_id}
                   maxLength={36}
                   onChange={(e) => update({ workspace_id: e.target.value })}
-                  disabled={locked}
+                  disabled={locked || terminalDisable}
                 />
               </div>
               <div className="field">
@@ -686,7 +738,7 @@ export function AnalyticsWizard({
                   value={draft.dataset_id}
                   maxLength={36}
                   onChange={(e) => update({ dataset_id: e.target.value })}
-                  disabled={locked}
+                  disabled={locked || terminalDisable}
                 />
               </div>
             </div>
@@ -719,7 +771,7 @@ export function AnalyticsWizard({
               <input
                 type="checkbox"
                 checked={draft.enabled}
-                disabled={locked}
+                disabled={locked || terminalDisable}
                 onChange={(e) => update({ enabled: e.target.checked })}
               />
               <span>Enable project readers to inspect this scope</span>
@@ -779,7 +831,13 @@ export function AnalyticsWizard({
             className="primary"
             disabled={locked || !reviewed}
           >
-            {busy ? "Saving…" : step === 2 ? "Save connection" : "Continue"}
+            {busy
+              ? "Saving…"
+              : step === 2
+                ? terminalDisable
+                  ? "Disable connection"
+                  : "Save connection"
+                : "Continue"}
             <ArrowRight size={16} />
           </button>
         </div>

@@ -324,3 +324,85 @@ it("looks up only the exact known object and rejects a changed parent snapshot w
     ),
   );
 });
+
+it("allows only unchanged-scope terminal disable from enabled32 and keeps disabled33 readable", () => {
+  const full = analyticsConfiguration({ ...settings, revision: 32 }, project);
+  const draft = { ...scope, agent_token: "explicit-terminal-token" };
+  expect(() => analyticsPayload(full, draft)).toThrow(/disable/i);
+  expect(() =>
+    analyticsPayload(full, { ...draft, enabled: false, tenant_id: "other" }),
+  ).toThrow(/scope/i);
+  expect(analyticsPayload(full, { ...draft, enabled: false })).toEqual({
+    ...draft,
+    enabled: false,
+    expected_revision: 32,
+  });
+  const terminal = analyticsConfiguration(
+    {
+      ...settings,
+      revision: 33,
+      status: "disabled",
+      configuration: { ...scope, enabled: false },
+    },
+    project,
+  );
+  expect(terminal.revision).toBe(33);
+  expect(() => analyticsPayload(terminal, { ...draft, enabled: true })).toThrow(
+    /terminal/i,
+  );
+  expect(() =>
+    analyticsPayload(terminal, { ...draft, enabled: false }),
+  ).toThrow(/terminal/i);
+  expect(() =>
+    analyticsConfiguration({ ...settings, revision: 33 }, project),
+  ).toThrow();
+  const alreadyDisabled = analyticsConfiguration(
+    {
+      ...settings,
+      revision: 32,
+      status: "disabled",
+      configuration: { ...scope, enabled: false },
+    },
+    project,
+  );
+  expect(() =>
+    analyticsPayload(alreadyDisabled, { ...draft, enabled: false }),
+  ).toThrow();
+});
+
+it("confirms terminal33 from one exact disable PUT and never submits another terminal change", async () => {
+  const full = analyticsConfiguration({ ...settings, revision: 32 }, project);
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...settings,
+          revision: 33,
+          status: "disabled",
+          configuration: { ...scope, enabled: false },
+        }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  const disabled = await saveAnalyticsConfiguration(connection, project, full, {
+    ...scope,
+    enabled: false,
+    agent_token: "explicit-terminal-token",
+  });
+  expect(disabled.revision).toBe(33);
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+    ...scope,
+    enabled: false,
+    expected_revision: 32,
+    agent_token: "explicit-terminal-token",
+  });
+  await expect(
+    saveAnalyticsConfiguration(connection, project, disabled, {
+      ...scope,
+      enabled: true,
+      agent_token: "explicit-terminal-token",
+    }),
+  ).rejects.toThrow(/terminal/i);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

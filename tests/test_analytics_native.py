@@ -104,3 +104,57 @@ async def test_native_identity_revocation_after_get_discards_catalog(native_anal
     with pytest.raises(AccessDenied):
         await analytics.catalog(project, actor)
     assert len(calls) == 1 and calls[0].method == "GET"
+
+
+async def test_native_full_history_terminal_disable_is_once_and_preserves_prior_receipts(native_analytics):
+    analytics, actor, project, request = native_analytics
+    for revision in range(32):
+        body = {**request.model_dump(mode="json"), "expected_revision": revision}
+        saved = await analytics.configure(project, AnalyticsConfigurationInput.model_validate(body), actor)
+    assert saved["revision"] == 32 and saved["status"] == "configured"
+    async with analytics.store._unit() as session:
+        before = list(
+            await session.scalars(
+                text("SELECT data::text FROM forge_analytics_configuration_receipts ORDER BY revision")
+            )
+        )
+    assert len(before) == 32
+    disabled = AnalyticsConfigurationInput.model_validate({**body, "expected_revision": 32, "enabled": False})
+    for changed in ({"enabled": True}, {"tenant_id": "other"}):
+        with pytest.raises(ValueError):
+            await analytics.configure(
+                project,
+                AnalyticsConfigurationInput.model_validate({**disabled.model_dump(mode="json"), **changed}),
+                actor,
+            )
+    saved = await analytics.configure(project, disabled, actor)
+    assert saved["revision"] == 33 and saved["status"] == "disabled"
+    assert await analytics.configuration(project, actor) == saved
+    for enabled in (True, False):
+        with pytest.raises(ValueError):
+            await analytics.configure(
+                project,
+                AnalyticsConfigurationInput.model_validate({**disabled.model_dump(mode="json"), "enabled": enabled}),
+                actor,
+            )
+    with pytest.raises(ValueError):
+        AnalyticsConfigurationInput.model_validate({**body, "expected_revision": 33, "enabled": True})
+    analytics.connection.transport = httpx.MockTransport(lambda _: pytest.fail("Disabled analytics reached HTTP"))
+    with pytest.raises(ValueError, match="not configured"):
+        await analytics.catalog(project, actor)
+    with pytest.raises(DBAPIError, match="immutable"):
+        async with analytics.store._unit() as session:
+            await session.execute(text("DELETE FROM forge_analytics_configuration_receipts WHERE revision=33"))
+    async with analytics.store._unit() as session:
+        assert (
+            list(
+                await session.scalars(
+                    text(
+                        "SELECT data::text FROM forge_analytics_configuration_receipts "
+                        "WHERE revision<=32 ORDER BY revision"
+                    )
+                )
+            )
+            == before
+        )
+        assert await session.scalar(text("SELECT count(*) FROM forge_analytics_configuration_receipts")) == 33

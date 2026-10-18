@@ -380,3 +380,56 @@ async def test_scoped_schema_object_is_bound_to_observed_parent_snapshot_and_nev
         "/api/v1/agent/tables/" + TABLE,
         "/api/v1/agent/schema-objects/" + OBJECT,
     ]
+
+
+def configuration_change(revision, **changes):
+    body = {**request().model_dump(mode="json"), "expected_revision": revision, **changes}
+    return type(request()).model_validate(body)
+
+
+async def test_full_configuration_history_allows_one_terminal_disable_and_no_reenable(analytics):
+    service, state = analytics
+    for revision in range(32):
+        saved = await service.configure(PROJECT, configuration_change(revision), ACTOR)
+    assert saved["revision"] == 32 and saved["status"] == "configured"
+    old_receipts = copy.deepcopy([row.data for row in state["rows"] if row.__tablename__.endswith("receipts")])
+    for change in ({"enabled": True}, {"enabled": False, "tenant_id": "other"}):
+        with pytest.raises(ValueError):
+            await service.configure(PROJECT, configuration_change(32, **change), ACTOR)
+    assert len(list(service.connection.private.revisions.glob("analytics-*.json"))) == 32
+    disabled = await service.configure(PROJECT, configuration_change(32, enabled=False), ACTOR)
+    assert disabled["revision"] == 33 and disabled["status"] == "disabled"
+    receipts = [row.data for row in state["rows"] if row.__tablename__.endswith("receipts")]
+    assert receipts[:32] == old_receipts and len(receipts) == 33
+    assert (await service.configuration(PROJECT, ACTOR)) == disabled
+    for enabled in (True, False):
+        with pytest.raises(ValueError):
+            await service.configure(PROJECT, configuration_change(32, enabled=enabled), ACTOR)
+    with pytest.raises(ValueError):
+        configuration_change(33, enabled=True)
+    with pytest.raises(ValueError, match="not configured"):
+        await service.catalog(PROJECT, ACTOR)
+    assert state["calls"] == []
+    assert len(list(service.connection.private.revisions.glob("analytics-*.json"))) == 33
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_already_disabled_at_ordinary_limit_cannot_use_the_terminal_slot(analytics, enabled):
+    service, state = analytics
+    for revision in range(32):
+        await service.configure(PROJECT, configuration_change(revision, enabled=revision < 31), ACTOR)
+    with pytest.raises(ValueError):
+        await service.configure(PROJECT, configuration_change(32, enabled=enabled), ACTOR)
+    assert state["head"].revision == 32 and state["head"].data["enabled"] is False
+    assert len(list(service.connection.private.revisions.glob("analytics-*.json"))) == 32
+
+
+async def test_terminal_disable_still_requires_current_native_administrator(analytics):
+    service, state = analytics
+    for revision in range(32):
+        await service.configure(PROJECT, configuration_change(revision), ACTOR)
+    state["admin"] = False
+    with pytest.raises(AccessDenied):
+        await service.configure(PROJECT, configuration_change(32, enabled=False), ACTOR)
+    assert state["head"].revision == 32 and state["head"].data["enabled"] is True
+    assert len(list(service.connection.private.revisions.glob("analytics-*.json"))) == 32

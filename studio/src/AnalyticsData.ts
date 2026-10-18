@@ -146,7 +146,7 @@ export function analyticsConfiguration(
     capabilities.query_execution !== false
   )
     throw unsupported();
-  const revision = integer(r.revision, 0, 32),
+  const revision = integer(r.revision, 0, 33),
     c = record(r.configuration);
   if (
     ["agent_token", "secret_revision", "secret_digest"].some((key) =>
@@ -158,7 +158,8 @@ export function analyticsConfiguration(
   if (
     r.agent_token_configured !== revision > 0 ||
     r.status !== (configured?.enabled ? "configured" : "disabled") ||
-    (!revision && Object.keys(c).length)
+    (!revision && Object.keys(c).length) ||
+    (revision === 33 && configured?.enabled)
   )
     throw unsupported();
   return {
@@ -173,12 +174,29 @@ export function analyticsPayload(
   current: AnalyticsConfiguration,
   draft: AnalyticsDraft,
 ) {
-  if (current.revision >= 32)
+  if (
+    current.revision >= 33 ||
+    (current.revision === 32 && !current.configuration?.enabled)
+  )
     throw new Error(
-      "The configuration history limit has been reached. Ask the administrator to review retention.",
+      "The connection is disabled at its history limit. Terminal bindings cannot be edited or re-enabled.",
     );
   const scope = settings(draft),
     token = draft.agent_token;
+  if (current.revision === 32) {
+    if (scope.enabled)
+      throw new Error(
+        "Only disable is available at the configuration history limit.",
+      );
+    if (
+      (["endpoint", "tenant_id", "workspace_id", "dataset_id"] as const).some(
+        (key) => scope[key] !== current.configuration?.[key],
+      )
+    )
+      throw new Error(
+        "Keep the existing scope unchanged for the terminal disable.",
+      );
+  }
   if (!/^[!-~]{1,4096}$/.test(token))
     throw new Error(
       "Enter a nonempty scoped agent token without spaces or newlines for every save.",
