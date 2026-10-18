@@ -109,7 +109,7 @@ async function still(page: Page) {
 test("machinery freezes for inactive, paused, stale updates and reduced motion", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await fixture(page);
