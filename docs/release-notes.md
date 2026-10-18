@@ -7,8 +7,6 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 ## 0.2.23
 
-**Unreleased.** These changes are in the integration candidate and still require final combined qualification and publication.
-
 Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. The configurable maximum is three, within the existing four-attempt ceiling and separate from the repair budget. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person. See [verification recovery](recovery.md#inspect-a-factory-verification-handoff).
 
 Source-control conversations receive milestone updates from recorded run facts, with known checks and a confirmed pull-request link reported separately. Fourteen centralized Agentic templates format the messages without another model call. Current access checks, retained delivery identities and unresolved-write holds still apply. See [factory verification and feedback](agent-lifecycle.md#factory-owned-verification).
