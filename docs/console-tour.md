@@ -102,7 +102,7 @@ Select Product definition and Inventory API. Describe who reserves stock, what h
 
 ![Product Context step](assets/screenshots/product-context-desktop-light.png)
 
-<figcaption>Context: name the warehouse operators, the over-reservation problem and the Inventory team as owner. Continue to Journeys.</figcaption>
+<figcaption>Context overview: describe the warehouse operators and the over-reservation problem. Scroll the form to enter the Inventory team under Product owners, then continue to Journeys.</figcaption>
 </figure>
 
 <details class="forge-gallery" markdown="1">
@@ -164,7 +164,7 @@ Select Product definition and Inventory API. Describe who reserves stock, what h
 
 ![Product Context step](assets/screenshots/product-context-mobile-light.png)
 
-<figcaption>Context: name the warehouse operators, the over-reservation problem and the Inventory team as owner. Continue to Journeys.</figcaption>
+<figcaption>Context: describe the warehouse operators and the over-reservation problem, then enter the Inventory team under Product owners. The form scrolls above the Continue action.</figcaption>
 </figure>
 
 <figure class="forge-shot forge-shot--phone" markdown="1">

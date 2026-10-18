@@ -7,6 +7,8 @@
 - Review an incremental product change and retain its original receipt across uncertain saves and later revisions.
 - Configure optional project-scoped flyquery catalog reads through a three-step Studio wizard, with immutable configuration history and a final bounded disable.
 - Admit a first product from a separately consented, verified GitHub conversation with current native authority and atomic retained receipts.
+- Link functional wireframes to each journey's actual behaviors and acceptance criteria, and preserve workflow criteria for API-only process maps.
+- Rasterize validated SVG documents as XML so embedded product logos retain their namespaces.
 - Pin managed knowledge to flycanon 26.10.5 and align pyfly generation and bundled manuals with 26.10.6.
 
 ## 0.2.22 — 2026-10-17

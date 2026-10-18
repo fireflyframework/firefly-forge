@@ -9,6 +9,8 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 **Unreleased.** These changes are in the integration candidate and still require final combined qualification and publication.
 
+Functional wireframes show each journey's linked behaviors, failure paths and acceptance criteria. Long content retains its complete contract metadata and identifies any continuation beyond the reference canvas. API-only process maps keep their workflow acceptance links. Reference rastering parses validated SVG as XML, preserving embedded logo namespaces. These functional references still require human review; they are not generated application screens. See [design review](design-review.md).
+
 Product owners can review the impact of an incremental feature or integration change before saving it. Studio retains the exact original request and receipt when a response is lost, keeps later drafts separate and requires a deliberate decision before discarding them. See [incremental product changes](product-lifecycle.md).
 
 The optional [structured analytics explorer](structured-knowledge.md) binds one project to an existing flyquery scope. Factory administrators use a three-step wizard; current project readers can inspect a catalog, table or known schema object. Configuration changes retain immutable receipts and compare the observed revision. The bounded final-disable path remains available when ordinary history is full. Query execution and factory snapshot export are outside this adapter.
