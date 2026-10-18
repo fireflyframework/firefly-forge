@@ -44,6 +44,13 @@ function render(book: ProductDraftBook, selected: string) {
   );
 }
 afterEach(() => vi.unstubAllGlobals());
+it("keeps the product editor inside its parent-managed responsive layout", () => {
+  const book = new ProductDraftBook();
+  book.repository(a).observe(snapshot(a), null);
+  const html = render(book, a);
+  expect(html).toContain('data-layout="parent"');
+  expect(html).not.toContain('data-layout="flow"');
+});
 it("renders the retained selected product when the real editor is remounted", () => {
   const book = new ProductDraftBook();
   book.repository(a).observe(snapshot(a), null);

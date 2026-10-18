@@ -988,7 +988,7 @@ function DefinitionEditor({
     <>
       <Wizard
         progressMode="visited"
-        pageFlow
+        parentLayout
         headingAction={
           <button
             type="button"
