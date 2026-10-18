@@ -144,12 +144,56 @@ test("incremental contract preview preserves untouched features and resolves onl
         overflow: false,
         overlaps: false,
       });
+      const mainGeometry = await page.locator("main").evaluate((element) => {
+        const fits = element.scrollWidth <= element.clientWidth + 1;
+        if (fits) return { fits };
+        const describe = (node: Element) => {
+          const box = node.getBoundingClientRect(),
+            style = getComputedStyle(node);
+          return {
+            tag: node.tagName,
+            className: String(node.className),
+            x: box.x,
+            right: box.right,
+            width: box.width,
+            clientWidth: node.clientWidth,
+            scrollWidth: node.scrollWidth,
+            minWidth: style.minWidth,
+            maxWidth: style.maxWidth,
+            whiteSpace: style.whiteSpace,
+            overflowX: style.overflowX,
+            display: style.display,
+            flexWrap: style.flexWrap,
+            gap: style.gap,
+            paddingLeft: style.paddingLeft,
+            paddingRight: style.paddingRight,
+            font: style.font,
+          };
+        };
+        const boundary =
+          element.getBoundingClientRect().left + element.clientWidth;
+        return {
+          fits,
+          viewport: { width: innerWidth, height: innerHeight },
+          fonts: document.fonts.status,
+          manropeLoaded: document.fonts.check("650 13px Manrope"),
+          main: describe(element),
+          offenders: [...element.querySelectorAll("*")]
+            .filter((node) => {
+              const box = node.getBoundingClientRect();
+              return (
+                box.width > 0 &&
+                (box.right > boundary + 1 ||
+                  node.scrollWidth > node.clientWidth + 1)
+              );
+            })
+            .slice(0, 28)
+            .map(describe),
+        };
+      });
       expect(
-        await page
-          .locator("main")
-          .evaluate(
-            (element) => element.scrollWidth <= element.clientWidth + 1,
-          ),
+        mainGeometry.fits,
+        JSON.stringify({ stage, ...mainGeometry }),
       ).toBe(true);
       for (const control of controls) await reachable(control);
       await anchor.scrollIntoViewIfNeeded();
