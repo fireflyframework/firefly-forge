@@ -354,6 +354,27 @@ project; each committed change has an immutable native receipt. Credentials stay
 in owner-private revision files, never in public configuration or native receipts.
 `configured` means settings were saved; it does not mean remote access was tested.
 
+In Studio, open **Administration → Structured analytics** and choose a project.
+A factory administrator can select **Set up Flyquery** or **Edit connection**:
+
+1. Confirm the existing Flyquery service, optional Forge analytics SDK and
+   workspace-scoped `flyquery.schema:read` token are available.
+2. Enter the HTTPS origin, tenant, workspace UUID and dataset UUID. Enter a token
+   for this save; the form never loads a saved token. Clear the enable checkbox
+   to disable reads, supplying the complete scope and token again.
+3. Review the scope and expected revision, then select **Save connection** once.
+   The browser clears the token on submission. A missing or inconsistent response
+   leaves the save unconfirmed; explicitly reload the saved configuration before
+   another save. Reloading is a current read, not proof that an earlier request
+   can no longer settle. Revision checks still reject conflicting writes.
+
+Project readers use **Read catalog**, choose a table to read its metadata, then
+optionally supply a known schema-object UUID. There is no automatic remote read,
+polling, retry or connection-test endpoint. Each browser request has a 15-second
+deadline; a browser timeout does not prove a save was rolled back. The explorer
+shows the observed scope, configuration revision, time and response digest. It does
+not list all fields or enable unavailable prepared-result and query features.
+
 ```python
 import os
 from firefly_forge.client import ForgeClient
