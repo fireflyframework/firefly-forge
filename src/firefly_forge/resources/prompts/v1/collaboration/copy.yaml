@@ -1,0 +1,54 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/copy
+version: 1.0.0
+description: Deterministic repository feedback copy.
+system_template: ''
+user_template: "{\n  \"states\": {\n    \"queued\": \"The request is queued. Work has not started yet.\",\n    \"running\"\
+  : \"Work has started on the admitted request.\",\n    \"question\": \"Waiting for an answer\",\n    \"paused\": \"Work is\
+  \ paused. The retained run needs attention.\",\n    \"needs_reconciliation\": \"The last operation has an uncertain outcome.\
+  \ It must be reconciled before work continues.\",\n    \"succeeded\": \"The run succeeded under its configured checks. Review\
+  \ the recorded verification and any pull request before accepting the product.\",\n    \"failed\": \"The run failed. The\
+  \ recorded work remains available for diagnosis.\",\n    \"cancelled\": \"The run was cancelled.\",\n    \"interrupted\"\
+  : \"The run was interrupted. Check its retained state before continuing.\",\n    \"unknown\": \"The receipt is recorded.\
+  \ No current execution outcome is available.\",\n    \"recorded\": \"The requested action has a retained receipt. Its recorded\
+  \ result appears below.\"\n  },\n  \"stages\": {\n    \"prepare\": \"Preparing the workspace\",\n    \"implement\": \"Implementing\
+  \ the requested change\",\n    \"verify\": \"Running the configured verification checks\",\n    \"review\": \"Reviewing\
+  \ the recorded source\",\n    \"checkpoint\": \"Retaining the source checkpoint\"\n  },\n  \"actions\": {\n    \"run\":\
+  \ \"The run request was admitted.\",\n    \"test\": \"The verification request was admitted.\",\n    \"maintain\": \"The\
+  \ maintenance request was admitted.\",\n    \"status\": \"The current run was read.\",\n    \"respond\": \"The answer was\
+  \ recorded. Execution can still be paused until an authorized continuation.\",\n    \"cancel\": \"The cancellation request\
+  \ was recorded. It does not establish that every worker has stopped.\",\n    \"resume\": \"The continuation request was\
+  \ recorded. Its execution outcome is reported separately.\",\n    \"deploy\": \"The deployment request was recorded. Deployment\
+  \ completion requires its own receipt.\",\n    \"publish\": \"The publication action was recorded. Only a confirmed review\
+  \ link is shown below.\",\n    \"assistant\": \"The assistant action was recorded. Any product proposal remains UNREVIEWED.\"\
+  ,\n    \"intake\": \"The repository intake action was recorded.\",\n    \"product_change\": \"The product change action\
+  \ was recorded.\",\n    \"other\": \"The requested action was recorded.\",\n    \"project\": \"The project action was recorded.\"\
+  ,\n    \"product\": \"The product definition action was recorded.\",\n    \"brand\": \"The brand configuration action was\
+  \ recorded.\",\n    \"design\": \"The design action was recorded. A preview does not approve implementation.\",\n    \"\
+  knowledge\": \"The knowledge action was recorded.\",\n    \"applications\": \"The configured application state was read.\"\
+  ,\n    \"maintenance\": \"The maintenance request was recorded.\",\n    \"handoff\": \"The handoff action was recorded.\
+  \ It does not establish completion.\",\n    \"analysis\": \"The source analysis action was recorded. Review its evidence\
+  \ before approving implementation.\",\n    \"roles\": \"The role configuration action was recorded.\"\n  },\n  \"recovery\"\
+  : {\n    \"authentication\": \"An execution provider needs valid authentication. An authorized operator must repair that\
+  \ configuration before continuing.\",\n    \"quota\": \"The execution provider reported a quota limit. An authorized operator\
+  \ must resolve it before continuing.\",\n    \"rate_limit\": \"The execution provider reported a rate limit. Follow the\
+  \ retained recovery decision before continuing.\",\n    \"worker_request\": \"A recorded worker decision needs an authorized\
+  \ answer.\",\n    \"verification\": \"At least one configured check failed. Review the retained check results before deciding\
+  \ on a repair.\",\n    \"source_invalid\": \"Source validation failed. Review the retained evidence before authorizing another\
+  \ attempt.\",\n    \"unknown\": \"Review the retained run and its recovery state. This update does not authorize a retry\
+  \ or claim completion.\",\n    \"answered\": \"The answer was recorded. An authorized continuation remains a separate decision;\
+  \ this receipt does not establish that work resumed.\"\n  },\n  \"handoff\": {\n    \"pending\": \"Factory verification\
+  \ is pending under the retained automatic-verification policy. No operator answer is needed while the factory owns this\
+  \ step.\",\n    \"running\": \"The factory is running the approved verification commands. Results will be reported from\
+  \ their native receipts.\",\n    \"completed\": \"Factory verification command evidence was recorded. The native continuation\
+  \ state determines whether implementation can proceed; this is not product acceptance.\",\n    \"held\": \"Factory verification\
+  \ needs operator attention. Inspect the retained handoff before authorizing any continuation.\"\n  },\n  \"facts\": {\n\
+  \    \"project_id\": \"Project\",\n    \"analysis_id\": \"Analysis\",\n    \"conversation_id\": \"Conversation\",\n    \"\
+  turn_id\": \"Turn\",\n    \"request_id\": \"Request\",\n    \"revision\": \"Revision\",\n    \"digest\": \"Digest\",\n \
+  \   \"product_revision\": \"Product revision\"\n  },\n  \"redactions\": {\n    \"path\": \"[path omitted]\",\n    \"setting\"\
+  : \"[setting omitted]\"\n  },\n  \"choices_heading\": \"Choices:\",\n  \"verification_refused\": \"Automatic verification\
+  \ was held before command admission. No command execution or source verification is established. The original worker question\
+  \ remains pending for an authorized operator.\"\n}"
+required_variables: []
+metadata:
+  defaults: {}

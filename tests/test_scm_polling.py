@@ -110,6 +110,22 @@ def poll_case(tmp_path, monkeypatch):
                     :200
                 ]
 
+            async def feedback_context(self, data):
+                return list(
+                    reversed(
+                        [
+                            row
+                            for row in db[self.kind].values()
+                            if row.data.get("repository_id") == data["repository_id"]
+                            and row.data.get("provider") == data["provider"]
+                            and row.data.get("run_id") == data["run_id"]
+                            and row.data.get("issue", {}).get("kind") == data["issue"]["kind"]
+                            and row.data.get("issue", {}).get("number") == data["issue"]["number"]
+                            and row.status in {"processed", "needs_reconciliation"}
+                        ]
+                    )
+                )[:201]
+
             async def find_pending(self):
                 return [
                     r

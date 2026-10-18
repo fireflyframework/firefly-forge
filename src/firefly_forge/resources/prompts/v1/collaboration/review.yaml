@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/review
+version: 1.0.0
+description: Deterministic repository feedback review.
+system_template: ''
+user_template: '#### Ready for review
+
+
+  [Open the recorded pull request]({{ url }}). Publication and merge approval remain separate.'
+required_variables:
+- url
+metadata:
+  defaults: {}

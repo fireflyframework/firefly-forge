@@ -1940,6 +1940,152 @@
       "sha256": "c113d237bf628a91fed374e9cdf9afa24616d9077147ac4ba81d87b934b9eb8a",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/copy",
+      "version": "1.0.0",
+      "path": "collaboration/copy.yaml",
+      "sha256": "a58c1be3e8ae09c106ed42e706a259ee1e7a0dc969ad04bf4c17bd1a64d1eea7",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/card",
+      "version": "1.0.0",
+      "path": "collaboration/card.yaml",
+      "sha256": "dfde6ef185ba81fa6d987299661ea9e5d6f5bb5b1c36b946f401811ab37317e4",
+      "field": "user",
+      "variables": {
+        "action": "string",
+        "status": "string",
+        "description": "string",
+        "sections": "string",
+        "run_reference": "string",
+        "receipt_id": "string"
+      }
+    },
+    {
+      "id": "collaboration/action",
+      "version": "1.0.0",
+      "path": "collaboration/action.yaml",
+      "sha256": "3ece75525200f58a89b13fa8dfa2282ae2fe2faeca964002ac4409ed65d33e7e",
+      "field": "user",
+      "variables": {
+        "summary": "string",
+        "status": "string"
+      }
+    },
+    {
+      "id": "collaboration/question",
+      "version": "1.0.0",
+      "path": "collaboration/question.yaml",
+      "sha256": "57288664f5cff5fcc2b4a5b229e1050616ca27d66339c4ab8369fb92ac3e9b31",
+      "field": "user",
+      "variables": {
+        "question": "string",
+        "request_id": "string",
+        "choices": "string"
+      }
+    },
+    {
+      "id": "collaboration/recovery",
+      "version": "1.0.0",
+      "path": "collaboration/recovery.yaml",
+      "sha256": "507af0fe088a7858420904a2370f874399f86b03f69573af5641c89608394d7f",
+      "field": "user",
+      "variables": {
+        "explanation": "string"
+      }
+    },
+    {
+      "id": "collaboration/verification",
+      "version": "1.0.0",
+      "path": "collaboration/verification.yaml",
+      "sha256": "396456fea9bdf3d7a7498a41028fcf3ec6ab2de122118020fc74841092bdb7fe",
+      "field": "user",
+      "variables": {
+        "passed": "string",
+        "total": "string"
+      }
+    },
+    {
+      "id": "collaboration/review",
+      "version": "1.0.0",
+      "path": "collaboration/review.yaml",
+      "sha256": "f608f0b877f61900cb0db424ed97354f5c3fd81eaac78f32eaf3aaae9a8f070c",
+      "field": "user",
+      "variables": {
+        "url": "string"
+      }
+    },
+    {
+      "id": "collaboration/proposal",
+      "version": "1.0.0",
+      "path": "collaboration/proposal.yaml",
+      "sha256": "922ba1d0ea9e3d25e7fcb3a8e41f4739712ecf250b3742f17d1cb5709ae3938d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/handoff",
+      "version": "1.0.0",
+      "path": "collaboration/handoff.yaml",
+      "sha256": "3a927e7388e7634aa0769ada1581bc2d29223c63fad85bb37fadae678d63e63a",
+      "field": "user",
+      "variables": {
+        "explanation": "string",
+        "completed": "string",
+        "failed": "string",
+        "total": "string"
+      }
+    },
+    {
+      "id": "collaboration/publication-held",
+      "version": "1.0.0",
+      "path": "collaboration/publication-held.yaml",
+      "sha256": "f99fc3f241c384450ad620748b70a281f83d42bbdf6672fae383ddddc9126cf2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/reply",
+      "version": "1.0.0",
+      "path": "collaboration/reply.yaml",
+      "sha256": "a5c5c9c28d6e4123a21c9eab278546d9332ad0ba664408575e9ed5c277e3ae0e",
+      "field": "user",
+      "variables": {
+        "reply": "string"
+      }
+    },
+    {
+      "id": "collaboration/facts",
+      "version": "1.0.0",
+      "path": "collaboration/facts.yaml",
+      "sha256": "183ef310972a331a42ee25421f25a2b64c72ee721301e834288b3a6e83269572",
+      "field": "user",
+      "variables": {
+        "facts": "string"
+      }
+    },
+    {
+      "id": "collaboration/reference",
+      "version": "1.0.0",
+      "path": "collaboration/reference.yaml",
+      "sha256": "3fc69de06c1b39b08af5a35f3d1f5e36905b2dad8ddfa991b45b3a3273a3e8f7",
+      "field": "user",
+      "variables": {
+        "url": "string"
+      }
+    },
+    {
+      "id": "collaboration/run",
+      "version": "1.0.0",
+      "path": "collaboration/run.yaml",
+      "sha256": "80e6c944889b7296c2cf6772e86225bd0cf8cc636fa4ea126942dd24e836bc71",
+      "field": "user",
+      "variables": {
+        "run_id": "string"
+      }
     }
   ]
 }

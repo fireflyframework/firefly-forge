@@ -1,0 +1,25 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/question
+version: 1.0.0
+description: Deterministic repository feedback question.
+system_template: ''
+user_template: '#### Decision needed
+
+
+  {{ question }}
+
+
+  Request: `{{ request_id }}`
+
+
+  {{ choices }}
+
+
+  An authorized configuration actor can answer with `/forge respond`, retaining this run and request ID. Recording an answer
+  does not automatically resume execution.'
+required_variables:
+- question
+- request_id
+- choices
+metadata:
+  defaults: {}

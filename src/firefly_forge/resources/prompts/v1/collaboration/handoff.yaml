@@ -1,0 +1,20 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/handoff
+version: 1.0.0
+description: Deterministic repository feedback handoff.
+system_template: ''
+user_template: '#### Factory verification
+
+
+  {{ explanation }}
+
+
+  Recorded command counts: {{ completed }} completed, {{ failed }} failed, {{ total }} configured. Pending or running counts
+  are not final results.'
+required_variables:
+- explanation
+- completed
+- failed
+- total
+metadata:
+  defaults: {}

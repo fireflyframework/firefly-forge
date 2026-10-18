@@ -111,6 +111,24 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
             statement = statement.where(ForgeWebhookInboxEntity.repository_id == repository_id)
         return list(await self._require_session().scalars(statement))
 
+    async def feedback_context(self, data: dict[str, Any]) -> list[ForgeWebhookInboxEntity]:
+        issue = data["issue"]
+        return list(
+            await self._require_session().scalars(
+                select(ForgeWebhookInboxEntity)
+                .where(
+                    ForgeWebhookInboxEntity.repository_id == UUID(data["repository_id"]),
+                    ForgeWebhookInboxEntity.provider == data["provider"],
+                    ForgeWebhookInboxEntity.data["run_id"].as_string() == data["run_id"],
+                    ForgeWebhookInboxEntity.data["issue"]["kind"].as_string() == issue["kind"],
+                    ForgeWebhookInboxEntity.data["issue"]["number"].as_integer() == issue["number"],
+                    ForgeWebhookInboxEntity.status.in_(["processed", "needs_reconciliation"]),
+                )
+                .order_by(ForgeWebhookInboxEntity.sequence.desc())
+                .limit(201)
+            )
+        )
+
     async def find_pending(self) -> list[ForgeWebhookInboxEntity]:
         return list(
             await self._require_session().scalars(
@@ -128,9 +146,16 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
                                 ForgeWebhookInboxEntity.data["feedback_status"].as_string().in_(["pending", "writing"]),
                                 and_(
                                     ForgeWebhookInboxEntity.data["feedback_status"].as_string() == "sent",
-                                    ForgeWebhookInboxEntity.data["feedback_stage"]
-                                    .as_string()
-                                    .not_in(["succeeded", "failed", "cancelled", "interrupted", "action_completed"]),
+                                    or_(
+                                        ForgeWebhookInboxEntity.data["feedback_stage"]
+                                        .as_string()
+                                        .not_in(
+                                            ["succeeded", "failed", "cancelled", "interrupted", "action_completed"]
+                                        ),
+                                        ForgeWebhookInboxEntity.data["feedback_publication_pending"]
+                                        .as_boolean()
+                                        .is_(True),
+                                    ),
                                 ),
                             ),
                         ),

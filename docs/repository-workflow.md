@@ -264,3 +264,46 @@ previous digest and original verified source. Revocation is local and does not
 require a reachable provider. It does not erase a completed project or receipt.
 This slice has no GitLab/Bitbucket intake adapter, free-form model intake,
 multi-repository intake, attachment retrieval or execution permission.
+
+## Automatic conversation updates
+
+After an authorized repository command binds a run to an issue or pull-request
+conversation, Forge posts concise Markdown cards for the admitted request,
+meaningful native execution stages, a recorded worker decision, and the final
+verification or publication outcome. An authorized `/forge status` request can
+establish this binding for an existing run in its permitted project. A URL in a
+brief does not establish a binding. The bot does not discover an issue from a
+brief or start work merely because an issue exists.
+
+Updates use the native run, worker-request, verification and publication records.
+They do not interpret streamed model text as activity or completion. Packaged
+Agentic YAML templates render the cards deterministically; writing a status
+update does not call a model. Cards omit tool payloads, commands, private paths,
+environment values and arbitrary action JSON. Questions are bounded and escaped,
+and configured credentials are refused before delivery. Review links must belong
+to the connected provider host and the exact repository.
+
+The latest retained command receipt follows future milestones for each run and
+conversation. Earlier explicit status replies remain recorded, but do not each
+create another progress stream. A subscription permits at most 32 confirmed
+posts, with the last two positions reserved for execution completion and a later
+publication outcome. Repeated polls and token output do not create posts. A new
+explicit status request can establish a new subscription. The peer lookup holds
+when a conversation has more than 200 retained receipts; it does not guess which
+receipt is current.
+
+A typed automatic-verification handoff is shown as factory verification pending,
+running, completed or held. Pending and running system work does not ask an owner
+to run commands. Completed means command evidence was recorded, while held
+requires operator attention. Legacy worker questions still require an authorized
+answer. An answer, a successful check, a published pull request, product acceptance
+and merge approval remain separate decisions.
+
+Before a post, Forge rechecks current repository, actor, project and application
+permissions using the existing source-control authority. It records the exact
+milestone and body digest before the provider request, then retains the confirmed
+remote reference. An interrupted or uncertain write remains held for explicit
+reconciliation. A newer command cannot bypass an unresolved write in the same
+conversation. Confirming that a comment was posted acknowledges that exact
+retained milestone; it does not post it again. See [receipts and feedback](#receipts-and-feedback)
+for the operator recovery procedure.

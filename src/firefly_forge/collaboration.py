@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pyfly.container import service
@@ -1422,33 +1422,114 @@ class Collaboration:
             "url": result.get("html_url", result.get("web_url", result.get("links", {}).get("html", {}).get("href"))),
         }
 
+    async def _feedback_head(self, data: Data, *, proactive: bool) -> bool:
+        if not data.get("run_id"):
+            return True
+        async with self.store._unit():
+            peers = [copy.deepcopy(row.data) for row in await self.inbox.feedback_context(data)]
+        if len(peers) > 200:
+            return False
+        if any(
+            peer["id"] != data["id"] and peer.get("feedback_status") in {"writing", "needs_reconciliation"}
+            for peer in peers
+        ):
+            return False
+        return not proactive or not peers or peers[0]["id"] == data["id"]
+
+    async def _feedback_authority(self, data: Data, *, local: bool = False) -> None:
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+        from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+        command = data.get("command") or {}
+        if command.get("action") == "intake":
+            if self.product_intake_authority is None:
+                raise AccessDenied("The intake feedback authority is unavailable")
+            await self.product_intake_authority.authorize_feedback(data["id"], remote=not local)
+            return
+        if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            if self.polling is None:
+                raise AccessDenied("The polling feedback authority is unavailable")
+            if local:
+                await self.polling.authorize_feedback_local(data)
+            else:
+                await self.polling.authorize_feedback(data)
+            return
+        if command.get("version") == 2:
+            if self.resume_authority is None:
+                raise AccessDenied("The resume feedback authority is unavailable")
+            await self.resume_authority.authorize_feedback(data["id"])
+            return
+        run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
+        if run and run.get("repository_id") != data["repository_id"]:
+            raise AccessDenied("The feedback run belongs to a different repository")
+        if run.get("project_id"):
+            actor = await SCMActorAuthority(self.store, self.scm).resolve(data)
+            token = CURRENT_PRINCIPAL.set(actor)
+            try:
+                await ProjectAccess(self.store).authorize_actor(
+                    ProjectAccess.actor_snapshot(actor), run["project_id"], "read"
+                )
+            finally:
+                CURRENT_PRINCIPAL.reset(token)
+        repository = await self.store.repository(data["repository_id"])
+        settings = await self.settings(data["repository_id"])
+        from firefly_forge.channel_actions import CHANNEL_ACTIONS, ChannelCommand
+        from firefly_forge.channel_products import ChannelProducts, configuration_action
+
+        if command.get("action") in CHANNEL_ACTIONS and not run.get("project_id"):
+            parsed = ChannelCommand.model_validate(command)
+            if configuration_action(parsed) and data["actor"] not in settings["configuration_actors"]:
+                raise AccessDenied("The repository configuration actor is no longer authorized")
+            if parsed.action in {"analysis", "assistant", "roles"} or (
+                parsed.action == "project" and parsed.operation is not None
+            ):
+                products = ChannelProducts(self.store, self)
+                project_id = parsed.project_id or (data.get("action_result") or {}).get("project_id")
+                project = await products.projects.project(project_id) if project_id else None
+                await products._members(
+                    repository,
+                    parsed,
+                    data,
+                    [project["definition"]] if project else [],
+                    configure=configuration_action(parsed),
+                )
+        if self._allowed(repository, settings, data, data["provider"]) or command.get("action") not in {
+            *settings["allowed_commands"],
+            *settings.get("channel_commands", []),
+        }:
+            raise AccessDenied("Current repository collaboration permission is required for feedback")
+
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
-        polled = (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
-        intake = (initial.get("command") or {}).get("action") == "intake"
-        if intake:
-            try:
-                if self.product_intake_authority is None:
-                    return
-                await self.product_intake_authority.authorize_feedback(receipt_id)
-            except Exception:
+        try:
+            await self._feedback_authority(initial)
+            if not await self._feedback_head(initial, proactive=False):
                 return
-        if polled:
-            try:
-                if self.polling is None:
-                    return
-                await self.polling.authorize_feedback(initial)
-            except Exception:
+        except Exception:
+            return
+        from sqlalchemy import text
+
+        async with self.store._unit() as session:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {
+                    "key": self.store.schema
+                    + ":feedback:"
+                    + hashlib.sha256(
+                        json.dumps(
+                            {
+                                "repository": initial["repository_id"],
+                                "provider": initial["provider"],
+                                "issue": {key: initial["issue"][key] for key in ("kind", "number")},
+                                "run": initial.get("run_id"),
+                            },
+                            sort_keys=True,
+                        ).encode()
+                    ).hexdigest()
+                },
+            )
+            if not await self._feedback_head(initial, proactive=False):
                 return
-        versioned = (initial.get("command") or {}).get("version") == 2
-        if versioned:
-            try:
-                if self.resume_authority is None:
-                    return
-                await self.resume_authority.authorize_feedback(receipt_id)
-            except Exception:
-                return
-        async with self.store._unit():
             row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None or row.data.get("feedback_status") != "pending":
                 return
@@ -1458,84 +1539,43 @@ class Collaboration:
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
-            message = f"Forge run {data['run_id']}: {data['feedback_stage']}. Receipt {receipt_id}."
-            if data.get("action_result"):
-                from firefly_forge.configuration import redact_secrets
-                from firefly_forge.secrets import redact_environment
+            from firefly_forge.collaboration_feedback import feedback_card, milestone_key, review_key
+            from firefly_forge.configuration import redact_secrets
+            from firefly_forge.secrets import redact_environment
 
-                encoded = json.dumps(data["action_result"], ensure_ascii=True)
-                summary = redact_environment(redact_secrets(encoded, self.scm.redaction_settings()))
-                message = (
-                    "Forge "
-                    + data["command"]["action"]
-                    + ": "
-                    + str(data["action_result"].get("status", "completed"))
-                    + ". Receipt "
-                    + receipt_id
-                    + ".\n"
-                )
-                if data["command"]["action"] == "assistant":
-                    message += (
-                        "Any product proposal remains UNREVIEWED; no run, approval or source change was requested.\n"
-                    )
-                message += summary[:5000]
-                if run:
-                    message += "\nCurrent run status: " + run["status"] + "."
-                if len(summary) > 5000:
-                    message += "\nSummary shortened; the receipt retains the full action result."
-                reference = data["action_result"].get("remote_reference") or {}
-                if reference.get("published") and reference.get("url"):
-                    message += "\nReference files: " + reference["url"]
-                message = message[:6000]
-            worker_request = run.get("worker_request", {})
-            if worker_request.get("status") == "pending":
-                from firefly_forge.configuration import redact_secrets
-                from firefly_forge.secrets import redact_environment
+            public_values: list[str] = []
 
-                question = redact_environment(
-                    redact_secrets(str(worker_request["question"]), self.scm.redaction_settings())
-                )
-                message += "\nWorker request " + worker_request["id"] + ": " + question[:4000]
-                if worker_request.get("choices"):
-                    choices = redact_environment(
-                        redact_secrets(json.dumps(worker_request["choices"]), self.scm.redaction_settings())
-                    )
-                    message += "\nChoices: " + choices[:2000]
-                message += "\nA configuration actor can answer with /forge respond using run_id, request_id and answer."
-            checks = run.get("final_verification", [])
-            if checks:
-                passed = sum(check.get("exit_code") == 0 for check in checks)
-                message += f" Verification: {passed}/{len(checks)} checks passed."
-            branch = run.get("branch", "")
-            if re.fullmatch(r"forge/[a-f0-9]+", branch):
-                message += " Branch: " + branch + "."
-            if run.get("pr_url"):
-                url = urlsplit(run["pr_url"])
-                host = urlsplit(self.scm._host(data["provider"]))
-                if url.scheme == "https" and url.netloc == host.netloc and not url.username and not url.query:
-                    message += " Review: " + run["pr_url"]
-            if data.get("deployment_id"):
-                message += " Deployment " + data["deployment_id"] + "."
+            def public_text(value: str) -> str:
+                self.store.reject_credentials(value)
+                public_values.append(value)
+                return redact_environment(redact_secrets(value, self.scm.redaction_settings()))
+
+            host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
+            message = feedback_card(data, run, repo, host, public_text)
+            if len(message) > 6000:
+                raise ValueError("Conversation feedback exceeds its public text bound")
+            intent = {
+                "key": milestone_key(run),
+                "body_sha256": hashlib.sha256(message.encode()).hexdigest(),
+                "stage": run.get("status", data.get("feedback_stage")),
+                "request_id": (run.get("worker_request") or {}).get("id"),
+                "review_key": review_key(run),
+                "publication_error": bool(run.get("publication_error")),
+                "publication_pending": bool(
+                    run.get("publish") and not run.get("pr_url") and not run.get("publication_error")
+                ),
+            }
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(row, feedback_intent=intent)
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
-            if versioned:
-                await self.resume_authority.authorize_feedback(receipt_id)
-            if polled:
-                await self.polling.authorize_feedback(data)
-            if intake:
-                intake_authority = self.product_intake_authority
-                assert intake_authority is not None
-                remote = await self._remote_write(
-                    repo,
-                    payload,
-                    data["issue"],
-                    before_write=lambda: intake_authority.authorize_feedback(receipt_id, remote=False),
-                )
-            elif polled:
-                remote = await self._remote_write(
-                    repo, payload, data["issue"], before_write=lambda: self.polling.authorize_feedback_local(data)
-                )
-            else:
-                remote = await self._remote_write(repo, payload, data["issue"])
+
+            async def before_write() -> None:
+                await self._feedback_authority(data, local=True)
+                self.store.reject_credentials(public_values)
+
+            remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)
         except Exception:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -1551,7 +1591,16 @@ class Collaboration:
                     row,
                     feedback_status="sent",
                     feedback_remote=remote,
-                    feedback_request_id=run.get("worker_request", {}).get("id"),
+                    feedback_stage=intent["stage"],
+                    feedback_request_id=intent["request_id"],
+                    feedback_key=intent["key"],
+                    feedback_review_key=intent["review_key"],
+                    feedback_publication_error=intent["publication_error"],
+                    feedback_publication_pending=intent["publication_pending"],
+                    feedback_history=[
+                        *(row.data.get("feedback_history") or []),
+                        {**intent, "remote": remote, "created_at": now()},
+                    ],
                 )
         finally:
             self._active_writes.discard(receipt_id)
@@ -1586,12 +1635,28 @@ class Collaboration:
                 return copy.deepcopy(row.data)
             if row.data.get("feedback_status") != "needs_reconciliation":
                 raise ValueError("Only an uncertain remote write can be reconciled")
+            retained = row.data.get("feedback_intent") or {}
+            confirmed = {}
+            if outcome == "posted" and retained:
+                confirmed = {
+                    "feedback_key": retained["key"],
+                    "feedback_stage": retained["stage"],
+                    "feedback_request_id": retained["request_id"],
+                    "feedback_review_key": retained.get("review_key"),
+                    "feedback_publication_error": retained.get("publication_error", False),
+                    "feedback_publication_pending": retained.get("publication_pending", False),
+                    "feedback_history": [
+                        *(row.data.get("feedback_history") or []),
+                        {**retained, "reconciled": True, "created_at": now()},
+                    ],
+                }
             await self._write_row(
                 row,
                 status="processed",
                 reason=None,
                 feedback_status="sent" if outcome == "posted" else "not_sent",
                 reconciliation={"outcome": outcome, "note": note.strip(), "operator": True, "created_at": now()},
+                **confirmed,
             )
             return copy.deepcopy(row.data)
 
@@ -1681,29 +1746,22 @@ class Collaboration:
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
             elif data.get("run_id") and data.get("feedback_status") == "sent":
-                if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
-                    try:
-                        if self.polling is None:
-                            continue
-                        await self.polling.authorize_feedback(data)
-                    except Exception:
-                        continue
+                from firefly_forge.collaboration_feedback import feedback_due, sent_history
+
+                try:
+                    await self._feedback_authority(data)
+                except Exception:
+                    continue
                 run = await self.store.get_run(data["run_id"])
-                if run["status"] in {
-                    "succeeded",
-                    "failed",
-                    "cancelled",
-                    "interrupted",
-                    "paused",
-                    "needs_reconciliation",
-                } and (
-                    run["status"] != data.get("feedback_stage")
-                    or run.get("worker_request", {}).get("id") != data.get("feedback_request_id")
-                ):
+                if feedback_due(data, run):
+                    if not await self._feedback_head(data, proactive=True):
+                        continue
                     async with self.store._unit():
                         row = await self.inbox.find_by_id(identifier(str(data["id"])), lock=LockMode.PESSIMISTIC_WRITE)
                         assert row is not None
-                        await self._write_row(row, feedback_status="pending", feedback_stage=run["status"])
+                        if not feedback_due(row.data, run):
+                            continue
+                        await self._write_row(row, feedback_status="pending", feedback_history=sent_history(row.data))
                     await self.feedback(data["id"])
 
     async def start(self) -> None:

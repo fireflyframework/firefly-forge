@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/facts
+version: 1.0.0
+description: Deterministic repository feedback facts.
+system_template: ''
+user_template: '{{ facts }}'
+required_variables:
+- facts
+metadata:
+  defaults: {}
