@@ -12,15 +12,17 @@ from test_campaign_reports import seeded
 from test_tool_broker import invoke, seed
 
 from firefly_forge.identity import Principal
+from firefly_forge.identity_persistence import ForgeIdentityUserEntity
 from firefly_forge.journal import Journal
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.run_evidence import EvidenceCutChanged, EvidenceQuery, EvidenceUnavailable, RunEvidence
 
 
 async def test_native_retained_tool_result_exports_without_replay_or_wal_writes(store, tmp_path):
-    token = CURRENT_PRINCIPAL.set(
-        Principal(uuid4(), "local", "evidence-owner", authentication_method="local_bootstrap")
-    )
+    actor = Principal(uuid4(), "local", "evidence-owner", authentication_method="local_bootstrap")
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True))
+    token = CURRENT_PRINCIPAL.set(actor)
     try:
         _, broker, run, source = await seed(store, tmp_path)
         calls = []
