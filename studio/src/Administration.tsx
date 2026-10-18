@@ -2,6 +2,7 @@
 import {
   ArrowRight,
   Bot,
+  Database,
   GitBranch,
   Globe,
   GraduationCap,
@@ -21,6 +22,7 @@ export type AdministrationPage =
   | "collaboration"
   | "search"
   | "learning"
+  | "analytics"
   | "browser-connections"
   | "external-tools";
 export function Administration({
@@ -35,6 +37,14 @@ export function Administration({
     session?.memberships.some((item) => item.permissions.includes("members")),
   );
   const cards = [
+    {
+      page: "analytics" as const,
+      icon: Database,
+      title: "Structured analytics",
+      body: "Inspect a project’s Flyquery catalog and exact schema objects through its saved read-only scope.",
+      allowed: Boolean(session),
+      scope: "Project readers; setup by factory administrator",
+    },
     {
       page: "learning" as const,
       icon: GraduationCap,

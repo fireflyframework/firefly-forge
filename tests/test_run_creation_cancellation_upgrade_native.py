@@ -11,7 +11,6 @@ from test_run_creation_cancellation_native import cancellation
 from test_run_creation_requests_native import registered
 from test_run_creation_upgrade_native import snapshot
 
-from firefly_forge.migrations import migrate
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.run_creation_requests import RunCreationRequests
 
@@ -37,7 +36,10 @@ async def test_populated_actual_schema27_to28_keeps_v1_admission_and_execution_h
     old_requests = previous_module(
         "schema27_requests", "8874480e877ad957f8612005bef3829ec793ef3563a5e79b47b475a2d950ced5"
     )
-    assert old_migrations.SCHEMA_REVISION == 27
+    target_migrations = previous_module(
+        "schema28_migrations", "05afcf7c9d6f792206fccd8505e1d24f4d828b9f0d171062ac2b6bb98274b021"
+    )
+    assert old_migrations.SCHEMA_REVISION == 27 and target_migrations.SCHEMA_REVISION == 28
     monkeypatch.setattr(store_module, "migrate", old_migrations.migrate)
     store = await store_factory(tmp_path / "schema27" / "factory.db")
     async with store._unit() as session:
@@ -60,10 +62,10 @@ async def test_populated_actual_schema27_to28_keeps_v1_admission_and_execution_h
                 retained = await session.scalar(
                     text("SELECT data::text FROM forge_run_creation_requests WHERE id=:id"), {"id": request_id}
                 )
-            monkeypatch.setattr(store_module, "migrate", migrate)
+            monkeypatch.setattr(store_module, "migrate", target_migrations.migrate)
             async with store._unit() as session:
-                await migrate(session, store.schema)
-                await migrate(session, store.schema)
+                await target_migrations.migrate(session, store.schema)
+                await target_migrations.migrate(session, store.schema)
                 assert list(
                     await session.scalars(text("SELECT revision FROM forge_schema_migrations ORDER BY revision"))
                 ) == [27, 28]
