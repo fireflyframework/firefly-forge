@@ -32,7 +32,7 @@ jobs:
           python-version: '3.13'
       - name: Check the existing PHP recipe fixture
         run: make php-fixture-check
-      - run: uv sync --locked --group dev --group docs
+      - run: uv sync --locked --group dev --group docs --extra analytics
       - run: make python-check
   studio:
     runs-on: ubuntu-24.04
