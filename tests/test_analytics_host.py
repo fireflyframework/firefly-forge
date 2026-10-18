@@ -110,7 +110,12 @@ def analytics(tmp_path):
             state["during"]()
         return httpx.Response(state.get("status", 200), json=response)
 
-    store = SimpleNamespace(schema="owned", _unit=unit, session_provider=SimpleNamespace(current=lambda: None))
+    store = SimpleNamespace(
+        schema="owned",
+        _unit=unit,
+        session_provider=SimpleNamespace(current=lambda: None),
+        credential_registry=lambda: {},
+    )
     access = SimpleNamespace(current_administrator=current_admin, require_project=allowed)
     connection = AnalyticsConnection(ConfigurationStore(tmp_path), transport=httpx.MockTransport(reply))
     service = ProjectAnalytics(store, access, connection, Records())
@@ -225,6 +230,25 @@ async def test_retained_analytics_tokens_participate_in_existing_export_credenti
         "source mistakenly contains scoped-test-token", service.connection.redaction_settings()
     )
     assert not contains_known_credential("safe fictional stock source", service.connection.redaction_settings())
+
+
+@pytest.mark.parametrize("source", ["retained_analytics", "global_registry"])
+async def test_catalog_never_returns_retired_or_other_configured_credentials(analytics, source):
+    from firefly_forge.analytics_models import AnalyticsConfigurationInput
+
+    service, state = analytics
+    await service.configure(PROJECT, request(), ACTOR)
+    body = request().model_dump()
+    body.update(expected_revision=1, agent_token="replacement-scoped-token")
+    await service.configure(PROJECT, AnalyticsConfigurationInput.model_validate(body), ACTOR)
+    canary = "scoped-test-token" if source == "retained_analytics" else "other-owned-service-token"
+    if source == "global_registry":
+        service.store.credential_registry = lambda: {"OTHER_SERVICE_API_TOKEN": canary}
+    state["response"] = lambda r: {**r, "items": [{**r["items"][0], "description": "Refuse credential " + canary}]}
+    with pytest.raises(ValueError, match="credential") as refused:
+        await service.catalog(PROJECT, ACTOR)
+    assert canary not in str(refused.value)
+    assert len(state["calls"]) == 1 and state["calls"][0].method == "GET"
 
 
 @pytest.mark.parametrize(

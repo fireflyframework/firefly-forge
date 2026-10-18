@@ -31,6 +31,7 @@ from firefly_forge.identity_persistence import ForgeIdentityUserEntity
 from firefly_forge.journal import digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectEntity
+from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier, now
 
 Data = dict[str, Any]
@@ -273,7 +274,7 @@ class ProjectAnalytics:
             self._outside(actor)
             if current != binding or self.connection.load(binding) != token:
                 raise ValueError("Analytics configuration or credentials changed during read")
-            return {
+            observation = {
                 "project_id": project_id,
                 "configuration_revision": binding["revision"],
                 "tenant_id": binding["tenant_id"],
@@ -284,6 +285,10 @@ class ProjectAnalytics:
                 "snapshot_assurance": "reported_identity_only",
                 "data": data,
             }
+            registry = {**self.connection.redaction_settings(), **self.store.credential_registry()}
+            if contains_known_credential(observation, registry):
+                raise ValueError("Analytics observation refused because it contains configured credentials")
+            return observation
         finally:
             self.active.discard(key)
 
