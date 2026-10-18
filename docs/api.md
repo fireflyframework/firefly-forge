@@ -324,3 +324,71 @@ source ID against current credentials before contacting flycanon, verifies the
 returned source ID and indexed content, then checks the retained admission
 identity again before recording the event. It does not claim that remote
 indexing and the local transaction are atomic.
+
+## Read optional structured analytics
+
+Flyquery is optional. Flycanon remains the required knowledge and memory service.
+Install the `analytics` extra of the qualified Forge package to make the official
+Flyquery 26.10.4 read SDK available. An unconfigured project does not import that SDK
+or contact Flyquery.
+
+An authenticated factory administrator binds one existing project to an HTTPS
+origin, tenant, workspace and dataset. The origin must use port 443 with a trusted
+certificate; custom ports and private CA configuration are unsupported in this
+SDK slice. Use a scoped Flyquery agent token with the upstream schema-read grant,
+not a user login token. Remote authorization still applies to every read.
+
+| Method | Path under `/api/v1/projects/{project}/analytics` | SDK method |
+| --- | --- | --- |
+| GET/PUT | `/configuration` | `analytics_configuration` / `configure_analytics` |
+| GET | `/catalog` | `analytics_catalog` |
+| GET | `/tables/{table}` | `analytics_table` |
+| GET | `/tables/{table}/objects/{object_id}` | `analytics_schema_object` |
+| GET | `/prepared/{query}` | Unavailable; refuses without contacting Flyquery |
+
+Read configuration first. Use its exact `revision` as `expected_revision` when
+saving; use zero only for the first binding. Every save supplies the complete
+scope and write-only `agent_token`, including a save with `enabled: false`.
+A conflicting revision is refused. There are at most 32 configuration changes per
+project; each committed change has an immutable native receipt. Credentials stay
+in owner-private revision files, never in public configuration or native receipts.
+`configured` means settings were saved; it does not mean remote access was tested.
+
+```python
+import os
+from firefly_forge.client import ForgeClient
+
+with ForgeClient(os.environ["FORGE_URL"], os.environ["FORGE_API_TOKEN"]) as forge:
+    project = os.environ["FORGE_PROJECT_ID"]
+    current = forge.analytics_configuration(project)
+    forge.configure_analytics(project, {
+        "expected_revision": current["revision"],
+        "enabled": True,
+        "endpoint": "https://analytics.example",
+        "tenant_id": "fictional",
+        "workspace_id": os.environ["FLYQUERY_WORKSPACE_ID"],
+        "dataset_id": os.environ["FLYQUERY_DATASET_ID"],
+        "agent_token": os.environ["FLYQUERY_AGENT_TOKEN"],
+    })
+    catalog = forge.analytics_catalog(project)
+```
+
+Project readers can inspect the bound catalog and exact table/schema-object UUIDs.
+Browser headers cannot override the remote scope. Reads reject mixed scope,
+incomplete pages, changed configuration, revoked access and changed credentials.
+There is no retry or write fallback on 404 or transport failure.
+
+The catalog is limited to 50 tables and one complete page. Exact schema lookup
+requires a known object UUID and its parent table's reported current snapshot;
+full table-field discovery is unavailable. Each response is limited to 256 KiB,
+with at most eight GETs and a ten-second remote deadline (three-second connect).
+Current operations use one GET, or two for an exact schema object. One read per
+project/actor is active in each API worker. Observations include the local response
+digest and observation time. Snapshot UUIDs are reported identity, not data-content
+hashes or a guarantee of a current atomic data cut.
+
+Prepared results require a new upstream agent-token GET query-history/result API,
+exact tenant/workspace/dataset fencing and corresponding read SDK methods. The
+current user-tier query/result routes are not a substitute. No SQL, query
+generation, result download URL, model call, agent tool, CLI/MCP command or memory
+publication is added by these routes.

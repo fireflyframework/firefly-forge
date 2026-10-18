@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_checkpoint_models import RestoreInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
+    from firefly_forge.analytics_models import AnalyticsConfigurationInput
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
@@ -561,6 +562,32 @@ class ForgeClient:
 
     def project(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}"))
+
+    def analytics_configuration(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/configuration"))
+
+    def configure_analytics(
+        self, project_id: str, request: AnalyticsConfigurationInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.analytics_models import AnalyticsConfigurationInput
+
+        model = AnalyticsConfigurationInput.model_validate(request)
+        body = model.model_dump(mode="json", exclude={"agent_token"})
+        body["agent_token"] = model.agent_token.get_secret_value()
+        return dict(self.request("PUT", f"projects/{self._id(project_id)}/analytics/configuration", json=body))
+
+    def analytics_catalog(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/catalog"))
+
+    def analytics_table(self, project_id: str, table_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/tables/{UUID(table_id)}"))
+
+    def analytics_schema_object(self, project_id: str, table_id: str, object_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"projects/{self._id(project_id)}/analytics/tables/{UUID(table_id)}/objects/{UUID(object_id)}"
+            )
+        )
 
     def project_revision(self, project_id: str, revision: int) -> dict[str, Any]:
         if isinstance(revision, bool) or revision < 1:

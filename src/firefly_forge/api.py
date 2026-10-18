@@ -35,6 +35,9 @@ from firefly_forge.agent_role_controllers import AgentRoleController
 from firefly_forge.agent_roles import RoleRegistry
 from firefly_forge.analysis_context import ReviewedAnalysisContext
 from firefly_forge.analysis_controllers import AnalysisController
+from firefly_forge.analytics import AnalyticsConnection, ProjectAnalytics
+from firefly_forge.analytics_controllers import ProjectAnalyticsController
+from firefly_forge.analytics_persistence import ForgeAnalyticsBindingRepository
 from firefly_forge.application_controllers import ApplicationController
 from firefly_forge.application_operations import ApplicationOperations
 from firefly_forge.application_persistence import ForgeIncidentRepository, ForgeObservationRepository
@@ -777,6 +780,20 @@ class FactoryConfiguration:
         return OAuthResources(connections, access)
 
     @bean
+    def analytics_connection(self, private: ConfigurationStore) -> AnalyticsConnection:
+        return AnalyticsConnection(private)
+
+    @bean
+    def project_analytics(
+        self,
+        store: Store,
+        access: ProjectAccess,
+        connection: AnalyticsConnection,
+        records: ForgeAnalyticsBindingRepository,
+    ) -> ProjectAnalytics:
+        return ProjectAnalytics(store, access, connection, records)
+
+    @bean
     def external_mcp_registry(self, private: ConfigurationStore, resources: OAuthResources) -> ExternalMCPRegistry:
         return ExternalMCPRegistry(private, resources=resources)
 
@@ -985,6 +1002,8 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        ForgeAnalyticsBindingRepository,
+        ProjectAnalyticsController,
         OAuthProviderPolicyRepository,
         OAuthProviderPolicyController,
         OAuthConnectionRepository,
