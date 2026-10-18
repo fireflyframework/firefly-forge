@@ -52,12 +52,13 @@ const base: ProductSnapshot = {
 };
 const connection = { base: "/api/v1", token: "fixture" };
 function setup() {
-  const session = new ProductDraftBook().repository(repo);
+  const book = new ProductDraftBook(),
+    session = book.repository(repo);
   session.observe(base, null);
   const input = structuredClone(definition);
   input.features![0].name = "Read with freshness";
   session.write("features", input.features, true);
-  return { session, input };
+  return { book, session, input };
 }
 const impact = {
   changed_feature_ids: ["read"],
@@ -395,4 +396,115 @@ it("refuses a changed retained preview body before any mutation", async () => {
   ).rejects.toThrow();
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(session.saveHeld).toBe(false);
+});
+
+it("settles an original applied receipt after a newer revision while keeping the local draft stale", async () => {
+  const { book, session, input } = setup();
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(previewResponse(input))))
+    .mockRejectedValueOnce(new TypeError("Lost response"));
+  vi.stubGlobal("fetch", fetch);
+  const preview = await previewProductChange(
+    session,
+    connection,
+    input,
+    "Freshness",
+  );
+  await expect(
+    saveProductChange(session, connection, preview),
+  ).rejects.toThrow();
+  const original = session.saveAttempt!;
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        ...base,
+        revision: 3,
+        digest: "3".repeat(64),
+        definition: { ...definition, customer: "Later writer" },
+      }),
+    ),
+  );
+  expect(await reconcileProductSave(session, connection)).toBeNull();
+  expect(session.saveHeld).toBe(true);
+  expect(session.stale).toBe(true);
+  expect(() => book.discard(session)).toThrow(/save/i);
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        ...base,
+        revision: 2,
+        digest: "2".repeat(64),
+        definition: preview.definition,
+        change_receipt: {
+          ...original.change,
+          base_revision: 1,
+          base_digest: base.digest,
+          implementation_status: "not_started",
+        },
+      }),
+    ),
+  );
+  expect(
+    (await saveProductDefinition(session, connection, input, true)).revision,
+  ).toBe(2);
+  expect(fetch.mock.calls[3][1].body).toBe(original.body);
+  expect(session.saveHeld).toBe(false);
+  expect(session.stale).toBe(true);
+  expect(session.dirty).toBe(true);
+  expect(session.base?.revision).toBe(1);
+  expect(session.read("features", [] as FunctionalFeature[])[0].name).toBe(
+    "Read with freshness",
+  );
+  expect(() => book.discard(session)).not.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it("keeps uncertainty when a later writer wins and the original stale retry has no terminal receipt", async () => {
+  const { book, session, input } = setup();
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(previewResponse(input))))
+    .mockRejectedValueOnce(new TypeError("Unknown dispatch"));
+  vi.stubGlobal("fetch", fetch);
+  const preview = await previewProductChange(
+    session,
+    connection,
+    input,
+    "Freshness",
+  );
+  await expect(
+    saveProductChange(session, connection, preview),
+  ).rejects.toThrow();
+  const original = session.saveAttempt!;
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        ...base,
+        revision: 2,
+        digest: "2".repeat(64),
+        definition: { ...definition, customer: "Later writer" },
+      }),
+    ),
+  );
+  expect(await reconcileProductSave(session, connection)).toBeNull();
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        detail: "Product change requires the current base revision and digest",
+      }),
+      { status: 400 },
+    ),
+  );
+  await expect(
+    saveProductDefinition(session, connection, input, true),
+  ).rejects.toThrow(/base revision/i);
+  expect(session.saveAttempt?.change).toEqual(original.change);
+  expect(session.saveAttempt?.body).toBe(original.body);
+  expect(session.saveAttempt?.phase).toBe("unknown");
+  expect(session.saveHeld).toBe(true);
+  expect(session.stale).toBe(true);
+  expect(() => book.discard(session)).toThrow(/save/i);
+  expect(fetch.mock.calls[3][1].body).toBe(original.body);
+  expect(fetch).toHaveBeenCalledTimes(4);
 });
