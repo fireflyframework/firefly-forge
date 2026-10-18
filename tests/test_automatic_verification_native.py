@@ -283,7 +283,7 @@ def test_native_registered_legacy_adoption_exact_readback_and_disabled_identity(
                 await ForgeIdentityUserRepository().save(user)
 
         http.portal.call(disable)
-        assert http.get(endpoint + "/adoptions/" + body["request_id"]).status_code == 403
+        assert http.get(endpoint + "/adoptions/" + body["request_id"]).status_code == 401
 
 
 async def test_native_adoption_and_human_reply_share_lock_order_without_duplicate_effects(store, tmp_path, monkeypatch):
