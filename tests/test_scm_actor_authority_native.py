@@ -188,7 +188,9 @@ async def test_signed_mapped_operator_answers_exact_question_without_resume(stor
         result = await collaboration.process(delivery["id"])
         assert result["status"] == "processed"
         assert result["feedback_status"] == "sent"
-        assert len(comments) == 1 and "Forge respond: paused" in comments[0]["body"]
+        assert len(comments) == 1
+        assert "Request: `respond`" in comments[0]["body"] and "State: `paused`" in comments[0]["body"]
+        assert "Your answer is recorded." in comments[0]["body"]
         assert delivery["id"] in comments[0]["body"]
         current = await store.get_run(run["id"])
         assert current["status"] == "paused" and current["worker_request"]["status"] == "answered"

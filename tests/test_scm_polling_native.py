@@ -180,6 +180,11 @@ def test_native_final_feedback_credentials_and_lost_reply_never_repost(native_po
             await ProjectAccess(c.store).set_membership(c.project["id"], c.mapped, "developer")
 
     c.http.portal.call(restore_membership)
+    reconciled = c.http.post(
+        f"/api/v1/collaboration/receipts/{refused['id']}/reconcile",
+        json={"outcome": "not_posted", "note": "The transport recorded no POST before membership was revoked."},
+    )
+    assert reconciled.status_code == 200 and reconciled.json()["feedback_status"] == "not_sent"
     fictional = "Owned final feedback credential 471f"
     registry = c.store.credential_registry
 
@@ -198,6 +203,11 @@ def test_native_final_feedback_credentials_and_lost_reply_never_repost(native_po
     assert guarded["feedback_status"] == "needs_reconciliation" and c.state["posts"] == []
     c.http.portal.call(c.collaboration.sync_feedback)
     assert c.state["posts"] == []
+    reconciled = c.http.post(
+        f"/api/v1/collaboration/receipts/{guarded['id']}/reconcile",
+        json={"outcome": "not_posted", "note": "The credential guard refused the body before the transport POST."},
+    )
+    assert reconciled.status_code == 200 and reconciled.json()["feedback_status"] == "not_sent"
     c.state["lost_reply"] = True
     unknown_delivery = c.observe("status")
     unknown = c.process(unknown_delivery)

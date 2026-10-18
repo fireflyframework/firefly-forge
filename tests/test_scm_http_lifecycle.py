@@ -216,7 +216,8 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
                         assert path == expected
                         payload = json.loads(content)
                         message = payload["content"]["raw"] if provider == "bitbucket" else payload["body"]
-                        assert "Forge project:" in message and "Receipt " in message
+                        assert "The project action was recorded." in message
+                        assert "Request: `project`" in message and "Receipt: `" in message
                         state["writes"].append(payload)
                         if state["drop_response"]:
                             self.close_connection = True
