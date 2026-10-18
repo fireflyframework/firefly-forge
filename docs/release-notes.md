@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.23
+
+**Unreleased.** These changes are in the integration candidate and still require final combined qualification and publication.
+
+Product owners can review the impact of an incremental feature or integration change before saving it. Studio retains the exact original request and receipt when a response is lost, keeps later drafts separate and requires a deliberate decision before discarding them. See [incremental product changes](product-lifecycle.md).
+
+The optional [structured analytics explorer](structured-knowledge.md) binds one project to an existing flyquery scope. Factory administrators use a three-step wizard; current project readers can inspect a catalog, table or known schema object. Configuration changes retain immutable receipts and compare the observed revision. The bounded final-disable path remains available when ordinary history is full. Query execution and factory snapshot export are outside this adapter.
+
+A separately opted-in, verified GitHub conversation can create a first project and product through `/forge intake`. The existing native administrator must explicitly consent to that repository. Intake rechecks current application, connection, signing-key and actor authority before committing its atomic product receipt or authorizing feedback. Existing project-change consent does not grant this new capability. See [repository intake](repository-workflow.md).
+
+Managed knowledge pins flycanon 26.10.5. Generated pyfly projects and the bundled framework manuals target the released 26.10.6 contract through a versioned Agentic YAML prompt. These pins do not establish a generated product or live-provider acceptance by themselves.
+
 ## 0.2.22
 
 A saved, clean AI-assisted product definition shows **AI-assisted · human-edited** when the server records `edited: true`. A false or missing flag keeps the neutral label. Further edits return the form to draft review state, with the original AI source available from the same header. See [product definitions](product-definition.md#design-with-the-assistant-in-studio).
