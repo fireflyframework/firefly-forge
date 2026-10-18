@@ -130,7 +130,7 @@ Saving settings must report configured state. Ready state would require retained
 
 The **Knowledge** form configures flycanon; **Structured analytics** configures the separate optional read adapter. Use [knowledge setup](knowledge.md#set-up-knowledge-from-a-fresh-installation) for the required knowledge installation. Saving an analytics endpoint does not enable query execution.
 
-## Checks before enabling an adapter
+## Checks before enabling a query adapter
 
 Use isolated test datasets and synthetic files for qualification. Required checks include:
 
