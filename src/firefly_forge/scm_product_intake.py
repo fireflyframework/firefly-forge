@@ -124,19 +124,11 @@ class SCMProductIntake:
             raise AccessDenied("Intake requires the original verified GitHub account and repository")
         return reference
 
-    async def _local(self, repository: str, delivery: Data) -> tuple[Data, Data]:
-        reference = self._reference(delivery)
-        repo = await self.store.repository(repository)
+    def _source_cut(self, repository: str, delivery: Data, repo: Data, reference: Data) -> None:
+        """Native row locks do not protect these files; read them after the last native await."""
         scope = self.scm.delegation_scope(repo)
         if scope != {key: reference[key] for key in scope} or not self.authority._key_current(repository, reference):
             raise AccessDenied("The intake application connection or signing key changed")
-        async with self.store._unit():
-            row = await self.settings.find_for_repository(identifier(repository))
-            settings = row.data if row else {}
-            if not settings.get("enabled") or any(
-                delivery["actor"] not in settings.get(key, []) for key in ("trusted_actors", "configuration_actors")
-            ):
-                raise AccessDenied("The intake actor is not a current repository configuration actor")
         if delivery.get("global_ingress"):
             settings = self.store.configuration._read(
                 self.store.configuration.directory / "channel-bootstrap.json"
@@ -145,6 +137,18 @@ class SCMProductIntake:
                 delivery["actor"] not in settings.get(key, []) for key in ("trusted_actors", "configuration_actors")
             ):
                 raise AccessDenied("The global intake configuration actor changed")
+
+    async def _local(self, repository: str, delivery: Data) -> tuple[Data, Data]:
+        reference = self._reference(delivery)
+        repo = await self.store.repository(repository)
+        async with self.store._unit():
+            row = await self.settings.find_for_repository(identifier(repository))
+            settings = row.data if row else {}
+            if not settings.get("enabled") or any(
+                delivery["actor"] not in settings.get(key, []) for key in ("trusted_actors", "configuration_actors")
+            ):
+                raise AccessDenied("The intake actor is not a current repository configuration actor")
+        self._source_cut(repository, delivery, repo, reference)
         return repo, reference
 
     async def _preflight(self, repository: str, delivery: Data) -> None:
@@ -296,6 +300,7 @@ class SCMProductIntake:
         ):
             raise AccessDenied("A current separately consented native intake capability is required")
         await self._native(consent["native_actor"], consent["native_identity"])
+        self._source_cut(repository, delivery, repo, reference)
         return {"repository": repo, "consent": consent, "reference": reference}
 
     async def _operation(self, state: Data, command: SCMProductIntakeCommandV1 | None, repository: str) -> Data | None:
@@ -494,7 +499,7 @@ class SCMProductIntake:
         delivery = await self._delivery(receipt_id, repository)
         if delivery["status"] != "processed" or delivery.get("action_status") != "completed":
             raise AccessDenied("Intake feedback requires its completed original operation")
-        await self._context(repository, delivery)
+        context = await self._context(repository, delivery)
         async with self.store._unit():
             settings = await self.settings.find_for_repository(identifier(repository))
             operation = await self._operation(
@@ -506,6 +511,7 @@ class SCMProductIntake:
                 raise AccessDenied("Feedback must retain its original immutable intake result")
         if remote:
             await self._preflight(repository, delivery)
+        self._source_cut(repository, delivery, context["repository"], context["reference"])
         self._outside(caller)
 
     async def result(self, receipt_id: str) -> Data:

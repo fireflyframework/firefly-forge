@@ -22,6 +22,7 @@ from firefly_forge.api import create_application
 from firefly_forge.collaboration import Collaboration
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import digest
+from firefly_forge.project_access import AccessDenied
 from firefly_forge.project_persistence import ForgeProjectEntity
 from firefly_forge.scm_product_intake import EVENT_KIND, SCMProductIntake
 from firefly_forge.scm_product_intake_controllers import SCMProductIntakeController
@@ -303,3 +304,23 @@ def test_native_concurrent_original_intake_deliveries_commit_one_product(native_
     assert results[0]["action_result"] == results[1]["action_result"]
     assert case.http.portal.call(case.projects) == 1 and case.observed["comments"] == []
     assert all(item["action_status"] == "completed" for item in results)
+
+
+def test_native_connection_rotation_after_final_identity_check_rolls_back_intake(native_intake):
+    case = native_intake
+    delivery = case.delivery(case.command(case.consent()))
+    original = case.service._native
+    calls = 0
+
+    async def rotate_after_native(*args):
+        nonlocal calls
+        await original(*args)
+        calls += 1
+        if calls == 3:
+            await case.service.scm.configure("github", {"values": {"installation_id": "35"}})
+
+    case.service._native = rotate_after_native
+    with pytest.raises(AccessDenied):
+        case.http.portal.call(case.service.process, delivery["id"])
+    assert calls == 3 and case.http.portal.call(case.projects) == 0
+    assert case.observed["comments"] == []

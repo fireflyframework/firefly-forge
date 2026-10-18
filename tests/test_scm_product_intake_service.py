@@ -468,3 +468,59 @@ async def test_active_consent_reserves_the_last_history_slot_for_local_revocatio
         assert len(state["settings"].data[STATE_KEY]["requests"]) == 32
     finally:
         CURRENT_PRINCIPAL.reset(context)
+
+
+def source_rotation(service, state, row, kind):
+    global_settings = {"github": {"enabled": True, "trusted_actors": ["7"], "configuration_actors": ["7"]}}
+    if kind == "global_actor":
+        row.data["global_ingress"] = True
+        service.store.configuration._read = lambda _: copy.deepcopy(global_settings)
+
+    def rotate():
+        if kind == "connection":
+            scope = service.scm.delegation_scope(state["repo"])
+            service.scm.delegation_scope = lambda _: {**scope, "connection_revision": "f" * 32}
+        elif kind == "signing_key":
+            state["key"] = False
+        else:
+            global_settings["github"]["configuration_actors"] = []
+
+    return rotate
+
+
+@pytest.mark.parametrize("kind", ["connection", "signing_key", "global_actor"])
+async def test_final_native_authorization_cannot_commit_a_rotated_local_source(native_seam, kind):
+    service, state, row, _, _ = native_seam
+    rotate = source_rotation(service, state, row, kind)
+    original = service._native
+    calls = 0
+
+    async def late_rotation(*args):
+        nonlocal calls
+        await original(*args)
+        calls += 1
+        if calls == 3:
+            assert state["depth"] > 0
+            rotate()
+
+    service._native = late_rotation
+    with pytest.raises(AccessDenied):
+        await service.process(DELIVERY)
+    assert state["tables"]["forge_projects"] == state["tables"]["forge_product_definitions"] == {}
+
+
+@pytest.mark.parametrize("kind", ["connection", "signing_key", "global_actor"])
+async def test_feedback_authorization_rechecks_local_source_after_final_receipt_read(native_seam, kind):
+    service, state, row, _, _ = native_seam
+    rotate = source_rotation(service, state, row, kind)
+    await service.process(DELIVERY)
+    original = service._operation
+
+    async def late_rotation(*args):
+        retained = await original(*args)
+        rotate()
+        return retained
+
+    service._operation = late_rotation
+    with pytest.raises(AccessDenied):
+        await service.authorize_feedback(DELIVERY, remote=False)
