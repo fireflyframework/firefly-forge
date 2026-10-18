@@ -336,12 +336,13 @@ export function WorkerDialogue({
       <header className="worker-dialogue-heading">
         <div>
           <span className="worker-eyebrow">
-            <MessageSquare size={18} /> Human decisions
+            <MessageSquare size={18} /> Agent communication
           </span>
           <h2>Agent questions</h2>
           <p>
-            Review what the agent needs, record your answer, then resume the run
-            when you are ready.
+            {automaticVerification
+              ? "forge is handling the approved checks. Results appear here automatically; no answer is needed."
+              : "Review the agent's requests and recorded answers. Questions needing your decision include reply controls."}
           </p>
         </div>
         <button
