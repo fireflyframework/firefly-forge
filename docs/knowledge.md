@@ -132,6 +132,8 @@ A registered project's workspace is `forge-` followed by its repository ID. Retr
 
 A run freezes its connection configuration. Its first retrieval retains source/chunk IDs, filenames, sections, source URIs and available knowledge-version IDs. The retrieved context and digest are kept for repairs and continuation. These references are untrusted input; they cannot override the brief or core security rules.
 
+flycanon accepts retrieval queries of up to 2,000 characters. forge sends the first 2,000 characters when a brief, search input or verified-memory document is longer. The same bound applies to project and framework searches with either platform keys or scoped agent tokens. It limits the retrieval query; the full saved brief, frozen product contract and published memory body remain intact.
+
 ## Add framework manuals and project references
 
 The default bundle contains the 14 core manuals described above, plus framework links and factory conventions. Import additional reviewed, versioned framework manuals into the configured shared framework workspace through Flycanon's authorized ingestion interface. Give each source its framework version, original URI and document identity; confirm embedding and a cited search before using it for detailed API work.
