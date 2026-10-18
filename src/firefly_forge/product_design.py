@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import service
 
 from firefly_forge.product_branding import BrandInput, ProductBranding, generated_tokens, safe_logo, validate_tokens
-from firefly_forge.product_fonts import manrope_license, manrope_style
+from firefly_forge.product_fonts import manrope_license, manrope_style, manrope_text_width
 from firefly_forge.store import Store, identifier
 from firefly_forge.visual_design import VisualDesignService
 
@@ -188,24 +188,38 @@ def _reference_canvas(
             root.set("y", str(max(4, (shell.header_height - 40) // 2)))
             parts.append(ET.tostring(root, encoding="unicode"))
         else:
-            parts.append(
-                _text(
-                    str((branding or {}).get("name", product.customer)),
-                    24,
-                    shell.header_height // 2 + 6,
-                    columns=max(16, min(32, (width - 48) // 20)),
-                    maximum=1,
-                    size=18,
-                    weight=700,
-                    fill=palette["text"],
+            name = str((branding or {}).get("name", product.customer))
+            if not process:
+                lines = _reference_lines(name, width - 48, 18, 700, custom_font=font != "Manrope")
+                parts.append(
+                    _reference_text(
+                        lines if len(lines) == 1 else ["Product reference"],
+                        24,
+                        shell.header_height // 2 + 6,
+                        18,
+                        700,
+                        palette["text"],
+                    )
                 )
-            )
+            else:
+                parts.append(
+                    _text(
+                        name,
+                        24,
+                        shell.header_height // 2 + 6,
+                        columns=max(16, min(32, (width - 48) // 20)),
+                        maximum=1,
+                        size=18,
+                        weight=700,
+                        fill=palette["text"],
+                    )
+                )
     footer = height - shell.footer_height
     if shell.footer_height:
         parts.append(_rect(0, footer, width, shell.footer_height, palette["surface"], palette["line"], radius=0))
         parts.append(
             _text(
-                "API process document" if process else "Implementation review reference",
+                "API process document" if process else "Functional reference",
                 int(grid["content_x"]),
                 footer + min(29, shell.footer_height - 12),
                 columns=max(20, int(grid["content_width"]) // 8),
@@ -248,7 +262,7 @@ def _reference_canvas(
                 parts.append(_rect(16, y - 20, shell.sidebar_width - 32, 52, palette["primary"]))
             parts.append(
                 _text(
-                    str(step + 1) + ". " + product.journey[step],
+                    str(step + 1) + ". " + product.journey[step] if process else f"Journey {step + 1}",
                     28,
                     y + 3,
                     columns=rail_columns,
@@ -286,6 +300,65 @@ def _panel_text(
     )
 
 
+def _journey_contract(product: ProductDefinition, index: int, *, process: bool = False) -> Data:
+    journey = product.journey[index]
+    linked = [item for item in product.features if journey in item.journey_refs]
+    sources = [item for item in product.processes if journey in item.journey_refs] if process else linked
+    acceptance_ids = list(dict.fromkeys(reference for item in sources for reference in item.acceptance_refs))
+    return {
+        "journey_index": index,
+        "journey": journey,
+        "feature_ids": [item.id for item in linked],
+        "expected_behaviors": [
+            {"feature_id": item.id, **behavior.model_dump(mode="json")}
+            for item in linked
+            for behavior in item.behaviors
+        ],
+        "acceptance_ids": acceptance_ids,
+        "acceptance_criteria": {
+            reference: product.acceptance[int(reference.split("-")[1]) - 1] for reference in acceptance_ids
+        },
+        "primary_action": "Review linked behavior",
+        "states": ["default", "loading", "empty", "error"],
+        "reference_scope": "functional_guidance",
+    }
+
+
+def _reference_lines(value: str, width: int, size: int, weight: int, *, custom_font: bool) -> list[str]:
+    # Reuse XML-character validation before measuring text; no ellipsis is introduced.
+    _lines(value, max(1, len(value) * 2), 1)
+    result: list[str] = []
+    current = ""
+    for word in " ".join(value.split()).split(" "):
+        candidate = (current + " " + word).strip()
+        measure = len(candidate) * size if custom_font else manrope_text_width(candidate, size, weight)
+        if current and measure > width:
+            result.append(current)
+            current = ""
+        for char in word:
+            candidate = current + char
+            measure = len(candidate) * size if custom_font else manrope_text_width(candidate, size, weight)
+            if current and measure > width:
+                result.append(current)
+                current = ""
+            current += char
+        current += " "
+    if current.strip():
+        result.append(current.strip())
+    return result or [""]
+
+
+def _reference_text(lines: list[str], x: int, y: int, size: int, weight: int, fill: str) -> str:
+    return (
+        f'<text font-size="{size}" font-weight="{weight}" fill="{html.escape(fill)}">'
+        + "".join(
+            f'<tspan x="{x}" y="{y + index * (size + 6)}">{html.escape(line.strip())}</tspan>'
+            for index, line in enumerate(lines)
+        )
+        + "</text>"
+    )
+
+
 def _frame(
     product: ProductDefinition, branding: Data | None, tokens: Data, *, index: int, viewport: str, theme: str
 ) -> str:
@@ -293,111 +366,86 @@ def _frame(
         product, branding, tokens, index=index, viewport=viewport, theme=theme, process=False
     )
     left, content = int(grid["content_x"]), int(grid["content_width"])
-    text, surface, line = palette["text"], palette["surface"], palette["line"]
-    gap = grid["gutter"]
-    inset = product.visual_design.baseline * 6
-    y = header + 50
-    _panel_text(parts, "Wireframe reference", left, y, content, size=14, fill=text, maximum=1)
-    _panel_text(
-        parts,
-        product.journey[index],
-        left,
-        y + 50,
-        content,
-        size=28 if viewport == "desktop" else 22,
-        fill=text,
-        maximum=1,
-        weight=700,
-    )
-    _panel_text(parts, product.problem, left, y + 88, content, size=14, fill=text, maximum=2)
-    top = header + (174 if viewport == "desktop" else 196)
+    custom_font = tokens.get("typography", {}).get("family", {}).get("$value", "Manrope") != "Manrope"
+    contract = _journey_contract(product, index)
+    inset = product.visual_design.baseline * 5
+    text = palette["text"]
+    y = header + 40
+    parts.append(_rect(left, y - 21, content, 32, palette["primary"], radius=4))
+    parts.append(_reference_text(["Functional guide"], left + 12, y, 13, 700, palette["primary_ink"]))
+    title_size = 26 if viewport == "desktop" else 22
+    title = _reference_lines(product.journey[index], content, title_size, 700, custom_font=custom_font)
+    if len(title) * (title_size + 6) > (footer - y) // 3:
+        title_size = 16
+        title = _reference_lines(
+            f"Journey {index + 1}. Full title in interaction-contract.json",
+            content,
+            title_size,
+            700,
+            custom_font=custom_font,
+        )
+    y += 52
+    parts.append(_reference_text(title, left, y, title_size, 700, text))
+    top = y + (len(title) - 1) * (title_size + 6) + 28
+    bottom = footer - 88
     if viewport == "desktop":
         span = max(1, min(grid["columns"] - 1, round(grid["columns"] * 2 / 3)))
-        primary = int(span * grid["column_width"] + (span - 1) * gap)
-        aside_x, aside_width = left + primary + gap, content - primary - gap
-        panel_height = 350
+        primary = int(span * grid["column_width"] + (span - 1) * grid["gutter"])
+        aside_x, aside_width = left + primary + grid["gutter"], content - primary - grid["gutter"]
     else:
-        primary, aside_x, aside_width, panel_height = content, left, content, 302
-        inset = product.visual_design.baseline * 5
-    parts.append(_rect(left, top, primary, panel_height, surface, line))
-    inner = primary - 2 * inset
-    for value, offset, size, weight, maximum in [
-        ("Customer input", 38, 18, 700, 1),
-        (product.user_stories[index % len(product.user_stories)], 72, 14, 400, 2),
-        ("Details for this step", 147 if viewport == "desktop" else 138, 14, 700, 1),
-    ]:
-        _panel_text(
-            parts, value, left + inset, top + offset, inner, size=size, weight=weight, fill=text, maximum=maximum
-        )
-    field_y = top + (163 if viewport == "desktop" else 156)
-    parts.append(_rect(left + inset, field_y, inner, 54 if viewport == "desktop" else 48, palette["bg"], line))
-    _panel_text(
-        parts, "Enter required details", left + inset + 12, field_y + 31, inner - 24, size=13, fill=text, maximum=1
-    )
-    button_y = top + (279 if viewport == "desktop" else 234)
-    button_width = min(164, inner) if viewport == "desktop" else inner
-    parts.append(_rect(left + inset, button_y, button_width, 44, palette["primary"]))
-    _panel_text(
-        parts,
-        "Continue",
-        left + inset + 16,
-        button_y + 28,
-        button_width - 32,
-        size=14,
-        weight=700,
-        fill=palette["primary_ink"],
-        maximum=1,
-    )
-    aside_top = top if viewport == "desktop" else top + panel_height + product.visual_design.baseline * 6
-    aside_height = panel_height if viewport == "desktop" else 160
-    parts.append(_rect(aside_x, aside_top, aside_width, aside_height, surface, line))
-    _panel_text(
-        parts,
-        "Acceptance references",
-        aside_x + inset,
-        aside_top + 38,
-        aside_width - 2 * inset,
-        size=16,
-        weight=700,
-        fill=text,
-        maximum=1,
-    )
-    for number, criterion in enumerate(product.acceptance[: 4 if viewport == "desktop" else 2]):
-        _panel_text(
-            parts,
-            str(number + 1) + ". " + criterion,
-            aside_x + inset,
-            aside_top + 77 + number * (65 if viewport == "desktop" else 42),
-            aside_width - 2 * inset,
-            size=13 if viewport == "desktop" else 12,
-            fill=text,
-            maximum=2,
-        )
-    if viewport == "desktop":
-        state_y = top + panel_height + product.visual_design.baseline * 7
-        parts.append(_rect(left, state_y, content, min(190, footer - state_y - 18), surface, line))
-        _panel_text(
-            parts,
-            "Interaction states",
-            left + inset,
-            state_y + 39,
-            content - 2 * inset,
-            size=18,
-            weight=700,
-            fill=text,
-            maximum=1,
-        )
-        states = [
-            ("Default", "Show the step and next action."),
-            ("Loading", "Show progress and prevent repeats."),
-            ("Empty", "Explain the required details."),
-            ("Error", "Preserve input and explain failure."),
+        primary, aside_x, aside_width = content, left, content
+
+    blocks: list[tuple[str, str]] = []
+    for feature in product.features:
+        if feature.id not in contract["feature_ids"]:
+            continue
+        blocks.append(("Feature", feature.name))
+        for behavior in feature.behaviors:
+            blocks.extend([("Given", behavior.given), ("When", behavior.when), ("Then", behavior.then)])
+            blocks.extend(("Failure path", failure) for failure in behavior.failure_paths)
+    if not blocks:
+        blocks = [
+            (
+                "Feature mapping pending",
+                "Link this journey to explicit features and expected behavior before implementation.",
+            )
         ]
-        state_width = (content - 2 * inset - 3 * gap) // 4
-        for number, (state, description) in enumerate(states):
-            x = left + inset + number * (state_width + gap)
-            _panel_text(parts, state, x, state_y + 80, state_width, size=13, weight=700, fill=text, maximum=1)
-            _panel_text(parts, description, x, state_y + 110, state_width, size=12, fill=text, maximum=3)
+    criteria = [(reference, value) for reference, value in contract["acceptance_criteria"].items()]
+    if not criteria:
+        criteria = [("Acceptance mapping pending", "No linked acceptance criteria are supplied for this journey.")]
+
+    def panel(x: int, width: int, entries: list[tuple[str, str]]) -> bool:
+        parts.append(_rect(x, top, width, max(1, bottom - top), palette["surface"], palette["line"]))
+        cursor = top + inset + 14
+        for label, value in entries:
+            lines = _reference_lines(value, width - 2 * inset, 14, 400, custom_font=custom_font)
+            labels = _reference_lines(label, width - 2 * inset, 13, 700, custom_font=custom_font)
+            height = len(labels) * 19 + len(lines) * 20 + 16
+            if cursor + height > bottom - inset:
+                return True
+            parts.append(_reference_text(labels, x + inset, cursor, 13, 700, text))
+            cursor += len(labels) * 19 + 5
+            parts.append(_reference_text(lines, x + inset, cursor, 14, 400, text))
+            cursor += len(lines) * 20 + 11
+        return False
+
+    if viewport == "desktop":
+        overflow = panel(left, primary, blocks)
+        overflow = (
+            panel(aside_x, aside_width, [("Linked acceptance", "Criteria for this journey only."), *criteria])
+            or overflow
+        )
+    else:
+        overflow = panel(
+            left,
+            primary,
+            [*blocks, ("Linked acceptance", ", ".join(contract["acceptance_ids"]) or "Pending"), *criteria],
+        )
+    note = "More in interaction-contract.json" if overflow else "Full reference: interaction-contract.json"
+    for value in [note, f"journey-{index + 1:02}: full behavior and acceptance"]:
+        lines = _reference_lines(value, content, 12, 400, custom_font=custom_font)
+        parts.append(_reference_text(lines, left, footer - 64, 12, 400, text))
+        footer += len(lines) * 18
     parts.append("</g></svg>")
     return "".join(parts)
 
@@ -622,18 +670,10 @@ class ProductDesign:
                 "id": f"journey-{index + 1:02}",
                 "title": journey,
                 "interaction_contract": {
-                    "journey_index": index,
-                    "journey": journey,
-                    "feature_ids": [item.id for item in definition.features if journey in item.journey_refs],
-                    "expected_behaviors": [
-                        {"feature_id": item.id, **behavior.model_dump(mode="json")}
-                        for item in definition.features
-                        if journey in item.journey_refs
-                        for behavior in item.behaviors
-                    ],
-                    "acceptance_ids": [f"acceptance-{number + 1}" for number in range(len(definition.acceptance))],
-                    "primary_action": "Review functional contract" if method == "process_map" else "Continue",
-                    "states": ["default", "loading", "empty", "error"],
+                    **_journey_contract(definition, index, process=method == "process_map"),
+                    "primary_action": "Review functional contract"
+                    if method == "process_map"
+                    else "Review linked behavior",
                 },
             }
             for field, (viewport, theme) in VARIANTS.items():
