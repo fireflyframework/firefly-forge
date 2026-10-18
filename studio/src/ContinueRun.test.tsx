@@ -49,3 +49,23 @@ describe("retained run continuation", () => {
     expect(html).toContain("Hand off run");
   });
 });
+
+it("points a held checkpoint to its original result flow and suppresses generic continuation", () => {
+  const html = renderToStaticMarkup(
+    <ContinueRun
+      run={{
+        id: "a".repeat(32),
+        repository_id: "b".repeat(32),
+        brief: "",
+        status: "needs_reconciliation",
+        agent: "bridge",
+        bridge_completion_hold: { reason: "graph_checkpoint_unavailable" },
+      }}
+      connection={{ base: "https://forge.invalid", token: "fictional" }}
+      onUpdated={() => undefined}
+    />,
+  );
+  expect(html).toContain("Original model result");
+  expect(html).not.toContain("Resume run");
+  expect(html).not.toContain("Hand off run");
+});

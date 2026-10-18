@@ -576,6 +576,17 @@ class BridgeProvider(ConfiguredProvider):
                     if scope is None or attempt is None or scope.response is None:
                         raise ProviderError("Required completion recovery needs a native run-owned admission scope")
                     body = await request.aread()
+                    from firefly_forge.agentic_checkpoint_invocation import current_checkpoint_invocation
+
+                    invocation = current_checkpoint_invocation()
+                    if invocation is not None:
+                        original = await invocation.replay_first(body)
+                        if original is not None:
+                            from httpx2 import Response as BridgeResponse
+
+                            assert invocation.restored is not None
+                            attempt.reference = dict(invocation.restored.reference)
+                            return BridgeResponse(200, content=original, request=request)
                     if not 1 <= len(body) <= 9_000_000:
                         raise ProviderError("Bridge completion wire body exceeds its admission bound")
                     await scope.prepare(body)
@@ -884,6 +895,7 @@ def provider_catalog(configuration: ConfigurationStore | None = None) -> list[di
                 "timeout": "1800",
                 "max_tokens": "16384",
                 "completion_recovery": "legacy or required; absent preserves legacy",
+                "checkpoints": "disabled or required; required needs completion recovery",
             }.get(key, "Saved securely; leave blank to retain")
             fields.append(
                 {

@@ -29,6 +29,7 @@ export async function captureWalkthrough(
     producer?: string;
     resetFields?: boolean;
     actionSelector?: string;
+    focusSelector?: string;
   } = {},
 ) {
   await page.evaluate(() => document.fonts.ready);
@@ -106,6 +107,28 @@ export async function captureWalkthrough(
   let control = null;
   if (await action.isVisible()) {
     await action.scrollIntoViewIfNeeded();
+    if (options.focusSelector) {
+      await page.locator(options.focusSelector).evaluate((element) => {
+        const box = element.getBoundingClientRect(),
+          header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect(),
+          footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect(),
+          main = element.closest("main")!,
+          scroll = element.closest<HTMLElement>(".wizard-field-scroll");
+        if (
+          scroll &&
+          scroll.scrollHeight > scroll.clientHeight &&
+          box.height <= scroll.clientHeight - 16
+        )
+          scroll.scrollTop += box.top - scroll.getBoundingClientRect().top - 8;
+        if (box.height <= footer.top - header.bottom - 32)
+          main.scrollTop +=
+            element.getBoundingClientRect().top - header.bottom - 16;
+      });
+    }
     control = await action.evaluate((button) => {
       const box = button.getBoundingClientRect();
       const footer = document
@@ -116,10 +139,9 @@ export async function captureWalkthrough(
         top: box.top,
         bottom: box.bottom,
         footerTop: footer.top,
-        hit:
-          document
-            .elementFromPoint(box.x + box.width / 2, box.bottom - 2)
-            ?.closest("button") === button,
+        hit: button.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.bottom - 2),
+        ),
       };
     });
     expect(control.top).toBeGreaterThanOrEqual(0);
@@ -171,10 +193,9 @@ export async function captureWalkthrough(
           bottom: box.bottom,
           footerTop: footer.top,
           in_frame: box.top >= 0 && box.bottom <= footer.top,
-          hit:
-            document
-              .elementFromPoint(box.x + box.width / 2, box.bottom - 2)
-              ?.closest("button") === button,
+          hit: button.contains(
+            document.elementFromPoint(box.x + box.width / 2, box.bottom - 2),
+          ),
         };
       })
     : null;
@@ -217,6 +238,8 @@ export async function captureWalkthrough(
     "studio/tests/campaign-delivery-plan-fixture.ts",
     "studio/tests/campaign-delivery-browser-fixture.ts",
     "studio/tests/worker-dialogue-contract-fixture.json",
+    "studio/tests/agent-checkpoint-recovery-fixture.ts",
+    "studio/tests/run-creation-cancellation-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",

@@ -7,6 +7,69 @@ description: Recover paused and interrupted runs with persisted task state, expl
 
 Use the durable plan and journal to determine what happened before continuing a run. The same run can retain partial source, provider and policy snapshots, earlier failed checks, a real checkpoint commit and remote-effect receipts.
 
+## Settle an uncertain run submission
+
+Run creation has a separate identity from the run it may admit. `POST /api/v1/run-creation-requests/{request_id}` accepts the original `{"version":1,"input":...}` envelope under a retained 32-character hexadecimal request ID. A new admission returns HTTP201; an exact replay by the original user and authentication method returns HTTP200 with the unchanged receipt. The legacy `POST /api/v1/runs` route remains a separate operation.
+
+In Studio, an uncertain submission appears as **Original run request retained**. Choose **Check original result** to read its terminal decision without starting another run. If a run was admitted, Studio reads its current record before opening it. If no decision is available, keep the retained request. **Send original request again** appears after a missing decision; it resends the original saved input and identity. **Review original input** shows that saved input, which may differ from your current edits.
+
+To abandon the original submission, choose **Cancel this request**. A confirmed cancellation prevents it from starting later. If admission already won, Studio opens the existing run. Cancel that run separately if needed. Your current edits stay available; review them before explicitly starting a new request.
+
+After signing in again as the same enabled user, you can read the original receipt or decision and settle cancellation with current read access. A different authentication method can perform those reads and cancellation, but admission replay still requires the original method and current execution access, including release access for a publishing run. An access error leaves the request unresolved.
+
+The receipt binds the original input, actor and admitted run. Read it with `GET /api/v1/run-creation-requests/{request_id}` after a lost response. Its admitted status is historical; open the referenced run to inspect its current state. A timeout, refusal or missing receipt alone cannot establish that no run was created.
+
+If the original request must be abandoned, POST `/api/v1/run-creation-requests/{request_id}/cancel` with only its version, original input digest and scope:
+
+```json
+{
+  "version": 1,
+  "request_digest": "the-64-character-original-input-digest",
+  "repository_id": "the-original-32-character-repository-id",
+  "project_id": null,
+  "component_id": null
+}
+```
+
+This is a request-shape example. Replace the placeholder strings with the original request's retained digest and repository ID. Do not compute the digest from your current edits. Studio supplies the retained values when you choose **Cancel this request**.
+
+For an assigned component, supply both its original project ID and component key. The server requires the same enabled native user and current read access to that scope. A different session authentication method for that same user may settle cancellation; it cannot replay the original admission under a different method. Unassigned requests require a factory administrator.
+
+Admission and cancellation share a request fence. When cancellation wins, the immutable `cancelled` decision prevents even a delayed original POST from admitting work. When admission has already won, cancellation returns `admitted` with the existing version-1 receipt. It does not stop that run; use the run's separate cancellation operation if required.
+
+Read `GET /api/v1/run-creation-requests/{request_id}/decision` after an uncertain cancellation response. It returns the original admitted receipt or the immutable cancellation. HTTP404 leaves the request unresolved. Release a held form only after verifying its exact terminal decision; preserve current edits, and review them before explicitly submitting a new request.
+
+A small ownership reservation commits before preparation, so cancellation can settle while source checks are still running. Reservations and cancellations store digests and scope, without duplicating the raw brief or commands. A user may hold at most 50 unresolved reservations; admitted and cancelled requests do not count. This limit never blocks cancellation. The additive schema-28 migration preserves existing version-1 admission receipts without synthesizing historical reservations.
+
+### Review an uncertain submission
+
+These controlled Studio fixtures show a missing decision followed by a confirmed cancellation. They do not start a native run or contact a coding provider.
+
+<figure class="forge-shot" markdown="1">
+![Controlled retained run request with original-result checks and cancellation.](assets/screenshots/recovery-run-request-held-desktop-light.png)
+<figcaption>Check the original identity first. A missing decision keeps the request held and exposes the explicit resubmission choice.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled confirmed request cancellation with current form edits preserved.](assets/screenshots/recovery-run-request-cancelled-desktop-light.png)
+<figcaption>Confirmed cancellation releases the original request. Current edits stay available for review before another submission.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Check and cancel an original request on a phone</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view of a retained original request and its recovery controls.](assets/screenshots/recovery-run-request-held-mobile-light.png)
+<figcaption>Scroll the form to the retained-request controls. Checking does not start another run.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view after confirmed cancellation preserves current edits.](assets/screenshots/recovery-run-request-cancelled-mobile-light.png)
+<figcaption>The form can continue after the exact cancellation decision is confirmed.</figcaption>
+</figure>
+
+</details>
+
 ## Read the records
 
 `GET /api/v1/runs/{id}/plan` returns the current plan revision and task states. `GET /api/v1/runs/{id}/journal` returns its hash-chain entries and a validity flag. Each intent identifies its task and attempt; each receipt records the outcome actually observed.
@@ -93,3 +156,116 @@ The server locks the conversation and turn, verifies expiry using database time,
 Processing turns created before ownership tracking have epoch zero and no owner. They require `--legacy-confirmed-stopped` as an explicit assertion that their original process has stopped. This assertion is recorded separately from an expiry proof. Do not use it while the original request may still be running.
 
 Graceful factory shutdown stops new dialogue admissions, cancels and drains owned requests, then closes the data layer. An abrupt process loss leaves the durable claim for inspection and explicit recovery. An unknown provider outcome remains unknown even when local ownership has been fenced.
+
+## Agentic model-boundary development
+
+The internal `AgenticBoundary` helper supports an explicit, in-memory model-request boundary using Agentic's public capabilities and typed message codec. It captures closed text history, cumulative native usage and limits, model/tool settings, written-file names and the exact HTTP-body digest. Restoring that boundary uses `prompt=None`; it does not append the original brief again. The pending request keeps its recorded timestamp through the public history objects.
+
+The first restored request must match the original body and state. Its original response passes a one-use consumption callback before reaching the ordinary SDK parser. Earlier tool calls stay in history; genuinely new tool calls and model requests may follow. An invocation-local shared context keeps this distinction across native task boundaries.
+
+Checkpoint messages must have complete native lifecycle states. Usage and numeric limits must be finite, nonnegative and bounded; integer counters cannot exceed `2^53 - 1`. Payloads and responses use immutable bytes, and the response returned after consumption is the exact byte sequence whose digest was consumed.
+
+This helper refuses unfinished tools, retries, vision, deferred or changing tools, dynamic instructions and unsupported message parts. It has no configuration switch or public endpoint. Engine activates the supported implementation slice only through the explicit checkpoint setting described below. Assurance and Product Assistant do not activate it.
+
+### Internal checkpoint storage
+
+The native `AgentCheckpoints` service can retain a captured boundary beside its unchanged Bridge request intent in one PostgreSQL transaction. An exact admission replay must match both records. A failed checkpoint append rolls back the new intent and hold as well. Records use the existing immutable journal table; this adds no SQL migration or historical backfill.
+
+Version-1 consumption requires the original retained successful HTTP response and its exact request, checkpoint, wire digest and task attempt. Authenticated remote terminal evidence cannot substitute for that version-1 HTTP record. The service commits a single consume receipt before its response callback succeeds. A second consumption is refused, including after cancellation or interruption. A failure after the consume commit can leave a consumed boundary without delivering its response; it cannot re-arm that boundary. Exact receipt reads return checkpoint and consume evidence without returning the completion body.
+
+Checkpoint payloads are limited to 192 KiB, journal envelopes to 256 KiB and consume envelopes to 4 KiB. Each run permits at most 100 checkpoints and 4 MiB of checkpoint/consume evidence, with pending consume space reserved inside the shared 16 MiB completion budget. Scalar SQL bounds run before loading checkpoint JSON. Admission checks current execution authority, current reader access when present, owned run/source/configuration and task state. Credential admission occurs outside native transactions; current authority and credentials are checked again before commit and return. Generic journal reads also admit the new checkpoint payloads under their existing reader fence.
+
+Checkpoint operations prepare an immutable credential registry outside native units. Locked rejection scans that registry and checks a process-local configuration-write cut without taking a file lock or reading settings. A local configuration write invalidates the cut and refuses the writer transaction. External credential sources are read again outside the transaction before exposure; a refusal after consumption remains consumed. This does not establish atomic cross-process configuration admission.
+
+Without explicit checkpoint selection this storage service remains unused by execution. Reading a terminal result or checkpoint never resumes a graph or enables generic resume, handoff or Retry.
+
+### Explicit closed-text implementation continuation
+
+New Bridge implementations may select `checkpoints: required` together with `completion_recovery: required` in saved provider configuration or an implementation model profile. These optional fields freeze into the new run; absent fields leave historical snapshots and defaults unchanged. The initial slice requires an explicit static grant containing only `list_files`, `read_file`, `write_file`, `search_text`, `edit_lines` and `git_diff`. Unsupported grants, streaming, vision, QA state, deferred tools, retry state, dynamic instructions or dynamic tool catalogs refuse before completion submission. Direct API providers and independent review do not support required checkpoints; use a separate review profile with checkpoints disabled.
+
+In Studio, open **Connections → Coding AI → Bridge → Configure**. Under **Original model results**, select **Required: retain the original result**, then **Required: save implementation checkpoints**. Saving these settings does not test the connection or change an existing run. **Keep current default (unset)** omits the field from this save; it does not clear a saved value. Choose **Disabled** to stop requiring checkpoints. The other choices explicitly save `legacy`/`required` recovery or `disabled`/`required` checkpoints. The equivalent provider API is `PUT /api/v1/providers/bridge/configuration` with `values` containing the selected fields. Named implementation profiles use `PUT /api/v1/model-profiles/{id}`.
+
+<details class="forge-gallery" markdown="1">
+<summary>Choose original-result recovery in Studio</summary>
+
+The controlled fixture selects required result recovery before required checkpoints. The settings have not been saved or connection-tested in these views.
+
+<figure class="forge-shot" markdown="1">
+![Controlled Bridge settings with required result recovery and implementation checkpoints selected.](assets/screenshots/recovery-bridge-choices-desktop-light.png)
+<figcaption>Configure implementation and independent review separately. Saving these choices affects new runs.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view of the same Bridge recovery selections.](assets/screenshots/recovery-bridge-choices-mobile-light.png)
+<figcaption>Unset omits a field from the save. Choose Disabled to stop requiring checkpoints.</figcaption>
+</figure>
+
+</details>
+
+#### Review a held result in Studio
+
+1. Open the held Bridge run and choose **Plan → Original model result**. The panel requires current project execution access and, for a publishing run, release access. It reads saved checkpoint references without contacting Bridge or continuing work.
+2. Select the original implementation attempt. Check its saved time, original deadline and result state. **Check original result** requests an observation of that original Bridge completion when its result still needs checking.
+3. When the original result is saved, choose **Review original result**. Read the continuation steps and acknowledge that the result is consumed once. **Continue from original result** admits that specific continuation; verification and delivery retain their separate outcomes.
+4. If a response is lost, choose **Read exact saved request**. Studio retains the observation or continuation identity in this tab before submission and keeps it across reload. A missing receipt or access error holds that identity. A recorded continuation discovered on the server can also be read without submitting another one.
+
+This panel must save and read back its tab marker before sending a new request. Keep the original tab open while a request is unresolved. Reloading that tab retains the marker; closing the tab or clearing its session storage can lose it. A new tab can discover server-recorded continuation tickets, but it cannot rely on the old tab's observation or unsent request marker. Changing the factory, account, run or current permission context clears the displayed details and ignores late responses. The panel shows references and states, not the model's private history or response body.
+
+An **Original implementation receipt recorded** message confirms the original implementation receipt. Check the run's verification, any later repairs and delivery records before accepting the run. A consumed result cannot be re-armed after a later failure.
+
+<details class="forge-gallery" markdown="1">
+<summary>Review and read back one original-result continuation</summary>
+
+These controlled Studio fixtures show a saved result, an acknowledged review and an uncertain restore response. They exercise the interface without running Agentic, Bridge or native restoration.
+
+<figure class="forge-shot" markdown="1">
+![Controlled Plan panel with a saved original implementation result.](assets/screenshots/recovery-original-result-ready-desktop-light.png)
+<figcaption>Inspect the original attempt, checkpoint time, deadline and result state before opening the review.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled continuation review with the one-use acknowledgement selected.](assets/screenshots/recovery-original-result-review-desktop-light.png)
+<figcaption>Reviewing is separate from admission. Continue from original result becomes available after the acknowledgement.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled uncertain restore held for exact saved-request readback.](assets/screenshots/recovery-original-result-held-desktop-light.png)
+<figcaption>A lost response and missing exact receipt retain the original request identity. They do not permit another continuation admission.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone Plan panel showing a saved original result.](assets/screenshots/recovery-original-result-ready-mobile-light.png)
+<figcaption>The same original-result references are available on a phone.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone review of one original-result continuation.](assets/screenshots/recovery-original-result-review-mobile-light.png)
+<figcaption>Scroll to the acknowledgement and continuation action. Later verification and delivery keep their own outcomes.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone view of exact readback for an uncertain continuation.](assets/screenshots/recovery-original-result-held-mobile-light.png)
+<figcaption>Keep this tab while the request is unresolved and read its exact saved identity again.</figcaption>
+</figure>
+
+</details>
+
+The real Agentic implementation captures a closed native message history at the exact HTTP request boundary. Version-2 checkpoint envelopes bind the original composed instructions, runtime and prompt contracts, cumulative native usage and limits, absolute deadline, task attempt, file-tool state and retained owned workspace. The original Bridge intent and checkpoint commit together before POST. Both ordinary and restored results commit a consume receipt before reaching the native parser. Version-1 checkpoints and HTTP-only consume receipts retain their original semantics and cannot authorize restoration.
+
+An authorized operator first selects an immutable original HTTP result or retains a successful original-result observation through the existing `POST /api/v1/runs/{run_id}/bridge-requests/{completion_request_id}/observations` route. Then POST `/api/v1/runs/{run_id}/agent-checkpoints/{completion_request_id}/restores` with a retained 32-character hexadecimal `request_id`, `expected_checkpoint_digest`, `expected_intent_digest` and a tagged `source`. An `http_response` source has its `record_digest`; a `bridge_observation` source also has `observation_id` and the original `terminal_digest`. The server does not accept an arbitrary response body. GET the same route with `/{request_id}` for exact readback; a missing or uncertain response never authorizes another admission. Each checkpoint permits one ticket, within a maximum of 50 restore tickets per run and the shared bounded worker queue.
+
+Discover completion request IDs through `GET /api/v1/runs/{run_id}/bridge-requests` and read the selected intent at `/{completion_request_id}`. The authenticated run journal (`GET /api/v1/runs/{run_id}/journal`) contains the matching `agent_checkpoint`, any `bridge_request_response` and their immutable record digests. Select the version-2 checkpoint whose idempotency key matches that request; its record digest is `expected_checkpoint_digest` and its payload binds `expected_intent_digest`. For an observation source, retain the observation POST response and its successful original terminal digest. Keep the client-generated restore request ID before POST, then read that exact ticket after a lost response; do not generate a replacement ID.
+
+The execution owner claims that ticket once, repeats current operator and execution-actor authority, source/configuration and credential checks, and enters the same unfinished implementation attempt. It calls public `FireflyAgent.run(prompt=None, ...)` with retained native history and usage. The first reconstructed request must match its original wire bytes and receives only the selected original result, with zero replacement POSTs. An authenticated remote observation stays a distinct result source; it is never relabeled as an original HTTP response. Earlier file tools are not executed again. Genuinely new tools and requests may follow, each new request retaining its own checkpoint. Successful continuation rejoins the ordinary implementation receipt and verification path.
+
+The original deadline includes downtime. Changed or missing workspaces, unsupported state, current permission loss, cancellation and stale claim generations refuse. This requires the same retained local workspace; it does not reconstruct source on another host or make filesystem checks atomic against unrelated local processes. A workspace that cannot be treated as exclusively owned is ineligible. A crash after consumption, including before delivery to the parser or before the next checkpoint, cannot re-arm that boundary. Executing tickets recovered after owner loss need reconciliation and are never automatically requeued. Generic completion holds remain in place, including for old unknown runs without an eligible checkpoint. This is continuation at the supported model boundary, not arbitrary graph or Python-stack restoration.
+
+## Internal run-admission boundary
+
+Run admission prepares runner capabilities, provider settings, policies, roles and reviewed design files before taking the insertion locks. `Store.prepare_run` retains immutable bytes and original field presence. The locked insert checks the current native actor, project/component and repository/product cuts, then saves the queued run and its first event together. Campaign and incident admissions prepare before entering their own atomic write.
+
+A separate process-local mutable-settings cut starts before preparation and stays checked through insertion and return. Writing the admission’s own snapshots into the exact private `revisions` and `model-profile-revisions` directories does not advance this cut; changes to current provider, policy, role, channel or application settings do, including a change immediately restored. Channel and application admissions also reread their captured settings outside the write transaction. The existing all-writes credential generation keeps its original behavior.
+
+Credential matching uses the prepared registry and process-local configuration generation, with current native OAuth evidence checked inside the transaction. Fresh credential and authority checks also apply before returning the committed result. A refusal after commit does not establish that nothing was saved. These guards do not serialize configuration files written by another process.
+
+Ordinary `POST /runs` retains its existing contract. Use the [original-request protocol](#settle-an-uncertain-run-submission) when creation needs an exact identity and terminal decision. A matching brief or the latest run list cannot settle an uncertain original submission.

@@ -182,7 +182,7 @@ async def test_collaboration_denies_known_unmapped_edit_before_any_action_intent
         raise AccessDenied("The actor has no separately approved product editing capability")
 
     collaboration = Collaboration(
-        SimpleNamespace(_unit=unit, configuration=SimpleNamespace(directory=tmp_path)),
+        SimpleNamespace(_unit=unit, configuration=SimpleNamespace(directory=tmp_path, settings_generation=0)),
         scm=SimpleNamespace(),
         product_change_authority=SimpleNamespace(process=refuse),
     )

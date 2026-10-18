@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { expectProgressFits } from "./wizard-progress";
+import { retainedRunCreation } from "./run-creation-cancellation-fixture";
 const repositories = [
   {
     id: "a".repeat(32),
@@ -25,6 +26,7 @@ test("logical product preserves independent component contracts and canonical de
   await page.setViewportSize({ width: 390, height: 844 });
   let stored: Record<string, unknown> | null = null,
     run: Record<string, unknown> | null = null;
+  const creation = retainedRunCreation("e".repeat(32));
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     const req = route.request(),
@@ -32,19 +34,16 @@ test("logical product preserves independent component contracts and canonical de
       body = req.postData() ? req.postDataJSON() : null;
     let json: unknown = {};
     if (path.endsWith("/repositories")) json = repositories;
-    if (path.endsWith("/runs")) {
-      if (req.method() === "POST") {
-        run = body;
-        json = {
-          id: "run-1",
-          repository_id: body.repository_id,
-          brief: body.brief,
-          status: "queued",
-          verification: [],
-          changed_files: [],
-        };
-      } else json = [];
+    if (/\/run-creation-requests\/[a-f0-9]{32}$/.test(path)) {
+      expect(req.method()).toBe("POST");
+      json = await creation.admit(path, body);
+      run = creation.input;
     }
+    if (path.endsWith("/runs")) {
+      expect(req.method()).toBe("GET");
+      json = creation.run ? [creation.run] : [];
+    }
+    if (path.endsWith(`/runs/${"e".repeat(32)}`)) json = creation.run;
     if (path.endsWith("/providers")) json = [{ id: "codex", ready: true }];
     if (path.endsWith("/deployment-targets")) json = [];
     if (path.endsWith("/product") || path.endsWith("/brand")) json = null;

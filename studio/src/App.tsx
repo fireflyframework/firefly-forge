@@ -25,6 +25,7 @@ import {
   Circle,
   ExternalLink,
   FileDiff,
+  FileText,
   FolderGit2,
   GitBranch,
   Hammer,
@@ -63,7 +64,7 @@ import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { WorkerDialogue } from "./WorkerDialogue";
-import { EvidenceView, UnifiedDiff } from "./ExecutionPresentation";
+import { EvidenceView, UnifiedDiff, OutputView } from "./ExecutionPresentation";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -77,6 +78,22 @@ import {
 } from "./ProductDrafts";
 import { ProductDefinition } from "./ProductDefinition";
 import { selectStandaloneRunSource } from "./RunDrafts";
+import {
+  makeCreationMarker,
+  readCreationMarker,
+  retainCreationMarker,
+  clearCreationMarker,
+  sendCreation,
+  recoverCreationDecision,
+  cancelCreation,
+  prepareCreationAction,
+  readCreatedRun,
+  normalizeRunBrief,
+  type CreationMarker,
+  type CreationReceipt,
+  type CreationDecision,
+  type RunCreationScope,
+} from "./RunCreationData";
 import {
   IdentityMenu,
   SignIn,
@@ -902,8 +919,8 @@ export default function App() {
               connection={connection}
               onRepository={() => navigate("repositories")}
               onConnection={() => navigate("settings")}
-              onCreated={(run) => {
-                setNotice("Your run has been queued.");
+              onCreated={(run, notice) => {
+                setNotice(notice);
                 void refresh();
                 void openRun(run);
               }}
@@ -1309,7 +1326,7 @@ export function NewProduct({
   connection: Connection;
   onRepository: () => void;
   onConnection: () => void;
-  onCreated: (run: ForgeRun) => void;
+  onCreated: (run: ForgeRun, notice: string) => void;
 }) {
   const projectLabels = repositoryLabels(repositories);
   const session = useProductDraftSession(
@@ -1455,6 +1472,253 @@ export function NewProduct({
       });
     return () => controller.abort();
   }, [connection, repositoryId, session, setError]);
+  const [retainedCreation, setCreation] =
+    useProductDraftField<CreationMarker | null>(session, "creation", null);
+  const [retainedAdmission, setAdmitted] =
+    useProductDraftField<CreationReceipt | null>(session, "admitted", null);
+  const scope: RunCreationScope = {
+    base:
+      normalizeBase(connection.base) === "/api/v1" &&
+      typeof location !== "undefined"
+        ? new URL("/api/v1", location.origin).href
+        : normalizeBase(connection.base),
+    actor: drafts.scope?.user ?? "",
+    repository: repositoryId,
+    project: initialComponent?.project.id ?? null,
+    component: initialComponent?.component.id ?? null,
+  };
+  const creation =
+    retainedCreation &&
+    ["base", "actor", "repository", "project", "component"].every(
+      (key) =>
+        retainedCreation[key as keyof RunCreationScope] ===
+        scope[key as keyof RunCreationScope],
+    )
+      ? retainedCreation
+      : null;
+  const admitted =
+    creation && retainedAdmission?.request_id === creation.requestId
+      ? retainedAdmission
+      : null;
+  const [missingRequest, setMissingRequest] = useProductDraftField(
+    session,
+    "creationMissing",
+    "",
+  );
+  const missingOriginal = Boolean(
+    creation && missingRequest === creation.requestId,
+  );
+  const binding = JSON.stringify([
+    drafts.id,
+    session.id,
+    scope,
+    connection.token,
+  ]);
+  const live = useRef(binding);
+  live.current = binding;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () =>
+    mounted.current && session.active && live.current === binding;
+  useEffect(() => {
+    if (!scope.actor || !scope.repository) return;
+    let active = true;
+    void readCreationMarker(localStorage, scope)
+      .then((value) => {
+        if (active && isCurrent() && !session.read("busy", false) && value)
+          setCreation((previous) =>
+            previous &&
+            ["base", "actor", "repository", "project", "component"].every(
+              (key) =>
+                previous[key as keyof RunCreationScope] ===
+                scope[key as keyof RunCreationScope],
+            )
+              ? previous
+              : value,
+          );
+      })
+      .catch((cause) => {
+        if (active && isCurrent()) setError(errorText(cause));
+      });
+    return () => {
+      active = false;
+    };
+    // The serialized binding includes the draft, connection, actor and component scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binding]);
+  const [action, setAction] = useProductDraftField<{
+    epoch: number;
+    kind: "send" | "check" | "cancel" | null;
+    requestId: string | null;
+  }>(session, "creationAction", { epoch: 0, kind: null, requestId: null });
+  const [creationNotice, setCreationNotice] = useProductDraftField(
+    session,
+    "creationNotice",
+    "",
+  );
+  function beginAction(
+    kind: "send" | "check" | "cancel",
+    requestId: string | null,
+  ) {
+    const previous = session.read("creationAction", action);
+    const epoch = previous.epoch + 1;
+    setAction({ epoch, kind, requestId });
+    setBusy(true);
+    setError("");
+    setCreationNotice("");
+    return epoch;
+  }
+  function isAction(epoch: number, requestId?: string) {
+    const current = session.read("creationAction", action);
+    return (
+      isCurrent() &&
+      current.epoch === epoch &&
+      (requestId === undefined || current.requestId === requestId)
+    );
+  }
+  function endAction(epoch: number) {
+    const current = session.read("creationAction", action);
+    if (!session.active || current.epoch !== epoch) return;
+    setBusy(false);
+    setAction({ ...current, kind: null });
+  }
+  async function finishDecision(
+    original: CreationMarker,
+    decision: CreationDecision,
+    epoch: number,
+  ) {
+    const current = () => isAction(epoch, original.requestId);
+    if (!current()) return;
+    let run: ForgeRun | null = null;
+    if (decision.outcome === "admitted") {
+      setAdmitted(decision.receipt);
+      run = await readCreatedRun(connection, decision.receipt, current);
+    }
+    const pending = await clearCreationMarker(
+      localStorage,
+      original,
+      navigator.locks,
+      current,
+    );
+    if (!current()) return;
+    setCreation(pending);
+    setAdmitted(null);
+    setMissingRequest("");
+    if (pending) {
+      setCreationNotice(
+        "This request is resolved. Another request is waiting; check its result before starting again.",
+      );
+      return;
+    }
+    if (decision.outcome === "cancelled") {
+      setCreationNotice("Request cancelled. You can edit and start again.");
+      return;
+    }
+    const submitted = session.read<{
+      requestId: string;
+      version: number;
+    } | null>("creationSubmission", null);
+    if (
+      submitted?.requestId === original.requestId &&
+      session.editVersion === submitted.version
+    )
+      drafts.discard(session);
+    onCreated(
+      run!,
+      run!.status === "queued"
+        ? "Your run has been queued."
+        : "Your run has been opened.",
+    );
+  }
+  async function checkOriginal() {
+    if (
+      !creation ||
+      !isCurrent() ||
+      ["cancel", "check"].includes(
+        session.read("creationAction", action).kind ?? "",
+      )
+    )
+      return;
+    const epoch = beginAction("check", creation.requestId);
+    setMissingRequest("");
+    try {
+      const decision = await recoverCreationDecision(connection, creation, () =>
+        isAction(epoch, creation.requestId),
+      );
+      await finishDecision(creation, decision, epoch);
+    } catch (cause) {
+      if (isAction(epoch, creation.requestId)) {
+        setMissingRequest(
+          cause instanceof ApiError && cause.status === 404
+            ? creation.requestId
+            : "",
+        );
+        setError(errorText(cause));
+      }
+    } finally {
+      endAction(epoch);
+    }
+  }
+  async function retryOriginal() {
+    if (
+      !creation ||
+      !missingOriginal ||
+      session.read("busy", false) ||
+      !isCurrent()
+    )
+      return;
+    const epoch = beginAction("send", creation.requestId);
+    const current = () => isAction(epoch, creation.requestId);
+    setMissingRequest("");
+    try {
+      const retained = await prepareCreationAction(
+        localStorage,
+        creation,
+        navigator.locks,
+        current,
+      );
+      const receipt = await sendCreation(connection, retained, current);
+      await finishDecision(
+        retained,
+        { version: 1, outcome: "admitted", receipt },
+        epoch,
+      );
+    } catch (cause) {
+      if (current()) setError(errorText(cause));
+    } finally {
+      endAction(epoch);
+    }
+  }
+  async function cancelOriginal() {
+    if (
+      !creation ||
+      !isCurrent() ||
+      session.read("creationAction", action).kind === "cancel"
+    )
+      return;
+    const epoch = beginAction("cancel", creation.requestId);
+    const current = () => isAction(epoch, creation.requestId);
+    setMissingRequest("");
+    try {
+      const retained = await prepareCreationAction(
+        localStorage,
+        creation,
+        navigator.locks,
+        current,
+      );
+      const decision = await cancelCreation(connection, retained, current);
+      await finishDecision(retained, decision, epoch);
+    } catch (cause) {
+      if (current()) setError(errorText(cause));
+    } finally {
+      endAction(epoch);
+    }
+  }
   const frozenArchitecture =
     !initialComponent && productLoaded === productRepositoryId
       ? product?.definition.architecture
@@ -1463,6 +1727,7 @@ export function NewProduct({
     event.preventDefault();
     if (!session.active || session.read("busy", false)) return;
     setError("");
+    let epoch: number | null = null;
     try {
       const checks = parseCommands(commands);
       if (step === 1 && frozenArchitecture && !frozenArchitecture.reviewed)
@@ -1473,12 +1738,21 @@ export function NewProduct({
         setStep(step + 1);
         return;
       }
-      setBusy(true);
+      epoch = beginAction("send", null);
+      const submittedEpoch = epoch;
       const submittedVersion = session.editVersion;
-      const run = await post<ForgeRun>(connection, "/runs", {
+      const retained =
+        creation ?? (await readCreationMarker(localStorage, scope));
+      if (retained) {
+        if (isCurrent()) setCreation(retained);
+        throw new Error(
+          "A run request is already retained. Check its original result before starting more work.",
+        );
+      }
+      const original = await makeCreationMarker(scope, {
         repository_id: repositoryId,
         brief:
-          brief.trim() ||
+          normalizeRunBrief(brief) ||
           "Verify the current product using its executable checks.",
         operation,
         backend,
@@ -1499,14 +1773,33 @@ export function NewProduct({
         ...(overridePolicies ? { skills: selectedSkills } : {}),
         ...(reviewAgent ? { assurance: { review_agent: reviewAgent } } : {}),
       });
-      if (session.active) {
-        if (session.editVersion === submittedVersion) drafts.discard(session);
-        onCreated(run);
-      }
+      await retainCreationMarker(localStorage, original, navigator.locks, () =>
+        isAction(submittedEpoch),
+      );
+      if (!isAction(submittedEpoch)) return;
+      setCreation(original);
+      setAction({
+        epoch: submittedEpoch,
+        kind: "send",
+        requestId: original.requestId,
+      });
+      session.write("creationSubmission", {
+        requestId: original.requestId,
+        version: submittedVersion,
+      });
+      const receipt = await sendCreation(connection, original, () =>
+        isAction(submittedEpoch, original.requestId),
+      );
+      await finishDecision(
+        original,
+        { version: 1, outcome: "admitted", receipt },
+        submittedEpoch,
+      );
     } catch (cause) {
-      setError(errorText(cause));
+      if (epoch === null ? isCurrent() : isAction(epoch))
+        setError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (epoch !== null) endAction(epoch);
     }
   }
   const titles = [
@@ -1539,6 +1832,7 @@ export function NewProduct({
       <Wizard
         locked={busy}
         className="run-wizard"
+        minimumFieldHeight={creation ? 480 : 160}
         steps={["Brief", "Foundation", "Checks", "Review"]}
         active={step}
         onStep={setStep}
@@ -1876,6 +2170,85 @@ export function NewProduct({
               </div>
             </dl>
           )}
+          {creation && (
+            <section
+              className="run-creation-recovery"
+              aria-label="Original run request"
+            >
+              <h3>
+                {admitted
+                  ? "Run admission confirmed"
+                  : "Original run request retained"}
+              </h3>
+              <p>
+                {admitted
+                  ? "The original request has a recorded run. Check its result to open that run."
+                  : "The outcome is not confirmed. Checking uses the original request identity and does not start another run. A missing result does not prove the request was rejected."}
+              </p>
+              <dl>
+                <div>
+                  <dt>Request</dt>
+                  <dd>
+                    <code>{creation.requestId}</code>
+                  </dd>
+                </div>
+                {admitted && (
+                  <div>
+                    <dt>Run</dt>
+                    <dd>
+                      <code>{admitted.run_id}</code>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              <button
+                className="secondary"
+                type="button"
+                disabled={
+                  action.kind === "cancel" ||
+                  action.kind === "check" ||
+                  !connected
+                }
+                onClick={() => void checkOriginal()}
+              >
+                <FileText size={16} aria-hidden="true" />
+                Check original result
+              </button>
+              {missingOriginal && (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={busy || !connected}
+                  onClick={() => void retryOriginal()}
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  Send original request again
+                </button>
+              )}
+              <p>
+                If this request already started a run, we’ll open that run.
+                Otherwise, cancelling prevents it from starting later.
+              </p>
+              <button
+                className="secondary"
+                type="button"
+                disabled={action.kind === "cancel" || !connected}
+                onClick={() => void cancelOriginal()}
+              >
+                <X size={16} aria-hidden="true" />
+                Cancel this request
+              </button>
+              <details>
+                <summary>Review original input</summary>
+                <OutputView
+                  value={creation.body}
+                  label="Original run input"
+                  copyLabel="Copy original run input"
+                />
+              </details>
+            </section>
+          )}
+          {creationNotice && <p role="status">{creationNotice}</p>}
           {error && (
             <div className="alert" role="alert">
               {error}
@@ -1897,7 +2270,9 @@ export function NewProduct({
             )}
             <button
               className="primary"
-              disabled={busy || !connected || !repositories.length}
+              disabled={
+                busy || Boolean(creation) || !connected || !repositories.length
+              }
             >
               {busy ? (
                 <Loader2 size={17} className="spin" />

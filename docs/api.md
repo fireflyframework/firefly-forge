@@ -30,8 +30,15 @@ running application's OpenAPI document is the authoritative schema.
 | GET/PUT | `/repositories/{id}/policies` | Read or select project policy IDs |
 | GET | `/runs` | List run history |
 | POST | `/runs` | Queue generation and verification |
+| POST | `/run-creation-requests/{request_id}` | Admit the exact retained run input once under its original identity |
+| GET | `/run-creation-requests/{request_id}` | Read the original immutable admission receipt |
+| POST | `/run-creation-requests/{request_id}/cancel` | Settle cancellation against a delayed original submission |
+| GET | `/run-creation-requests/{request_id}/decision` | Read the exact admitted or cancelled terminal decision |
 | GET | `/runs/{id}` | Read a run's events and evidence |
 | GET | `/runs/{id}/plan`, `/runs/{id}/journal` | Inspect durable tasks and receipts |
+| GET | `/runs/{id}/agent-checkpoints/candidates` | Discover bounded original-result references without continuing work |
+| POST | `/runs/{id}/agent-checkpoints/{completion_id}/restores` | Admit one reviewed original-result continuation |
+| GET | `/runs/{id}/agent-checkpoints/{completion_id}/restores/{request_id}` | Read that exact continuation ticket without dispatch |
 | GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
 | POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
 | POST | `/runs/{id}/runner-continuations` | Admit one explicit continuation of the original eligible queued pool command |
@@ -57,6 +64,10 @@ running application's OpenAPI document is the authoritative schema.
 | GET | `/repositories/{id}/assistant/conversations/{conversation_id}/attachments/{attachment_id}/content` | Download the original conversation file |
 | GET | `/repositories/{id}/assistant/conversations/{conversation_id}/capabilities` | Inspect the frozen model's image-input capability without inference |
 | POST | `/repositories/{id}/assistant/conversations/{conversation_id}/turns/{turn_id}/recover` | Fence an expired ownership epoch for explicit reconciliation |
+
+The [original-result recovery guide](recovery.md#explicit-closed-text-implementation-continuation) describes the checkpoint, intent and tagged result bindings required by the restore routes. Candidate discovery returns at most 16 saved implementation references and no model history or response body. Retain the original 32-character hexadecimal request ID before a restore POST; exact readback after an uncertain response never creates a replacement request.
+
+The [uncertain run-submission guide](recovery.md#settle-an-uncertain-run-submission) explains exact admission, cancellation and decision readback. The same enabled user can read or settle cancellation with current read access after signing in again. Replaying admission also requires the original authentication method and current execution authority.
 
 ## Register a repository
 

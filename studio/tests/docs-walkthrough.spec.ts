@@ -5,6 +5,14 @@ import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
+import {
+  fixture as setupRunCreation,
+  open as openRunCreation,
+  submit as submitRunCreation,
+  markers as runCreationMarkers,
+  retainedRunCreation,
+} from "./run-creation-cancellation-fixture";
+import { setup as setupOriginalResult } from "./agent-checkpoint-recovery-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
 import { setupDelivery } from "./campaign-delivery-browser-fixture";
 import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
@@ -18,7 +26,7 @@ import {
 
 // Route fixtures exercise Studio presentation; no provider or knowledge service runs.
 const repository = {
-  id: "fixture-repo",
+  id: "1".repeat(32),
   name: "Fixture Inventory API",
   provider: "git",
   url: "/local/fixture-inventory",
@@ -61,9 +69,9 @@ const failureCandidate = {
   },
 };
 const run = {
-  id: "fixture-run",
+  id: "2".repeat(32),
   repository_id: repository.id,
-  brief: "Fixture reservation verification",
+  brief: "Implement stock reservation and reject over-reservation",
   backend: "pyfly",
   frontend: "none",
   agent: "codex",
@@ -95,7 +103,7 @@ const run = {
     {
       name: "changes.zip",
       size: 2048,
-      url: "/api/v1/runs/fixture-run/artifacts/changes.zip",
+      url: `/api/v1/runs/${"2".repeat(32)}/artifacts/changes.zip`,
     },
   ],
 };
@@ -124,6 +132,7 @@ for (const device of ["desktop", "mobile"])
       );
       let product: unknown = null;
       let admitted = false;
+      const creation = retainedRunCreation(run.id);
       let searchSettings: Record<string, unknown> = {
         provider: "brave",
         endpoint: "https://api.search.brave.com/res/v1/web/search",
@@ -356,12 +365,20 @@ for (const device of ["desktop", "mobile"])
                   },
                 ],
               };
-        else if (path.endsWith("/runs")) {
-          if (request.method() === "POST") {
-            admitted = true;
-            json = run;
-          } else json = admitted ? [run] : [];
-        } else if (path.endsWith("/runs/fixture-run")) json = run;
+        else if (/\/run-creation-requests\/[a-f0-9]{32}$/.test(path)) {
+          expect(request.method()).toBe("POST");
+          json = await creation.admit(path, request.postDataJSON());
+          expect(creation.input).toMatchObject({
+            repository_id: repository.id,
+            brief: run.brief,
+            publish: false,
+          });
+          admitted = true;
+        } else if (path.endsWith("/runs")) {
+          expect(request.method()).toBe("GET");
+          json = admitted ? [{ ...creation.run, ...run }] : [];
+        } else if (path.endsWith(`/runs/${run.id}`))
+          json = { ...creation.run, ...run };
         else if (path.endsWith("/plan"))
           json = {
             revision: 1,
@@ -505,7 +522,7 @@ for (const device of ["desktop", "mobile"])
       await page.getByRole("button", { name: /Start run.*revision 1/ }).click();
       await page
         .getByLabel("What should this change accomplish?")
-        .fill("Implement stock reservation and reject over-reservation");
+        .fill(run.brief);
       await capture(page, "run-brief", theme, device);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await capture(page, "run-foundation", theme, device);
@@ -536,6 +553,10 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Start building", exact: true })
         .click();
       await expect.poll(() => admitted).toBe(true);
+      expect(creation.run).toMatchObject({ id: run.id, status: "queued" });
+      await expect(
+        page.getByText("Your run has been opened.", { exact: true }),
+      ).toBeVisible();
       await navigate(page, "Factory");
       await page.evaluate(() => document.fonts.ready);
       const floorBounds = await page
@@ -558,9 +579,7 @@ for (const device of ["desktop", "mobile"])
       expect(floorBounds.bottom).toBeLessThanOrEqual(floorBounds.footerTop);
       expect(floorBounds.height).toBeGreaterThanOrEqual(180);
       await capture(page, "factory-overview", theme, device);
-      await page
-        .getByRole("button", { name: /Fixture reservation verification/ })
-        .click();
+      await page.getByRole("button", { name: new RegExp(run.brief) }).click();
       await capture(page, "run-context", theme, device);
       for (const tab of ["Changes", "Verification", "Plan", "Artifacts"]) {
         await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -579,7 +598,7 @@ for (const device of ["desktop", "mobile"])
         await capture(page, `evidence-${tab.toLowerCase()}`, theme, device);
       }
       await expect(
-        page.getByText("Your run has been queued.", { exact: true }),
+        page.getByText("Your run has been opened.", { exact: true }),
       ).toBeVisible();
       await page
         .getByRole("button", { name: "Dismiss notification", exact: true })
@@ -3045,3 +3064,343 @@ for (const device of ["desktop", "mobile"])
       expect(exactReads).toHaveLength(1);
       expect(receipt?.request_digest).toBe(archiveFixtureDigest(original));
     });
+
+// Controlled recovery guides share the regression fixtures; no native run or model executes.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"] as const) {
+    test(`guided fixture journey original run request ${device} ${theme}`, async ({
+      page,
+      context,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const fixture = await setupRunCreation(context);
+      await openRunCreation(page, true);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await submitRunCreation(
+        page,
+        "Keep fictional inventory reservations within available stock.",
+      );
+      const [original] = await runCreationMarkers(page);
+      const panel = page.getByRole("region", {
+        name: "Original run request",
+        exact: true,
+      });
+      await panel
+        .getByRole("button", { name: "Check original result", exact: true })
+        .click();
+      await expect(
+        panel.getByRole("button", {
+          name: "Send original request again",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        panel.getByRole("button", { name: "Cancel this request", exact: true }),
+      ).toBeVisible();
+      expect((await runCreationMarkers(page))[0].requestId).toBe(
+        original.requestId,
+      );
+      expect(
+        fixture.calls.filter((call) => call.action === "original"),
+      ).toHaveLength(1);
+      await expect(panel.locator("dd code").first()).toHaveText(
+        original.requestId,
+      );
+      expect(
+        await panel.evaluate((element) => {
+          const scroll = element.closest(".wizard-field-scroll")!;
+          return (
+            element.scrollWidth <= element.clientWidth &&
+            scroll.scrollWidth <= scroll.clientWidth &&
+            document.documentElement.scrollWidth <= innerWidth &&
+            (innerWidth > 600 ||
+              getComputedStyle(scroll).overflowY === "visible")
+          );
+        }),
+      ).toBe(true);
+      for (const button of await panel.locator(":scope > button").all()) {
+        await button.scrollIntoViewIfNeeded();
+        await button.focus();
+        await expect(button).toBeFocused();
+        const geometry = await button.evaluate((element) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return {
+            inFrame:
+              box.left >= 0 &&
+              box.right <= innerWidth &&
+              box.top >= header.bottom &&
+              box.bottom <= footer.top,
+            hit: element.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            ),
+            touchHeight: box.height >= 44,
+          };
+        });
+        expect(geometry).toEqual({
+          inFrame: true,
+          hit: true,
+          touchHeight: true,
+        });
+      }
+      await capture(page, "recovery-run-request-held", theme, device, {
+        resetFields: false,
+        actionSelector: '[aria-label="Original run request"] > button',
+      });
+      for (let step = 0; step < 3; step++)
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      const editedBrief =
+        "Keep my revised fictional reservation rules for the next request.";
+      await page
+        .getByLabel("What should this change accomplish?", { exact: true })
+        .fill(editedBrief);
+      await panel
+        .getByRole("button", { name: "Cancel this request", exact: true })
+        .click();
+      await expect(
+        page.getByText("Request cancelled. You can edit and start again.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByLabel("What should this change accomplish?", { exact: true }),
+      ).toHaveValue(editedBrief);
+      expect(await runCreationMarkers(page)).toEqual([]);
+      expect(fixture.calls.map((call) => call.action)).toEqual([
+        "original",
+        "decision",
+        "cancel",
+      ]);
+      await expect(
+        page.getByRole("button", { name: "Continue", exact: true }),
+      ).toBeEnabled();
+      await capture(page, "recovery-run-request-cancelled", theme, device, {
+        resetFields: false,
+      });
+    });
+
+    test(`guided fixture journey original model result ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupOriginalResult(page, "restore", "lost", theme);
+      const panel = page.getByRole("region", {
+        name: "Original model result",
+        exact: true,
+      });
+      const review = panel.getByRole("button", {
+        name: "Review original result",
+        exact: true,
+      });
+      await expect(
+        panel.getByLabel("Original implementation attempt"),
+      ).toBeVisible();
+      await expect(
+        panel.getByText("Original result saved", { exact: true }),
+      ).toBeVisible();
+      expect(state.posts).toBe(0);
+      await alignOperatorGuide(page, ".agent-checkpoint-recovery h2");
+      await capture(page, "recovery-original-result-ready", theme, device, {
+        actionSelector: ".agent-checkpoint-recovery > button",
+      });
+      await review.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Review continuation",
+          exact: true,
+        }),
+      ).toBeFocused();
+      const continuation = panel.getByRole("button", {
+        name: "Continue from original result",
+        exact: true,
+      });
+      await expect(continuation).toBeDisabled();
+      await panel.getByRole("checkbox").check();
+      await expect(continuation).toBeEnabled();
+      expect(state.posts).toBe(0);
+      await capture(page, "recovery-original-result-review", theme, device, {
+        actionSelector: ".agent-checkpoint-review button.primary",
+      });
+      await continuation.click();
+      await expect(
+        page.getByText(/Existing request identities stay held/),
+      ).toBeVisible();
+      const requestId = state.request;
+      await panel
+        .getByRole("button", { name: "Read exact saved request", exact: true })
+        .click();
+      await expect(
+        page.getByText(/This does not prove the request was not accepted/),
+      ).toBeVisible();
+      expect(state.posts).toBe(1);
+      expect(state.reads).toBe(1);
+      expect(state.request).toBe(requestId);
+      const saved = await page.evaluate(
+        () =>
+          Object.entries(sessionStorage).find(([key]) =>
+            key.startsWith("forge.agent-checkpoint.v1:"),
+          )?.[1],
+      );
+      expect(saved).toContain(requestId);
+      await expect(
+        panel.getByRole("button", {
+          name: "Continue from original result",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await capture(page, "recovery-original-result-held", theme, device, {
+        actionSelector: ".agent-checkpoint-recovery .card-actions button",
+        focusSelector: ".agent-checkpoint-recovery",
+      });
+      expect(
+        await panel.evaluate((element) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return (
+            box.height > footer.top - header.bottom - 32 ||
+            box.top >= header.bottom + 8
+          );
+        }),
+      ).toBe(true);
+
+      const provider = {
+        id: "bridge",
+        name: "Bridge",
+        ready: true,
+        detail: "Controlled recovery configuration fixture",
+        config: { model: "bridge/default" },
+        fields: ["model", "completion_recovery", "checkpoints"].map((key) => ({
+          key,
+          label: key === "model" ? "Model" : key,
+          secret: false,
+          required: false,
+          placeholder: "",
+        })),
+      };
+      let configurationWrites = 0,
+        probes = 0;
+      await page.route("**/api/v1/providers**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/test")) probes++;
+        if (route.request().method() !== "GET") configurationWrites++;
+        await route.fulfill({
+          json: path.endsWith("/providers") ? [provider] : provider,
+        });
+      });
+      await page.reload();
+      await navigate(page, "Connections");
+      await page
+        .getByRole("button", { name: "Configure", exact: true })
+        .click();
+      await expect(
+        page.getByLabel("Original model result recovery", { exact: true }),
+      ).toHaveValue("");
+      await expect(
+        page.getByLabel("Implementation checkpoints", { exact: true }),
+      ).toHaveValue("");
+      await page
+        .getByLabel("Original model result recovery", { exact: true })
+        .selectOption("required");
+      await page
+        .getByLabel("Implementation checkpoints", { exact: true })
+        .selectOption("required");
+      const choices = page.getByRole("group", {
+        name: "Original model results",
+        exact: true,
+      });
+      for (const select of await choices.locator("select").all()) {
+        await expect(select.locator("option:checked")).toHaveText("Required");
+        await select.scrollIntoViewIfNeeded();
+        await select.focus();
+        await expect(select).toBeFocused();
+        expect(
+          await select.evaluate((element) => {
+            const style = getComputedStyle(element),
+              context = document.createElement("canvas").getContext("2d")!,
+              box = element.getBoundingClientRect();
+            context.font = style.font;
+            return (
+              context.measureText(element.selectedOptions[0].textContent!)
+                .width <=
+                element.clientWidth -
+                  parseFloat(style.paddingLeft) -
+                  parseFloat(style.paddingRight) &&
+              element.contains(
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ),
+              )
+            );
+          }),
+        ).toBe(true);
+      }
+      const choicesFit = await choices.evaluate((element) => {
+        const scroll = element.closest(".wizard-field-scroll")!,
+          header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect(),
+          footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
+        return (
+          element.getBoundingClientRect().height <=
+          Math.min(
+            footer.top - header.bottom - 32,
+            scroll.scrollHeight > scroll.clientHeight
+              ? scroll.clientHeight - 16
+              : Infinity,
+          )
+        );
+      });
+      await capture(page, "recovery-bridge-choices", theme, device, {
+        actionSelector: choicesFit
+          ? ".bridge-recovery-choices"
+          : ".bridge-recovery-choices .field",
+        focusSelector: ".bridge-recovery-choices",
+        resetFields: false,
+      });
+      expect(
+        await choices.evaluate((element, fit) => {
+          const box = element.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return (
+            box.left >= 0 &&
+            box.right <= innerWidth &&
+            (!fit || (box.top >= header.bottom && box.bottom <= footer.top)) &&
+            element.scrollWidth <= element.clientWidth &&
+            document.documentElement.scrollWidth <= innerWidth
+          );
+        }, choicesFit),
+      ).toBe(true);
+      expect(configurationWrites).toBe(0);
+      expect(probes).toBe(0);
+    });
+  }

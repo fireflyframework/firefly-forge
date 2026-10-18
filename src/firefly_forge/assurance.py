@@ -229,6 +229,9 @@ class Assurance:
             from firefly_forge.providers import get_provider
 
             provider = get_provider(agent, settings)
+        from firefly_forge.configuration import validate_checkpoints
+
+        validate_checkpoints(settings, task="review", provider=agent)
         brief = prompt_text(
             "assurance/review",
             schema=json.dumps(ReviewReport.model_json_schema()),

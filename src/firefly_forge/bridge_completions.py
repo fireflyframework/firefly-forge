@@ -79,7 +79,13 @@ class BridgeCompletions:
         self.store, self.journal = store, journal
 
     async def _budget(
-        self, run_id: str, *, reserve: bool = False, payload_bytes: int = 0, consume: bool = False
+        self,
+        run_id: str,
+        *,
+        reserve: bool = False,
+        payload_bytes: int = 0,
+        consume: bool = False,
+        checkpoint_consume: bool = False,
     ) -> None:
         budget = await self.journal.records.bridge_budget(identifier(run_id))
         # Reserve the escaped transport response and its journal envelope. No eviction or replacement.
@@ -88,6 +94,8 @@ class BridgeCompletions:
             or budget["max_intent_bytes"] > 16384
             or budget["bytes"]
             + max(budget["intents"] - budget["responses"] - int(consume), 0) * RESERVATION
+            + max(budget.get("checkpoints", 0) - budget.get("checkpoint_consumes", 0) - int(checkpoint_consume), 0)
+            * 4096
             + payload_bytes
             + (RESERVATION if reserve else 0)
             > MAX_BYTES
@@ -203,6 +211,22 @@ class BridgeCompletions:
         }:
             raise asyncio.CancelledError()
 
+    async def _current(
+        self,
+        frozen: Data,
+        field: str,
+        reader: Any,
+        assert_ownership: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
+        if assert_ownership is not None:
+            await assert_ownership()
+        await self.store.assert_ownership()
+        value = await self.store.get_run(frozen["id"])
+        if _cut(value, field) != _cut(frozen, field):
+            raise AccessDenied("Bridge completion owner or source/configuration cut changed")
+        await self._execution(value, reader)
+        return value
+
     def scope(
         self,
         run: Data,
@@ -210,6 +234,7 @@ class BridgeCompletions:
         *,
         review: bool = False,
         assert_ownership: Callable[[], Awaitable[None]] | None = None,
+        retain_intent: Callable[[Data, bytes], Awaitable[None]] | None = None,
     ) -> BridgeCompletionScope:
         frozen = copy.deepcopy(run)
         field = "review_config_revision" if review else "config_revision"
@@ -234,14 +259,7 @@ class BridgeCompletions:
         }
 
         async def current() -> Data:
-            if assert_ownership is not None:
-                await assert_ownership()
-            await self.store.assert_ownership()
-            value = await self.store.get_run(frozen["id"])
-            if _cut(value, field) != binding["scope_digest"]:
-                raise AccessDenied("Bridge completion owner or source/configuration cut changed")
-            await self._execution(value, reader)
-            return value
+            return await self._current(frozen, field, reader, assert_ownership)
 
         async def prepare(body: bytes) -> None:
             _outside_unit()
@@ -269,7 +287,7 @@ class BridgeCompletions:
             payload = {"version": 1, **binding, "descriptor": descriptor}
             await prepare(body)
             async with self.store._unit():
-                await self._writer(frozen)
+                await self._writer(frozen, reader if retain_intent is not None else None)
                 row = await self.journal._run(frozen["id"])
                 await current()
                 existing = await self.journal.records.bridge_record(row.id, descriptor["request_id"], INTENT)
@@ -278,6 +296,10 @@ class BridgeCompletions:
                     payload["task_attempt"] = original["payload"]["task_attempt"]
                     if original["payload"] != payload:
                         raise ValueError("Completion identity was already bound to another request")
+                    if retain_intent is not None:
+                        await retain_intent(original, body)
+                        await current()
+                        self.store.reject_credentials(body.decode("utf-8"))
                     return original
                 actual = await self.journal._effect_task(frozen["id"], key)
                 if actual.task_id != task_id or actual.status != "running":
@@ -296,6 +318,8 @@ class BridgeCompletions:
                         },
                     }
                     await self.store.run_records.save(row)
+                if retain_intent is not None:
+                    await retain_intent(record, body)
                 await current()
                 self.store.reject_credentials(body.decode("utf-8"))
             await current()

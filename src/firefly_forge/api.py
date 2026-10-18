@@ -28,6 +28,9 @@ from firefly_forge import __version__
 from firefly_forge.access_controllers import AccessController
 from firefly_forge.access_persistence import ForgeAccessEventRepository, ForgeMembershipRepository
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.agent_checkpoints import AgentCheckpoints
+from firefly_forge.agent_restore_controllers import AgentCheckpointCandidateController, AgentRestoreController
+from firefly_forge.agent_restores import AgentRestores
 from firefly_forge.agent_role_controllers import AgentRoleController
 from firefly_forge.agent_roles import RoleRegistry
 from firefly_forge.analysis_context import ReviewedAnalysisContext
@@ -165,6 +168,13 @@ from firefly_forge.projects import Projects
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
+from firefly_forge.run_creation_controllers import RunCreationController
+from firefly_forge.run_creation_persistence import (
+    ForgeRunCreationCancellationRepository,
+    ForgeRunCreationRequestRepository,
+    ForgeRunCreationReservationRepository,
+)
+from firefly_forge.run_creation_requests import RunCreationRequests
 from firefly_forge.run_evidence import RunEvidence
 from firefly_forge.run_evidence_controllers import RunEvidenceController
 from firefly_forge.runner_backends import RunnerBackends
@@ -403,6 +413,12 @@ class FactoryConfiguration:
         requests.cancel_effect = engine.cancel_effect
         store.execution_requests = requests
         return requests
+
+    @bean
+    def agent_restores(self, store: Store, requests: ExecutionRequests, engine: Engine) -> AgentRestores:
+        restores = AgentRestores(store, requests, engine)
+        requests.agent_restores = restores
+        return restores
 
     @bean
     def runner_continuations(
@@ -998,6 +1014,11 @@ def create_runtime(
         ForgeJournalRepository,
         ProviderService,
         RunService,
+        RunCreationRequests,
+        ForgeRunCreationRequestRepository,
+        ForgeRunCreationReservationRepository,
+        ForgeRunCreationCancellationRepository,
+        RunCreationController,
         OperatorErrors,
         CatalogController,
         RepositoryController,
@@ -1008,6 +1029,9 @@ def create_runtime(
         KnowledgeController,
         LearningController,
         LearningObservationAttempts,
+        AgentCheckpoints,
+        AgentRestoreController,
+        AgentCheckpointCandidateController,
         JournalController,
         BridgeCompletionController,
         RunEvidenceController,

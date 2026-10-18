@@ -39,7 +39,11 @@ The server never returns the token. Responses contain `token_configured` or `api
 | --- | --- |
 | `codex`, `claude` | `executable`, `model`, `timeout` |
 | `agentic` | `model`, `endpoint`, `api_key`, `timeout`, `max_tokens` |
-| `bridge` | `model`, `endpoint`, `token`, `timeout` |
+| `bridge` | `model`, `endpoint`, `token`, `timeout`, optional `completion_recovery`, optional `checkpoints` |
+
+For the restricted [closed-text implementation continuation](recovery.md#explicit-closed-text-implementation-continuation), `checkpoints` accepts `disabled` or `required`; required also needs `completion_recovery: required`. Absence does not insert a default into queued snapshots. Review and other tasks do not support required checkpoints.
+
+Studio groups these choices under **Original model results** in the Bridge configuration form. Choose required result recovery before required checkpoints. **Keep current default (unset)** omits the field from this save. It preserves an absent field and leaves any saved value in place. To stop requiring checkpoints, choose **Disabled**. Saving an unrelated model setting does not opt an unconfigured provider into checkpoint recovery. Configure the independent review profile separately. See [reviewing a held result](recovery.md#review-a-held-result-in-studio) for the later operator steps.
 
 `api` remains an alias for `agentic`. Timeout values range from 1 to 7,200 seconds. Direct API output-token limits range from 1 to 131,072. The provider's actual model may impose a lower limit. Generation request and tool budgets remain bounded.
 

@@ -8,6 +8,7 @@ import copy
 import re
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -34,7 +35,7 @@ from firefly_forge.project_campaign_persistence import (
 from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.projects import Projects
-from firefly_forge.store import Store, identifier, now
+from firefly_forge.store import PreparedRunAdmission, Store, identifier, now, prepared_credential_rejection
 from firefly_forge.tool_broker import tool_policy_snapshot
 
 Data = dict[str, Any]
@@ -224,6 +225,7 @@ class ProjectCampaigns:
         return True
 
     async def launch(self, project_id: str, request: CampaignLaunch) -> Data:
+        settings_generation = self.store.configuration.settings_generation
         await self.store.admit_credentials(request.model_dump())
         if not self.store.runtime_roles or self.store.runtime_roles.executes_jobs:
             await self.engine.assert_ownership()
@@ -257,117 +259,135 @@ class ProjectCampaigns:
         source_bases = {
             repo_id: await self._source_base(await self.store.repository(repo_id)) for repo_id in sorted(repositories)
         }
-        async with self.store._unit() as session:
-            await session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-                {"key": f"forge:campaign:{self.store.schema}:{project_id}:{request.request_id}"},
+        admissions: dict[str, PreparedRunAdmission] = {}
+        for component in definition.components:
+            if component.id not in selected:
+                continue
+            input_run = RunInput(
+                repository_id=component.repository_id,
+                project_id=project_id,
+                component_id=component.id,
+                brief=request.brief,
+                agent=request.agent,
+                operation=request.operation,
+                assurance=request.assurance,
+                publish=request.publish,
             )
-            existing = await self.records.request(identifier(project_id), request.request_id)
-            if existing is not None:
-                if existing.data["request_digest"] != request_digest:
-                    raise ValueError("Campaign request identity already has another launch definition")
-                return await self.campaign(project_id, existing.id.hex)
-            current = await self.project_records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
-            if current is None or current.data["digest"] != project["digest"]:
-                raise ValueError("The project changed during campaign admission; launch again with a new request")
-            for repo_id in sorted(repositories | {str(definition.product_repository_id)}):
-                await self.store.repository_records.find_by_id(identifier(repo_id), lock=LockMode.PESSIMISTIC_WRITE)
-            if self._configuration_vector(str(definition.product_repository_id), agents) != configuration:
-                raise ValueError("Campaign settings changed during source and runner preflight; launch again")
-            row = ForgeCampaignEntity(
-                id=uuid.uuid4(),
-                project_id=identifier(project_id),
-                request_id=request.request_id,
-                status="running",
-                data={
-                    "request_digest": request_digest,
-                    "launch": request.model_dump(),
-                    "project_snapshot": copy.deepcopy(project),
-                    "current_attempts": {item: 1 for item in selected},
-                    "created_at": now(),
-                    "updated_at": now(),
-                },
+            runner, tools = prepared.get(component.repository_id, (None, None))
+            admission = await self.store.prepare_run(
+                input_run, prepared_runner=copy.deepcopy(runner), prepared_tools=copy.deepcopy(tools)
             )
-            await self.records.save(row)
-            first: Data | None = None
-            for component in definition.components:
-                if component.id not in selected:
-                    continue
-                input_run = RunInput(
-                    repository_id=component.repository_id,
-                    project_id=project_id,
-                    component_id=component.id,
-                    brief=request.brief,
-                    agent=request.agent,
-                    operation=request.operation,
-                    assurance=request.assurance,
-                    publish=request.publish,
+            self._validate_admission_snapshots(admission.unpack()["run"], configuration)
+            admissions[component.id] = admission
+        if self._configuration_vector(str(definition.product_repository_id), agents) != configuration:
+            raise ValueError("Campaign settings changed during source and runner preflight; launch again")
+        if settings_generation is not self.store.configuration.settings_generation:
+            raise ValueError("Campaign settings changed during preparation")
+        generation = self.store.configuration.write_generation
+        admissions = {key: replace(value, generation=generation) for key, value in admissions.items()}
+        with prepared_credential_rejection(self.store):
+            async with self.store._unit() as session:
+                await self.store.fence_prepared_runs(list(admissions.values()))
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": f"forge:campaign:{self.store.schema}:{project_id}:{request.request_id}"},
                 )
-                if component.repository_id in prepared:
-                    runner, tools = prepared[component.repository_id]
-                    run = await self.store.create_run(
-                        input_run, prepared_runner=copy.deepcopy(runner), prepared_tools=copy.deepcopy(tools)
-                    )
-                else:
-                    run = await self.store.create_run(input_run)
-                self._validate_admission_snapshots(run, configuration)
-                if first is not None:
-                    for field in ("product_definition", "branding_snapshot", "design_snapshot"):
-                        if run.get(field) != first.get(field):
-                            raise ValueError("Product or brand snapshots changed during campaign admission")
-                    for field in (
-                        "config_revision",
-                        "execution_config",
-                        "review_config_revision",
-                        "review_execution_config",
-                        "knowledge_snapshot",
-                    ):
-                        run[field] = copy.deepcopy(first.get(field))
-                else:
-                    first = run
-                if self._configuration_vector(str(definition.product_repository_id), agents) != configuration:
-                    raise ValueError("Policy, role, brand or credential settings changed during campaign admission")
-                run.pop("events", None)
-                run.update(
-                    status="campaign_blocked",
-                    campaign_context={
-                        "campaign_id": row.id.hex,
-                        "component_id": component.id,
-                        "attempt": 1,
-                        "source_base": source_bases[component.repository_id],
-                        "dependency_gate": request.dependency_gate,
-                        "upstream_receipts": [],
-                        "integration": "Frozen source base; upstream artifacts are references, not merged code.",
+                existing = await self.records.request(identifier(project_id), request.request_id)
+                if existing is not None:
+                    if existing.data["request_digest"] != request_digest:
+                        raise ValueError("Campaign request identity already has another launch definition")
+                    return await self.campaign(project_id, existing.id.hex)
+                current = await self.project_records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if current is None or current.data["digest"] != project["digest"]:
+                    raise ValueError("The project changed during campaign admission; launch again with a new request")
+                for repo_id in sorted(repositories | {str(definition.product_repository_id)}):
+                    await self.store.repository_records.find_by_id(identifier(repo_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if self.store.configuration.write_generation is not generation:
+                    raise ValueError("Campaign settings changed during source and runner preflight; launch again")
+                row = ForgeCampaignEntity(
+                    id=uuid.uuid4(),
+                    project_id=identifier(project_id),
+                    request_id=request.request_id,
+                    status="running",
+                    data={
+                        "request_digest": request_digest,
+                        "launch": request.model_dump(),
+                        "project_snapshot": copy.deepcopy(project),
+                        "current_attempts": {item: 1 for item in selected},
+                        "created_at": now(),
+                        "updated_at": now(),
                     },
                 )
-                await self.store.update(run["id"], **{key: value for key, value in run.items() if key != "id"})
-                await self.children.save(
-                    ForgeCampaignChildEntity(
-                        id=uuid.uuid4(),
-                        campaign_id=row.id,
-                        component_id=component.id,
-                        attempt=1,
-                        run_id=identifier(run["id"]),
-                        data={
-                            "admission": copy.deepcopy(run),
-                            "depends_on": component.depends_on,
-                            "admission_digest": digest(run),
+                await self.records.save(row)
+                first: Data | None = None
+                for component in definition.components:
+                    if component.id not in selected:
+                        continue
+                    run = await self.store.insert_prepared_run_locked(admissions[component.id])
+                    if first is not None:
+                        for field in ("product_definition", "branding_snapshot", "design_snapshot"):
+                            if run.get(field) != first.get(field):
+                                raise ValueError("Product or brand snapshots changed during campaign admission")
+                        for field in (
+                            "config_revision",
+                            "execution_config",
+                            "review_config_revision",
+                            "review_execution_config",
+                            "knowledge_snapshot",
+                        ):
+                            run[field] = copy.deepcopy(first.get(field))
+                    else:
+                        first = run
+                    if self.store.configuration.write_generation is not generation:
+                        raise ValueError("Policy, role, brand or credential settings changed during campaign admission")
+                    run.pop("events", None)
+                    run.update(
+                        status="campaign_blocked",
+                        campaign_context={
+                            "campaign_id": row.id.hex,
+                            "component_id": component.id,
+                            "attempt": 1,
+                            "source_base": source_bases[component.repository_id],
+                            "dependency_gate": request.dependency_gate,
+                            "upstream_receipts": [],
+                            "integration": "Frozen source base; upstream artifacts are references, not merged code.",
                         },
                     )
+                    await self.store.update(run["id"], **{key: value for key, value in run.items() if key != "id"})
+                    await self.children.save(
+                        ForgeCampaignChildEntity(
+                            id=uuid.uuid4(),
+                            campaign_id=row.id,
+                            component_id=component.id,
+                            attempt=1,
+                            run_id=identifier(run["id"]),
+                            data={
+                                "admission": copy.deepcopy(run),
+                                "depends_on": component.depends_on,
+                                "admission_digest": digest(run),
+                            },
+                        )
+                    )
+                await self._append(
+                    row,
+                    "launch",
+                    "launch",
+                    {
+                        "request_digest": request_digest,
+                        "project_digest": project["digest"],
+                        "component_ids": selected,
+                        "source_bases": source_bases,
+                    },
                 )
-            await self._append(
-                row,
-                "launch",
-                "launch",
-                {
-                    "request_digest": request_digest,
-                    "project_digest": project["digest"],
-                    "component_ids": selected,
-                    "source_bases": source_bases,
-                },
-            )
-            await self._release(row)
-            return await self.campaign(project_id, row.id.hex)
+                await self._release(row)
+                result = await self.campaign(project_id, row.id.hex)
+                for admission in admissions.values():
+                    self.store.assert_prepared_run_settings(admission)
+        await self.store.admit_credentials(result)
+        for admission in admissions.values():
+            await self.store._prepared_run_actor(admission)
+            self.store.assert_prepared_run_settings(admission)
+        return result
 
     async def campaigns(self, project_id: str) -> list[Data]:
         await self.projects.project(project_id)

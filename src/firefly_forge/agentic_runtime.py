@@ -55,6 +55,24 @@ async def execute_agentic(
     from pydantic_ai.messages import BinaryContent, ToolReturn, UserPromptPart
     from pydantic_ai.usage import UsageLimits
 
+    from firefly_forge.agentic_checkpoint_invocation import current_checkpoint_invocation
+    from firefly_forge.configuration import validate_checkpoints
+
+    selected_settings = (
+        settings
+        if settings is not None
+        else {
+            name: os.environ[name]
+            for name in ("FORGE_AGENTIC_CHECKPOINTS", "FORGE_BRIDGE_COMPLETION_RECOVERY")
+            if name in os.environ
+        }
+    )
+    validate_checkpoints(selected_settings, provider="bridge" if not allow_output_token_cap else "agentic")
+    invocation = (
+        current_checkpoint_invocation() if selected_settings.get("FORGE_AGENTIC_CHECKPOINTS") == "required" else None
+    )
+    if selected_settings.get("FORGE_AGENTIC_CHECKPOINTS") == "required" and invocation is None:
+        raise ValueError("Required checkpoint execution needs a native checkpoint invocation")
     context = runtime_context or ToolRuntimeContext(workspace, workspace)
     tools = WorkspaceTools(context.scope_root, repository_root=context.repository_root)
     evidence_records: dict[str, dict[str, Any]] = {}
@@ -79,6 +97,9 @@ async def execute_agentic(
     def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(handler)
         async def invoke(*args: Any, **kwargs: Any) -> Any:
+            if invocation is not None:
+                await invocation.guard()
+                invocation.remaining()
             arguments = [
                 [arg.model_dump(mode="json") if isinstance(arg, BaseModel) else arg for arg in args],
                 {
@@ -88,6 +109,8 @@ async def execute_agentic(
             ]
             if context.credential_admission is not None:
                 await context.credential_admission(arguments)
+            if invocation is not None:
+                await invocation.guard()
             if contains_known_credential(arguments, context.credential_registry()):
                 raise ValueError("Native tool arguments cannot contain configured credentials")
             try:
@@ -386,6 +409,26 @@ async def execute_agentic(
     selected_model = model or settings.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
     # FireflyAgent's annotation predates the supported Pydantic AI output wrappers.
     output_spec: Any = RuntimeReport if allow_output_token_cap else PromptedOutput(RuntimeReport)
+    from contextlib import nullcontext
+
+    from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary
+    from firefly_forge.bridge_completion_scope import bridge_completion_scope
+
+    boundary = (
+        AgenticBoundary(
+            lambda: {"files_written": sorted(tools.files_written)},
+            restore=invocation.restored.checkpoint if invocation and invocation.restored else None,
+        )
+        if invocation is not None
+        else None
+    )
+    if invocation is not None and invocation.restored is not None:
+        tools.files_written.update(invocation.restored.checkpoint.state["files_written"])
+    native_scope = (
+        invocation.attach(boundary, brief, backend, frontend, context, settings)
+        if invocation is not None and boundary is not None
+        else None
+    )
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
@@ -412,15 +455,26 @@ async def execute_agentic(
             firefly_tool(name, description=prompt_text("tools/" + name), auto_register=False)(guarded(handler))
             for name, handler in handlers.items()
         ],
-        capabilities=[ProcessHistory(image_history)],
+        capabilities=[ProcessHistory(image_history), *([boundary] if boundary is not None else [])],
     )
     await emit("provider", "Firefly Agentic is generating source with confined workspace tools")
     try:
-        result = await agent.run(
-            brief,
-            timeout=float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
-            usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
-        )
+        with (
+            boundary.invocation() if boundary is not None else nullcontext(),
+            bridge_completion_scope(native_scope) if native_scope is not None else nullcontext(),
+        ):
+            if invocation is not None and invocation.restored is not None:
+                result = await agent.run(
+                    **invocation.restored.checkpoint.resume_kwargs(), timeout=invocation.remaining()
+                )
+            else:
+                result = await agent.run(
+                    brief,
+                    timeout=invocation.remaining()
+                    if invocation is not None
+                    else float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                    usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
+                )
     except ToolError as exc:
         # Native tool wrappers retain the typed cause; text cannot authorize a supervisor transition.
         cause: BaseException = exc
@@ -433,6 +487,9 @@ async def execute_agentic(
         raise
     if context.credential_admission is not None:
         await context.credential_admission(result.output.model_dump(mode="json"))
+    if invocation is not None:
+        await invocation.guard()
+        invocation.remaining()
     feedback = result.output.worker_feedback
     if not tools.files_written and (feedback is None or feedback.disposition not in {"blocked", "clarification"}):
         raise RuntimeError("Firefly Agentic returned without writing any project source")

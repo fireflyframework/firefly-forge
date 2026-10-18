@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, nullcontext
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager, nullcontext
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +20,7 @@ from typing import Any, cast
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode, SessionProvider
 from pyfly.data.relational.sqlalchemy.transaction_manager import SqlAlchemyTransactionManager
+from pyfly.data.transaction import current_unit_of_work
 from pyfly.data.transaction.registry import TransactionManagerRegistry
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -45,6 +49,85 @@ from firefly_forge.secrets import contains_known_credential
 
 Data = dict[str, Any]
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
+
+
+@dataclass(frozen=True)
+class PreparedRunAdmission:
+    packet: bytes
+    generation: object
+    settings_generation: object | None = None
+    tuple_paths: tuple[tuple[str | int, ...], ...] = ()
+
+    @classmethod
+    def capture(
+        cls, packet: Data, generation: object, settings_generation: object | None = None
+    ) -> PreparedRunAdmission:
+        paths: list[tuple[str | int, ...]] = []
+
+        def visit(value: Any, path: tuple[str | int, ...]) -> None:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    visit(child, (*path, key))
+            elif isinstance(value, (list, tuple)):
+                for index, child in enumerate(value):
+                    visit(child, (*path, index))
+                if isinstance(value, tuple):
+                    paths.append(path)
+
+        visit(packet, ())
+        return cls(
+            json.dumps(packet, separators=(",", ":"), ensure_ascii=False).encode(),
+            generation,
+            settings_generation,
+            tuple(paths),
+        )
+
+    def unpack(self) -> Data:
+        if type(self.packet) is not bytes:
+            raise ValueError("Prepared run admission requires immutable bytes")
+        packet = json.loads(self.packet)
+        if not isinstance(packet, dict):
+            raise ValueError("Prepared run admission requires an object")
+        for path in self.tuple_paths:
+            value = packet
+            for key in path[:-1]:
+                value = value[key]
+            value[path[-1]] = tuple(value[path[-1]])
+        return packet
+
+
+@dataclass(frozen=True)
+class _CredentialCut:
+    store: Store
+    source: Callable[[], dict[str, str]]
+    generation: object
+    registry: tuple[tuple[str, str], ...]
+
+
+_credential_cut: ContextVar[_CredentialCut | None] = ContextVar("prepared_credential_cut", default=None)
+
+
+def _credential_registry(store: Store) -> dict[str, str]:
+    registry = {**store.credential_registry()}
+    for provider in ("codex", "claude", "bridge", "agentic"):
+        registry.update(store.configuration.resolve(provider))
+    return registry
+
+
+@contextmanager
+def prepared_credential_rejection(store: Store) -> Iterator[None]:
+    if current_unit_of_work() is not None:
+        raise ValueError("Prepare credential rejection outside the native transaction")
+    generation = store.configuration.write_generation
+    source = store.credential_registry
+    registry = tuple(_credential_registry(store).items())
+    if generation is not store.configuration.write_generation or source is not store.credential_registry:
+        raise ValueError("Credential sources changed during preparation")
+    token = _credential_cut.set(_CredentialCut(store, source, generation, registry))
+    try:
+        yield
+    finally:
+        _credential_cut.reset(token)
 
 
 def now() -> str:
@@ -259,6 +342,27 @@ class Store:
         prepared_runner: Data | None = None,
         prepared_tools: list[Data] | None = None,
     ) -> Data:
+        prepared = await self.prepare_run(request, prepared_runner=prepared_runner, prepared_tools=prepared_tools)
+        with prepared_credential_rejection(self):
+            async with self._unit():
+                await self.fence_prepared_runs([prepared])
+                result = await self.insert_prepared_run_locked(prepared)
+        await self.admit_credentials(result)
+        await self._prepared_run_actor(prepared)
+        self.assert_prepared_run_settings(prepared)
+        return result
+
+    def assert_prepared_run_settings(self, prepared: PreparedRunAdmission) -> None:
+        if prepared.settings_generation is not self.configuration.settings_generation:
+            raise ValueError("Run settings changed during preparation or admission")
+
+    async def prepare_run(
+        self,
+        request: RunInput,
+        *,
+        prepared_runner: Data | None = None,
+        prepared_tools: list[Data] | None = None,
+    ) -> PreparedRunAdmission:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
         from firefly_forge.learning_configuration import learning_snapshot
@@ -268,6 +372,15 @@ class Store:
         from firefly_forge.projects import Projects
         from firefly_forge.tool_broker import tool_policy_snapshot
 
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare run admission outside the native transaction")
+        settings_generation = self.configuration.settings_generation
+        actor = CURRENT_PRINCIPAL.get()
+        actor_snapshot = ProjectAccess.actor_snapshot(actor) if actor else None
+        original_input = request.model_dump(mode="json", exclude_unset=True)
+        request = request.model_copy(deep=True)
+        prepared_runner = copy.deepcopy(prepared_runner)
+        prepared_tools = copy.deepcopy(prepared_tools)
         if request.operation == "test" and (request.model_profile_id or request.assurance.review_model_profile_id):
             raise ValueError("Test operations check existing source without a coding model")
         if self.task_router is None and (request.model_profile_id or request.assurance.review_model_profile_id):
@@ -297,7 +410,6 @@ class Store:
             if selection
             else self.configuration.snapshot(request.agent)
         )
-        actor = CURRENT_PRINCIPAL.get()
         if actor is not None and not await ProjectAccess(self).current_administrator(actor):
             if not request.project_id:
                 raise ValueError("Select an authorized project before starting work")
@@ -352,30 +464,30 @@ class Store:
             else (await self.runners.capabilities(runner) if self.runners is not None else None)
         )
 
+        repo = await self.repository(request.repository_id)
+        policy_selection = request.skills if "skills" in request.model_fields_set else repo.get("skills")
+        snapshot = self.policies.selection(policy_selection)
+        component = await Projects(self).component_snapshot(request)
+        role_defaults = (component or {}).get("project_definition", {}).get("roles") or repo.get("roles")
+        role_selection = (
+            request.roles
+            if request.roles is not None
+            else ProjectRoles.model_validate(role_defaults)
+            if role_defaults is not None
+            else None
+        )
+        role_source = (
+            "run"
+            if request.roles is not None
+            else "project"
+            if (component or {}).get("project_definition", {}).get("roles")
+            else "repository"
+            if repo.get("roles")
+            else "global"
+        )
+        product_repository_id = component["product_repository_id"] if component else repo["id"]
+        product_definition = request.product_definition
         async with self._unit():
-            repo = await self.repository(request.repository_id)
-            policy_selection = request.skills if "skills" in request.model_fields_set else repo.get("skills")
-            snapshot = self.policies.selection(policy_selection)
-            component = await Projects(self).component_snapshot(request)
-            role_defaults = (component or {}).get("project_definition", {}).get("roles") or repo.get("roles")
-            role_selection = (
-                request.roles
-                if request.roles is not None
-                else ProjectRoles.model_validate(role_defaults)
-                if role_defaults is not None
-                else None
-            )
-            role_source = (
-                "run"
-                if request.roles is not None
-                else "project"
-                if (component or {}).get("project_definition", {}).get("roles")
-                else "repository"
-                if repo.get("roles")
-                else "global"
-            )
-            product_repository_id = component["product_repository_id"] if component else repo["id"]
-            product_definition = request.product_definition
             if product_definition is None:
                 product = await self.product_records.find_current(identifier(product_repository_id))
                 product_definition = copy.deepcopy(product.data) if product else None
@@ -387,102 +499,223 @@ class Store:
                     raise ValueError(
                         "Select an existing immutable product revision; client-supplied approval is not authority"
                     )
-            if product_definition and product_definition["repository_id"] != product_repository_id:
-                raise ValueError("Product snapshot must match the selected product's definition and design source")
-            fields = request.model_dump()
-            if component:
-                fields["backend"], fields["frontend"] = component["backend"], component["frontend"]
-                if "commands" not in request.model_fields_set:
-                    fields["commands"] = component["verification"]
-            fields["product_definition"] = product_definition
-            definition = (product_definition or {}).get("definition")
-            architecture = definition.get("architecture") if isinstance(definition, dict) else None
-            if architecture and not component:
-                for field in ("backend", "frontend"):
-                    if field not in request.model_fields_set:
-                        fields[field] = architecture[field]
-            RunInput.model_validate(fields)
-            branding = self.configuration._read(
-                self.configuration.directory / f"product-brand-{product_repository_id}.json"
+        if product_definition and product_definition["repository_id"] != product_repository_id:
+            raise ValueError("Product snapshot must match the selected product's definition and design source")
+        fields = request.model_dump()
+        if component:
+            fields["backend"], fields["frontend"] = component["backend"], component["frontend"]
+            if "commands" not in request.model_fields_set:
+                fields["commands"] = component["verification"]
+        fields["product_definition"] = product_definition
+        definition = (product_definition or {}).get("definition")
+        architecture = definition.get("architecture") if isinstance(definition, dict) else None
+        if architecture and not component:
+            for field in ("backend", "frontend"):
+                if field not in request.model_fields_set:
+                    fields[field] = architecture[field]
+        RunInput.model_validate(fields)
+        branding = self.configuration._read(
+            self.configuration.directory / f"product-brand-{product_repository_id}.json"
+        )
+        design = (
+            await ProductDesign(self).validate_review(
+                product_repository_id, ProductDefinition.model_validate(definition)
             )
-            design = (
-                await ProductDesign(self).validate_review(
-                    product_repository_id, ProductDefinition.model_validate(definition)
-                )
-                if definition and request.operation != "test"
-                else None
-            )
-            budget = max(0, min(3, int(os.environ.get("FORGE_REPAIR_ATTEMPTS", "2"))))
-            if design and design["brand_digest"] != (branding or {}).get("digest"):
-                raise ValueError(
-                    "The product brand revision changed while freezing its reviewed design; retry admission"
-                )
-            role_snapshot = self.roles.snapshot(role_selection, snapshot, tool_catalog=tools)
-            await self.admit_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
-            review_configuration = (
-                {
-                    "config_revision": review_selection["config_revision"],
-                    "execution_config": review_selection["execution_config"],
-                }
-                if review_selection
-                else self.configuration.snapshot(request.assurance.review_agent)
-                if request.assurance.review_agent
-                else {}
-            )
-            data = {
-                **fields,
-                "product_definition": product_definition,
-                "branding_snapshot": copy.deepcopy(branding) if branding else None,
-                "design_snapshot": design,
-                "execution_actor": ProjectAccess.actor_snapshot(actor) if actor else None,
-                "component_snapshot": component,
-                "scm_snapshot": self.connections.snapshot(repo) if self.connections is not None else None,
-                "repair_budget": budget,
-                "model_selection": selection,
-                "review_model_selection": review_selection,
-                "review_config_revision": review_configuration.get("config_revision"),
-                "review_execution_config": review_configuration.get("execution_config", {}),
-                "skills": [item["id"] for item in snapshot["skills"]],
-                "policy_snapshot": snapshot,
-                "role_snapshot": role_snapshot,
-                "role_selection_source": role_source,
-                **runner,
-                "tool_policy_snapshot": copy.deepcopy(
-                    runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
-                ),
-                **frozen_configuration,
-                "knowledge_snapshot": knowledge,
-                "learning_snapshot": learning,
-                "id": uuid.uuid4().hex,
-                "repository_name": repo["name"],
-                "status": "queued",
-                "created_at": now(),
-                "updated_at": now(),
-                "verification": [],
-                "changed_files": [],
-                "diff": "",
-                "artifacts": [],
-                "error": None,
-                "pr_url": None,
-                "summary": "",
-                "branch": "",
-                "base_revision": "",
+            if definition and request.operation != "test"
+            else None
+        )
+        budget = max(0, min(3, int(os.environ.get("FORGE_REPAIR_ATTEMPTS", "2"))))
+        if design and design["brand_digest"] != (branding or {}).get("digest"):
+            raise ValueError("The product brand revision changed while freezing its reviewed design; retry admission")
+        role_snapshot = self.roles.snapshot(role_selection, snapshot, tool_catalog=tools)
+        await self.admit_credentials([definition, branding, snapshot, role_snapshot, component, runner, design])
+        review_configuration = (
+            {
+                "config_revision": review_selection["config_revision"],
+                "execution_config": review_selection["execution_config"],
             }
-            await self.run_records.save(
-                ForgeRunEntity(
-                    id=identifier(data["id"]),
-                    repository_id=identifier(request.repository_id),
-                    status="queued",
-                    data=data,
+            if review_selection
+            else self.configuration.snapshot(request.assurance.review_agent)
+            if request.assurance.review_agent
+            else {}
+        )
+        data = {
+            **fields,
+            "product_definition": product_definition,
+            "branding_snapshot": copy.deepcopy(branding) if branding else None,
+            "design_snapshot": design,
+            "execution_actor": actor_snapshot,
+            "component_snapshot": component,
+            "scm_snapshot": self.connections.snapshot(repo) if self.connections is not None else None,
+            "repair_budget": budget,
+            "model_selection": selection,
+            "review_model_selection": review_selection,
+            "review_config_revision": review_configuration.get("config_revision"),
+            "review_execution_config": review_configuration.get("execution_config", {}),
+            "skills": [item["id"] for item in snapshot["skills"]],
+            "policy_snapshot": snapshot,
+            "role_snapshot": role_snapshot,
+            "role_selection_source": role_source,
+            **runner,
+            "tool_policy_snapshot": copy.deepcopy(
+                runner.get("tool_policy_snapshot") or tool_policy_snapshot(self.path.parent)
+            ),
+            **frozen_configuration,
+            "knowledge_snapshot": knowledge,
+            "learning_snapshot": learning,
+            "id": uuid.uuid4().hex,
+            "repository_name": repo["name"],
+            "status": "queued",
+            "created_at": now(),
+            "updated_at": now(),
+            "verification": [],
+            "changed_files": [],
+            "diff": "",
+            "artifacts": [],
+            "error": None,
+            "pr_url": None,
+            "summary": "",
+            "branch": "",
+            "base_revision": "",
+        }
+        current_actor = CURRENT_PRINCIPAL.get()
+        if (
+            current_actor != actor
+            or (ProjectAccess.actor_snapshot(current_actor) if current_actor else None) != actor_snapshot
+        ):
+            raise ValueError("The run admission actor changed during preparation")
+        packet = {
+            "run": data,
+            "repository": repo,
+            "request": original_input,
+            "actor_identity": {"issuer": actor.issuer, "subject": actor.subject} if actor else None,
+        }
+        if settings_generation is not self.configuration.settings_generation:
+            raise ValueError("Run settings changed during preparation")
+        return PreparedRunAdmission.capture(packet, self.configuration.write_generation, settings_generation)
+
+    async def _prepared_run_actor(self, prepared: PreparedRunAdmission) -> None:
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
+
+        data = prepared.unpack()["run"]
+        actor = CURRENT_PRINCIPAL.get()
+        if (ProjectAccess.actor_snapshot(actor) if actor else None) != data["execution_actor"]:
+            raise ValueError("The run admission actor changed after preparation")
+        if actor is not None and not await ProjectAccess(self).current_administrator(actor):
+            if not data.get("project_id"):
+                raise ValueError("Select an authorized project before starting work")
+            await ProjectAccess(self).require_project(actor, data["project_id"], "execute")
+            if data["publish"]:
+                await ProjectAccess(self).require_project(actor, data["project_id"], "release")
+            if data["sandbox_snapshot"]["mode"] not in {"docker", "pool"}:
+                raise ValueError(
+                    "Project users require an isolated runner; host execution requires a factory administrator"
                 )
+            if data["operation"] != "test" and (
+                data["agent"] in {"codex", "claude"}
+                or (data.get("assurance") or {}).get("review_agent") in {"codex", "claude"}
+            ):
+                raise ValueError(
+                    "Direct host coding CLIs require a factory administrator; choose a configured API agent"
+                )
+        if CURRENT_PRINCIPAL.get() != actor:
+            raise ValueError("The run admission actor changed during authorization")
+
+    async def fence_prepared_runs(self, prepared: list[PreparedRunAdmission]) -> None:
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_persistence import ForgeProjectRepository
+
+        if current_unit_of_work() is None:
+            raise ValueError("Fence prepared admissions in the native caller transaction")
+        packets = [item.unpack() for item in prepared]
+        runs = [packet["run"] for packet in packets]
+        projects = sorted({run["project_id"] for run in runs if run.get("project_id")})
+        for project in projects:
+            async with self._unit() as session:
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": self.schema + ":members:" + project},
+                )
+        for actor in sorted({run["execution_actor"]["user_id"] for run in runs if run["execution_actor"]}):
+            row = await ForgeIdentityUserRepository().find_by_id(identifier(actor), lock=LockMode.PESSIMISTIC_WRITE)
+            identities = [
+                packet["actor_identity"]
+                for packet in packets
+                if packet["run"]["execution_actor"] and packet["run"]["execution_actor"]["user_id"] == actor
+            ]
+            if (
+                row is None
+                or not row.enabled
+                or any(identity != {"issuer": row.issuer, "subject": row.subject} for identity in identities)
+            ):
+                raise ValueError("Run admission requires a current enabled native user")
+        for project in projects:
+            await ForgeProjectRepository().find_by_id(identifier(project), lock=LockMode.PESSIMISTIC_WRITE)
+        repositories = {
+            repository
+            for run in runs
+            for repository in (run["repository_id"], (run["component_snapshot"] or {}).get("product_repository_id"))
+            if repository
+        }
+        for repository in sorted(repositories):
+            await self.repository_records.find_by_id(identifier(repository), lock=LockMode.PESSIMISTIC_WRITE)
+        for item in prepared:
+            await self._prepared_run_actor(item)
+
+    async def insert_prepared_run_locked(self, prepared: PreparedRunAdmission) -> Data:
+        from firefly_forge.projects import Projects
+
+        if current_unit_of_work() is None:
+            raise ValueError("Insert prepared run admission in the native caller transaction")
+        self.assert_prepared_run_settings(prepared)
+        packet = prepared.unpack()
+        data = packet["run"]
+        request = RunInput.model_validate(packet["request"])
+        if prepared.generation is not self.configuration.write_generation:
+            raise ValueError("Run settings changed after preparation")
+        await self._prepared_run_actor(prepared)
+        repo = await self.repository_records.find_by_id(
+            identifier(request.repository_id), lock=LockMode.PESSIMISTIC_WRITE
+        )
+        if repo is None or repo.data != packet["repository"]:
+            raise ValueError("Run repository changed after preparation")
+        if await Projects(self).component_snapshot(request) != data["component_snapshot"]:
+            raise ValueError("Run component changed after preparation")
+        product_repository = (data["component_snapshot"] or {}).get("product_repository_id", request.repository_id)
+        if request.product_definition is None:
+            current = await self.product_records.find_current(identifier(product_repository))
+            if (current.data if current else None) != data["product_definition"]:
+                raise ValueError("Run product definition changed after preparation")
+        await self.admit_credentials(data)
+        await self._prepared_run_actor(prepared)
+        self.reject_credentials(data)
+        await self.run_records.save(
+            ForgeRunEntity(
+                id=identifier(data["id"]), repository_id=identifier(request.repository_id), status="queued", data=data
             )
-            await self.event(data["id"], "queued", "Run queued")
-            return await self.get_run(data["id"])
+        )
+        await self.event(data["id"], "queued", "Run queued")
+        result = await self.get_run(data["id"])
+        await self.admit_credentials(result)
+        await self._prepared_run_actor(prepared)
+        self.reject_credentials(result)
+        self.assert_prepared_run_settings(prepared)
+        if prepared.generation is not self.configuration.write_generation:
+            raise ValueError("Run settings changed during insertion")
+        return result
 
     def reject_credentials(self, value: Any) -> None:
-        registry = {**self.credential_registry()}
-        for provider in ("codex", "claude", "bridge", "agentic"):
-            registry.update(self.configuration.resolve(provider))
+        cut = _credential_cut.get()
+        if cut is not None and current_unit_of_work() is not None:
+            if (
+                cut.store is not self
+                or cut.source is not self.credential_registry
+                or cut.generation is not self.configuration.write_generation
+            ):
+                raise ValueError("Credential sources changed after preparation")
+            registry = dict(cut.registry)
+        else:
+            registry = _credential_registry(self)
         if contains_known_credential(value, registry):
             raise ValueError(
                 "Do not place configured credentials in product briefs, definitions or worker instructions"

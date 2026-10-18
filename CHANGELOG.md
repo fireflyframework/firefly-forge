@@ -2,6 +2,16 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.21 — 2026-10-17
+
+- Persist the canonical local operator identity for loopback bearer access as well as browser login. Keep disabled or mismatched identities blocked and recheck current identity at run admission.
+
+- Retain the original run-creation request and immutable admission receipt. Check or retry that exact submission after a lost response; coordinate browser tabs and preserve later form edits.
+- Cancel an unresolved creation request through a recorded terminal decision. Serialize cancellation against admission, bound pending requests per user, and preserve existing admission receipts through additive schema upgrades.
+- Add opt-in recovery of a saved Bridge implementation result through native Agentic checkpoints. Commit one-use consumption before parsing the original result; refuse unsupported tools, changed authority and uncertain outcomes.
+- Guide original-result inspection and continuation in Studio, with current permission checks, retained request identities and reachable controls on narrow or short screens. Keep optional recovery settings unset until explicitly selected.
+- Document the original-request and original-result workflows, their permission boundaries and the local controlled-fixture walkthroughs.
+
 ## 0.2.20 — 2026-10-16
 
 - Preserve product-definition edits and the current wizard step when navigating between products or other Studio pages. Keep drafts scoped to the current user and factory connection, with explicit discard and an unload warning.

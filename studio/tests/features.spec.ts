@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { expectProgressFits } from "./wizard-progress";
+import { retainedRunCreation } from "./run-creation-cancellation-fixture";
+const repositoryId = "a".repeat(32);
 async function connect(page: Page) {
   await page.goto("/");
   await navigate(page, "Connections");
@@ -14,7 +16,7 @@ async function connect(page: Page) {
     .click();
 }
 const repository = {
-  id: "repo-1",
+  id: repositoryId,
   name: "Inventory",
   url: "https://github.com/example/inventory",
   provider: "github",
@@ -52,7 +54,7 @@ async function fallback(
     path: string,
     method: string,
     body: Record<string, unknown> | null,
-  ) => unknown | undefined,
+  ) => unknown | Promise<unknown> | undefined,
 ) {
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
@@ -62,7 +64,7 @@ async function fallback(
       await route.fallback();
       return;
     }
-    const result = handler(
+    const result = await handler(
       path,
       request.method(),
       request.postData() ? request.postDataJSON() : null,
@@ -89,12 +91,13 @@ test("product wizard retains drafts, reviews architecture and freezes saved revi
   let saved: Record<string, unknown> | null = null;
   let brandInput: Record<string, unknown> | null = null;
   let runInput: Record<string, unknown> | null = null;
-  await fallback(page, (path, method, body) => {
+  const creation = retainedRunCreation("b".repeat(32));
+  await fallback(page, async (path, method, body) => {
     if (path.endsWith("/product") || path.endsWith("/product/conditional")) {
       if (method === "PUT") {
         saved = body?.definition as Record<string, unknown>;
         snapshot = {
-          repository_id: "repo-1",
+          repository_id: repositoryId,
           revision: 1,
           definition: body?.definition,
           digest: "b".repeat(64),
@@ -133,7 +136,7 @@ test("product wizard retains drafts, reviews architecture and freezes saved revi
       if (method === "PUT") {
         brandInput = body;
         return {
-          repository_id: "repo-1",
+          repository_id: repositoryId,
           revision: "brand-revision",
           name: body?.name,
           font_family: "Manrope",
@@ -163,15 +166,17 @@ test("product wizard retains drafts, reviews architecture and freezes saved revi
       };
     if (path.endsWith("/skills")) return { skills: [] };
     if (path.endsWith("/policies")) return { skills: [] };
-    if (path.endsWith("/runs") && method === "POST") {
-      runInput = body;
-      return {
-        id: "run-1",
-        repository_id: "repo-1",
-        brief: "Implement inventory reservations",
-        status: "queued",
-      };
+    if (/\/run-creation-requests\/[a-f0-9]{32}$/.test(path)) {
+      expect(method).toBe("POST");
+      const receipt = await creation.admit(path, body);
+      runInput = creation.input;
+      return receipt;
     }
+    if (path.endsWith("/runs")) {
+      expect(method).toBe("GET");
+      return creation.run ? [creation.run] : [];
+    }
+    if (path.endsWith(`/runs/${"b".repeat(32)}`)) return creation.run;
   });
   await connect(page);
   await navigate(page, "Product definition");
@@ -349,7 +354,7 @@ test("cloud recipe renders before explicit save and never represents rendering a
     provider: "vps",
     content_digest: "digest",
     files: { "inventory.yml": "host: 192.0.2.10" },
-    target: { name: "inventory", repository_id: "repo-1" },
+    target: { name: "inventory", repository_id: repositoryId },
     requirements: ["SSH access required"],
     validation: {
       state: "rendered",
@@ -387,7 +392,7 @@ test("cloud recipe renders before explicit save and never represents rendering a
   await connect(page);
   await navigate(page, "Deployment");
   await page.getByRole("button", { name: "Cloud or host recipe" }).click();
-  await page.getByLabel("Cloud project").selectOption("repo-1");
+  await page.getByLabel("Cloud project").selectOption(repositoryId);
   await page.getByLabel("Cloud or host provider").selectOption("vps");
   await page.getByLabel("Recipe name").fill("inventory");
   await page
@@ -510,7 +515,7 @@ test("repository workflow saves write-only signing settings and disables Bitbuck
 }) => {
   let input: Record<string, unknown> | null = null;
   const initial = {
-    repository_id: "repo-1",
+    repository_id: repositoryId,
     enabled: false,
     trusted_actors: [],
     webhook_secret_configured: false,
@@ -582,7 +587,7 @@ test("project board shows only actual project runs, branches, tickets and plan t
 }) => {
   const run = {
     id: "run-1",
-    repository_id: "repo-1",
+    repository_id: repositoryId,
     brief: "Verify reservation boundaries",
     status: "succeeded",
     branch: "forge/actual-checkpoint",
@@ -624,7 +629,7 @@ test("project board shows only actual project runs, branches, tickets and plan t
   await connect(page);
   await navigate(page, "Factory");
   await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
-    "repo-1",
+    repositoryId,
   );
   await page.getByRole("button", { name: "Board", exact: true }).click();
   await expect(
@@ -672,7 +677,7 @@ test("credential profile wizard sends write-only keys and clears values after sa
   await connect(page);
   await navigate(page, "Deployment");
   await page.getByRole("button", { name: "Cloud or host recipe" }).click();
-  await page.getByLabel("Cloud project").selectOption("repo-1");
+  await page.getByLabel("Cloud project").selectOption(repositoryId);
   await page.getByLabel("Cloud or host provider").selectOption("aws");
   await page.getByLabel("Recipe name").fill("inventory");
   await page

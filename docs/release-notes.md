@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.21
+
+Loopback bearer access and browser login now establish the same persistent local operator identity. API tooling can admit work without first opening a browser session. A suspended or mismatched identity remains blocked; authenticating again does not restore it. See [local bootstrap](identity.md#local-bootstrap).
+
+**Start a run** records an original submission identity before sending it. If the response is lost, Studio keeps that identity and offers an exact check or retry. An unresolved request blocks a replacement. A verified cancellation allows a new submission; a run admitted before cancellation keeps its original receipt. Browser tabs coordinate those decisions, and successful admission clears only the form version that produced that request. See [run creation and recovery](recovery.md#settle-an-uncertain-run-submission).
+
+Cancellation and admission share a database decision boundary. Preparation reads an immutable configuration cut, then rechecks current authority before committing a run. Pending reservations are bounded per user. Additive migrations preserve existing receipts and reject changes to retained decisions. See the [recovery contract](recovery.md).
+
+An operator can opt into original-result continuation for a Bridge implementation task that uses the supported static file tools. Forge commits the saved Agentic checkpoint and original request before submission. After verifying the original result and current authority, one-use consumption commits before the native SDK parser receives the original result. Studio provides inspection and deliberate continuation, retaining an uncertain operator request for exact readback. Other stages, dynamic tools, command tools, direct API providers and media remain outside this recovery path. See [agent lifecycle](agent-lifecycle.md) and [architecture](architecture.md).
+
+The browser walkthroughs use controlled API responses. Native recovery tests exercise PostgreSQL and the real Agentic SDK with fixed worker results. These checks do not establish live provider inference or a complete product delivery.
+
 ## 0.2.20
 
 Product-definition drafts retain their form fields, wizard step and AI source while you move between products or Studio pages. Drafts belong to the current user and factory connection. Reloading or signing out clears them; **Discard edits** asks for confirmation and affects only the selected product. See [working drafts](product-definition.md#keep-and-discard-a-working-draft).

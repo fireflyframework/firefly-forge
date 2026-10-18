@@ -158,6 +158,31 @@ An unknown remote publication, deployment or memory write cannot be generically 
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
+Opt-in implementation checkpoints support explicit continuation at the original model boundary. The checkpoint and Bridge intent commit together before the completion POST. A bounded, read-only candidate projection verifies the retained journal, current authority and original ticket bindings before Studio offers a review. The projection makes no Bridge call and writes no ticket or consume receipt.
+
+<div class="forge-flow forge-flow--original-result" role="region" aria-label="Original model result recovery diagram" aria-describedby="original-result-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    A["Save checkpoint<br/>and request intent"] --> B["Send original<br/>Bridge request"]
+    B --> C["Hold uncertain<br/>original result"]
+    C --> D["Read or check<br/>original result"]
+    D --> E["Review<br/>continuation"]
+    E --> F["Commit one-use receipt<br/>before native parsing"]
+    F --> G["Continue implementation<br/>and verify"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="original-result-flow-guide">Save the original checkpoint and intent before submitting to Bridge. If the result is uncertain, retain its identity, read or check the original result, then review one continuation. Continuing commits the one-use consume receipt before native parsing, followed by implementation and verification. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
+
+The restore ticket binds the original checkpoint, intent and selected result record. The execution owner repeats authority, source, configuration and deadline checks before restoring native Agentic history with `prompt=None`. The selected response is consumed once before the SDK parser receives it. A failure after that commit cannot authorize replay. A later repair keeps its own task identity; its mutable task key cannot replace the original implementation receipt. Owner recovery retains a committed consume boundary and holds unfinished tickets for reconciliation. See the [operator recovery journey](recovery.md#review-a-held-result-in-studio) for supported file tools and current limits.
+
 `BridgeProvider.execute()` creates a separate pending-request set for each invocation. Agentic task-graph children inherit that shared object through a context variable. Each completion tracks its own attempt before transport and clears it after a validated response, an exhausted stream or a known quota/pause response. Completing one request cannot clear another pending request. If the task graph unwraps a cancellation exception, the outer provider checks its own set before returning cancellation to the Engine. Both context tokens are reset when their scopes end. The Engine then records an unresolved submission against the original journal intent before finishing local cancellation. Regression controls cover the real `FireflyAgent` path, concurrent invocations on a shared provider, successive completions and restart through the native Store.
 
 Explicit manual continuation preserves the run's existing retry counter, including an absent field. Automatic retries increment it. Source-control consent can therefore compare the same frozen run fields before and after an authorized manual resume. The run identity, plan and execution actor remain subject to their existing checks.
