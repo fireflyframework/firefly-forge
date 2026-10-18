@@ -741,7 +741,7 @@ async def test_global_pending_bound_serializes_different_run_admissions(store, t
     assert actor is not None
     async with store._unit():
         await ForgeIdentityUserRepository().save(
-            ForgeIdentityUserEntity(id=actor.user_id, issuer=actor.issuer, subject=actor.subject, enabled=True)
+            ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True)
         )
     second = await waiting(store, tmp_path / "second")
     first_count, release_count, second_count = asyncio.Event(), asyncio.Event(), asyncio.Event()
