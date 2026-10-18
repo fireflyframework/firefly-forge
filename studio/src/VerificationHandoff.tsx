@@ -80,6 +80,48 @@ export function VerificationHandoff({
     </p>
   );
   if (!record) return incomplete;
+  if (kind === "verification_handoff_adoption") {
+    const request = asRecord(record.request);
+    const providers: Record<string, string> = {
+      codex: "Codex",
+      claude: "Claude Code",
+      bridge: "Firefly Agent Bridge",
+      agentic: "Firefly Agentic",
+    };
+    const validHash = (value: unknown) =>
+      typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+    if (
+      record.version !== 1 ||
+      !request ||
+      typeof request.request_id !== "string" ||
+      !/^[a-f0-9]{32}$/.test(request.request_id) ||
+      typeof request.agent !== "string" ||
+      !Object.hasOwn(providers, request.agent) ||
+      !validHash(record.body_digest) ||
+      ![
+        "pending_request_digest",
+        "source_digest",
+        "commands_digest",
+        "policy_digest",
+        "provider_digest",
+      ].every((key) => validHash(request[key]))
+    )
+      return incomplete;
+    return (
+      <section
+        className="record-evidence"
+        aria-label="Verification adoption recorded"
+      >
+        <h4>Verification adoption recorded</h4>
+        <p>
+          An operator bound this retained verification request to the current
+          source, policy and {providers[request.agent]} configuration. Check
+          execution is recorded separately.
+        </p>
+        <p className="subtle">Adoption request: {request.request_id}</p>
+      </section>
+    );
+  }
   if (kind === "verification_handoff_refused") {
     if (
       record.version !== 1 ||
@@ -104,6 +146,31 @@ export function VerificationHandoff({
     );
   }
   if (!identified(record)) return incomplete;
+
+  if (kind === "verification_continuation_intent") {
+    if (
+      !integer(record.parent_round, 1) ||
+      !integer(record.next_round, 2) ||
+      record.next_round > 4 ||
+      record.next_round !== record.parent_round + 1 ||
+      typeof record.provider_digest !== "string" ||
+      !/^[a-f0-9]{64}$/.test(record.provider_digest)
+    )
+      return incomplete;
+    return (
+      <section
+        className="record-evidence"
+        aria-label="Coding continuation recorded"
+      >
+        <h4>Coding continuation recorded</h4>
+        <p>
+          Coding attempt {record.next_round} is recorded. The provider execution
+          has its own receipt.
+        </p>
+        <p className="subtle">Agent request: {String(record.request_id)}</p>
+      </section>
+    );
+  }
 
   if (kind === "verification_handoff_command") {
     if (!integer(record.command_index, 1)) return incomplete;

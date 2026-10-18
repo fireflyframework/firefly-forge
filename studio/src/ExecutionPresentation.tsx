@@ -203,7 +203,10 @@ export function EvidenceView({
   advanced?: boolean;
   omitFields?: string[];
 }) {
-  if (kind?.startsWith("verification_handoff_"))
+  if (
+    kind?.startsWith("verification_handoff_") ||
+    kind === "verification_continuation_intent"
+  )
     return <VerificationHandoff kind={kind} value={value} />;
   if (kind === "repair_proposal") {
     title ??= "Repair proposal";

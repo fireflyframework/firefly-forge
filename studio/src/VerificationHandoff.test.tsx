@@ -139,6 +139,44 @@ describe("automatic verification evidence", () => {
   });
 });
 
+describe("verification admission and continuation records", () => {
+  it("explains explicit legacy adoption without exposing policy or identity payloads", () => {
+    const html = render("verification_handoff_adoption", {
+      version: 1,
+      request: {
+        request_id: "a".repeat(32),
+        agent: "codex",
+        pending_request_digest: "b".repeat(64),
+        source_digest: "c".repeat(64),
+        commands_digest: "d".repeat(64),
+        policy_digest: "e".repeat(64),
+        provider_digest: "f".repeat(64),
+      },
+      body_digest: "1".repeat(64),
+      policy_snapshot: { private_extra: "do-not-render-policy" },
+      actor: { private_extra: "do-not-render-identity" },
+    });
+    expect(html).toContain("Verification adoption recorded");
+    expect(html).toContain("Codex");
+    expect(html).not.toContain("do-not-render");
+    expect(html).not.toContain("Checks passed");
+  });
+
+  it("distinguishes a continuation intent from actual provider execution", () => {
+    const html = render("verification_continuation_intent", {
+      ...command,
+      parent_round: 1,
+      next_round: 2,
+      provider_digest: "a".repeat(64),
+      private_extra: "do-not-render-provider-configuration",
+    });
+    expect(html).toContain("Coding continuation recorded");
+    expect(html).toContain("Coding attempt 2");
+    expect(html).toContain("provider execution has its own receipt");
+    expect(html).not.toContain("do-not-render");
+  });
+});
+
 describe("automatic verification continuation controls", () => {
   const run = {
     id: "c".repeat(32),
