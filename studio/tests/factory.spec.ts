@@ -4,6 +4,32 @@ import { expect, test, type Page } from "@playwright/test";
 test.use({ launchOptions: { args: ["--enable-unsafe-swiftshader"] } });
 
 async function fixture(page: Page) {
+  const rootURL = new URL("/", test.info().project.use.baseURL);
+  await page.route(
+    (url) => url.href === rootURL.href,
+    async (route) => {
+      if (
+        route.request().method() !== "GET" ||
+        route.request().resourceType() !== "document"
+      )
+        return route.fallback();
+      const response = await route.fetch();
+      const html = await response.text();
+      const entry = '<script type="module" src="/src/main.tsx"></script>';
+      expect(
+        html.match(
+          /<script\b[^>]*\bsrc=["']\/src\/main\.tsx(?:\?[^"']*)?["'][^>]*>[\s\S]*?<\/script>/g,
+        ),
+      ).toEqual([entry]);
+      await route.fulfill({
+        response,
+        body: html.replace(
+          entry,
+          '<link rel="stylesheet" href="/src/styles.css" />',
+        ),
+      });
+    },
+  );
   await page.goto("/");
   await page.evaluate(async () => {
     const reactPath = "/node_modules/.vite/deps/react.js";
