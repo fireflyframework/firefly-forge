@@ -58,6 +58,14 @@ def test_legacy_absent_policy_is_manual_even_with_new_current_defaults(source):
     assert not automatic_candidate(run)
 
 
+def test_native_projectless_null_component_uses_the_retained_workspace_root(source):
+    from firefly_forge.verification_handoffs import verification_intent
+
+    store, run, workspace = source
+    run["component_snapshot"] = None
+    assert verification_intent(store, run, workspace, [], [])["cwd"] == "."
+
+
 def test_pre_admission_refusal_is_not_dispatched_forever(source):
     from firefly_forge.verification_handoffs import automatic_candidate
 

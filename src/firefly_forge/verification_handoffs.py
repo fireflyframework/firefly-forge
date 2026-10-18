@@ -100,7 +100,7 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         "timeouts": [min(command["timeout"], config.timeout) for command in commands],
         "sandbox_digest": run["sandbox_snapshot"]["digest"],
         "workspace": str(workspace.resolve()),
-        "cwd": run.get("component_snapshot", {}).get("path", "."),
+        "cwd": (run.get("component_snapshot") or {}).get("path", "."),
     }
     if selection:
         expected = {
