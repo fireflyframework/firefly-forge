@@ -40,6 +40,9 @@ from firefly_forge.store import Store, now
 if TYPE_CHECKING:
     from firefly_forge.engine import Engine
 
+# flycanon bounds retrieval queries independently of full briefs and memory bodies.
+FLYCANON_SEARCH_QUERY_LIMIT = 2000
+
 
 class KnowledgeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -347,15 +350,17 @@ class KnowledgeManager:
                 raise ValueError("Required project knowledge workspace initialization failed") from None
         hits: list[dict[str, Any]] = []
         warnings = []
+        retrieval_query = query[:FLYCANON_SEARCH_QUERY_LIMIT]
         for workspace in workspaces:
             try:
                 async with self.client(settings, workspace) as client:
                     result = (
                         await client.agent.search(
-                            SearchRequest(query=query[:4000], top_k=settings["top_k"]), idempotency_key=uuid.uuid4().hex
+                            SearchRequest(query=retrieval_query, top_k=settings["top_k"]),
+                            idempotency_key=uuid.uuid4().hex,
                         )
                         if settings["agent_token"]
-                        else await client.search(query[:4000], top_k=settings["top_k"])
+                        else await client.search(retrieval_query, top_k=settings["top_k"])
                     )
                 for hit in result.hits[: settings["top_k"]]:
                     entry = {
@@ -610,7 +615,7 @@ class KnowledgeManager:
             async with self.client(settings, scope) as client:
                 await self.ensure_workspace(client, run["repository_id"])
                 source_id = await self._memory_source(client, run, body, scope)
-                retrieved = await client.search(body[:4000], top_k=8, source_ids=[source_id])
+                retrieved = await client.search(body[:FLYCANON_SEARCH_QUERY_LIMIT], top_k=8, source_ids=[source_id])
                 citations = [
                     Citation(source_id=source_id, chunk_id=hit.chunk_id, quote=hit.content[:2000])
                     for hit in retrieved.hits
