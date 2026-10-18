@@ -94,3 +94,15 @@ it("offers explicit removal when an interrupted reference review outlives its bu
   expect(html).not.toContain('aria-label="Journey reference viewer"');
   expect(session.read("designPending", false)).toBe(true);
 });
+
+it("offers a separate incremental preview on the saved product review step", () => {
+  const book = new ProductDraftBook(),
+    session = book.repository(a);
+  session.observe(snapshot(a), null);
+  session.write("step", 4);
+  session.write("features", [], true);
+  const html = render(book, a);
+  expect(html).toContain("Preview contract change");
+  expect(html).toContain("Why is this changing?");
+  expect(html).toContain("Save draft definition");
+});

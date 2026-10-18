@@ -425,6 +425,13 @@ export type CustomerProductDefinition = {
   design_review?: ProductDesignReview | null;
 };
 export type ProductSnapshot = {
+  change_receipt?: {
+    request_id: string;
+    request_digest: string;
+    base_revision: number;
+    base_digest: string;
+    implementation_status: "not_started";
+  };
   origin?: ProductSavedOrigin;
   repository_id: string;
   revision: number;
