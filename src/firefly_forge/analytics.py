@@ -7,6 +7,7 @@ import asyncio
 import copy
 import importlib
 import json
+from itertools import islice
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -55,6 +56,19 @@ class _ReadTransport(httpx.AsyncBaseTransport):
 class AnalyticsConnection:
     def __init__(self, private: ConfigurationStore, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.private, self.transport = private, transport
+
+    def redaction_settings(self) -> dict[str, str]:
+        with self.private.lock:
+            paths = list(islice(self.private.revisions.glob("analytics-*.json"), 4097))
+            if len(paths) > 4096:
+                raise ValueError("Analytics credential history exceeds its retention bound")
+            registry = {}
+            for path in paths:
+                token = self.private._read(path).get("agent_token")
+                if not isinstance(token, str) or not token:
+                    raise ValueError("Analytics credential history is invalid")
+                registry["FORGE_ANALYTICS_AGENT_TOKEN_" + path.stem] = token
+            return registry
 
     def prepare(self, token: str) -> Data:
         with self.private.lock:

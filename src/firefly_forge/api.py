@@ -877,10 +877,11 @@ class FactoryConfiguration:
         profiles: ModelProfiles,
         users: UserAdministration,
         oauth: ConnectionOAuth,
+        analytics: AnalyticsConnection,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
         manager.secret_registries.extend([search, external_mcp])
-        manager.secret_registries.extend([auth, profiles, users, oauth])
+        manager.secret_registries.extend([auth, profiles, users, oauth, analytics])
         return manager
 
     @bean

@@ -216,6 +216,17 @@ async def test_prepared_queries_explicitly_unavailable_without_outbound_call(ana
     assert state["calls"] == []
 
 
+async def test_retained_analytics_tokens_participate_in_existing_export_credential_rejection(analytics):
+    from firefly_forge.secrets import contains_known_credential
+
+    service, _ = analytics
+    await service.configure(PROJECT, request(), ACTOR)
+    assert contains_known_credential(
+        "source mistakenly contains scoped-test-token", service.connection.redaction_settings()
+    )
+    assert not contains_known_credential("safe fictional stock source", service.connection.redaction_settings())
+
+
 @pytest.mark.parametrize(
     "value",
     [
