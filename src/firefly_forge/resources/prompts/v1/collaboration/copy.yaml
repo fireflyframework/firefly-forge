@@ -15,12 +15,12 @@ user_template: "{\n  \"states\": {\n    \"queued\": \"The request is queued. Wor
   \ the requested change\",\n    \"verify\": \"Running the configured verification checks\",\n    \"review\": \"Reviewing\
   \ the recorded source\",\n    \"checkpoint\": \"Retaining the source checkpoint\"\n  },\n  \"actions\": {\n    \"run\":\
   \ \"The run request was admitted.\",\n    \"test\": \"The verification request was admitted.\",\n    \"maintain\": \"The\
-  \ maintenance request was admitted.\",\n    \"status\": \"The current run was read.\",\n    \"respond\": \"The answer was\
-  \ recorded. Execution can still be paused until an authorized continuation.\",\n    \"cancel\": \"The cancellation request\
-  \ was recorded. It does not establish that every worker has stopped.\",\n    \"resume\": \"The continuation request was\
-  \ recorded. Its execution outcome is reported separately.\",\n    \"deploy\": \"The deployment request was recorded. Deployment\
-  \ completion requires its own receipt.\",\n    \"publish\": \"The publication action was recorded. Only a confirmed review\
-  \ link is shown below.\",\n    \"assistant\": \"The assistant action was recorded. Any product proposal remains UNREVIEWED.\"\
+  \ maintenance request was admitted.\",\n    \"status\": \"The original status request read the run.\",\n    \"respond\"\
+  : \"The answer was recorded. Execution can still be paused until an authorized continuation.\",\n    \"cancel\": \"The cancellation\
+  \ request was recorded. It does not establish that every worker has stopped.\",\n    \"resume\": \"The continuation request\
+  \ was recorded. Its execution outcome is reported separately.\",\n    \"deploy\": \"The deployment request was recorded.\
+  \ Deployment completion requires its own receipt.\",\n    \"publish\": \"The publication action was recorded. Only a confirmed\
+  \ review link is shown below.\",\n    \"assistant\": \"The assistant action was recorded. Any product proposal remains UNREVIEWED.\"\
   ,\n    \"intake\": \"The repository intake action was recorded.\",\n    \"product_change\": \"The product change action\
   \ was recorded.\",\n    \"other\": \"The requested action was recorded.\",\n    \"project\": \"The project action was recorded.\"\
   ,\n    \"product\": \"The product definition action was recorded.\",\n    \"brand\": \"The brand configuration action was\

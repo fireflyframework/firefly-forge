@@ -1945,7 +1945,7 @@
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "a58c1be3e8ae09c106ed42e706a259ee1e7a0dc969ad04bf4c17bd1a64d1eea7",
+      "sha256": "7c9953f51f8e2ac838b7f71c5db8328b46b95fe20a66a715e7e435d4f60de1f2",
       "field": "user",
       "variables": {}
     },
@@ -1968,7 +1968,7 @@
       "id": "collaboration/action",
       "version": "1.0.0",
       "path": "collaboration/action.yaml",
-      "sha256": "3ece75525200f58a89b13fa8dfa2282ae2fe2faeca964002ac4409ed65d33e7e",
+      "sha256": "af4666c249495b8c6df82a91ff8d957e9ffd2f368f2f3ac6ba99e79db3250fa0",
       "field": "user",
       "variables": {
         "summary": "string",

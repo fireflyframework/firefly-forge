@@ -422,3 +422,12 @@ async def test_native_pre_admission_refusal_explains_hold_without_claiming_comma
     assert "held before command admission" in sent[-1]["body"]
     assert "No command execution or source verification is established" in sent[-1]["body"]
     assert "Decision needed" in sent[-1]["body"] and "private diagnostic" not in sent[-1]["body"]
+
+
+async def test_displayed_request_identifiers_remain_exact_copyable_native_values(delegated_feedback):
+    service, row, run, sent, _ = delegated_feedback
+    received(row, "status")
+    run["worker_request"]["id"] = "owner-decision_1"
+    await service.process(RECEIPT)
+    assert "Request: `owner-decision_1`" in sent[0]["body"]
+    assert "owner\\-decision" not in sent[0]["body"]

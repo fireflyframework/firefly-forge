@@ -46,6 +46,13 @@ def _text(value: object, safe: Callable[[str], str], limit: int = 1200) -> str:
     return "".join(result)
 
 
+def _identifier(value: object, safe: Callable[[str], str]) -> str:
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return ""
+    retained = safe(str(value))
+    return retained if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", retained) else ""
+
+
 def _link(value: object, host: str, repository: Data, *, reference: bool = False) -> str:
     if not isinstance(value, str) or len(value) > 600:
         return ""
@@ -201,7 +208,7 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     for field, label in copy["facts"].items():
         value = result.get(field)
         if type(value) is int and value >= 0 or isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", value):
-            facts.append(label + ": `" + _text(value, safe, 80) + "`")
+            facts.append(label + ": `" + _identifier(value, safe) + "`")
     if facts:
         sections.append(prompt_text("collaboration/facts", facts="\n".join(facts)))
     reference = result.get("remote_reference") or {}
@@ -235,7 +242,7 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
             prompt_text(
                 "collaboration/question",
                 question=_text(request.get("question", ""), safe),
-                request_id=_text(request.get("id", ""), safe, 80),
+                request_id=_identifier(request.get("id", ""), safe),
                 choices=(
                     copy["choices_heading"]
                     + "\n"
@@ -270,10 +277,10 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         description=description,
         status=_text(status, safe, 80),
         run_reference=(
-            prompt_text("collaboration/run", run_id=_text(run.get("id", data.get("run_id", "")), safe, 80))
+            prompt_text("collaboration/run", run_id=_identifier(run.get("id", data.get("run_id", "")), safe))
             if run.get("id") or data.get("run_id")
             else ""
         ),
-        receipt_id=_text(data["id"], safe, 80),
+        receipt_id=_identifier(data["id"], safe),
         sections="\n\n".join(sections),
     )
