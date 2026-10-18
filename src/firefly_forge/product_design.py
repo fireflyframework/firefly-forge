@@ -300,10 +300,11 @@ def _panel_text(
     )
 
 
-def _journey_contract(product: ProductDefinition, index: int) -> Data:
+def _journey_contract(product: ProductDefinition, index: int, *, process: bool = False) -> Data:
     journey = product.journey[index]
     linked = [item for item in product.features if journey in item.journey_refs]
-    acceptance_ids = list(dict.fromkeys(reference for item in linked for reference in item.acceptance_refs))
+    sources = [item for item in product.processes if journey in item.journey_refs] if process else linked
+    acceptance_ids = list(dict.fromkeys(reference for item in sources for reference in item.acceptance_refs))
     return {
         "journey_index": index,
         "journey": journey,
@@ -669,7 +670,7 @@ class ProductDesign:
                 "id": f"journey-{index + 1:02}",
                 "title": journey,
                 "interaction_contract": {
-                    **_journey_contract(definition, index),
+                    **_journey_contract(definition, index, process=method == "process_map"),
                     "primary_action": "Review functional contract"
                     if method == "process_map"
                     else "Review linked behavior",

@@ -214,3 +214,74 @@ async def test_raster_transport_uses_xml_and_keeps_original_source_identity(tmp_
     metadata = json.loads(next(runner.directory.glob("*.json")).read_text())
     assert metadata["identity"]["source_sha256"] == hashlib.sha256(source.encode()).hexdigest()
     assert metadata["identity"]["renderer"] == 2
+
+
+async def test_process_only_reference_uses_linked_workflow_acceptance_without_features(service):
+    value = definition().model_dump()
+    value.update(
+        architecture={
+            "backend": "pyfly",
+            "frontend": "none",
+            "reviewed": True,
+            "components": [{"name": "Sales API", "layer": "web", "responsibility": "Authorized sales operations"}],
+        },
+        acceptance=[
+            "Assigned actor can resolve",
+            "Resolution audit is retained",
+            "Unrelated export criterion",
+            "Unlinked global criterion",
+        ],
+        features=[],
+    )
+    workflow = {
+        "id": "resolve",
+        "name": "Resolve sales task",
+        "actor": "Assigned operator",
+        "trigger": "Resolve request",
+        "journey_refs": [value["journey"][1]],
+        "acceptance_refs": ["acceptance-1"],
+        "steps": [
+            {
+                "id": "authorize",
+                "action": "Resolve assigned task",
+                "owner": "Sales API",
+                "inputs": ["Actor and task"],
+                "outputs": ["Updated task"],
+                "failures": ["Deny other accounts"],
+            }
+        ],
+    }
+    audit = json.loads(json.dumps(workflow))
+    audit.update(id="audit", acceptance_refs=["acceptance-1", "acceptance-2"])
+    unrelated = json.loads(json.dumps(workflow))
+    unrelated.update(id="export", journey_refs=[value["journey"][0]], acceptance_refs=["acceptance-3"])
+    value["processes"] = [workflow, audit, unrelated]
+    product = ProductDefinition.model_validate(value)
+    bundle = await service.preview("a" * 32, product)
+    assert product.features == [] and bundle["functional_definition_status"] == "ready"
+    assert bundle["method"] == "process_map"
+    frozen = json.loads(design_files(bundle)["docs/design/interaction-contract.json"])
+    contract = frozen["screens"][1]["interaction_contract"]
+    assert contract["acceptance_ids"] == ["acceptance-1", "acceptance-2"]
+    assert contract["acceptance_criteria"] == {
+        "acceptance-1": value["acceptance"][0],
+        "acceptance-2": value["acceptance"][1],
+    }
+    assert contract["feature_ids"] == [] and contract["expected_behaviors"] == []
+    assert frozen["screens"][0]["interaction_contract"]["acceptance_ids"] == ["acceptance-3"]
+    assert bundle["functional_contract"]["processes"] == [item.model_dump(mode="json") for item in product.processes]
+    for key in ["desktop_svg", "desktop_dark_svg"]:
+        assert "Assigned actor can resolve" in visible(bundle["screens"][1][key])
+
+    wireframe = ProductDefinition.model_validate(
+        {
+            **product.model_dump(),
+            "architecture": None,
+            "features": [item.model_dump() for item in definition().features],
+        }
+    )
+    wire_bundle = await service.preview("a" * 32, wireframe)
+    assert wire_bundle["method"] == "wireframe"
+    wire_contract = wire_bundle["screens"][1]["interaction_contract"]
+    assert wire_contract["acceptance_ids"] == ["acceptance-2"]
+    assert wire_contract["feature_ids"] == ["pipeline"]
