@@ -21,6 +21,8 @@ A separately opted-in, verified GitHub conversation can create a first project a
 
 Managed knowledge pins flycanon 26.10.5. Generated pyfly projects and the bundled framework manuals target the released 26.10.6 contract through a versioned Agentic YAML prompt. These pins do not establish a generated product or live-provider acceptance by themselves.
 
+Long product briefs now respect flycanon's 2,000-character retrieval-query limit. Project and framework searches use the same bound for platform keys and scoped agent tokens, including the lookup used to cite verified memory. The original brief, frozen product contract and published memory body remain complete. See [knowledge scope](knowledge.md#keep-project-scope-explicit).
+
 ## 0.2.22
 
 A saved, clean AI-assisted product definition shows **AI-assisted · human-edited** when the server records `edited: true`. A false or missing flag keeps the neutral label. Further edits return the form to draft review state, with the original AI source available from the same header. See [product definitions](product-definition.md#design-with-the-assistant-in-studio).

@@ -11,6 +11,7 @@
 - Rasterize validated SVG documents as XML so embedded product logos retain their namespaces.
 - Honor page-flow wizard layouts so action bars do not cover focused inputs on short screens.
 - Pin managed knowledge to flycanon 26.10.5 and align pyfly generation and bundled manuals with 26.10.6.
+- Bound retrieval queries to flycanon's 2,000-character contract while retaining complete run briefs and verified memory bodies.
 
 ## 0.2.22 — 2026-10-17
 
