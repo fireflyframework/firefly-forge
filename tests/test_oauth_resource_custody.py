@@ -15,6 +15,7 @@ from firefly_forge.projects import Projects
 
 
 async def admitted(store, tmp_path, origin):
+    from firefly_forge.identity_persistence import ForgeIdentityUserEntity
     from firefly_forge.oauth_resources import OAuthResources
 
     connection, user, _, _, _, _ = await setup(store, origin)
@@ -37,6 +38,8 @@ async def admitted(store, tmp_path, origin):
         response = await client.get(challenge.authorization_url)
     callback = parse_qs(urlsplit(response.headers["location"]).query)
     await complete(connection, user, challenge, callback)
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=True))
     context = CURRENT_PRINCIPAL.set(user)
     try:
         run = await store.create_run(
@@ -139,9 +142,9 @@ async def test_current_native_resource_fences_reject_before_bearer_dispatch(stor
             await effect(store)
         elif change == "owner_disabled":
             async with store._unit() as session:
-                session.add(
-                    ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=False)
-                )
+                identity = await session.get(ForgeIdentityUserEntity, user.id, with_for_update=True)
+                assert identity is not None
+                identity.enabled = False
         elif change == "expired":
             async with store._unit() as session:
                 grant = await session.scalar(select(OAuthGrantEntity))
@@ -221,9 +224,9 @@ async def test_resource_http_releases_native_locks_and_rejects_postdispatch_owne
                             {"key": store.schema + ":connection-oauth:design"},
                         )
                         assert acquired is True
-                        session.add(
-                            ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=False)
-                        )
+                        identity = await session.get(ForgeIdentityUserEntity, user.id, with_for_update=True)
+                        assert identity is not None
+                        identity.enabled = False
 
                 async with asyncio.timeout(5):
                     await asyncio.create_task(revoke(), context=Context())

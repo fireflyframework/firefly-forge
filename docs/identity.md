@@ -81,6 +81,8 @@ A denied request needs current administrator or project membership-management au
 
 `local_bootstrap` is an explicit loopback-only development mode. Submit the configured operator credential once to the login endpoint; the server issues the same opaque, durable cookie. Do not persist that credential in browser storage. An explicitly configured loopback API bearer credential remains available for development tooling.
 
+Browser login and loopback bearer access use the same persistent local operator identity. Bearer requests do not create browser sessions. Suspending that identity blocks both paths; signing in does not enable it again. Run admission checks the current identity before accepting work.
+
 This mode stores an owner-only encryption key beside the factory's private configuration. It does not replace production OIDC and is not suitable for a shared cluster. When starting the application through Python, an explicitly supplied bootstrap credential selects local mode only when no authentication mode has been configured.
 
 ## Federation and operating limits
