@@ -47,6 +47,8 @@ from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_
 if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
+    from firefly_forge.scm_product_intake import SCMProductIntake
+    from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
 
 Data = dict[str, Any]
 Provider = Literal["github", "gitlab", "bitbucket"]
@@ -178,9 +180,23 @@ class RepositoryCommand(BaseModel):
     @classmethod
     def parse(
         cls, text: str
-    ) -> RepositoryCommand | ChannelCommand | SCMResumeCommandV2 | SCMResumeStatusV2 | SCMProductChangeCommandV1:
+    ) -> (
+        RepositoryCommand
+        | ChannelCommand
+        | SCMResumeCommandV2
+        | SCMResumeStatusV2
+        | SCMProductChangeCommandV1
+        | SCMProductIntakeCommandV1
+    ):
         from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 
+        if text.strip().startswith("/forge intake "):
+            from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
+
+            options = json.loads(text.strip().removeprefix("/forge intake "))
+            if not isinstance(options, dict) or "action" in options:
+                raise ValueError("Intake options cannot override the action")
+            return SCMProductIntakeCommandV1.model_validate({"action": "intake", **options})
         if text.strip().startswith("/forge product_change "):
             from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 
@@ -293,11 +309,13 @@ class Collaboration:
         products: ForgeProductDefinitionRepository | None = None,
         resume_authority: Any = None,
         product_change_authority: Any = None,
+        product_intake_authority: Any = None,
     ) -> None:
         self.store = store
         self.polling: Any = None
         self.resume_authority = resume_authority
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
+        self.product_intake_authority: SCMProductIntake | None = product_intake_authority
         self.scm = scm or SCMConnections(store)
         self.deployments = deployments
         self.settings_records = settings_records or ForgeCollaborationSettingsRepository()
@@ -338,6 +356,7 @@ class Collaboration:
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
             data.pop("_scm_product_change_authority_v1", None)
+            data.pop("_scm_product_intake_v1", None)
             return {
                 **data,
                 "repository_id": repository_id,
@@ -386,6 +405,7 @@ class Collaboration:
                 "_scm_authority_v1",
                 "_scm_resume_authority_v2",
                 "_scm_product_change_authority_v1",
+                "_scm_product_intake_v1",
                 "_github_poll_v1",
             ):
                 if row is not None and key in row.data:
@@ -651,6 +671,11 @@ class Collaboration:
                     if (
                         not versioned_resume
                         and not product_edit
+                        and not (
+                            command.action == "intake"
+                            and verified_reference is not None
+                            and self.product_intake_authority is not None
+                        )
                         and command.action
                         not in [
                             *settings["allowed_commands"],
@@ -801,6 +826,31 @@ class Collaboration:
     async def process(self, receipt_id: str) -> Data:
         settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
+        if (initial.get("command") or {}).get("action") == "intake":
+            from firefly_forge.project_access import AccessDenied
+
+            try:
+                if self.product_intake_authority is None:
+                    raise AccessDenied("The separate native intake capability is unavailable")
+                await self.product_intake_authority.process(receipt_id)
+            except (AccessDenied, ValueError, KeyError, PermissionError):
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if (
+                        row is not None
+                        and row.status == "received"
+                        and row.data.get("action_status") in {None, "not_dispatched"}
+                    ):
+                        await self._write_row(
+                            row,
+                            status="denied",
+                            action_status="not_dispatched",
+                            reason="scm_product_intake_consent_required",
+                        )
+                        return copy.deepcopy(row.data)
+                return {"id": receipt_id, "status": "withheld", "reason": "scm_product_intake_result_unconfirmed"}
+            await self.feedback(receipt_id)
+            return await self.product_intake_authority.result(receipt_id)
         if (initial.get("command") or {}).get("action") == "product_change":
             from firefly_forge.product_lifecycle import ProductLifecycle
             from firefly_forge.project_access import AccessDenied
@@ -944,6 +994,7 @@ class Collaboration:
                         "_scm_authority_v1",
                         "_scm_resume_authority_v2",
                         "_scm_product_change_authority_v1",
+                        "_scm_product_intake_v1",
                     ):
                         raw_settings.pop(key, None)
                     if raw_settings != {
@@ -1374,6 +1425,14 @@ class Collaboration:
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
         polled = (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        intake = (initial.get("command") or {}).get("action") == "intake"
+        if intake:
+            try:
+                if self.product_intake_authority is None:
+                    return
+                await self.product_intake_authority.authorize_feedback(receipt_id)
+            except Exception:
+                return
         if polled:
             try:
                 if self.polling is None:
@@ -1462,7 +1521,16 @@ class Collaboration:
                 await self.resume_authority.authorize_feedback(receipt_id)
             if polled:
                 await self.polling.authorize_feedback(data)
-            if polled:
+            if intake:
+                intake_authority = self.product_intake_authority
+                assert intake_authority is not None
+                remote = await self._remote_write(
+                    repo,
+                    payload,
+                    data["issue"],
+                    before_write=lambda: intake_authority.authorize_feedback(receipt_id, remote=False),
+                )
+            elif polled:
                 remote = await self._remote_write(
                     repo, payload, data["issue"], before_write=lambda: self.polling.authorize_feedback_local(data)
                 )

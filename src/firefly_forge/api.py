@@ -197,6 +197,8 @@ from firefly_forge.scm_poll_controllers import SCMPollController
 from firefly_forge.scm_polling import SCMPolling
 from firefly_forge.scm_product_change_controllers import SCMProductChangeController
 from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
+from firefly_forge.scm_product_intake import SCMProductIntake
+from firefly_forge.scm_product_intake_controllers import SCMProductIntakeController
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
 from firefly_forge.scm_resume_service import SCMResumeAuthority
 from firefly_forge.search_tools import SearchTools
@@ -693,6 +695,17 @@ class FactoryConfiguration:
         return SCMProductChangeAuthority(store, authority, settings_records, inbox, events)
 
     @bean
+    def scm_product_intake(
+        self,
+        store: Store,
+        scm: SCMConnections,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMProductIntake:
+        return SCMProductIntake(store, scm, settings_records, inbox, events)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -913,10 +926,19 @@ class FactoryConfiguration:
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
         product_change_authority: SCMProductChangeAuthority,
+        intake: SCMProductIntake,
         polling: SCMPolling,
     ) -> Collaboration:
         collaboration = Collaboration(
-            store, scm, deployments, settings_records, inbox, products, resume_authority, product_change_authority
+            store,
+            scm,
+            deployments,
+            settings_records,
+            inbox,
+            products,
+            resume_authority,
+            product_change_authority,
+            intake,
         )
         collaboration.polling = polling
         polling.collaboration = collaboration
@@ -1043,6 +1065,7 @@ def create_runtime(
         SCMResumeAuthorityController,
         SCMPollController,
         SCMProductChangeController,
+        SCMProductIntakeController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,

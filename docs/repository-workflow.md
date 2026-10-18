@@ -189,3 +189,78 @@ Start a conversation with `/forge assistant {"operation":"start","project_id":"P
 Use `analysis start` to inspect the authorized source components. `analysis review` acknowledges the exact observed-source digest, not functional behavior or a product design. Role configuration changes validated future-run defaults and preserves old run snapshots. Global role instructions and provider settings remain operator-only.
 
 The repository inbox records an action intent before a model request, source inspection or configuration effect. Authorization failure before dispatch records a denial without an action intent. Unknown outcomes retain reconciliation state; the factory does not blindly retry a model turn or provider write. Comments contain a bounded summary, receipt and relevant IDs. Unreviewed status appears before shortened proposal text; an enabled reference publication supplies the complete proposal branch. Without that opt-in, the full result remains available through the authenticated receipt and assistant APIs.
+
+## Register a first product from GitHub
+
+`/forge intake` creates one logical project and its first product definition in
+an already provider-verified GitHub repository. Send a complete definition and
+one component; Forge does not infer a product from an issue title or download
+attachments. The result remains a manual, unreviewed definition. It creates no
+run, source branch, build, publication or deployment.
+
+A native factory administrator must first opt in to this action for one verified
+GitHub account and repository. Existing reply, resume, product-edit and channel
+allowlists do not grant intake. The administrator signs in through the existing
+factory account and uses the API or Python client; the repository user can then
+submit the intake from GitHub without opening Studio.
+
+1. Connect the GitHub App and enable signed repository ingress. Keep the exact
+   account in both `trusted_actors` and `configuration_actors`. Shared ingress
+   also requires its existing enabled/global actor settings. Repository
+   auto-registration remains a separate explicit setting.
+2. Send `/forge project` from that account. Inspect the retained repository
+   receipt and its non-null `verification`; it must bind the current App,
+   installation, repository, signing key and numeric sender ID. A login name,
+   URL or screenshot is not a verified identity.
+3. As the native administrator, call
+   `POST /api/v1/repositories/REPOSITORY/scm-product-intake/consents` with:
+
+   ```json
+   {
+     "version": 1,
+     "request_id": "11111111111111111111111111111111",
+     "expected_previous_digest": null,
+     "verified_receipt_id": "22222222222222222222222222222222",
+     "expected_verified_reference_digest": "SHA256_OF_THE_EXACT_VERIFICATION_OBJECT",
+     "active": true,
+     "acknowledge_product_intake": true
+   }
+   ```
+
+   Use your exact receipt ID and its verification digest. The digest is SHA256
+   of UTF-8 JSON with sorted keys, compact separators and `ensure_ascii=False`.
+   The server binds the consenting native account; the body cannot choose a
+   different native user. For a revision, supply the exact previous consent
+   digest. Consent history is bounded to 32 changes per repository, with the
+   final slot reserved for revocation.
+4. Retain the returned consent request ID and digest. Post this structured
+   comment in the same granted GitHub repository, replacing both consent values
+   with that receipt:
+
+   ```text
+   /forge intake {"version":1,"request_id":"33333333333333333333333333333333","expected_consent_request_id":"11111111111111111111111111111111","expected_consent_digest":"CONSENT_DIGEST","name":"Stock","description":"Track stock movements","component":{"id":"app","name":"Stock API","responsibility":"Track stock","backend":"pyfly","frontend":"none"},"definition":{"customer":"Warehouse operator","problem":"Stock counts drift","journey":["Count stock"],"user_stories":["As an operator, I count stock"],"acceptance":["The count is retained"],"owners":["Warehouse team"]}}
+   ```
+
+The execution owner processes the signed delivery and retains the new project,
+product revision, owner membership and original action receipt together. Its
+ordinary reply uses the existing conversation feedback custody. Registration
+and a successful reply are separate outcomes. The native identity must remain
+enabled and a current factory administrator; the App grant, repository metadata,
+channel actor settings, consent and signing key are checked again before intake
+commits. Receipt metadata never turns snapshot IDs into code verification.
+
+Keep the original intake request ID, body and consent references when checking a
+lost response. An identical admitted request returns its original project and
+product receipt, including when another delivery carries it. A changed body or
+an existing project/product is refused. Do not invent a new request ID to clear
+an uncertain result or repost an uncertain bot reply. A current native
+administrator can read the exact result through
+`GET /api/v1/repositories/REPOSITORY/scm-product-intake/requests/REQUEST`.
+The Python client methods are `configure_scm_product_intake_consent`,
+`scm_product_intake_consent` and `scm_product_intake`.
+
+To revoke intake, send a new consent request with `active: false`, the exact
+previous digest and original verified source. Revocation is local and does not
+require a reachable provider. It does not erase a completed project or receipt.
+This slice has no GitLab/Bitbucket intake adapter, free-form model intake,
+multi-repository intake, attachment retrieval or execution permission.

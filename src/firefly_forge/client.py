@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
     from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
+    from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
@@ -558,6 +559,34 @@ class ForgeClient:
         model = ProjectDefinition.model_validate(definition)
         path = "projects" + ("/" + self._id(project_id) if project_id else "")
         return dict(self.request("PUT" if project_id else "POST", path, json=model.model_dump(mode="json")))
+
+    def configure_scm_product_intake_consent(
+        self, repository_id: str, request: SCMProductIntakeConsentInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
+
+        model = SCMProductIntakeConsentInputV1.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"repositories/{self._id(repository_id)}/scm-product-intake/consents",
+                json=model.model_dump(mode="json"),
+            )
+        )
+
+    def scm_product_intake_consent(self, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"repositories/{self._id(repository_id)}/scm-product-intake/consents/{self._id(request_id)}"
+            )
+        )
+
+    def scm_product_intake(self, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"repositories/{self._id(repository_id)}/scm-product-intake/requests/{self._id(request_id)}"
+            )
+        )
 
     def project(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}"))
