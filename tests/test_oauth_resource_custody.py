@@ -15,6 +15,7 @@ from firefly_forge.projects import Projects
 
 
 async def admitted(store, tmp_path, origin):
+    from firefly_forge.identity_persistence import ForgeIdentityUserEntity
     from firefly_forge.oauth_resources import OAuthResources
 
     connection, user, _, _, _, _ = await setup(store, origin)
@@ -37,6 +38,8 @@ async def admitted(store, tmp_path, origin):
         response = await client.get(challenge.authorization_url)
     callback = parse_qs(urlsplit(response.headers["location"]).query)
     await complete(connection, user, challenge, callback)
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=user.id, issuer=user.issuer, subject=user.subject, enabled=True))
     context = CURRENT_PRINCIPAL.set(user)
     try:
         run = await store.create_run(
