@@ -111,10 +111,12 @@
   .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
     overflow: hidden;
   }
+  .learning-configuration .learning-wizard.wizard-frame .wizard-content {
+    padding: 12px;
+  }
   .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-content {
     display: flex;
     height: 100%;
-    padding: 12px;
   }
   .learning-wizard.wizard-frame:not([data-layout="flow"]) .wizard-form {
     display: grid;
@@ -138,7 +140,10 @@
     line-height: 1.5;
     margin-top: 4px;
   }
-  .learning-wizard.wizard-frame .wizard-actions {
+  .learning-configuration
+    .learning-wizard.wizard-frame
+    .wizard-form
+    > .wizard-actions {
     padding: 8px 0 0;
     min-height: 50px;
   }
