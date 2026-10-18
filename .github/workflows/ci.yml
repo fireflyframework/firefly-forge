@@ -47,6 +47,16 @@ jobs:
       - run: npx --prefix studio playwright install --with-deps chromium
       - run: make studio-check
       - run: npm --prefix studio audit --omit=dev --audit-level=high
+      - name: Retain Studio failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-failure-evidence
+          path: |
+            studio/test-results/
+            studio/playwright-report/
+          retention-days: 3
+          if-no-files-found: ignore
   documentation:
     runs-on: ubuntu-24.04
     steps:
