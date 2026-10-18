@@ -25,90 +25,12 @@ async function fixture(page: Page) {
         response,
         body: html.replace(
           entry,
-          '<link rel="stylesheet" href="/src/styles.css" />',
+          '<script type="module" src="/tests/factory-renderer-fixture.ts"></script>',
         ),
       });
     },
   );
   await page.goto("/");
-  await page.evaluate(async () => {
-    const reactPath = "/node_modules/.vite/deps/react.js";
-    const domPath = "/node_modules/.vite/deps/react-dom_client.js";
-    const scenePath = "/src/FactoryScene.tsx";
-    const [
-      {
-        default: { createElement },
-      },
-      {
-        default: { createRoot },
-      },
-      { FactoryScene },
-    ] = await Promise.all([
-      import(reactPath),
-      import(domPath),
-      import(scenePath),
-    ]);
-    (document.querySelector("#root") as HTMLElement).style.display = "none";
-    const mount = document.createElement("div");
-    mount.className = "factory-fixture";
-    mount.style.cssText = "width:1100px;margin:24px auto";
-    document.body.appendChild(mount);
-    const root = createRoot(mount);
-    const ids = [
-      "prepare",
-      "implement",
-      "verify",
-      "checkpoint",
-      "publish",
-      "deploy",
-      "health",
-    ];
-    let state = "waiting",
-      selectedId = "implement",
-      suspended = false;
-    const render = () =>
-      root.render(
-        createElement(FactoryScene, {
-          stations: ids.map((id) => ({
-            id,
-            label: id,
-            state:
-              id === "implement"
-                ? state
-                : id === "prepare"
-                  ? "done"
-                  : "waiting",
-            detail: "Renderer fixture; no server production is inferred.",
-          })),
-          theme: "dark",
-          selectedId,
-          suspended,
-          onSelect: (id: string) => {
-            selectedId = id;
-            render();
-          },
-        }),
-      );
-    document.addEventListener("factory-fixture-state", (event) => {
-      const detail = (
-        event as CustomEvent<{ state: string; suspended: boolean }>
-      ).detail;
-      state = detail.state;
-      suspended = detail.suspended;
-      render();
-    });
-    document.addEventListener("factory-fixture-visibility", (event) => {
-      Object.defineProperty(document, "hidden", {
-        configurable: true,
-        value: (event as CustomEvent<boolean>).detail,
-      });
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    document.addEventListener("factory-fixture-unmount", () => root.unmount(), {
-      once: true,
-    });
-    render();
-  });
   await expect(page.locator(".factory-fixture .factory-live")).toHaveAttribute(
     "data-renderer",
     "webgl",
