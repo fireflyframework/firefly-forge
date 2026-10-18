@@ -130,6 +130,46 @@ Inspect `GET /api/v1/runs/{id}`, `/plan` and `/journal`; [the HTTP guide](api.md
 
 Source: [`store.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/store.py) (`create_run`, `claim`), [`engine.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/engine.py) (`dispatch_queued`, `execute_run`, `_checkpoint_commit`, `validated_workspace`).
 
+## Factory-owned verification handoffs
+
+A coding agent may need checks that its own sandbox cannot perform, such as connecting to the project's dedicated test database. It returns a typed `verification` request. forge executes the run's already approved commands in the configured runner and sends the recorded results back to the coding agent. A product decision, missing credential or unknown side effect is not permission to invent a command or expand access.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Automatic verification handoff diagram" aria-describedby="automatic-verification-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+    Q[Agent: verification request] --> I[Journal: handoff intent]
+    I --> R[Runner: approved commands]
+    R --> K{Known outcomes?}
+    K -->|Recorded| A[Journal: factory answer]
+    A --> C[Engine: bounded continuation]
+    K -->|Uncertain or revoked| H[Hold for review]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="automatic-verification-flow-guide">Read from left to right. The journal records intent before execution and results before continuation. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
+
+`VerificationHandoffs` is a native pyfly service registered through the runtime's configuration bean. It uses the same `Store`, `Journal`, `Engine` and `SandboxExecutor` as ordinary execution. The dispatcher applies the existing concurrency and repository ownership limits; a paused verification does not create a second coding run.
+
+The immutable handoff binds the run, pending request, source manifest, approved commands, current policy, provider configuration, implementation attempt and command ordinals. Authority, cancellation, campaign controls and those bindings are checked again before each effect and before continuation. Command output is untrusted data. Its bounded answer excerpt does not replace the original runner receipts.
+
+| Recorded state | Meaning | User action |
+| --- | --- | --- |
+| Pending or running | forge owns the approved verification step. | Follow progress; no manual answer is needed. |
+| Completed | Every command has a known exit code, including any failures. | Inspect the results while the authorized continuation proceeds. |
+| Held or refused | Admission failed, authority changed or an outcome cannot be established. | Review the run before authorizing another action. |
+
+The tool policy enables one automatic continuation by default; administrators can disable it or set a finite limit from one to three. Each admitted run captures that policy. The continuation allowance is separate from the repair budget: it does not reset prior implementation rounds or create unlimited repair attempts. The coding attempt limit remains bounded. Failed commands remain failed evidence even when they provide enough information for coding to continue.
+
+A completed handoff writes a version-4 factory-attributed `worker_response`, followed by its automatic resume receipt. Studio presents that response as work handled by forge, rather than attributing it to a person. The same run and workspace continue. A restart can reuse known command receipts, but an unfinished command or provider admission cannot be replayed blindly.
+
+Older runs without an automatic-verification grant stay manual until an authenticated native operator explicitly adopts the exact pending request, retained source and current policy/provider cut. The typed adoption API provides candidate inspection, one retained request identity and exact readback; it does not execute commands inside the HTTP request. See [the API guide](api.md) for the contract.
+
+Progress in the [repository workflow](repository-workflow.md) comes from durable run states. The bot reports starts, checks, questions and delivery outcomes through centralized Agentic templates. A confirmed GitHub comment and a successful product delivery remain separate records.
+
+Source: [`verification_handoffs.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_handoffs.py), [`verification_models.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_models.py), [`verification_controllers.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_controllers.py), [`journal.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/journal.py).
+
 ## Write-ahead intents, receipts and uncertain effects
 
 <details class="forge-gallery" markdown="1">
