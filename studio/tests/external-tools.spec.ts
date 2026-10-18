@@ -1413,3 +1413,139 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
           JSON.stringify(frames, null, 2) + "\n",
         );
       });
+
+test("project grants loading preserves the route heading and allocated wizard", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  const { writes } = await fixture(page);
+  await connect(page);
+  await page
+    .getByRole("button", {
+      name: "Discover schemas (remote request)",
+      exact: true,
+    })
+    .click();
+  await acknowledgeTools(page);
+  await page
+    .getByRole("button", { name: "Record schema review", exact: true })
+    .click();
+  await expect(
+    page.locator('.wizard-steps [aria-current="step"]'),
+  ).toContainText("Project access");
+  await expect(
+    page.getByRole("button", { name: "Reload current state", exact: true }),
+  ).toBeEnabled();
+  let release = () => {};
+  let received = () => {};
+  let heldRequests = 0;
+  const responseHeld = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requestReceived = new Promise<void>((resolve) => {
+    received = resolve;
+  });
+  await page.route(
+    `**/api/v1/tools/mcp/projects/${projectId}/grants`,
+    async (route) => {
+      expect(route.request().method()).toBe("GET");
+      heldRequests++;
+      received();
+      await responseHeld;
+      await route.fallback();
+    },
+  );
+  const verify = async (phase: string) => {
+    const frame = page.locator(".external-tools-wizard");
+    await expect(frame).not.toHaveAttribute("data-layout", "flow");
+    await expect
+      .poll(() =>
+        frame.evaluate((element) => {
+          const main = element.closest("main")!;
+          const box = element.getBoundingClientRect();
+          const offset =
+            box.top - main.getBoundingClientRect().top + main.scrollTop;
+          const remaining =
+            main.clientHeight -
+            offset -
+            parseFloat(getComputedStyle(main).paddingBottom) -
+            16;
+          return Math.abs(box.height - remaining);
+        }),
+      )
+      .toBeLessThanOrEqual(1);
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector(".workspace-main>main")!;
+      const header = document
+        .querySelector(".workspace-main>header")!
+        .getBoundingClientRect();
+      const footer = document
+        .querySelector(".workspace-main>footer")!
+        .getBoundingClientRect();
+      const heading = document
+        .querySelector(".external-page-heading")!
+        .getBoundingClientRect();
+      const actions = Array.from(
+        document.querySelectorAll(
+          ".external-tools-wizard .wizard-actions button",
+        ),
+      ).map((button) => {
+        const box = button.getBoundingClientRect();
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          hit: button.contains(
+            document.elementFromPoint(box.x + box.width / 2, box.bottom - 2),
+          ),
+        };
+      });
+      return {
+        mainScrollTop: main.scrollTop,
+        headingTop: heading.top,
+        headerBottom: header.bottom,
+        footerTop: footer.top,
+        actions,
+      };
+    });
+    await info.attach(`project-grants-${phase}-geometry`, {
+      body: JSON.stringify(geometry),
+      contentType: "application/json",
+    });
+    await page.screenshot({
+      path: info.outputPath(`project-grants-${phase}.png`),
+      animations: "disabled",
+    });
+    expect(geometry.mainScrollTop).toBe(0);
+    expect(geometry.headingTop).toBeGreaterThanOrEqual(geometry.headerBottom);
+    expect(geometry.actions).toHaveLength(2);
+    for (const action of geometry.actions) {
+      expect(action.top).toBeGreaterThanOrEqual(geometry.headerBottom);
+      expect(action.bottom).toBeLessThanOrEqual(geometry.footerTop);
+      expect(action.hit).toBe(true);
+    }
+  };
+  try {
+    await page
+      .getByLabel("Product project", { exact: true })
+      .selectOption(projectId);
+    await requestReceived;
+    await expect(
+      page.locator('.external-tools > .external-hint[role="status"]'),
+    ).toHaveText("Reading current factory state…");
+    await verify("loading");
+    expect(heldRequests).toBe(1);
+    release();
+    await expect(
+      page.locator('.external-tools > .external-hint[role="status"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Reload current state", exact: true }),
+    ).toBeEnabled();
+    await verify("resolved");
+    expect(heldRequests).toBe(1);
+    expect(writes).toHaveLength(3);
+  } finally {
+    release();
+  }
+});
