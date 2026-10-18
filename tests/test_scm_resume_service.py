@@ -629,7 +629,7 @@ async def test_v2_denial_does_not_stop_delivery_poller_or_return_private_complet
         yield None
 
     service = object.__new__(Collaboration)
-    service.store = SimpleNamespace(_unit=unit)
+    service.store = SimpleNamespace(_unit=unit, configuration=SimpleNamespace(settings_generation=0))
     service.inbox = SimpleNamespace(find_by_id=find, save=save)
     service.receipt = receipt
     service.resume_authority = SimpleNamespace(process=denied)
