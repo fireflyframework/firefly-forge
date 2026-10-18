@@ -154,6 +154,7 @@ class Engine:
         self.browser: Any = None
         self.search: Any = None
         self.tool_broker: Any = None
+        self.verification_handoffs: Any = None
         self.external_mcp: Any = None
         self.learning: Any = None
         self.knowledge_first: Any = None
@@ -305,22 +306,24 @@ class Engine:
         if not available:
             return
         occupied = set(self.active_projects.values())
-        eligible: dict[str, str] = {}
-        for identifier in await self.store.queued():
+        eligible: dict[str, tuple[str, bool]] = {}
+        verification = await self.verification_handoffs.ready() if self.verification_handoffs else []
+        for identifier in [*verification, *await self.store.queued()]:
             if identifier in self.active:
                 continue
             run = await self.store.get_run(identifier)
             project = run["repository_id"]
             if project not in occupied:
-                eligible.setdefault(project, identifier)
+                eligible.setdefault(project, (identifier, identifier in verification))
         projects = list(eligible)
         if self.last_project in projects:
             pivot = projects.index(self.last_project) + 1
             projects = projects[pivot:] + projects[:pivot]
         for project in projects[:available]:
-            identifier = eligible[project]
+            identifier, handoff = eligible[project]
             self.active_projects[identifier] = project
-            self.active[identifier] = asyncio.create_task(self.execute_run(identifier))
+            action = self.verification_handoffs.execute(identifier) if handoff else self.execute_run(identifier)
+            self.active[identifier] = asyncio.create_task(action)
             self.last_project = project
 
     async def cancel(self, identifier: str) -> None:
@@ -747,9 +750,30 @@ class Engine:
                             ]
                         ),
                     )
-                if run.get("worker_response"):
+                if run.get("worker_response") and run["worker_response"].get("source") != "factory_verification":
                     source_brief += prompt_text(
                         "implementation/operator-response", response=safe(json.dumps(run["worker_response"]))
+                    )
+                from firefly_forge.verification_models import automatic_verification_grant
+
+                verification_grant = automatic_verification_grant(run.get("tool_policy_snapshot"))
+                if (
+                    verification_grant is not None
+                    or run.get("worker_response", {}).get("source") == "factory_verification"
+                ):
+                    source_brief += prompt_text(
+                        "implementation/automatic-verification",
+                        policy=json.dumps(
+                            verification_grant.model_dump()
+                            if verification_grant
+                            else {
+                                "legacy_adoption": True,
+                                "max_continuations": run.get("verification_handoff", {}).get("max_continuations", 1),
+                            }
+                        ),
+                        response=safe(json.dumps(run.get("worker_response", {})))
+                        if run.get("worker_response", {}).get("source") == "factory_verification"
+                        else "",
                     )
                 if run.get("component_snapshot"):
                     component = run["component_snapshot"]
@@ -806,6 +830,12 @@ class Engine:
             if run.get("repair_halt"):
                 raise ValueError(run["repair_halt"])
             repairs = int(run["repair_budget"])
+            continuation_allowance = (
+                await self.journal.verification_continuation_allowance(identifier)
+                if self.journal and hasattr(self.journal, "verification_continuation_allowance")
+                else 0
+            )
+            implementation_limit = min(4, repairs + 1 + continuation_allowance)
             completed_rounds = int(run.get("implementation_rounds", 0))
             repair_failures: list[dict[str, Any]] = []
             start_round = max(1, completed_rounds)
@@ -830,10 +860,10 @@ class Engine:
             if restoration is not None:
                 start_round = restoration.binding.round
                 repair_failures = []
-            if start_round > repairs + 1:
+            if start_round > implementation_limit:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
-            for attempt in range(start_round, repairs + 2):
+            for attempt in range(start_round, implementation_limit + 1):
                 restored_receipt = restoration
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
@@ -846,7 +876,7 @@ class Engine:
                 )
                 active_key = implementation.get("idempotency_key")
                 if implementation["disposition"] != "completed":
-                    if completed_rounds >= repairs + 1:
+                    if completed_rounds >= implementation_limit:
                         raise ValueError("The frozen implementation attempt budget is exhausted")
                     await self.store.update(identifier, implementation_pending=True)
                     if restoration is None:
@@ -908,6 +938,18 @@ class Engine:
                         if settings.get("FORGE_AGENTIC_CHECKPOINTS") == "required" and self.journal
                         else None
                     )
+                    if (
+                        self.journal
+                        and restoration is None
+                        and hasattr(self.journal, "verification_provider_admission")
+                    ):
+                        try:
+                            await self.journal.verification_provider_admission(identifier)
+                        except ValueError as exc:
+                            current_handoff = (await self.store.get_run(identifier)).get("verification_handoff", {})
+                            if current_handoff.get("id"):
+                                await self.journal.verification_hold(identifier, current_handoff["id"])
+                            raise ReconciliationRequired(str(exc)) from exc
                     with bridge_completion_scope(completion_scope), checkpoint_invocation(native_invocation):
                         result = await provider.execute(
                             workspace,

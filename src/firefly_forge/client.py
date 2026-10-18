@@ -908,6 +908,26 @@ class ForgeClient:
     def worker_messages(self, run_id: str) -> list[dict[str, Any]]:
         return list(self.request("GET", f"runs/{self._id(run_id)}/worker-messages"))
 
+    def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
+        if agent not in {"codex", "claude", "bridge", "agentic"}:
+            raise ValueError("Choose an explicit configured coding provider")
+        return dict(
+            self.request("GET", f"runs/{self._id(run_id)}/verification-handoffs/candidates", params={"agent": agent})
+        )
+
+    def adopt_verification_handoff(self, run_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.verification_models import VerificationAdoption
+
+        body = VerificationAdoption.model_validate(request)
+        return dict(
+            self.request("POST", f"runs/{self._id(run_id)}/verification-handoffs/adoptions", json=body.model_dump())
+        )
+
+    def verification_handoff_adoption(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("GET", f"runs/{self._id(run_id)}/verification-handoffs/adoptions/{self._id(request_id)}")
+        )
+
     def respond_worker(self, run_id: str, request_id: str, response: WorkerResponse | dict[str, Any]) -> dict[str, Any]:
         import re
 
@@ -1307,9 +1327,11 @@ class ForgeClient:
         return LearningObservationAttemptReceipt.model_validate(result).model_dump(mode="json")
 
     def configure_tool_policy(self, request: dict[str, Any]) -> dict[str, Any]:
-        from firefly_forge.tool_broker import ToolPolicyInput
+        from firefly_forge.tool_broker import FactoryToolPolicyInput, ToolPolicyInput
 
-        model = ToolPolicyInput.model_validate(request)
+        model = (FactoryToolPolicyInput if "automatic_verification" in request else ToolPolicyInput).model_validate(
+            request
+        )
         return dict(self.request("PUT", "tools/policy", json=model.model_dump()))
 
     def tool_invocations(self, run_id: str) -> list[dict[str, Any]]:

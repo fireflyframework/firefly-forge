@@ -218,6 +218,9 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminEventRepository,
     ForgeIdentityAdminOperationRepository,
 )
+from firefly_forge.verification_controllers import VerificationHandoffController
+from firefly_forge.verification_handoffs import VerificationHandoffs
+from firefly_forge.verification_models import VerificationAdoption
 from firefly_forge.worker_runtime import WorkerSupervision
 
 
@@ -340,6 +343,9 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         ("/runs/{id}/journal", "get", None),
         ("/runs/{id}/resume", "post", "ResumeRequest"),
         ("/runs/{id}/handoff", "post", "ResumeRequest"),
+        ("/runs/{id}/verification-handoffs/candidates", "get", None),
+        ("/runs/{id}/verification-handoffs/adoptions", "post", "VerificationAdoption"),
+        ("/runs/{id}/verification-handoffs/adoptions/{request_id}", "get", None),
     ]
     schemas: dict[str, Any] = {}
     models: list[type[BaseModel]] = [
@@ -357,6 +363,7 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         KnowledgeIndex,
         KnowledgeTest,
         ResumeRequest,
+        VerificationAdoption,
     ]
     for model in models:
         schema = model.model_json_schema(ref_template="#/components/schemas/{model}")
@@ -373,6 +380,24 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         }
         if "{id}" in path:
             operation["parameters"] = [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}]
+        if "{request_id}" in path:
+            operation.setdefault("parameters", []).append(
+                {
+                    "name": "request_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+                }
+            )
+        if path == "/runs/{id}/verification-handoffs/candidates":
+            operation["parameters"].append(
+                {
+                    "name": "agent",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string", "enum": ["codex", "claude", "bridge", "agentic"]},
+                }
+            )
         if model_name:
             operation["requestBody"] = {
                 "required": True,
@@ -591,6 +616,12 @@ class FactoryConfiguration:
         journal.credential_registry = lambda: engine.credential_registry()
         store.credential_registry = lambda: engine.credential_registry()
         return engine
+
+    @bean
+    def verification_handoffs(self, store: Store, journal: Journal, engine: Engine) -> VerificationHandoffs:
+        handoffs = VerificationHandoffs(store, journal, engine)
+        engine.verification_handoffs = handoffs
+        return handoffs
 
     @bean
     def assurance(self, store: Store, journal: Journal) -> Assurance:
@@ -1075,6 +1106,7 @@ def create_runtime(
         AgentRestoreController,
         AgentCheckpointCandidateController,
         JournalController,
+        VerificationHandoffController,
         BridgeCompletionController,
         RunEvidenceController,
         ForgeCollaborationSettingsRepository,

@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from firefly_forge.journal import digest
-from firefly_forge.tool_broker import ToolPolicyInput
+from firefly_forge.tool_broker import FactoryToolPolicyInput as ToolPolicyInput
 
 
 def test_new_tool_policy_explicitly_grants_bounded_automatic_verification():
@@ -40,3 +40,16 @@ def test_changed_policy_digest_cannot_grant_automatic_execution():
     snapshot["settings"]["automatic_verification"]["max_continuations"] = 3
     with pytest.raises(ValueError, match="changed"):
         automatic_verification_grant(snapshot)
+
+
+def test_legacy_policy_update_preserves_explicitly_disabled_automatic_grant(tmp_path):
+    from types import SimpleNamespace
+
+    from firefly_forge.tool_broker import ToolInvocationBroker
+    from firefly_forge.tool_broker import ToolPolicyInput as LegacyToolPolicyInput
+
+    broker = ToolInvocationBroker(SimpleNamespace(), SimpleNamespace(), tmp_path / "private")
+    broker.configure(ToolPolicyInput(automatic_verification={"enabled": False, "max_continuations": 2}))
+    updated = broker.configure(LegacyToolPolicyInput(calls_limit=40))
+    assert updated["settings"]["calls_limit"] == 40
+    assert updated["settings"]["automatic_verification"] == {"enabled": False, "max_continuations": 2}

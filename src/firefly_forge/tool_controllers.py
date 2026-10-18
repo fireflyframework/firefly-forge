@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 
-from firefly_forge.tool_broker import ToolInvocationBroker, ToolPolicyInput
+from firefly_forge.tool_broker import FactoryToolPolicyInput, ToolInvocationBroker
 
 
 class ToolReconciliationInput(BaseModel):
@@ -26,7 +26,7 @@ class ToolController:
         return self.broker.snapshot()
 
     @put_mapping("/tools/policy")
-    def configure(self, body: Body[ToolPolicyInput]) -> dict[str, Any]:
+    def configure(self, body: Body[FactoryToolPolicyInput]) -> dict[str, Any]:
         return self.broker.configure(body)
 
     @get_mapping("/runs/{id}/tool-invocations")

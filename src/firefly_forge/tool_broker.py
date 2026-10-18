@@ -40,6 +40,9 @@ class ToolPolicyInput(BaseModel):
     per_tool_limit: int = Field(default=10, ge=1, le=30, strict=True)
     timeout_seconds: int = Field(default=30, ge=1, le=60, strict=True)
     max_result_bytes: int = Field(default=256_000, ge=1024, le=750_000, strict=True)
+
+
+class FactoryToolPolicyInput(ToolPolicyInput):
     automatic_verification: AutomaticVerificationPolicy = Field(default_factory=AutomaticVerificationPolicy)
 
 
@@ -47,7 +50,7 @@ def tool_policy_snapshot(directory: Path | ConfigurationStore) -> Data:
     private = directory if isinstance(directory, ConfigurationStore) else ConfigurationStore(directory)
     with private.lock:
         record = private._read(private.directory / "tool-policy.json")
-    settings = ToolPolicyInput.model_validate(record.get("settings", {})).model_dump()
+    settings = FactoryToolPolicyInput.model_validate(record.get("settings", {})).model_dump()
     payload = {"version": 1, "revision": record.get("revision"), "settings": settings}
     return {**payload, "digest": digest(payload)}
 
@@ -63,7 +66,7 @@ def frozen_policy(snapshot: Data | None) -> Data:
         or digest(payload) != snapshot.get("digest")
     ):
         raise ValueError("Tool policy snapshot was changed")
-    ToolPolicyInput.model_validate(payload["settings"])
+    FactoryToolPolicyInput.model_validate(payload["settings"])
     return copy.deepcopy(snapshot)
 
 
@@ -83,9 +86,14 @@ class ToolInvocationBroker:
 
     def configure(self, request: ToolPolicyInput) -> Data:
         with self.private.lock:
+            path = self.private.directory / "tool-policy.json"
+            current = FactoryToolPolicyInput.model_validate(self.private._read(path).get("settings", {}))
+            settings = {**current.model_dump(), **request.model_dump()}
+            if "automatic_verification" not in request.model_fields_set:
+                settings["automatic_verification"] = current.automatic_verification.model_dump()
             self.private._write(
-                self.private.directory / "tool-policy.json",
-                {"revision": uuid.uuid4().hex, "settings": request.model_dump()},
+                path,
+                {"revision": uuid.uuid4().hex, "settings": settings},
             )
         return self.snapshot()
 

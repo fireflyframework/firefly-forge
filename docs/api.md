@@ -15,6 +15,65 @@ Request and response bodies use JSON unless a route downloads an artifact or
 file. Project permissions apply to the authenticated identity. The actual
 running application's OpenAPI document is the authoritative schema.
 
+## Automatic verification handoffs
+
+New runs freeze `settings.automatic_verification` from `GET /tools/policy`.
+The factory default is `{"enabled": true, "max_continuations": 1}`; the strict
+maximum is three. The existing administrator-only policy update accepts this
+setting with the other tool settings. A frozen snapshot without this setting
+does not grant automatic execution.
+Older SDK/MCP policy writes that omit this setting preserve its current value.
+
+A pending implementation request with typed `kind: "verification"` can ask
+Forge to run all explicit, frozen `run.commands` through `SandboxExecutor`.
+Request IDs, question text and context never select commands or grant access.
+Product decisions, credentials, architecture and approval questions remain
+manual. Current execution authority, cancellation, campaign scope, source,
+provider and policy are checked again before effects and continuation.
+
+Native command intents and receipts retain the actual commands and outcomes.
+Known failing checks become bounded, clearly attributed factory feedback.
+`completed` means every configured command has a known result, including any
+failures; it does not mean the product passed acceptance. Unknown effects hold
+without automatic replay. Source identity includes untracked public source and
+uses the existing review exclusions for dependencies, private files, build
+outputs and tool caches, including `.cache`. Those directories are not a place
+to store application source.
+
+Each completed, durably resumed handoff grants one additional coding task,
+separate from the frozen repair budget. History is preserved, and the existing
+four-attempt ceiling remains. A spent, revoked, stale or uncertain grant cannot
+start another coding task. The factory response uses protected
+`responding_actor.version: 4` / `authentication_method: "factory_verification"`
+with its handoff and source/command/policy/provider digests; it is not a human
+answer. Pre-admission refusals have a separate `verification_handoff_refused`
+event and leave the original question pending.
+
+Older paused runs require explicit native adoption:
+
+1. Read `GET /runs/{id}/verification-handoffs/candidates?agent=codex` (or another
+   explicitly selected configured coding provider).
+2. Retain one new 32-character `request_id` and POST
+   `/runs/{id}/verification-handoffs/adoptions` with `agent` and the exact
+   `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest`
+   and `provider_digest` from that read.
+3. If the response is lost, read
+   `GET /runs/{id}/verification-handoffs/adoptions/{request_id}`. Do not generate
+   a replacement ID or retry an uncertain command.
+
+Adoption records the current native operator and exact request body. Reusing an
+ID with different content refuses. It binds only that pending question and
+partial source, not later questions. Selecting a provider explicitly captures
+its current configuration through the normal native handoff; old frozen
+provider executables and snapshots stay immutable. Host coding providers still
+require current administrator authority. Admission queues work for the normal
+Engine consumer and never executes commands in the HTTP request.
+
+The Python SDK exposes `verification_handoff_candidates`,
+`adopt_verification_handoff` and `verification_handoff_adoption`. These methods
+perform one explicit request each and do not create IDs, apply a fallback or
+resume a run implicitly.
+
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |

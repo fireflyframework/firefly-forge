@@ -916,6 +916,9 @@ class Journal:
                         "attempt": feedback.attempt,
                     },
                     "pause": {"kind": "worker_request", "message": payload["summary"], "automatic": False},
+                    "verification_handoff": {},
+                    "verification_refusal": {},
+                    "verification_adoption": {},
                 }
             await self.store.run_records.save(run)
             return record
@@ -1048,7 +1051,90 @@ class Journal:
             self.store.reject_credentials(record)
         return record
 
-    async def verification_begin(self, run_id: str, intent: Data, *, check_current: Callable[[], None]) -> Data:
+    async def verification_adopt(
+        self, run_id: str, body: Data, policy: Data, *, check_current: Callable[[Data], None]
+    ) -> Data:
+        from sqlalchemy import text
+
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+        from firefly_forge.verification_models import VerificationAdoption
+
+        body = VerificationAdoption.model_validate(body).model_dump()
+        actor = CURRENT_PRINCIPAL.get()
+        if actor is None or actor.authentication_method == "scm_mapping":
+            raise AccessDenied("An authenticated native operator is required for verification adoption")
+        initial = await self.store.get_run(run_id)
+        scope = self._worker_scope(initial)
+        await self._worker_authority(initial, actor, writing=True)
+        async with self.store._unit() as session:
+            if initial.get("project_id"):
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": self.store.schema + ":members:" + initial["project_id"]},
+                )
+            identity = await ForgeIdentityUserRepository().find_by_id(actor.id, lock=LockMode.PESSIMISTIC_WRITE)
+            if (
+                identity is None
+                or not identity.enabled
+                or identity.issuer != actor.issuer
+                or identity.subject != actor.subject
+            ):
+                raise AccessDenied("The verification adoption identity is unavailable or suspended")
+            run = await self._run(run_id)
+            if self._worker_scope(run.data) != scope:
+                raise AccessDenied("Verification adoption scope changed during admission")
+            await self._worker_authority(run.data, actor, writing=True)
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            entries = await self.records.find_for_run(run.id)
+            key = "verification-adopt:" + body["request_id"]
+            existing = next(
+                (
+                    row.data["payload"]
+                    for row in entries
+                    if row.kind == "verification_handoff_adoption" and row.idempotency_key == key
+                ),
+                None,
+            )
+            if existing:
+                if existing["request"] != body or existing["actor"]["user_id"] != actor.id.hex:
+                    raise ValueError("Verification adoption identifier already contains different content or owner")
+                return copy.deepcopy(existing)
+            request = run.data.get("worker_request", {})
+            if (
+                run.status != "paused"
+                or request.get("status") != "pending"
+                or request.get("kind") != "verification"
+                or request.get("task_id") != "implement"
+                or digest(request) != body["pending_request_digest"]
+            ):
+                raise ValueError("Legacy verification adoption must bind the exact pending native request")
+            if body["agent"] in {"codex", "claude"} and not await ProjectAccess(self.store).current_administrator(
+                actor
+            ):
+                raise AccessDenied("Host coding provider selection requires current factory administrator authority")
+            ProjectAccess.require_provider_isolation(run.data, body["agent"])
+            check_current(run.data)
+            payload = {
+                "version": 1,
+                "request": body,
+                "body_digest": digest(body),
+                "policy_snapshot": policy,
+                "actor": {"user_id": actor.id.hex, "authentication_method": actor.authentication_method},
+            }
+            await self._append(run_id, "implement", key, "verification_handoff_adoption", payload)
+            check_current(run.data)
+            run.data = {
+                **run.data,
+                "verification_adoption": payload,
+                "verification_refusal": {},
+                "verification_handoff": {},
+                "updated_at": now(),
+            }
+            await self.store.run_records.save(run)
+            return copy.deepcopy(payload)
+
+    async def verification_begin(self, run_id: str, intent: Data, *, check_current: Callable[[Data], None]) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         async with self.store._unit():
@@ -1095,14 +1181,26 @@ class Journal:
                 ):
                     raise ValueError("Automatic verification continuation budget exhausted")
             await ProjectAccess(self.store).authorize_execution(run.data)
-            check_current()
+            check_current(run.data)
             await self._append(run_id, "implement", intent["id"], "verification_handoff_intent", intent)
-            check_current()
+            check_current(run.data)
             state = {
                 **{
                     key: value
                     for key, value in intent.items()
-                    if key not in {"ordinals", "workspace", "cwd", "parent_attempt", "request_digest"}
+                    if key
+                    in {
+                        "version",
+                        "id",
+                        "request_id",
+                        "source_digest",
+                        "commands_digest",
+                        "policy_digest",
+                        "provider_digest",
+                        "continuation",
+                        "max_continuations",
+                        "commands_count",
+                    }
                 },
                 "status": "running",
                 "completed_commands": retained.get("completed_commands", 0) if previous else 0,
@@ -1153,12 +1251,14 @@ class Journal:
             or request.get("argv") != run.data["commands"][index]["argv"]
             or request.get("workspace") != intent["workspace"]
             or request.get("cwd") != intent["cwd"]
+            or request.get("timeout") != intent["timeouts"][index]
+            or payload.get("snapshot_digest") != intent["sandbox_digest"]
             or digest(run.data.get("worker_request", {})) != intent["request_digest"]
         ):
             raise ValueError("Command differs from the frozen verification handoff")
 
     async def verification_command(
-        self, run_id: str, intent: Data, index: int, *, check_current: Callable[[], None]
+        self, run_id: str, intent: Data, index: int, *, check_current: Callable[[Data], None]
     ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
@@ -1182,7 +1282,7 @@ class Journal:
                 raise ValueError("Automatic verification requires a known native command receipt")
             assert receipt is not None
             await ProjectAccess(self.store).authorize_execution(run.data)
-            check_current()
+            check_current(run.data)
             payload = {
                 "version": 1,
                 "id": intent["id"],
@@ -1202,7 +1302,7 @@ class Journal:
                 for item in entries
                 if item.kind == "verification_handoff_command" and item.data["payload"].get("id") == intent["id"]
             ]
-            check_current()
+            check_current(run.data)
             state = {
                 **state,
                 "completed_commands": len(commands),
@@ -1212,7 +1312,7 @@ class Journal:
             await self.store.run_records.save(run)
             return copy.deepcopy(state)
 
-    async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[], None]) -> Data:
+    async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[Data], None]) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         async with self.store._unit():
@@ -1228,6 +1328,7 @@ class Journal:
                 raise ValueError("Pending verification request changed")
             receipts = await self.sandbox_executions(run_id)
             outputs: list[str] = []
+            excerpt_limit = min(1500, 6000 // max(1, len(intent["ordinals"])))
             for ordinal in intent["ordinals"]:
                 receipt = next(
                     (
@@ -1244,19 +1345,46 @@ class Journal:
                     raise ValueError("Native verification receipt is unavailable")
                 outputs.append(
                     f"Command {len(outputs) + 1}: exit {evidence['evidence']['exit_code']}\n"
-                    + evidence["evidence"].get("output", "")[:1500]
+                    + evidence["evidence"].get("output", "")[:excerpt_limit]
                 )
             await ProjectAccess(self.store).authorize_execution(run.data)
-            check_current()
+            check_current(run.data)
             answer = self._worker_payload(
                 run,
-                f"Factory verification: {len(outputs)} commands recorded, {state['failed_commands']} failed.\n"
-                + "\n".join(outputs),
-            )
+                prompt_text(
+                    "implementation/verification-result",
+                    count=str(len(outputs)),
+                    failed=str(state["failed_commands"]),
+                    results="\n".join(outputs),
+                ),
+            ).strip()
+            from firefly_forge.agent_roles import WorkerResponse
+
+            answer = WorkerResponse(id=intent["id"], actor="Forge verification", answer=answer).answer
             state = {**state, "status": "completed"}
+            response = {
+                "id": intent["id"],
+                "request_id": intent["request_id"],
+                "actor": "Forge verification",
+                "source": "factory_verification",
+                "verification_handoff_id": intent["id"],
+                "answer": answer,
+                "responding_actor": {
+                    "version": 4,
+                    "authentication_method": "factory_verification",
+                    "handoff_id": intent["id"],
+                    **{
+                        key: intent[key]
+                        for key in ("source_digest", "commands_digest", "policy_digest", "provider_digest")
+                    },
+                },
+            }
+            await self._append(
+                run_id, "implement", _worker_message_key("worker-response", intent["id"]), "worker_response", response
+            )
             await self._append(run_id, "implement", intent["id"] + ":outcome", "verification_handoff_outcome", state)
             task = await self._task(run_id, "implement")
-            check_current()
+            check_current(run.data)
             task.status = "paused"
             task.data = {key: value for key, value in task.data.items() if key != "verification_handoff"}
             await self.tasks.save(task)
@@ -1270,24 +1398,82 @@ class Journal:
                     "status": "answered",
                     "response_source": "factory_verification",
                 },
-                "worker_response": {
-                    "id": intent["id"],
-                    "request_id": intent["request_id"],
-                    "actor": "Forge verification",
-                    "source": "factory_verification",
-                    "verification_handoff_id": intent["id"],
-                    "answer": answer,
-                },
+                "worker_response": response,
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
             return copy.deepcopy(state)
 
+    async def verification_assert_current(self, run_id: str) -> None:
+        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.verification_models import check_verification_cut
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            state = run.data.get("verification_handoff", {})
+            if state.get("status") != "running":
+                return
+            entries = await self.records.find_for_run(run.id)
+            intent = next(
+                item.data["payload"]
+                for item in entries
+                if item.kind == "verification_handoff_intent" and item.idempotency_key == state["id"]
+            )
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_verification_cut(self.store, run.data, intent)
+
+    async def verification_provider_admission(self, run_id: str) -> None:
+        from firefly_forge.project_access import ProjectAccess
+        from firefly_forge.verification_models import check_verification_cut
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            response = run.data.get("worker_response", {})
+            if response.get("source") != "factory_verification":
+                return
+            state = run.data.get("verification_handoff", {})
+            entries = await self.records.find_for_run(run.id)
+            intent = next(
+                (
+                    item.data["payload"]
+                    for item in entries
+                    if item.kind == "verification_handoff_intent"
+                    and item.idempotency_key == response.get("verification_handoff_id")
+                ),
+                None,
+            )
+            if intent is None or state.get("id") != intent["id"] or state.get("status") != "completed":
+                raise ValueError("Factory continuation requires completed verification evidence")
+            if int(run.data.get("implementation_rounds", 0)) > intent["parent_round"]:
+                return
+            if any(
+                item.kind == "verification_continuation_intent" and item.idempotency_key == intent["id"] + ":coding"
+                for item in entries
+            ):
+                raise ValueError("The original verification continuation outcome requires reconciliation")
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_verification_cut(self.store, run.data, intent)
+            await self._append(
+                run_id,
+                "implement",
+                intent["id"] + ":coding",
+                "verification_continuation_intent",
+                {
+                    "version": 1,
+                    "id": intent["id"],
+                    "request_id": intent["request_id"],
+                    "parent_round": intent["parent_round"],
+                    "next_round": intent["parent_round"] + 1,
+                    "provider_digest": intent["provider_digest"],
+                },
+            )
+            check_verification_cut(self.store, run.data, intent)
+
     async def verification_hold(self, run_id: str, handoff_id: str) -> None:
         async with self.store._unit():
             run = await self._run(run_id)
             state = run.data.get("verification_handoff", {})
-            if state.get("id") != handoff_id or state.get("status") == "held":
+            if run.status in TERMINAL or state.get("id") != handoff_id or state.get("status") == "held":
                 return
             state = {
                 **state,
@@ -1308,6 +1494,68 @@ class Journal:
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
+
+    async def verification_refuse(self, run_id: str, request_digest: str) -> None:
+        async with self.store._unit():
+            run = await self._run(run_id)
+            request = run.data.get("worker_request", {})
+            if (
+                run.status not in {"paused", "needs_reconciliation"}
+                or request.get("status") != "pending"
+                or digest(request) != request_digest
+            ):
+                return
+            refusal = {
+                "version": 1,
+                "request_id": request["id"],
+                "request_digest": request_digest,
+                "status": "held",
+                "reason": "admission_refused",
+                "message": "Automatic verification was not admitted. Review current authority, approved commands, "
+                "source and policy before an explicit handoff.",
+            }
+            await self._append(
+                run_id, "implement", request_digest[:48] + ":refusal", "verification_handoff_refused", refusal
+            )
+            run.data = {**run.data, "verification_refusal": refusal, "updated_at": now()}
+            await self.store.run_records.save(run)
+
+    async def verification_continuation_allowance(self, run_id: str) -> int:
+        async with self.store._unit():
+            entries = await self.records.find_for_run(identifier(run_id))
+            admitted = {
+                item.data["payload"]["id"]: item.data["payload"]
+                for item in entries
+                if item.kind == "verification_handoff_intent"
+            }
+            completed = {
+                item.data["payload"]["id"]
+                for item in entries
+                if item.kind == "verification_handoff_outcome" and item.data["payload"].get("status") == "completed"
+            }
+            responses = {
+                item.data["payload"].get("responding_actor", {}).get("handoff_id")
+                for item in entries
+                if item.kind == "worker_response"
+                and item.data["payload"].get("responding_actor", {}).get("version") == 4
+                and item.data["payload"].get("responding_actor", {}).get("authentication_method")
+                == "factory_verification"
+            }
+            resumed = {
+                item.data["payload"].get("verification_handoff_id")
+                for item in entries
+                if item.kind in {"resume", "handoff"} and item.data["payload"].get("automatic") is True
+            }
+            return int(
+                min(
+                    3,
+                    sum(
+                        handoff in completed & responses & resumed
+                        and 1 <= payload["continuation"] <= payload["max_continuations"] <= 3
+                        for handoff, payload in admitted.items()
+                    ),
+                )
+            )
 
     async def recover(self) -> int:
         async with self.store._unit():
@@ -1369,6 +1617,8 @@ class Journal:
         model_profile_id: str | None = None,
         auto: bool = False,
         campaign_action_id: str | None = None,
+        verification_handoff_id: str | None = None,
+        expected_provider_digest: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
         from firefly_forge.project_access import ProjectAccess
@@ -1414,6 +1664,31 @@ class Journal:
                 raise ValueError("Publication outcome is ambiguous; reconcile the remote branch and pull request first")
             ProjectAccess.require_provider_isolation(run.data, agent or run.data.get("agent"))
             await ProjectAccess(self.store).authorize_execution(run.data)
+            if verification_handoff_id is not None:
+                from firefly_forge.verification_models import check_verification_cut
+
+                state = run.data.get("verification_handoff", {})
+                entries = await self.records.find_for_run(run.id)
+                admitted = next(
+                    (
+                        item.data["payload"]
+                        for item in entries
+                        if item.kind == "verification_handoff_intent"
+                        and item.idempotency_key == verification_handoff_id
+                    ),
+                    None,
+                )
+                if (
+                    admitted is None
+                    or state.get("id") != verification_handoff_id
+                    or state.get("status") != "completed"
+                    or run.data.get("worker_response", {}).get("responding_actor", {}).get("handoff_id")
+                    != verification_handoff_id
+                    or agent != admitted.get("agent")
+                    or expected_provider_digest != admitted["provider_digest"]
+                ):
+                    raise ValueError("Automatic continuation requires its completed immutable verification handoff")
+                check_verification_cut(self.store, run.data, admitted)
             old_revision = run.data.get("config_revision")
             old_selection = copy.deepcopy(run.data.get("model_selection"))
             old_agent = run.data.get("agent")
@@ -1424,6 +1699,15 @@ class Journal:
                     if selection is not None
                     else self.store.configuration.snapshot(agent)
                 )
+                if expected_provider_digest is not None:
+                    actual = digest(
+                        {
+                            "agent": agent,
+                            "settings": self.store.configuration.load_snapshot(configuration["config_revision"]),
+                        }
+                    )
+                    if actual != expected_provider_digest:
+                        raise ValueError("Explicit verification handoff provider snapshot changed")
                 run.data = {
                     **run.data,
                     "agent": agent,
@@ -1495,7 +1779,8 @@ class Journal:
                     "previous_model_selection": old_selection,
                     "model_selection": copy.deepcopy(run.data.get("model_selection")),
                     "selection_mode": selection_mode,
-                    "automatic": auto,
+                    "automatic": auto or verification_handoff_id is not None,
+                    **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
                 },
             )
             return await self.store.get_run(run_id)

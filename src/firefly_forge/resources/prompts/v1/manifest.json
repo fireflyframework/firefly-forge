@@ -2087,6 +2087,29 @@
       "variables": {
         "run_id": "string"
       }
+    },
+    {
+      "id": "implementation/automatic-verification",
+      "version": "1.0.0",
+      "path": "implementation/automatic-verification.yaml",
+      "sha256": "11688b30fe1d7e28ccde6ceacae4602f79c53b5ee2ff204f8cb7dba064675a6a",
+      "field": "user",
+      "variables": {
+        "policy": "string",
+        "response": "string"
+      }
+    },
+    {
+      "id": "implementation/verification-result",
+      "version": "1.0.0",
+      "path": "implementation/verification-result.yaml",
+      "sha256": "1a88ca4377a6c316015f9972c86b4c63e383c7681291282b83a98dfc1a3ee79f",
+      "field": "user",
+      "variables": {
+        "count": "string",
+        "failed": "string",
+        "results": "string"
+      }
     }
   ]
 }

@@ -814,6 +814,8 @@ class SandboxExecutor:
         if (run.get("cancel_request") or {}).get("status") == "requested":
             raise asyncio.CancelledError()
         await ProjectAccess(self.store).authorize_execution(run)
+        if run.get("verification_handoff", {}).get("status") == "running":
+            await self.journal.verification_assert_current(run_id)
         return run
 
     async def execute(

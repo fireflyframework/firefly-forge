@@ -16,9 +16,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     case,
     cast,
     func,
+    or_,
     select,
     text,
 )
@@ -86,6 +88,46 @@ class ForgeRunRepository(Repository[ForgeRunEntity, UUID]):
             select(ForgeRunEntity).where(ForgeRunEntity.status == "queued").order_by(ForgeRunEntity.sequence)
         )
         return list(result)
+
+    async def find_verification_handoffs(self, limit: int = 100) -> list[ForgeRunEntity]:
+        state = ForgeRunEntity.data["verification_handoff"]
+        request = ForgeRunEntity.data["worker_request"]
+        snapshot = ForgeRunEntity.data["tool_policy_snapshot"]
+        adoption = ForgeRunEntity.data["verification_adoption"]
+        statement = (
+            select(ForgeRunEntity)
+            .where(
+                ForgeRunEntity.status.in_(["paused", "needs_reconciliation"]),
+                request["kind"].as_string() == "verification",
+                or_(
+                    func.coalesce(state["request_id"].as_string(), "") != request["id"].as_string(),
+                    func.coalesce(state["status"].as_string(), "") != "held",
+                ),
+                func.coalesce(ForgeRunEntity.data["verification_refusal"]["request_id"].as_string(), "")
+                != request["id"].as_string(),
+                or_(
+                    and_(
+                        request["status"].as_string() == "answered",
+                        state["status"].as_string() == "completed",
+                        request["response_source"].as_string() == "factory_verification",
+                    ),
+                    and_(
+                        request["status"].as_string() == "pending",
+                        request["task_id"].as_string() == "implement",
+                        request["attempt"].as_integer() < 4,
+                        or_(
+                            snapshot["settings"]["automatic_verification"]["enabled"].as_boolean().is_(True),
+                            adoption["policy_snapshot"]["settings"]["automatic_verification"]["enabled"]
+                            .as_boolean()
+                            .is_(True),
+                        ),
+                    ),
+                ),
+            )
+            .order_by(ForgeRunEntity.sequence)
+            .limit(limit)
+        )
+        return list(await self._require_session().scalars(statement))
 
     async def find_ready_retries(self, current_time: float, limit: int = 100) -> list[ForgeRunEntity]:
         statement = (
