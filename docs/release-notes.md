@@ -9,6 +9,10 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 **Unreleased.** These changes are in the integration candidate and still require final combined qualification and publication.
 
+Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. The configurable maximum is three, within the existing four-attempt ceiling and separate from the repair budget. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person. See [verification recovery](recovery.md#inspect-a-factory-verification-handoff).
+
+Source-control conversations receive milestone updates from recorded run facts, with known checks and a confirmed pull-request link reported separately. Fourteen centralized Agentic templates format the messages without another model call. Current access checks, retained delivery identities and unresolved-write holds still apply. See [factory verification and feedback](agent-lifecycle.md#factory-owned-verification).
+
 Functional wireframes show each journey's linked behaviors, failure paths and acceptance criteria. Long content retains its complete contract metadata and identifies any continuation beyond the reference canvas. API-only process maps keep their workflow acceptance links. Reference rastering parses validated SVG as XML, preserving embedded logo namespaces. These functional references still require human review; they are not generated application screens. See [design review](design-review.md).
 
 Wizards that request a page-flow layout now use it explicitly. On short screens, their action rows follow the form instead of covering a focused field.
