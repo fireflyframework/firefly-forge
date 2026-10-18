@@ -30,7 +30,11 @@ Each screen includes a stable `journey-01` style ID, its customer journey title,
 | `mobile_svg` | 390 × 844, light |
 | `mobile_dark_svg` | 390 × 844, dark |
 
-The interaction contract links the journey to acceptance criterion IDs and names default, loading, empty, and error states. A frame displays bounded excerpts; the bundle retains the full acceptance, user stories, security requirements, and nonfunctional requirements for implementation.
+Each functional wireframe uses the features explicitly linked to that journey. It shows their given/when/then behavior and failure paths, with the linked acceptance criteria. Journeys without feature mappings are labeled pending. It does not assign unrelated user stories or invent customer fields and actions.
+
+Headings wrap to the available width, using bundled Manrope measurements or conservative widths for other configured fonts. Complete guidance paragraphs appear where they fit; a visible reference points to `interaction-contract.json` when more detail is needed. That file retains the full journey title, expected behaviors, failure paths, and matching acceptance text. Oversized titles also point to their full metadata instead of silently shortening them. The bundle retains the complete product requirements in `functional-contract.json`. Review those files along with the four frames; these references describe functional behavior, not finished application controls.
+
+The interaction contract names default, loading, empty, and error states. Those names describe states to implement and verify; they do not prove that the application implements them.
 
 ## Save the reviewed definition
 
@@ -58,7 +62,7 @@ Retrieve a saved bundle with authenticated `GET /api/v1/repositories/{repository
 
 A queued run freezes the validated bundle with its product and brand context. The implementation workspace receives controlled files under `docs/design/reference-journey-01-desktop-light.svg` and corresponding variants, plus `docs/design/interaction-contract.json`. Coding instructions reference these files instead of putting the complete SVG content into the prompt. Later product or brand edits cannot silently replace a queued run's reviewed references.
 
-Use the owned project tokens, logo, and font family in the implementation. If no project kit exists, the template uses the shared Manrope and amber defaults. Static SVG escaping prevents customer labels from becoming active code. Imported logos use the same bounded static-vector validation as the [project brand kit](product-design.md).
+Use the owned project tokens, logo, and font family in the implementation. If no project kit exists, the template uses the shared Manrope and amber defaults. Static SVG escaping prevents customer labels from becoming active code. Approved-reference rasters load the SVG as an XML image document, preserving namespace-qualified imported logos; they do not reinterpret SVG source as HTML. Imported logos use the same bounded static-vector validation as the [project brand kit](product-design.md).
 
 Inspect the actual application separately at wide and narrow widths, both themes, keyboard focus, zoom, and the customer journey's loading, empty, and error states. Record screenshots, meaningful behavioral tests, and unmet acceptance criteria with the run. A reviewed wireframe gives the implementation a reference; only the implemented application can demonstrate that the customer flow works.
 
