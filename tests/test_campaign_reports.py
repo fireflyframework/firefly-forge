@@ -8,6 +8,7 @@ import pytest
 from test_project_campaigns import one_component
 
 from firefly_forge.identity import Principal
+from firefly_forge.identity_persistence import ForgeIdentityUserEntity
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 
 
@@ -21,9 +22,10 @@ def service(store, manager, journal):
 
 async def seeded(store, tmp_path):
     project, manager, journal, campaign = await one_component(store, tmp_path)
-    context = CURRENT_PRINCIPAL.set(
-        Principal(uuid4(), "local", "report-owner", authentication_method="local_bootstrap")
-    )
+    actor = Principal(uuid4(), "local", "report-owner", authentication_method="local_bootstrap")
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True))
+    context = CURRENT_PRINCIPAL.set(actor)
     return project, manager, journal, campaign, context
 
 
@@ -252,7 +254,10 @@ async def test_actual_git_checkpoint_and_python_checks_have_exact_task_receipt_r
         return await checked(["git", "rev-parse", "HEAD"], source)
 
     manager = ProjectCampaigns(store, engine, journal, source_resolver=source_base)
-    token = CURRENT_PRINCIPAL.set(Principal(uuid4(), "local", "owned-report", authentication_method="local_bootstrap"))
+    actor = Principal(uuid4(), "local", "owned-report", authentication_method="local_bootstrap")
+    async with store._unit() as session:
+        session.add(ForgeIdentityUserEntity(id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True))
+    token = CURRENT_PRINCIPAL.set(actor)
     try:
         campaign = await manager.launch(
             project["id"], CampaignLaunch(request_id=uuid4().hex, brief="Verify stock", operation="test")
