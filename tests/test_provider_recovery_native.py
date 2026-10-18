@@ -6,11 +6,14 @@ from uuid import UUID, uuid4
 
 import pytest
 from test_automatic_verification_native import prepared
+from test_execution import seed_repository
 from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.engine import Engine
+from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import Journal
+from firefly_forge.models import Command, RepositoryInput, RunInput
 from firefly_forge.provider_recoveries import ProviderRecoveries
 from firefly_forge.provider_recovery_models import ProviderRecoveryAdmission
 from firefly_forge.providers import AgentResult, ProviderError
@@ -136,7 +139,7 @@ async def test_native_changed_source_refuses_admission_and_reserved_dispatch(sto
         assert (await store.get_run(run_id))["status"] != "succeeded"
 
 
-def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_path, postgres_schema, monkeypatch):
+def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_path, postgres_schema):
     from starlette.testclient import TestClient
 
     from firefly_forge.api import create_application
@@ -156,9 +159,36 @@ def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_p
 
         async def seed():
             async with authenticated_operator(store):
-                env = await legacy_failure(store, tmp_path, monkeypatch)
-                engine.workspaces = env.engine.workspaces
-                return env.run["id"]
+                source = await seed_repository(tmp_path / "source")
+                repository = await store.add_repository(
+                    RepositoryInput(name="Retained failure fixture", url=str(source))
+                )
+                run = await store.create_run(
+                    RunInput(
+                        repository_id=repository["id"],
+                        brief="Inspect a historical failed CLI receipt without executing from the API role",
+                        frontend="none",
+                        skills=[],
+                        commands=[Command(argv=["approved-check"])],
+                    )
+                )
+                journal = http.app.state.runtime.context.get_bean(Journal)
+                await journal.ensure_plan(run["id"])
+                await journal.intent(run["id"], "implement")
+                engine.workspaces.mkdir(parents=True, exist_ok=True)
+                workspace = await seed_repository(engine.workspaces / run["id"])
+                (workspace / "partial.py").write_text("VALUE = 1\n")
+                await store.update(
+                    run["id"],
+                    status="failed",
+                    active_task="implement",
+                    attempt=1,
+                    implementation_rounds=0,
+                    repair_budget=0,
+                    error="Historical CLI failure fixture",
+                    git_metadata_digest=metadata_digest(workspace),
+                )
+                return run["id"]
 
         run_id = http.portal.call(seed)
         endpoint = f"/api/v1/runs/{run_id}/provider-recoveries"
