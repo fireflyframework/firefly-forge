@@ -413,6 +413,10 @@ for (const theme of ["light", "dark"] as const) {
       page.getByRole("button", { name: "Read catalog", exact: true }),
     ).toBeDisabled();
     await enterWizard(page);
+    const configurationReads = () =>
+      calls.filter((call) => call === "GET " + path + "/configuration").length;
+    const initialConfigurationReads = configurationReads();
+    expect(initialConfigurationReads).toBeGreaterThan(0);
     const secret = "owned-analytics-browser-replacement";
     await fillScope(page, secret);
     await next(page, "Review the project connection");
@@ -485,6 +489,7 @@ for (const theme of ["light", "dark"] as const) {
       exact: true,
     });
     await reachable(page, reload);
+    expect(configurationReads()).toBe(initialConfigurationReads);
     await page.keyboard.press("Enter");
     await expect(page.locator(".analytics-connection")).toContainText(
       "revision 2",
@@ -493,9 +498,7 @@ for (const theme of ["light", "dark"] as const) {
       page.getByRole("button", { name: "Edit connection", exact: true }),
     ).toBeEnabled();
     expect(writes).toHaveLength(2);
-    expect(
-      calls.filter((call) => call === "GET " + path + "/configuration"),
-    ).toHaveLength(2);
+    expect(configurationReads()).toBe(initialConfigurationReads + 1);
     expect(unexpected).toEqual([]);
     await noOverflow(page);
   });
