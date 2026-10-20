@@ -276,6 +276,11 @@ async def run_process(
     guard = _cli_launch_guard.get()
     if guard is not None:
         await guard()
+    restore_signals = True
+    if os.name == "posix" and hasattr(signal, "SIGXFSZ") and signal.getsignal(signal.SIGXFSZ) == signal.SIG_IGN:
+        import resource
+
+        restore_signals = resource.getrlimit(resource.RLIMIT_FSIZE)[0] == resource.RLIM_INFINITY
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=workspace,
@@ -283,6 +288,7 @@ async def run_process(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
+        restore_signals=restore_signals,
         limit=1_000_000,
         env=env if env is not None else runtime_environment(),
     )

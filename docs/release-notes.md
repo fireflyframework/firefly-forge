@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.27
+
+Trusted Codex and Claude CLI launches on POSIX preserve an inherited ignored `SIGXFSZ` when the parent has a finite soft file-size limit. An oversized write can then return `EFBIG` while the kernel limit remains enforced. Unlimited parents, default `SIGXFSZ` dispositions and the separate untrusted command executor retain subprocess defaults. This branch also inherits other ignored signals, including `SIGPIPE`, through Python's shared restoration switch. Process-group cleanup, stream draining and typed outcome checks remain in place. See [the execution boundary](architecture.md#admission-execution-and-the-verified-tree) and [failure recovery](recovery.md#recover-a-known-failed-official-cli-attempt).
+
+Bounded native and CLI comparisons qualify this launch mitigation. The original offending write and file remain unidentified. The change grants no additional attempt or budget reset and does not establish successful same-run recovery or generated-product acceptance. The Studio walkthrough retains current, explicitly labeled 0.2.27 fixtures.
+
 ## 0.2.26
 
 Studio displays Claude stream-json activity as bounded text, tool requests, reported tool results and final provider reports. Mixed messages show their omitted-block count. Unknown structured output has a generic card and an explicit reader when complete sanitized content was retained. The existing byte/hash descriptor, archive limits and current access checks stay intact. Tool requests and provider reports establish no command receipt or final factory verification. See [provider activity](run-evidence.md#read-complete-provider-activity).

@@ -89,6 +89,8 @@ The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) sh
 
 ## Recover a known failed official CLI attempt
 
+On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. For a parent with a finite soft limit, the trusted CLI launcher preserves its ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. Bounded native and CLI comparisons establish this launch-boundary mitigation; they do not identify the original offending write or file, establish a plugin cause, or qualify a generated application. Inspect the retained process and verification evidence before using the recovery contract below. This change grants no additional attempt, replay or budget reset.
+
 A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration by default; it does not change workers or repeat a verification handoff.
 
 Read `GET /api/v1/runs/{id}/provider-recoveries/candidate?agent=codex` (or `claude`). Review its exact source, failure, operator and policy binding. Keep a new 32-character hexadecimal request ID, then POST `/api/v1/runs/{id}/provider-recoveries` with that `request_id`, the returned `candidate_digest`, the same `agent`, and exactly one process proof:

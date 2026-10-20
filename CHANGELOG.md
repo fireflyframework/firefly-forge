@@ -2,7 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.26 — Unreleased
+## 0.2.27 — 2026-10-20
+
+- Preserve an inherited ignored `SIGXFSZ` for trusted Codex and Claude CLI launches under a finite POSIX file-size limit, allowing an oversized write to return `EFBIG` while retaining the kernel limit.
+- Keep subprocess defaults for unlimited parents, default signal dispositions and the separate untrusted command executor; preserve process cleanup and recovery budgets.
+- Refresh the controlled Studio walkthrough captures for 0.2.27.
+
+## 0.2.26 — 2026-10-20
 
 - Present bounded Claude text, tool requests and reported results without treating provider messages as command receipts or final QA.
 - Keep unsupported structured output behind an explicit verified-content reader, with honest archive-limit and omitted-block messages.
