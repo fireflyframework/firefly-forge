@@ -6,6 +6,7 @@ RUN npm ci
 COPY studio/ ./
 COPY tests/fixtures/activity-archive-contract-v1.json /build/tests/fixtures/activity-archive-contract-v1.json
 COPY tests/fixtures/activity-claude-contract-v1.json /build/tests/fixtures/activity-claude-contract-v1.json
+COPY tests/fixtures/activity-codex-mcp-v1.json /build/tests/fixtures/activity-codex-mcp-v1.json
 RUN npm run build
 
 FROM python:3.13-slim-trixie

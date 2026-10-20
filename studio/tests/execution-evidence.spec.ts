@@ -1054,3 +1054,124 @@ for (const width of [390, 1440])
         path: test.info().outputPath(`claude-activity-${width}-${theme}.png`),
       });
     });
+
+const codexMCPFixture = JSON.parse(
+  readFileSync(
+    new URL("../../tests/fixtures/activity-codex-mcp-v1.json", import.meta.url),
+    "utf8",
+  ),
+) as {
+  run_id: string;
+  records: Array<{
+    event: Record<string, unknown>;
+    chunk: Record<string, unknown>;
+  }>;
+};
+// Real redacted finite-client messages in controlled API wrappers; no product QA or native WAL export claim.
+for (const viewport of [
+  { width: 1440, height: 900, zoom: 1 },
+  { width: 390, height: 844, zoom: 1 },
+  { width: 1280, height: 600, zoom: 1 },
+  { width: 1440, height: 900, zoom: 2 },
+])
+  for (const theme of ["light", "dark"]) {
+    test(`Codex MCP activity is readable at ${viewport.width}px ${viewport.height}px ${viewport.zoom}x ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await openRun(page, undefined, {
+        runId: codexMCPFixture.run_id,
+        events: codexMCPFixture.records.map((record) => record.event),
+      });
+      let reads = 0;
+      await page.route(/\/activity\/[a-f0-9]{32}\/content\?/, async (route) => {
+        reads++;
+        const record = codexMCPFixture.records.find((record) =>
+          route.request().url().includes(String(record.event.id)),
+        )!;
+        await route.fulfill({ json: record.chunk });
+      });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      if (viewport.zoom === 2)
+        await page.evaluate(() => {
+          document.documentElement.style.zoom = "2";
+        });
+      const cards = page.getByRole("region", {
+        name: "Archived provider event",
+        exact: true,
+      });
+      await expect(cards).toHaveCount(2);
+      const card = cards.last();
+      await expect(
+        card.getByRole("heading", {
+          name: "Provider tool activity",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        card.getByText("Run configured project check", { exact: true }),
+      ).toBeVisible();
+      const identity = card.getByText("forge_coding · run_configured_check", {
+        exact: true,
+      });
+      await expect(identity).not.toBeVisible();
+      await card.getByText("Tool identity", { exact: true }).click();
+      await expect(identity).toBeVisible();
+      await card.getByText("Tool identity", { exact: true }).click();
+      await expect(
+        card.getByText(/Provider reported completion/),
+      ).toContainText("Reported exit 0");
+      await expect(
+        card.getByLabel("Provider-reported output preview text", {
+          exact: true,
+        }),
+      ).toContainText("NATIVE_PREREQUISITE_SAFE_RESULT");
+      await expect(
+        card.getByText(
+          "Native runner receipts and final verification are tracked separately.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      expect(reads).toBe(0);
+      await card.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(
+            `codex-mcp-summary-${viewport.width}-${viewport.height}-${viewport.zoom}-${theme}.png`,
+          ),
+      });
+      await card.getByText(/Full recorded event ·/).click();
+      const button = card.getByRole("button", {
+        name: "Read full recorded event",
+        exact: true,
+      });
+      await button.scrollIntoViewIfNeeded();
+      const box = await button.boundingBox();
+      const footer = await page
+        .locator(".workspace-main > footer")
+        .boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(
+        Math.min(footer!.y, viewport.height),
+      );
+      await button.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        card.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      expect(reads).toBe(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(
+            `codex-mcp-full-${viewport.width}-${viewport.height}-${viewport.zoom}-${theme}.png`,
+          ),
+      });
+    });
+  }

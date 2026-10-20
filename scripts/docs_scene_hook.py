@@ -31,6 +31,7 @@ CAPTURE_HELPERS = {
     "studio/tests/agent-checkpoint-recovery-fixture.ts",
     "studio/tests/run-creation-cancellation-fixture.ts",
     "studio/tests/provider-activity-guide-fixture.json",
+    "studio/tests/provider-mcp-activity-guide-fixture.json",
     "studio/tests/scm-delegation-fixture.ts",
     "studio/tests/scm-delegation-contract-fixture.json",
     "studio/tests/scm-poll-resume-contract-fixture.json",

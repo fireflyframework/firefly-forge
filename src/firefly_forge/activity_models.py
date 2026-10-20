@@ -73,8 +73,11 @@ class ActivitySummary(_Strict):
     command_preview: str | None = None
     output_preview: str | None = None
     exit_code: int | None = Field(default=None, ge=-2147483648, le=2147483647)
-    provider: Literal["claude"] | None = None
+    provider: Literal["claude", "codex"] | None = None
     tool_name: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
+    tool_server: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
+    tool_status: Literal["in_progress", "completed", "failed"] | None = None
+    tool_exit_code: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     tool_outcome: Literal["reported_result", "reported_error"] | None = None
     content_blocks: list[ActivityContentBlock] | None = Field(default=None, min_length=1, max_length=4)
     omitted_blocks: int | None = Field(default=None, ge=0, le=64)
@@ -120,6 +123,14 @@ def _summary(message: str, raw: bytes) -> Data | None:
         return None
     if not isinstance(event, dict):
         return None
+    if isinstance(event.get("item"), dict) and event["item"].get("type") == "mcp_tool_call":
+        from firefly_forge.activity_codex_mcp import codex_mcp_summary
+
+        mcp_values = codex_mcp_summary(event)
+        if mcp_values is None:
+            return None
+        mcp_values.update(sanitized_message_bytes=len(raw), sanitized_message_sha256=hashlib.sha256(raw).hexdigest())
+        return ActivitySummary.model_validate(mcp_values).model_dump(exclude_none=True)
     if event.get("type") in ("assistant", "user", "result"):
         from firefly_forge.activity_claude import claude_summary
 

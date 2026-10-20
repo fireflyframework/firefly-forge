@@ -22,8 +22,11 @@ export type ActivitySummary = {
   command_preview?: string;
   output_preview?: string;
   exit_code?: number;
-  provider?: "claude";
+  provider?: "claude" | "codex";
   tool_name?: string;
+  tool_server?: string;
+  tool_status?: "in_progress" | "completed" | "failed";
+  tool_exit_code?: number;
   tool_outcome?: "reported_result" | "reported_error";
   content_blocks?: ActivityContentBlock[];
   omitted_blocks?: number;
@@ -143,8 +146,42 @@ export function activityRecord(
   for (const key of ["command_preview", "output_preview"])
     if (s[key] !== undefined && !text(s[key], 768)) throw refused();
   if (s.item_id !== undefined && !text(s.item_id, 128)) throw refused();
-  if (s.provider !== undefined && s.provider !== "claude") throw refused();
+  if (
+    s.provider !== undefined &&
+    (typeof s.provider !== "string" ||
+      !["claude", "codex"].includes(s.provider))
+  )
+    throw refused();
   claudeFields(s, 768);
+  if (s.item_type === "mcp_tool_call" || s.provider === "codex") {
+    if (
+      s.provider !== "codex" ||
+      s.item_type !== "mcp_tool_call" ||
+      !["item.started", "item.updated", "item.completed"].includes(
+        String(s.event_type),
+      ) ||
+      typeof s.tool_name !== "string" ||
+      typeof s.tool_server !== "string" ||
+      !/^[A-Za-z0-9_.:-]{1,64}$/.test(s.tool_server) ||
+      typeof s.tool_status !== "string" ||
+      !["in_progress", "completed", "failed"].includes(s.tool_status) ||
+      (s.event_type === "item.started" && s.tool_status !== "in_progress") ||
+      (s.event_type === "item.completed" && s.tool_status === "in_progress") ||
+      (s.tool_exit_code !== undefined &&
+        (typeof s.tool_exit_code !== "number" ||
+          !Number.isSafeInteger(s.tool_exit_code) ||
+          s.tool_exit_code < -2147483648 ||
+          s.tool_exit_code > 2147483647 ||
+          s.event_type !== "item.completed" ||
+          s.tool_status !== "completed"))
+    )
+      throw refused();
+  } else if (
+    ["tool_server", "tool_status", "tool_exit_code"].some(
+      (key) => s[key] !== undefined,
+    )
+  )
+    throw refused();
   if (s.content_blocks !== undefined) {
     if (
       s.provider !== "claude" ||
