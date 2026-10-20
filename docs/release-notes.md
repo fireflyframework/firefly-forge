@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.29
+
+An administrator can grant an eligible official-CLI recovery access to selected checks already retained on the run. The separate coding MCP channel exposes only `run_configured_check(command_index, request_id)`. Arguments, timeout, runner policy and shared budget come from the original run; the coding agent cannot submit a new command. A host runner still uses the worker's service account and does not provide filesystem or network isolation.
+
+Studio separates check review, the explicit grant, mitigation review and final reservation. Before the grant POST it retains both the exact body and the future recovery request ID. It then confirms the original receipt and current revision, opaque receipt fingerprint and expiry. The final reservation uses that same recovery identity and grant ID. Lost responses permit exact reads, not replacement POSTs. Missing browser state and an existing server grant hold the wizard for review. See [the guided recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery).
+
+Each new check call uses current native authority, lease, grant and source checks before runner effects. Known results retain their source and exact request; unknown effects require reconciliation. A bounded rerun after an implementation edit does not reuse an earlier source's success. Independent final verification capacity remains separate, and neither the grant nor a check result establishes product acceptance. Legacy CLI-only recovery keeps its four-attempt bound, and the final allowance still permits one fifth dispatch with no sixth or budget reset.
+
+The SDK and `forge coding-check-grants` group provide explicit candidate, grant, receipt, current-status and revocation operations. Codex and Claude adapters use an invocation-scoped, loopback-only channel with a short-lived token and fixed tool selection. Tokens stay out of command arguments and retained activity. The 162 operator MCP tools remain separate; the versioned Agentic catalog now contains 260 resources. See [the execution boundary](architecture.md#scoped-configured-check-execution) and [client operations](agent-integrations.md#grant-check-access-to-a-coding-recovery).
+
+Native PostgreSQL/API/runner fixtures, cross-language reader checks and controlled Studio captures qualify these contracts. They do not by themselves establish live official-CLI MCP execution or a completed CRM. The walkthrough screenshots are labeled fixtures.
+
 ## 0.2.28
 
 A current native factory administrator can reserve one final fifth Codex or Claude dispatch after a known fourth-attempt process failure. The process must have terminated, drained its streams and left no process group. Reservation seals the allowance, linked admission and implementation intent in one WAL transaction. It spends the allowance immediately, even when the response is lost or dispatch never starts. Changed source, executable or current authority prevents launch; this contract provides no sixth attempt.

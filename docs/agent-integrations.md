@@ -283,6 +283,24 @@ forge product apply-change REPOSITORY_ID change.json
 
 Python exposes `model_profiles`, `save_model_profile`, `test_model_profile`, `task_routing`, `save_task_routing`, `preview_product_change` and `apply_product_change`. Typed configuration methods can receive secrets from an application secret manager. The SDK filters profile responses and suppresses configuration errors that could reflect a submitted secret.
 
+## Grant check access to a coding recovery
+
+The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 162 operator tools to that coding process.
+
+Use the native SDK methods `coding_check_candidate`, `grant_coding_checks`, `coding_check_receipt`, `coding_check_current` and `revoke_coding_checks`, or the matching CLI commands:
+
+```sh
+forge coding-check-grants candidate RUN_ID FUTURE_RECOVERY_REQUEST_ID --bind-port 0
+forge coding-check-grants grant RUN_ID reviewed-grant.json
+forge coding-check-grants get RUN_ID ORIGINAL_GRANT_REQUEST_ID
+forge coding-check-grants current RUN_ID
+forge coding-check-grants revoke RUN_ID reviewed-revocation.json
+```
+
+Prepare the JSON document from the reviewed candidate and [strict request fields](api.md#scoped-coding-check-grants). Keep its grant request ID and future recovery ID before the write. Each SDK or CLI operation makes one explicit request; an uncertain write requires reading its original receipt. A historical receipt does not establish current active status.
+
+After the grant is confirmed, read the final-allowance candidate again and explicitly reserve with the same future recovery request ID and `coding_check_grant_id`. Grant creation does not itself reserve a dispatch, and a refused linked flow cannot silently become CLI-only recovery. The [Studio journey](recovery.md#grant-configured-checks-for-the-final-recovery) illustrates these separate decisions with controlled fixtures. Native runner receipts and independent final verification determine the actual outcome.
+
 ## MCP
 
 Operators can inspect an uncertain learning invalidation through Python `learning_invalidation_receipt(record_id, request_id)`, `forge learning invalidation-receipt RECORD_ID --request-id REQUEST_ID`, or `get_learning_invalidation_receipt`. Each performs the same authorized GET for the exact committed request. The returned historical decision does not replace the current record state. A 404 remains unobserved evidence and never triggers a second write. Keep the original request identity and reason; see [invalidation receipts](learning.md#inspect-an-uncertain-invalidation).

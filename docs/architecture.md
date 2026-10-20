@@ -287,6 +287,42 @@ flowchart LR
 
 <p class="forge-flow-caption" id="final-allowance-flow-guide">The first row commits the one-use reservation. The second follows execution under renewed checks; an uncertain or refused outcome keeps that reservation spent. Verification remains a separate stage. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
 
+### Scoped configured-check execution
+
+An official coding CLI can receive a separate, explicitly granted `run_configured_check(command_index, request_id)` tool for one final recovery. `CodingCheckGrants` binds the current administrator, future recovery identity, retained commands and runner, source/authority cut, call cap and expiry. Grant admission advances the WAL but consumes no provider dispatch. The final allowance must then name that grant and the same preallocated recovery request.
+
+The parent provider opens an invocation-scoped MCP endpoint on literal loopback. Its closure owns run, task, actor and lease identity; the model supplies only a retained command index and a request ID. `CodingCheckRuntime` checks current authority and budget around credential admission, resolves arguments internally, and calls the existing `SandboxExecutor`. Known results retain their observed source and receipt. A legitimate implementation edit can be checked again within the cap, while an unknown effect holds the invocation rather than allowing another identity to replay it.
+
+<div class="forge-flow" role="region" aria-label="Scoped configured-check grant and execution" aria-describedby="coding-check-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+  C["Review retained<br/>checks and limits"] --> G["Grant one future<br/>recovery request"]
+  G --> A["Reserve linked<br/>final attempt"]
+```
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+  L["Official<br/>coding CLI"] --> T["Scoped<br/>check tool"]
+  T --> W["Native runner<br/>receipt and WAL"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="coding-check-flow-guide">Review and grant before reserving the linked attempt. Each interactive call repeats current authority, source and budget checks; independent final verification follows separately. On a narrow screen, scroll horizontally or focus a diagram and use the arrow keys.</p>
+
+The coding channel is separate from the 162-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
+
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
 Opt-in implementation checkpoints support explicit continuation at the original model boundary. The checkpoint and Bridge intent commit together before the completion POST. A bounded, read-only candidate projection verifies the retained journal, current authority and original ticket bindings before Studio offers a review. The projection makes no Bridge call and writes no ticket or consume receipt.
