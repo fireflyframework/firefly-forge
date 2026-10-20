@@ -36,6 +36,12 @@ forge run --repository REPOSITORY_ID --project PROJECT_ID --component stock \
 
 A standalone frontend can select `--backend none`. Explicit stack choices must match a configured component. `--roles-file role-selection.json` applies validated role overrides; a run retains the resulting snapshot.
 
+## Continue an answered clarification through local GitHub polling
+
+`ForgeClient.configure_scm_polling_resume_grant`, `scm_polling_resume_grant` and `current_scm_polling_resume_grant` save or read the separate version 3 transport-bound consent. `review_scm_polling_resume(project_id, repository_id, binding_request_id, run_id)` reads the current answered-clarification cut without dispatching it. MCP exposes `configure_scm_polling_resume_grant`, `get_scm_polling_resume_grant`, `get_current_scm_polling_resume_grant` and `review_scm_polling_resume` with the same strict request contract.
+
+Use `forge project scm-polling-resume-grants configure|get|current|review` for those explicit operations. Retain the caller request identity before a single consent POST and read the exact original request after a lost response. Existing status/answer or signed-ingress consent never becomes polling-resume authority. These clients cannot fabricate a signed event, post a GitHub command, change a provider or increase a run budget. Follow the [polling clarification continuation](scm.md#continue-an-answered-clarification-through-polling) guide to review and send a separate repository comment.
+
 ## Delegate repository accounts
 
 SCM delegation connects a recorded provider account to an existing Forge user for explicit project components and actions. It does not create a user, grant project membership or turn a webhook sender into a personal login. The mapped user must remain enabled and retain the required project permission.

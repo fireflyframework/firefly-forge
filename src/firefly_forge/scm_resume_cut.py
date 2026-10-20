@@ -12,6 +12,7 @@ from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.journal import Journal, digest
 from firefly_forge.models import RunInput
 from firefly_forge.scm_authority_models import SCMRespondingActorV2
+from firefly_forge.scm_poll_models import SCMRespondingActorV3
 
 Data = dict[str, Any]
 FROZEN_FIELDS = frozenset(RunInput.model_fields) | {
@@ -54,6 +55,51 @@ def resume_cut(
     grant_digest: str,
     binding_digest: str,
     native_user_id: str,
+) -> Data:
+    return _resume_cut(
+        run=run,
+        plan=plan,
+        tasks=tasks,
+        entries=entries,
+        grant_digest=grant_digest,
+        binding_digest=binding_digest,
+        native_user_id=native_user_id,
+        polling=False,
+    )
+
+
+def polling_resume_cut(
+    *,
+    run: Data,
+    plan: Data,
+    tasks: list[Data],
+    entries: list[Data],
+    grant_digest: str,
+    binding_digest: str,
+    native_user_id: str,
+) -> Data:
+    return _resume_cut(
+        run=run,
+        plan=plan,
+        tasks=tasks,
+        entries=entries,
+        grant_digest=grant_digest,
+        binding_digest=binding_digest,
+        native_user_id=native_user_id,
+        polling=True,
+    )
+
+
+def _resume_cut(
+    *,
+    run: Data,
+    plan: Data,
+    tasks: list[Data],
+    entries: list[Data],
+    grant_digest: str,
+    binding_digest: str,
+    native_user_id: str,
+    polling: bool,
 ) -> Data:
     """Seal this declared frozen projection; never claim that a mutable run is a receipt."""
     if (
@@ -131,10 +177,14 @@ def resume_cut(
         or response["idempotency_key"] != "worker-response:" + str(response["payload"].get("id"))
         or attribution.get("user_id") != native_user_id
         or type(attribution.get("version")) is not int
-        or attribution.get("version") not in {1, 2}
+        or attribution.get("version") not in ({1, 3} if polling else {1, 2})
     ):
         raise ValueError("The mutable question or answer does not match the causal, attributed journal cut")
-    if attribution["version"] == 2:
+    if polling and attribution["version"] == 3:
+        polling_actor = SCMRespondingActorV3.model_validate(attribution)
+        if polling_actor.provenance.binding_digest != binding_digest:
+            raise ValueError("The answer belongs to a different polling delegation revision")
+    elif attribution["version"] == 2:
         actor = SCMRespondingActorV2.model_validate(attribution)
         if actor.provenance.binding_digest != binding_digest:
             raise ValueError("The answer belongs to a different delegation revision")

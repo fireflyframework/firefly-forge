@@ -104,7 +104,13 @@ CASES = [
         TICKET,
     ),
 ]
-NEW_TOOLS = {case[1] for case in CASES}
+NEW_TOOLS = {case[1] for case in CASES} | {
+    "get_run_activity_content",
+    "configure_scm_polling_resume_grant",
+    "get_scm_polling_resume_grant",
+    "get_current_scm_polling_resume_grant",
+    "review_scm_polling_resume",
+}
 PRESENCE_CASES = [
     (*CASES[0][:4], {"version": 1, "input": {**ENVELOPE["input"], "skills": []}}, *CASES[0][5:]),
     (*CASES[2][:4], {**CANCEL, "project_id": None, "component_id": None}, *CASES[2][5:7], CANCELLED_DECISION),
@@ -264,7 +270,7 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
     wire = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     assert len(original) == baseline["tool_count"] == 150
     assert hashlib.sha256(wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 157
+    assert len(tools) == 162
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}

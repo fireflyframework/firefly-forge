@@ -49,7 +49,7 @@ class _Entry(_Strict):
 
 class _Manifest(_Strict):
     schema_version: StrictInt
-    templates: list[_Entry] = Field(min_length=1, max_length=256)
+    templates: list[_Entry] = Field(min_length=1, max_length=512)
 
     @model_validator(mode="after")
     def unique_templates(self) -> _Manifest:

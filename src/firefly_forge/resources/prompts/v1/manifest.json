@@ -46,6 +46,186 @@
       }
     },
     {
+      "id": "collaboration/action",
+      "version": "1.0.0",
+      "path": "collaboration/action.yaml",
+      "sha256": "1c321d7bd330a4e1ebc21c240a20425c3ce6880ea6eeb39abdec6bb7fb49e377",
+      "field": "user",
+      "variables": {
+        "summary": "string",
+        "status": "string"
+      }
+    },
+    {
+      "id": "collaboration/card",
+      "version": "1.0.0",
+      "path": "collaboration/card.yaml",
+      "sha256": "b5f4017405bf020ed48f3fa52db49de223111d2eeb6faff643ba1a0ec7eb30ae",
+      "field": "user",
+      "variables": {
+        "title": "string",
+        "description": "string",
+        "sections": "string",
+        "action": "string",
+        "status": "string",
+        "details": "string",
+        "run_reference": "string",
+        "receipt_id": "string"
+      }
+    },
+    {
+      "id": "collaboration/copy",
+      "version": "1.0.0",
+      "path": "collaboration/copy.yaml",
+      "sha256": "4d7b567dd55a9078f5ce51c960375ef33551978231febfb2894314185578d4a1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/facts",
+      "version": "1.0.0",
+      "path": "collaboration/facts.yaml",
+      "sha256": "140a2e17a7c33e3973f737b1c1bf6413d1736296bd7065a833f6ea283dac3c7d",
+      "field": "user",
+      "variables": {
+        "facts": "string"
+      }
+    },
+    {
+      "id": "collaboration/handoff",
+      "version": "1.0.0",
+      "path": "collaboration/handoff.yaml",
+      "sha256": "ace623f79d300f03daed600360f9bd2f983bb1bd2f51de70494a71dcf7738035",
+      "field": "user",
+      "variables": {
+        "explanation": "string",
+        "completed": "string",
+        "total": "string",
+        "failed": "string"
+      }
+    },
+    {
+      "id": "collaboration/proposal",
+      "version": "1.0.0",
+      "path": "collaboration/proposal.yaml",
+      "sha256": "fe8e4b9c405620022d36a74eb1904881f12d5e3f3afea60b2bd6ab10ce600f79",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/provider-recovery",
+      "version": "1.0.0",
+      "path": "collaboration/provider-recovery.yaml",
+      "sha256": "a25663f6af6479f1ac1358140bd45d79cd9fbba4ce341cf6dd30522bec6c25e1",
+      "field": "user",
+      "variables": {
+        "attempt": "string",
+        "request_id": "string"
+      }
+    },
+    {
+      "id": "collaboration/publication-held",
+      "version": "1.0.0",
+      "path": "collaboration/publication-held.yaml",
+      "sha256": "dbbce1e843da6de07f80c5189fc24045f55f2155e09291641f437c33551a520d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/question",
+      "version": "1.0.0",
+      "path": "collaboration/question.yaml",
+      "sha256": "a9c59b934dd4495c7dc3c06e7a6f19691eb87b90fa05789b55d9224082c49bd7",
+      "field": "user",
+      "variables": {
+        "question": "string",
+        "choices": "string"
+      }
+    },
+    {
+      "id": "collaboration/recovery",
+      "version": "1.0.0",
+      "path": "collaboration/recovery.yaml",
+      "sha256": "ff287ec19b61c8e80120ee74cb406c2cbe5886280f2b0088a6264b38ffa74c6d",
+      "field": "user",
+      "variables": {
+        "explanation": "string"
+      }
+    },
+    {
+      "id": "collaboration/reference",
+      "version": "1.0.0",
+      "path": "collaboration/reference.yaml",
+      "sha256": "b7dc8137af0c8d039e64aad789e40a46a5e17eacbe1b74c613f73310b527b0f4",
+      "field": "user",
+      "variables": {
+        "url": "string"
+      }
+    },
+    {
+      "id": "collaboration/reply",
+      "version": "1.0.0",
+      "path": "collaboration/reply.yaml",
+      "sha256": "d5c225447b66fbceff45dffb4cca36b244f760cd7e28a577d8aec8ea7549960e",
+      "field": "user",
+      "variables": {
+        "reply": "string"
+      }
+    },
+    {
+      "id": "collaboration/review",
+      "version": "1.0.0",
+      "path": "collaboration/review.yaml",
+      "sha256": "75f55a0e395bc6ca12fa900d51020fa8931b11421fdebdf9571f7ccbd5e0763f",
+      "field": "user",
+      "variables": {
+        "url": "string"
+      }
+    },
+    {
+      "id": "collaboration/run",
+      "version": "1.0.0",
+      "path": "collaboration/run.yaml",
+      "sha256": "67ca4b594ea6de0e83eae7254a03ec3993c1346b6204a3b077bf5b4f724ddea4",
+      "field": "user",
+      "variables": {
+        "run_id": "string"
+      }
+    },
+    {
+      "id": "collaboration/verification",
+      "version": "1.0.0",
+      "path": "collaboration/verification.yaml",
+      "sha256": "c0c9134c723ab7113ea9f39452908e12a1d2b5b86428cf43380837bd2d1418f1",
+      "field": "user",
+      "variables": {
+        "passed": "string",
+        "total": "string"
+      }
+    },
+    {
+      "id": "collaboration/verification-provenance",
+      "version": "1.0.0",
+      "path": "collaboration/verification-provenance.yaml",
+      "sha256": "4f10f64ed4af87511e418183de783f0aeacc33933c13679477690667dcd5078e",
+      "field": "user",
+      "variables": {
+        "attempts": "string",
+        "explanation": "string"
+      }
+    },
+    {
+      "id": "implementation/automatic-verification",
+      "version": "1.0.0",
+      "path": "implementation/automatic-verification.yaml",
+      "sha256": "b258605c3a29f73c2fe2106defef517a8a0aac2841315fe07d80b0f1352a8337",
+      "field": "user",
+      "variables": {
+        "policy": "string",
+        "response": "string"
+      }
+    },
+    {
       "id": "implementation/backend-dotnet",
       "version": "1.0.0",
       "path": "implementation/backend-dotnet.yaml",
@@ -331,6 +511,18 @@
       "variables": {}
     },
     {
+      "id": "implementation/verification-result",
+      "version": "1.0.0",
+      "path": "implementation/verification-result.yaml",
+      "sha256": "827e21bf5c6b2d08a8a199a14220cd796540a0f1e003084cf7930c8389672936",
+      "field": "user",
+      "variables": {
+        "count": "string",
+        "failed": "string",
+        "results": "string"
+      }
+    },
+    {
       "id": "implementation/worker-feedback",
       "version": "1.0.0",
       "path": "implementation/worker-feedback.yaml",
@@ -385,6 +577,14 @@
       "version": "1.0.0",
       "path": "mcp/cancel_run.yaml",
       "sha256": "3b10eb2483054ccf5a403c4e0c12e6bcaabd52d803ea5a976d391bb833121a3f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/cancel_run_creation_request",
+      "version": "1.0.0",
+      "path": "mcp/cancel_run_creation_request.yaml",
+      "sha256": "d8d37d5787d96833c741a6e40098cdfd9284367d7dd1707ab3624b90bdc8e1cc",
       "field": "user",
       "variables": {}
     },
@@ -469,6 +669,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/configure_scm_polling_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/configure_scm_polling_resume_grant.yaml",
+      "sha256": "1110c8c8ad8457ce92f1c96452e5bd155510861981078b62fd4c737d50c91b99",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/configure_scm_product_change_grant",
       "version": "1.0.0",
       "path": "mcp/configure_scm_product_change_grant.yaml",
@@ -549,6 +757,22 @@
       "variables": {}
     },
     {
+      "id": "mcp/get_agent_checkpoint_candidates",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_checkpoint_candidates.yaml",
+      "sha256": "9913ffa4101977bc4b86a2db122850f59f316f624d343842fd7e17aec98cf57d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_agent_checkpoint_restore",
+      "version": "1.0.0",
+      "path": "mcp/get_agent_checkpoint_restore.yaml",
+      "sha256": "c113d237bf628a91fed374e9cdf9afa24616d9077147ac4ba81d87b934b9eb8a",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/get_agent_role_lifecycle",
       "version": "1.0.0",
       "path": "mcp/get_agent_role_lifecycle.yaml",
@@ -601,6 +825,14 @@
       "version": "1.0.0",
       "path": "mcp/get_connection_oauth_providers.yaml",
       "sha256": "2d695343f83b74236a28ff905dc0f70e6859b578e530649384ae441bbfa363a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_current_scm_polling_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_current_scm_polling_resume_grant.yaml",
+      "sha256": "afb332cfc6cf847ef52cfdcc76cea361b944c21482c3e3691ba74972351f8ace",
       "field": "user",
       "variables": {}
     },
@@ -869,6 +1101,30 @@
       "variables": {}
     },
     {
+      "id": "mcp/get_run_activity_content",
+      "version": "1.0.0",
+      "path": "mcp/get_run_activity_content.yaml",
+      "sha256": "adcae5deda232c67e96939a58a24339aa1b3a903289009c8baabf41698e45535",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_creation_decision",
+      "version": "1.0.0",
+      "path": "mcp/get_run_creation_decision.yaml",
+      "sha256": "e93f09efecbf4fb6907d7f5dc5bad4a185230c490cce51614977ac9a75600b18",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_creation_request",
+      "version": "1.0.0",
+      "path": "mcp/get_run_creation_request.yaml",
+      "sha256": "41a1fa384435f6db9852b7a1abbcb3f6d3bff90d9185045f1c555ebc3bf0db2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/get_run_tool_invocations",
       "version": "1.0.0",
       "path": "mcp/get_run_tool_invocations.yaml",
@@ -897,6 +1153,14 @@
       "version": "1.0.0",
       "path": "mcp/get_scm_actor_binding.yaml",
       "sha256": "996f65c73036bd7f5741c3293ffd71915c30c2a44b5e70384951ea122d33e321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_polling_resume_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_polling_resume_grant.yaml",
+      "sha256": "551bfb7a6fb05f9ad5b912b710585b5b810c22264409c9b98c872015993fddde",
       "field": "user",
       "variables": {}
     },
@@ -1253,6 +1517,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/query_run_evidence",
+      "version": "1.0.0",
+      "path": "mcp/query_run_evidence.yaml",
+      "sha256": "51a8d98b6c82eeca836823be9b82d9ec786ab871b07492bffd2f86d092280669",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/reconcile_execution_request",
       "version": "1.0.0",
       "path": "mcp/reconcile_execution_request.yaml",
@@ -1309,6 +1581,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/request_agent_checkpoint_restore",
+      "version": "1.0.0",
+      "path": "mcp/request_agent_checkpoint_restore.yaml",
+      "sha256": "c075c879bd0d19d74318cb37537b4fa9d965457914915331d9117372ebf0d975",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/request_incident_maintenance",
       "version": "1.0.0",
       "path": "mcp/request_incident_maintenance.yaml",
@@ -1321,6 +1601,14 @@
       "version": "1.0.0",
       "path": "mcp/request_product_design_turn.yaml",
       "sha256": "0d02dd7875bf5a153d6b889d1214d045c76151e1e0ef6a9e5ecf87374f968a8d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_run_creation",
+      "version": "1.0.0",
+      "path": "mcp/request_run_creation.yaml",
+      "sha256": "931f9510644d4f1c881c4a971c5b3ab913286fd1892ffaa4ade5d1deca8de943",
       "field": "user",
       "variables": {}
     },
@@ -1377,6 +1665,14 @@
       "version": "1.0.0",
       "path": "mcp/review_external_mcp.yaml",
       "sha256": "7351a2c2a2189c3a0e25da9412b8d921253fb6a9523d6259ada879a22141d2dd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/review_scm_polling_resume",
+      "version": "1.0.0",
+      "path": "mcp/review_scm_polling_resume.yaml",
+      "sha256": "e4dc762f06917fb34690e563f3ae1fcf0cd925c090282ab179906816bede5cdd",
       "field": "user",
       "variables": {}
     },
@@ -1838,6 +2134,14 @@
       "variables": {}
     },
     {
+      "id": "tools/read_run_evidence",
+      "version": "1.0.0",
+      "path": "tools/read_run_evidence.yaml",
+      "sha256": "d36c263ee23205073b7bae519a601500f7d84c825cb5728a7d83c75aae809f1a",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "tools/search-evidence",
       "version": "1.0.0",
       "path": "tools/search-evidence.yaml",
@@ -1866,278 +2170,6 @@
       "version": "1.0.0",
       "path": "tools/write_file.yaml",
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/query_run_evidence",
-      "version": "1.0.0",
-      "path": "mcp/query_run_evidence.yaml",
-      "sha256": "51a8d98b6c82eeca836823be9b82d9ec786ab871b07492bffd2f86d092280669",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "tools/read_run_evidence",
-      "version": "1.0.0",
-      "path": "tools/read_run_evidence.yaml",
-      "sha256": "d36c263ee23205073b7bae519a601500f7d84c825cb5728a7d83c75aae809f1a",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/request_run_creation",
-      "version": "1.0.0",
-      "path": "mcp/request_run_creation.yaml",
-      "sha256": "931f9510644d4f1c881c4a971c5b3ab913286fd1892ffaa4ade5d1deca8de943",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/get_run_creation_request",
-      "version": "1.0.0",
-      "path": "mcp/get_run_creation_request.yaml",
-      "sha256": "41a1fa384435f6db9852b7a1abbcb3f6d3bff90d9185045f1c555ebc3bf0db2d",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/cancel_run_creation_request",
-      "version": "1.0.0",
-      "path": "mcp/cancel_run_creation_request.yaml",
-      "sha256": "d8d37d5787d96833c741a6e40098cdfd9284367d7dd1707ab3624b90bdc8e1cc",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/get_run_creation_decision",
-      "version": "1.0.0",
-      "path": "mcp/get_run_creation_decision.yaml",
-      "sha256": "e93f09efecbf4fb6907d7f5dc5bad4a185230c490cce51614977ac9a75600b18",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/get_agent_checkpoint_candidates",
-      "version": "1.0.0",
-      "path": "mcp/get_agent_checkpoint_candidates.yaml",
-      "sha256": "9913ffa4101977bc4b86a2db122850f59f316f624d343842fd7e17aec98cf57d",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/request_agent_checkpoint_restore",
-      "version": "1.0.0",
-      "path": "mcp/request_agent_checkpoint_restore.yaml",
-      "sha256": "c075c879bd0d19d74318cb37537b4fa9d965457914915331d9117372ebf0d975",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "mcp/get_agent_checkpoint_restore",
-      "version": "1.0.0",
-      "path": "mcp/get_agent_checkpoint_restore.yaml",
-      "sha256": "c113d237bf628a91fed374e9cdf9afa24616d9077147ac4ba81d87b934b9eb8a",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/copy",
-      "version": "1.0.0",
-      "path": "collaboration/copy.yaml",
-      "sha256": "4d7b567dd55a9078f5ce51c960375ef33551978231febfb2894314185578d4a1",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/card",
-      "version": "1.0.0",
-      "path": "collaboration/card.yaml",
-      "sha256": "b5f4017405bf020ed48f3fa52db49de223111d2eeb6faff643ba1a0ec7eb30ae",
-      "field": "user",
-      "variables": {
-        "title": "string",
-        "description": "string",
-        "sections": "string",
-        "action": "string",
-        "status": "string",
-        "details": "string",
-        "run_reference": "string",
-        "receipt_id": "string"
-      }
-    },
-    {
-      "id": "collaboration/action",
-      "version": "1.0.0",
-      "path": "collaboration/action.yaml",
-      "sha256": "1c321d7bd330a4e1ebc21c240a20425c3ce6880ea6eeb39abdec6bb7fb49e377",
-      "field": "user",
-      "variables": {
-        "summary": "string",
-        "status": "string"
-      }
-    },
-    {
-      "id": "collaboration/question",
-      "version": "1.0.0",
-      "path": "collaboration/question.yaml",
-      "sha256": "a9c59b934dd4495c7dc3c06e7a6f19691eb87b90fa05789b55d9224082c49bd7",
-      "field": "user",
-      "variables": {
-        "question": "string",
-        "choices": "string"
-      }
-    },
-    {
-      "id": "collaboration/recovery",
-      "version": "1.0.0",
-      "path": "collaboration/recovery.yaml",
-      "sha256": "ff287ec19b61c8e80120ee74cb406c2cbe5886280f2b0088a6264b38ffa74c6d",
-      "field": "user",
-      "variables": {
-        "explanation": "string"
-      }
-    },
-    {
-      "id": "collaboration/verification",
-      "version": "1.0.0",
-      "path": "collaboration/verification.yaml",
-      "sha256": "c0c9134c723ab7113ea9f39452908e12a1d2b5b86428cf43380837bd2d1418f1",
-      "field": "user",
-      "variables": {
-        "passed": "string",
-        "total": "string"
-      }
-    },
-    {
-      "id": "collaboration/review",
-      "version": "1.0.0",
-      "path": "collaboration/review.yaml",
-      "sha256": "75f55a0e395bc6ca12fa900d51020fa8931b11421fdebdf9571f7ccbd5e0763f",
-      "field": "user",
-      "variables": {
-        "url": "string"
-      }
-    },
-    {
-      "id": "collaboration/proposal",
-      "version": "1.0.0",
-      "path": "collaboration/proposal.yaml",
-      "sha256": "fe8e4b9c405620022d36a74eb1904881f12d5e3f3afea60b2bd6ab10ce600f79",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/handoff",
-      "version": "1.0.0",
-      "path": "collaboration/handoff.yaml",
-      "sha256": "ace623f79d300f03daed600360f9bd2f983bb1bd2f51de70494a71dcf7738035",
-      "field": "user",
-      "variables": {
-        "explanation": "string",
-        "completed": "string",
-        "total": "string",
-        "failed": "string"
-      }
-    },
-    {
-      "id": "collaboration/publication-held",
-      "version": "1.0.0",
-      "path": "collaboration/publication-held.yaml",
-      "sha256": "dbbce1e843da6de07f80c5189fc24045f55f2155e09291641f437c33551a520d",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/reply",
-      "version": "1.0.0",
-      "path": "collaboration/reply.yaml",
-      "sha256": "d5c225447b66fbceff45dffb4cca36b244f760cd7e28a577d8aec8ea7549960e",
-      "field": "user",
-      "variables": {
-        "reply": "string"
-      }
-    },
-    {
-      "id": "collaboration/facts",
-      "version": "1.0.0",
-      "path": "collaboration/facts.yaml",
-      "sha256": "140a2e17a7c33e3973f737b1c1bf6413d1736296bd7065a833f6ea283dac3c7d",
-      "field": "user",
-      "variables": {
-        "facts": "string"
-      }
-    },
-    {
-      "id": "collaboration/reference",
-      "version": "1.0.0",
-      "path": "collaboration/reference.yaml",
-      "sha256": "b7dc8137af0c8d039e64aad789e40a46a5e17eacbe1b74c613f73310b527b0f4",
-      "field": "user",
-      "variables": {
-        "url": "string"
-      }
-    },
-    {
-      "id": "collaboration/run",
-      "version": "1.0.0",
-      "path": "collaboration/run.yaml",
-      "sha256": "67ca4b594ea6de0e83eae7254a03ec3993c1346b6204a3b077bf5b4f724ddea4",
-      "field": "user",
-      "variables": {
-        "run_id": "string"
-      }
-    },
-    {
-      "id": "implementation/automatic-verification",
-      "version": "1.0.0",
-      "path": "implementation/automatic-verification.yaml",
-      "sha256": "b258605c3a29f73c2fe2106defef517a8a0aac2841315fe07d80b0f1352a8337",
-      "field": "user",
-      "variables": {
-        "policy": "string",
-        "response": "string"
-      }
-    },
-    {
-      "id": "implementation/verification-result",
-      "version": "1.0.0",
-      "path": "implementation/verification-result.yaml",
-      "sha256": "827e21bf5c6b2d08a8a199a14220cd796540a0f1e003084cf7930c8389672936",
-      "field": "user",
-      "variables": {
-        "count": "string",
-        "failed": "string",
-        "results": "string"
-      }
-    },
-    {
-      "id": "collaboration/provider-recovery",
-      "version": "1.0.0",
-      "path": "collaboration/provider-recovery.yaml",
-      "sha256": "a25663f6af6479f1ac1358140bd45d79cd9fbba4ce341cf6dd30522bec6c25e1",
-      "field": "user",
-      "variables": {
-        "attempt": "string",
-        "request_id": "string"
-      }
-    },
-    {
-      "id": "collaboration/verification-provenance",
-      "version": "1.0.0",
-      "path": "collaboration/verification-provenance.yaml",
-      "sha256": "4f10f64ed4af87511e418183de783f0aeacc33933c13679477690667dcd5078e",
-      "field": "user",
-      "variables": {
-        "attempts": "string",
-        "explanation": "string"
-      }
-    },
-    {
-      "id": "mcp/get_run_activity_content",
-      "version": "1.0.0",
-      "path": "mcp/get_run_activity_content.yaml",
-      "sha256": "adcae5deda232c67e96939a58a24339aa1b3a903289009c8baabf41698e45535",
       "field": "user",
       "variables": {}
     }

@@ -103,7 +103,7 @@ def test_candidate_path_injection_is_rejected_before_io(monkeypatch, interface):
 async def test_candidate_tool_is_explicitly_read_only_and_requires_only_run_identity():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     tool = tools[TOOL]
-    assert len(tools) == 157
+    assert len(tools) == 162
     assert tool.input_schema["required"] == ["identifier"]
     assert set(tool.input_schema["properties"]) == {"identifier"}
     assert tool.annotations.read_only_hint is True

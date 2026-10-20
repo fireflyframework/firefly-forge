@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_polling_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the exact original version3 polling-resume grant by its caller request ID. Current native read authority applies. Missing evidence, conflict or refusal does not permit a new write or replacement identity. This does not resume a run.
+required_variables: []
+metadata:
+  defaults: {}
