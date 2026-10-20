@@ -2,7 +2,12 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.23 — Unreleased
+## 0.2.24 — Unreleased
+
+- Bind an explicitly adopted current CLI executable to one failed-run recovery task while preserving its original model, timeout, permissions, budgets and snapshot.
+- Refuse changed or inaccessible executable metadata before continuation, and recheck the admitted entrypoint before process creation and result acceptance.
+
+## 0.2.23 — 2026-10-20
 
 - Review an incremental product change and retain its original receipt across uncertain saves and later revisions.
 - Configure optional project-scoped flyquery catalog reads through a three-step Studio wizard, with immutable configuration history and a final bounded disable.

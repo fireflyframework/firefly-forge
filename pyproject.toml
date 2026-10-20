@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "firefly-forge"
-version = "0.2.23"
+version = "0.2.24"
 description = "Firefly software factory: brief to verified product with interchangeable coding agents"
 readme = "README.md"
 requires-python = ">=3.13"
