@@ -17,6 +17,7 @@ import { verifiedReport } from "./campaign-report-fixture";
 import { setupDelivery } from "./campaign-delivery-browser-fixture";
 import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 import claudeActivity from "./provider-activity-guide-fixture.json" with { type: "json" };
+import codexMCPActivity from "./provider-mcp-activity-guide-fixture.json" with { type: "json" };
 import pollingConsent from "./scm-poll-resume-contract-fixture.json" with { type: "json" };
 import {
   setupDelegation as setupScmDelegation,
@@ -3758,4 +3759,89 @@ for (const device of ["desktop", "mobile"])
           '[aria-label="Exact resume consent receipt"] > details > summary',
         resetFields: false,
       });
+    });
+
+// Actual redacted finite-client messages inside controlled API wrappers; not a native WAL export or product QA.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey Codex MCP activity ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const selected = {
+        ...run,
+        id: codexMCPActivity.run_id,
+        brief: "Inspect reported MCP activity",
+        events: codexMCPActivity.records.map((record) => record.event),
+        verification: [],
+      };
+      let reads = 0;
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const url = new URL(route.request().url()),
+          path = url.pathname;
+        let json: unknown = {};
+        if (path.endsWith("/repositories")) json = [repository];
+        else if (path.endsWith("/runs")) json = [selected];
+        else if (path.endsWith(`/runs/${selected.id}`)) json = selected;
+        else if (path.endsWith("/plan")) json = { revision: 1, tasks: [] };
+        else if (path.endsWith("/journal")) json = { valid: true, entries: [] };
+        else if (path.includes("/activity/") && path.endsWith("/content")) {
+          const record = codexMCPActivity.records.find((record) =>
+            path.includes(record.event.id),
+          )!;
+          expect(url.searchParams.get("expected_descriptor")).toBe(
+            record.event.activity_content.descriptor_sha256,
+          );
+          expect(url.searchParams.get("chunk")).toBe("0");
+          reads++;
+          json = record.chunk;
+        }
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("fixture-bootstrap-token-at-least-24-chars");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await navigate(page, "Factory");
+      await page
+        .getByRole("button", { name: /Inspect reported MCP activity/ })
+        .click();
+      const result = page
+        .getByRole("region", { name: "Archived provider event", exact: true })
+        .last();
+      await expect(
+        result.getByText("Run configured project check", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        result.getByText(/Provider reported completion/),
+      ).toContainText("Reported exit 0");
+      await expect(
+        result.getByText("forge_coding · run_configured_check", {
+          exact: true,
+        }),
+      ).not.toBeVisible();
+      expect(reads).toBe(0);
+      await capture(page, "activity-codex-mcp", theme, device, {
+        actionSelector: 'button[aria-label="Copy output preview"]',
+        focusSelector:
+          '[aria-label="Archived provider event"]:has-text("Provider reported completion")',
+      });
+      await result.getByText(/Full recorded event ·/).click();
+      await result
+        .getByRole("button", { name: "Read full recorded event", exact: true })
+        .click();
+      await expect(
+        result.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      expect(reads).toBe(1);
     });

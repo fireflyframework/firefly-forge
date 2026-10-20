@@ -2,6 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.30 — 2026-10-20
+
+- Present bounded Codex MCP server, tool, reported status and text output in Studio without treating provider reports as native runner receipts or product QA.
+- Name the known configured-check tool clearly and keep its exact identity under a disclosure. Retain exact bounded identities for other tools.
+- Preserve existing archive limits, integrity checks and explicit full-event reads; unsupported structured results remain available only through the retained event.
+- Refresh the controlled desktop/mobile walkthroughs and document the distinction between actual finite-client messages, presentation fixtures and product acceptance.
+
 ## 0.2.29 — 2026-10-20
 
 - Let an administrator grant selected retained checks to one future official-CLI recovery through a separate scoped MCP channel, with explicit limits and current source, actor and execution authority checks.

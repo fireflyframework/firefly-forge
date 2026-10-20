@@ -46,6 +46,24 @@ New stdout and stderr events retain a short preview and, for recognized provider
 
 Codex MCP cards name the server and tool and show whether the provider reported an in-progress call, completion or failure. A bounded text preview and a reported exit code appear when the event supplies them. Completion is a provider report; it does not establish a native runner receipt or product QA. Arbitrary tool arguments and unsupported structured results stay in the full retained event. The native journal labels the separately governed `coding_configured_check` tool **Run configured project check**.
 
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![Codex MCP activity with a human tool title, reported status and bounded output on desktop.](assets/screenshots/activity-codex-mcp-desktop-light.png)
+
+<figcaption>Actual redacted finite-client messages, displayed through controlled API fixtures. Reported exit 0 does not establish a native runner receipt or product acceptance.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![The same reported MCP activity in the mobile dark theme, with tool identity collapsed.](assets/screenshots/activity-codex-mcp-mobile-dark.png)
+
+<figcaption>The exact tool identity is available separately. The preview preserves provider text; reading the full retained event requires an explicit action.</figcaption>
+</figure>
+
+</div>
+
 Claude tool requests name the requested tool and show a Bash command preview when available. A request does not prove that a tool ran. Tool-result cards show the provider's reported result or error without deriving an exit code, and keep the original call ID under **Tool call identity**. forge does not infer a tool name from another event. A successful final provider report supplies no factory QA approval.
 
 A Claude message can contain several content blocks. Studio displays up to four bounded blocks and states how many blocks were omitted from the preview. When the archive retained the full event, you can read those blocks there. An archive-limit notice means only the preview was retained. Tool input objects, attachments and unsupported block formats stay in the retained event. Unknown, malformed or oversized JSON previews receive a short generic card; plain text logs remain readable. Full content is loaded only when requested and within its archive budget. These display rules recognize an observed JSON format; they do not authenticate the provider or replace a command receipt.

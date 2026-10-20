@@ -116,3 +116,8 @@ def test_maximum_observed_identities_and_escaped_output_fit_the_existing_index()
     summary = project(event)["activity_summary"]
     assert summary["tool_exit_code"] == -2
     assert len(summary["output_preview"].encode()) <= 768
+
+
+def test_documentation_uses_the_same_actual_redacted_message_vectors():
+    guide = Path(__file__).parents[1] / "studio/tests/provider-mcp-activity-guide-fixture.json"
+    assert json.loads(guide.read_text()) == FIXTURE

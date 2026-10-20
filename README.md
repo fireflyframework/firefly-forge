@@ -37,7 +37,7 @@ A passing run records its verified source and local checkpoint. Publication rech
 
 Review an [incremental product change](docs/product-lifecycle.md) against its saved revision before adding a feature or integration. Studio retains the original save request and any later draft separately when the outcome is uncertain. Journey references show linked behavior and acceptance criteria; review them against the product's intended experience before implementation.
 
-Read the run's [retained evidence](docs/run-evidence.md) to distinguish coding-provider activity from final factory verification. Studio distinguishes Codex command results from Claude tool requests, reported results and provider messages. Complete sanitized event content is available on demand within archive limits; provider reports remain separate from factory verification. SDK, CLI and MCP readers use the same current permissions and exact content descriptor.
+Read the run's [retained evidence](docs/run-evidence.md) to distinguish coding-provider activity from final factory verification. Studio distinguishes Codex command results and reported MCP activity from Claude tool requests, reported results and provider messages. Known configured-check calls use a human title with their exact tool identity available separately. Complete sanitized event content is available on demand within archive limits; provider reports remain separate from factory verification. SDK, CLI and MCP readers use the same current permissions and exact content descriptor.
 
 ## Choose how the factory executes work
 

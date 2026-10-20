@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.30
+
+Studio now shows observed Codex MCP activity as a readable tool card: server, tool, reported status and a bounded text preview. The known configured-check call is labeled **Run configured project check**, with its exact identity under **Tool identity**. Unknown tools keep their bounded server and tool names. A provider-reported completion or exit code remains separate from native runner receipts and independent final verification.
+
+Unsupported arguments and structured result objects stay in the full retained event. Reading that event still requires an explicit action and the existing current-access, integrity and archive-budget checks. Historical events are not backfilled. See [the evidence guide](run-evidence.md#read-complete-provider-activity).
+
+The new walkthrough uses actual redacted messages from an official Codex 0.163 finite, model-free client check inside controlled API wrappers. Those messages and display tests do not establish paid provider inference or generated-product acceptance. No execution budget, recovery authority or MCP tool grant changes in this release.
+
 ## 0.2.29
 
 An administrator can grant an eligible official-CLI recovery access to selected checks already retained on the run. The separate coding MCP channel exposes only `run_configured_check(command_index, request_id)`. Arguments, timeout, runner policy and shared budget come from the original run; the coding agent cannot submit a new command. A host runner still uses the worker's service account and does not provide filesystem or network isolation.
