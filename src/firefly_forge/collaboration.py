@@ -1539,7 +1539,7 @@ class Collaboration:
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
-            from firefly_forge.collaboration_feedback import feedback_card, milestone_key, review_key
+            from firefly_forge.collaboration_feedback import feedback_card, milestone_key, provider_recovery, review_key
             from firefly_forge.configuration import redact_secrets
             from firefly_forge.secrets import redact_environment
 
@@ -1565,6 +1565,8 @@ class Collaboration:
                     run.get("publish") and not run.get("pr_url") and not run.get("publication_error")
                 ),
             }
+            if recovery := provider_recovery(run):
+                intent["provider_recovery"] = recovery
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None

@@ -8,9 +8,11 @@ from uuid import UUID
 
 from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import BaseEntity, Repository
-from sqlalchemy import BigInteger, ForeignKey, Identity, String, UniqueConstraint, and_, case, or_, select
+from sqlalchemy import BigInteger, ForeignKey, Identity, String, UniqueConstraint, and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
+from firefly_forge.persistence import ForgeRunEntity
 
 
 class ForgeCollaborationSettingsEntity(BaseEntity):
@@ -130,6 +132,25 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
         )
 
     async def find_pending(self) -> list[ForgeWebhookInboxEntity]:
+        recovery = ForgeRunEntity.data["provider_recovery"]
+        reported = ForgeWebhookInboxEntity.data["feedback_intent"]["provider_recovery"]
+        unreported_recovery = (
+            select(ForgeRunEntity.id)
+            .where(
+                ForgeRunEntity.repository_id == ForgeWebhookInboxEntity.repository_id,
+                ForgeRunEntity.data["id"].as_string() == ForgeWebhookInboxEntity.data["run_id"].as_string(),
+                func.jsonb_typeof(recovery["request_id"]) == "string",
+                recovery["request_id"].as_string().op("~")(r"^[a-f0-9]{32}$"),
+                func.jsonb_typeof(recovery["attempt"]) == "number",
+                recovery["attempt"].as_string().op("~")(r"^([1-9][0-9]?|100)$"),
+                recovery["status"].as_string().in_(["reserved", "consumed", "completed"]),
+                or_(
+                    recovery["request_id"].as_string().is_distinct_from(reported["request_id"].as_string()),
+                    recovery["attempt"].as_string().is_distinct_from(reported["attempt"].as_string()),
+                ),
+            )
+            .exists()
+        )
         return list(
             await self._require_session().scalars(
                 select(ForgeWebhookInboxEntity)
@@ -155,6 +176,7 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
                                         ForgeWebhookInboxEntity.data["feedback_publication_pending"]
                                         .as_boolean()
                                         .is_(True),
+                                        unreported_recovery,
                                     ),
                                 ),
                             ),
