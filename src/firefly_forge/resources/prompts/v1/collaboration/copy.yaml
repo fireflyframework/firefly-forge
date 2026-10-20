@@ -85,11 +85,16 @@ user_template: |-
     },
     "choices_heading": "Choices:",
     "verification_refused": "The factory could not start the requested checks. An operator needs to review the original question.",
+    "handoff_provenance": {
+      "current": "**Current-attempt verification**",
+      "retained": "**Previous-attempt verification**\n\nThis handoff belongs to an earlier attempt. It does not verify this recovery attempt.",
+      "unknown": "**Retained verification (attempt not confirmed)**\n\nThis handoff cannot be matched to this recovery attempt and does not verify it."
+    },
     "check_provenance_unknown": "unknown",
     "check_provenance": {
-      "current": "These checks were recorded for this recovery attempt.",
-      "retained": "These totals include checks from another attempt and do not verify this recovery attempt.",
-      "unknown": "The attempt provenance is incomplete; these retained checks do not verify this recovery attempt."
+      "current": "**Current-attempt verification**\n\nThese checks were recorded for this recovery attempt.",
+      "retained": "**Retained verification from another attempt**\n\nThese totals include checks from another attempt and do not verify this recovery attempt.",
+      "unknown": "**Retained verification (attempt not confirmed)**\n\nThe attempt provenance is incomplete; these retained checks do not verify this recovery attempt."
     },
     "titles": {
       "recorded": "Request recorded",

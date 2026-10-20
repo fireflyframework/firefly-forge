@@ -270,10 +270,21 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         safe(reference_url)
         sections.append(prompt_text("collaboration/reference", url=reference_url))
     if handoff:
+        explanation = copy["handoff"][handoff["status"]]
+        if recovery:
+            attempt = request.get("attempt")
+            provenance = (
+                "unknown"
+                if type(attempt) is not int or not 1 <= attempt <= recovery["attempt"]
+                else "current"
+                if attempt == recovery["attempt"]
+                else "retained"
+            )
+            explanation = copy["handoff_provenance"][provenance] + "\n\n" + explanation
         sections.append(
             prompt_text(
                 "collaboration/handoff",
-                explanation=copy["handoff"][handoff["status"]],
+                explanation=explanation,
                 total=str(
                     handoff.get("commands_count", (run.get("verification_handoff") or {}).get("commands_count", 0))
                 ),
@@ -316,7 +327,6 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     checks = run.get("final_verification") or []
     if checks:
         passed = sum(type(check.get("exit_code")) is int and check["exit_code"] == 0 for check in checks)
-        sections.append(prompt_text("collaboration/verification", passed=str(passed), total=str(len(checks))))
         if recovery:
             attempts = {
                 check["attempt"]
@@ -333,6 +343,7 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
                     explanation=copy["check_provenance"][provenance],
                 )
             )
+        sections.append(prompt_text("collaboration/verification", passed=str(passed), total=str(len(checks))))
     url = _link(run.get("pr_url"), host, repository)
     if url:
         safe(url)
