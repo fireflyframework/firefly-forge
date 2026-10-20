@@ -586,6 +586,7 @@ export function ToolEvidence({
   const record = asRecord(value);
   if (!record) return <EvidenceView value={value} />;
   const names: Record<string, string> = {
+    coding_configured_check: "Run configured project check",
     internet_search: "Internet search",
     "external_mcp:github:get_file_contents": "GitHub · Read repository files",
     "external_mcp:github:get_commit": "GitHub · Read a commit",

@@ -117,6 +117,11 @@ function ArchivedActivity({
   const command =
     s?.item_type === "command_execution" &&
     typeof s.command_preview === "string";
+  const mcp = s?.item_type === "mcp_tool_call";
+  const configuredCheck =
+    mcp &&
+    s.tool_server === "forge_coding" &&
+    s.tool_name === "run_configured_check";
   const structured =
     !s && /^\s*(?:\{|\[\s*(?:\{|\[|"|\d|]|-|true|false|null))/.test(preview);
   const titles: Record<string, string> = {
@@ -128,27 +133,29 @@ function ArchivedActivity({
     "claude.result": "Provider result reported",
     "claude.result_error": "Provider reported a failure",
   };
-  const title = command
-    ? s.event_type === "item.completed"
-      ? "Provider command finished"
-      : "Provider command started"
-    : s?.item_type === "tool_use"
-      ? "Tool request recorded"
-      : s?.item_type === "tool_result"
-        ? "Tool result reported"
-        : s?.item_type === "provider_message"
-          ? "Provider message recorded"
-          : s && Object.hasOwn(titles, s.event_type)
-            ? titles[s.event_type]
-            : s?.item_type === "agent_message"
-              ? "Provider report"
-              : s?.item_type === "reasoning"
-                ? "Provider progress"
-                : structured
-                  ? "Structured provider output recorded"
-                  : d.stage === "stderr"
-                    ? "Provider error output"
-                    : "Provider output";
+  const title = mcp
+    ? "Provider tool activity"
+    : command
+      ? s.event_type === "item.completed"
+        ? "Provider command finished"
+        : "Provider command started"
+      : s?.item_type === "tool_use"
+        ? "Tool request recorded"
+        : s?.item_type === "tool_result"
+          ? "Tool result reported"
+          : s?.item_type === "provider_message"
+            ? "Provider message recorded"
+            : s && Object.hasOwn(titles, s.event_type)
+              ? titles[s.event_type]
+              : s?.item_type === "agent_message"
+                ? "Provider report"
+                : s?.item_type === "reasoning"
+                  ? "Provider progress"
+                  : structured
+                    ? "Structured provider output recorded"
+                    : d.stage === "stderr"
+                      ? "Provider error output"
+                      : "Provider output";
   const commandPreview = command
     ? boundedText(s.command_preview!, 180, 4)
     : null;
@@ -157,7 +164,43 @@ function ArchivedActivity({
   return (
     <section className="record-evidence" aria-label="Archived provider event">
       <h3>{title}</h3>
-      {command ? (
+      {mcp ? (
+        <div className="record-command record-tool">
+          <div className="record-command-heading">
+            <Wrench size={17} />
+            <strong>
+              {configuredCheck
+                ? "Run configured project check"
+                : `${s.tool_server} · ${s.tool_name}`}
+            </strong>
+          </div>
+          {configuredCheck && (
+            <details className="record-tool-identity">
+              <summary>Tool identity</summary>
+              <code className="record-tool-identity-text">
+                {s.tool_server} · {s.tool_name}
+              </code>
+            </details>
+          )}
+          <p>
+            {s.tool_status === "completed"
+              ? "Provider reported completion"
+              : s.tool_status === "failed"
+                ? "Provider reported a failure"
+                : "Provider reported an in-progress tool call"}
+            {s.tool_exit_code !== undefined && (
+              <> · Reported exit {s.tool_exit_code}</>
+            )}
+          </p>
+          {s.output_preview !== undefined && (
+            <OutputView
+              value={s.output_preview}
+              label="Provider-reported output preview"
+              copyLabel="Copy output preview"
+            />
+          )}
+        </div>
+      ) : command ? (
         <div className="record-command">
           <div className="record-command-heading">
             <Terminal size={17} />
@@ -226,8 +269,9 @@ function ArchivedActivity({
         </p>
       )}
       <p className="subtle">
-        Recorded from the coding provider. Factory verification is tracked
-        separately.
+        {mcp
+          ? "Native runner receipts and final verification are tracked separately."
+          : "Recorded from the coding provider. Factory verification is tracked separately."}
       </p>
       {d.status === "budget_exceeded" ? (
         <p role="note">

@@ -1,0 +1,95 @@
+{
+  "provenance": {
+    "scope": "Actual redacted finite Codex 0.163 MCP messages, not paid inference or CRM/product QA. Event wrappers and expected display projections are controlled fixtures, not retained native WAL/tool receipt envelopes.",
+    "source_sha256": "80445193406581b0639bec128630abd295e00516339a7a3205aa29342d9afb2b"
+  },
+  "run_id": "ded89814b64a4197bbe6a08a46c3bc38",
+  "records": [
+    {
+      "raw_message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_0\",\"type\":\"mcp_tool_call\",\"server\":\"forge_coding\",\"tool\":\"run_configured_check\",\"arguments\":{\"command_index\":0,\"request_id\":\"70a5104e48d7458abed320248b67a576\"},\"result\":null,\"error\":null,\"status\":\"in_progress\"}}",
+      "event": {
+        "id": "a1df9e6cd04bbc649294f137350f9e96",
+        "stage": "stdout",
+        "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_0\",\"type\":\"mcp_tool_call\",\"server\":\"forge_coding\",\"tool\":\"run_configured_check\",\"arguments\":{\"command_index\":0,\"request_id\":\"70a5104e48d7458abed320248b67a576\"},\"result\":null,\"error\":null,\"status\":\"in_progress\"}}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "ded89814b64a4197bbe6a08a46c3bc38",
+          "event_id": "a1df9e6cd04bbc649294f137350f9e96",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 253,
+          "sanitized_message_sha256": "cdb2d74edb738ed10c6901391c9b57733128306f2e11080f3826fa8b820f02b0",
+          "descriptor_sha256": "2b62f62533ea1698adc90b54311a01465f68f5e22fed3cca6d14d861703e0370"
+        },
+        "activity_summary": {
+          "version": 1,
+          "provider": "codex",
+          "event_type": "item.started",
+          "item_type": "mcp_tool_call",
+          "item_id": "item_0",
+          "tool_server": "forge_coding",
+          "tool_name": "run_configured_check",
+          "tool_status": "in_progress",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 253,
+          "sanitized_message_sha256": "cdb2d74edb738ed10c6901391c9b57733128306f2e11080f3826fa8b820f02b0"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "2b62f62533ea1698adc90b54311a01465f68f5e22fed3cca6d14d861703e0370",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 253,
+        "sanitized_message_sha256": "cdb2d74edb738ed10c6901391c9b57733128306f2e11080f3826fa8b820f02b0",
+        "data_base64": "eyJ0eXBlIjoiaXRlbS5zdGFydGVkIiwiaXRlbSI6eyJpZCI6Iml0ZW1fMCIsInR5cGUiOiJtY3BfdG9vbF9jYWxsIiwic2VydmVyIjoiZm9yZ2VfY29kaW5nIiwidG9vbCI6InJ1bl9jb25maWd1cmVkX2NoZWNrIiwiYXJndW1lbnRzIjp7ImNvbW1hbmRfaW5kZXgiOjAsInJlcXVlc3RfaWQiOiI3MGE1MTA0ZTQ4ZDc0NThhYmVkMzIwMjQ4YjY3YTU3NiJ9LCJyZXN1bHQiOm51bGwsImVycm9yIjpudWxsLCJzdGF0dXMiOiJpbl9wcm9ncmVzcyJ9fQ==",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"mcp_tool_call\",\"server\":\"forge_coding\",\"tool\":\"run_configured_check\",\"arguments\":{\"command_index\":0,\"request_id\":\"70a5104e48d7458abed320248b67a576\"},\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"invocation_id\\\": \\\"70a5104e48d7458abed320248b67a576\\\",\\n  \\\"command_index\\\": 0,\\n  \\\"exit_code\\\": 0,\\n  \\\"source_before\\\": \\\"707376f41984318595f2fe52e6029a55736da8e933b661f7562c94392d1ac760\\\",\\n  \\\"source_after\\\": \\\"707376f41984318595f2fe52e6029a55736da8e933b661f7562c94392d1ac760\\\",\\n  \\\"sandbox_execution_ids\\\": [\\n    \\\"fc409d459edc5ff29ae89a3d2e3cec20\\\"\\n  ],\\n  \\\"output\\\": \\\"NATIVE_PREREQUISITE_SAFE_RESULT {\\\\\\\"native_config_and_readonly_test_database_ready\\\\\\\": true, \\\\\\\"phases\\\\\\\": {\\\\\\\"database_connection_disposed\\\\\\\": {\\\\\\\"ok\\\\\\\": true}, \\\\\\\"node_and_retained_frontend_dependencies\\\\\\\": {\\\\\\\"ok\\\\\\\": true}, \\\\\\\"normal_config_loader_testing_true\\\\\\\": {\\\\\\\"ok\\\\\\\": true}, \\\\\\\"public_config_import\\\\\\\": {\\\\\\\"ok\\\\\\\": true}, \\\\\\\"public_replica_frontend_package_present\\\\\\\": {\\\\\\\"ok\\\\\\\": false}, \\\\\\\"python_dependencies\\\\\\\": {\\\\\\\"ok\\\\\\\": true}, \\\\\\\"readonly_distinct_test_database_select1\\\\\\\": {\\\\\\\"ok\\\\\\\": true}}, \\\\\\\"versions\\\\\\\": {\\\\\\\"Node\\\\\\\": \\\\\\\"v26.3.0\\\\\\\", \\\\\\\"PyJWT\\\\\\\": \\\\\\\"2.15.1\\\\\\\", \\\\\\\"Python\\\\\\\": \\\\\\\"3.13.13\\\\\\\", \\\\\\\"SQLAlchemy\\\\\\\": \\\\\\\"2.1.4\\\\\\\", \\\\\\\"asyncpg\\\\\\\": \\\\\\\"0.32.0\\\\\\\", \\\\\\\"httpx\\\\\\\": \\\\\\\"0.28.1\\\\\\\", \\\\\\\"mypy\\\\\\\": \\\\\\\"1.20.2\\\\\\\", \\\\\\\"pydantic\\\\\\\": \\\\\\\"2.14.1\\\\\\\", \\\\\\\"pyfly\\\\\\\": \\\\\\\"26.10.6\\\\\\\", \\\\\\\"pytest\\\\\\\": \\\\\\\"9.1.1\\\\\\\", \\\\\\\"pytest-asyncio\\\\\\\": \\\\\\\"1.4.0\\\\\\\", \\\\\\\"retained_react\\\\\\\": \\\\\\\"19.3.0\\\\\\\", \\\\\\\"retained_react-dom\\\\\\\": \\\\\\\"19.3.0\\\\\\\", \\\\\\\"retained_typescript\\\\\\\": \\\\\\\"5.9.3\\\\\\\", \\\\\\\"retained_vite\\\\\\\": \\\\\\\"7.3.7\\\\\\\", \\\\\\\"retained_vitest\\\\\\\": \\\\\\\"4.1.11\\\\\\\", \\\\\\\"ruff\\\\\\\": \\\\\\\"0.17.0\\\\\\\", \\\\\\\"starlette\\\\\\\": \\\\\\\"1.7.0\\\\\\\", \\\\\\\"uvicorn\\\\\\\": \\\\\\\"0.54.0\\\\\\\"}}\\\\n\\\"\\n}\"}],\"structured_content\":{\"invocation_id\":\"70a5104e48d7458abed320248b67a576\",\"command_index\":0,\"exit_code\":0,\"source_before\":\"707376f41984318595f2fe52e6029a55736da8e933b661f7562c94392d1ac760\",\"source_after\":\"707376f41984318595f2fe52e6029a55736da8e933b661f7562c94392d1ac760\",\"sandbox_execution_ids\":[\"fc409d459edc5ff29ae89a3d2e3cec20\"],\"output\":\"NATIVE_PREREQUISITE_SAFE_RESULT {\\\"native_config_and_readonly_test_database_ready\\\": true, \\\"phases\\\": {\\\"database_connection_disposed\\\": {\\\"ok\\\": true}, \\\"node_and_retained_frontend_dependencies\\\": {\\\"ok\\\": true}, \\\"normal_config_loader_testing_true\\\": {\\\"ok\\\": true}, \\\"public_config_import\\\": {\\\"ok\\\": true}, \\\"public_replica_frontend_package_present\\\": {\\\"ok\\\": false}, \\\"python_dependencies\\\": {\\\"ok\\\": true}, \\\"readonly_distinct_test_database_select1\\\": {\\\"ok\\\": true}}, \\\"versions\\\": {\\\"Node\\\": \\\"v26.3.0\\\", \\\"PyJWT\\\": \\\"2.15.1\\\", \\\"Python\\\": \\\"3.13.13\\\", \\\"SQLAlchemy\\\": \\\"2.1.4\\\", \\\"asyncpg\\\": \\\"0.32.0\\\", \\\"httpx\\\": \\\"0.28.1\\\", \\\"mypy\\\": \\\"1.20.2\\\", \\\"pydantic\\\": \\\"2.14.1\\\", \\\"pyfly\\\": \\\"26.10.6\\\", \\\"pytest\\\": \\\"9.1.1\\\", \\\"pytest-asyncio\\\": \\\"1.4.0\\\", \\\"retained_react\\\": \\\"19.3.0\\\", \\\"retained_react-dom\\\": \\\"19.3.0\\\", \\\"retained_typescript\\\": \\\"5.9.3\\\", \\\"retained_vite\\\": \\\"7.3.7\\\", \\\"retained_vitest\\\": \\\"4.1.11\\\", \\\"ruff\\\": \\\"0.17.0\\\", \\\"starlette\\\": \\\"1.7.0\\\", \\\"uvicorn\\\": \\\"0.54.0\\\"}}\\n\"}},\"error\":null,\"status\":\"completed\"}}",
+      "event": {
+        "id": "8e021594b0adf1e00f8c88e198fe0eca",
+        "stage": "stdout",
+        "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"mcp_tool_call\",\"server\":\"forge_coding\",\"tool\":\"run_configured_check\",\"arguments\":{\"command_index\":0,\"request_id\":\"70a5104e48d7458abed320248b67a576\"},\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"invocation_id\\\": \\\"70a5104e48d7458abed320248b67a576\\\",\\n  \\\"command_index\\\": 0,\\n  \\\"exit_code\\\": 0,\\n  \\\"source_before\\\": \\\"707376f41984318595f2fe52e6029a55736da8e933b661f7562c94392d1ac760\\\",\\n  \\\"source_after\\\": \\\"707376f41984318595f2fe52e6029a55736da8e93",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "ded89814b64a4197bbe6a08a46c3bc38",
+          "event_id": "8e021594b0adf1e00f8c88e198fe0eca",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 3258,
+          "sanitized_message_sha256": "b4f736425ea12077dbe61f08358365b4cd111c28aa4cacfb6f5007ff2aaf9e01",
+          "descriptor_sha256": "181912b0856a35f683d659d03dc5c3472bd8fda163aab06e4f0f4f5fb39ca1a6"
+        },
+        "activity_summary": {
+          "version": 1,
+          "provider": "codex",
+          "event_type": "item.completed",
+          "item_type": "mcp_tool_call",
+          "item_id": "item_0",
+          "tool_server": "forge_coding",
+          "tool_name": "run_configured_check",
+          "tool_status": "completed",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 3258,
+          "sanitized_message_sha256": "b4f736425ea12077dbe61f08358365b4cd111c28aa4cacfb6f5007ff2aaf9e01",
+          "tool_exit_code": 0,
+          "output_preview": "NATIVE_PREREQUISITE_SAFE_RESULT {\"native_config_and_readonly_test_database_ready\": true, \"phases\": {\"database_connection_disposed\": {\"ok\": true}, \"node_and_retained_frontend_dependencies\": {\"ok\": true}, \"normal_config_loader_testing_true\": {\"ok\": true}, \"public_config_import\": {\"ok\": true}, \"public_replica_frontend_package_present\": {\"ok\": false}, \"python_dependencies\": {\"ok\": true"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "181912b0856a35f683d659d03dc5c3472bd8fda163aab06e4f0f4f5fb39ca1a6",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 3258,
+        "sanitized_message_sha256": "b4f736425ea12077dbe61f08358365b4cd111c28aa4cacfb6f5007ff2aaf9e01",
+        "data_base64": "eyJ0eXBlIjoiaXRlbS5jb21wbGV0ZWQiLCJpdGVtIjp7ImlkIjoiaXRlbV8wIiwidHlwZSI6Im1jcF90b29sX2NhbGwiLCJzZXJ2ZXIiOiJmb3JnZV9jb2RpbmciLCJ0b29sIjoicnVuX2NvbmZpZ3VyZWRfY2hlY2siLCJhcmd1bWVudHMiOnsiY29tbWFuZF9pbmRleCI6MCwicmVxdWVzdF9pZCI6IjcwYTUxMDRlNDhkNzQ1OGFiZWQzMjAyNDhiNjdhNTc2In0sInJlc3VsdCI6eyJjb250ZW50IjpbeyJ0eXBlIjoidGV4dCIsInRleHQiOiJ7XG4gIFwiaW52b2NhdGlvbl9pZFwiOiBcIjcwYTUxMDRlNDhkNzQ1OGFiZWQzMjAyNDhiNjdhNTc2XCIsXG4gIFwiY29tbWFuZF9pbmRleFwiOiAwLFxuICBcImV4aXRfY29kZVwiOiAwLFxuICBcInNvdXJjZV9iZWZvcmVcIjogXCI3MDczNzZmNDE5ODQzMTg1OTVmMmZlNTJlNjAyOWE1NTczNmRhOGU5MzNiNjYxZjc1NjJjOTQzOTJkMWFjNzYwXCIsXG4gIFwic291cmNlX2FmdGVyXCI6IFwiNzA3Mzc2ZjQxOTg0MzE4NTk1ZjJmZTUyZTYwMjlhNTU3MzZkYThlOTMzYjY2MWY3NTYyYzk0MzkyZDFhYzc2MFwiLFxuICBcInNhbmRib3hfZXhlY3V0aW9uX2lkc1wiOiBbXG4gICAgXCJmYzQwOWQ0NTllZGM1ZmYyOWFlODlhM2QyZTNjZWMyMFwiXG4gIF0sXG4gIFwib3V0cHV0XCI6IFwiTkFUSVZFX1BSRVJFUVVJU0lURV9TQUZFX1JFU1VMVCB7XFxcIm5hdGl2ZV9jb25maWdfYW5kX3JlYWRvbmx5X3Rlc3RfZGF0YWJhc2VfcmVhZHlcXFwiOiB0cnVlLCBcXFwicGhhc2VzXFxcIjoge1xcXCJkYXRhYmFzZV9jb25uZWN0aW9uX2Rpc3Bvc2VkXFxcIjoge1xcXCJva1xcXCI6IHRydWV9LCBcXFwibm9kZV9hbmRfcmV0YWluZWRfZnJvbnRlbmRfZGVwZW5kZW5jaWVzXFxcIjoge1xcXCJva1xcXCI6IHRydWV9LCBcXFwibm9ybWFsX2NvbmZpZ19sb2FkZXJfdGVzdGluZ190cnVlXFxcIjoge1xcXCJva1xcXCI6IHRydWV9LCBcXFwicHVibGljX2NvbmZpZ19pbXBvcnRcXFwiOiB7XFxcIm9rXFxcIjogdHJ1ZX0sIFxcXCJwdWJsaWNfcmVwbGljYV9mcm9udGVuZF9wYWNrYWdlX3ByZXNlbnRcXFwiOiB7XFxcIm9rXFxcIjogZmFsc2V9LCBcXFwicHl0aG9uX2RlcGVuZGVuY2llc1xcXCI6IHtcXFwib2tcXFwiOiB0cnVlfSwgXFxcInJlYWRvbmx5X2Rpc3RpbmN0X3Rlc3RfZGF0YWJhc2Vfc2VsZWN0MVxcXCI6IHtcXFwib2tcXFwiOiB0cnVlfX0sIFxcXCJ2ZXJzaW9uc1xcXCI6IHtcXFwiTm9kZVxcXCI6IFxcXCJ2MjYuMy4wXFxcIiwgXFxcIlB5SldUXFxcIjogXFxcIjIuMTUuMVxcXCIsIFxcXCJQeXRob25cXFwiOiBcXFwiMy4xMy4xM1xcXCIsIFxcXCJTUUxBbGNoZW15XFxcIjogXFxcIjIuMS40XFxcIiwgXFxcImFzeW5jcGdcXFwiOiBcXFwiMC4zMi4wXFxcIiwgXFxcImh0dHB4XFxcIjogXFxcIjAuMjguMVxcXCIsIFxcXCJteXB5XFxcIjogXFxcIjEuMjAuMlxcXCIsIFxcXCJweWRhbnRpY1xcXCI6IFxcXCIyLjE0LjFcXFwiLCBcXFwicHlmbHlcXFwiOiBcXFwiMjYuMTAuNlxcXCIsIFxcXCJweXRlc3RcXFwiOiBcXFwiOS4xLjFcXFwiLCBcXFwicHl0ZXN0LWFzeW5jaW9cXFwiOiBcXFwiMS40LjBcXFwiLCBcXFwicmV0YWluZWRfcmVhY3RcXFwiOiBcXFwiMTkuMy4wXFxcIiwgXFxcInJldGFpbmVkX3JlYWN0LWRvbVxcXCI6IFxcXCIxOS4zLjBcXFwiLCBcXFwicmV0YWluZWRfdHlwZXNjcmlwdFxcXCI6IFxcXCI1LjkuM1xcXCIsIFxcXCJyZXRhaW5lZF92aXRlXFxcIjogXFxcIjcuMy43XFxcIiwgXFxcInJldGFpbmVkX3ZpdGVzdFxcXCI6IFxcXCI0LjEuMTFcXFwiLCBcXFwicnVmZlxcXCI6IFxcXCIwLjE3LjBcXFwiLCBcXFwic3RhcmxldHRlXFxcIjogXFxcIjEuNy4wXFxcIiwgXFxcInV2aWNvcm5cXFwiOiBcXFwiMC41NC4wXFxcIn19XFxuXCJcbn0ifV0sInN0cnVjdHVyZWRfY29udGVudCI6eyJpbnZvY2F0aW9uX2lkIjoiNzBhNTEwNGU0OGQ3NDU4YWJlZDMyMDI0OGI2N2E1NzYiLCJjb21tYW5kX2luZGV4IjowLCJleGl0X2NvZGUiOjAsInNvdXJjZV9iZWZvcmUiOiI3MDczNzZmNDE5ODQzMTg1OTVmMmZlNTJlNjAyOWE1NTczNmRhOGU5MzNiNjYxZjc1NjJjOTQzOTJkMWFjNzYwIiwic291cmNlX2FmdGVyIjoiNzA3Mzc2ZjQxOTg0MzE4NTk1ZjJmZTUyZTYwMjlhNTU3MzZkYThlOTMzYjY2MWY3NTYyYzk0MzkyZDFhYzc2MCIsInNhbmRib3hfZXhlY3V0aW9uX2lkcyI6WyJmYzQwOWQ0NTllZGM1ZmYyOWFlODlhM2QyZTNjZWMyMCJdLCJvdXRwdXQiOiJOQVRJVkVfUFJFUkVRVUlTSVRFX1NBRkVfUkVTVUxUIHtcIm5hdGl2ZV9jb25maWdfYW5kX3JlYWRvbmx5X3Rlc3RfZGF0YWJhc2VfcmVhZHlcIjogdHJ1ZSwgXCJwaGFzZXNcIjoge1wiZGF0YWJhc2VfY29ubmVjdGlvbl9kaXNwb3NlZFwiOiB7XCJva1wiOiB0cnVlfSwgXCJub2RlX2FuZF9yZXRhaW5lZF9mcm9udGVuZF9kZXBlbmRlbmNpZXNcIjoge1wib2tcIjogdHJ1ZX0sIFwibm9ybWFsX2NvbmZpZ19sb2FkZXJfdGVzdGluZ190cnVlXCI6IHtcIm9rXCI6IHRydWV9LCBcInB1YmxpY19jb25maWdfaW1wb3J0XCI6IHtcIm9rXCI6IHRydWV9LCBcInB1YmxpY19yZXBsaWNhX2Zyb250ZW5kX3BhY2thZ2VfcHJlc2VudFwiOiB7XCJva1wiOiBmYWxzZX0sIFwicHl0aG9uX2RlcGVuZGVuY2llc1wiOiB7XCJva1wiOiB0cnVlfSwgXCJyZWFkb25seV9kaXN0aW5jdF90ZXN0X2RhdGFiYXNlX3NlbGVjdDFcIjoge1wib2tcIjogdHJ1ZX19LCBcInZlcnNpb25zXCI6IHtcIk5vZGVcIjogXCJ2MjYuMy4wXCIsIFwiUHlKV1RcIjogXCIyLjE1LjFcIiwgXCJQeXRob25cIjogXCIzLjEzLjEzXCIsIFwiU1FMQWxjaGVteVwiOiBcIjIuMS40XCIsIFwiYXN5bmNwZ1wiOiBcIjAuMzIuMFwiLCBcImh0dHB4XCI6IFwiMC4yOC4xXCIsIFwibXlweVwiOiBcIjEuMjAuMlwiLCBcInB5ZGFudGljXCI6IFwiMi4xNC4xXCIsIFwicHlmbHlcIjogXCIyNi4xMC42XCIsIFwicHl0ZXN0XCI6IFwiOS4xLjFcIiwgXCJweXRlc3QtYXN5bmNpb1wiOiBcIjEuNC4wXCIsIFwicmV0YWluZWRfcmVhY3RcIjogXCIxOS4zLjBcIiwgXCJyZXRhaW5lZF9yZWFjdC1kb21cIjogXCIxOS4zLjBcIiwgXCJyZXRhaW5lZF90eXBlc2NyaXB0XCI6IFwiNS45LjNcIiwgXCJyZXRhaW5lZF92aXRlXCI6IFwiNy4zLjdcIiwgXCJyZXRhaW5lZF92aXRlc3RcIjogXCI0LjEuMTFcIiwgXCJydWZmXCI6IFwiMC4xNy4wXCIsIFwic3RhcmxldHRlXCI6IFwiMS43LjBcIiwgXCJ1dmljb3JuXCI6IFwiMC41NC4wXCJ9fVxuIn19LCJlcnJvciI6bnVsbCwic3RhdHVzIjoiY29tcGxldGVkIn19",
+        "next_chunk": null
+      }
+    }
+  ]
+}
