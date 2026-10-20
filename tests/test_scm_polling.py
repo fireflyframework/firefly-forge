@@ -205,6 +205,7 @@ def poll_case(tmp_path, monkeypatch):
                 raise RuntimeError("Controlled ownership loss")
 
         store = SimpleNamespace(
+            execution_ownership_acquired=False,
             _unit=unit,
             repository=repo,
             get_run=run,

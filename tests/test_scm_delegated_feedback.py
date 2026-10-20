@@ -120,6 +120,7 @@ async def delegated_feedback(tmp_path, monkeypatch):
     monkeypatch.setattr(Journal, "worker_response", answer)
     store = SimpleNamespace(
         schema="owned_host_feedback",
+        execution_ownership_acquired=False,
         _unit=unit,
         repository=repository,
         get_run=get_run,
