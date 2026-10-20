@@ -13,6 +13,7 @@ import tempfile
 import uuid
 import zipfile
 from collections.abc import Callable
+from contextlib import AsyncExitStack, ExitStack
 from pathlib import Path
 from typing import Any, cast
 
@@ -156,6 +157,7 @@ class Engine:
         self.tool_broker: Any = None
         self.verification_handoffs: Any = None
         self.provider_recoveries: Any = None
+        self.coding_checks: Any = None
         self.external_mcp: Any = None
         self.learning: Any = None
         self.knowledge_first: Any = None
@@ -389,6 +391,7 @@ class Engine:
         workspace = self.workspaces / identifier
         settings: dict[str, str] = {}
         active_key: str | None = None
+        credential_scopes = ExitStack()
 
         def safe(message: str) -> str:
             return redact_secrets(redact_secrets(redact(message), self.credential_registry()), settings)
@@ -991,8 +994,18 @@ class Engine:
 
                     official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
                     dispatch_provider, adopted_executable = provider, None
+                    coding_grant = None
+                    checks = getattr(self, "coding_checks", None)
+                    dispatch_pending = {"value": False}
                     if official_dispatch:
                         if recovery is not None:
+                            if (current.get("provider_recovery") or {}).get("coding_check_grant_id"):
+                                try:
+                                    if checks is None:
+                                        raise ValueError("The scoped configured-check authority is unavailable")
+                                    coding_grant = await checks.assert_reserved(identifier, active_key)
+                                except ValueError as exc:
+                                    raise ReconciliationRequired(str(exc)) from exc
                             selected = official_dispatch.execution_settings(current, settings, active_key)
                             adoption = (current.get("provider_recovery") or {}).get("executable_adoption")
                             if adoption:
@@ -1004,18 +1017,70 @@ class Engine:
 
                                 dispatch_provider = get_provider(run["agent"], selected)
                                 adopted_executable = adoption["path"]
-                            await official_dispatch.dispatch(identifier, active_key)
+                            if coding_grant:
+                                dispatch_pending["value"] = True
+                            else:
+                                await official_dispatch.dispatch(identifier, active_key)
                         else:
                             await official_dispatch.normal_dispatch(identifier, active_key)
 
                     async def launch_guard(
-                        dispatch: Any = official_dispatch, task_key: str | None = active_key
+                        dispatch: Any = official_dispatch,
+                        task_key: str | None = active_key,
+                        grant: Any = coding_grant,
+                        checks_service: Any = checks,
+                        pending: Any = dispatch_pending,
                     ) -> None:
                         await self.assert_ownership()
+                        if grant:
+                            await self.store.assert_ownership()
+                            await checks_service.assert_reserved(identifier, task_key)
+                            if pending["value"]:
+                                await dispatch.dispatch(identifier, task_key)
+                                pending["value"] = False
+                            await checks_service.assert_reserved(identifier, task_key)
                         if dispatch:
                             await dispatch.assert_launch(identifier, task_key)
 
+                    channel_stack = AsyncExitStack()
                     try:
+                        if coding_grant:
+                            from firefly_forge.coding_check_runtime import ConfiguredCheckInvocation
+                            from firefly_forge.coding_check_transport import CodingCheckServer
+                            from firefly_forge.secrets import ephemeral_credentials
+
+                            if not hasattr(dispatch_provider, "configure_coding_checks"):
+                                raise ReconciliationRequired(
+                                    "The configured official CLI scoped channel is unavailable"
+                                )
+                            if checks is None or not isinstance(active_key, str):
+                                raise ReconciliationRequired(
+                                    "The scoped coding invocation has no native task authority"
+                                )
+                            runtime = ConfiguredCheckInvocation(checks, identifier, active_key)
+                            channel = CodingCheckServer(
+                                runtime.run,
+                                expires_at_ms=coding_grant["expires_at_ms"],
+                                bind_port=coding_grant["candidate"]["channel"]["bind_port"],
+                                invocation_timeout=float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                            )
+                            # Retain redaction until source admission, final evidence and all error handling finish.
+                            credential_scopes.enter_context(ephemeral_credentials(channel.environment))
+                            await channel_stack.enter_async_context(channel.running())
+                            selected_checks = [
+                                command
+                                for command in coding_grant["candidate"]["commands"]
+                                if command["command_index"] in coding_grant["request"]["command_indices"]
+                            ]
+                            dispatch_provider.configure_coding_checks(
+                                channel,
+                                prompt_text(
+                                    "implementation/configured-checks",
+                                    checks=json.dumps(selected_checks),
+                                    call_limit=str(coding_grant["call_limit"]),
+                                    final_check_count=str(coding_grant["candidate"]["independent_final_check_count"]),
+                                ),
+                            )
                         with (
                             bridge_completion_scope(completion_scope),
                             checkpoint_invocation(native_invocation),
@@ -1034,6 +1099,10 @@ class Engine:
                             )
                     except BaseException as exc:
                         if official_dispatch:
+                            if dispatch_pending["value"]:
+                                raise ReconciliationRequired(
+                                    "The scoped coding invocation was held before consuming its reserved dispatch"
+                                ) from exc
                             known = await official_dispatch.record_process(
                                 identifier, active_key, getattr(exc, "process_outcome", None)
                             )
@@ -1042,6 +1111,8 @@ class Engine:
                                     "The native provider outcome requires reconciliation"
                                 ) from exc
                         raise
+                    finally:
+                        await channel_stack.aclose()
                     if official_dispatch:
                         from firefly_forge.provider_recovery_models import ProviderAttemptClosed
 
@@ -1284,6 +1355,8 @@ class Engine:
             if (await self.store.get_run(identifier))["status"] == "succeeded":
                 (await self.store.update(identifier, publication_error=safe(str(exc))))
                 await emit("publication", f"Publication failed: {exc}")
+        finally:
+            credential_scopes.close()
 
     async def _worker_feedback(
         self, identifier: str, workspace: Path, result: Any, attempt: int, safe_data: Callable[[Any], Any]
@@ -1650,6 +1723,7 @@ class Engine:
         ordinal: int | None = None,
         _diagnostic_snapshot: str | None = None,
         _receipt_sink: Callable[[dict[str, Any]], None] | None = None,
+        _invocation_guard: Callable[[], Any] | None = None,
     ) -> Any:
         from firefly_forge.project_access import ProjectAccess
 
@@ -1673,6 +1747,7 @@ class Engine:
                 stage,
                 ordinal=ordinal,
                 git_root=workspace if stage == "verify" else None,
+                **({"_invocation_guard": _invocation_guard} if _invocation_guard else {}),
                 **diagnostic,
             )
         if _diagnostic_snapshot is not None:

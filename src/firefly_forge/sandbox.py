@@ -16,7 +16,7 @@ import sys
 import tarfile
 import uuid
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -833,6 +833,7 @@ class SandboxExecutor:
         _browser_input: bytes | None = None,
         _diagnostic_snapshot: str | None = None,
         _receipt_sink: Callable[[dict[str, Any]], None] | None = None,
+        _invocation_guard: Callable[[], Awaitable[None]] | None = None,
     ) -> ProcessResult:
         if task_id not in {"implement", "verify"}:
             raise ValueError("Runner commands must belong to an implementation or verification stage")
@@ -851,8 +852,16 @@ class SandboxExecutor:
         workspace, directory = workspace_root.resolve(strict=True), cwd.resolve(strict=True)
         if not directory.is_relative_to(workspace) or not workspace.is_dir() or not directory.is_dir():
             raise ValueError("Runner working directory must be confined to the component workspace")
+
+        async def admit() -> dict[str, Any]:
+            current = await self._admit_execution(run_id)
+            if _invocation_guard is not None:
+                await _invocation_guard()
+                current = await self._admit_execution(run_id)
+            return current
+
         async with self._run_locks[run_id], self._capacity:
-            run = await self._admit_execution(run_id)
+            run = await admit()
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
             if _diagnostic_snapshot is not None:
                 from firefly_forge.diagnostic_recipes import profile_configuration
@@ -962,7 +971,7 @@ class SandboxExecutor:
                     raise SandboxReconciliationRequired(
                         "Interrupted runner invocation requires explicit stage recovery"
                     )
-            await self._admit_execution(run_id)
+            await admit()
             created = await self.journal.sandbox_effect_intent(
                 run_id, task_id, execution_id, effect="create", payload=payload
             )
@@ -979,7 +988,7 @@ class SandboxExecutor:
                 if started["disposition"] != "execute":
                     raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                 try:
-                    await self._admit_execution(run_id)
+                    await admit()
                     result = await backend.run(
                         config, argv, directory, min(timeout, config.timeout), config.max_output_bytes
                     )
@@ -1009,7 +1018,7 @@ class SandboxExecutor:
                 )
             elif created["disposition"] == "execute":
                 try:
-                    await self._admit_execution(run_id)
+                    await admit()
                     volumes = (
                         await self._archive_prepare(config, workspace, git_root, payload["container_name"], labels)
                         if config.workspace_transport == "archive"
@@ -1098,7 +1107,7 @@ class SandboxExecutor:
                     if import_failure is not None:
                         raise import_failure
                 elif started["disposition"] == "execute":
-                    await self._admit_execution(run_id)
+                    await admit()
                     start_argv = ["start", "--attach", payload["container_name"]]
                     if _browser_input is not None:
                         start_argv.insert(1, "--interactive")

@@ -1927,3 +1927,49 @@ def read_activity_content(run_id: str, event_id: str, expected_descriptor: str, 
                 run_id, event_id, {"expected_descriptor": expected_descriptor, "chunk": chunk}
             )
         )
+
+
+@main.group("coding-check-grants")
+def coding_check_grants() -> None:
+    """Review explicit configured-check authority, separate from a recovery allowance."""
+
+
+@coding_check_grants.command("candidate")
+@click.argument("run_id")
+@click.argument("recovery_request_id")
+@click.option("--bind-port", type=click.IntRange(0, 65535), default=0)
+def coding_check_candidate(run_id: str, recovery_request_id: str, bind_port: int) -> None:
+    with client() as connection:
+        display(connection.coding_check_candidate(run_id, recovery_request_id, bind_port=bind_port))
+
+
+@coding_check_grants.command("grant")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def grant_coding_checks(run_id: str, document: Path) -> None:
+    """Submit the reviewed original grant once; a lost reply requires exact readback."""
+    with client() as connection:
+        display(connection.grant_coding_checks(run_id, json_document(document)))
+
+
+@coding_check_grants.command("get")
+@click.argument("run_id")
+@click.argument("request_id")
+def coding_check_receipt(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.coding_check_receipt(run_id, request_id))
+
+
+@coding_check_grants.command("current")
+@click.argument("run_id")
+def coding_check_current(run_id: str) -> None:
+    with client() as connection:
+        display(connection.coding_check_current(run_id))
+
+
+@coding_check_grants.command("revoke")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def revoke_coding_checks(run_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.revoke_coding_checks(run_id, json_document(document)))

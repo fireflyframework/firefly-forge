@@ -30,6 +30,7 @@ from firefly_forge.configuration import (
     ConfigurationStore,
     normalize_provider,
     public_settings,
+    redact_secrets,
     validate_endpoint,
 )
 from firefly_forge.profiles import build_instruction
@@ -297,7 +298,7 @@ async def run_process(
 
     async def drain(stream: asyncio.StreamReader, kind: str) -> None:
         while raw := await stream.readline():
-            line = _redact(raw.decode("utf-8", errors="replace"))
+            line = redact_secrets(_redact(raw.decode("utf-8", errors="replace")), env or {})
             output[kind] = (output[kind] + line)[-1_000_000:]
             await emit(kind, line.rstrip("\n"))
 
@@ -364,6 +365,12 @@ class ConfiguredProvider:
     def __init__(self, settings: dict[str, str] | None = None) -> None:
         self.settings = settings if settings is not None else dict(os.environ)
         self.runtime_context: Any = None
+        self.coding_checks: Any = None
+
+    def configure_coding_checks(self, server: Any, instructions: str) -> None:
+        from firefly_forge.coding_cli_channel import CodingCLIChannel
+
+        self.coding_checks = CodingCLIChannel(server, instructions)
 
     def configure_runtime(self, **kwargs: Any) -> None:
         from firefly_forge.workspace_tools import ToolRuntimeContext
@@ -398,9 +405,17 @@ class CodexProvider(ConfiguredProvider):
         model = self.settings.get("FORGE_CODEX_MODEL")
         if model:
             command[-1:-1] = ["--model", model]
+        if self.coding_checks:
+            command[-1:-1] = ["-c", self.coding_checks.codex_override()]
+            prompt += "\n" + self.coding_checks.instructions
         await emit("provider", "Using the official Codex CLI with its existing login")
         result = await run_process(
-            command, workspace, emit, timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")), stdin=prompt
+            command,
+            workspace,
+            emit,
+            timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+            stdin=prompt,
+            env=runtime_environment(self.coding_checks.server.environment) if self.coding_checks else None,
         )
         try:
             if result.process_outcome is not None and not result.process_outcome.group_absent:
@@ -447,17 +462,32 @@ class ClaudeProvider(ConfiguredProvider):
         model = self.settings.get("FORGE_CLAUDE_MODEL")
         if model:
             command.extend(["--model", model])
+        prompt = build_instruction(brief, backend, frontend)
+        if self.coding_checks:
+            command.extend(["--strict-mcp-config", "--mcp-config", str(self.coding_checks.claude_configuration())])
+            allowed = command.index("--allowedTools") + 1
+            command[allowed] += ",mcp__forge_coding__run_configured_check"
+            prompt += "\n" + self.coding_checks.instructions
         await emit("provider", "Using the official Claude Code CLI with its existing login")
         child_env = runtime_environment()
         child_env.pop("CLAUDECODE", None)
-        result = await run_process(
-            command,
-            workspace,
-            emit,
-            timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
-            stdin=build_instruction(brief, backend, frontend),
-            env=child_env,
-        )
+        if self.coding_checks:
+            child_env.update(self.coding_checks.server.environment)
+        try:
+            result = await run_process(
+                command,
+                workspace,
+                emit,
+                timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                stdin=prompt,
+                env=child_env,
+            )
+        except BaseException as exc:
+            if self.coding_checks:
+                self.coding_checks.settled(getattr(exc, "process_outcome", None))
+            raise
+        if self.coding_checks:
+            self.coding_checks.settled(result.process_outcome)
         try:
             if result.process_outcome is not None and not result.process_outcome.group_absent:
                 raise ProviderOutcomeUnknown("The official CLI process group has not been confirmed drained")

@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/configured-checks
+version: 1.0.0
+description: Explicit configured-check channel instructions for an official coding CLI.
+system_template: ''
+user_template: |-
+  An administrator granted this invocation the separate forge_coding MCP tool run_configured_check(command_index, request_id). Only these frozen configured checks are in scope:
+  {{ checks }}
+  Supply an allowed command_index and a stable 32-character lowercase hexadecimal request_id. You cannot choose arguments, working directory, environment, provider, run, or timeout. Use the same request_id only to read its original result; after an uncertain result, stop and report the hold instead of choosing another identity. Results describe the observed source, not approval. The grant permits at most {{ call_limit }} new check executions, and remaining shared budgets or current authority can reduce that availability. Independent final verification still requires {{ final_check_count }} checks and is not implied by this tool. General CLI role tools remain advisory; this channel grants no operator API, publication, deployment, arbitrary command, or broader network authority.
+required_variables:
+- checks
+- call_limit
+- final_check_count
+metadata:
+  defaults: {}

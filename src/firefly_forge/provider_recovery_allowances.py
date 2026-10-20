@@ -28,6 +28,7 @@ class ProviderRecoveryAllowanceInput(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
     mitigation_evidence_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     adopt_current_executable: Literal[True]
+    coding_check_grant_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
     @field_validator("adopt_current_executable", mode="before")
     @classmethod
@@ -134,6 +135,7 @@ def _sealed_allowance(run: Data, task: Data, entries: list[Data]) -> Data:
         or task.get("idempotency_key") != key
         or task.get("provider_recovery_id") != body.request_id
         or state.get("executable_adoption") != candidate.get("executable_adoption")
+        or state.get("coding_check_grant_id") != body.coding_check_grant_id
         or len(dispatch_keys(entries)) != 5
     ):
         raise ValueError("The final provider allowance linkage changed")
@@ -194,7 +196,7 @@ class ProviderRecoveryAllowances:
             **ProjectAccess.actor_snapshot(actor),
             "identity_digest": digest({"issuer": actor.issuer, "subject": actor.subject}),
         }
-        request = body.model_dump()
+        request = body.model_dump(exclude_none=True)
         r.store.reject_credentials(request)
         async with r._locked(run_id, snapshot) as row:
             entries = await r._entries(run_id)
@@ -218,6 +220,11 @@ class ProviderRecoveryAllowances:
             prospective = {"status": "reserved", "executable_adoption": candidate.get("executable_adoption")}
             if r._cut({**row.data, "provider_recovery": prospective}) != candidate["cut"]:
                 raise ValueError("The final allowance execution cut changed")
+            if body.coding_check_grant_id:
+                checks = getattr(r, "coding_checks", None)
+                if checks is None:
+                    raise ValueError("Configured-check grant admission is unavailable")
+                await checks.bind_allowance(row.data, body, candidate)
             key = allowance_key(run_id, body.request_id)
             receipt = dict(
                 version=2,
@@ -286,6 +293,7 @@ class ProviderRecoveryAllowances:
                     actor=snapshot,
                     allowance_id=body.request_id,
                     allowance_digest=seal,
+                    **({"coding_check_grant_id": body.coding_check_grant_id} if body.coding_check_grant_id else {}),
                     **(
                         {"executable_adoption": candidate["executable_adoption"]}
                         if body.adopt_current_executable

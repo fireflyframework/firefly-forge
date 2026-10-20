@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+    from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
@@ -122,6 +123,52 @@ class ForgeClient:
     def provider_recovery_allowance(self, run_id: str, request_id: str) -> dict[str, Any]:
         run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
         return dict(self.request("GET", f"runs/{run_id}/provider-recoveries/allowances/{request_id}"))
+
+    def coding_check_candidate(self, run_id: str, recovery_request_id: str, *, bind_port: int = 0) -> dict[str, Any]:
+        run_id = self._recovery_identifier(run_id)
+        recovery_request_id = self._recovery_identifier(recovery_request_id)
+        if type(bind_port) is not int or not (bind_port == 0 or 1024 <= bind_port <= 65535):
+            raise ValueError("Use the explicitly reviewed unprivileged loopback port or zero")
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{run_id}/coding-check-grants/candidate",
+                params={
+                    "recovery_request_id": recovery_request_id,
+                    "bind_port": bind_port,
+                },
+            )
+        )
+
+    def grant_coding_checks(self, run_id: str, request: CodingCheckGrantInput | dict[str, Any]) -> dict[str, Any]:
+        """Submit the reviewed original grant once; uncertain delivery requires exact receipt readback."""
+        from firefly_forge.coding_check_models import CodingCheckGrantInput
+
+        run_id = self._recovery_identifier(run_id)
+        return dict(
+            self.request(
+                "POST", f"runs/{run_id}/coding-check-grants", json=self._recovery_body(CodingCheckGrantInput, request)
+            )
+        )
+
+    def coding_check_receipt(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/coding-check-grants/{request_id}"))
+
+    def coding_check_current(self, run_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._recovery_identifier(run_id)}/coding-check-grants/current"))
+
+    def revoke_coding_checks(self, run_id: str, request: CodingCheckRevocationInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.coding_check_models import CodingCheckRevocationInput
+
+        run_id = self._recovery_identifier(run_id)
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{run_id}/coding-check-grants/revocations",
+                json=self._recovery_body(CodingCheckRevocationInput, request),
+            )
+        )
 
     def request_run_creation(self, request_id: str, request: RunCreationInput | dict[str, Any]) -> dict[str, Any]:
         """Submit one retained version-1 envelope; uncertain delivery never selects a follow-up action."""
