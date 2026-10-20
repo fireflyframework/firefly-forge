@@ -96,6 +96,42 @@ Same ID, body and current operator return the existing receipt. A stale candidat
 
 Fifth-attempt worker feedback uses `protocol: "native-provider-recovery-allowance-v1"`, literal `attempt: 5`, `role_id: "implementer"`, `task_id: "implement"`, `allowance_id` and `allowance_digest`, alongside the usual feedback fields. The native journal checks the actual consumed reservation and current authority before accepting it. Legacy `WorkerFeedback` remains limited to attempts 1–4.
 
+### Scoped coding-check grants
+
+These routes require a current native factory administrator and execution authority. They grant selected retained checks to one preallocated final recovery request; they do not reserve or execute the coding dispatch.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/runs/{id}/coding-check-grants/candidate?recovery_request_id=ID&bind_port=0` | Review the retained commands, runner, source/authority cut and remaining budget |
+| POST | `/runs/{id}/coding-check-grants` | Record the explicit grant once |
+| GET | `/runs/{id}/coding-check-grants/{request_id}` | Read the original grant or revocation receipt |
+| GET | `/runs/{id}/coding-check-grants/current` | Inspect current grant identity, revision, status, receipt fingerprint and expiry |
+| POST | `/runs/{id}/coding-check-grants/revocations` | Revoke the exact current grant revision |
+
+The strict `CodingCheckGrantInput` rejects extra fields:
+
+| Field | Required review |
+| --- | --- |
+| `request_id` | Grant request identity: 32 lowercase hexadecimal characters |
+| `recovery_request_id` | Future final-allowance identity: 32 lowercase hexadecimal characters, retained before granting |
+| `candidate_digest` | The candidate's opaque 64-character SHA-256 fingerprint |
+| `expected_revision` | The candidate's nonnegative grant revision |
+| `command_indices` | One to twenty distinct configured indices, each 0–19 and present in the candidate |
+| `call_limit` | One to twenty invocations, no more than available interactive capacity; calls may repeat a selected index |
+| `valid_seconds` | Lifetime of 30–3600 seconds, also enforced during invocation |
+| `bind_port` | `0` by default for automatic loopback selection, or a fixed port from 1024–65535 |
+| `reason` | A nonblank explanation of at most 2,000 characters |
+
+The candidate separates `interactive_commands_remaining` from `independent_final_check_count`. Configured and policy checks together remain subject to the existing final-verification limit of 20. Grant creation cannot reset that limit or the frozen shared runner budget.
+
+The immutable grant receipt returns an opaque `receipt_digest`. Compare it with `/current`, along with grant ID, revision and expiry; do not recompute a native receipt hash from client-side JSON numbers. Only `active` current status can authorize the linked path. `none`, `revoked` and `expired` retain their distinct meanings, and an old receipt never overrides current permission or revocation checks.
+
+A revocation request requires its own `request_id`, the exact `grant_id`, current positive `expected_revision` and a `reason` of 1–2,000 characters. Read that original request ID after an uncertain response. The active grant and revocation records remain in the WAL; revocation cannot erase prior effects.
+
+After grant confirmation, refresh the final-allowance candidate and include `coding_check_grant_id` when reserving under the original `recovery_request_id`. Legacy CLI-only allowance bodies keep their existing wire shape. The scoped MCP tool accepts only `command_index` and its own 32-character request ID; it cannot choose a run, provider, directory, arguments, environment or timeout. See [the recovery procedure](recovery.md#grant-scoped-configured-checks-to-an-official-cli).
+
+## Factory endpoints
+
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |

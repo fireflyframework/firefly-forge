@@ -46,6 +46,14 @@
       }
     },
     {
+      "id": "coding-runtime/run-configured-check",
+      "version": "1.0.0",
+      "path": "coding-runtime/run-configured-check.yaml",
+      "sha256": "9454c1e193e975479ada39e925039a104492824bbfe25091a2a070692303a461",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/action",
       "version": "1.0.0",
       "path": "collaboration/action.yaml",
@@ -319,6 +327,18 @@
         "component_id": "string",
         "path": "string",
         "responsibility": "string"
+      }
+    },
+    {
+      "id": "implementation/configured-checks",
+      "version": "1.0.0",
+      "path": "implementation/configured-checks.yaml",
+      "sha256": "35b3899232ee38554584b94be56c296352c5ba501c69c2b7f697b41fff36083d",
+      "field": "user",
+      "variables": {
+        "checks": "string",
+        "call_limit": "string",
+        "final_check_count": "string"
       }
     },
     {

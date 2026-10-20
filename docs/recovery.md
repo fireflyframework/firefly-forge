@@ -89,7 +89,11 @@ The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) sh
 
 ## Recover a known failed official CLI attempt
 
-On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. For a parent with a finite soft limit, the trusted CLI launcher preserves its ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. Bounded native and CLI comparisons establish this launch-boundary mitigation; they do not identify the original offending write or file, establish a plugin cause, or qualify a generated application. Inspect the retained process and verification evidence before using the recovery contract below. This change grants no additional attempt, replay or budget reset.
+On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. With the stdlib asyncio event loop and a finite soft limit, the trusted CLI launcher preserves its inherited ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. `forge serve` selects asyncio explicitly; the headless worker already uses `asyncio.run`.
+
+An external ASGI host must select the stdlib loop, such as Uvicorn's `--loop asyncio`. The verified uvloop 0.23 subprocess path resets the child's ignored signal even with `restore_signals=False`. Forge rejects a known uvloop host with a finite soft file-size limit before the configured provider dispatch intent and before the final CLI launch guard or process creation. The typed runtime-admission error explains how to select asyncio. Already-spent implementation tasks and reservations remain spent; this refusal refunds nothing and grants no retry.
+
+Bounded native and CLI comparisons qualify this launch mitigation. They do not identify the original offending write or file, establish a plugin cause, or qualify a generated application. Inspect the retained process and verification evidence before using the recovery contract below. The kernel limit, original attempt history and repair budget remain unchanged.
 
 A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration by default; it does not change workers or repeat a verification handoff.
 
@@ -135,6 +139,32 @@ The original WAL prefix, partial workspace, model settings, repair budget and ve
 The Python SDK offers `provider_recovery_allowance_candidate`, `reserve_provider_recovery_allowance` and `provider_recovery_allowance`. Each method performs one explicit request. In Studio, open the run's Plan tab and choose **Review final allowance** under **Final provider allowance**. The three steps review the failed attempt and selected CLI, record your mitigation reason and evidence fingerprint, then confirm the final reservation. This action is available to native factory administrators for an eligible failed fourth attempt; the server rechecks eligibility before reservation. Studio saves the exact request in the browser before sending it and offers **Check saved reservation** for readback. Closing the review or losing a response never creates a replacement request.
 
 If the browser's saved request is lost, the run's native allowance identity still provides **Read existing reservation**. This performs only an exact receipt read under the original administrator's current authority. Studio validates the returned operator, protocol, run and task bindings without claiming that the request body was previously saved locally. A missing or refused receipt stays unresolved; this path cannot reserve another attempt.
+
+### Grant scoped configured checks to an official CLI
+
+An eligible final provider recovery can carry a separate native administrator grant for `run_configured_check(command_index, request_id)`. This ephemeral coding MCP channel is distinct from the operator MCP server. It exposes only selected retained configured commands, with their frozen arguments and timeouts; it grants no arbitrary command, operator API, publication, deployment or broader network access.
+
+General role tools remain advisory for official CLIs. Codex keeps `workspace-write` and global `approval_policy="never"`. For the already granted channel, the adapter sets `approval_mode="approve"` only on `run_configured_check`. Configured checks may write files and still pass through the native grant, runner and source checks. Claude receives an explicit private, strict MCP configuration. Adapter fixtures alone do not establish live provider or product acceptance.
+
+#### Review and bind the grant
+
+Preallocate the future recovery request ID, then read `GET /api/v1/runs/{run_id}/coding-check-grants/candidate` with that `recovery_request_id` and an explicit `bind_port` (zero selects an ephemeral loopback port). Review the returned commands, runner descriptor, source and authority fingerprints, final-check count and remaining shared budget.
+
+An administrator may POST the strict `CodingCheckGrantInput` to the same collection. Its separate grant request ID must remain unchanged after uncertain delivery: GET `/{request_id}` to read the original receipt, and GET `/current` to check current revision, revocation and expiry. The current `receipt_digest` matches the opaque seal returned with the immutable grant receipt; clients compare it without reserializing numbers or recomputing a hash.
+
+After confirming the grant, refresh the final-allowance candidate because the journal advanced. Reserve with the original preallocated recovery request ID and explicit `coding_check_grant_id`; never fall back to a legacy CLI-only reservation if this linked flow is refused. Grant creation alone neither reserves another dispatch nor changes old snapshots. POST `/coding-check-grants/revocations` with its own request ID, exact grant ID and expected revision to revoke. Repeated original requests return their retained receipts; another request identity cannot bypass an uncertain effect.
+
+#### Keep execution and verification separate
+
+The grant counts new check invocations, not distinct indices. A new request can check a legitimately edited source again within the call cap; exact known readback consumes no command budget, and an old result cannot represent a new source. The grant cap is bounded by requested calls and shared command capacity remaining after independent final checks. No runner budget resets or final-QA guarantees are introduced.
+
+Current native actor, lease, task, grant and source are rechecked around credential admission and before runner effects; uncertainty or expiry after an effect retains a reconciliation hold. These checks do not make filesystem mutations atomic against unrelated processes.
+
+The channel listens only on literal loopback, with one invocation token, exact origin/host checks and an expiry no later than the selected provider deadline. A fixed port is a separately reviewed capability choice, not permission to open every local port or change the CLI network sandbox. Accepted commands retain their existing timeout and drain before channel teardown. Tokens are scoped in memory through source/evidence admission and are redacted before activity retention; they never enter command arguments or saved provider configuration. Host runners remain trusted service-account execution with timeout/output controls, not filesystem or network isolation.
+
+#### Use the SDK or CLI
+
+The Python SDK provides `coding_check_candidate`, `grant_coding_checks`, `coding_check_receipt`, `coding_check_current` and `revoke_coding_checks`. The equivalent CLI group is `forge coding-check-grants`, with `candidate`, `grant`, `get`, `current` and `revoke`; write commands consume an explicitly reviewed JSON document.
 
 ### Review the final allowance in Studio
 
@@ -196,6 +226,83 @@ After submission, **Check saved reservation** reads the exact receipt. A pending
 ![Controlled phone result with exact receipt readback for the reserved final allowance.](assets/screenshots/provider-allowance-reserved-mobile-light.png)
 <figcaption>Use the retained identity for readback and inspect the execution record for the actual outcome.</figcaption>
 </figure>
+
+</details>
+
+### Grant configured checks for the final recovery
+
+Native administrators can choose **Prepare recovery with configured checks** in the Plan tab. This is a separate flow from CLI-only recovery. It gives the coding agent one scoped tool for selected, retained check commands; it does not add general command permissions or change the original runner policy.
+
+1. **Review configured checks.** Read each command and its timeout, choose the checks, and inspect the runner and source fingerprints. The budget separates interactive check capacity from independent final verification. A host runner uses the forge service account and enforces timeout and output limits; it does not provide filesystem, CPU, memory or network isolation. Under **Advanced connection**, leave the loopback port at `0` for automatic selection or choose `1024–65535`.
+2. **Grant selected checks.** Set a maximum number of calls, a lifetime of 30–3600 seconds, and a reason. A selected check may be called again within those limits. Granting access does not start a command or reserve a provider dispatch. Studio saves the exact grant body and future recovery request ID before sending the grant once.
+3. **Review the mitigation.** Read the confirmed grant and its current expiry. Studio refreshes the final allowance candidate after the grant is recorded. Review the source, current CLI and native fourth-attempt failure, record the mitigation and its evidence fingerprint, and explicitly adopt that CLI. The fingerprint is an administrative attestation, not a server-verified QA result.
+4. **Reserve the final attempt.** Review the grant and the same future recovery request ID, acknowledge the one-use limit, then reserve explicitly. The reservation includes the grant ID. There is no automatic second POST, CLI-only fallback or sixth dispatch. Independent configured and policy checks remain subject to the existing final-verification limit of 20 and the retained shared command budget.
+
+An immutable grant receipt records what was granted. Its matching current revision, receipt fingerprint and unexpired status must also be confirmed before reservation; an old receipt cannot establish current authority. Permission loss, revocation, expiry or changed execution authority holds the flow.
+
+If its browser record has been removed, Studio checks the current server grant before preparing another identity. An existing, expired, revoked or unconfirmed grant holds this wizard for review of the original retained identity; it does not create a replacement.
+
+After a lost response, use **Check saved grant** or **Check saved final reservation**. These actions read the exact saved identity without repeating either POST. Closing the wizard, reloading or switching tabs does not authorize a replacement request. Check outcomes in the execution record: a grant, reserved dispatch or successful interactive check does not establish product acceptance.
+
+<details class="forge-gallery" markdown="1">
+<summary>Walk through a scoped configured-check recovery</summary>
+
+These controlled HTTP fixtures illustrate the five visible states. They do not issue a native grant, call a coding provider or establish product QA. The four wizard frames begin at the title and current step; the last frame shows the confirmed reservation. When the form is taller than the screen, scroll inside the dialog to reach its action.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop configured-check recovery: review the retained checks.](assets/screenshots/coding-check-scope-desktop-light.png)
+<figcaption>Read the configured commands, runner controls and budget. Only the selected retained commands can be granted.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop configured-check recovery: grant selected checks.](assets/screenshots/coding-check-grant-desktop-light.png)
+<figcaption>Set the call cap, expiry and reason. This explicit grant does not reserve a coding dispatch.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop configured-check recovery: review the mitigation.](assets/screenshots/coding-check-mitigation-desktop-light.png)
+<figcaption>Confirm the grant, inspect the refreshed current CLI and source, then record the reviewed mitigation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop configured-check recovery: reserve the final attempt.](assets/screenshots/coding-check-review-desktop-light.png)
+<figcaption>Review named checks and acknowledge the last recovery attempt. Technical identities are available under Request details.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop configured-check recovery: read the linked reservation.](assets/screenshots/coding-check-reserved-desktop-light.png)
+<figcaption>The exact receipt confirms reservation. Follow actual execution and independent verification before accepting the product.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow the same decisions on a phone</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone configured-check recovery: review the retained checks.](assets/screenshots/coding-check-scope-mobile-light.png)
+<figcaption>Read the configured commands, runner controls and budget. Only the selected retained commands can be granted.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone configured-check recovery: grant selected checks.](assets/screenshots/coding-check-grant-mobile-light.png)
+<figcaption>Set the call cap, expiry and reason. This explicit grant does not reserve a coding dispatch.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone configured-check recovery: review the mitigation.](assets/screenshots/coding-check-mitigation-mobile-light.png)
+<figcaption>Confirm the grant, inspect the refreshed current CLI and source, then record the reviewed mitigation.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone configured-check recovery: reserve the final attempt.](assets/screenshots/coding-check-review-mobile-light.png)
+<figcaption>Review named checks and acknowledge the last recovery attempt. Technical identities are available under Request details.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone configured-check recovery: read the linked reservation.](assets/screenshots/coding-check-reserved-mobile-light.png)
+<figcaption>The exact receipt confirms reservation. Follow actual execution and independent verification before accepting the product.</figcaption>
+</figure>
+
+</details>
 
 </details>
 

@@ -48,6 +48,7 @@ RESULT_CUT_FIELDS = (
 class ProviderRecoveries:
     def __init__(self, store: Store, journal: Journal, engine: Any) -> None:
         self.store, self.journal, self.engine = store, journal, engine
+        self.coding_checks: Any = None
 
     async def _operator(self, run_id: str) -> Any:
         actor = CURRENT_PRINCIPAL.get()
@@ -528,6 +529,11 @@ class ProviderRecoveries:
             await self._allowance(row.data)
             if current.get("status") != "reserved" or current.get("task_key") != key:
                 raise ValueError("The provider dispatch reservation was consumed or changed")
+            if current.get("coding_check_grant_id"):
+                checks = getattr(self, "coding_checks", None)
+                if checks is None:
+                    raise ValueError("The scoped configured-check authority is unavailable")
+                await checks.validate_invocation(row.data, key)
             task = await self.journal._task(run_id, "implement")
             if task.data.get("idempotency_key") != key or task.attempt != current["attempt"]:
                 raise ValueError("The provider dispatch task changed")

@@ -58,17 +58,22 @@ int main(int argc, char **argv) {
 
 
 @pytest.mark.parametrize(
-    ("launcher", "ignored", "limited", "expected_exit"),
+    ("launcher", "ignored", "limited", "loop_kind", "expected_exit"),
     [
-        ("trusted", True, True, 0),
-        ("trusted", False, True, -getattr(signal, "SIGXFSZ", 25)),
-        ("untrusted", True, True, -getattr(signal, "SIGXFSZ", 25)),
-        ("trusted", True, False, 0),
+        ("trusted", True, True, "asyncio", 0),
+        ("trusted", False, True, "asyncio", -getattr(signal, "SIGXFSZ", 25)),
+        ("untrusted", True, True, "asyncio", -getattr(signal, "SIGXFSZ", 25)),
+        ("trusted", True, False, "asyncio", 0),
+        ("trusted", True, True, "uvloop", None),
+        ("trusted", False, True, "uvloop", None),
+        ("trusted", True, False, "uvloop", 0),
     ],
 )
 def test_trusted_cli_preserves_ignored_fsize_signal_without_relaxing_kernel_limit(
-    tmp_path, oversized_truncate, launcher, ignored, limited, expected_exit
+    tmp_path, oversized_truncate, launcher, ignored, limited, loop_kind, expected_exit
 ):
+    if loop_kind == "uvloop":
+        pytest.importorskip("uvloop")
     if not limited:
         import resource
 
@@ -78,25 +83,36 @@ def test_trusted_cli_preserves_ignored_fsize_signal_without_relaxing_kernel_limi
     probe = """
 import asyncio,json,resource,signal,sys
 from pathlib import Path
-from firefly_forge.providers import run_process
+from firefly_forge.providers import ProviderError,cli_dispatch_scope,run_process
 from firefly_forge.process import execute
 async def emit(*args): pass
+factory=asyncio.new_event_loop
+if sys.argv[5]=='uvloop':
+    import uvloop
+    factory=uvloop.new_event_loop
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
 limited=sys.argv[4]=='True'
 limit=(131072,131072) if limited else (resource.RLIM_INFINITY,resource.RLIM_INFINITY)
 resource.setrlimit(resource.RLIMIT_FSIZE,limit)
 signal.signal(signal.SIGXFSZ,signal.SIG_IGN if sys.argv[2]=='True' else signal.SIG_DFL)
 async def main():
+    guards=[]
+    async def guard(): guards.append(True)
     command=[sys.argv[3]]+([] if limited else ['disposition'])
     if sys.argv[1]=='trusted':
-        r=await run_process(command,Path.cwd(),emit,timeout=5,env={})
-        value={'exit':r.returncode,'output':r.stdout,'outcome':r.process_outcome.model_dump()}
+        try:
+            with cli_dispatch_scope(guard):
+                r=await run_process(command,Path.cwd(),emit,timeout=5,env={})
+            value={'exit':r.returncode,'output':r.stdout,'outcome':r.process_outcome.model_dump()}
+        except ProviderError as exc:
+            value={'admission':type(exc).__name__,'message':str(exc),'outcome':exc.process_outcome}
     else:
         r=await execute(command,Path.cwd(),timeout=5,env={})
         value={'exit':r.exit_code,'output':r.output}
+    value['guard_calls']=len(guards)
     value['parent_limit']=list(resource.getrlimit(resource.RLIMIT_FSIZE))
     print(json.dumps(value))
-asyncio.run(main())
+with asyncio.Runner(loop_factory=factory) as runner: runner.run(main())
 """
     environment = {
         "PATH": os.defpath,
@@ -106,7 +122,18 @@ asyncio.run(main())
         "PYTHONPATH": os.pathsep.join([str(Path(providers.__file__).parents[1]), *sys.path]),
     }
     result = subprocess.run(
-        [sys.executable, "-B", "-s", "-c", probe, launcher, str(ignored), str(oversized_truncate), str(limited)],
+        [
+            sys.executable,
+            "-B",
+            "-s",
+            "-c",
+            probe,
+            launcher,
+            str(ignored),
+            str(oversized_truncate),
+            str(limited),
+            loop_kind,
+        ],
         cwd=tmp_path,
         env=environment,
         capture_output=True,
@@ -115,9 +142,15 @@ asyncio.run(main())
     )
     assert result.returncode == 0, result.stderr
     observed = json.loads(result.stdout)
-    assert observed["exit"] == expected_exit, observed
     assert observed["parent_limit"] == ([131072, 131072] if limited else [resource.RLIM_INFINITY] * 2)
     assert (tmp_path / "bounded-file").read_bytes() == b"before\n"
+    if expected_exit is None:
+        assert observed.get("admission") == "ProviderRuntimeAdmissionError", observed
+        assert "asyncio" in observed["message"] and observed["guard_calls"] == 0
+        assert observed["outcome"] is None
+        return
+    assert observed["exit"] == expected_exit, observed
+    assert observed["guard_calls"] == (1 if launcher == "trusted" else 0)
     if expected_exit == 0 and limited:
         import errno
 

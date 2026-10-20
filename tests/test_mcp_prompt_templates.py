@@ -57,7 +57,13 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 258
+    assert len(catalog.registry) == 260
+    assert entries["coding-runtime/run-configured-check"]["variables"] == {}
+    assert entries["implementation/configured-checks"]["variables"] == {
+        "checks": "string",
+        "call_limit": "string",
+        "final_check_count": "string",
+    }
 
 
 def test_mcp_callbacks_preserve_the_original_executable_ast():

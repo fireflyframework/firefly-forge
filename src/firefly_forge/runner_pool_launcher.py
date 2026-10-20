@@ -87,6 +87,8 @@ def workspace_collector(limit: int) -> str:
         "from pathlib import Path\n"
         "from typing import Any\n"
         "from urllib.parse import unquote,urlsplit\n"
+        "from contextvars import ContextVar\n"
+        "_ephemeral=ContextVar('forge_ephemeral_credentials',default=())\n"
     )
     return (
         prefix

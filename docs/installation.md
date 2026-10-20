@@ -105,6 +105,8 @@ For a new managed host connection, [bootstrap with an explicit HTTPS loopback en
 uv run forge serve --host 127.0.0.1 --port 8787 --data-dir .forge
 ```
 
+`forge serve` selects the stdlib asyncio event loop explicitly. If you host the application through Uvicorn directly, configure `--loop asyncio`. With a finite POSIX file-size limit, forge refuses trusted CLI dispatch under a known uvloop host because its subprocess path does not preserve the required ignored file-size signal. Use the supported loop and keep the existing kernel limit; see [file-size failure recovery](recovery.md#recover-a-known-failed-official-cli-attempt).
+
 Open [Studio](http://127.0.0.1:8787/). For this explicit local setup, enter the operator token once; the server exchanges it for a durable HttpOnly session. Production installations use [Keycloak sign-in](identity.md). Configure a provider and test its access. Connect an authorized repository, choose pyfly or larafly, and create a small run with observable acceptance checks.
 
 A database connection or migration failure prevents startup. A rejected operator token requires matching Studio and server credentials. Missing Studio files require rebuilding its production bundle. Provider authentication and actual model execution have separate checks.

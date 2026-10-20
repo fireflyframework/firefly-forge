@@ -67,6 +67,8 @@ from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
 from firefly_forge.cloud import CloudRecipes
 from firefly_forge.cloud_controllers import CloudController
+from firefly_forge.coding_check_controllers import CodingCheckGrantController
+from firefly_forge.coding_check_grants import CodingCheckGrants
 from firefly_forge.collaboration import Collaboration
 from firefly_forge.collaboration_controllers import CollaborationController
 from firefly_forge.collaboration_persistence import (
@@ -645,6 +647,12 @@ class FactoryConfiguration:
         return ProviderRecoveryAllowances(recoveries)
 
     @bean
+    def coding_check_grants(self, recoveries: ProviderRecoveries) -> CodingCheckGrants:
+        grants = CodingCheckGrants(recoveries)
+        recoveries.engine.coding_checks = grants
+        return grants
+
+    @bean
     def assurance(self, store: Store, journal: Journal) -> Assurance:
         return Assurance(store, self.data_dir / "reviews", journal)
 
@@ -1154,6 +1162,7 @@ def create_runtime(
         VerificationHandoffController,
         ProviderRecoveryController,
         ProviderRecoveryAllowanceController,
+        CodingCheckGrantController,
         BridgeCompletionController,
         RunEvidenceController,
         ActivityContentController,

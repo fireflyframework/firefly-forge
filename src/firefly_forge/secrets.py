@@ -6,8 +6,24 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+_ephemeral: ContextVar[tuple[str, ...]] = ContextVar("forge_ephemeral_credentials", default=())
+
+
+@contextmanager
+def ephemeral_credentials(values: dict[str, str]) -> Iterator[None]:
+    token = _ephemeral.set(
+        (*_ephemeral.get(), *(value for name, value in values.items() if value and sensitive_name(name)))
+    )
+    try:
+        yield
+    finally:
+        _ephemeral.reset(token)
 
 
 def sensitive_name(name: str) -> bool:
@@ -40,7 +56,7 @@ def credential_representations(value: str) -> set[str]:
 
 
 def redact_environment(value: str) -> str:
-    secrets = set()
+    secrets = set(_ephemeral.get())
     for name, item in os.environ.items():
         if item and sensitive_name(name):
             secrets.add(item)

@@ -1,0 +1,221 @@
+{
+  "provenance": "PUBLIC CONTROLLED REFERENCE FIXTURE ONLY; not actual authority, grant, run, lease or live result",
+  "candidate": {
+    "version": 1,
+    "protocol": "native-coding-configured-check-v1",
+    "run_id": "cccccccccccccccccccccccccccccccc",
+    "agent": "codex",
+    "recovery_request_id": "dddddddddddddddddddddddddddddddd",
+    "task_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "task_attempt": 5,
+    "revision": 0,
+    "actor_digest": "ea51f4ca4711fa2780e64c95a237fc580b8f874fb662a11ee441e8dd7462f8c7",
+    "cut": {
+      "scope_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "sandbox_digest": "5a8ae17512c50cff6362735f812fe027298609448eb895e2b293dd98dfc3931d"
+    },
+    "source_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+    "command_indices": [0, 1],
+    "command_count": 2,
+    "commands": [
+      {
+        "argv": ["python", "-m", "pytest", "-q"],
+        "timeout": 180,
+        "command_index": 0
+      },
+      {
+        "argv": ["npm", "run", "test", "--", "--run"],
+        "timeout": 60,
+        "command_index": 1
+      }
+    ],
+    "runner": {
+      "mode": "host",
+      "configuration": {
+        "mode": "host",
+        "image": null,
+        "context": null,
+        "workspace_transport": "bind",
+        "workspace_max_bytes": 67108864,
+        "cpus": 1.0,
+        "memory_mb": 1024,
+        "pids_limit": 128,
+        "timeout": 300,
+        "max_output_bytes": 1000000,
+        "network": "none",
+        "command_limit": 16,
+        "browser": null,
+        "internet_search": false
+      },
+      "digest": "06f11aa9e8c99a5a7c6ece26852ef9a617d5d3d79536ea3074f62948b6793562",
+      "effective_network": "host",
+      "enforced_controls": ["timeout", "output"],
+      "reason": "Trusted host execution uses the service account; CPU, memory and network isolation are not provided"
+    },
+    "channel": {
+      "transport": "streamable_http",
+      "host": "127.0.0.1",
+      "bind_port": 11447
+    },
+    "independent_final_check_count": 2,
+    "shared_command_limit": 16,
+    "shared_commands_used": 7,
+    "shared_commands_remaining": 9,
+    "journal_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "digest": "9af937216833519f04bd9bb4046bc4025bb1d75449e69d3b80397e2f1a94cd6a",
+    "interactive_commands_remaining": 7
+  },
+  "grant_input": {
+    "request_id": "33333333333333333333333333333333",
+    "recovery_request_id": "dddddddddddddddddddddddddddddddd",
+    "candidate_digest": "9af937216833519f04bd9bb4046bc4025bb1d75449e69d3b80397e2f1a94cd6a",
+    "expected_revision": 0,
+    "command_indices": [0, 1],
+    "call_limit": 2,
+    "valid_seconds": 900,
+    "bind_port": 11447,
+    "reason": "Allow only the selected retained checks for this reviewed recovery invocation."
+  },
+  "immutable_grant_receipt": {
+    "version": 1,
+    "protocol": "native-coding-configured-check-v1",
+    "request": {
+      "request_id": "33333333333333333333333333333333",
+      "recovery_request_id": "dddddddddddddddddddddddddddddddd",
+      "candidate_digest": "9af937216833519f04bd9bb4046bc4025bb1d75449e69d3b80397e2f1a94cd6a",
+      "expected_revision": 0,
+      "command_indices": [0, 1],
+      "call_limit": 2,
+      "valid_seconds": 900,
+      "bind_port": 11447,
+      "reason": "Allow only the selected retained checks for this reviewed recovery invocation."
+    },
+    "actor": {
+      "user_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authentication_method": "session",
+      "global_admin": true,
+      "api_audience": "forge-api",
+      "identity_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "candidate": {
+      "version": 1,
+      "protocol": "native-coding-configured-check-v1",
+      "run_id": "cccccccccccccccccccccccccccccccc",
+      "agent": "codex",
+      "recovery_request_id": "dddddddddddddddddddddddddddddddd",
+      "task_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "task_attempt": 5,
+      "revision": 0,
+      "actor_digest": "ea51f4ca4711fa2780e64c95a237fc580b8f874fb662a11ee441e8dd7462f8c7",
+      "cut": {
+        "scope_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "sandbox_digest": "5a8ae17512c50cff6362735f812fe027298609448eb895e2b293dd98dfc3931d"
+      },
+      "source_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "command_indices": [0, 1],
+      "command_count": 2,
+      "commands": [
+        {
+          "argv": ["python", "-m", "pytest", "-q"],
+          "timeout": 180,
+          "command_index": 0
+        },
+        {
+          "argv": ["npm", "run", "test", "--", "--run"],
+          "timeout": 60,
+          "command_index": 1
+        }
+      ],
+      "runner": {
+        "mode": "host",
+        "configuration": {
+          "mode": "host",
+          "image": null,
+          "context": null,
+          "workspace_transport": "bind",
+          "workspace_max_bytes": 67108864,
+          "cpus": 1.0,
+          "memory_mb": 1024,
+          "pids_limit": 128,
+          "timeout": 300,
+          "max_output_bytes": 1000000,
+          "network": "none",
+          "command_limit": 16,
+          "browser": null,
+          "internet_search": false
+        },
+        "digest": "06f11aa9e8c99a5a7c6ece26852ef9a617d5d3d79536ea3074f62948b6793562",
+        "effective_network": "host",
+        "enforced_controls": ["timeout", "output"],
+        "reason": "Trusted host execution uses the service account; CPU, memory and network isolation are not provided"
+      },
+      "channel": {
+        "transport": "streamable_http",
+        "host": "127.0.0.1",
+        "bind_port": 11447
+      },
+      "independent_final_check_count": 2,
+      "shared_command_limit": 16,
+      "shared_commands_used": 7,
+      "shared_commands_remaining": 9,
+      "journal_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "digest": "9af937216833519f04bd9bb4046bc4025bb1d75449e69d3b80397e2f1a94cd6a",
+      "interactive_commands_remaining": 7
+    },
+    "revision": 1,
+    "call_limit": 2,
+    "expires_at_ms": 1792530000000,
+    "receipt_digest": "0377ce2131010e208906009462a50222aa0b8307e0ad64ee7b0b84fe9653bd2f"
+  },
+  "current_active": {
+    "protocol": "native-coding-configured-check-v1",
+    "run_id": "cccccccccccccccccccccccccccccccc",
+    "grant_id": "33333333333333333333333333333333",
+    "revision": 1,
+    "status": "active",
+    "receipt_digest": "0377ce2131010e208906009462a50222aa0b8307e0ad64ee7b0b84fe9653bd2f",
+    "expires_at_ms": 1792530000000
+  },
+  "current_revoked": {
+    "protocol": "native-coding-configured-check-v1",
+    "run_id": "cccccccccccccccccccccccccccccccc",
+    "grant_id": "33333333333333333333333333333333",
+    "revision": 2,
+    "status": "revoked",
+    "receipt_digest": "0377ce2131010e208906009462a50222aa0b8307e0ad64ee7b0b84fe9653bd2f",
+    "expires_at_ms": 1792530000000
+  },
+  "current_expired": {
+    "protocol": "native-coding-configured-check-v1",
+    "run_id": "cccccccccccccccccccccccccccccccc",
+    "grant_id": "33333333333333333333333333333333",
+    "revision": 1,
+    "status": "expired",
+    "receipt_digest": "0377ce2131010e208906009462a50222aa0b8307e0ad64ee7b0b84fe9653bd2f",
+    "expires_at_ms": 1792530000000
+  },
+  "revocation_input": {
+    "request_id": "55555555555555555555555555555555",
+    "grant_id": "33333333333333333333333333333333",
+    "expected_revision": 1,
+    "reason": "Revoke the configured-check channel before another effect."
+  },
+  "immutable_revocation_receipt": {
+    "version": 1,
+    "protocol": "native-coding-configured-check-v1",
+    "request": {
+      "request_id": "55555555555555555555555555555555",
+      "grant_id": "33333333333333333333333333333333",
+      "expected_revision": 1,
+      "reason": "Revoke the configured-check channel before another effect."
+    },
+    "actor": {
+      "user_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authentication_method": "session",
+      "global_admin": true,
+      "api_audience": "forge-api",
+      "identity_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "revision": 2
+  }
+}

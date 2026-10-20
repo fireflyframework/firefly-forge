@@ -2,6 +2,16 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.29 — 2026-10-20
+
+- Let an administrator grant selected retained checks to one future official-CLI recovery through a separate scoped MCP channel, with explicit limits and current source, actor and execution authority checks.
+- Run check requests through the native runner and WAL using only a configured command index and retained request identity. Preserve known readback, unknown-effect holds and independent final verification capacity.
+- Bind the grant to the final recovery request before reservation. Keep the original four-attempt contract, one-use fifth allowance, runner budgets and historical snapshots unchanged.
+- Guide Studio administrators through check review, explicit grant, mitigation and final reservation. Retain exact request bodies before each single POST; hold uncertain responses, revoked access and missing browser records for authorized readback.
+- Add strict SDK and CLI grant, current-status, exact-receipt and revocation operations. Keep the 162 operator MCP tools separate from the one-tool coding channel and add two native Agentic prompt resources.
+- Select asyncio explicitly for the API server and refuse a known uvloop host with a finite file-size limit before trusted CLI dispatch intent or launch. Preserve the kernel limit and all spent task and reservation history.
+- Refresh the controlled desktop/mobile walkthroughs for 0.2.29, including the four-step grant journey. These fixtures and protocol tests do not establish live official-CLI tool use or generated-product acceptance.
+
 ## 0.2.28 — 2026-10-20
 
 - Let a current native factory administrator reserve one final fifth dispatch after a known, drained fourth official-CLI failure, with a sealed allowance and admission in the existing WAL transaction.

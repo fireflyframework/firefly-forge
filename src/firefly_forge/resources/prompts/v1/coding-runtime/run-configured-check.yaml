@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: coding-runtime/run-configured-check
+version: 1.0.0
+description: One administrator-granted native configured check.
+system_template: ''
+user_template: |-
+  Execute one explicitly granted retained configured check through the native runner. Supply only its configured command_index and original request_id. Current native authority, source, expiry and shared budgets are rechecked. A repeated identity reads its exact original source-bound receipt; uncertain effects require reconciliation and never authorize replay. Output is observed evidence, not QA approval or permission to publish.
+required_variables: []
+metadata:
+  defaults: {}
