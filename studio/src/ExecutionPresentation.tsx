@@ -17,6 +17,150 @@ import {
 } from "./ExecutionFormat";
 import "./ExecutionPresentation.css";
 import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
+import { VerificationHandoff } from "./VerificationHandoff";
+
+export function TimelineEventView({
+  event,
+}: {
+  event: Record<string, unknown>;
+}) {
+  const message = typeof event.message === "string" ? event.message : "";
+  const stage = typeof event.stage === "string" ? event.stage : "";
+  let structured: Record<string, unknown> | undefined;
+  if (["stdout", "stderr"].includes(stage) && message.length <= 65536) {
+    try {
+      structured = asRecord(JSON.parse(message));
+    } catch {
+      /* Plain provider output remains text. */
+    }
+  }
+  if (structured) {
+    const type = structured.type;
+    const item = asRecord(structured.item);
+    if (
+      ["item.started", "item.updated", "item.completed"].includes(
+        String(type),
+      ) &&
+      item?.type === "command_execution" &&
+      typeof item.command === "string"
+    ) {
+      return (
+        <>
+          <h3>
+            {type === "item.completed" ? "Command finished" : "Command started"}
+          </h3>
+          <EvidenceView
+            value={{
+              command: item.command,
+              ...(type === "item.completed" &&
+              Number.isSafeInteger(item.exit_code)
+                ? { exit_code: item.exit_code }
+                : {}),
+              ...(typeof item.aggregated_output === "string"
+                ? { output: item.aggregated_output }
+                : {}),
+            }}
+            advanced={false}
+          />
+        </>
+      );
+    }
+    if (
+      ["agent_message", "reasoning"].includes(String(item?.type)) &&
+      typeof item?.text === "string"
+    ) {
+      const label =
+        item.type === "reasoning" ? "Provider progress" : "Provider report";
+      return (
+        <>
+          <h3>{label}</h3>
+          <OutputView value={item.text} label={label} />
+        </>
+      );
+    }
+    if (item?.type === "file_change" && Array.isArray(item.changes)) {
+      return (
+        <>
+          <h3>Source changes reported</h3>
+          <EvidenceView
+            value={{
+              files: item.changes.slice(0, 30).flatMap((change) => {
+                const value = asRecord(change);
+                return typeof value?.path === "string"
+                  ? [
+                      {
+                        path: value.path,
+                        ...(typeof value.kind === "string"
+                          ? { change: value.kind }
+                          : {}),
+                      },
+                    ]
+                  : [];
+              }),
+            }}
+            advanced={false}
+          />
+        </>
+      );
+    }
+    const titles: Record<string, string> = {
+      "thread.started": "Provider session started",
+      "turn.started": "Provider task started",
+      "turn.completed": "Provider task completed",
+      "turn.failed": "Provider reported a failure",
+      error: "Provider reported an error",
+    };
+    const title =
+      typeof type === "string" && Object.hasOwn(titles, type)
+        ? titles[type]
+        : "Provider event";
+    const error = asRecord(structured.error);
+    return (
+      <>
+        <h3>{title}</h3>
+        {typeof error?.message === "string" ? (
+          <OutputView value={error.message} label="Provider error" />
+        ) : (
+          <p className="subtle">
+            The original provider event is retained in the run record. Provider
+            progress does not establish final verification.
+          </p>
+        )}
+      </>
+    );
+  }
+  const providerOutput = ["stdout", "stderr"].includes(stage);
+  const longMessage = message.length > 180 || message.includes("\n");
+  const heading = providerOutput
+    ? stage === "stderr"
+      ? "Provider error output"
+      : "Provider output"
+    : longMessage
+      ? fieldLabel(stage || "Run event")
+      : message || String(event.type ?? event.event ?? "Run event");
+  return (
+    <>
+      <h3>
+        <BoundedLabel value={heading} limit={180} />
+      </h3>
+      {providerOutput || longMessage ? (
+        <OutputView value={message} label={heading} />
+      ) : (
+        <EvidenceView
+          value={event}
+          omitFields={[
+            "message",
+            "type",
+            "event",
+            "timestamp",
+            "at",
+            "created_at",
+          ]}
+        />
+      )}
+    </>
+  );
+}
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [state, setState] = useState("");
@@ -202,6 +346,11 @@ export function EvidenceView({
   advanced?: boolean;
   omitFields?: string[];
 }) {
+  if (
+    kind?.startsWith("verification_handoff_") ||
+    kind === "verification_continuation_intent"
+  )
+    return <VerificationHandoff kind={kind} value={value} />;
   if (kind === "repair_proposal") {
     title ??= "Repair proposal";
     omitFields = [

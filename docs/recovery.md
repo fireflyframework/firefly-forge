@@ -81,11 +81,53 @@ These controlled Studio fixtures show a missing decision followed by a confirmed
 | `paused`, authentication | The selected access failed | Fix access and choose a fresh configured provider snapshot through handoff |
 | `interrupted` | The worker stopped before completion | Inspect the retained workspace and task journal |
 | `needs_reconciliation` | An intent lacks a trustworthy completion receipt | Establish the actual local or remote outcome first |
-| `failed` | The implementation or verification did not complete successfully | Inspect failure evidence; a fresh retry creates a separate run |
+| `failed` | The implementation or verification did not complete successfully | Inspect failure evidence; a fresh retry creates a separate run. An eligible official-CLI failure has a separate same-run recovery below. |
 
 A task marked done has a completion receipt. Inspect its evidence: completing a verification command can record a failing exit status. Overall success requires the final passing checks and matching source snapshot.
 
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
+
+## Recover a known failed official CLI attempt
+
+A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration; it does not change workers or repeat a verification handoff.
+
+Read `GET /api/v1/runs/{id}/provider-recoveries/candidate?agent=codex` (or `claude`). Review its exact source, failure, operator and policy binding. Keep a new 32-character hexadecimal request ID, then POST `/api/v1/runs/{id}/provider-recoveries` with that `request_id`, the returned `candidate_digest`, the same `agent`, and exactly one process proof:
+
+- For a native known failure, supply its returned `native_process_digest`.
+- For a historical failure without the new dispatch protocol, supply `legacy_attestation` with `provenance: "legacy_operator_attestation"`, the sealed external receipt's SHA-256 as `evidence_digest`, its nonzero `exit_code`, and explicit `true` acknowledgments for `trusted_operator_observation`, `process_terminated`, `process_group_drained` and `no_accepted_final_result`.
+
+The legacy option records an administrator's trusted observation. It does not establish that the server inspected the old process. A new-protocol dispatch with absent or uncertain native evidence cannot use this option. Unknown descendants, an uncertain external effect, current execution or changed authority keep recovery held.
+
+An admission returns HTTP201 with an immutable receipt and queues one reserved dispatch. After a lost response, read `GET /api/v1/runs/{id}/provider-recoveries/{request_id}`. An identical POST returns the original receipt; different content or a replacement ID cannot consume the old failure again. Preserve the original ID and body while settling an uncertain response.
+
+The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. Every implementation intent counts toward a maximum of four dispatch reservations, including failed or unreceipted attempts. Consuming a reservation does not renew the repair or verification budget.
+
+Future official-CLI failures retain typed native process evidence separately from provider output. A known nonzero exit requires the leader to have exited, both streams to have drained and its own process group to be absent. A zero exit without a valid final report, missing receipt or uncertain group remains unresolved. Provider output cannot assert those facts. This HTTP surface has no Studio, CLI or SDK recovery shortcut in this change.
+
+## Inspect a factory verification handoff
+
+A pending implementation request with typed `kind: "verification"` can use the run's frozen automatic-verification grant. forge executes all explicit approved commands through the existing authorized runner. It records each intent and known result before supplying protected factory feedback and admitting a bounded continuation. Question text and request IDs never choose commands or expand permissions.
+
+New runs default to `automatic_verification: {enabled: true, max_continuations: 1}` in their frozen tool-policy settings. Administrators can set a strict maximum of three. Each completed handoff grants one additional coding task separately from `repair_budget`; it preserves attempt history and the existing four-attempt ceiling. A snapshot without that explicit setting remains manual. Older SDK/MCP policy writes that omit the setting preserve its current value.
+
+Read `verification_handoff` on the run and its matching journal entries:
+
+| State | Meaning |
+| --- | --- |
+| `pending` | The handoff is awaiting factory verification; no completed result is recorded |
+| `running` | The factory is collecting command results under that intent |
+| `completed` | Every configured command has a known result, including any failures |
+| `held` | The handoff cannot continue safely; inspect its retained evidence |
+
+Known failing checks become feedback for the allowed coding continuation. Completed does not establish product acceptance. Unknown command or continuation effects are held without automatic replay. A refusal before intent has its own `verification_handoff_refused` event and leaves the original question pending. Changed source, revoked authority, changed policy/provider or exhausted limits cannot authorize another coding task. Product decisions and credentials remain manual questions.
+
+### Adopt one older paused request
+
+An authenticated native operator can explicitly adopt an older pending verification question. Read `GET /api/v1/runs/{run_id}/verification-handoffs/candidates?agent=codex`, selecting the configured provider explicitly. Review the returned source, command and configuration digests before admission.
+
+Retain a new 32-character hexadecimal `request_id`, then POST `/api/v1/runs/{run_id}/verification-handoffs/adoptions` with that ID, `agent`, and the exact `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest` and `provider_digest` from the candidate read. The receipt binds only this pending question and partial source. Explicit provider selection captures its current configuration through the normal native handoff; earlier snapshots stay immutable. Host coding still requires current administrator authority.
+
+After a lost response, GET `/api/v1/runs/{run_id}/verification-handoffs/adoptions/{request_id}`. Preserve the original identity while the result is missing or uncertain. Do not create a replacement ID, retry a command or assume that admission failed. Reusing an ID with changed content is refused. HTTP admission records the adoption for the normal execution owner; it does not execute commands inline. See the [HTTP contract](api.md#automatic-verification-handoffs) for SDK methods and authority boundaries.
 
 ## Resume the same run
 
@@ -135,7 +177,7 @@ A retained rejection before dispatch can settle a request as failed. Publication
 
 ## Understand automatic limits
 
-Eligible rate-limit and transient pauses use their recorded delay and a budget of at most three automatic retries. Other pauses require an operator decision. Local concurrency is bounded globally and per project; work is selected across projects rather than filling both worker slots with one backlog.
+Eligible rate-limit and transient pauses use their recorded delay and a budget of at most three automatic retries. Typed factory verification uses its separate frozen grant and continuation limit. Other pauses require an operator decision. Local concurrency is bounded globally and per project; work is selected across projects rather than filling both worker slots with one backlog.
 
 The journal's hash chain detects a changed record sequence or payload. It is an integrity check within the operator's PostgreSQL ledger, not an external signature or protection against a database administrator replacing the entire history.
 

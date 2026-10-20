@@ -2,6 +2,17 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.23 — Unreleased
+
+- Review an incremental product change and retain its original receipt across uncertain saves and later revisions.
+- Configure optional project-scoped flyquery catalog reads through a three-step Studio wizard, with immutable configuration history and a final bounded disable.
+- Admit a first product from a separately consented, verified GitHub conversation with current native authority and atomic retained receipts.
+- Link functional wireframes to each journey's actual behaviors and acceptance criteria, and preserve workflow criteria for API-only process maps.
+- Rasterize validated SVG documents as XML so embedded product logos retain their namespaces.
+- Honor page-flow wizard layouts so action bars do not cover focused inputs on short screens.
+- Pin managed knowledge to flycanon 26.10.5 and align pyfly generation and bundled manuals with 26.10.6.
+- Bound retrieval queries to flycanon's 2,000-character contract while retaining complete run briefs and verified memory bodies.
+
 ## 0.2.22 — 2026-10-17
 
 - Show server-recorded human editing on a saved, clean AI-assisted product definition. Keep draft review state and its original AI source together after further edits.

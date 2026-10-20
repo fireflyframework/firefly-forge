@@ -449,6 +449,7 @@ for (const device of ["desktop", "mobile"])
         .getByLabel("Problem to solve")
         .fill("Prevent inventory over-reservation");
       await page.getByLabel("Product owners").fill("Inventory team");
+      await page.getByLabel("Product owners").blur();
       await capture(page, "product-context", theme, device);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await page

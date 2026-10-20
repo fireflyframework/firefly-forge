@@ -63,8 +63,15 @@ import { SourceControl } from "./SourceControl";
 import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
+import { activeVerificationRequest } from "./VerificationHandoff";
 import { WorkerDialogue } from "./WorkerDialogue";
-import { EvidenceView, UnifiedDiff, OutputView } from "./ExecutionPresentation";
+import {
+  EvidenceView,
+  UnifiedDiff,
+  OutputView,
+  TimelineEventView,
+} from "./ExecutionPresentation";
+import { RunVerification } from "./RunVerification";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -103,6 +110,7 @@ import {
 import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
 import { Administration } from "./Administration";
+import { Analytics } from "./Analytics";
 import { LearningConfiguration } from "./LearningConfiguration";
 import { SearchConfiguration } from "./SearchConfiguration";
 import { ExternalTools } from "./ExternalTools";
@@ -145,6 +153,7 @@ type Page =
   | "users"
   | "search"
   | "learning"
+  | "analytics"
   | "browser-connections"
   | "external-tools";
 const working = (status: string) =>
@@ -534,6 +543,7 @@ export default function App() {
     users: "People",
     search: "Internet search",
     learning: "Learning",
+    analytics: "Structured analytics",
     "external-tools": "External tools",
     "browser-connections": "Connected accounts",
   };
@@ -1072,6 +1082,9 @@ export default function App() {
               connection={connection}
               session={identity.session}
             />
+          )}
+          {page === "analytics" && (
+            <Analytics connection={connection} session={identity.session} />
           )}
           {page === "external-tools" && (
             <ExternalTools
@@ -2671,7 +2684,6 @@ function RunDetail({
     { id: "artifacts" as const, icon: Box, label: "Artifacts" },
     { id: "deployment" as const, icon: Box, label: "Deployment" },
   ];
-  const verification = records(run.verification);
   const [downloadError, setDownloadError] = useState("");
   async function download() {
     try {
@@ -2701,20 +2713,22 @@ function RunDetail({
   }
   return (
     <section className="panel run-detail">
-      {run.pause?.kind === "worker_request" && (
-        <div className="worker-run-question">
-          <MessageSquare size={20} />
-          <div>
-            <strong>Review the agent’s question</strong>
-            <p>
-              The conversation records the decision needed to continue this run.
-            </p>
+      {run.pause?.kind === "worker_request" &&
+        !activeVerificationRequest(run) && (
+          <div className="worker-run-question">
+            <MessageSquare size={20} />
+            <div>
+              <strong>Review the agent’s question</strong>
+              <p>
+                The conversation records the decision needed to continue this
+                run.
+              </p>
+            </div>
+            <button className="secondary" onClick={() => setTab("questions")}>
+              Open agent questions
+            </button>
           </div>
-          <button className="secondary" onClick={() => setTab("questions")}>
-            Open agent questions
-          </button>
-        </div>
-      )}
+        )}
       <div className="detail-tabs" role="tablist" aria-label="Run evidence">
         {tabs.map((item) => (
           <button
@@ -2830,25 +2844,7 @@ function RunDetail({
                     <Circle size={10} />
                   </span>
                   <div>
-                    <h3>
-                      {human(
-                        event.message ??
-                          event.type ??
-                          event.event ??
-                          "Run event",
-                      )}
-                    </h3>
-                    <EvidenceView
-                      value={event}
-                      omitFields={[
-                        "message",
-                        "type",
-                        "event",
-                        "timestamp",
-                        "at",
-                        "created_at",
-                      ]}
-                    />
+                    <TimelineEventView event={event} />
                     <time>
                       {date(
                         String(
@@ -2889,25 +2885,20 @@ function RunDetail({
             )}
           </>
         )}
-        {tab === "verification" &&
-          (verification.length ? (
-            verification.map(([name, result]) => (
-              <EvidenceView
-                key={name}
-                value={result}
-                title={
-                  Array.isArray(result.argv) || result.command
-                    ? undefined
-                    : name
-                }
-              />
-            ))
-          ) : (
-            <Empty
-              title="No verification evidence yet"
-              body="Add verification commands when starting a run. Agent completion alone does not prove that a change works."
-            />
-          ))}
+        {tab === "verification" && (
+          <RunVerification
+            key={JSON.stringify([
+              run.id,
+              connection.base,
+              connection.token,
+              session?.user.id,
+              session?.global_admin,
+              session?.memberships,
+            ])}
+            run={run}
+            connection={connection}
+          />
+        )}
         {tab === "artifacts" &&
           (run.artifacts?.length ? (
             <div className="artifact-list">

@@ -154,6 +154,8 @@ class Engine:
         self.browser: Any = None
         self.search: Any = None
         self.tool_broker: Any = None
+        self.verification_handoffs: Any = None
+        self.provider_recoveries: Any = None
         self.external_mcp: Any = None
         self.learning: Any = None
         self.knowledge_first: Any = None
@@ -305,22 +307,24 @@ class Engine:
         if not available:
             return
         occupied = set(self.active_projects.values())
-        eligible: dict[str, str] = {}
-        for identifier in await self.store.queued():
+        eligible: dict[str, tuple[str, bool]] = {}
+        verification = await self.verification_handoffs.ready() if self.verification_handoffs else []
+        for identifier in [*verification, *await self.store.queued()]:
             if identifier in self.active:
                 continue
             run = await self.store.get_run(identifier)
             project = run["repository_id"]
             if project not in occupied:
-                eligible.setdefault(project, identifier)
+                eligible.setdefault(project, (identifier, identifier in verification))
         projects = list(eligible)
         if self.last_project in projects:
             pivot = projects.index(self.last_project) + 1
             projects = projects[pivot:] + projects[:pivot]
         for project in projects[:available]:
-            identifier = eligible[project]
+            identifier, handoff = eligible[project]
             self.active_projects[identifier] = project
-            self.active[identifier] = asyncio.create_task(self.execute_run(identifier))
+            action = self.verification_handoffs.execute(identifier) if handoff else self.execute_run(identifier)
+            self.active[identifier] = asyncio.create_task(action)
             self.last_project = project
 
     async def cancel(self, identifier: str) -> None:
@@ -428,6 +432,9 @@ class Engine:
             from firefly_forge.project_access import ProjectAccess
 
             await ProjectAccess(self.store).authorize_execution(run)
+            recovery = await self.provider_recoveries.begin(identifier) if self.provider_recoveries else None
+            if recovery is not None and restoration is not None:
+                raise ReconciliationRequired("Provider recovery cannot replace a checkpoint restoration")
             if self.store.runtime_roles and self.store.runners:
                 from firefly_forge.agent_roles import stage_allowed_tools
 
@@ -486,7 +493,12 @@ class Engine:
                 prepare = await self._begin_task(identifier, "prepare", workspace, settings)
                 active_key = prepare.get("idempotency_key")
                 if run.get("resume_existing") or prepare["disposition"] == "completed":
-                    observed = await self._inspect_workspace(identifier, workspace, settings)
+                    if recovery is not None:
+                        observed = await self.provider_recoveries.prepare_workspace(
+                            identifier, lambda: self._inspect_workspace(identifier, workspace, settings)
+                        )
+                    else:
+                        observed = await self._inspect_workspace(identifier, workspace, settings)
                     base = observed["base_revision"]
                     run = await self.store.get_run(identifier)
                     await emit("preparing", "Continuing the retained authorized workspace")
@@ -747,9 +759,30 @@ class Engine:
                             ]
                         ),
                     )
-                if run.get("worker_response"):
+                if run.get("worker_response") and run["worker_response"].get("source") != "factory_verification":
                     source_brief += prompt_text(
                         "implementation/operator-response", response=safe(json.dumps(run["worker_response"]))
+                    )
+                from firefly_forge.verification_models import automatic_verification_grant
+
+                verification_grant = automatic_verification_grant(run.get("tool_policy_snapshot"))
+                if (
+                    verification_grant is not None
+                    or run.get("worker_response", {}).get("source") == "factory_verification"
+                ):
+                    source_brief += prompt_text(
+                        "implementation/automatic-verification",
+                        policy=json.dumps(
+                            verification_grant.model_dump()
+                            if verification_grant
+                            else {
+                                "legacy_adoption": True,
+                                "max_continuations": run.get("verification_handoff", {}).get("max_continuations", 1),
+                            }
+                        ),
+                        response=safe(json.dumps(run.get("worker_response", {})))
+                        if run.get("worker_response", {}).get("source") == "factory_verification"
+                        else "",
                     )
                 if run.get("component_snapshot"):
                     component = run["component_snapshot"]
@@ -806,6 +839,12 @@ class Engine:
             if run.get("repair_halt"):
                 raise ValueError(run["repair_halt"])
             repairs = int(run["repair_budget"])
+            continuation_allowance = (
+                await self.journal.verification_continuation_allowance(identifier)
+                if self.journal and hasattr(self.journal, "verification_continuation_allowance")
+                else 0
+            )
+            implementation_limit = min(4, repairs + 1 + continuation_allowance)
             completed_rounds = int(run.get("implementation_rounds", 0))
             repair_failures: list[dict[str, Any]] = []
             start_round = max(1, completed_rounds)
@@ -830,23 +869,34 @@ class Engine:
             if restoration is not None:
                 start_round = restoration.binding.round
                 repair_failures = []
-            if start_round > repairs + 1:
+            if recovery is not None:
+                start_round = implementation_limit = recovery["attempt"]
+                if not 1 <= start_round <= 4:
+                    raise ReconciliationRequired("The reserved provider dispatch exceeds its finite bound")
+                repair_failures = []
+            if start_round > implementation_limit:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
-            for attempt in range(start_round, repairs + 2):
+            for attempt in range(start_round, implementation_limit + 1):
                 restored_receipt = restoration
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
                 await self.store.admit_credentials(brief)
                 (await self.store.update(identifier, status="developing", attempt=attempt))
                 implementation = (
-                    {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
-                    if restoration is not None
-                    else await self._begin_task(identifier, "implement", workspace, settings, implementation_failures)
+                    recovery
+                    if recovery is not None
+                    else (
+                        {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
+                        if restoration is not None
+                        else await self._begin_task(
+                            identifier, "implement", workspace, settings, implementation_failures
+                        )
+                    )
                 )
                 active_key = implementation.get("idempotency_key")
                 if implementation["disposition"] != "completed":
-                    if completed_rounds >= repairs + 1:
+                    if completed_rounds >= implementation_limit:
                         raise ValueError("The frozen implementation attempt budget is exhausted")
                     await self.store.update(identifier, implementation_pending=True)
                     if restoration is None:
@@ -908,16 +958,69 @@ class Engine:
                         if settings.get("FORGE_AGENTIC_CHECKPOINTS") == "required" and self.journal
                         else None
                     )
-                    with bridge_completion_scope(completion_scope), checkpoint_invocation(native_invocation):
-                        result = await provider.execute(
-                            workspace,
-                            brief
-                            if restoration is not None
-                            else brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
-                            run["backend"],
-                            run["frontend"],
-                            emit,
-                        )
+                    if (
+                        self.journal
+                        and restoration is None
+                        and recovery is None
+                        and hasattr(self.journal, "verification_provider_admission")
+                    ):
+                        try:
+                            await self.journal.verification_provider_admission(identifier)
+                        except ValueError as exc:
+                            current_handoff = (await self.store.get_run(identifier)).get("verification_handoff", {})
+                            if current_handoff.get("id"):
+                                await self.journal.verification_hold(identifier, current_handoff["id"])
+                            raise ReconciliationRequired(str(exc)) from exc
+                    from firefly_forge.providers import cli_dispatch_scope
+
+                    official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
+                    if official_dispatch:
+                        if recovery is not None:
+                            await official_dispatch.dispatch(identifier, active_key)
+                        else:
+                            await official_dispatch.normal_dispatch(identifier, active_key)
+
+                    async def launch_guard(
+                        dispatch: Any = official_dispatch, task_key: str | None = active_key
+                    ) -> None:
+                        await self.assert_ownership()
+                        if dispatch:
+                            await dispatch.assert_launch(identifier, task_key)
+
+                    try:
+                        with (
+                            bridge_completion_scope(completion_scope),
+                            checkpoint_invocation(native_invocation),
+                            cli_dispatch_scope(launch_guard if official_dispatch else None),
+                        ):
+                            result = await provider.execute(
+                                workspace,
+                                brief
+                                if restoration is not None
+                                else brief + "\nCurrent implementation attempt: " + str(attempt) + ".",
+                                run["backend"],
+                                run["frontend"],
+                                emit,
+                            )
+                    except BaseException as exc:
+                        if official_dispatch:
+                            known = await official_dispatch.record_process(
+                                identifier, active_key, getattr(exc, "process_outcome", None)
+                            )
+                            if not known and not isinstance(exc, asyncio.CancelledError):
+                                raise ReconciliationRequired(
+                                    "The native provider outcome requires reconciliation"
+                                ) from exc
+                        raise
+                    if official_dispatch:
+                        from firefly_forge.provider_recovery_models import ProviderAttemptClosed
+
+                        try:
+                            await official_dispatch.assert_result(identifier, active_key)
+                        except ProviderAttemptClosed:
+                            raise
+                        except ValueError as exc:
+                            raise ReconciliationRequired(str(exc)) from exc
                     if self.tool_broker and await self.tool_broker.unresolved(identifier):
                         raise ReconciliationRequired("Tool execution has an unresolved outcome; delivery is blocked")
                     if restoration is not None:
@@ -949,6 +1052,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if self.provider_recoveries and recovery is not None:
+                    await self.provider_recoveries.complete(identifier, active_key)
+                    recovery = None
                 active_key = None
                 (
                     await self.store.update(
@@ -1106,6 +1212,7 @@ class Engine:
             raise
         except Exception as exc:
             from firefly_forge.assurance import ReviewPending
+            from firefly_forge.provider_recovery_models import ProviderAttemptClosed
             from firefly_forge.providers import (
                 ProviderAdmissionRefused,
                 ProviderLimitError,
@@ -1113,6 +1220,8 @@ class Engine:
                 classify_provider_failure,
             )
 
+            if isinstance(exc, ProviderAttemptClosed):
+                return
             classification = classify_provider_failure(exc)
             if restoration is not None:
                 await self.store.update(identifier, status="needs_reconciliation", error=safe(str(exc)))

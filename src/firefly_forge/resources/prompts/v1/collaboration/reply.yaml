@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/reply
+version: 1.0.0
+description: Deterministic repository feedback reply.
+system_template: ''
+user_template: |-
+  {{ reply }}
+
+  The full reply is available in the request details.
+required_variables:
+- reply
+metadata:
+  defaults: {}

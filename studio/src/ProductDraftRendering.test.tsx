@@ -44,6 +44,13 @@ function render(book: ProductDraftBook, selected: string) {
   );
 }
 afterEach(() => vi.unstubAllGlobals());
+it("keeps the product editor inside its parent-managed responsive layout", () => {
+  const book = new ProductDraftBook();
+  book.repository(a).observe(snapshot(a), null);
+  const html = render(book, a);
+  expect(html).toContain('data-layout="parent"');
+  expect(html).not.toContain('data-layout="flow"');
+});
 it("renders the retained selected product when the real editor is remounted", () => {
   const book = new ProductDraftBook();
   book.repository(a).observe(snapshot(a), null);
@@ -93,4 +100,16 @@ it("offers explicit removal when an interrupted reference review outlives its bu
   expect(html).toContain("Remove reference review");
   expect(html).not.toContain('aria-label="Journey reference viewer"');
   expect(session.read("designPending", false)).toBe(true);
+});
+
+it("offers a separate incremental preview on the saved product review step", () => {
+  const book = new ProductDraftBook(),
+    session = book.repository(a);
+  session.observe(snapshot(a), null);
+  session.write("step", 4);
+  session.write("features", [], true);
+  const html = render(book, a);
+  expect(html).toContain("Preview contract change");
+  expect(html).toContain("Why is this changing?");
+  expect(html).toContain("Save draft definition");
 });

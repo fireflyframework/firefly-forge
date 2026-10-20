@@ -375,7 +375,9 @@ async def test_concurrent_initializers_never_admit_the_same_document_twice(tmp_p
     assert len({body["filename"] for body in admitted}) == 15
     assert first.readiness["state"] == "connected"
     for body in admitted[1:]:
-        assert body["metadata"]["extra"]["version"] == "26.10.1"
+        assert body["metadata"]["extra"]["version"] == (
+            "26.10.6" if body["filename"].startswith("pyfly-") else "26.10.1"
+        )
         assert body["metadata"]["extra"]["license"] == "Apache-2.0"
         assert body["uri"].startswith("https://github.com/fireflyframework/")
 

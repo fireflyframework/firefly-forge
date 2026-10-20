@@ -66,6 +66,7 @@ import { MarkdownEditor } from "./RichMarkdown";
 import { reconcileProductSave, saveProductDefinition } from "./ProductSave";
 import { ProductList, ProductJourneys } from "./ProductFields";
 import "./ProductWorkspace.css";
+import { ProductIncrementalChange } from "./ProductIncrementalChange";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
 const lines = (value: string) =>
@@ -910,17 +911,30 @@ function DefinitionEditor({
       setBusy(false);
     }
   }
+  function acceptContractChange(result: ProductSnapshot) {
+    session.write("functionalReviewed", false);
+    session.write("designReview", null);
+    session.write("architecture", result.definition.architecture ?? null);
+    session.write("features", result.definition.features ?? []);
+    session.write("integrations", result.definition.integrations ?? []);
+    setSaved(true);
+    onSaved(result);
+  }
   async function recoverSave(retry: boolean) {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
+      const change = session.saveAttempt?.change;
       const result = retry
         ? await saveProductDefinition(session, connection, data(), true)
         : await reconcileProductSave(session, connection);
       if (result && !session.dirty && !session.stale) {
-        setSaved(true);
-        onSaved(result);
+        if (change) acceptContractChange(result);
+        else {
+          setSaved(true);
+          onSaved(result);
+        }
       } else if (session.active) {
         setError(
           session.saveHeld
@@ -974,7 +988,7 @@ function DefinitionEditor({
     <>
       <Wizard
         progressMode="visited"
-        pageFlow
+        parentLayout
         headingAction={
           <button
             type="button"
@@ -1654,6 +1668,18 @@ function DefinitionEditor({
           )}
           {step === 4 && reviewArea === "overview" && (
             <>
+              {snapshot && (
+                <ProductIncrementalChange
+                  session={session}
+                  connection={connection}
+                  definition={data}
+                  busy={busy}
+                  onBusy={setBusy}
+                  onError={setError}
+                  onSaved={acceptContractChange}
+                />
+              )}
+
               <dl className="wizard-summary">
                 <div>
                   <dt>Customer</dt>
@@ -1852,13 +1878,16 @@ function DefinitionEditor({
                   disabled={busy}
                   onClick={() => void recoverSave(true)}
                 >
-                  Retry original conditional save
+                  {session.saveAttempt?.change
+                    ? "Retry original contract change"
+                    : "Retry original conditional save"}
                 </button>
               </div>
               <small>
-                Retry uses the original input and revision condition. It cannot
-                overwrite a later saved revision. Reloading or signing out
-                clears this tab-held input.
+                {session.saveAttempt?.change
+                  ? "Readback requires the original change receipt. Retry sends its retained request ID, digest and body. No request is repeated automatically."
+                  : "Retry uses the original input and revision condition. It cannot overwrite a later saved revision."}{" "}
+                Reloading or signing out clears this tab-held input.
               </small>
             </div>
           )}

@@ -59,3 +59,17 @@ def manrope_wordmark(name: str, color: str) -> str:
             + "".join(paths)
             + "</g></svg>"
         )
+
+
+@lru_cache(maxsize=3)
+def _manrope_advances(weight: int) -> tuple[dict[int, float], float]:
+    with TTFont(_directory() / "manrope-latin-wght-normal.woff2") as font:
+        instantiateVariableFont(font, {"wght": weight}, inplace=True)
+        units = font["head"].unitsPerEm
+        return {code: font["hmtx"][glyph][0] / units for code, glyph in font.getBestCmap().items()}, 1.0
+
+
+def manrope_text_width(value: str, size: int, weight: int = 400) -> float:
+    """Use bundled advances with shaping slack; unsupported glyphs reserve one em."""
+    advances, fallback = _manrope_advances(weight)
+    return sum(advances.get(ord(char), fallback) for char in value) * size * 1.04

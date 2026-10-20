@@ -41,7 +41,7 @@ Lifecycle ordering initializes `Store` before topology and execution consumers. 
 
 The connection owns authenticated SDK transport and TLS trust. The manager chooses the frozen connection revision, confines repository scope and handles source/canonical receipts. `KnowledgeFirst` combines those cited references with eligible PostgreSQL procedure outcomes before considering configured web search. It cannot treat a search hit as an approved procedure.
 
-Flycanon's server runs in a separate environment, with its own migration and ingestion worker. Installing the Python SDK into forge supplies the client; the managed server image installs the released server independently. No flyquery bean, controller, client dependency or analytics worker is registered in this runtime.
+Flycanon's server runs in a separate environment, with its own migration and ingestion worker. Installing the Python SDK into forge supplies the client; the managed server image installs the released server independently. The optional flyquery catalog integration has separate connection and project-read services; it does not replace required knowledge or start an analytics worker.
 
 Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`FactoryConfiguration`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
 
@@ -129,6 +129,52 @@ The engine dispatches queued work under a global concurrency budget and one acti
 Inspect `GET /api/v1/runs/{id}`, `/plan` and `/journal`; [the HTTP guide](api.md#follow-evidence-and-errors) explains the returned evidence. The [Studio tour](console-tour.md#4-inspect-the-run-before-continuing) shows readable code, commands and journal fields using explicitly labeled fixtures.
 
 Source: [`store.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/store.py) (`create_run`, `claim`), [`engine.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/engine.py) (`dispatch_queued`, `execute_run`, `_checkpoint_commit`, `validated_workspace`).
+
+## Factory-owned verification handoffs
+
+A coding agent may need checks that its own sandbox cannot perform, such as connecting to the project's dedicated test database. It returns a typed `verification` request. forge executes the run's already approved commands in the configured runner and sends the recorded results back to the coding agent. A product decision, missing credential or unknown side effect is not permission to invent a command or expand access.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Automatic verification handoff diagram" aria-describedby="automatic-verification-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 32
+---
+flowchart LR
+    Q["Agent<br/>check request"] --> I["Journal<br/>intent"]
+    I --> R["Runner<br/>approved checks"]
+    R --> K{"Known<br/>outcomes?"}
+    K -->|Yes| A["Journal<br/>factory answer"]
+    A --> C["Engine<br/>continue"]
+    K -->|No or revoked| H["Hold for<br/>review"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="automatic-verification-flow-guide">Read from left to right. The journal records intent before execution and results before continuation. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
+
+`VerificationHandoffs` is a native pyfly service registered through the runtime's configuration bean. It uses the same `Store`, `Journal`, `Engine` and `SandboxExecutor` as ordinary execution. The dispatcher applies the existing concurrency and repository ownership limits; a paused verification does not create a second coding run.
+
+The immutable handoff binds the run, pending request, source manifest, approved commands, current policy, provider configuration, implementation attempt and command ordinals. Authority, cancellation, campaign controls and those bindings are checked again before each effect and before continuation. Command output is untrusted data. Its bounded answer excerpt does not replace the original runner receipts.
+
+| Recorded state | Meaning | User action |
+| --- | --- | --- |
+| Pending or running | forge owns the approved verification step. | Follow progress; no manual answer is needed. |
+| Completed | Every command has a known exit code, including any failures. | Inspect the results while the authorized continuation proceeds. |
+| Held or refused | Admission failed, authority changed or an outcome cannot be established. | Review the run before authorizing another action. |
+
+The tool policy enables one automatic continuation by default; administrators can disable it or set a finite limit from one to three. Each admitted run captures that policy. The continuation allowance is separate from the repair budget: it does not reset prior implementation rounds or create unlimited repair attempts. The coding attempt limit remains bounded. Failed commands remain failed evidence even when they provide enough information for coding to continue.
+
+A completed handoff writes a version-4 factory-attributed `worker_response`, followed by its automatic resume receipt. Studio presents that response as work handled by forge, rather than attributing it to a person. The same run and workspace continue. A restart can reuse known command receipts, but an unfinished command or provider admission cannot be replayed blindly.
+
+Older runs without an automatic-verification grant stay manual until an authenticated native operator explicitly adopts the exact pending request, retained source and current policy/provider cut. The typed adoption API provides candidate inspection, one retained request identity and exact readback; it does not execute commands inside the HTTP request. See [the API guide](api.md) for the contract.
+
+Progress in the [repository workflow](repository-workflow.md) comes from durable run states. The bot reports starts, checks, questions and delivery outcomes through centralized Agentic templates. A confirmed GitHub comment and a successful product delivery remain separate records.
+
+Source: [`verification_handoffs.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_handoffs.py), [`verification_models.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_models.py), [`verification_controllers.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_controllers.py), [`journal.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/journal.py).
 
 ## Write-ahead intents, receipts and uncertain effects
 
@@ -342,9 +388,15 @@ Source: [`learning.py`](https://github.com/fireflyframework/firefly-forge/blob/m
 
 ### Structured analytics boundary
 
-The optional [flyquery](https://github.com/fireflyframework/flyquery) architecture would query explicit, versioned project snapshots through an independently authorized service. It would never receive a direct connection to the factory ledger, retained private directory or flycanon database. Query results remain untrusted analytical evidence; factory records and cited canonical memory retain their existing authority.
+`FactoryConfiguration.analytics_connection()` injects the private configuration store into `AnalyticsConnection`. `project_analytics()` injects that connection, `Store`, `ProjectAccess` and `ForgeAnalyticsBindingRepository` into `ProjectAnalytics`. The registered `ProjectAnalyticsController` provides typed configuration and read mappings. The optional `analytics` dependency group supplies flyquery SDK 26.10.4; a missing SDK prevents remote reads and does not prevent a locally authorized disable.
 
-The [structured analytics design](structured-knowledge.md) records the assessed pipeline, known execution gaps, proposed native service boundaries and required authorization, snapshot and write-ahead checks. This release has no forge adapter or managed flyquery deployment.
+Configuration admission compares the expected revision under the project lock and native transaction. Schema 29 adds the project binding head and append-only configuration receipts; database triggers reject receipt updates and deletes. Private token files are retained separately from public settings and receipts. There are 32 ordinary revisions, with one unchanged-scope terminal disable from enabled revision 32 to disabled revision 33. A terminal binding cannot be edited or re-enabled.
+
+Before a remote read, the service captures the current native actor, project authority, binding and credential revision. The SDK GET executes outside the database unit of work. The service then rechecks that cut and refuses changed identity, authorization, configuration or credentials before returning the result. Responses are bounded to 256 KiB, with a ten-second remote deadline and three-second connection limit. One read per project/actor is active in each API worker. This is a worker-local bound, not a distributed semaphore.
+
+Catalog access returns at most 50 tables in one complete page. A table or exact schema object must match the saved tenant, workspace and dataset; an object also matches its parent table's reported current snapshot. The observation retains a response digest and timestamp. Remote snapshot identity does not establish content integrity or an atomic data cut. The adapter does not execute SQL, call a model, export the factory ledger, publish memory or use user-tier query routes as an agent-token fallback.
+
+The [structured analytics guide](structured-knowledge.md) covers the actual Studio wizard and reader. Its later sections describe future snapshot export and query execution, including isolation and write-ahead admission requirements. No managed flyquery server or query worker is provisioned by the current adapter.
 
 ## Runner ownership, collection and takeover
 

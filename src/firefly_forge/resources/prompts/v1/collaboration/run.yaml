@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/run
+version: 1.0.0
+description: Retained run reference for a conversation card.
+system_template: ''
+user_template: |-
+  Run: `{{ run_id }}` ·
+required_variables:
+- run_id
+metadata:
+  defaults: {}

@@ -21,6 +21,7 @@ export type ForgeRun = {
   repository_id: string;
   brief: string;
   status: string;
+  active_task?: string;
   backend?: string;
   frontend?: string;
   agent?: string;
@@ -54,6 +55,9 @@ export type ForgeRun = {
   issue_context?: IssueContext | null;
   product_definition?: ProductSnapshot | null;
   bridge_completion_hold?: { reason?: string };
+  verification_handoff?: unknown;
+  verification_refusal?: unknown;
+  worker_request?: { id: string; kind: string; status: string };
   pause?: {
     message: string;
     kind: string;
@@ -425,6 +429,13 @@ export type CustomerProductDefinition = {
   design_review?: ProductDesignReview | null;
 };
 export type ProductSnapshot = {
+  change_receipt?: {
+    request_id: string;
+    request_digest: string;
+    base_revision: number;
+    base_digest: string;
+    implementation_status: "not_started";
+  };
   origin?: ProductSavedOrigin;
   repository_id: string;
   revision: number;

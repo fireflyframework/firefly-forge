@@ -20,11 +20,11 @@ _BACKENDS = [
     },
     {
         "id": "pyfly",
-        "name": "PyFly · Python",
-        "version": "26.10.1 · Python 3.13+",
+        "name": "pyfly · Python",
+        "version": "26.10.6 · Python 3.13+",
         "detail": "Native PyFly DI, controllers, typed contracts and async services; Starlette ASGI.",
-        "source": "https://github.com/fireflyframework/fireflyframework-pyfly/releases/tag/v26.10.01",
-        "instruction": prompt_text("implementation/backend-pyfly"),
+        "source": "https://github.com/fireflyframework/fireflyframework-pyfly/releases/tag/v26.10.06",
+        "instruction": prompt_text("implementation/backend-pyfly", version="1.0.1"),
     },
     {
         "id": "java",
@@ -36,7 +36,7 @@ _BACKENDS = [
     },
     {
         "id": "larafly",
-        "name": "LaraFly · PHP",
+        "name": "larafly · PHP",
         "version": "26.10.1 · PHP 8.3+ · Laravel 13",
         "detail": "Laravel-native Firefly attributes, services, repositories, CQRS and typed contracts.",
         "source": "https://github.com/fireflyframework/fireflyframework-php/blob/main/composer.json",

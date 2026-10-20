@@ -139,3 +139,40 @@ async def test_prepared_write_rechecks_real_credentials_registered_during_save(l
     assert state["admissions"] == admissions
     assert state["rows"] == [] and previous.data == original_product
     assert "change_receipt" not in previous.data
+
+
+@pytest.mark.parametrize("remove", [False, True])
+async def test_integration_only_preview_retains_its_affected_old_and_new_journeys(lifecycle_harness, remove):
+    from test_product_lifecycle import feature
+
+    lifecycle, _, previous, _, _ = lifecycle_harness
+    definition = previous.data["definition"]
+    definition["features"] = [feature("receive"), feature("resolve", "Resolve ticket")]
+    contract = {
+        "id": "tickets",
+        "name": "Ticket events",
+        "kind": "third_party",
+        "protocol": "event",
+        "inputs": [{"name": "ticket_id", "type": "string"}],
+        "outputs": [{"name": "accepted", "type": "boolean"}],
+        "failure_paths": ["Keep the ticket available when the event is refused"],
+        "feature_refs": ["receive"],
+        "journey_refs": ["Receive ticket"],
+    }
+    definition["integrations"] = [contract]
+    request = FeatureChangeInput(
+        request_id="c" * 32,
+        base_revision=1,
+        base_digest=previous.data["digest"],
+        integration_upserts=[]
+        if remove
+        else [{**contract, "feature_refs": ["resolve"], "journey_refs": ["Resolve ticket"]}],
+        remove_integration_ids=["tickets"] if remove else [],
+    )
+    preview = await lifecycle.preview("a" * 32, request)
+    assert preview["impact"]["affected_journeys"] == (
+        ["Receive ticket"] if remove else ["Receive ticket", "Resolve ticket"]
+    )
+    assert preview["impact"]["changed_feature_ids"] == []
+    assert preview["impact"]["unchanged_feature_ids"] == ["receive", "resolve"]
+    assert preview["implementation_status"] == "not_started"

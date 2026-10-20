@@ -1198,26 +1198,35 @@
   margin-top: 8px;
 }
 @media (max-height: 600px) {
-  .wizard-frame:not(.access-member-dialog *) {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"]) {
     height: auto;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-body,
-  .wizard-frame:not(.access-member-dialog *) .wizard-form,
-  .wizard-frame:not(.access-member-dialog *) .wizard-field-scroll {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-body,
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-form,
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-field-scroll {
     overflow: visible;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-content {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-content {
     height: auto;
     display: block;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-form {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-form {
     display: block;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-field-scroll {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .wizard-field-scroll {
     display: flex;
     max-height: none;
   }
-  .wizard-frame:not(.access-member-dialog *) .wizard-actions {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"]):not(
+      [data-layout="flow"]
+    )
+    .wizard-actions {
     position: sticky;
     bottom: 0;
     padding: 12px 0;

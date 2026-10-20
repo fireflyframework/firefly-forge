@@ -14,7 +14,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -33,6 +33,7 @@ from firefly_forge.configuration import (
     validate_endpoint,
 )
 from firefly_forge.profiles import build_instruction
+from firefly_forge.provider_recovery_models import ProviderProcessOutcome
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import redact_environment, runtime_environment
 from firefly_forge.store import now
@@ -48,7 +49,7 @@ class AgentResult:
 
 
 class ProviderError(RuntimeError):
-    pass
+    process_outcome: ProviderProcessOutcome | None = None
 
 
 class ProviderLimitError(ProviderError):
@@ -220,6 +221,19 @@ class ProcessResult:
     returncode: int
     stdout: str
     stderr: str
+    process_outcome: ProviderProcessOutcome | None = None
+
+
+_cli_launch_guard: ContextVar[Callable[[], Awaitable[None]] | None] = ContextVar("cli_launch_guard", default=None)
+
+
+@contextmanager
+def cli_dispatch_scope(guard: Callable[[], Awaitable[None]] | None) -> Any:
+    token = _cli_launch_guard.set(guard)
+    try:
+        yield
+    finally:
+        _cli_launch_guard.reset(token)
 
 
 def _redact(text: str) -> str:
@@ -253,6 +267,9 @@ async def run_process(
     env: dict[str, str] | None = None,
 ) -> ProcessResult:
     """Drain both streams, bound retained output, and kill the process group on cancellation."""
+    guard = _cli_launch_guard.get()
+    if guard is not None:
+        await guard()
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=workspace,
@@ -294,7 +311,21 @@ async def run_process(
             raise ProviderError(f"Coding provider timed out after {timeout:g} seconds") from exc
         raise
     assert process.returncode is not None
-    return ProcessResult(process.returncode, output["stdout"], output["stderr"])
+    group_absent = False
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        group_absent = True
+    except PermissionError:
+        pass
+    return ProcessResult(
+        process.returncode,
+        output["stdout"],
+        output["stderr"],
+        ProviderProcessOutcome(
+            exit_code=process.returncode, leader_waited=True, streams_drained=True, group_absent=group_absent
+        ),
+    )
 
 
 def _executable(name: str, settings: dict[str, str] | None = None) -> str:
@@ -359,19 +390,26 @@ class CodexProvider(ConfiguredProvider):
         result = await run_process(
             command, workspace, emit, timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")), stdin=prompt
         )
-        if result.returncode:
-            _raise_cli_failure(f"Codex exited with code {result.returncode}: {result.stderr[-2000:]}")
-        summary, usage = "", {}
-        for event in _events(result.stdout):
-            if event.get("type") == "turn.failed":
-                _raise_cli_failure(f"Codex generation failed: {_redact(str(event.get('error', 'unknown error')))}")
-            if event.get("type") == "item.completed" and event.get("item", {}).get("type") == "agent_message":
-                summary = event["item"].get("text", "")
-            if event.get("type") == "turn.completed":
-                usage = event.get("usage", {})
-        if not summary:
-            raise ProviderError("Codex completed without a final implementation report")
-        return AgentResult(summary, "codex", usage)
+        try:
+            if result.process_outcome is not None and not result.process_outcome.group_absent:
+                raise ProviderOutcomeUnknown("The official CLI process group has not been confirmed drained")
+            if result.returncode:
+                _raise_cli_failure(f"Codex exited with code {result.returncode}: {result.stderr[-2000:]}")
+            summary, usage = "", {}
+            for event in _events(result.stdout):
+                if event.get("type") == "turn.failed":
+                    _raise_cli_failure(f"Codex generation failed: {_redact(str(event.get('error', 'unknown error')))}")
+                if event.get("type") == "item.completed" and event.get("item", {}).get("type") == "agent_message":
+                    summary = event["item"].get("text", "")
+                if event.get("type") == "turn.completed":
+                    usage = event.get("usage", {})
+            if not summary:
+                raise ProviderError("Codex completed without a final implementation report")
+            return AgentResult(summary, "codex", usage)
+
+        except ProviderError as exc:
+            exc.process_outcome = result.process_outcome
+            raise
 
 
 class ClaudeProvider(ConfiguredProvider):
@@ -408,15 +446,22 @@ class ClaudeProvider(ConfiguredProvider):
             stdin=build_instruction(brief, backend, frontend),
             env=child_env,
         )
-        if result.returncode:
-            _raise_cli_failure(f"Claude Code exited with code {result.returncode}: {result.stderr[-2000:]}")
-        for event in reversed(_events(result.stdout)):
-            if event.get("type") == "result":
-                if event.get("is_error") or event.get("subtype", "").startswith("error"):
-                    error = event.get("result", event.get("errors", "unknown error"))
-                    _raise_cli_failure(f"Claude Code generation failed: {_redact(str(error))}")
-                return AgentResult(event.get("result", ""), "claude", event.get("usage", {}))
-        raise ProviderError("Claude Code completed without a final implementation report")
+        try:
+            if result.process_outcome is not None and not result.process_outcome.group_absent:
+                raise ProviderOutcomeUnknown("The official CLI process group has not been confirmed drained")
+            if result.returncode:
+                _raise_cli_failure(f"Claude Code exited with code {result.returncode}: {result.stderr[-2000:]}")
+            for event in reversed(_events(result.stdout)):
+                if event.get("type") == "result":
+                    if event.get("is_error") or event.get("subtype", "").startswith("error"):
+                        error = event.get("result", event.get("errors", "unknown error"))
+                        _raise_cli_failure(f"Claude Code generation failed: {_redact(str(error))}")
+                    return AgentResult(event.get("result", ""), "claude", event.get("usage", {}))
+            raise ProviderError("Claude Code completed without a final implementation report")
+
+        except ProviderError as exc:
+            exc.process_outcome = result.process_outcome
+            raise
 
 
 class APIProvider(ConfiguredProvider):

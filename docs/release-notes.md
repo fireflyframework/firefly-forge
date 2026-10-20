@@ -5,6 +5,30 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.23
+
+Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. The configurable maximum is three, within the existing four-attempt ceiling and separate from the repair budget. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person. See [verification recovery](recovery.md#inspect-a-factory-verification-handoff).
+
+Source-control conversations receive milestone updates from recorded run facts, with known checks and a confirmed pull-request link reported separately. Fourteen centralized Agentic templates format the messages without another model call. Current access checks, retained delivery identities and unresolved-write holds still apply. See [factory verification and feedback](agent-lifecycle.md#factory-owned-verification).
+
+An eligible failed official Codex or Claude process can receive one explicitly admitted replacement dispatch in its original run and workspace. Current administrator authority, source, Git history, provider and policy are rechecked before launch. Native process evidence is retained separately from provider output; historical failures require a labeled administrator attestation. Unknown outcomes remain held. Every implementation reservation counts toward the four-dispatch limit, preserving the repair budget, spent verification grants and prior receipts. Recovery is available through the HTTP API; Studio, CLI and SDK shortcuts remain separate work. See [failed official CLI recovery](recovery.md#recover-a-known-failed-official-cli-attempt).
+
+Studio keeps recovery panels under distinct React identities when run data refreshes, and terminal run states stop active machinery. The verification tab separates checks supplied during an agent handoff from final acceptance results. The timeline presents bounded command, output and provider-event views. Native tests cover recovery admission, source refusal and API authority with substituted external inference and command execution. These controls do not establish successful live provider recovery or complete generated-product acceptance.
+
+Functional wireframes show each journey's linked behaviors, failure paths and acceptance criteria. Long content retains its complete contract metadata and identifies any continuation beyond the reference canvas. API-only process maps keep their workflow acceptance links. Reference rastering parses validated SVG as XML, preserving embedded logo namespaces. These functional references still require human review; they are not generated application screens. See [design review](design-review.md).
+
+Wizards that request a page-flow layout now use it explicitly. On short screens, their action rows follow the form instead of covering a focused field.
+
+Product owners can review the impact of an incremental feature or integration change before saving it. Studio retains the exact original request and receipt when a response is lost, keeps later drafts separate and requires a deliberate decision before discarding them. See [incremental product changes](product-lifecycle.md).
+
+The optional [structured analytics explorer](structured-knowledge.md) binds one project to an existing flyquery scope. Factory administrators use a three-step wizard; current project readers can inspect a catalog, table or known schema object. Configuration changes retain immutable receipts and compare the observed revision. The bounded final-disable path remains available when ordinary history is full. Query execution and factory snapshot export are outside this adapter.
+
+A separately opted-in, verified GitHub conversation can create a first project and product through `/forge intake`. The existing native administrator must explicitly consent to that repository. Intake rechecks current application, connection, signing-key and actor authority before committing its atomic product receipt or authorizing feedback. Existing project-change consent does not grant this new capability. See [repository intake](repository-workflow.md).
+
+Managed knowledge pins flycanon 26.10.5. Generated pyfly projects and the bundled framework manuals target the released 26.10.6 contract through a versioned Agentic YAML prompt. These pins do not establish a generated product or live-provider acceptance by themselves.
+
+Long product briefs now respect flycanon's 2,000-character retrieval-query limit. Project and framework searches use the same bound for platform keys and scoped agent tokens, including the lookup used to cite verified memory. The original brief, frozen product contract and published memory body remain complete. See [knowledge scope](knowledge.md#keep-project-scope-explicit).
+
 ## 0.2.22
 
 A saved, clean AI-assisted product definition shows **AI-assisted · human-edited** when the server records `edited: true`. A false or missing flag keeps the neutral label. Further edits return the form to draft review state, with the original AI source available from the same header. See [product definitions](product-definition.md#design-with-the-assistant-in-studio).

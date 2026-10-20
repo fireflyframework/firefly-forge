@@ -32,6 +32,10 @@ import {
   type WorkerThread,
 } from "./WorkerDialogueData";
 import "./WorkerDialogue.css";
+import {
+  activeVerificationRequest,
+  VerificationHandoff,
+} from "./VerificationHandoff";
 
 export function WorkerDialogue({
   run,
@@ -65,6 +69,7 @@ export function WorkerDialogue({
       (!!membership?.permissions.includes("execute") &&
         (!run.publish || membership.permissions.includes("release"))));
   const pending = threads.find((thread) => !thread.response);
+  const automaticVerification = activeVerificationRequest(run);
   const unresolved = markers.filter(
     (value) => !confirmed.has(replyMarkerBinding(value)),
   );
@@ -86,6 +91,7 @@ export function WorkerDialogue({
     run.status,
     run.publish,
     run.component_id ?? null,
+    automaticVerification,
   ]);
   const currentScope = useRef(scopeKey);
   currentScope.current = scopeKey;
@@ -193,6 +199,7 @@ export function WorkerDialogue({
   }
   function prepare() {
     if (
+      automaticVerification ||
       !pending ||
       !canReply ||
       unresolved.length ||
@@ -233,6 +240,7 @@ export function WorkerDialogue({
   }
   async function send() {
     if (
+      automaticVerification ||
       !review ||
       !pending ||
       !canReply ||
@@ -328,12 +336,13 @@ export function WorkerDialogue({
       <header className="worker-dialogue-heading">
         <div>
           <span className="worker-eyebrow">
-            <MessageSquare size={18} /> Human decisions
+            <MessageSquare size={18} /> Agent communication
           </span>
           <h2>Agent questions</h2>
           <p>
-            Review what the agent needs, record your answer, then resume the run
-            when you are ready.
+            {automaticVerification
+              ? "forge is handling the approved checks. Results appear here automatically; no answer is needed."
+              : "Review the agent's requests and recorded answers. Questions needing your decision include reply controls."}
           </p>
         </div>
         <button
@@ -363,7 +372,14 @@ export function WorkerDialogue({
       {threads.map((thread) => (
         <article key={thread.question.id} className="worker-thread">
           <div className="worker-thread-meta">
-            <span>{thread.response ? "Answered" : "Needs your decision"}</span>
+            <span>
+              {thread.response
+                ? "Answered"
+                : automaticVerification &&
+                    thread.question.id === run.worker_request?.id
+                  ? "Handled by forge"
+                  : "Needs your decision"}
+            </span>
             <span>
               {String(thread.event.payload.role_id).replaceAll("_", " ")} ·{" "}
               {thread.event.task_id}
@@ -386,6 +402,9 @@ export function WorkerDialogue({
                 {workerAttributionSummary(thread.response)}
               </p>
             </section>
+          ) : automaticVerification &&
+            thread.question.id === run.worker_request?.id ? (
+            <VerificationHandoff value={run.verification_handoff} />
           ) : !canReply ? (
             <p>
               Answering requires execute access

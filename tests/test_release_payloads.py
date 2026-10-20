@@ -5,6 +5,7 @@ import base64
 import csv
 import hashlib
 import io
+import json
 import runpy
 import subprocess
 import tarfile
@@ -116,6 +117,87 @@ class ReleasePayloadTests(unittest.TestCase):
 
     def test_source_matched_artifacts_and_studio_are_accepted(self):
         verify_payloads(self.dist, self.root, tag="v0.2.10")
+
+    def optional_metadata(self, requirement, emitted):
+        project = (
+            self.tracked["pyproject.toml"]
+            + ("\n[project.optional-dependencies]\nanalytics=" + json.dumps([requirement]) + "\n").encode()
+        )
+        (self.root / "pyproject.toml").write_bytes(project)
+        self.tracked["pyproject.toml"] = self.source_files["pyproject.toml"] = project
+        metadata = self.metadata.replace(
+            b"\n\n", ("\nProvides-Extra: analytics\nRequires-Dist: " + emitted + "\n\n").encode(), 1
+        )
+        self.wheel_files[self.prefix + "METADATA"] = self.source_files["PKG-INFO"] = metadata
+        self.write_wheel()
+        self.write_source()
+        return metadata
+
+    def test_declared_optional_dependency_is_accepted_with_its_extra_marker(self):
+        requirement = (
+            "flyquery-sdk @ https://github.com/fireflyframework/flyquery/releases/"
+            "download/v26.10.4/flyquery_sdk-26.10.4-py3-none-any.whl"
+        )
+        self.optional_metadata(requirement, requirement + " ; extra == 'analytics'")
+        verify_payloads(self.dist, self.root)
+
+    def test_optional_dependency_keeps_its_original_conditional_marker(self):
+        requirement = "example[client]>=1,<2; sys_platform == 'linux' or python_version < '3.14'"
+        self.optional_metadata(
+            requirement,
+            "example[client]<2,>=1; (sys_platform == 'linux' or python_version < '3.14') and extra == 'analytics'",
+        )
+        verify_payloads(self.dist, self.root)
+
+    def test_optional_metadata_cannot_drop_or_broaden_the_declared_dependency(self):
+        metadata = self.optional_metadata(
+            "example[client]>=1,<2; python_version < '3.14'",
+            "example[client]<2,>=1; (python_version < '3.14') and extra == 'analytics'",
+        )
+        verify_payloads(self.dist, self.root)
+        changes = [
+            metadata.replace(b"Provides-Extra: analytics\n", b""),
+            metadata.replace(b"Provides-Extra: analytics", b"Provides-Extra: other"),
+            metadata.replace(b"Provides-Extra: analytics", b"Provides-Extra: analytics\nProvides-Extra: analytics"),
+            metadata.replace(
+                b"Requires-Dist: example[client]<2,>=1; (python_version < '3.14') and extra == 'analytics'\n", b""
+            ),
+            metadata.replace(b"example[client]", b"another[client]"),
+            metadata.replace(b"[client]", b"[server]"),
+            metadata.replace(b">=1", b">=0"),
+            metadata.replace(b"python_version < '3.14'", b"python_version < '3.15'"),
+            metadata.replace(b" and extra == 'analytics'", b""),
+            metadata.replace(b" and extra == 'analytics'", b" or extra == 'analytics'"),
+            metadata.replace(b"extra == 'analytics'", b"extra == 'other'"),
+        ]
+        for changed in changes:
+            for artifact in ("wheel", "source"):
+                with self.subTest(artifact=artifact, metadata=changed):
+                    self.wheel_files[self.prefix + "METADATA"] = changed if artifact == "wheel" else metadata
+                    self.source_files["PKG-INFO"] = changed if artifact == "source" else metadata
+                    self.write_wheel()
+                    self.write_source()
+                    with self.assertRaises(ValueError):
+                        verify_payloads(self.dist, self.root)
+
+    def test_optional_direct_reference_cannot_change_its_url(self):
+        metadata = self.optional_metadata(
+            "example @ https://example.test/approved.whl",
+            "example @ https://example.test/approved.whl ; extra == 'analytics'",
+        )
+        verify_payloads(self.dist, self.root)
+        self.wheel_files[self.prefix + "METADATA"] = metadata.replace(b"approved.whl", b"different.whl")
+        self.write_wheel()
+        with self.assertRaises(ValueError):
+            verify_payloads(self.dist, self.root)
+
+    def test_undeclared_extra_cannot_be_advertised(self):
+        self.wheel_files[self.prefix + "METADATA"] = self.metadata.replace(
+            b"\n\n", b"\nProvides-Extra: unexpected\n\n", 1
+        )
+        self.write_wheel()
+        with self.assertRaises(ValueError):
+            verify_payloads(self.dist, self.root)
 
     def test_another_tag_cannot_publish_this_version(self):
         with self.assertRaises(ValueError):

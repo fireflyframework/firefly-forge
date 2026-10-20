@@ -125,7 +125,7 @@ async def test_untrusted_labels_are_escaped_and_long_text_is_wrapped(store):
         svg = bundle["screens"][0][key]
         ET.fromstring(svg)
         assert "<script>" not in svg and "<img" not in svg
-        assert "&lt;script&gt;" in svg or "&lt;script&gt;" in bundle["screens"][0]["desktop_svg"]
+        assert "&lt;img onerror=bad&gt;" in svg
         visible = [element.text for element in ET.fromstring(svg).iter() if element.tag.endswith("tspan")]
         assert all(len(line or "") < 110 for line in visible)
 
@@ -204,7 +204,7 @@ async def test_custom_brand_surface_and_action_ink_follow_actual_contrast(store)
     root = ET.fromstring(bundle["screens"][0]["mobile_svg"])
     rectangles = [item for item in root.iter() if item.tag.endswith("rect")]
     assert rectangles[1].get("fill") == rectangles[0].get("fill")
-    button_text = next(
-        item for item in root.iter() if item.tag.endswith("text") and "Continue" in "".join(item.itertext())
+    guidance_label = next(
+        item for item in root.iter() if item.tag.endswith("text") and "Functional guide" in "".join(item.itertext())
     )
-    assert button_text.get("fill") == "#ffffff"
+    assert guidance_label.get("fill") == "#ffffff"

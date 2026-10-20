@@ -32,7 +32,13 @@ export type DeploymentJob = {
     argv?: string[];
   }[];
 };
-type RunState = { status: string; operation?: string; pr_url?: string | null };
+type RunState = {
+  status: string;
+  operation?: string;
+  pr_url?: string | null;
+  active_task?: string;
+  error?: string | null;
+};
 const state = (status: string): StationState => {
   if (status === "done" || status === "succeeded") return "done";
   if (status === "running") return "active";
@@ -62,6 +68,27 @@ export function manufacturingStations(
     );
     let stationState: StationState = task ? state(task.status) : "waiting";
     let detail = task ? task.error?.message || task.instructions : description;
+    if (
+      run?.status === "failed" &&
+      (stationState === "active" ||
+        (run.active_task === id && stationState !== "done"))
+    ) {
+      stationState = "failed";
+      detail =
+        run.error || task?.error?.message || "The run failed at this stage.";
+    } else if (
+      stationState === "active" &&
+      run &&
+      [
+        "paused",
+        "needs_reconciliation",
+        "interrupted",
+        "cancelled",
+        "succeeded",
+      ].includes(run.status)
+    ) {
+      stationState = state(run.status === "succeeded" ? "queued" : run.status);
+    }
     if (id === "implement" && run?.operation === "test") {
       stationState = "skipped";
       detail = "This test run does not use a coding provider.";

@@ -5,11 +5,11 @@ description: Configure required flycanon retrieval, inspect citations and retain
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # Retrieve knowledge and retain verified project memory
 
-[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.4) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.5) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
 
 ## Pinned service and SDK
 
-The managed installer verifies the published flycanon `26.10.4` server, source archive, runtime requirements and configuration before installation. forge uses the matching Python SDK. The server runs in a separate framework environment; its qualified pyfly `26.09.04` event contract does not replace forge's pyfly `26.10.6` dependency.
+The managed installer verifies the published flycanon `26.10.5` server, source archive, runtime requirements and configuration before installation. forge uses the matching Python SDK. The server runs in a separate framework environment; its qualified pyfly `26.09.04` event contract does not replace forge's pyfly `26.10.6` dependency.
 
 Workspace creation requires the body `id` to equal `X-Workspace-Id`. The knowledge connection selects the target workspace before creating it, including project-scoped learning workspaces. A mismatch returns `400 workspace_scope_mismatch` before storage or event publication. Existing credentials, corpora and saved run configuration retain their original state; upgrading the SDK does not authorize a retry of an unknown remote effect.
 
@@ -19,9 +19,9 @@ Workspace creation requires the body `id` to equal `X-Workspace-Id`. The knowled
 | --- | --- | --- |
 | forge PostgreSQL and journal | Run admission, project permissions, verified source/check evidence and learning eligibility | Current factory records authorize work and retain observed outcomes. |
 | flycanon | Cited framework manuals, admitted project documents and canonical versions of verified memory | Source/chunk/version receipts establish provenance within the selected workspace. |
-| flyquery, assessed optional integration | Questions over explicit structured snapshots, such as check durations or procedure outcomes | No forge adapter, managed service or configuration screen is implemented. |
+| flyquery, optional read integration | Project-scoped catalog, table and known schema-object observations | Native adapter and Studio configuration/explorer; no query execution, snapshot export or managed flyquery server. |
 
-A structured query result cannot change a run's status, approve source, satisfy a delivery gate or create verified memory. [Structured analytics architecture](structured-knowledge.md) defines the proposed flyquery boundary and its admission prerequisites. Keep flycanon required for the managed factory.
+A structured observation cannot change a run's status, approve source, satisfy a delivery gate or create verified memory. [Structured project analytics](structured-knowledge.md) explains the optional read path and the separate prerequisites for future query execution. Keep flycanon required for the managed factory.
 
 ## Set up knowledge from a fresh installation
 
@@ -31,7 +31,7 @@ A structured query result cannot change a run's status, approve source, satisfy 
 4. Select **Check knowledge access**, then choose the registered repository under **Try a project search**. Inspect the expected framework or project citation, including its workspace and source identity.
 5. Run a small project with executable acceptance checks. Inspect its source/checkpoint evidence, index an explicit verified path when needed, then retrieve its saved memory from the same repository scope.
 
-Studio's Knowledge setup is a settings form followed by an authentication check, project search and source explorer. **Save knowledge settings** retains configuration; **Check knowledge access** tests platform authentication. Neither button installs a server or downloads an embedding model. The private CA is configured through the API; the current form has no CA input. There is no flyquery setup wizard.
+Studio's Knowledge setup is a settings form followed by an authentication check, project search and source explorer. **Save knowledge settings** retains configuration; **Check knowledge access** tests platform authentication. Neither button installs a server or downloads an embedding model. The private CA is configured through the API; the current form has no CA input. The separate **Administration → Structured analytics** wizard configures optional flyquery reads.
 
 ## Structured learning evidence
 
@@ -54,7 +54,7 @@ These contracts do not grant shared framework learning, an automatic projection 
 
 ## Initialize the managed service
 
-The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.4, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
+The [complete local stack](installation.md#run-the-complete-local-stack) includes flycanon server 26.10.5, its PostgreSQL database with pgvector, durable original objects and a local Ollama embedding service. Bootstrap creates a private platform key, database password, CA certificate and service certificate on first setup. The internal endpoint is `https://knowledge:8500`, tenant `forge`, with shared framework workspace `frameworks`. The knowledge port is not published to the host.
 
 The bootstrap operation is also available as a CLI command:
 
@@ -68,7 +68,9 @@ This command writes configuration and the service bundle; it does not start Flyc
 forge knowledge initialize --data-dir /data
 ```
 
-Initialization creates the authenticated framework workspace and admits the starter catalog plus 14 licensed core manuals: seven for [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.1 and seven for [larafly](https://fireflyframework.org/frameworks/php/) 26.10.1. Each framework bundle covers getting started, architecture, dependency injection, web, relational data, transactions and testing. The bundled Markdown retains its original source URI, pinned revision, SHA-256 and Apache-2.0 license.
+Initialization creates the authenticated framework workspace and admits the starter catalog plus 14 licensed core manuals: seven for [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.6 and seven for [larafly](https://fireflyframework.org/frameworks/php/) 26.10.1. Each framework bundle covers getting started, architecture, dependency injection, web, relational data, transactions and testing. The bundled Markdown retains its original source URI, pinned revision, SHA-256 and Apache-2.0 license.
+
+The default pyfly generation profile targets the published 26.10.6 wheel and uses backend prompt revision `1.0.1`. Its dependency floors and the bundled manual revisions match that release. This is an explicit supported pin, not a request to fetch an unreviewed latest version at runtime. Review both the implementation profile and its source manuals before targeting another release.
 
 Initialization checks embedding-backed retrieval against the admitted sources. It fails while the configured local `nomic-embed-text` model is unavailable or retrieval cannot return the expected source citations. The core bundle is bounded; additional framework modules and another product's framework version need their reviewed manuals imported into the appropriate scope. Framework initialization retains per-document admission and source receipts in private installation state. Run-level source indexing and memory use the execution journal described below; keep both records with the installation backup.
 
@@ -129,6 +131,8 @@ A registered project's workspace is `forge-` followed by its repository ID. Retr
 `required: true` makes an unavailable configured knowledge scope fail the run before generation. Keep it enabled for the managed factory. An existing installation can retain a previous optional setting; that mode records a visible warning when retrieval fails and continues without that context. Empty search results are distinct from a connection failure.
 
 A run freezes its connection configuration. Its first retrieval retains source/chunk IDs, filenames, sections, source URIs and available knowledge-version IDs. The retrieved context and digest are kept for repairs and continuation. These references are untrusted input; they cannot override the brief or core security rules.
+
+flycanon accepts retrieval queries of up to 2,000 characters. forge sends the first 2,000 characters when a brief, search input or verified-memory document is longer. The same bound applies to project and framework searches with either platform keys or scoped agent tokens. It limits the retrieval query; the full saved brief, frozen product contract and published memory body remain intact.
 
 ## Add framework manuals and project references
 

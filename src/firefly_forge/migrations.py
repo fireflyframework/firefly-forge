@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from firefly_forge.access_persistence import ForgeAccessEventEntity, ForgeMembershipEntity
+from firefly_forge.analytics_persistence import ForgeAnalyticsBindingEntity, ForgeAnalyticsConfigurationReceiptEntity
 from firefly_forge.application_persistence import ForgeIncidentEntity, ForgeObservationEntity
 from firefly_forge.assistant_attachment_persistence import ForgeAssistantAttachmentEntity
 from firefly_forge.assistant_persistence import (
@@ -82,7 +83,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 28
+SCHEMA_REVISION = 29
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -126,6 +127,8 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeChannelInboxEntity,
                 ForgeKnowledgeUploadEntity,
                 ForgeProjectEntity,
+                ForgeAnalyticsBindingEntity,
+                ForgeAnalyticsConfigurationReceiptEntity,
                 ForgeProjectRevisionEntity,
                 ForgeAnalysisEntity,
                 ForgeAssistantSessionEntity,
@@ -227,6 +230,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             "forge_observations",
             "forge_product_definitions",
             "forge_project_revisions",
+            "forge_analytics_configuration_receipts",
             "forge_assistant_events",
             "forge_assistant_attachments",
             "forge_campaign_children",

@@ -146,6 +146,9 @@ async def delegated_feedback(tmp_path, monkeypatch):
     async def pending():
         return [row]
 
+    async def feedback_context(data):
+        return [row]
+
     async def authentication(*args, **kwargs):
         return "host-transport-fixture-only", "https://api.github.com"
 
@@ -157,7 +160,9 @@ async def delegated_feedback(tmp_path, monkeypatch):
             store,
             scm,
             settings_records=SimpleNamespace(find_for_repository=find_settings),
-            inbox=SimpleNamespace(find_by_id=find_receipt, find_pending=pending, save=save),
+            inbox=SimpleNamespace(
+                find_by_id=find_receipt, find_pending=pending, feedback_context=feedback_context, save=save
+            ),
         )
         yield service, row, run, sent, state
 
@@ -188,7 +193,7 @@ async def test_completed_delegated_action_posts_retained_result_once(delegated_f
     result = await service.process(RECEIPT)
     assert result["status"] == "processed" and result["action_status"] == "completed"
     assert result["feedback_status"] == "sent"
-    assert len(sent) == 1 and f"Forge {action}:" in sent[0]["body"] and RECEIPT in sent[0]["body"]
+    assert len(sent) == 1 and f"Request: `{action}`" in sent[0]["body"] and RECEIPT in sent[0]["body"]
     assert result["feedback_remote"]["id"] == 91
     if action == "respond":
         assert run["status"] == "paused" and run["worker_request"]["status"] == "answered"

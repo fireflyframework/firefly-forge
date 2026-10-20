@@ -1106,6 +1106,11 @@ dialog.product-assistant-panel::backdrop {
   margin: 12px 0 0;
   font-size: 13px;
 }
+.product-document > .feature-actions > button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .product-document .wizard-frame .wizard-body {
   min-height: 0;
   overflow: hidden;

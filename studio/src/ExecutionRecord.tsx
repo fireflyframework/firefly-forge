@@ -11,6 +11,11 @@ import {
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import type { IdentitySession } from "./Identity";
+import { asRecord } from "./ExecutionFormat";
+import {
+  activeVerificationRequest,
+  VerificationHandoff,
+} from "./VerificationHandoff";
 
 type Journal = {
   valid: boolean;
@@ -63,6 +68,7 @@ export function ContinueRun({
       setBusy(false);
     }
   }
+  if (activeVerificationRequest(run)) return null;
   if (
     !unknownOutcome &&
     !["paused", "needs_reconciliation", "interrupted"].includes(run.status)
@@ -191,9 +197,22 @@ export function ExecutionRecord({
   }, [connection, run.id]);
   return (
     <div className="execution-record">
+      {run.verification_handoff !== undefined && (
+        <VerificationHandoff value={run.verification_handoff} />
+      )}
+      {!activeVerificationRequest(run) &&
+        run.worker_request?.status === "pending" &&
+        asRecord(run.verification_refusal)?.request_id ===
+          run.worker_request.id && (
+          <VerificationHandoff
+            kind="verification_handoff_refused"
+            value={run.verification_refusal}
+          />
+        )}
       {session && (
         <RunnerContinuation
           key={JSON.stringify([
+            "runner-continuation",
             connection.base,
             connection.token,
             session.user.id,
@@ -214,6 +233,7 @@ export function ExecutionRecord({
       {session && (
         <AgentCheckpointRecovery
           key={JSON.stringify([
+            "agent-checkpoint-recovery",
             connection.base,
             connection.token,
             session.user.id,

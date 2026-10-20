@@ -1,0 +1,124 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/copy
+version: 1.0.0
+description: Deterministic repository feedback copy.
+system_template: ''
+user_template: |-
+  {
+    "states": {
+      "queued": "The request is queued for execution.",
+      "running": "The run has started.",
+      "question": "The worker needs an answer before work can continue.",
+      "paused": "The run is paused.",
+      "needs_reconciliation": "The last operation has an uncertain outcome. An operator needs to check what happened before continuing.",
+      "succeeded": "The run reports success.",
+      "failed": "The run stopped with a failure.",
+      "cancelled": "The run was cancelled.",
+      "interrupted": "The run was interrupted.",
+      "unknown": "The request has a receipt. Its execution status is not available.",
+      "recorded": "The requested action has been recorded.",
+      "developing": "The run entered implementation.",
+      "validating": "The run entered verification.",
+      "completed": "The requested action is complete."
+    },
+    "stages": {
+      "prepare": "The run is preparing its workspace.",
+      "implement": "Implementation is in progress.",
+      "verify": "The run is executing its checks.",
+      "review": "The recorded source is being reviewed.",
+      "checkpoint": "The run is saving its source checkpoint."
+    },
+    "actions": {
+      "run": "The run request was admitted.",
+      "test": "The verification request was admitted.",
+      "maintain": "The maintenance request was admitted.",
+      "status": "The original status request read the run.",
+      "respond": "The answer was recorded. Execution can still be paused until an authorized continuation.",
+      "cancel": "The cancellation request was recorded. It does not establish that every worker has stopped.",
+      "resume": "The continuation request was recorded. Its execution outcome is reported separately.",
+      "deploy": "The deployment request was recorded. Deployment completion requires its own receipt.",
+      "publish": "The publication action was recorded. Only a confirmed review link is shown below.",
+      "assistant": "The assistant reply was recorded.",
+      "intake": "The repository intake action was recorded.",
+      "product_change": "The product change action was recorded.",
+      "other": "The requested action was recorded.",
+      "project": "The project action was recorded.",
+      "product": "The product definition action was recorded.",
+      "brand": "The brand configuration action was recorded.",
+      "design": "The design action was recorded. A preview does not approve implementation.",
+      "knowledge": "The knowledge action was recorded.",
+      "applications": "The configured application state was read.",
+      "maintenance": "The maintenance request was recorded.",
+      "handoff": "The handoff action was recorded. It does not establish completion.",
+      "analysis": "The source analysis action was recorded. Review its evidence before approving implementation.",
+      "roles": "The role configuration action was recorded."
+    },
+    "recovery": {
+      "authentication": "An operator needs to restore the worker connection before this run can continue.",
+      "quota": "The provider reported a usage limit. An operator needs to resolve it before continuing.",
+      "rate_limit": "The provider asked the run to wait. Follow the recorded recovery decision before continuing.",
+      "worker_request": "The worker needs an answer before continuing.",
+      "verification": "Review the failed checks before deciding whether to request a repair.",
+      "source_invalid": "Source validation failed. Review the recorded evidence before continuing.",
+      "answered": "Your answer is recorded. An operator can now decide whether to continue the run.",
+      "unknown": "Check the run details before deciding what to do next."
+    },
+    "handoff": {
+      "pending": "The factory has queued the requested checks.",
+      "running": "The factory is running the requested checks.",
+      "completed": "The factory has recorded the check results.",
+      "held": "The factory paused these checks. An operator needs to review the run before it can continue."
+    },
+    "facts": {
+      "project_id": "Project",
+      "analysis_id": "Analysis",
+      "conversation_id": "Conversation",
+      "turn_id": "Turn",
+      "request_id": "Request",
+      "revision": "Revision",
+      "digest": "Digest",
+      "product_revision": "Product revision"
+    },
+    "redactions": {
+      "path": "[path omitted]",
+      "setting": "[setting omitted]"
+    },
+    "choices_heading": "Choices:",
+    "verification_refused": "The factory could not start the requested checks. An operator needs to review the original question.",
+    "titles": {
+      "recorded": "Request recorded",
+      "queued": "Queued for execution",
+      "running": "Work started",
+      "developing": "Implementation in progress",
+      "validating": "Checking the result",
+      "question": "Your decision is needed",
+      "paused": "Work needs attention",
+      "needs_reconciliation": "An outcome needs confirmation",
+      "succeeded": "Work completed",
+      "failed": "The run failed",
+      "cancelled": "Work cancelled",
+      "interrupted": "Work interrupted",
+      "unknown": "Request received",
+      "completed": "Request completed"
+    },
+    "stage_titles": {
+      "prepare": "Preparing the workspace",
+      "implement": "Implementing the requested change",
+      "verify": "Checking the result",
+      "review": "Reviewing the change",
+      "checkpoint": "Saving the source checkpoint"
+    },
+    "handoff_titles": {
+      "pending": "Factory checks queued",
+      "running": "Running the factory checks",
+      "completed": "Check results recorded",
+      "held": "Checks need attention"
+    },
+    "review_title": "Ready for review",
+    "publication_held_title": "Publication needs attention",
+    "proposal_title": "A proposal is ready",
+    "proposal_description": "This is an unreviewed proposal. Please review it before approving a product change."
+  }
+required_variables: []
+metadata:
+  defaults: {}

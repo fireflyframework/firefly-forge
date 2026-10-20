@@ -1,13 +1,51 @@
 ---
-description: Review the optional flyquery analytics design, its assessed SQL pipeline and the authorization, snapshot, execution and recovery checks required for a forge adapter.
+description: Configure a project's optional flyquery catalog explorer, inspect its reported schema and understand the boundaries for future query execution.
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Design structured project analytics
+# Explore structured project data
 
-[flyquery](https://github.com/fireflyframework/flyquery) answers natural-language questions over structured datasets using schema retrieval, generated SQL and DuckDB execution. It could help inspect project check outcomes, procedure reuse, durations or failure categories. forge currently has no flyquery dependency, native adapter, managed deployment or configuration screen. The design below is a proposed integration, with explicit conditions for enabling it.
+[flyquery](https://github.com/fireflyframework/flyquery) manages structured datasets and can answer questions through its own query pipeline. forge's optional integration reads a project's catalog, individual tables and known schema objects. Open **Administration → Structured analytics** to configure the connection or inspect the project scope you can read.
 
 [flycanon](https://github.com/fireflyframework/flycanon) remains the required service for cited framework guidance, project documents and canonical verified memory. forge PostgreSQL and the journal retain execution authority. flyquery's query history and proposed SQL examples have separate meanings: they cannot approve a procedure, mark a run verified or replace source/checkpoint receipts.
+
+## What you can do now
+
+| Operation | Available behavior |
+| --- | --- |
+| Configure a project | A current factory administrator saves one exact endpoint, tenant, workspace and dataset using a write-only scoped token. |
+| Read the catalog | A current project reader requests up to 50 tables in one complete page. Incomplete or foreign-scope results are refused. |
+| Inspect a table | Select a catalog table to read its reported identity, description and current snapshot reference. |
+| Read a known schema object | Supply an exact object UUID from your data administrator. Its table and snapshot must match the selected scope. |
+| Run queries or discover every field | Unavailable in this adapter. It does not generate SQL, call a model, export factory records or publish canonical memory. |
+
+The native pyfly configuration service, controller and typed persistence retain configuration revisions and immutable receipts. Catalog reads use the released flyquery SDK's agent-token GET methods. The factory rechecks current identity, project access, configuration and private credentials after the remote read before returning its observation.
+
+## Connect a project
+
+Prepare an existing flyquery 26.10.4 service, tenant, workspace and dataset. The endpoint must be an HTTPS origin on port 443 with a normally trusted certificate. Custom ports and private CA configuration are not supported by this connection. A source installation enables the optional SDK with `uv sync --locked --extra analytics`; the factory does not install it from the wizard or provision a flyquery server.
+
+1. Sign in as a factory administrator, open **Administration → Structured analytics**, select the project and choose **Set up Flyquery**.
+2. In **Requirements**, confirm the service and optional SDK are available. Obtain a workspace-scoped agent token with `flyquery.schema:read` from your data administrator.
+3. In **Connection**, enter the HTTPS origin, tenant, workspace UUID and dataset UUID. Enter the token for this save. The form never reloads a retained token.
+4. In **Review**, check the exact scope and save. A saved configuration means the settings were committed; remote access has not yet been checked.
+5. Choose **Read catalog**. Select a returned table to inspect it. For a schema-object read, enter the known object UUID under that table. Full field discovery and prepared-query results remain unavailable.
+
+Project readers can inspect the bound scope without receiving its configuration token or administrator controls. A missing session, revoked access, foreign scope or failed read is reported as an error. It must not appear as an empty dataset.
+
+### Change or disable a connection
+
+Choose **Edit connection**, supply the full scope and enter a token explicitly. Saving compares the revision you read with the current revision. A conflicting revision requires reading the saved configuration again. Changing a connection clears earlier displayed catalog observations.
+
+After an uncertain save, choose **Reload saved configuration** before another write. The token is cleared, and the original request may still settle. Reload is an explicit read; it does not prove that an earlier request was cancelled.
+
+Each project permits 32 ordinary configuration changes. If revision 32 is enabled, **Disable connection** offers one final disable at revision 33 with the unchanged scope and an explicitly supplied token. That terminal binding cannot be edited or re-enabled. A connection already disabled at revision 32 has no further changes. Disabling uses local authority and persistence checks without importing the optional SDK or contacting flyquery.
+
+### Read observations correctly
+
+An observation records the configuration revision, scope, observation time and local response digest. A reported snapshot UUID identifies what the remote service returned; it is not a content hash or proof of an atomic, current data cut. Requests have a ten-second remote deadline, a three-second connection limit and a 256 KiB response bound. Changed credentials or authorization invalidate the result.
+
+See the [HTTP and SDK contract](api.md#read-optional-structured-analytics) for exact routes, revision fields and supported read limits. The remaining sections describe the assessed upstream query pipeline and the additional work required before forge could export snapshots or execute analytical queries.
 
 ## Earlier assessment and released corrections
 
@@ -26,22 +64,22 @@ A separate in-memory DuckDB connection still does not isolate the host filesyste
 
 Source: [`QueryService`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/query/query_service.py), [`AstClassifier`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/ast_classifier.py), [`ScopeGuard`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/scope_guard.py), [`DuckDBExecutor`](https://github.com/fireflyframework/flyquery/blob/7b0279258dce31d1718da44d58f729a15529c5b0/src/flyquery/core/services/execution/duckdb_executor.py).
 
-## Proposed data and service boundaries
+## Future snapshot and query boundaries
 
 An operator would enable analytics for an explicit project and purpose after reviewing its data policy. The adapter would export a bounded, immutable snapshot from authorized factory records. It would exclude private settings, tokens, raw command logs, unrestricted source content and unrelated projects. Approved columns could include run identity, source tree, check identity, outcome, duration and verification time.
 
 Each snapshot would retain its schema version, project and repository identities, source/checkpoint references, export time, content digest and retention policy. A flyquery dataset would belong to that exact project scope. A query would name its snapshot version so a later dataset update could not change the meaning of a retained answer. Combining repositories in one project would require an explicit authorized snapshot; registration in a `ProductProject` alone would not authorize aggregation.
 
-The proposed native pyfly services would have these responsibilities:
+Snapshot export and query execution would need these additional responsibilities:
 
-| Proposed service | Responsibility |
+| Responsibility | Required behavior |
 | --- | --- |
 | Analytics connection | Private endpoint, TLS trust and scoped service credential transport; no browser-supplied identity headers as authority. |
 | Snapshot service | Current project authorization, approved column selection, immutable snapshot creation and retained export receipts. |
 | Query service | Frozen snapshot/configuration references, bounded question, current dataset grants and cancellation. |
 | Analytics controller | Typed request/response models, project read authorization and actual readiness/result evidence. |
 
-These names describe responsibilities to implement. They are not registered beans in `ForgeBeans`. The adapter should follow the existing native knowledge pattern: inject private configuration and typed repositories, centralize transport, and keep authority checks in server code.
+The current registered analytics connection and read controller cover the bounded catalog path above. Snapshot export and query execution remain future work. They must follow the native knowledge pattern: inject private configuration and typed repositories, centralize transport, and keep authority checks in server code.
 
 <div class="forge-flow" role="region" aria-label="Proposed analytics lifecycle diagram" aria-describedby="analytics-flow-guide" tabindex="0" markdown="1">
 
@@ -84,15 +122,15 @@ A connection timeout after submission leaves an unknown outcome. Recovery would 
 
 A read query can still create remote query history, result objects, example proposals or provider costs. Treat those effects explicitly in the admission policy and recovery contract. No analytics result should be automatically promoted into flycanon memory. Promotion would require reviewed source evidence, existing factory verification gates and separate flycanon admission/canonical receipts.
 
-## Proposed setup and readiness
+## Future query readiness
 
-A future Studio setup flow should let an administrator select an authorized HTTPS endpoint, tenant, exact project dataset, immutable snapshot and bounded execution policy. Credentials would be write-only. Its service check would establish authentication; a separate small scoped query would establish permitted snapshot retrieval and actual cancellation/resource behavior.
+The implemented Studio setup binds an endpoint, tenant, workspace and dataset for catalog reads. Extending it to queries would require an immutable snapshot and bounded execution policy. A separate small scoped query would need to establish permitted snapshot retrieval and actual cancellation/resource behavior.
 
 Saving settings must report configured state. Ready state would require retained evidence from the selected service and project scope. Authentication, snapshot admission, query execution and result provenance need separate visible outcomes. Updating configuration would affect newly admitted work; it must preserve queued snapshots and unresolved intents.
 
-The current **Knowledge** form configures flycanon only. Use [knowledge setup](knowledge.md#set-up-knowledge-from-a-fresh-installation) for the implemented installation. Adding an endpoint or environment variable cannot activate the proposed flyquery adapter.
+The **Knowledge** form configures flycanon; **Structured analytics** configures the separate optional read adapter. Use [knowledge setup](knowledge.md#set-up-knowledge-from-a-fresh-installation) for the required knowledge installation. Saving an analytics endpoint does not enable query execution.
 
-## Checks before enabling an adapter
+## Checks before enabling a query adapter
 
 Use isolated test datasets and synthetic files for qualification. Required checks include:
 

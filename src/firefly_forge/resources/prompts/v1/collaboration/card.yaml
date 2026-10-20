@@ -1,0 +1,34 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/card
+version: 1.0.0
+description: Deterministic repository feedback card.
+system_template: ''
+user_template: |-
+  ### forge · {{ title }}
+
+  {{ description }}
+
+  {{ sections }}
+
+  <details>
+  <summary>Run details</summary>
+
+  Request: `{{ action }}`
+
+  State: `{{ status }}`
+
+  {{ details }}
+
+  {{ run_reference }} Receipt: `{{ receipt_id }}`
+  </details>
+required_variables:
+- title
+- description
+- sections
+- action
+- status
+- details
+- run_reference
+- receipt_id
+metadata:
+  defaults: {}

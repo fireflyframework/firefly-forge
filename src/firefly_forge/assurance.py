@@ -76,13 +76,18 @@ def progress_record(
 
 
 def _manifest(
-    directory: Path, *, report: bool = False, original: bool = False, include_git: bool = False
+    directory: Path,
+    *,
+    report: bool = False,
+    original: bool = False,
+    include_git: bool = False,
+    extra_ignored: frozenset[str] = frozenset(),
 ) -> dict[str, str]:
     from firefly_forge.engine import private_path
 
     manifest: dict[str, str] = {}
     total = 0
-    ignored = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "build", "dist"}
+    ignored = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "build", "dist"} | extra_ignored
     for current, directories, files in os.walk(directory):
         directories[:] = [
             name

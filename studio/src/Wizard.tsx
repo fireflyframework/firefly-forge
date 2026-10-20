@@ -26,6 +26,7 @@ export function Wizard({
   className = "",
   progressMode = "validated",
   pageFlow = false,
+  parentLayout = false,
   headingAction,
   minimumFieldHeight = 160,
 }: {
@@ -40,6 +41,7 @@ export function Wizard({
   className?: string;
   progressMode?: "validated" | "visited";
   pageFlow?: boolean;
+  parentLayout?: boolean;
   headingAction?: ReactNode;
   minimumFieldHeight?: number;
 }) {
@@ -48,7 +50,7 @@ export function Wizard({
   const [flow, setFlow] = useState(false);
   useEffect(() => {
     const element = frame.current;
-    if (!element || pageFlow) return;
+    if (!element || pageFlow || parentLayout) return;
     const owner = element.closest("dialog") ?? element.closest("main");
     if (!owner) return;
     const measure = () => {
@@ -124,7 +126,7 @@ export function Wizard({
       cancelAnimationFrame(pending);
       window.removeEventListener("resize", schedule);
     };
-  }, [pageFlow, minimumFieldHeight]);
+  }, [pageFlow, parentLayout, minimumFieldHeight]);
   useEffect(() => {
     const element = frame.current;
     const owner = element?.closest("main");
@@ -134,6 +136,7 @@ export function Wizard({
       !owner ||
       element.closest("dialog") ||
       pageFlow ||
+      parentLayout ||
       flow
     )
       return;
@@ -143,7 +146,7 @@ export function Wizard({
       16;
     const overflow = element.getBoundingClientRect().bottom - bottom;
     if (overflow > 1) owner.scrollTop += overflow;
-  }, [height, pageFlow, flow]);
+  }, [height, pageFlow, parentLayout, flow]);
   const body = (node: ReactNode): ReactNode =>
     Children.map(node, (child) => {
       if (!isValidElement(child)) return child;
@@ -203,7 +206,7 @@ export function Wizard({
         .forEach((element) => {
           element.scrollTop = 0;
         });
-      if (pageFlow) {
+      if (pageFlow || parentLayout) {
         const element = frame.current;
         const owner = element?.closest("main");
         if (owner) owner.scrollTop = 0;
@@ -224,13 +227,15 @@ export function Wizard({
       }
     }
     previous.current = active;
-  }, [active, pageFlow]);
+  }, [active, pageFlow, parentLayout]);
   return (
     <section
       ref={frame}
       className={`wizard wizard-frame ${className}`}
       aria-label={title}
-      data-layout={flow ? "flow" : undefined}
+      data-layout={
+        parentLayout ? "parent" : pageFlow || flow ? "flow" : undefined
+      }
       style={
         {
           "--wizard-frame-height": height ? `${height}px` : undefined,

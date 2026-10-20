@@ -1,0 +1,49 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.product-incremental-change {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.product-change-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.product-change-heading > svg {
+  flex: none;
+  color: var(--accent-ink);
+}
+.product-change-heading > div,
+.product-change-preview,
+.product-incremental-change .wizard-summary > div {
+  min-width: 0;
+}
+.product-change-heading h3,
+.product-change-heading p {
+  margin: 0 0 6px;
+}
+.product-incremental-change > button {
+  justify-self: start;
+}
+.product-incremental-change dd,
+.product-incremental-change p {
+  overflow-wrap: anywhere;
+}
+.product-change-preview {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .product-incremental-change {
+    padding: 14px;
+  }
+  .product-incremental-change .wizard-summary {
+    grid-template-columns: 1fr;
+  }
+}

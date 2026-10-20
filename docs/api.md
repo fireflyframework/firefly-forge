@@ -15,6 +15,71 @@ Request and response bodies use JSON unless a route downloads an artifact or
 file. Project permissions apply to the authenticated identity. The actual
 running application's OpenAPI document is the authoritative schema.
 
+## Automatic verification handoffs
+
+New runs freeze `settings.automatic_verification` from `GET /tools/policy`.
+The factory default is `{"enabled": true, "max_continuations": 1}`; the strict
+maximum is three. The existing administrator-only policy update accepts this
+setting with the other tool settings. A frozen snapshot without this setting
+does not grant automatic execution.
+Older SDK/MCP policy writes that omit this setting preserve its current value.
+
+A pending implementation request with typed `kind: "verification"` can ask
+Forge to run all explicit, frozen `run.commands` through `SandboxExecutor`.
+Request IDs, question text and context never select commands or grant access.
+Product decisions, credentials, architecture and approval questions remain
+manual. Current execution authority, cancellation, campaign scope, source,
+provider and policy are checked again before effects and continuation.
+
+Native command intents and receipts retain the actual commands and outcomes.
+Known failing checks become bounded, clearly attributed factory feedback.
+`completed` means every configured command has a known result, including any
+failures; it does not mean the product passed acceptance. Unknown effects hold
+without automatic replay. Source identity includes untracked public source and
+uses the existing review exclusions for dependencies, private files, build
+outputs and tool caches, including `.cache`. Those directories are not a place
+to store application source.
+
+Each completed, durably resumed handoff grants one additional coding task,
+separate from the frozen repair budget. History is preserved, and the existing
+four-attempt ceiling remains. A spent, revoked, stale or uncertain grant cannot
+start another coding task. The factory response uses protected
+`responding_actor.version: 4` / `authentication_method: "factory_verification"`
+with its handoff and source/command/policy/provider digests; it is not a human
+answer. Pre-admission refusals have a separate `verification_handoff_refused`
+event and leave the original question pending.
+
+Older paused runs require explicit native adoption:
+
+1. Read `GET /runs/{id}/verification-handoffs/candidates?agent=codex` (or another
+   explicitly selected configured coding provider).
+2. Retain one new 32-character `request_id` and POST
+   `/runs/{id}/verification-handoffs/adoptions` with `agent` and the exact
+   `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest`
+   and `provider_digest` from that read.
+3. If the response is lost, read
+   `GET /runs/{id}/verification-handoffs/adoptions/{request_id}`. Do not generate
+   a replacement ID or retry an uncertain command.
+
+Adoption records the current native operator and exact request body. Reusing an
+ID with different content refuses. It binds only that pending question and
+partial source, not later questions. Selecting a provider explicitly captures
+its current configuration through the normal native handoff; old frozen
+provider executables and snapshots stay immutable. Host coding providers still
+require current administrator authority. Admission queues work for the normal
+Engine consumer and never executes commands in the HTTP request.
+
+The Python SDK exposes `verification_handoff_candidates`,
+`adopt_verification_handoff` and `verification_handoff_adoption`. These methods
+perform one explicit request each and do not create IDs, apply a fallback or
+resume a run implicitly.
+
+## Failed official-provider recovery
+
+A native factory administrator can review `GET /runs/{id}/provider-recoveries/candidate?agent=codex` or `claude`, explicitly POST the returned candidate digest under one caller-owned request ID to `/runs/{id}/provider-recoveries`, and read its exact receipt at `/runs/{id}/provider-recoveries/{request_id}`. Admission reserves one dispatch in the same run. It does not execute a model in the request or reset repair and verification budgets.
+
+The strict body requires exactly one native process digest or explicit historical operator attestation. New-protocol unknown outcomes stay held. Current authority, source, provider and policy are checked again before launch, and all implementation intents count toward the four-dispatch limit. See [failed official CLI recovery](recovery.md#recover-a-known-failed-official-cli-attempt) for the proof fields, provenance and lost-response procedure. This change exposes HTTP endpoints only.
+
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |
@@ -324,3 +389,99 @@ source ID against current credentials before contacting flycanon, verifies the
 returned source ID and indexed content, then checks the retained admission
 identity again before recording the event. It does not claim that remote
 indexing and the local transaction are atomic.
+
+## Read optional structured analytics
+
+Flyquery is optional. Flycanon remains the required knowledge and memory service.
+Install the `analytics` extra of the qualified Forge package to make the official
+Flyquery 26.10.4 read SDK available. An unconfigured project does not import that SDK
+or contact Flyquery.
+
+An authenticated factory administrator binds one existing project to an HTTPS
+origin, tenant, workspace and dataset. The origin must use port 443 with a trusted
+certificate; custom ports and private CA configuration are unsupported in this
+SDK slice. Use a scoped Flyquery agent token with the upstream schema-read grant,
+not a user login token. Remote authorization still applies to every read.
+
+| Method | Path under `/api/v1/projects/{project}/analytics` | SDK method |
+| --- | --- | --- |
+| GET/PUT | `/configuration` | `analytics_configuration` / `configure_analytics` |
+| GET | `/catalog` | `analytics_catalog` |
+| GET | `/tables/{table}` | `analytics_table` |
+| GET | `/tables/{table}/objects/{object_id}` | `analytics_schema_object` |
+| GET | `/prepared/{query}` | Unavailable; refuses without contacting Flyquery |
+
+Read configuration first. Use its exact `revision` as `expected_revision` when
+saving; use zero only for the first binding. Every save supplies the complete
+scope and write-only `agent_token`, including a save with `enabled: false`.
+A conflicting revision is refused. There are at most 32 ordinary configuration
+changes per project. An enabled revision 32 permits one final disable at revision
+33, using `expected_revision: 32`, `enabled: false`, the unchanged endpoint, tenant,
+workspace and dataset, and an explicitly supplied token. This terminal binding
+cannot be edited or re-enabled. A connection already disabled at revision 32 has
+no further changes. Disabling does not import the SDK or contact Flyquery. Each
+committed change has an immutable native receipt. Credentials stay
+in owner-private revision files, never in public configuration or native receipts.
+`configured` means settings were saved; it does not mean remote access was tested.
+
+In Studio, open **Administration → Structured analytics** and choose a project.
+A factory administrator can select **Set up Flyquery** or **Edit connection**:
+
+1. Confirm the existing Flyquery service, optional Forge analytics SDK and
+   workspace-scoped `flyquery.schema:read` token are available.
+2. Enter the HTTPS origin, tenant, workspace UUID and dataset UUID. Enter a token
+   for this save; the form never loads a saved token. Clear the enable checkbox
+   to disable reads, supplying the complete scope and token again.
+   At revision 32, **Disable connection** locks the existing scope and permits
+   only the terminal disable. Disabled revision 33 remains readable.
+3. Review the scope and expected revision, then select **Save connection** once.
+   The browser clears the token on submission. A missing or inconsistent response
+   leaves the save unconfirmed; explicitly reload the saved configuration before
+   another save. Reloading is a current read, not proof that an earlier request
+   can no longer settle. Revision checks still reject conflicting writes.
+
+Project readers use **Read catalog**, choose a table to read its metadata, then
+optionally supply a known schema-object UUID. There is no automatic remote read,
+polling, retry or connection-test endpoint. Each browser request has a 15-second
+deadline; a browser timeout does not prove a save was rolled back. The explorer
+shows the observed scope, configuration revision, time and response digest. It does
+not list all fields or enable unavailable prepared-result and query features.
+
+```python
+import os
+from firefly_forge.client import ForgeClient
+
+with ForgeClient(os.environ["FORGE_URL"], os.environ["FORGE_API_TOKEN"]) as forge:
+    project = os.environ["FORGE_PROJECT_ID"]
+    current = forge.analytics_configuration(project)
+    forge.configure_analytics(project, {
+        "expected_revision": current["revision"],
+        "enabled": True,
+        "endpoint": "https://analytics.example",
+        "tenant_id": "fictional",
+        "workspace_id": os.environ["FLYQUERY_WORKSPACE_ID"],
+        "dataset_id": os.environ["FLYQUERY_DATASET_ID"],
+        "agent_token": os.environ["FLYQUERY_AGENT_TOKEN"],
+    })
+    catalog = forge.analytics_catalog(project)
+```
+
+Project readers can inspect the bound catalog and exact table/schema-object UUIDs.
+Browser headers cannot override the remote scope. Reads reject mixed scope,
+incomplete pages, changed configuration, revoked access and changed credentials.
+There is no retry or write fallback on 404 or transport failure.
+
+The catalog is limited to 50 tables and one complete page. Exact schema lookup
+requires a known object UUID and its parent table's reported current snapshot;
+full table-field discovery is unavailable. Each response is limited to 256 KiB,
+with at most eight GETs and a ten-second remote deadline (three-second connect).
+Current operations use one GET, or two for an exact schema object. One read per
+project/actor is active in each API worker. Observations include the local response
+digest and observation time. Snapshot UUIDs are reported identity, not data-content
+hashes or a guarantee of a current atomic data cut.
+
+Prepared results require a new upstream agent-token GET query-history/result API,
+exact tenant/workspace/dataset fencing and corresponding read SDK methods. The
+current user-tier query/result routes are not a substitute. No SQL, query
+generation, result download URL, model call, agent tool, CLI/MCP command or memory
+publication is added by these routes.

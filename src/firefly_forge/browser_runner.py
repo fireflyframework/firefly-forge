@@ -256,14 +256,14 @@ const config=JSON.parse(require('fs').readFileSync(0,'utf8'));let browser;
 async function main(){
  browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  const context=await browser.newContext({viewport:{width:config.width,height:config.height},
-  colorScheme:config.theme,reducedMotion:'reduce',serviceWorkers:'block',acceptDownloads:false});
+  colorScheme:config.theme,reducedMotion:'reduce',serviceWorkers:'block',acceptDownloads:false,javaScriptEnabled:false});
  await context.route('**/*',route=>route.abort());
+ await context.routeWebSocket('**/*',ws=>ws.close());
  const page=await context.newPage();
- await page.setContent('<!doctype html><html><head><style>html,body{margin:0;padding:0;}'+config.font+
-  '</style></head><body>'+config.svg+'</body></html>',{waitUntil:'load'});
+ await page.goto('data:image/svg+xml;base64,'+Buffer.from(config.document).toString('base64'),{waitUntil:'load'});
  await page.evaluate(zoom=>{
-  document.documentElement.style.zoom=String(zoom/100);
-  const svg=document.querySelector('svg');svg.style.width='100%';svg.style.height='100vh';
+  const svg=document.documentElement;svg.style.zoom=String(zoom/100);
+  svg.style.width='100%';svg.style.height='100vh';
  },config.zoom);
  await page.evaluate(()=>document.fonts.ready);
  const image=await page.screenshot({type:'png',fullPage:false,animations:'disabled'});
@@ -326,6 +326,19 @@ def validate_reference_svg(svg: str) -> None:
                 or "@import" in value.lower()
             ):
                 raise ValueError("Reference SVG cannot load external styles or resources")
+
+
+def _reference_document(svg: str, font: str, width: int, height: int) -> str:
+    """Rasterize an SVG document as XML, preserving nested namespace-qualified logos."""
+    validate_reference_svg(svg)
+    root = ET.fromstring(svg)
+    root.set("width", str(width))
+    root.set("height", str(height))
+    if not any(element.tag == "{http://www.w3.org/2000/svg}style" for element in root):
+        style = ET.Element("{http://www.w3.org/2000/svg}style")
+        style.text = font
+        root.insert(0, style)
+    return ET.tostring(root, encoding="unicode")
 
 
 def _reference_png(data: bytes, width: int, height: int, limit: int) -> None:
@@ -567,7 +580,7 @@ class BrowserRunner:
             "zoom": zoom,
             "image": config.browser.image,
             "font_sha256": hashlib.sha256(font.encode()).hexdigest(),
-            "renderer": 1,
+            "renderer": 2,
         }
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         image_path, metadata_path = (
@@ -586,8 +599,7 @@ class BrowserRunner:
                 except (OSError, ValueError, TypeError, KeyError) as exc:
                     raise ValueError("Reference cache is incomplete or changed; no unreviewed image admitted") from exc
             payload = {
-                "svg": svg,
-                "font": font,
+                "document": _reference_document(svg, font, width, height),
                 "width": width,
                 "height": height,
                 "theme": theme,

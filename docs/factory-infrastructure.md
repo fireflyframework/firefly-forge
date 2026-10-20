@@ -20,7 +20,7 @@ Start with the [local stack](installation.md#run-the-complete-local-stack). Use 
 
 The managed stack installs [flycanon](https://github.com/fireflyframework/flycanon) as a separate released server, alongside forge's SDK client. Its PostgreSQL, original-object volume, local embedding model, migration job and ingestion worker are part of the supplied Compose topology. The default factory depends on completed knowledge initialization before startup.
 
-[flyquery](https://github.com/fireflyframework/flyquery) is an assessed optional analytics service. The supplied stack has no flyquery image, database, credentials, adapter or setup wizard. Do not connect it to factory PostgreSQL or mount factory private storage. A future deployment needs its own identity, explicit snapshot objects and isolated execution environment after the [structured analytics admission checks](structured-knowledge.md#checks-before-enabling-an-adapter) pass.
+[flyquery](https://github.com/fireflyframework/flyquery) is an optional, independently provisioned analytics service. Enable the analytics SDK extra, then use **Administration → Structured analytics** to configure project-scoped catalog, table and known schema-object reads. The supplied stack does not provision its server, database or credentials. Keep its storage and service identity separate from factory PostgreSQL and private storage. The [connection guide](structured-knowledge.md#connect-a-project) describes the supported HTTPS endpoint and access requirements. Snapshot export and query execution remain subject to separate [query-adapter admission checks](structured-knowledge.md#checks-before-enabling-a-query-adapter).
 
 ## 1. Choose the runtime and owners
 
@@ -57,7 +57,7 @@ Mount factory state only on the control-plane API and trusted worker processes t
 
 ## 4. Configure secrets and images
 
-Select a reviewed forge revision and immutable image digest. Keep the Flycanon server environment separate from forge's native [pyfly](https://fireflyframework.org/frameworks/python/) environment; the SDK and server are separate packages with their own dependency requirements. Pin Flycanon server 26.10.0 or a reviewed compatible build. The managed local stack uses a local embedding model, without a paid provider API key.
+Select a reviewed forge revision and immutable image digest. Keep the Flycanon server environment separate from forge's native [pyfly](https://fireflyframework.org/frameworks/python/) environment; the SDK and server are separate packages with their own dependency requirements. Pin flycanon server 26.10.5 or a reviewed compatible build. The managed local stack uses a local embedding model, without a paid provider API key.
 
 Store factory database credentials, OIDC client secrets, the shared identity-encryption key, Flycanon service keys and certificates in the installation's secret manager. Rotate them through a planned procedure that preserves queued configuration revisions. Kubernetes Secrets need the cluster's access controls and encryption policy; putting a value into a Secret does not by itself establish that policy.
 

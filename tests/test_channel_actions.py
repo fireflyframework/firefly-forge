@@ -337,7 +337,9 @@ async def test_signed_configuration_actor_can_answer_worker_request_without_auto
         )
         posted = []
 
-        async def comment(repo, payload, issue):
+        async def comment(repo, payload, issue, *, before_write=None):
+            if before_write is not None:
+                await before_write()
             posted.append(payload)
             return {"id": "comment-1"}
 
@@ -463,7 +465,9 @@ async def test_project_channel_configuration_requires_every_member_actor_and_gra
         ),
     )
 
-    async def write(repo, payload, issue):
+    async def write(repo, payload, issue, *, before_write=None):
+        if before_write is not None:
+            await before_write()
         return {"id": "comment-1"}
 
     monkeypatch.setattr(collaboration, "_remote_write", write)
@@ -545,7 +549,9 @@ async def product_channel(store, monkeypatch):
     )
     posted = []
 
-    async def write(repo, payload, issue):
+    async def write(repo, payload, issue, *, before_write=None):
+        if before_write is not None:
+            await before_write()
         posted.append(payload)
         return {"id": "comment-1"}
 
@@ -782,5 +788,5 @@ async def test_signed_action_keeps_full_unreviewed_proposal_and_feedback_prefix(
     encoded = next(value for key, value in sources.items() if key.endswith(".json"))
     assert json.loads(encoded)["reply"]["message"] == "A" * 11000 and json.loads(encoded)["status"] == "unreviewed"
     comment = posted[-1]["body"]
-    assert len(comment) <= 6000 and "UNREVIEWED" in comment[:300] and "Reference files:" in comment
+    assert len(comment) <= 6000 and "unreviewed proposal" in comment[:300] and "Reference files:" in comment
     assert not await collaboration.product(second["id"]) and not await store.runs()

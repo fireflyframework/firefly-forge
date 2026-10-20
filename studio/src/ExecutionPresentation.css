@@ -17,6 +17,10 @@
   margin: 12px 0;
   font-size: 14px;
 }
+.verification-handoff > progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
 .record-fields {
   margin: 12px 0;
   display: grid;

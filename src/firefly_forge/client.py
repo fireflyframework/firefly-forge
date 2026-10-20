@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from firefly_forge.access_controllers import MembershipInput
     from firefly_forge.agent_checkpoint_models import RestoreInput
     from firefly_forge.agent_roles import ProjectRoles, RoleDocument, WorkerResponse
+    from firefly_forge.analytics_models import AnalyticsConfigurationInput
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
     from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
+    from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.user_administration import (
@@ -559,8 +561,62 @@ class ForgeClient:
         path = "projects" + ("/" + self._id(project_id) if project_id else "")
         return dict(self.request("PUT" if project_id else "POST", path, json=model.model_dump(mode="json")))
 
+    def configure_scm_product_intake_consent(
+        self, repository_id: str, request: SCMProductIntakeConsentInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
+
+        model = SCMProductIntakeConsentInputV1.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"repositories/{self._id(repository_id)}/scm-product-intake/consents",
+                json=model.model_dump(mode="json"),
+            )
+        )
+
+    def scm_product_intake_consent(self, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"repositories/{self._id(repository_id)}/scm-product-intake/consents/{self._id(request_id)}"
+            )
+        )
+
+    def scm_product_intake(self, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"repositories/{self._id(repository_id)}/scm-product-intake/requests/{self._id(request_id)}"
+            )
+        )
+
     def project(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}"))
+
+    def analytics_configuration(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/configuration"))
+
+    def configure_analytics(
+        self, project_id: str, request: AnalyticsConfigurationInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.analytics_models import AnalyticsConfigurationInput
+
+        model = AnalyticsConfigurationInput.model_validate(request)
+        body = model.model_dump(mode="json", exclude={"agent_token"})
+        body["agent_token"] = model.agent_token.get_secret_value()
+        return dict(self.request("PUT", f"projects/{self._id(project_id)}/analytics/configuration", json=body))
+
+    def analytics_catalog(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/catalog"))
+
+    def analytics_table(self, project_id: str, table_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/tables/{UUID(table_id)}"))
+
+    def analytics_schema_object(self, project_id: str, table_id: str, object_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET", f"projects/{self._id(project_id)}/analytics/tables/{UUID(table_id)}/objects/{UUID(object_id)}"
+            )
+        )
 
     def project_revision(self, project_id: str, revision: int) -> dict[str, Any]:
         if isinstance(revision, bool) or revision < 1:
@@ -851,6 +907,26 @@ class ForgeClient:
 
     def worker_messages(self, run_id: str) -> list[dict[str, Any]]:
         return list(self.request("GET", f"runs/{self._id(run_id)}/worker-messages"))
+
+    def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
+        if agent not in {"codex", "claude", "bridge", "agentic"}:
+            raise ValueError("Choose an explicit configured coding provider")
+        return dict(
+            self.request("GET", f"runs/{self._id(run_id)}/verification-handoffs/candidates", params={"agent": agent})
+        )
+
+    def adopt_verification_handoff(self, run_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.verification_models import VerificationAdoption
+
+        body = VerificationAdoption.model_validate(request)
+        return dict(
+            self.request("POST", f"runs/{self._id(run_id)}/verification-handoffs/adoptions", json=body.model_dump())
+        )
+
+    def verification_handoff_adoption(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("GET", f"runs/{self._id(run_id)}/verification-handoffs/adoptions/{self._id(request_id)}")
+        )
 
     def respond_worker(self, run_id: str, request_id: str, response: WorkerResponse | dict[str, Any]) -> dict[str, Any]:
         import re
@@ -1251,9 +1327,11 @@ class ForgeClient:
         return LearningObservationAttemptReceipt.model_validate(result).model_dump(mode="json")
 
     def configure_tool_policy(self, request: dict[str, Any]) -> dict[str, Any]:
-        from firefly_forge.tool_broker import ToolPolicyInput
+        from firefly_forge.tool_broker import FactoryToolPolicyInput, ToolPolicyInput
 
-        model = ToolPolicyInput.model_validate(request)
+        model = (FactoryToolPolicyInput if "automatic_verification" in request else ToolPolicyInput).model_validate(
+            request
+        )
         return dict(self.request("PUT", "tools/policy", json=model.model_dump()))
 
     def tool_invocations(self, run_id: str) -> list[dict[str, Any]]:

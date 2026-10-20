@@ -7,10 +7,85 @@ import {
   OutputView,
   UnifiedDiff,
   journalDisposition,
+  TimelineEventView,
 } from "./ExecutionPresentation";
 import { parseDiff, boundedText, tokenizeCode } from "./ExecutionFormat";
 
 describe("execution evidence presentation", () => {
+  it("projects provider command events into a bounded command result instead of a JSON heading", () => {
+    const html = renderToStaticMarkup(
+      <TimelineEventView
+        event={{
+          stage: "stdout",
+          message: JSON.stringify({
+            type: "item.completed",
+            item: {
+              type: "command_execution",
+              command: "python -m pytest backend/tests",
+              aggregated_output:
+                "<script>untrusted</script>\n" + "x".repeat(50000),
+              exit_code: 1,
+            },
+            private_extension: "DO-NOT-PROJECT",
+          }),
+        }}
+      />,
+    );
+    expect(html).toContain("<h3>Command finished</h3>");
+    expect(html).toContain("Exit 1");
+    expect(html).toContain("Failed");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("DO-NOT-PROJECT");
+    expect(html.length).toBeLessThan(15000);
+  });
+  it("does not infer a successful command result from an in-progress provider item", () => {
+    const html = renderToStaticMarkup(
+      <TimelineEventView
+        event={{
+          stage: "stdout",
+          message: JSON.stringify({
+            type: "item.started",
+            item: {
+              type: "command_execution",
+              command: "npm run build",
+              status: "in_progress",
+            },
+          }),
+        }}
+      />,
+    );
+    expect(html).toContain("<h3>Command started</h3>");
+    expect(html).toContain("Outcome not recorded");
+    expect(html).not.toContain(">Passed<");
+  });
+  it("keeps unknown structured provider data out of headings and escapes long plain output", () => {
+    const unknown = renderToStaticMarkup(
+      <TimelineEventView
+        event={{
+          stage: "stdout",
+          message: JSON.stringify({
+            type: "future.event",
+            undocumented: { raw: "not a summary" },
+          }),
+        }}
+      />,
+    );
+    expect(unknown).toContain("<h3>Provider event</h3>");
+    const plain = renderToStaticMarkup(
+      <TimelineEventView
+        event={{
+          stage: "stderr",
+          message: "<img src=x>\n" + "x".repeat(50000),
+        }}
+      />,
+    );
+    expect(plain.match(/<h3>(.*?)<\/h3>/)?.[1].replace(/<[^>]+>/g, "")).toBe(
+      "Provider error output",
+    );
+    expect(plain).not.toContain("<img");
+    expect(plain.length).toBeLessThan(15000);
+  });
   it("correlates tool outcomes by task and original invocation, with unknown superseded only by an observed receipt", () => {
     const intent = {
       task_id: "implement",

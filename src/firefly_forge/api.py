@@ -35,6 +35,9 @@ from firefly_forge.agent_role_controllers import AgentRoleController
 from firefly_forge.agent_roles import RoleRegistry
 from firefly_forge.analysis_context import ReviewedAnalysisContext
 from firefly_forge.analysis_controllers import AnalysisController
+from firefly_forge.analytics import AnalyticsConnection, ProjectAnalytics
+from firefly_forge.analytics_controllers import ProjectAnalyticsController
+from firefly_forge.analytics_persistence import ForgeAnalyticsBindingRepository
 from firefly_forge.application_controllers import ApplicationController
 from firefly_forge.application_operations import ApplicationOperations
 from firefly_forge.application_persistence import ForgeIncidentRepository, ForgeObservationRepository
@@ -165,6 +168,8 @@ from firefly_forge.project_persistence import (
     ForgeProjectRevisionRepository,
 )
 from firefly_forge.projects import Projects
+from firefly_forge.provider_recoveries import ProviderRecoveries
+from firefly_forge.provider_recovery_controllers import ProviderRecoveryController
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
 from firefly_forge.reverse_engineering import ReverseEngineering
@@ -197,6 +202,8 @@ from firefly_forge.scm_poll_controllers import SCMPollController
 from firefly_forge.scm_polling import SCMPolling
 from firefly_forge.scm_product_change_controllers import SCMProductChangeController
 from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
+from firefly_forge.scm_product_intake import SCMProductIntake
+from firefly_forge.scm_product_intake_controllers import SCMProductIntakeController
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
 from firefly_forge.scm_resume_service import SCMResumeAuthority
 from firefly_forge.search_tools import SearchTools
@@ -213,6 +220,9 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminEventRepository,
     ForgeIdentityAdminOperationRepository,
 )
+from firefly_forge.verification_controllers import VerificationHandoffController
+from firefly_forge.verification_handoffs import VerificationHandoffs
+from firefly_forge.verification_models import VerificationAdoption
 from firefly_forge.worker_runtime import WorkerSupervision
 
 
@@ -335,6 +345,9 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         ("/runs/{id}/journal", "get", None),
         ("/runs/{id}/resume", "post", "ResumeRequest"),
         ("/runs/{id}/handoff", "post", "ResumeRequest"),
+        ("/runs/{id}/verification-handoffs/candidates", "get", None),
+        ("/runs/{id}/verification-handoffs/adoptions", "post", "VerificationAdoption"),
+        ("/runs/{id}/verification-handoffs/adoptions/{request_id}", "get", None),
     ]
     schemas: dict[str, Any] = {}
     models: list[type[BaseModel]] = [
@@ -352,6 +365,7 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         KnowledgeIndex,
         KnowledgeTest,
         ResumeRequest,
+        VerificationAdoption,
     ]
     for model in models:
         schema = model.model_json_schema(ref_template="#/components/schemas/{model}")
@@ -368,6 +382,24 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         }
         if "{id}" in path:
             operation["parameters"] = [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}]
+        if "{request_id}" in path:
+            operation.setdefault("parameters", []).append(
+                {
+                    "name": "request_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+                }
+            )
+        if path == "/runs/{id}/verification-handoffs/candidates":
+            operation["parameters"].append(
+                {
+                    "name": "agent",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string", "enum": ["codex", "claude", "bridge", "agentic"]},
+                }
+            )
         if model_name:
             operation["requestBody"] = {
                 "required": True,
@@ -588,6 +620,18 @@ class FactoryConfiguration:
         return engine
 
     @bean
+    def verification_handoffs(self, store: Store, journal: Journal, engine: Engine) -> VerificationHandoffs:
+        handoffs = VerificationHandoffs(store, journal, engine)
+        engine.verification_handoffs = handoffs
+        return handoffs
+
+    @bean
+    def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
+        recoveries = ProviderRecoveries(store, journal, engine)
+        engine.provider_recoveries = recoveries
+        return recoveries
+
+    @bean
     def assurance(self, store: Store, journal: Journal) -> Assurance:
         return Assurance(store, self.data_dir / "reviews", journal)
 
@@ -693,6 +737,17 @@ class FactoryConfiguration:
         return SCMProductChangeAuthority(store, authority, settings_records, inbox, events)
 
     @bean
+    def scm_product_intake(
+        self,
+        store: Store,
+        scm: SCMConnections,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+    ) -> SCMProductIntake:
+        return SCMProductIntake(store, scm, settings_records, inbox, events)
+
+    @bean
     def execution_journal(
         self,
         store: Store,
@@ -775,6 +830,20 @@ class FactoryConfiguration:
     @bean
     def oauth_resources(self, connections: ConnectionOAuth, access: ProjectAccess) -> OAuthResources:
         return OAuthResources(connections, access)
+
+    @bean
+    def analytics_connection(self, private: ConfigurationStore) -> AnalyticsConnection:
+        return AnalyticsConnection(private)
+
+    @bean
+    def project_analytics(
+        self,
+        store: Store,
+        access: ProjectAccess,
+        connection: AnalyticsConnection,
+        records: ForgeAnalyticsBindingRepository,
+    ) -> ProjectAnalytics:
+        return ProjectAnalytics(store, access, connection, records)
 
     @bean
     def external_mcp_registry(self, private: ConfigurationStore, resources: OAuthResources) -> ExternalMCPRegistry:
@@ -860,10 +929,11 @@ class FactoryConfiguration:
         profiles: ModelProfiles,
         users: UserAdministration,
         oauth: ConnectionOAuth,
+        analytics: AnalyticsConnection,
     ) -> DeploymentManager:
         manager = DeploymentManager(store, engine, journal)
         manager.secret_registries.extend([search, external_mcp])
-        manager.secret_registries.extend([auth, profiles, users, oauth])
+        manager.secret_registries.extend([auth, profiles, users, oauth, analytics])
         return manager
 
     @bean
@@ -913,10 +983,19 @@ class FactoryConfiguration:
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
         product_change_authority: SCMProductChangeAuthority,
+        intake: SCMProductIntake,
         polling: SCMPolling,
     ) -> Collaboration:
         collaboration = Collaboration(
-            store, scm, deployments, settings_records, inbox, products, resume_authority, product_change_authority
+            store,
+            scm,
+            deployments,
+            settings_records,
+            inbox,
+            products,
+            resume_authority,
+            product_change_authority,
+            intake,
         )
         collaboration.polling = polling
         polling.collaboration = collaboration
@@ -985,6 +1064,8 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        ForgeAnalyticsBindingRepository,
+        ProjectAnalyticsController,
         OAuthProviderPolicyRepository,
         OAuthProviderPolicyController,
         OAuthConnectionRepository,
@@ -1033,6 +1114,8 @@ def create_runtime(
         AgentRestoreController,
         AgentCheckpointCandidateController,
         JournalController,
+        VerificationHandoffController,
+        ProviderRecoveryController,
         BridgeCompletionController,
         RunEvidenceController,
         ForgeCollaborationSettingsRepository,
@@ -1043,6 +1126,7 @@ def create_runtime(
         SCMResumeAuthorityController,
         SCMPollController,
         SCMProductChangeController,
+        SCMProductIntakeController,
         ForgeObservationRepository,
         ForgeIncidentRepository,
         ApplicationController,

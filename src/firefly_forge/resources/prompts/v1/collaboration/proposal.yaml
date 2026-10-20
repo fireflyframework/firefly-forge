@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/proposal
+version: 1.0.0
+description: Deterministic repository feedback proposal.
+system_template: ''
+user_template: |-
+  This proposal is waiting for review.
+required_variables: []
+metadata:
+  defaults: {}

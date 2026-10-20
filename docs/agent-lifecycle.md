@@ -83,6 +83,18 @@ The [learning contracts](learning.md#structure-agent-and-tool-communication) ass
 
 The lifecycle projection reports execution bindings and knowledge availability. A recorded citation establishes a particular retrieval result. After actual failed QA, the same-run repair proposal guard can hold another coding dispatch while preserving verification receipts and unresolved effects. Workers cannot change the captured policy or turn a generic failed check into a reusable negative lesson. See [learning decisions](architecture.md#learning-and-structured-knowledge-decisions).
 
+## Factory-owned verification
+
+An implementation worker can return a typed `verification` request when it needs results from the run's approved checks. With a frozen automatic-verification grant, forge runs all explicit `run.commands` through the authorized runner, records their native intents and outcomes, and supplies factory feedback. Request names and question text do not select commands or grant access. Product choices, credentials and approvals still require a person.
+
+New runs default to one verification continuation, with a strict configurable maximum of three. Each completed handoff permits one additional coding task, separately from the frozen repair budget and within the existing four-attempt ceiling. Earlier attempts and failed checks remain recorded. Current authority, source, policy and provider are checked again before effects and the next coding task. [Recovery](recovery.md#inspect-a-factory-verification-handoff) explains holds and explicit adoption for older runs.
+
+The run's verification panel shows command counts and `pending`, `running`, `completed` or `held` state. Completed means every configured command has a known result, including failures. Final acceptance still depends on the run's verification and delivery evidence. An uncertain effect stays held without automatic replay.
+
+**Agent questions** attributes the retained result to factory verification. Its protected version-4 `responding_actor` records `authentication_method: "factory_verification"`, the handoff ID and source, command, policy and provider digests. It is separate from an authenticated human answer; public answer requests cannot supply that provenance. Full bounded results remain in the command receipts, while the recorded answer contains a normalized excerpt of at most 8,000 characters.
+
+For an authorized source-control conversation, the bot reports meaningful changes from native run facts, including system-owned verification, a decision needed from a person, known check results and a recorded review-request link. Central `collaboration/` templates format these messages without another model call. Feedback still requires current conversation and repository authority. An uncertain remote comment stays held for reconciliation, and a completed implementation does not imply publication.
+
 ## Answer an agent's question
 
 When an agent needs a decision, it can pause its current task and record a question. Open the run and select **Agent questions**, or use **Open agent questions** on the paused-run notice. The conversation belongs to that run and its recorded task; answering does not create another run.
@@ -106,7 +118,7 @@ The screenshots below use a fictional inventory question and controlled API resp
 </figure>
 
 
-Sending records the answer in the write-ahead log and marks that question answered. The run stays paused. Inspect the retained work before using **Resume run**. Each run allows only one pending question at a time and a bounded number of questions; an unanswered question cannot trigger an automatic conversation loop.
+Sending a human answer records it in the write-ahead log and marks that question answered. The run stays paused. Inspect the retained work before using **Resume run**. Each run allows only one pending question at a time and a bounded number of questions. Factory-owned verification follows its separate grant and continuation limit above.
 
 The portal retains the API, user, project, repository, run and original response identity before sending. It saves the normalized input digest and question event digest, without saving the answer text or a credential in browser storage. After a connection failure or reload, **Check original answer** reads the existing conversation. A missing response or permission refusal keeps the original identity unresolved. The portal does not resend the answer or create a replacement automatically. Keep browser storage until the original result is reconciled.
 

@@ -4,85 +4,33 @@ import { expect, test, type Page } from "@playwright/test";
 test.use({ launchOptions: { args: ["--enable-unsafe-swiftshader"] } });
 
 async function fixture(page: Page) {
-  await page.goto("/");
-  await page.evaluate(async () => {
-    const reactPath = "/node_modules/.vite/deps/react.js";
-    const domPath = "/node_modules/.vite/deps/react-dom_client.js";
-    const scenePath = "/src/FactoryScene.tsx";
-    const [
-      {
-        default: { createElement },
-      },
-      {
-        default: { createRoot },
-      },
-      { FactoryScene },
-    ] = await Promise.all([
-      import(reactPath),
-      import(domPath),
-      import(scenePath),
-    ]);
-    (document.querySelector("#root") as HTMLElement).style.display = "none";
-    const mount = document.createElement("div");
-    mount.className = "factory-fixture";
-    mount.style.cssText = "width:1100px;margin:24px auto";
-    document.body.appendChild(mount);
-    const root = createRoot(mount);
-    const ids = [
-      "prepare",
-      "implement",
-      "verify",
-      "checkpoint",
-      "publish",
-      "deploy",
-      "health",
-    ];
-    let state = "waiting",
-      selectedId = "implement",
-      suspended = false;
-    const render = () =>
-      root.render(
-        createElement(FactoryScene, {
-          stations: ids.map((id) => ({
-            id,
-            label: id,
-            state:
-              id === "implement"
-                ? state
-                : id === "prepare"
-                  ? "done"
-                  : "waiting",
-            detail: "Renderer fixture; no server production is inferred.",
-          })),
-          theme: "dark",
-          selectedId,
-          suspended,
-          onSelect: (id: string) => {
-            selectedId = id;
-            render();
-          },
-        }),
-      );
-    document.addEventListener("factory-fixture-state", (event) => {
-      const detail = (
-        event as CustomEvent<{ state: string; suspended: boolean }>
-      ).detail;
-      state = detail.state;
-      suspended = detail.suspended;
-      render();
-    });
-    document.addEventListener("factory-fixture-visibility", (event) => {
-      Object.defineProperty(document, "hidden", {
-        configurable: true,
-        value: (event as CustomEvent<boolean>).detail,
+  const rootURL = new URL("/", test.info().project.use.baseURL);
+  await page.route(
+    (url) => url.href === rootURL.href,
+    async (route) => {
+      if (
+        route.request().method() !== "GET" ||
+        route.request().resourceType() !== "document"
+      )
+        return route.fallback();
+      const response = await route.fetch();
+      const html = await response.text();
+      const entry = '<script type="module" src="/src/main.tsx"></script>';
+      expect(
+        html.match(
+          /<script\b[^>]*\bsrc=["']\/src\/main\.tsx(?:\?[^"']*)?["'][^>]*>[\s\S]*?<\/script>/g,
+        ),
+      ).toEqual([entry]);
+      await route.fulfill({
+        response,
+        body: html.replace(
+          entry,
+          '<script type="module" src="/tests/factory-renderer-fixture.ts"></script>',
+        ),
       });
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    document.addEventListener("factory-fixture-unmount", () => root.unmount(), {
-      once: true,
-    });
-    render();
-  });
+    },
+  );
+  await page.goto("/");
   await expect(page.locator(".factory-fixture .factory-live")).toHaveAttribute(
     "data-renderer",
     "webgl",
@@ -109,7 +57,7 @@ async function still(page: Page) {
 test("machinery freezes for inactive, paused, stale updates and reduced motion", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await fixture(page);

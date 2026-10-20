@@ -14,11 +14,14 @@ import subprocess
 import tarfile
 import tomllib
 import zipfile
+from collections import Counter
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from packaging.markers import Marker
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 
 def _safe(name: str) -> None:
@@ -37,10 +40,18 @@ def _metadata(data: bytes, project: dict[str, Any], readme: bytes) -> None:
     }
     if any(headers.get_all(key) != [value] for key, value in expected.items()):
         raise ValueError("Distribution metadata differs from source")
-    requirements = headers.get_all("Requires-Dist", [])
-    if len(requirements) != len(project["dependencies"]) or {Requirement(item) for item in requirements} != {
-        Requirement(item) for item in project["dependencies"]
-    }:
+    requirements = [Requirement(item) for item in project["dependencies"]]
+    optional = project.get("optional-dependencies", {})
+    extras = [canonicalize_name(extra, validate=True) for extra in optional]
+    if len(set(extras)) != len(extras) or Counter(headers.get_all("Provides-Extra", [])) != Counter(extras):
+        raise ValueError("Distribution extras differ from source")
+    for extra, dependencies in optional.items():
+        selector = f"extra == {canonicalize_name(extra)!r}"
+        for dependency in dependencies:
+            requirement = Requirement(dependency)
+            requirement.marker = Marker(f"({requirement.marker}) and {selector}" if requirement.marker else selector)
+            requirements.append(requirement)
+    if Counter(Requirement(item) for item in headers.get_all("Requires-Dist", [])) != Counter(requirements):
         raise ValueError("Distribution dependencies differ from source")
     if data.partition(b"\n\n")[2].rstrip(b"\n") != readme.rstrip(b"\n"):
         raise ValueError("Distribution description differs from README")
