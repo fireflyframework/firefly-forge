@@ -303,14 +303,17 @@ async def test_native_revision_quota_and_schema25_upgrade_preserve_archives(stor
 
     c = await prepared(store, tmp_path)
     try:
-        assert SCHEMA_REVISION == 29
+        assert SCHEMA_REVISION == 30
         async with store._unit() as session:
+            assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0
             await session.execute(text("DROP TABLE forge_campaign_delivery_plan_revisions"))
             await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision>25"))
             await session.execute(
                 text("INSERT INTO forge_schema_migrations(revision) VALUES (25) ON CONFLICT DO NOTHING")
             )
             await migrate(session, store.schema)
+            assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == SCHEMA_REVISION
+            assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0
         assert await c.history.get(c.project["id"], c.campaign["id"], c.archive["request_id"]) == c.archive
         saved = await c.plans.save(c.project["id"], c.campaign["id"], c.body)
         monkeypatch.setattr(module, "MAX_REVISIONS", 1)

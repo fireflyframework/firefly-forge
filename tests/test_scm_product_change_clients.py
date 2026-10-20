@@ -229,7 +229,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 157
+    assert len(tools) == 158
     names = {
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
@@ -268,6 +268,7 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
         "request_agent_checkpoint_restore",
         "get_agent_checkpoint_restore",
         "query_run_evidence",
+        "get_run_activity_content",
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
         "get_current_scm_product_change_grant",
@@ -276,5 +277,5 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
     tools = await create_server().list_tools()
     previous = [tool for tool in tools if tool.name not in new]
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-product-change-baseline-v1.json").read_text())
-    assert len(previous) == 145 and len(tools) == 157
+    assert len(previous) == 145 and len(tools) == 158
     assert ListToolsResult(tools=previous).model_dump_json(by_alias=True, exclude_none=True) == baseline["wire_json"]
