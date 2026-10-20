@@ -256,16 +256,36 @@ Known official-CLI process failures have a separate same-run recovery admission.
 
 The final provider allowance is a separate administrator reservation after a known native fourth-attempt failure. Under the existing PostgreSQL identity, membership and run locks, it appends `provider_recovery_allowance`, its linked version-2 admission, the closed failure and one fifth implementation intent. The allowance is spent at reservation, including an unlaunched or failed dispatch. Candidate review binds the existing source/configuration cut and explicitly adopted CLI identity; no repair or verification grant is reset. The Engine and native feedback writer require the same sealed WAL link and current authority. The legacy recovery and worker-feedback contracts keep their four-attempt bound. See [the final allowance contract](api.md#final-native-recovery-allowance).
 
+<div class="forge-flow" role="region" aria-label="Final native provider allowance ordering" aria-describedby="final-allowance-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
 flowchart LR
-  F["Fourth native process failure"] --> C["Administrator reviews exact candidate"]
-  C --> R["Atomic final reservation and linked WAL"]
-  R --> G["Recheck authority, source and executable"]
-  G --> D["One fifth dispatch"]
-  D --> V["Independent verification"]
-  R --> H["Uncertain or refused: preserve reservation"]
+  F["Fourth native<br/>process failure"] --> C["Administrator reviews<br/>exact candidate"]
+  C --> R["Atomic reservation<br/>and linked WAL"]
+```
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+  R["Reserved<br/>allowance"] --> G["Recheck authority,<br/>source and executable"]
+  G --> D["One fifth<br/>dispatch"]
+  D --> V["Independent<br/>verification"]
+  R --> H["Uncertain or refused:<br/>preserve reservation"]
   D --> H
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="final-allowance-flow-guide">The first row commits the one-use reservation. The second follows execution under renewed checks; an uncertain or refused outcome keeps that reservation spent. Verification remains a separate stage. On a narrow screen, scroll horizontally or focus the diagram and use the arrow keys.</p>
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 

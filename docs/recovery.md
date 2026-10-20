@@ -136,6 +136,69 @@ The Python SDK offers `provider_recovery_allowance_candidate`, `reserve_provider
 
 If the browser's saved request is lost, the run's native allowance identity still provides **Read existing reservation**. This performs only an exact receipt read under the original administrator's current authority. Studio validates the returned operator, protocol, run and task bindings without claiming that the request body was previously saved locally. A missing or refused receipt stays unresolved; this path cannot reserve another attempt.
 
+### Review the final allowance in Studio
+
+Open the failed run, select **Plan**, then choose **Review final allowance**. The server supplies the current candidate and checks native process evidence and administrator authority. These screenshots use controlled HTTP fixtures. They illustrate the review and readback controls without running a CLI or establishing a successful recovery. Screenshots follow the documentation's light or dark appearance; select one to open it at full size.
+
+#### 1. Review the failed attempt
+
+Review the failed fourth attempt and the selected current CLI. Expand **Source and executable fingerprints** to inspect the retained source, Git, executable and native process digests. If the candidate is refused or changes during review, refresh it and inspect the new values before continuing.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop review of the failed attempt and selected current CLI.](assets/screenshots/provider-allowance-failure-desktop-light.png)
+<figcaption>The failure candidate identifies what the administrator is reviewing. It does not establish that another dispatch or product check has succeeded.</figcaption>
+</figure>
+
+#### 2. Record the mitigation
+
+Describe the mitigation you reviewed and enter its 64-character lowercase SHA-256 fingerprint. Confirm **Use the reviewed current CLI for this attempt**. The fingerprint records your attestation; forge does not execute or validate those mitigation tests through this form.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop mitigation form with an evidence fingerprint and explicit current-CLI adoption.](assets/screenshots/provider-allowance-mitigation-desktop-light.png)
+<figcaption>The reason, evidence fingerprint and executable choice stay part of the exact reservation request.</figcaption>
+</figure>
+
+#### 3. Confirm the reservation
+
+Review the reservation summary and acknowledge that this is the run's final allowance. **Reserve final allowance** saves the original request in the browser before sending one POST. Reservation spends the allowance, including a timeout, an unlaunched dispatch or a failed fifth attempt.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop final reservation review with the one-use acknowledgment.](assets/screenshots/provider-allowance-review-desktop-light.png)
+<figcaption>Confirm only after reviewing the source, selected executable and mitigation. This recovery cannot authorize a sixth dispatch.</figcaption>
+</figure>
+
+After submission, **Check saved reservation** reads the exact receipt. A pending, missing, refused or mismatched response leaves the request held. If browser storage is lost, **Read existing reservation** uses the identity retained on the run and performs only a receipt read. Neither action sends another reservation. Follow the run's plan, activity and actual verification results to determine what happened after admission.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop result after the exact final-allowance receipt is confirmed.](assets/screenshots/provider-allowance-reserved-desktop-light.png)
+<figcaption>A confirmed reservation records admission. Implementation, verification and product acceptance remain separate outcomes.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review and reserve the final allowance on a phone</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone review of the failed attempt and selected CLI.](assets/screenshots/provider-allowance-failure-mobile-light.png)
+<figcaption>Review the failed attempt, then continue to the mitigation. The dialog scrolls as one form.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone mitigation form with reason, evidence fingerprint and current-CLI choice.](assets/screenshots/provider-allowance-mitigation-mobile-light.png)
+<figcaption>Enter the reviewed evidence fingerprint and explicitly select the current CLI.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone final review with the authorization and reservation controls visible.](assets/screenshots/provider-allowance-review-mobile-light.png)
+<figcaption>Scroll to review the acknowledgment and final action. Closing the dialog preserves any already saved reservation identity.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone result with exact receipt readback for the reserved final allowance.](assets/screenshots/provider-allowance-reserved-mobile-light.png)
+<figcaption>Use the retained identity for readback and inspect the execution record for the actual outcome.</figcaption>
+</figure>
+
+</details>
+
 ## Inspect a factory verification handoff
 
 A pending implementation request with typed `kind: "verification"` can use the run's frozen automatic-verification grant. forge executes all explicit approved commands through the existing authorized runner. It records each intent and known result before supplying protected factory feedback and admitting a bounded continuation. Question text and request IDs never choose commands or expand permissions.

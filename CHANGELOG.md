@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.28 — 2026-10-20
+
+- Let a current native factory administrator reserve one final fifth dispatch after a known, drained fourth official-CLI failure, with a sealed allowance and admission in the existing WAL transaction.
+- Bind the reservation to the reviewed current executable, source, original operator and current execution authority. Consume it at reservation, including a lost response or an attempt that never starts; refuse a sixth dispatch.
+- Keep legacy four-attempt recovery and worker-feedback contracts unchanged. Add a separate native allowance-bound feedback variant and typed SDK admission and readback methods.
+- Guide administrator review through failed attempt, mitigation and final confirmation. Retain the exact browser request before its single POST and recover an existing receipt after local storage is lost.
+- Refresh the controlled desktop/mobile walkthrough captures and document the difference between an administrator's mitigation attestation, process evidence and actual product verification.
+
 ## 0.2.27 — 2026-10-20
 
 - Preserve an inherited ignored `SIGXFSZ` for trusted Codex and Claude CLI launches under a finite POSIX file-size limit, allowing an oversized write to return `EFBIG` while retaining the kernel limit.
