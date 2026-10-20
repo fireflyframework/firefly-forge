@@ -31,18 +31,36 @@ export async function captureWalkthrough(
     actionSelector?: string;
     focusSelector?: string;
     boundary?: "dialog";
+    framing?: "initial";
   } = {},
 ) {
+  const dialogStages: Record<string, string[]> = {
+    "studio/tests/docs-provider-allowance.spec.ts": [
+      "provider-allowance-failure",
+      "provider-allowance-mitigation",
+      "provider-allowance-review",
+    ],
+    "studio/tests/docs-coding-check-recovery.spec.ts": [
+      "coding-check-scope",
+      "coding-check-grant",
+      "coding-check-mitigation",
+      "coding-check-review",
+      "coding-check-reserved",
+    ],
+  };
   if (
     options.boundary === "dialog" &&
-    (options.producer !== "studio/tests/docs-provider-allowance.spec.ts" ||
-      ![
-        "provider-allowance-failure",
-        "provider-allowance-mitigation",
-        "provider-allowance-review",
-      ].includes(stage))
+    !dialogStages[options.producer ?? ""]?.includes(stage)
   )
     throw new Error("Unknown final allowance dialog capture boundary");
+  if (
+    options.framing !== undefined &&
+    (options.framing !== "initial" ||
+      options.producer !== "studio/tests/docs-coding-check-recovery.spec.ts" ||
+      options.boundary !== "dialog" ||
+      !dialogStages[options.producer].includes(stage))
+  )
+    throw new Error("Unknown configured-check initial frame");
   if (
     options.boundary === "dialog" &&
     !(await page.locator("dialog:modal").isVisible())
@@ -109,6 +127,10 @@ export async function captureWalkthrough(
     "provider-allowance-failure": "Failed attempt",
     "provider-allowance-mitigation": "Mitigation",
     "provider-allowance-review": "Review",
+    "coding-check-scope": "Checks",
+    "coding-check-grant": "Grant",
+    "coding-check-mitigation": "Mitigation",
+    "coding-check-review": "Reserve",
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
     "source-analysis-scope": "Scope",
@@ -213,6 +235,30 @@ export async function captureWalkthrough(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  if (options.framing === "initial") {
+    const modal = page.locator("dialog:modal");
+    await modal.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    for (const selector of [
+      ".access-dialog-heading",
+      ".wizard-steps",
+      ".wizard-heading h2",
+    ]) {
+      const part = modal.locator(selector);
+      if (await part.count())
+        expect(
+          await part.evaluate((node) => {
+            const box = node.getBoundingClientRect(),
+              dialog = node.closest("dialog")!.getBoundingClientRect();
+            return (
+              box.top >= Math.max(0, dialog.top) &&
+              box.bottom <= Math.min(innerHeight, dialog.bottom)
+            );
+          }),
+        ).toBe(true);
+    }
+  }
   if (!process.env.UPDATE_DOC_SCREENSHOTS) return;
   const selected = process.env.CAPTURE_STAGES?.split(",");
   if (selected && !selected.includes(stage)) return;
@@ -304,11 +350,14 @@ export async function captureWalkthrough(
     "studio/tests/scm-poll-resume-contract-fixture.json",
     "studio/tests/provider-recovery-allowance-fixture.ts",
     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
+    "studio/tests/coding-check-grant-fixture.json",
+    "studio/tests/coding-check-recovery-browser-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",
     "studio/tests/external-tools.spec.ts",
     "studio/tests/docs-provider-allowance.spec.ts",
+    "studio/tests/docs-coding-check-recovery.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

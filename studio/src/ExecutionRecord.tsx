@@ -9,6 +9,7 @@ import {
 } from "./ExecutionPresentation";
 
 import { ProviderRecoveryAllowance } from "./ProviderRecoveryAllowance";
+import { CodingCheckRecovery } from "./CodingCheckRecovery";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import type { IdentitySession } from "./Identity";
@@ -246,6 +247,29 @@ export function ExecutionRecord({
             run.publish,
             run.status,
             run.cancel_request?.status,
+          ])}
+          run={run}
+          connection={connection}
+          session={session}
+        />
+      )}
+      {session && (
+        <CodingCheckRecovery
+          key={JSON.stringify([
+            "coding-check-recovery",
+            connection.base,
+            connection.token,
+            session,
+            run.id,
+            run.repository_id,
+            run.project_id,
+            run.agent,
+            run.attempt,
+            run.provider_recovery,
+            run.active_task,
+            run.status,
+            run.cancel_request?.status,
+            run.bridge_completion_hold,
           ])}
           run={run}
           connection={connection}

@@ -36,11 +36,14 @@ CAPTURE_HELPERS = {
     "studio/tests/scm-poll-resume-contract-fixture.json",
     "studio/tests/provider-recovery-allowance-fixture.ts",
     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
+    "studio/tests/coding-check-grant-fixture.json",
+    "studio/tests/coding-check-recovery-browser-fixture.ts",
 }
 CAPTURE_PRODUCERS = {
     "studio/tests/docs-walkthrough.spec.ts",
     "studio/tests/external-tools.spec.ts",
     "studio/tests/docs-provider-allowance.spec.ts",
+    "studio/tests/docs-coding-check-recovery.spec.ts",
 }
 
 
@@ -118,9 +121,20 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("provider-allowance-") and stage not in allowance_stages:
             raise ValueError("Unknown final allowance capture stage: " + name)
+        coding_stages = {
+            "coding-check-scope",
+            "coding-check-grant",
+            "coding-check-mitigation",
+            "coding-check-review",
+            "coding-check-reserved",
+        }
+        if stage.startswith("coding-check-") and stage not in coding_stages:
+            raise ValueError("Unknown configured-check capture stage: " + name)
         expected_producer = (
             "studio/tests/external-tools.spec.ts"
             if stage.startswith("external-")
+            else "studio/tests/docs-coding-check-recovery.spec.ts"
+            if stage in coding_stages
             else "studio/tests/docs-provider-allowance.spec.ts"
             if stage in allowance_stages
             else "studio/tests/docs-walkthrough.spec.ts"

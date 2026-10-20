@@ -213,6 +213,21 @@ After submission, **Check saved reservation** reads the exact receipt. A pending
 
 </details>
 
+### Grant configured checks for the final recovery
+
+Native administrators can choose **Prepare recovery with configured checks** in the Plan tab. This is a separate flow from CLI-only recovery. It gives the coding agent one scoped tool for selected, retained check commands; it does not add general command permissions or change the original runner policy.
+
+1. **Review configured checks.** Read each command and its timeout, choose the checks, and inspect the runner and source fingerprints. The budget separates interactive check capacity from independent final verification. A host runner uses the forge service account and enforces timeout and output limits; it does not provide filesystem, CPU, memory or network isolation. Under **Advanced connection**, leave the loopback port at `0` for automatic selection or choose `1024–65535`.
+2. **Grant selected checks.** Set a maximum number of calls, a lifetime of 30–3600 seconds, and a reason. A selected check may be called again within those limits. Granting access does not start a command or reserve a provider dispatch. Studio saves the exact grant body and future recovery request ID before sending the grant once.
+3. **Review the mitigation.** Read the confirmed grant and its current expiry. Studio refreshes the final allowance candidate after the grant is recorded. Review the source, current CLI and native fourth-attempt failure, record the mitigation and its evidence fingerprint, and explicitly adopt that CLI. The fingerprint is an administrative attestation, not a server-verified QA result.
+4. **Reserve the final attempt.** Review the grant and the same future recovery request ID, acknowledge the one-use limit, then reserve explicitly. The reservation includes the grant ID. There is no automatic second POST, CLI-only fallback or sixth dispatch. Independent configured and policy checks remain subject to the existing final-verification limit of 20 and the retained shared command budget.
+
+An immutable grant receipt records what was granted. Its matching current revision, receipt fingerprint and unexpired status must also be confirmed before reservation; an old receipt cannot establish current authority. Permission loss, revocation, expiry or changed execution authority holds the flow.
+
+If its browser record has been removed, Studio checks the current server grant before preparing another identity. An existing, expired, revoked or unconfirmed grant holds this wizard for review of the original retained identity; it does not create a replacement.
+
+After a lost response, use **Check saved grant** or **Check saved final reservation**. These actions read the exact saved identity without repeating either POST. Closing the wizard, reloading or switching tabs does not authorize a replacement request. Check outcomes in the execution record: a grant, reserved dispatch or successful interactive check does not establish product acceptance.
+
 ## Inspect a factory verification handoff
 
 A pending implementation request with typed `kind: "verification"` can use the run's frozen automatic-verification grant. forge executes all explicit approved commands through the existing authorized runner. It records each intent and known result before supplying protected factory feedback and admitting a bounded continuation. Question text and request IDs never choose commands or expand permissions.
