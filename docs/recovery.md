@@ -112,9 +112,27 @@ The receipt and dispatch WAL bind that executable to one reserved implementation
 
 This descriptor identifies the entrypoint file. Administrators remain responsible for its installation, dependencies and filesystem access; the check does not attest every library or make a path-based operating-system launch atomic. Qualify an updated CLI locally before spending another recovery attempt.
 
-The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. Every implementation intent counts toward a maximum of four dispatch reservations, including failed or unreceipted attempts. Consuming a reservation does not renew the repair or verification budget.
+The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. The ordinary recovery contract counts every implementation intent toward a maximum of four dispatch reservations, including failed or unreceipted attempts. The separate final-allowance contract below is the only native exception. Consuming a reservation does not renew the repair or verification budget.
 
 Future official-CLI failures retain typed native process evidence separately from provider output. A known nonzero exit requires the leader to have exited, both streams to have drained and its own process group to be absent. A zero exit without a valid final report, missing receipt or uncertain group remains unresolved. Provider output cannot assert those facts. This HTTP surface has no Studio, CLI or SDK recovery shortcut in this change.
+
+### Reserve one final native provider attempt
+
+After the fourth dispatch fails, a current native factory administrator can explicitly reserve one final dispatch in the same run. This allowance has a separate HTTP contract. The ordinary recovery API and automatic verification remain limited to four attempts.
+
+Eligibility requires a native fourth-attempt process receipt with a nonzero exit, a waited leader, drained streams and an absent process group. Historical operator attestation cannot establish eligibility. Unfinished tools, unknown remote effects, cancellation and changed execution authority keep the run held.
+
+1. Configure the reviewed current CLI executable, then read `GET /api/v1/runs/{id}/provider-recoveries/allowances/candidate?agent=codex&adopt_current_executable=true` (or `claude`). Review the failure, source, Git, policy, configuration and executable bindings.
+2. Retain one new 32-character hexadecimal `request_id`. POST `/api/v1/runs/{id}/provider-recoveries/allowances` with that ID, the returned `candidate_digest` and `native_process_digest`, the same `agent`, `adopt_current_executable: true`, a nonblank `reason` of at most 2,000 characters, and `mitigation_evidence_digest` containing a lowercase SHA-256.
+3. Keep the exact ID and body. If delivery is uncertain, read `GET /api/v1/runs/{id}/provider-recoveries/allowances/{request_id}` using the original current administrator. An identical POST reads back the reservation. A different ID, body or operator is refused.
+
+The reason and mitigation digest record an administrator's attestation. The server does not run the referenced mitigation tests or establish that they address the failure. The executable descriptor identifies the selected entrypoint; it does not attest forge's runtime source or every dependency. Qualify the running worker separately before reserving.
+
+A successful reservation consumes the run's only allowance immediately. It adds a sealed `provider_recovery_allowance`, a linked version-2 native admission and one new implementation intent in the existing transaction. The normal Engine consumer performs the dispatch. A timeout, lost response, cancelled run or failed fifth attempt never restores the allowance. There is no sixth dispatch through this contract.
+
+The original WAL prefix, partial workspace, model settings, repair budget and verification grants remain intact. Current authority and the exact native allowance link are checked at execution boundaries. Source or executable drift prevents launch. A fifth-attempt worker report uses a distinct typed feedback variant with the allowance ID and digest; the worker cannot create or extend the grant. Its completion report remains separate from verification and product acceptance. Questions that require another coding dispatch remain held after the final allowance is spent.
+
+The Python SDK offers `provider_recovery_allowance_candidate`, `reserve_provider_recovery_allowance` and `provider_recovery_allowance`. Each method performs one explicit request. This release provides HTTP/SDK admission and compatible Studio feedback reading; a Studio reservation wizard is a separate interface.
 
 ## Inspect a factory verification handoff
 

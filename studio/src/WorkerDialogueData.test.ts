@@ -759,3 +759,41 @@ describe("exclusive worker reply claims", () => {
     },
   );
 });
+
+it("reads a distinct native final allowance feedback without widening legacy attempts", async () => {
+  const original = await question();
+  const { digest: _digest, ...body } = original;
+  void _digest;
+  const payload = {
+    ...body.payload,
+    attempt: 5,
+    protocol: "native-provider-recovery-allowance-v1",
+    allowance_id: "c".repeat(32),
+    allowance_digest: "d".repeat(64),
+  };
+  const final = await seal({ ...body, payload });
+  const threads = await workerThreads([final], run);
+  expect(threads).toHaveLength(1);
+  expect(threads[0].event.payload.attempt).toBe(5);
+  for (const change of [
+    { protocol: "legacy" },
+    { attempt: 6 },
+    { allowance_digest: "bad" },
+    { allowance_id: "bad" },
+    { task_id: "verify" },
+    { role_id: "architect" },
+  ]) {
+    await expect(
+      workerThreads(
+        [await seal({ ...body, payload: { ...payload, ...change } })],
+        run,
+      ),
+    ).rejects.toThrow();
+  }
+  await expect(
+    workerThreads(
+      [await seal({ ...body, payload: { ...body.payload, attempt: 5 } })],
+      run,
+    ),
+  ).rejects.toThrow();
+});

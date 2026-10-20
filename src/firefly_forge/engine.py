@@ -746,12 +746,22 @@ class Engine:
                     else inject_skills(run["brief"], run.get("skills", DEFAULT_SKILLS))
                 )
                 if run.get("role_snapshot"):
-                    from firefly_forge.agent_roles import WorkerFeedback, inject_role_snapshot
+                    from firefly_forge.agent_roles import (
+                        NativeAllowanceWorkerFeedback,
+                        WorkerFeedback,
+                        inject_role_snapshot,
+                    )
 
                     source_brief = inject_role_snapshot(source_brief, run["role_snapshot"])
-                    source_brief += prompt_text(
-                        "implementation/worker-feedback", schema=json.dumps(WorkerFeedback.model_json_schema())
-                    )
+                    feedback_schema = WorkerFeedback.model_json_schema()
+                    if recovery is not None and recovery["attempt"] == 5:
+                        link = await self.provider_recoveries._allowance(run)
+                        if not link:
+                            raise ValueError("Final feedback schema requires a sealed native allowance")
+                        feedback_schema = NativeAllowanceWorkerFeedback.model_json_schema()
+                        for name, value in link.items():
+                            feedback_schema["properties"][name]["const"] = value
+                    source_brief += prompt_text("implementation/worker-feedback", schema=json.dumps(feedback_schema))
                 if (run.get("mcp_snapshot") or {}).get("grants"):
                     source_brief += prompt_text(
                         "implementation/external-tools",
@@ -874,7 +884,10 @@ class Engine:
                 repair_failures = []
             if recovery is not None:
                 start_round = implementation_limit = recovery["attempt"]
-                if not 1 <= start_round <= 4:
+                if not 1 <= start_round <= 4 and (
+                    start_round != 5
+                    or not await self.provider_recoveries._allowance(await self.store.get_run(identifier))
+                ):
                     raise ReconciliationRequired("The reserved provider dispatch exceeds its finite bound")
                 repair_failures = []
             if start_round > implementation_limit:
@@ -1275,7 +1288,7 @@ class Engine:
     async def _worker_feedback(
         self, identifier: str, workspace: Path, result: Any, attempt: int, safe_data: Callable[[Any], Any]
     ) -> None:
-        from firefly_forge.agent_roles import WorkerFeedback
+        from firefly_forge.agent_roles import worker_feedback_model
 
         payload = getattr(result, "worker_feedback", None) or getattr(result, "usage", {}).get("worker_feedback")
         if payload is None and result.summary.strip().startswith("{"):
@@ -1287,7 +1300,7 @@ class Engine:
                 payload = report.get("feedback")
         if payload is None:
             return
-        feedback = WorkerFeedback.model_validate(safe_data(payload))
+        feedback = worker_feedback_model(payload).model_validate(safe_data(payload))
         if feedback.role_id != "implementer" or feedback.task_id != "implement" or feedback.attempt != attempt:
             raise ValueError("Worker feedback must identify its actual implementation role, stage and attempt")
         run = await self.store.get_run(identifier)

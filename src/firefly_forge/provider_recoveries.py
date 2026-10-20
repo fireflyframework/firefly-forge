@@ -219,7 +219,9 @@ class ProviderRecoveries:
         ):
             raise ValueError("An unknown remote effect requires reconciliation")
 
-    async def _candidate(self, run: Data, agent: str, *, adopt_current_executable: bool = False) -> Data:
+    async def _candidate(
+        self, run: Data, agent: str, *, adopt_current_executable: bool = False, final_allowance: bool = False
+    ) -> Data:
         operator = CURRENT_PRINCIPAL.get()
         if operator is None:
             raise AccessDenied("A current native recovery operator is required")
@@ -236,7 +238,20 @@ class ProviderRecoveries:
             raise ValueError("Recovery must explicitly retain the original official provider")
         used = len(dispatch_keys(entries))
         attempt = max(used, task["attempt"])
-        if type(attempt) is not int or not 1 <= attempt < 4 or used >= 4:
+        if final_allowance:
+            if (
+                type(task["attempt"]) is not int
+                or task["attempt"] != 4
+                or type(run.get("attempt")) is not int
+                or run["attempt"] != 4
+                or used != 4
+                or task["status"] != "failed"
+                or any(e["kind"] == "provider_recovery_allowance" for e in entries)
+            ):
+                raise ValueError(
+                    "The final allowance requires the fourth failed native dispatch and no prior reservation"
+                )
+        elif type(attempt) is not int or not 1 <= attempt < 4 or used >= 4:
             raise ValueError("The four-dispatch provider recovery budget is exhausted")
         if any(
             e["kind"] == "provider_recovery_admission"
@@ -252,6 +267,18 @@ class ProviderRecoveries:
             ),
             None,
         )
+        if final_allowance and (
+            observed is None
+            or observed["payload"].get("provenance") != "native_cli_process_observation"
+            or not any(
+                e["kind"] == "provider_dispatch_intent"
+                and e["payload"].get("task_key") == task["idempotency_key"]
+                and type(e["payload"].get("attempt")) is int
+                and e["payload"]["attempt"] == 4
+                for e in entries
+            )
+        ):
+            raise ValueError("The final allowance requires an actual native process failure receipt")
         if not observed and (
             task.get("provider_recovery_id")
             or any(
@@ -292,6 +319,10 @@ class ProviderRecoveries:
             "native_process_digest": observed["digest"] if observed else None,
             "cut": self._cut({**run, "provider_recovery": prospective}),
         }
+        if final_allowance:
+            from firefly_forge.provider_recovery_allowances import PROTOCOL
+
+            payload["protocol"] = PROTOCOL
         if adoption:
             payload["executable_adoption"] = adoption
         return {**payload, "digest": digest(payload)}
@@ -325,6 +356,8 @@ class ProviderRecoveries:
         if found is None:
             raise KeyError("The original provider recovery receipt was not found")
         await self._operator(run_id)
+        if found.get("protocol") == "native-provider-recovery-allowance-v1":
+            raise ValueError("Read the final allowance through /provider-recoveries/allowances/" + request_id)
         self.store.reject_credentials(found)
         return copy.deepcopy(found)
 
@@ -431,6 +464,16 @@ class ProviderRecoveries:
                 raise ValueError("The recovery cut changed before commit")
             return copy.deepcopy(receipt)
 
+    async def _allowance(self, run: Data) -> Data | None:
+        async with self.store._unit():
+            task = self._task_view(await self.journal._task(run["id"], "implement"))
+            state = run.get("provider_recovery") or {}
+            if task["attempt"] <= 4 and not state.get("allowance_id") and not state.get("allowance_digest"):
+                return None
+            from firefly_forge.provider_recovery_allowances import sealed_allowance
+
+            return sealed_allowance(run, task, await self._entries(run["id"]))
+
     async def begin(self, run_id: str) -> Data | None:
         run = await self.store.get_run(run_id)
         state = run.get("provider_recovery") or {}
@@ -438,16 +481,19 @@ class ProviderRecoveries:
             return None
         if state.get("status") != "reserved":
             raise ValueError("The consumed provider dispatch requires reconciliation")
+        await self._allowance(run)
         return {"idempotency_key": state["task_key"], "disposition": "execute", "attempt": state["attempt"]}
 
     async def prepare_workspace(self, run_id: str, inspect: Any) -> Data:
         initial = await self.store.get_run(run_id)
         state = initial.get("provider_recovery") or {}
+        await self._allowance(initial)
         if state.get("status") != "reserved" or self._cut(initial) != state["cut"]:
             raise ValueError("The reserved preparation cut changed")
         observed: Data = await inspect()
         async with self._locked(run_id, state["actor"]) as row:
             current = row.data.get("provider_recovery") or {}
+            await self._allowance(row.data)
             if current != state or current.get("workspace_prepared"):
                 raise ValueError("The original reserved preparation is unavailable")
             after = self._cut(row.data)
@@ -479,6 +525,7 @@ class ProviderRecoveries:
         state = initial.get("provider_recovery") or {}
         async with self._locked(run_id, state["actor"]) as row:
             current = row.data.get("provider_recovery") or {}
+            await self._allowance(row.data)
             if current.get("status") != "reserved" or current.get("task_key") != key:
                 raise ValueError("The provider dispatch reservation was consumed or changed")
             task = await self.journal._task(run_id, "implement")
@@ -516,6 +563,7 @@ class ProviderRecoveries:
         state = run.get("provider_recovery") or {}
         async with self._locked(run_id, state["actor"]) as row:
             current = row.data.get("provider_recovery") or {}
+            await self._allowance(row.data)
             if current.get("status") != "consumed" or current.get("task_key") != key:
                 raise ValueError("The original provider dispatch is unavailable")
             if row.status in {"failed", "cancelled", "succeeded", "needs_reconciliation"}:
@@ -614,6 +662,7 @@ class ProviderRecoveries:
             raise ValueError("The local result context changed during native commit")
 
     async def _result_cut(self, row: Any, key: str, state: Data) -> None:
+        await self._allowance(row.data)
         task = await self.journal._task(row.data["id"], "implement")
         if task.data.get("idempotency_key") != key:
             raise ProviderAttemptClosed("The provider result belongs to a closed old attempt")
