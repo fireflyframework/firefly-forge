@@ -30,8 +30,24 @@ export async function captureWalkthrough(
     resetFields?: boolean;
     actionSelector?: string;
     focusSelector?: string;
+    boundary?: "dialog";
   } = {},
 ) {
+  if (
+    options.boundary === "dialog" &&
+    (options.producer !== "studio/tests/docs-provider-allowance.spec.ts" ||
+      ![
+        "provider-allowance-failure",
+        "provider-allowance-mitigation",
+        "provider-allowance-review",
+      ].includes(stage))
+  )
+    throw new Error("Unknown final allowance dialog capture boundary");
+  if (
+    options.boundary === "dialog" &&
+    !(await page.locator("dialog:modal").isVisible())
+  )
+    throw new Error("Final allowance captures require a visible native modal");
   await page.evaluate(() => document.fonts.ready);
   const currentVersion = JSON.parse(
     readFileSync(resolve(root, "studio/package.json"), "utf8"),
@@ -90,6 +106,9 @@ export async function captureWalkthrough(
     "scm-poll-continuation-mapping": "Mapping",
     "scm-poll-continuation-scope": "Scope",
     "scm-poll-continuation-review": "Review",
+    "provider-allowance-failure": "Failed attempt",
+    "provider-allowance-mitigation": "Mitigation",
+    "provider-allowance-review": "Review",
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
     "source-analysis-scope": "Scope",
@@ -132,24 +151,42 @@ export async function captureWalkthrough(
             element.getBoundingClientRect().top - header.bottom - 16;
       });
     }
-    control = await action.evaluate((button) => {
+    control = await action.evaluate((button, dialogBoundary) => {
       const box = button.getBoundingClientRect();
       const footer = document
         .querySelector(".workspace-main > footer")!
         .getBoundingClientRect();
+      const dialog = button.closest("dialog:modal");
+      const boundaryTop = dialogBoundary
+        ? Math.max(0, dialog?.getBoundingClientRect().top ?? Infinity)
+        : 0;
+      const boundaryBottom = dialogBoundary
+        ? Math.min(innerHeight, dialog?.getBoundingClientRect().bottom ?? -1)
+        : footer.top;
       return {
         label: button.textContent?.trim(),
         top: box.top,
         bottom: box.bottom,
         footerTop: footer.top,
+        boundaryTop,
+        boundaryBottom,
+        boundary: dialogBoundary ? "dialog" : "footer",
         hit: button.contains(
-          document.elementFromPoint(box.x + box.width / 2, box.bottom - 2),
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            dialogBoundary ? box.y + box.height / 2 : box.bottom - 2,
+          ),
         ),
+        textFits:
+          !dialogBoundary ||
+          (button.scrollHeight <= button.clientHeight &&
+            button.scrollWidth <= button.clientWidth),
       };
-    });
-    expect(control.top).toBeGreaterThanOrEqual(0);
-    expect(control.bottom).toBeLessThanOrEqual(control.footerTop);
+    }, options.boundary === "dialog");
+    expect(control.top).toBeGreaterThanOrEqual(control.boundaryTop);
+    expect(control.bottom).toBeLessThanOrEqual(control.boundaryBottom);
     expect(control.hit).toBe(true);
+    expect(control.textFits).toBe(true);
   }
   if (stage === "product-feature-mapping") {
     await page
@@ -186,23 +223,41 @@ export async function captureWalkthrough(
     fullPage: false,
   });
   const capturedAction = (await action.isVisible())
-    ? await action.evaluate((button) => {
+    ? await action.evaluate((button, dialogBoundary) => {
         const box = button.getBoundingClientRect(),
           footer = document
             .querySelector(".workspace-main > footer")!
             .getBoundingClientRect();
+        const dialog = button.closest("dialog:modal");
+        const boundaryTop = dialogBoundary
+          ? Math.max(0, dialog?.getBoundingClientRect().top ?? Infinity)
+          : 0;
+        const boundaryBottom = dialogBoundary
+          ? Math.min(innerHeight, dialog?.getBoundingClientRect().bottom ?? -1)
+          : footer.top;
         return {
           top: box.top,
           bottom: box.bottom,
           footerTop: footer.top,
-          in_frame: box.top >= 0 && box.bottom <= footer.top,
+          boundaryTop,
+          boundaryBottom,
+          boundary: dialogBoundary ? "dialog" : "footer",
+          in_frame: box.top >= boundaryTop && box.bottom <= boundaryBottom,
           hit: button.contains(
-            document.elementFromPoint(box.x + box.width / 2, box.bottom - 2),
+            document.elementFromPoint(
+              box.x + box.width / 2,
+              dialogBoundary ? box.y + box.height / 2 : box.bottom - 2,
+            ),
           ),
+          textFits:
+            !dialogBoundary ||
+            (button.scrollHeight <= button.clientHeight &&
+              button.scrollWidth <= button.clientWidth),
         };
-      })
+      }, options.boundary === "dialog")
     : null;
   if (capturedAction?.in_frame) expect(capturedAction.hit).toBe(true);
+  if (capturedAction?.in_frame) expect(capturedAction.textFits).toBe(true);
   const manifestPath = resolve(assets, "walkthrough-manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const producer = options.producer ?? "studio/tests/docs-walkthrough.spec.ts";
@@ -247,10 +302,13 @@ export async function captureWalkthrough(
     "studio/tests/scm-delegation-fixture.ts",
     "studio/tests/scm-delegation-contract-fixture.json",
     "studio/tests/scm-poll-resume-contract-fixture.json",
+    "studio/tests/provider-recovery-allowance-fixture.ts",
+    "studio/tests/provider-recovery-allowance-browser-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",
     "studio/tests/external-tools.spec.ts",
+    "studio/tests/docs-provider-allowance.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

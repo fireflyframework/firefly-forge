@@ -1,0 +1,203 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.provider-allowance-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  background: var(--surface);
+  text-align: left;
+}
+.provider-allowance-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.provider-allowance-intro > svg {
+  color: var(--accent-ink);
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.provider-allowance-intro h2 {
+  margin: 0 0 8px;
+}
+.provider-allowance-intro p {
+  margin: 0;
+  max-width: 74ch;
+}
+.provider-allowance-dialog {
+  height: max-content;
+}
+.provider-allowance-dialog .wizard-content {
+  padding: 24px;
+}
+.access-member-dialog.provider-allowance-dialog .wizard-field-scroll .field {
+  margin-bottom: 20px;
+}
+.provider-allowance-dialog textarea,
+.provider-allowance-dialog input[type="text"] {
+  width: 100%;
+  min-width: 0;
+}
+.provider-allowance-dialog small {
+  display: block;
+  line-height: 1.6;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.provider-allowance-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 20px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+.provider-allowance-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.provider-allowance-facts dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.provider-allowance-executable {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 20px 0;
+}
+.provider-allowance-executable > svg {
+  color: var(--accent-ink);
+  flex-shrink: 0;
+}
+.provider-allowance-executable > div {
+  min-width: 0;
+}
+.provider-allowance-executable code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.provider-allowance-dialog details {
+  margin: 20px 0;
+}
+.provider-allowance-dialog summary {
+  cursor: pointer;
+}
+.provider-allowance-digests > div,
+.provider-allowance-review > div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.provider-allowance-digests dt,
+.provider-allowance-review dt {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.provider-allowance-digests dd,
+.provider-allowance-review dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.provider-allowance-choice {
+  align-items: flex-start;
+  gap: 12px;
+  margin: 20px 0;
+  line-height: 1.6;
+}
+.provider-allowance-choice input {
+  margin-top: 5px;
+  flex: 0 0 auto;
+}
+.provider-allowance-result h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.provider-allowance-result p {
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+.provider-allowance-panel > .alert {
+  margin-top: 16px;
+}
+.provider-allowance-identity {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.provider-allowance-panel :focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .provider-allowance-panel {
+    padding: 18px;
+  }
+  .provider-allowance-dialog .wizard-content {
+    padding: 16px;
+  }
+  .provider-allowance-facts {
+    gap: 10px;
+  }
+  .provider-allowance-facts dd {
+    font-size: 16px;
+  }
+}
+
+/* A single scroll owner preserves the form flow on short or zoomed viewports. */
+.access-member-dialog.provider-allowance-dialog {
+  display: block;
+  overflow: auto;
+  width: min(760px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
+}
+.access-member-dialog.provider-allowance-dialog .wizard,
+.access-member-dialog.provider-allowance-dialog .wizard-body,
+.access-member-dialog.provider-allowance-dialog .wizard-content,
+.access-member-dialog.provider-allowance-dialog .wizard-form {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+.access-member-dialog.provider-allowance-dialog .wizard-field-scroll {
+  display: block;
+  overflow: visible;
+  min-height: 0;
+  max-height: none;
+}
+.access-member-dialog.provider-allowance-dialog .wizard-actions {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.access-member-dialog.provider-allowance-dialog .wizard-actions button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  white-space: normal;
+  justify-content: center;
+}
+@media (max-width: 600px) {
+  .access-member-dialog.provider-allowance-dialog .wizard-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .access-member-dialog.provider-allowance-dialog {
+    width: calc(100% - 24px);
+    max-height: calc(100% - 24px);
+  }
+}

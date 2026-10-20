@@ -22,6 +22,8 @@ export type ForgeRun = {
   brief: string;
   status: string;
   active_task?: string;
+  attempt?: number;
+  provider_recovery?: unknown;
   backend?: string;
   frontend?: string;
   agent?: string;

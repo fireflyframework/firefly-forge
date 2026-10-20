@@ -10,8 +10,27 @@ import {
   TimelineEventView,
 } from "./ExecutionPresentation";
 import { parseDiff, boundedText, tokenizeCode } from "./ExecutionFormat";
+import { receipt } from "../tests/provider-recovery-allowance-fixture";
 
 describe("execution evidence presentation", () => {
+  it("presents the final allowance WAL as labeled evidence with raw JSON closed and no verification claim", async () => {
+    const value = await receipt({
+      request_id: "a".repeat(32),
+      mitigation_evidence_digest: "e".repeat(64),
+    });
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="provider_recovery_allowance" value={value} />,
+    );
+    expect(html).toContain("<dt>");
+    expect(html).toContain("Mitigation evidence");
+    expect(html).toContain("Provenance");
+    expect(html).toContain("administrator_attestation");
+    expect(html).toContain("Native process digest");
+    expect(html).toContain("<summary>Advanced record</summary>");
+    expect(html).not.toContain("<details open");
+    expect(html).not.toContain(">Passed<");
+    expect(html).not.toContain(">Verified<");
+  });
   it("projects provider command events into a bounded command result instead of a JSON heading", () => {
     const html = renderToStaticMarkup(
       <TimelineEventView
