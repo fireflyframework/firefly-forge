@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from firefly_forge.product_lifecycle import FeatureChangeInput
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
     from firefly_forge.project_models import ProjectDefinition
+    from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowanceInput
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.run_creation_models import RunCreationCancelInput, RunCreationInput
     from firefly_forge.runner_continuations import RunnerContinuationInput
@@ -93,6 +94,34 @@ class ForgeClient:
             return model.model_validate(value).model_dump(mode="json", exclude_unset=True)
         except ValueError:
             raise ValueError("Use the original recovery request with its exact identities, scope and digests") from None
+
+    def provider_recovery_allowance_candidate(
+        self, run_id: str, agent: Literal["codex", "claude"], *, adopt_current_executable: bool = False
+    ) -> dict[str, Any]:
+        run_id = self._recovery_identifier(run_id)
+        if agent not in {"codex", "claude"} or type(adopt_current_executable) is not bool:
+            raise ValueError("Select an official provider and an explicit CLI adoption choice")
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{run_id}/provider-recoveries/allowances/candidate",
+                params={"agent": agent, "adopt_current_executable": str(adopt_current_executable).lower()},
+            )
+        )
+
+    def reserve_provider_recovery_allowance(
+        self, run_id: str, request: ProviderRecoveryAllowanceInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Reserve once. After uncertain delivery, read the same receipt; never choose another identity."""
+        from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowanceInput
+
+        run_id = self._recovery_identifier(run_id)
+        body = self._recovery_body(ProviderRecoveryAllowanceInput, request)
+        return dict(self.request("POST", f"runs/{run_id}/provider-recoveries/allowances", json=body))
+
+    def provider_recovery_allowance(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/provider-recoveries/allowances/{request_id}"))
 
     def request_run_creation(self, request_id: str, request: RunCreationInput | dict[str, Any]) -> dict[str, Any]:
         """Submit one retained version-1 envelope; uncertain delivery never selects a follow-up action."""

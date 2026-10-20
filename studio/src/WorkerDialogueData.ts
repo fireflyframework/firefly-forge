@@ -195,10 +195,23 @@ export async function workerThreads(
   for (const event of events) {
     const payload = event.payload;
     if (event.kind === "worker_feedback") {
+      const nativeAllowance =
+        payload.protocol === "native-provider-recovery-allowance-v1";
       assert(
         Object.keys(payload).sort().join(",") ===
-          "attempt,disposition,evidence_paths,id,request,role_id,summary,task_id",
+          (nativeAllowance
+            ? "allowance_digest,allowance_id,attempt,disposition,evidence_paths,id,protocol,request,role_id,summary,task_id"
+            : "attempt,disposition,evidence_paths,id,request,role_id,summary,task_id"),
       );
+      if (nativeAllowance) {
+        matches(payload.allowance_id, id);
+        matches(payload.allowance_digest, hash);
+        assert(
+          payload.attempt === 5 &&
+            payload.task_id === "implement" &&
+            payload.role_id === "implementer",
+        );
+      }
       assert(payload.task_id === event.task_id);
       assert(
         [
@@ -225,7 +238,9 @@ export async function workerThreads(
       assert(
         Number.isInteger(payload.attempt) &&
           (payload.attempt as number) >= 1 &&
-          (payload.attempt as number) <= 4,
+          (nativeAllowance
+            ? payload.attempt === 5
+            : (payload.attempt as number) <= 4),
       );
       if (payload.request == null) continue;
       assert(
