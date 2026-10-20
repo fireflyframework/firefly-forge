@@ -57,6 +57,12 @@ for (const mode of ["success", "denied", "wrong-actor"]) {
     await page.reload();
     await openPlan(page);
     await expect(
+      page.getByRole("alert").filter({
+        hasText:
+          "Execution is unavailable. Inspect interrupted work before restarting the factory.",
+      }),
+    ).toBeVisible();
+    await expect(
       page.getByRole("button", { name: "Review final allowance", exact: true }),
     ).toHaveCount(0);
     await page
@@ -76,7 +82,15 @@ for (const mode of ["success", "denied", "wrong-actor"]) {
           exact: true,
         }),
       ).toHaveCount(0);
-      await expect(page.getByRole("alert")).toBeVisible();
+      const alert = page
+        .getByRole("region", { name: "Final provider allowance", exact: true })
+        .getByRole("alert");
+      await expect(alert).toBeVisible();
+      await expect(alert).toHaveText(
+        mode === "denied"
+          ? "Current administrator access could not be confirmed. Any saved request remains held for authorized readback."
+          : "The reservation is not confirmed. Its exact request is saved. Check that receipt before taking another action.",
+      );
     }
     expect(state.reads).toBe(1);
     expect(state.posts).toBe(0);
