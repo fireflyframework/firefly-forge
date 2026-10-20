@@ -232,6 +232,62 @@ async def test_fixed_exporter_reuses_hardened_reader_and_rejects_symlinks(tmp_pa
     assert code != 0 and b"only regular files" in raw
 
 
+async def test_fixed_exporter_rejects_child_environment_credentials_without_copying_parent_tokens(tmp_path):
+    import sys
+
+    from firefly_forge.runner_backends import _bounded_process
+    from firefly_forge.runner_pool_launcher import workspace_collector
+    from firefly_forge.secrets import ephemeral_credentials
+
+    workspace = tmp_path / "result"
+    workspace.mkdir()
+    token = "fixture-exporter-child-token-59d58f"
+    parent_token = "fixture-exporter-parent-token-b6d574"
+    (workspace / "main.py").write_text("value = " + repr(token))
+    with ephemeral_credentials({"FORGE_CODING_RUNTIME_TOKEN": parent_token}):
+        script = workspace_collector(1_048_576)
+    assert parent_token not in script
+    local_script = script.replace("Path('/workspace')", "Path(" + repr(str(workspace)) + ")")
+    code, raw = await _bounded_process(
+        [sys.executable, "-I", "-S", "-c", local_script],
+        tmp_path,
+        5,
+        2_000_000,
+        environment={"FORGE_TEST_TOKEN": token},
+    )
+    assert code != 0 and b"configured credential" in raw
+    assert token.encode() not in raw and parent_token.encode() not in raw
+
+
+async def test_parent_artifact_admission_rejects_parent_only_token_returned_by_fixed_exporter(tmp_path):
+    import sys
+
+    from firefly_forge.runner_backends import _bounded_process
+    from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
+    from firefly_forge.runner_pool_launcher import workspace_collector
+    from firefly_forge.secrets import ephemeral_credentials
+
+    workspace = tmp_path / "result"
+    workspace.mkdir()
+    token = "fixture-parent-only-exporter-token-68d967"
+    (workspace / "main.py").write_text("value = " + repr(token))
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir(mode=0o700)
+    artifacts = RunnerPoolArtifacts(artifact_root)
+    invocation = request(policy())
+    with ephemeral_credentials({"FORGE_CODING_RUNTIME_TOKEN": token}):
+        script = workspace_collector(1_048_576)
+        assert token not in script
+        local_script = script.replace("Path('/workspace')", "Path(" + repr(str(workspace)) + ")")
+        code, raw = await _bounded_process(
+            [sys.executable, "-I", "-S", "-c", local_script], tmp_path, 5, 2_000_000, environment={}
+        )
+        assert code == 0 and token.encode() in raw
+        with pytest.raises(ValueError, match="configured credential"):
+            artifacts.retain(policy(), invocation, "result", raw)
+    assert list(artifact_root.rglob("result.bin")) == []
+
+
 async def test_runtime_availability_requires_all_cached_pinned_images_without_pull(tmp_path):
     module = dispatcher_module()
     admin = authority(tmp_path)
