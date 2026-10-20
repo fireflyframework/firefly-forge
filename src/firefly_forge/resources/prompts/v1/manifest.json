@@ -85,7 +85,7 @@
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "4d7b567dd55a9078f5ce51c960375ef33551978231febfb2894314185578d4a1",
+      "sha256": "966af19471584093287828800a3a231ae997aecfd4f6981f955f3241146afb55",
       "field": "user",
       "variables": {}
     },

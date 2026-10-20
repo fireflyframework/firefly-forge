@@ -175,3 +175,57 @@ async def test_feedback_intent_retains_the_native_recovery_identity(delegated_fe
     run.update(with_recovery(), worker_request={})
     await service.process(RECEIPT)
     assert row.data["feedback_intent"]["provider_recovery"] == {"request_id": "a" * 32, "attempt": 4}
+
+
+def handoff_recovery(*, status="queued", request_attempt=1):
+    return {
+        **with_recovery(attempt=5, status="reserved"),
+        "status": status,
+        "worker_request": {"id": "verification-1", "attempt": request_attempt, "status": "answered"},
+        "verification_handoff": {
+            "version": 1,
+            "id": "handoff-1",
+            "request_id": "verification-1",
+            "status": "completed",
+            "commands_count": 7,
+            "completed_commands": 7,
+            "failed_commands": 5,
+        },
+    }
+
+
+@pytest.mark.parametrize("status", ["queued", "developing"])
+def test_resumed_recovery_labels_previous_handoff_before_its_retained_totals(status):
+    run = handoff_recovery(status=status)
+    original = copy.deepcopy(run)
+    fingerprint = milestone_key(run)
+    body = card(run)
+    visible = body.split("<details>", 1)[0]
+    assert "**Previous-attempt verification**" in visible
+    assert visible.index("Previous-attempt verification") < visible.index("7 of 7 checks completed; 5 failed")
+    assert "It does not verify this recovery attempt." in visible
+    assert "**Retained verification from another attempt**" in visible
+    assert visible.index("Retained verification from another attempt") < visible.index("1/1 checks passed")
+    assert "Current-attempt verification" not in visible
+    assert run == original and milestone_key(run) == fingerprint
+
+
+def test_current_handoff_and_final_checks_are_explicitly_current():
+    run = handoff_recovery(status="developing", request_attempt=3)
+    run["provider_recovery"]["attempt"] = 3
+    run["final_verification"] = [{"attempt": 3, "exit_code": 0}]
+    visible = card(run).split("<details>", 1)[0]
+    assert visible.count("**Current-attempt verification**") == 2
+    assert visible.index("Current-attempt verification") < visible.index("7 of 7 checks completed")
+    assert "Previous-attempt verification" not in visible
+    assert "do not verify" not in visible
+
+
+@pytest.mark.parametrize("attempt", [None, True, 0, 6, 101, "1"])
+def test_unknown_or_inconsistent_handoff_attempt_never_claims_current_or_previous(attempt):
+    run = handoff_recovery(request_attempt=attempt)
+    visible = card(run).split("<details>", 1)[0]
+    assert "**Retained verification (attempt not confirmed)**" in visible
+    assert visible.index("attempt not confirmed") < visible.index("7 of 7 checks completed")
+    assert "Previous-attempt verification" not in visible
+    assert "Current-attempt verification" not in visible
