@@ -563,6 +563,52 @@ Studio retains the original consent request before sending it. Use a browser wit
 
 **Read an original signed product-edit result** accepts the original change request reference from the signed command. It reads the immutable result and its recorded delegation. The displayed revision is historical; the current product may have advanced. This read sends no SCM command. The administration flow does not configure provider delivery, create a project or implement GitFlow.
 
+## Review GitHub continuation consent
+
+A GitHub issue answer leaves the run paused. To let a mapped teammate request continuation through issue polling, a factory administrator must record a separate permission for that account and the selected components. The teammate still needs current execute access when the command arrives. This flow applies to an answered clarification on the same run; failed-provider recovery has its own admission.
+
+Open **Project access**, choose the project, then use **Read GitHub accounts**. Select an active account already linked to a registered person through [polling account consent](scm.md#use-github-issue-comments-from-a-local-factory). **Read current GitHub consent** inspects an existing continuation permission. To create or revoke one, choose **Review GitHub continuation**.
+
+1. **Mapping.** Check the GitHub account and its registered person. The account comes from the retained polling binding; the wizard does not create a user or grant membership.
+2. **Scope.** Select the components where that person may request continuation. Keep **Allow this person to continue answered work** selected to allow it, or clear it to revoke an existing permission.
+3. **Review.** Read the account, components and decision, acknowledge them, then choose **Save permission** once. The browser retains that exact request before sending it. Saving permission does not resume a run.
+
+<figure class="forge-shot" markdown="1">
+
+![Review the mapped GitHub account before choosing its continuation scope.](assets/screenshots/scm-poll-continuation-mapping-desktop-light.png)
+
+<figcaption>Mapping: confirm the existing account and registered person before continuing.</figcaption>
+</figure>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Select the components allowed for GitHub continuation on a phone.](assets/screenshots/scm-poll-continuation-scope-mobile-light.png)
+
+<figcaption>Scope: select the components and review whether continuation is allowed or revoked.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![Acknowledge the reviewed GitHub continuation permission before saving.](assets/screenshots/scm-poll-continuation-review-desktop-light.png)
+
+<figcaption>Review: acknowledge the selected account and scope before Save permission. This records one consent revision.</figcaption>
+</figure>
+
+</div>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Inspect the exact continuation consent receipt on a phone in the dark theme.](assets/screenshots/scm-poll-continuation-confirmed-mobile-dark.png)
+
+<figcaption>The receipt confirms the recorded permission revision. It does not prove that a run resumed or completed.</figcaption>
+</figure>
+
+If a save response is lost, conflicts or cannot be verified, keep the original request. **Check original consent** reads that request's exact receipt after reload; a missing receipt keeps the write unresolved. **Read current GitHub consent** answers a different question: which consent is current now. Current access loss clears private details while preserving the unresolved request. Use HTTPS or localhost in a browser with Web Locks so tabs can coordinate writes.
+
+After consent is confirmed, read the paused run's [current clarification continuation cut](scm.md#continue-an-answered-clarification-through-polling) and send one new `/forge resume` issue comment with those exact references. The factory rechecks the current account, application and native permissions before queuing the original run. A saved historical consent, a queued run and a finished implementation are separate outcomes.
+
 ## Keep captures current
 
 For project tool permissions and provider prerequisites, follow the [external tools walkthrough](external-tools-tour.md).
@@ -577,7 +623,7 @@ UPDATE_DOC_SCREENSHOTS=1 FORGE_DOCS_PORT=5227 \
   --config studio/playwright.docs.config.ts
 ```
 
-The configuration captures the product journey, learning decisions and source recovery, external tool setup, queued-command review and campaign evidence. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
+The configuration captures the product journey, learning decisions and source recovery, external tool setup, queued-command review, campaign evidence, provider activity and GitHub continuation consent. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
 
 Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Native scrollbar painting stays enabled. Review the actual images and rendered guides after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
 

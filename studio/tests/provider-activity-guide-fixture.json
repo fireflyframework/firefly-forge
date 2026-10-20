@@ -1,0 +1,140 @@
+{
+  "scope": "Controlled documentation vectors produced by actual project_activity; no live provider or product acceptance",
+  "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "records": [
+    {
+      "raw_message": "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Checking the reservation acceptance case.\"}, {\"type\": \"tool_use\", \"id\": \"guide-bash-1\", \"name\": \"Bash\", \"input\": {\"command\": \"uv run pytest tests/test_reservations.py -q\"}}]}}",
+      "event": {
+        "id": "77777777777777777777777777777777",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Checking the reservation acceptance case.\"}, {\"type\": \"tool_use\", \"id\": \"guide-bash-1\", \"name\": \"Bash\", \"input\": {\"command\": \"uv run pytest tests/test_reservations.py -q\"}}]}}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "77777777777777777777777777777777",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 268,
+          "sanitized_message_sha256": "92e51460b96d04767d555580b167f44bb01dfa84d50d17c46d5db7a1b0069789",
+          "descriptor_sha256": "e3b3d6cab92e78206e41e05d76ceb4582004239bb693ddf641fb370ab04ed37b"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.assistant",
+          "item_type": "provider_message",
+          "provider": "claude",
+          "content_blocks": [
+            {
+              "item_type": "agent_message",
+              "output_preview": "Checking the reservation acceptance case."
+            },
+            {
+              "item_type": "tool_use",
+              "item_id": "guide-bash-1",
+              "tool_name": "Bash",
+              "command_preview": "uv run pytest tests/test_reservations.py -q"
+            }
+          ],
+          "omitted_blocks": 0,
+          "preview_omitted": true,
+          "sanitized_message_bytes": 268,
+          "sanitized_message_sha256": "92e51460b96d04767d555580b167f44bb01dfa84d50d17c46d5db7a1b0069789"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "e3b3d6cab92e78206e41e05d76ceb4582004239bb693ddf641fb370ab04ed37b",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 268,
+        "sanitized_message_sha256": "92e51460b96d04767d555580b167f44bb01dfa84d50d17c46d5db7a1b0069789",
+        "data_base64": "eyJ0eXBlIjogImFzc2lzdGFudCIsICJtZXNzYWdlIjogeyJyb2xlIjogImFzc2lzdGFudCIsICJjb250ZW50IjogW3sidHlwZSI6ICJ0ZXh0IiwgInRleHQiOiAiQ2hlY2tpbmcgdGhlIHJlc2VydmF0aW9uIGFjY2VwdGFuY2UgY2FzZS4ifSwgeyJ0eXBlIjogInRvb2xfdXNlIiwgImlkIjogImd1aWRlLWJhc2gtMSIsICJuYW1lIjogIkJhc2giLCAiaW5wdXQiOiB7ImNvbW1hbmQiOiAidXYgcnVuIHB5dGVzdCB0ZXN0cy90ZXN0X3Jlc2VydmF0aW9ucy5weSAtcSJ9fV19fQ==",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\": \"user\", \"message\": {\"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"guide-bash-1\", \"is_error\": true, \"content\": \"Reservation validation failed: expected 409, received 200.\"}]}}",
+      "event": {
+        "id": "88888888888888888888888888888888",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"user\", \"message\": {\"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"guide-bash-1\", \"is_error\": true, \"content\": \"Reservation validation failed: expected 409, received 200.\"}]}}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "88888888888888888888888888888888",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 189,
+          "sanitized_message_sha256": "95fcfb95d6cf92981f0c5bafdaf7618c11b2685847a8ad50b0262d0eac944acc",
+          "descriptor_sha256": "dc6c1c615ba42d33368b73bbfc19da4c5283a324cf7ee4cb22d569b86e7cfd67"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.user",
+          "item_type": "tool_result",
+          "item_id": "guide-bash-1",
+          "output_preview": "Reservation validation failed: expected 409, received 200.",
+          "provider": "claude",
+          "tool_outcome": "reported_error",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 189,
+          "sanitized_message_sha256": "95fcfb95d6cf92981f0c5bafdaf7618c11b2685847a8ad50b0262d0eac944acc"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "dc6c1c615ba42d33368b73bbfc19da4c5283a324cf7ee4cb22d569b86e7cfd67",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 189,
+        "sanitized_message_sha256": "95fcfb95d6cf92981f0c5bafdaf7618c11b2685847a8ad50b0262d0eac944acc",
+        "data_base64": "eyJ0eXBlIjogInVzZXIiLCAibWVzc2FnZSI6IHsiY29udGVudCI6IFt7InR5cGUiOiAidG9vbF9yZXN1bHQiLCAidG9vbF91c2VfaWQiOiAiZ3VpZGUtYmFzaC0xIiwgImlzX2Vycm9yIjogdHJ1ZSwgImNvbnRlbnQiOiAiUmVzZXJ2YXRpb24gdmFsaWRhdGlvbiBmYWlsZWQ6IGV4cGVjdGVkIDQwOSwgcmVjZWl2ZWQgMjAwLiJ9XX19",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"I recorded the reported reservation error for review.\"}",
+      "event": {
+        "id": "99999999999999999999999999999999",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"I recorded the reported reservation error for review.\"}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "99999999999999999999999999999999",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 126,
+          "sanitized_message_sha256": "b9bb2c8c253f076fca7bfe70b0ce4d7f927df84ce41710159fe79021d38f8f53",
+          "descriptor_sha256": "ce22a64f01c98b9e06a6c7041c809734145a40155535c93e546f9f6aa46c2c9e"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.result",
+          "item_type": "agent_message",
+          "output_preview": "I recorded the reported reservation error for review.",
+          "provider": "claude",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 126,
+          "sanitized_message_sha256": "b9bb2c8c253f076fca7bfe70b0ce4d7f927df84ce41710159fe79021d38f8f53"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "ce22a64f01c98b9e06a6c7041c809734145a40155535c93e546f9f6aa46c2c9e",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 126,
+        "sanitized_message_sha256": "b9bb2c8c253f076fca7bfe70b0ce4d7f927df84ce41710159fe79021d38f8f53",
+        "data_base64": "eyJ0eXBlIjogInJlc3VsdCIsICJzdWJ0eXBlIjogInN1Y2Nlc3MiLCAiaXNfZXJyb3IiOiBmYWxzZSwgInJlc3VsdCI6ICJJIHJlY29yZGVkIHRoZSByZXBvcnRlZCByZXNlcnZhdGlvbiBlcnJvciBmb3IgcmV2aWV3LiJ9",
+        "next_chunk": null
+      }
+    }
+  ]
+}

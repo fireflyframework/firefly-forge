@@ -202,6 +202,8 @@ from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_poll_controllers import SCMPollController
+from firefly_forge.scm_poll_resume import SCMPollResumeAuthority
+from firefly_forge.scm_poll_resume_controllers import SCMPollResumeController
 from firefly_forge.scm_polling import SCMPolling
 from firefly_forge.scm_product_change_controllers import SCMProductChangeController
 from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
@@ -731,6 +733,21 @@ class FactoryConfiguration:
         return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
 
     @bean
+    def scm_poll_resume_authority(
+        self,
+        store: Store,
+        authority: SCMActorAuthority,
+        journal: Journal,
+        settings_records: ForgeCollaborationSettingsRepository,
+        inbox: ForgeWebhookInboxRepository,
+        events: ForgeAccessEventRepository,
+        polling: SCMPolling,
+    ) -> SCMPollResumeAuthority:
+        service = SCMPollResumeAuthority(store, authority, journal, settings_records, inbox, events)
+        service.polling = polling
+        return service
+
+    @bean
     def scm_product_change_authority(
         self,
         store: Store,
@@ -993,6 +1010,7 @@ class FactoryConfiguration:
         analysis: ReverseEngineering,
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
+        poll_resume_authority: SCMPollResumeAuthority,
         product_change_authority: SCMProductChangeAuthority,
         intake: SCMProductIntake,
         polling: SCMPolling,
@@ -1008,6 +1026,7 @@ class FactoryConfiguration:
             product_change_authority,
             intake,
         )
+        collaboration.poll_resume_authority = poll_resume_authority
         collaboration.polling = polling
         polling.collaboration = collaboration
         collaboration.analysis_manager = analysis
@@ -1137,6 +1156,7 @@ def create_runtime(
         CollaborationController,
         SCMActorAuthorityController,
         SCMResumeAuthorityController,
+        SCMPollResumeController,
         SCMPollController,
         SCMProductChangeController,
         SCMProductIntakeController,

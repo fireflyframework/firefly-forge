@@ -314,6 +314,7 @@ class Collaboration:
         self.store = store
         self.polling: Any = None
         self.resume_authority = resume_authority
+        self.poll_resume_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority
         self.scm = scm or SCMConnections(store)
@@ -355,6 +356,7 @@ class Collaboration:
             data.pop("_github_poll_v1", None)
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
+            data.pop("_scm_poll_resume_v3", None)
             data.pop("_scm_product_change_authority_v1", None)
             data.pop("_scm_product_intake_v1", None)
             return {
@@ -404,6 +406,7 @@ class Collaboration:
             for key in (
                 "_scm_authority_v1",
                 "_scm_resume_authority_v2",
+                "_scm_poll_resume_v3",
                 "_scm_product_change_authority_v1",
                 "_scm_product_intake_v1",
                 "_github_poll_v1",
@@ -876,10 +879,15 @@ class Collaboration:
                         return {"id": receipt_id, "status": "denied", "reason": "scm_product_edit_setup_or_conflict"}
                 return {"id": receipt_id, "status": "withheld", "reason": "scm_product_edit_result_unconfirmed"}
         if (initial.get("command") or {}).get("version") == 2:
-            if self.resume_authority is None:
+            resume_authority = (
+                self.poll_resume_authority
+                if (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+                else self.resume_authority
+            )
+            if resume_authority is None:
                 raise ValueError("The native V2 resume service is unavailable")
             try:
-                await self.resume_authority.process(receipt_id)
+                await resume_authority.process(receipt_id)
             except Exception:
                 async with self.store._unit():
                     row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -993,6 +1001,7 @@ class Collaboration:
                         "_github_poll_v1",
                         "_scm_authority_v1",
                         "_scm_resume_authority_v2",
+                        "_scm_poll_resume_v3",
                         "_scm_product_change_authority_v1",
                         "_scm_product_intake_v1",
                     ):
@@ -1447,6 +1456,11 @@ class Collaboration:
             await self.product_intake_authority.authorize_feedback(data["id"], remote=not local)
             return
         if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            if command.get("version") == 2:
+                if self.poll_resume_authority is None:
+                    raise AccessDenied("The polling continuation feedback authority is unavailable")
+                await self.poll_resume_authority.authorize_feedback(data["id"])
+                return
             if self.polling is None:
                 raise AccessDenied("The polling feedback authority is unavailable")
             if local:

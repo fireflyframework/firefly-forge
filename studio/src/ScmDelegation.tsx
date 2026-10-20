@@ -18,6 +18,7 @@ import {
 import type { IdentitySession } from "./Identity";
 import { Wizard } from "./Wizard";
 import { ScmResumeConsent } from "./ScmResumeConsent";
+import { ScmPollResumePanel } from "./ScmPollResumeConsent";
 import { ScmProductChangeConsent } from "./ScmProductChangeConsent";
 import { attemptDigest } from "./LearningObservationAttemptData";
 import {
@@ -830,6 +831,13 @@ export function ScmDelegation({
             personName={known(receipt.request.native_user_id)}
           />
         )}
+      <ScmPollResumePanel
+        connection={connection}
+        session={session}
+        project={project}
+        repository={repository}
+        people={people}
+      />
       {open && (
         <dialog
           ref={dialog}

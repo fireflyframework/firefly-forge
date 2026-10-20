@@ -663,7 +663,13 @@ class SCMPolling:
 
                     try:
                         parsed = RepositoryCommand.parse(source["body"])
-                        if parsed.action not in {"respond", "status"} or getattr(parsed, "version", None) is not None:
+                        version = getattr(parsed, "version", None)
+                        if not (
+                            parsed.action in {"respond", "status"}
+                            and version is None
+                            or parsed.action == "resume"
+                            and version == 2
+                        ):
                             raise ValueError("Unsupported polling action")
                         command = parsed.model_dump(exclude_none=True)
                     except (ValueError, TypeError, AttributeError):

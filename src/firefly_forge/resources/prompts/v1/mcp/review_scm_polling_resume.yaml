@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/review_scm_polling_resume
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read a bounded current same-run answered-clarification cut under an exact polling binding and separate version3 grant. Requires current native read authority, original execution authority, valid frozen source/task/question/answer receipts and no unknown effects. The response includes exact grant, question, answer and cut digests. This does not generate or post a GitHub comment, resume a run, invoke a model, change a provider or increase a budget.
+required_variables: []
+metadata:
+  defaults: {}

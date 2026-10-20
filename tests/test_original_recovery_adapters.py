@@ -104,7 +104,13 @@ CASES = [
         TICKET,
     ),
 ]
-NEW_TOOLS = {case[1] for case in CASES}
+NEW_TOOLS = {case[1] for case in CASES} | {
+    "get_run_activity_content",
+    "configure_scm_polling_resume_grant",
+    "get_scm_polling_resume_grant",
+    "get_current_scm_polling_resume_grant",
+    "review_scm_polling_resume",
+}
 PRESENCE_CASES = [
     (*CASES[0][:4], {"version": 1, "input": {**ENVELOPE["input"], "skills": []}}, *CASES[0][5:]),
     (*CASES[2][:4], {**CANCEL, "project_id": None, "component_id": None}, *CASES[2][5:7], CANCELLED_DECISION),
@@ -260,12 +266,11 @@ def test_cli_requires_every_explicit_argument_without_io(monkeypatch, case):
 async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibility():
     tools = await create_server().list_tools()
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-recovery-additive-baseline-v1.json").read_text())
-    post_baseline_tools = NEW_TOOLS | {"get_run_activity_content"}
-    original = [tool for tool in tools if tool.name not in post_baseline_tools]
+    original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     wire = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     assert len(original) == baseline["tool_count"] == 150
     assert hashlib.sha256(wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 158
+    assert len(tools) == 162
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}
@@ -275,7 +280,7 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
     tree = ast.parse(Path("src/firefly_forge/mcp_server.py").read_text())
     server = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "create_server")
     for node in server.body:
-        if isinstance(node, ast.FunctionDef) and node.name not in post_baseline_tools:
+        if isinstance(node, ast.FunctionDef) and node.name not in NEW_TOOLS:
             node.decorator_list = []
             assert (
                 hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()

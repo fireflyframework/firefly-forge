@@ -45,6 +45,54 @@ Flycanon's server runs in a separate environment, with its own migration and ing
 
 Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`FactoryConfiguration`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
 
+### Observed provider activity
+
+`activity_models.py` projects known Codex JSON into small typed summaries; `activity_claude.py` recognizes Claude stream-json content blocks and result messages. Both describe observed output. A requested tool, reported tool result and final provider report remain distinct from the factory's WAL receipts and verification. Claude format recognition supplies no authenticated provider attribution, cross-event tool correlation or inferred exit code.
+
+`Store.event()` retains the sanitized message separately from that bounded projection. Studio renders supported summaries, leaves plain logs readable and offers an explicit verified reader for complete content. Unsupported structured previews receive a generic card. The optional Claude summary fields preserve the existing descriptor version and byte/hash binding; the archive writer, current-authority checks, credential fences and D04 export limits are shared. See [the activity contract](agent-integrations.md#read-complete-retained-provider-activity) and [the operator walkthrough](run-evidence.md#read-complete-provider-activity).
+
+### GitHub polling clarification continuation
+
+`SCMPollResumeGrantInputV3` separates REST-polling continuation consent from status/answer bindings and signed-delivery grants. `SCMPollResumeAuthority` owns current binding, project and native-user checks, immutable consent receipts and bounded history. Its registered pyfly controller, `ForgeClient`, CLI and four MCP tools share the same typed contract. Studio's Mapping, Scope and Review wizard retains one input before submission and reads its exact receipt after an uncertain response.
+
+A new `/forge resume` comment carries the existing version 2 continuation input under the distinct `github_rest_poll_v1` grant. `SCMPollResumeAuthority`, extending `SCMResumeAuthority`, rechecks the current account and application outside the database transaction, then native authority and the original clarification cut under the retained locks. Credential admission waits trigger fresh remote and local checks before action and feedback. An unknown intent remains held; queuing the original run records neither provider execution nor final product acceptance.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="GitHub polling continuation boundaries" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    A[Review account and scope] --> B[Retain consent receipt]
+    B --> C[Read clarification cut]
+```
+
+</div>
+
+Consent prepares the boundary. A new comment requests the actual continuation:
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="GitHub polling continuation admission" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    D[New resume comment] --> E[Recheck remote and native authority]
+    E --> F[Retain continuation receipt]
+    F --> G[Queue original run]
+    E -->|Unknown or revoked| H[Hold or refuse]
+```
+
+</div>
+
+See [polling admission and limits](scm.md#continue-an-answered-clarification-through-polling), the [operator walkthrough](console-tour.md#review-github-continuation-consent) and the native implementation in `scm_poll_resume.py`, `scm_resume_service.py` and `scm_resume_cut.py`.
+
 ### Connection OAuth and resource custody
 
 `FactoryConfiguration` registers `OAuthProviderPolicies`, `ConnectionOAuth`, `OAuthResources` and the external MCP registry as separate native beans. Policy admission fixes the issuer, endpoints, resource and scope. The connection service binds client registration and browser attempts to the current actor and immutable revision; it uses public pyfly OAuth client and PKCE APIs. PostgreSQL stores encrypted credentials, grant families, effects and append-only events.
@@ -332,7 +380,7 @@ Built-in model instructions are versioned YAML resources loaded and rendered by 
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Native PHP diagnostics | Explicit `profile_php` plus command grant, frozen Docker/archive/network-`none` runner | Runtime metrics or preinstalled Xdebug observations retain command receipts; they do not authorize or approve work. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 158 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 162 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 

@@ -191,7 +191,7 @@ def test_every_packaged_resource_matches_its_reviewed_text_vector():
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
-    assert len(catalog.registry) == 254
+    assert len(catalog.registry) == 258
     for vector in fixture["vectors"]:
         assert (
             catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]
@@ -519,7 +519,7 @@ def test_catalog_allows_a_location_alias_but_not_a_symlink_inside_its_resource_r
     assert PromptCatalog(alias / "resources").text("test/greeting", value="valid") == "Hello valid"
 
 
-def test_catalog_loads_256_unique_native_templates(tmp_path):
+def test_catalog_loads_512_unique_native_templates(tmp_path):
     import hashlib
 
     import pytest
@@ -528,7 +528,7 @@ def test_catalog_loads_256_unique_native_templates(tmp_path):
     from firefly_forge.prompts import PromptCatalog
 
     entries = []
-    for index in range(256):
+    for index in range(512):
         name = f"test/entry-{index}"
         document = {
             "name": name,
@@ -554,11 +554,11 @@ def test_catalog_loads_256_unique_native_templates(tmp_path):
         )
     _write_manifest(tmp_path, {"schema_version": 1, "templates": entries})
     catalog = PromptCatalog(tmp_path)
-    assert len(catalog.registry) == 256
-    assert catalog.text("test/entry-255") == "255"
-    entries.append({**entries[-1], "id": "test/entry-256", "path": "entry-256.yaml"})
+    assert len(catalog.registry) == 512
+    assert catalog.text("test/entry-511") == "511"
+    entries.append({**entries[-1], "id": "test/entry-512", "path": "entry-512.yaml"})
     _write_manifest(tmp_path, {"schema_version": 1, "templates": entries})
-    with pytest.raises(ValueError, match="at most 256"):
+    with pytest.raises(ValueError, match="at most 512"):
         PromptCatalog(tmp_path)
 
 

@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.26 — Unreleased
+
+- Present bounded Claude text, tool requests and reported results without treating provider messages as command receipts or final QA.
+- Keep unsupported structured output behind an explicit verified-content reader, with honest archive-limit and omitted-block messages.
+- Configure separate GitHub polling continuation consent through Mapping, Scope and Review, preserving the original request through uncertain saves and exact receipt recovery.
+- Recheck current polling account, application and native authority after credential waits before clarification continuation and feedback.
+- Preserve all existing MCP wire contracts while adding four polling-continuation tools, for 162 tools and 258 versioned prompt resources.
+
 ## 0.2.25 — 2026-10-20
 
 - Retain complete sanitized coding-provider events within explicit archive limits, with atomic storage and integrity-checked, currently authorized reads through HTTP, SDK, CLI and MCP.

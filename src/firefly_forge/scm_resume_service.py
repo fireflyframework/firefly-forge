@@ -34,6 +34,7 @@ from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.sandbox_persistence import ForgeSandboxEntity
 from firefly_forge.scm_actor_authority import SCMActorAuthority, binding_key
 from firefly_forge.scm_authority_models import VerifiedSCMReferenceV1
+from firefly_forge.scm_poll_resume_models import SCMPollResumeGrantInputV3, SCMPollResumeGrantReceiptV3
 from firefly_forge.scm_resume_cut import FROZEN_FIELDS, resume_cut
 from firefly_forge.scm_resume_models import (
     SCMResumeCommandV2,
@@ -48,13 +49,13 @@ STATE_KEY = "_scm_resume_authority_v2"
 EVENT_KIND = "scm_resume_grant_revision"
 
 
-def grant_state(data: Data) -> Data:
-    state = copy.deepcopy(data.get(STATE_KEY, {"version": 2, "heads": {}, "requests": {}}))
+def grant_state(data: Data, state_key: str = STATE_KEY, version: int = 2) -> Data:
+    state = copy.deepcopy(data.get(state_key, {"version": version, "heads": {}, "requests": {}}))
     if (
         not isinstance(state, dict)
         or set(state) != {"version", "heads", "requests"}
         or type(state["version"]) is not int
-        or state["version"] != 2
+        or state["version"] != version
         or not isinstance(state["heads"], dict)
         or not isinstance(state["requests"], dict)
         or len(state["heads"]) > 100
@@ -67,6 +68,13 @@ def grant_state(data: Data) -> Data:
 
 class SCMResumeAuthority:
     """A Factory bean; all mutable admission checks are repeated under native locks."""
+
+    state_key = STATE_KEY
+    event_kind = EVENT_KIND
+    grant_version = 2
+    request_type: type[SCMResumeGrantInputV2] | type[SCMPollResumeGrantInputV3] = SCMResumeGrantInputV2
+    receipt_type: type[SCMResumeGrantReceiptV2] | type[SCMPollResumeGrantReceiptV3] = SCMResumeGrantReceiptV2
+    cut_builder = staticmethod(resume_cut)
 
     def __init__(
         self,
@@ -96,10 +104,10 @@ class SCMResumeAuthority:
                 row is None
                 or row.project_id.hex != project
                 or set(row.data) != {"kind", "receipt"}
-                or row.data["kind"] != EVENT_KIND
+                or row.data["kind"] != self.event_kind
             ):
                 raise ValueError("Resume grant event scope is invalid")
-            receipt = SCMResumeGrantReceiptV2.model_validate(row.data["receipt"]).model_dump(mode="json")
+            receipt = self.receipt_type.model_validate(row.data["receipt"]).model_dump(mode="json")
         if set(receipt) != {
             "version",
             "event_id",
@@ -116,9 +124,9 @@ class SCMResumeAuthority:
             "digest",
         }:
             raise ValueError("Resume grant envelope is invalid")
-        request = SCMResumeGrantInputV2.model_validate(receipt["request"]).model_dump(mode="json")
+        request = self.request_type.model_validate(receipt["request"]).model_dump(mode="json")
         if (
-            receipt["version"] != 2
+            receipt["version"] != self.grant_version
             or type(receipt["version"]) is not int
             or receipt["event_id"] != event_id
             or receipt["project_id"] != project
@@ -138,7 +146,7 @@ class SCMResumeAuthority:
     ) -> Data | None:
         async with self.store._unit() as session:
             row = await self.settings.find_for_repository(identifier(repository))
-            state = grant_state(row.data if row else {})
+            state = grant_state(row.data if row else {}, self.state_key, self.grant_version)
             pointer = state["heads"].get(key) if key else state["requests"].get(project + ":" + str(request_id))
             latest = None
             if key:
@@ -146,7 +154,7 @@ class SCMResumeAuthority:
                     select(ForgeAccessEventEntity.id)
                     .where(
                         ForgeAccessEventEntity.project_id == identifier(project),
-                        ForgeAccessEventEntity.data["kind"].as_string() == EVENT_KIND,
+                        ForgeAccessEventEntity.data["kind"].as_string() == self.event_kind,
                         ForgeAccessEventEntity.data["receipt"]["repository_id"].as_string() == repository,
                         ForgeAccessEventEntity.data["receipt"]["binding_key"].as_string() == key,
                     )
@@ -191,7 +199,7 @@ class SCMResumeAuthority:
             raise ValueError("Read resume grants outside a caller transaction")
         actor = CURRENT_PRINCIPAL.get()
         await self.authority._reader(actor, project, repository, admin=False)
-        binding = await self.authority._existing(project, repository, binding_request)
+        binding = await self._current_binding(project, repository, binding_request)
         if binding is None:
             raise KeyError("V1 binding not found")
         receipt = await self._grant(project, repository, key=binding["binding_key"])
@@ -199,7 +207,12 @@ class SCMResumeAuthority:
             raise KeyError("No separately consented V2 grant exists")
         return await self._return(actor, receipt, admin=False)
 
-    async def _binding(self, project: str, repository: str, request: SCMResumeGrantInputV2) -> Data:
+    async def _current_binding(self, project: str, repository: str, request_id: str) -> Data | None:
+        return await self.authority._existing(project, repository, request_id)
+
+    async def _binding(
+        self, project: str, repository: str, request: SCMResumeGrantInputV2 | SCMPollResumeGrantInputV3
+    ) -> Data:
         binding = await self.authority._existing(project, repository, request.expected_binding_request_id)
         if binding is None:
             raise AccessDenied("Review an exact current V1 mapping first")
@@ -233,10 +246,15 @@ class SCMResumeAuthority:
         ):
             raise AccessDenied("The application repository grant is no longer available")
 
-    async def configure(self, project: str, repository: str, request: SCMResumeGrantInputV2) -> Data:
+    async def _after_admission(self, context: Data) -> None:
+        """Allow transports to revalidate remote authority after admission waits."""
+
+    async def configure(
+        self, project: str, repository: str, request: SCMResumeGrantInputV2 | SCMPollResumeGrantInputV3
+    ) -> Data:
         if current_unit_of_work() is not None:
             raise ValueError("Admit resume consent outside a caller transaction")
-        request = SCMResumeGrantInputV2.model_validate(request.model_dump(mode="json"))
+        request = self.request_type.model_validate(request.model_dump(mode="json"))
         actor = CURRENT_PRINCIPAL.get()
         await self.authority._reader(actor, project, repository, admin=True)
         assert actor is not None
@@ -275,7 +293,7 @@ class SCMResumeAuthority:
                 row = await self.settings.find_for_repository(identifier(repository))
                 if row is None:
                     raise AccessDenied("Configure collaboration before consenting to resume")
-                state = grant_state(row.data)
+                state = grant_state(row.data, self.state_key, self.grant_version)
                 previous = await self._grant(project, repository, key=binding["binding_key"])
                 if request.expected_previous_digest != (previous["digest"] if previous else None):
                     raise AccessDenied("Resume grant revision changed; preserve the reviewed request")
@@ -288,7 +306,7 @@ class SCMResumeAuthority:
                 ):
                     raise ValueError("Resume grant retention limit reached")
                 retained = dict(
-                    version=2,
+                    version=self.grant_version,
                     event_id=uuid4().hex,
                     project_id=project,
                     repository_id=repository,
@@ -302,13 +320,13 @@ class SCMResumeAuthority:
                     request_digest=digest(incoming),
                 )
                 retained["digest"] = digest(retained)
-                SCMResumeGrantReceiptV2.model_validate(retained)
-                envelope = {"kind": EVENT_KIND, "receipt": retained}
+                self.receipt_type.model_validate(retained)
+                envelope = {"kind": self.event_kind, "receipt": retained}
                 total = await session.scalar(
                     select(
                         func.coalesce(func.sum(func.octet_length(cast(ForgeAccessEventEntity.data, Text))), 0)
                     ).where(
-                        ForgeAccessEventEntity.data["kind"].as_string() == EVENT_KIND,
+                        ForgeAccessEventEntity.data["kind"].as_string() == self.event_kind,
                         ForgeAccessEventEntity.data["receipt"]["repository_id"].as_string() == repository,
                     )
                 )
@@ -326,7 +344,7 @@ class SCMResumeAuthority:
                 pointer = {"event_id": retained["event_id"], "digest": retained["digest"]}
                 state["heads"][binding["binding_key"]] = pointer
                 state["requests"][project + ":" + request.request_id] = pointer
-                row.data = {**row.data, STATE_KEY: state}
+                row.data = {**row.data, self.state_key: state}
                 await self.settings.save(row)
         return await self._return(actor, retained, admin=True)
 
@@ -459,7 +477,7 @@ class SCMResumeAuthority:
                 raise ValueError("Journal scalar columns do not match their immutable envelopes")
             if any(item.plan_id != plan.id and item.status != "done" for item in tasks):
                 raise ValueError("An active task belongs to another plan revision")
-            return resume_cut(
+            return self.cut_builder(
                 run=run,
                 plan={**copy.deepcopy(plan.data), "digest": plan.digest},
                 tasks=[
@@ -587,6 +605,8 @@ class SCMResumeAuthority:
         context = await self._context(delivery)
         await self._preflight(context)
         await self.store.admit_credentials(delivery)
+        context = await self._context(await self._delivery(receipt_id))
+        await self._after_admission(context)
         await self._context(await self._delivery(receipt_id))
         if delivery.get("command", {}).get("action") == "resume" and delivery.get("action_status") == "completed":
             await self._verify_completion(delivery["action_result"])
@@ -606,6 +626,8 @@ class SCMResumeAuthority:
             await self._original(context["run"])
         await self._preflight(context)
         await self.store.admit_credentials({"command": command.model_dump(mode="json"), "grant": context["grant"]})
+        context = await self._context(await self._delivery(receipt_id))
+        await self._after_admission(context)
         context = await self._context(await self._delivery(receipt_id))
         async with self._locked(initial, context) as row:
             context = await self._context(row.data)

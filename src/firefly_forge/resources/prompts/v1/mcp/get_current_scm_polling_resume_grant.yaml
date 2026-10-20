@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_current_scm_polling_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read current separately consented polling-resume authority for one exact API-observed binding request. A saved consent is not proof of current execution authority. Do not resend or replace any unresolved original request; no run is resumed.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,180 @@
+{
+  "scope": "Public synthetic Claude stream-json shapes; not live subscription evidence",
+  "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "records": [
+    {
+      "raw_message": "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Reviewing the contact model.\"}, {\"type\": \"tool_use\", \"id\": \"read-1\", \"name\": \"Read\", \"input\": {\"file_path\": \"src/contacts.py\"}}, {\"type\": \"tool_use\", \"id\": \"bash-1\", \"name\": \"Bash\", \"input\": {\"command\": \"python -m pytest\"}}, {\"type\": \"tool_use\", \"id\": \"tool-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"name\": \"mcp__xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"input\": {\"file_path\": \"src/component-2.py\"}}, {\"type\": \"tool_use\", \"id\": \"read-3\", \"name\": \"Read\", \"input\": {\"file_path\": \"src/component-3.py\"}}, {\"type\": \"tool_use\", \"id\": \"read-4\", \"name\": \"Read\", \"input\": {\"file_path\": \"src/component-4.py\"}}, {\"type\": \"tool_use\", \"id\": \"read-5\", \"name\": \"Read\", \"input\": {\"file_path\": \"src/component-5.py\"}}]}}",
+      "event": {
+        "id": "11111111111111111111111111111111",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Reviewing the contact model.\"}, {\"type\": \"tool_use\", \"id\": \"read-1\", \"name\": \"Read\", \"input\": {\"file_path\": \"src/contacts.py\"}}, {\"type\": \"tool_use\", \"id\": \"bash-1\", \"name\": \"Bash\", \"input\": {\"command\": \"python -m pytest\"}}, {\"type\": \"tool_use\", \"id\": \"tool-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "11111111111111111111111111111111",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 901,
+          "sanitized_message_sha256": "2f1ca7939016070598d30c416e8a0f931bc57022dfd941b6f2037049dd7b8d2f",
+          "descriptor_sha256": "f1085c799f0d795472457265cf904886d58455a5fdab66f73101bae11bcd8d90"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.assistant",
+          "item_type": "provider_message",
+          "provider": "claude",
+          "content_blocks": [
+            {
+              "item_type": "agent_message",
+              "output_preview": "Reviewing the contact model."
+            },
+            {
+              "item_type": "tool_use",
+              "item_id": "read-1",
+              "tool_name": "Read"
+            },
+            {
+              "item_type": "tool_use",
+              "item_id": "bash-1",
+              "tool_name": "Bash",
+              "command_preview": "python -m pytest"
+            },
+            {
+              "item_type": "tool_use",
+              "item_id": "tool-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "tool_name": "mcp__xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          ],
+          "omitted_blocks": 3,
+          "preview_omitted": true,
+          "sanitized_message_bytes": 901,
+          "sanitized_message_sha256": "2f1ca7939016070598d30c416e8a0f931bc57022dfd941b6f2037049dd7b8d2f"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "f1085c799f0d795472457265cf904886d58455a5fdab66f73101bae11bcd8d90",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 901,
+        "sanitized_message_sha256": "2f1ca7939016070598d30c416e8a0f931bc57022dfd941b6f2037049dd7b8d2f",
+        "data_base64": "eyJ0eXBlIjogImFzc2lzdGFudCIsICJtZXNzYWdlIjogeyJyb2xlIjogImFzc2lzdGFudCIsICJjb250ZW50IjogW3sidHlwZSI6ICJ0ZXh0IiwgInRleHQiOiAiUmV2aWV3aW5nIHRoZSBjb250YWN0IG1vZGVsLiJ9LCB7InR5cGUiOiAidG9vbF91c2UiLCAiaWQiOiAicmVhZC0xIiwgIm5hbWUiOiAiUmVhZCIsICJpbnB1dCI6IHsiZmlsZV9wYXRoIjogInNyYy9jb250YWN0cy5weSJ9fSwgeyJ0eXBlIjogInRvb2xfdXNlIiwgImlkIjogImJhc2gtMSIsICJuYW1lIjogIkJhc2giLCAiaW5wdXQiOiB7ImNvbW1hbmQiOiAicHl0aG9uIC1tIHB5dGVzdCJ9fSwgeyJ0eXBlIjogInRvb2xfdXNlIiwgImlkIjogInRvb2wtYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwgIm5hbWUiOiAibWNwX194eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eCIsICJpbnB1dCI6IHsiZmlsZV9wYXRoIjogInNyYy9jb21wb25lbnQtMi5weSJ9fSwgeyJ0eXBlIjogInRvb2xfdXNlIiwgImlkIjogInJlYWQtMyIsICJuYW1lIjogIlJlYWQiLCAiaW5wdXQiOiB7ImZpbGVfcGF0aCI6ICJzcmMvY29tcG9uZW50LTMucHkifX0sIHsidHlwZSI6ICJ0b29sX3VzZSIsICJpZCI6ICJyZWFkLTQiLCAibmFtZSI6ICJSZWFkIiwgImlucHV0IjogeyJmaWxlX3BhdGgiOiAic3JjL2NvbXBvbmVudC00LnB5In19LCB7InR5cGUiOiAidG9vbF91c2UiLCAiaWQiOiAicmVhZC01IiwgIm5hbWUiOiAiUmVhZCIsICJpbnB1dCI6IHsiZmlsZV9wYXRoIjogInNyYy9jb21wb25lbnQtNS5weSJ9fV19fQ==",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\": \"user\", \"message\": {\"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"bash-1\", \"is_error\": true, \"content\": \"Validation failed in the provider tool.\"}]}}",
+      "event": {
+        "id": "22222222222222222222222222222222",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"user\", \"message\": {\"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"bash-1\", \"is_error\": true, \"content\": \"Validation failed in the provider tool.\"}]}}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "22222222222222222222222222222222",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 164,
+          "sanitized_message_sha256": "0c7a79b43ff355c8d7af9dc93c1405655f1bae11227ca288271ffd344491bfc9",
+          "descriptor_sha256": "8a69eba1503c9c84b877d809eb6eca6fa20e35deea51e1b91862631fd20f8377"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.user",
+          "item_type": "tool_result",
+          "item_id": "bash-1",
+          "output_preview": "Validation failed in the provider tool.",
+          "provider": "claude",
+          "tool_outcome": "reported_error",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 164,
+          "sanitized_message_sha256": "0c7a79b43ff355c8d7af9dc93c1405655f1bae11227ca288271ffd344491bfc9"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "8a69eba1503c9c84b877d809eb6eca6fa20e35deea51e1b91862631fd20f8377",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 164,
+        "sanitized_message_sha256": "0c7a79b43ff355c8d7af9dc93c1405655f1bae11227ca288271ffd344491bfc9",
+        "data_base64": "eyJ0eXBlIjogInVzZXIiLCAibWVzc2FnZSI6IHsiY29udGVudCI6IFt7InR5cGUiOiAidG9vbF9yZXN1bHQiLCAidG9vbF91c2VfaWQiOiAiYmFzaC0xIiwgImlzX2Vycm9yIjogdHJ1ZSwgImNvbnRlbnQiOiAiVmFsaWRhdGlvbiBmYWlsZWQgaW4gdGhlIHByb3ZpZGVyIHRvb2wuIn1dfX0=",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"Provider report: implementation suggested.\"}",
+      "event": {
+        "id": "33333333333333333333333333333333",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"Provider report: implementation suggested.\"}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "33333333333333333333333333333333",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 115,
+          "sanitized_message_sha256": "42733cd79d9b255ecaf1988a5821cf94842f469b0f3c9dd6fbe5aace85374137",
+          "descriptor_sha256": "39f6008a92e3317bcf848748110fd88c220e99f6d5b4ea7b6ac72be42e9e15b5"
+        },
+        "activity_summary": {
+          "version": 1,
+          "event_type": "claude.result",
+          "item_type": "agent_message",
+          "output_preview": "Provider report: implementation suggested.",
+          "provider": "claude",
+          "preview_omitted": true,
+          "sanitized_message_bytes": 115,
+          "sanitized_message_sha256": "42733cd79d9b255ecaf1988a5821cf94842f469b0f3c9dd6fbe5aace85374137"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "39f6008a92e3317bcf848748110fd88c220e99f6d5b4ea7b6ac72be42e9e15b5",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 115,
+        "sanitized_message_sha256": "42733cd79d9b255ecaf1988a5821cf94842f469b0f3c9dd6fbe5aace85374137",
+        "data_base64": "eyJ0eXBlIjogInJlc3VsdCIsICJzdWJ0eXBlIjogInN1Y2Nlc3MiLCAiaXNfZXJyb3IiOiBmYWxzZSwgInJlc3VsdCI6ICJQcm92aWRlciByZXBvcnQ6IGltcGxlbWVudGF0aW9uIHN1Z2dlc3RlZC4ifQ==",
+        "next_chunk": null
+      }
+    },
+    {
+      "raw_message": "{\"type\": \"future_protocol\", \"OPAQUE_PROVIDER_FIELD\": \"Hidden until explicit read\"}",
+      "event": {
+        "id": "44444444444444444444444444444444",
+        "stage": "stdout",
+        "created_at": "2026-10-20T15:30:00Z",
+        "message": "{\"type\": \"future_protocol\", \"OPAQUE_PROVIDER_FIELD\": \"Hidden until explicit read\"}",
+        "activity_content": {
+          "version": 1,
+          "status": "available",
+          "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "event_id": "44444444444444444444444444444444",
+          "stage": "stdout",
+          "encoding": "utf-8",
+          "sanitized_message_bytes": 82,
+          "sanitized_message_sha256": "8ac1fc8861049afd546f8d7bdaeffc13594e6d3d9b6dc845d60a3b575a67c369",
+          "descriptor_sha256": "f064e79bc00fbb1e01745d5752abe372980a30eb1ab2d5e66682e561da931246"
+        }
+      },
+      "chunk": {
+        "version": 1,
+        "descriptor_sha256": "f064e79bc00fbb1e01745d5752abe372980a30eb1ab2d5e66682e561da931246",
+        "chunk": 0,
+        "offset": 0,
+        "total_bytes": 82,
+        "sanitized_message_sha256": "8ac1fc8861049afd546f8d7bdaeffc13594e6d3d9b6dc845d60a3b575a67c369",
+        "data_base64": "eyJ0eXBlIjogImZ1dHVyZV9wcm90b2NvbCIsICJPUEFRVUVfUFJPVklERVJfRklFTEQiOiAiSGlkZGVuIHVudGlsIGV4cGxpY2l0IHJlYWQifQ==",
+        "next_chunk": null
+      }
+    }
+  ]
+}

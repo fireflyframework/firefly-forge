@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_scm_polling_resume_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save or revoke explicit version3 transport-bound same-run clarification continuation consent for github_rest_poll_v1. Requires native administrator authority and the exact current API-observed polling binding, project cut and components. Existing status/respond or signed webhook consent is insufficient. This does not resume a run or fabricate a command. Retain the request ID before one POST; after any uncertain result read that exact original identity without resending or replacing it.
+required_variables: []
+metadata:
+  defaults: {}

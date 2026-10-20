@@ -409,7 +409,7 @@ Product changes accept at most 80,000 UTF-8 input bytes. Saved product revisions
 
 Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.
 
-The polling workflow supports an existing run with an explicit project and component. `status` reads its current state; `respond` answers its exact pending worker question and leaves the run paused. Run creation, resume, cancellation, model/source changes, publication and merge are outside this transport. The [same-run resume grant](#opt-in-same-run-resume-v2) and [product-change capability](#change-an-existing-functional-product) require their separate signed-ingress contracts.
+The polling workflow supports an existing run with an explicit project and component. `status` reads its current state; `respond` answers its exact pending worker question and leaves the run paused. A [separate polling continuation consent](#continue-an-answered-clarification-through-polling) can authorize an explicit same-run clarification continuation. Run creation, cancellation, model/source changes, publication and merge remain outside this transport. Signed-ingress [resume grants](#opt-in-same-run-resume-v2) and [product-change capabilities](#change-an-existing-functional-product) cannot authorize polling actions.
 
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="Local GitHub polling and clarification flow" aria-describedby="scm-polling-guide" tabindex="0" markdown="1">
 
@@ -568,6 +568,37 @@ After a timeout, 403, 409 or missing exact configuration/consent receipt, retain
 For feedback, forge records `writing` before the provider request and `sent` only after a confirmed result. A lost reply, interrupted process or late authority/credential refusal can leave `feedback_status: needs_reconciliation`. Repeated ticks do not repost that write. Inspect the provider conversation, then use [explicit feedback reconciliation](repository-workflow.md#receipts-and-feedback) with `posted` or `not_posted` and an observed-outcome note. Reconciliation records `sent` or `not_sent` and sends no remote request. If no reply was posted, a new explicit status comment is the supported next request; replaying the unknown write is not.
 
 Current consent, native permission and provider access are checked before reading private feedback. After preparing the issue token, forge repeats the exact GitHub comment and author-access checks, then checks native authority again. A changed comment or withdrawn access stops the POST and retains the unresolved feedback for review; repeated ticks do not resend it. A final synchronous check rejects any payload containing a currently registered credential. These checks cannot make GitHub revocation atomic with the local transaction. Historical receipts are not rewritten. To revoke consent, submit a new reviewed request with `active: false` and the exact previous digest. Authorized historical reads remain available; the old receipt does not assert that authority is still active.
+
+### Continue an answered clarification through polling
+
+In Studio, open **Project access**, read the current GitHub accounts and select an active mapped account. **Review GitHub continuation** opens the Mapping, Scope and Review steps. Acknowledge the selected account and components, then choose **Save permission** once. Saving records consent; it does not start execution. The [illustrated walkthrough](console-tour.md#review-github-continuation-consent) follows each step and exact-receipt recovery.
+
+Status and answer consent never grants continuation. A factory administrator must separately review a version 3 polling-resume grant under the exact current API-observed account binding, project cut, native user and components. Its transport is `github_rest_poll_v1`, its only action is `resume`, and `acknowledge_same_run_resume` must be explicitly `true`. The mapped user must retain execute access; the original execution actor must also remain authorized. Neither a historical signed V2 grant nor an administrator label in the comment substitutes for this consent.
+
+Use the separate CLI group to read current consent, submit one reviewed request and recover its exact result:
+
+```sh
+forge project scm-polling-resume-grants current PROJECT_ID REPOSITORY_ID POLL_BINDING_REQUEST_ID
+forge project scm-polling-resume-grants configure PROJECT_ID REPOSITORY_ID reviewed-consent.json
+forge project scm-polling-resume-grants get PROJECT_ID REPOSITORY_ID ORIGINAL_REQUEST_ID
+forge project scm-polling-resume-grants review PROJECT_ID REPOSITORY_ID POLL_BINDING_REQUEST_ID RUN_ID
+```
+
+The strict `SCMPollResumeGrantInputV3` body retains `request_id`, `expected_previous_digest`, `expected_project_binding_digest`, `expected_binding_request_id`, `expected_binding_digest`, `component_ids`, `allowed_actions: ["resume"]`, `active`, version, transport and acknowledgment. The endpoints are under `/api/v1/projects/{project}/repositories/{repository}/scm-polling/resume-grants`: POST saves consent; GET `/requests/{request_id}` reads its immutable original receipt; GET `/current/{binding_request_id}` reads the current head. GET `/review?binding_request_id=...&run_id=...` returns the current bounded clarification cut without writing a comment or resuming the run.
+
+Review requires the same paused run, a known answered clarification, its exact task attempt, original plan/source/configuration and a valid question/answer journal chain. Pending cancellation, publication, unknown command or sandbox effects, changed scope and lost authority refuse continuation. Provider failures and provider-recovery budgets are outside this path. Consent adds no run, provider substitution, repair budget or automatic retry.
+
+After reviewing that cut, publish one new issue comment using its exact values:
+
+```text
+/forge resume {"version":2,"run_id":"RUN_ID","expected_grant_digest":"GRANT_DIGEST","expected_question_id":"QUESTION_ID","expected_response_digest":"RESPONSE_DIGEST","expected_cut_digest":"CUT_DIGEST"}
+```
+
+The version 2 command keeps the existing typed continuation semantics; the distinct version 3 polling grant authorizes this transport. forge rechecks the observed comment, current account access, App/repository/connection cut, current binding and native permissions before native admission. After credential admission waits, it repeats the remote checks outside the transaction and checks local authority again under its transaction locks. Feedback authorization repeats these checks after credential admission, including the final check before the provider POST. Remote GitHub revocation cannot be atomic with those locks.
+
+A successful action records the native resume and its bound `scm_resume_receipt` once, retains the same execution contract and queues the original run. Queueing is not model execution or product acceptance. Reprocessing the same delivery verifies and returns its original completion without resuming again. Unknown intent or feedback outcomes remain held for explicit reconciliation; a lost response or missing receipt never permits a replacement request. To revoke consent, submit a new reviewed `active: false` grant with the exact previous digest. Historical receipts remain readable subject to current authority.
+
+The new grant history is separate from status/answer and signed-ingress consent. It permits 100 heads, 50 revisions per head, 5,000 requests, 64 KiB per receipt and 16 MiB of retained events. Native PostgreSQL/API tests use recorded GitHub HTTP and no coding model; they do not establish an actual account roundtrip, an executed continuation or a completed product.
 
 ### Polling limits and acceptance boundaries
 

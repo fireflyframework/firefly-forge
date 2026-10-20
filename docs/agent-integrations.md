@@ -36,6 +36,12 @@ forge run --repository REPOSITORY_ID --project PROJECT_ID --component stock \
 
 A standalone frontend can select `--backend none`. Explicit stack choices must match a configured component. `--roles-file role-selection.json` applies validated role overrides; a run retains the resulting snapshot.
 
+## Continue an answered clarification through local GitHub polling
+
+`ForgeClient.configure_scm_polling_resume_grant`, `scm_polling_resume_grant` and `current_scm_polling_resume_grant` save or read the separate version 3 transport-bound consent. `review_scm_polling_resume(project_id, repository_id, binding_request_id, run_id)` reads the current answered-clarification cut without dispatching it. MCP exposes `configure_scm_polling_resume_grant`, `get_scm_polling_resume_grant`, `get_current_scm_polling_resume_grant` and `review_scm_polling_resume` with the same strict request contract.
+
+Use `forge project scm-polling-resume-grants configure|get|current|review` for those explicit operations. Retain the caller request identity before a single consent POST and read the exact original request after a lost response. Existing status/answer or signed-ingress consent never becomes polling-resume authority. These clients cannot fabricate a signed event, post a GitHub command, change a provider or increase a run budget. Follow the [polling clarification continuation](scm.md#continue-an-answered-clarification-through-polling) guide to review and send a separate repository comment.
+
 ## Delegate repository accounts
 
 SCM delegation connects a recorded provider account to an existing Forge user for explicit project components and actions. It does not create a user, grant project membership or turn a webhook sender into a personal login. The mapped user must remain enabled and retain the required project permission.
@@ -389,7 +395,11 @@ The signed `/forge product_change` command still arrives through verified provid
 
 ## Read complete retained provider activity
 
-New provider stdout and stderr observations retain a bounded visible preview and, when the native JSON shape is recognized, a version 1 typed `activity_summary`. The summary preserves the command, known exit code and output preview even when the original JSON exceeds the timeline's display budget. Unknown or malformed output remains escaped text. Provider output is untrusted observed data; it does not establish factory verification or acceptance.
+New provider stdout and stderr observations retain a bounded visible preview and, when the native JSON shape is recognized, a version 1 typed `activity_summary`. Codex summaries preserve the command, known exit code and output preview even when the original JSON exceeds the timeline's display budget. Claude summaries describe assistant text, requested tools, reported tool results and final provider reports. Plain logs remain escaped text. Unsupported or malformed structured previews get a generic card with an explicit content reader. Provider output remains untrusted observed data.
+
+Claude recognition follows its documented [CLI stream-json output](https://code.claude.com/docs/en/headless#stream-responses) and [complete content-block messages](https://code.claude.com/docs/en/agent-sdk/streaming-output#message-flow). The optional `provider: claude` summary field names this recognized format; it is not authenticated provider attribution. `tool_name` belongs only to an observed tool request. `tool_outcome` records `reported_result` or `reported_error`, without inferring a process exit code from `is_error`. A `result` message is a provider report, including when its subtype is `success`.
+
+For a mixed message, `content_blocks` contains at most four typed text/tool observations with 128-byte previews, and `omitted_blocks` counts blocks not displayed. Recognition is bounded to messages with at most 64 blocks; unsupported shapes use the generic display. Single-block previews retain their existing 768-byte limit. Tool input objects and attachments are not serialized into the summary. The original sanitized message, descriptor version, hash and archive limits stay unchanged. No cross-event tool correlation or factory verification is inferred from these fields.
 
 Each new observation has an `activity_content` descriptor bound to its run, event, stage, UTF-8 size and sanitized-message SHA256. `available` means the sanitized message was retained atomically with its index in PostgreSQL. The limits are 4 MiB per message, 64 MiB and 4,096 retained messages per run. `budget_exceeded` explicitly means complete content was not retained. Older events keep their historical text and have no invented content descriptor or backfill. The hash identifies sanitized retained bytes, not the provider's original wire output or an immutable execution receipt.
 

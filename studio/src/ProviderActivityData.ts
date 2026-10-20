@@ -22,9 +22,22 @@ export type ActivitySummary = {
   command_preview?: string;
   output_preview?: string;
   exit_code?: number;
+  provider?: "claude";
+  tool_name?: string;
+  tool_outcome?: "reported_result" | "reported_error";
+  content_blocks?: ActivityContentBlock[];
+  omitted_blocks?: number;
   preview_omitted: boolean;
   sanitized_message_bytes: number;
   sanitized_message_sha256: string;
+};
+export type ActivityContentBlock = {
+  item_type: "agent_message" | "tool_use" | "tool_result";
+  item_id?: string;
+  tool_name?: string;
+  tool_outcome?: "reported_result" | "reported_error";
+  command_preview?: string;
+  output_preview?: string;
 };
 const refused = () =>
   new Error(
@@ -43,6 +56,43 @@ function text(value: unknown, maximum: number): value is string {
 }
 function size(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+function claudeFields(r: Record<string, unknown>, limit: number) {
+  if (
+    r.tool_name !== undefined &&
+    (typeof r.tool_name !== "string" ||
+      !/^[A-Za-z0-9_.:-]{1,64}$/.test(r.tool_name))
+  )
+    throw refused();
+  if (
+    r.tool_outcome !== undefined &&
+    (typeof r.tool_outcome !== "string" ||
+      !["reported_result", "reported_error"].includes(r.tool_outcome))
+  )
+    throw refused();
+  if (r.item_id !== undefined && !text(r.item_id, 128)) throw refused();
+  for (const key of ["command_preview", "output_preview"])
+    if (r[key] !== undefined && !text(r[key], limit)) throw refused();
+}
+function claudeBlock(value: unknown): ActivityContentBlock {
+  const r = row(value);
+  if (
+    !Object.keys(r).every((key) =>
+      [
+        "item_type",
+        "item_id",
+        "tool_name",
+        "tool_outcome",
+        "command_preview",
+        "output_preview",
+      ].includes(key),
+    ) ||
+    typeof r.item_type !== "string" ||
+    !["agent_message", "tool_use", "tool_result"].includes(r.item_type)
+  )
+    throw refused();
+  claudeFields(r, 128);
+  return { ...r } as ActivityContentBlock;
 }
 function descriptor(value: unknown): ActivityDescriptor {
   const r = row(value);
@@ -80,7 +130,7 @@ export function activityRecord(
   if (d.run_id !== run || d.event_id !== event.id || d.stage !== event.stage)
     throw refused();
   if (!Object.hasOwn(event, "activity_summary")) return { descriptor: d };
-  const s = row(event.activity_summary);
+  const s = { ...row(event.activity_summary) };
   if (
     s.version !== 1 ||
     !text(s.event_type, 80) ||
@@ -93,6 +143,20 @@ export function activityRecord(
   for (const key of ["command_preview", "output_preview"])
     if (s[key] !== undefined && !text(s[key], 768)) throw refused();
   if (s.item_id !== undefined && !text(s.item_id, 128)) throw refused();
+  if (s.provider !== undefined && s.provider !== "claude") throw refused();
+  claudeFields(s, 768);
+  if (s.content_blocks !== undefined) {
+    if (
+      s.provider !== "claude" ||
+      !Array.isArray(s.content_blocks) ||
+      s.content_blocks.length < 1 ||
+      s.content_blocks.length > 4 ||
+      !size(s.omitted_blocks) ||
+      s.omitted_blocks > 64
+    )
+      throw refused();
+    s.content_blocks = s.content_blocks.map(claudeBlock);
+  }
   if (
     s.exit_code !== undefined &&
     (typeof s.exit_code !== "number" ||

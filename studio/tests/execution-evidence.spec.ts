@@ -940,3 +940,117 @@ test("archived provider event refuses a changed full record without exposing par
     }),
   ).toHaveCount(0);
 });
+
+const claudeArchiveFixture = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../tests/fixtures/activity-claude-contract-v1.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+) as {
+  run_id: string;
+  records: Array<{
+    event: Record<string, unknown>;
+    raw_message: string;
+    chunk: Record<string, unknown>;
+  }>;
+};
+for (const width of [390, 1440])
+  for (const theme of ["light", "dark"])
+    test(`Claude activity projections remain honest and readable at ${width}px ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await openRun(page, undefined, {
+        runId: claudeArchiveFixture.run_id,
+        events: claudeArchiveFixture.records.map((item) => item.event),
+      });
+      let reads = 0;
+      await page.route(/\/activity\/[a-f0-9]{32}\/content\?/, async (route) => {
+        reads++;
+        const item = claudeArchiveFixture.records.find((record) =>
+          route.request().url().includes(String(record.event.id)),
+        )!;
+        await route.fulfill({ json: item.chunk });
+      });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      const panel = page.getByRole("tabpanel");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Provider message recorded",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        panel.getByRole("region", {
+          name: "Observed tool request",
+          exact: true,
+        }),
+      ).toHaveCount(3);
+      await expect(
+        panel.getByText(
+          "3 additional content blocks are available in the full recorded event.",
+          { exact: true },
+        ),
+      ).toHaveCount(1);
+      await expect(
+        panel.getByText("Provider reported an error", { exact: true }),
+      ).toHaveCount(1);
+      await expect(
+        panel.getByRole("heading", {
+          name: "Provider result reported",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      await expect(
+        panel.getByRole("heading", {
+          name: "Structured provider output recorded",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      expect(await panel.textContent()).not.toContain("OPAQUE_PROVIDER_FIELD");
+      await expect(panel.getByText(/^Exit /)).toHaveCount(0);
+      expect(reads).toBe(0);
+      const card = panel
+        .getByRole("region", { name: "Archived provider event", exact: true })
+        .first();
+      const longName = card.getByText("mcp__" + "x".repeat(59), {
+        exact: true,
+      });
+      await expect(
+        card.getByText("tool-" + "a".repeat(123), { exact: true }),
+      ).not.toBeVisible();
+      await longName.scrollIntoViewIfNeeded();
+      expect((await longName.boundingBox())!.width).toBeLessThanOrEqual(
+        (await card.boundingBox())!.width - 28,
+      );
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(`claude-activity-summary-${width}-${theme}.png`),
+      });
+      await card.getByText(/Full recorded event ·/).click();
+      const read = card.getByRole("button", {
+        name: "Read full recorded event",
+        exact: true,
+      });
+      await read.scrollIntoViewIfNeeded();
+      const bounds = await read.boundingBox(),
+        footer = await page.locator(".workspace-main > footer").boundingBox();
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footer!.y);
+      await read.click();
+      await expect(
+        card.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      expect(reads).toBe(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: test.info().outputPath(`claude-activity-${width}-${theme}.png`),
+      });
+    });
