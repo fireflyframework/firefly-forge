@@ -70,21 +70,56 @@ async function receipt(marker: Awaited<ReturnType<typeof makeCreationMarker>>) {
   return { ...value, digest: await attemptDigest(value) };
 }
 afterEach(() => vi.unstubAllGlobals());
-it("admits one original identity under a scope lock before any POST", async () => {
-  const disk = storage(),
-    locks = serial(),
-    first = await makeCreationMarker(scope, body),
-    second = await makeCreationMarker(scope, body);
-  const results = await Promise.allSettled([
-    retainCreationMarker(disk, first, locks, () => true),
-    retainCreationMarker(disk, second, locks, () => true),
-  ]);
-  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-  expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
-  expect((await readCreationMarker(disk, scope))?.requestId).toBe(
-    first.requestId,
-  );
-});
+it.each([0, 1])(
+  "retains exactly the scope-lock winner when validation %s finishes first",
+  async (winnerIndex) => {
+    const disk = storage(),
+      locks = serial(),
+      first = await makeCreationMarker(scope, body),
+      second = await makeCreationMarker(scope, body);
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const spy = vi
+      .spyOn(crypto.subtle, "digest")
+      .mockImplementation(async (...args) => {
+        const ordinal = calls++;
+        const value = await digest(...args);
+        if (ordinal === 1 - winnerIndex) await gate;
+        return value;
+      });
+    const http = vi.fn(() => {
+      throw new Error("Marker retention must not send HTTP");
+    });
+    vi.stubGlobal("fetch", http);
+    const attempts = [
+      retainCreationMarker(disk, first, locks, () => true),
+      retainCreationMarker(disk, second, locks, () => true),
+    ];
+    try {
+      const winner = await attempts[winnerIndex];
+      release();
+      const results = await Promise.allSettled(attempts);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+      expect(results[winnerIndex].status).toBe("fulfilled");
+      expect(results[1 - winnerIndex].status).toBe("rejected");
+      expect(winner).toEqual([first, second][winnerIndex]);
+      expect(await readCreationMarker(disk, scope)).toEqual(winner);
+      expect(winner.requestId).not.toBe(
+        [first, second][1 - winnerIndex].requestId,
+      );
+      expect(http).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await Promise.allSettled(attempts);
+      spy.mockRestore();
+    }
+  },
+);
 it("fails closed without WebLocks or after scope changes inside grant", async () => {
   const marker = await makeCreationMarker(scope, body),
     disk = storage();
