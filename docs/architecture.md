@@ -166,6 +166,8 @@ Source: [`store.py`](https://github.com/fireflyframework/firefly-forge/blob/main
 
 The engine dispatches queued work under a global concurrency budget and one active coding run per repository. It prepares an isolated Git root and records its authorized origin and baseline. The selected coding provider receives the frozen handoff. Factory verification executes commands independently; failed checks return to that provider within the frozen repair budget.
 
+On POSIX, the trusted Codex and Claude CLI launcher preserves inherited ignored signals when its parent already ignores `SIGXFSZ` and has a finite soft file-size limit. This prevents Python's default subprocess signal restoration from converting a rejected oversized write into immediate signal termination. The kernel's file-size limit remains unchanged: a native fixture confirms that the write returns `EFBIG` and leaves the file intact. Python exposes one restoration switch, so this branch also inherits other ignored signals, including `SIGPIPE`; it does not install a signal handler or use `preexec_fn`. Unlimited parents, parents using the default `SIGXFSZ` disposition and the separate untrusted command executor retain subprocess defaults. Process-group cleanup, stream draining and typed outcome checks are unchanged.
+
 | Boundary | Accepted evidence | Failure behavior |
 | --- | --- | --- |
 | Admission | Retained queued run and selected snapshots | Invalid authority, conflicting inputs or unavailable capabilities refuse admission. |
