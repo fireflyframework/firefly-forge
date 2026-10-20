@@ -561,6 +561,8 @@ Pull-request conversations, bot accounts, issue bodies and edited comments canno
 
 The App posts feedback to the originating issue with the delivery receipt reference and original action result. Later feedback reports the current run status separately. A saved answer and a delivered comment are different outcomes.
 
+For a provider recovery, read the attempt label before the check totals. **Previous-attempt verification** identifies an earlier factory handoff; **Current-attempt verification** requires a matching retained attempt identity. A handoff whose attempt cannot be confirmed stays labeled as retained history. Final-check summaries also identify retained results before their totals. A queued or developing recovery has not passed those earlier checks again. The labels change presentation, not historical receipts, delivery fingerprints or permission to repeat a write.
+
 A current factory administrator can inspect `GET /api/v1/collaboration/receipts?repository_id=REPOSITORY_ID`, or call `ForgeClient.repository_receipts(repository_id)`. Check `status`, `action_status`, `feedback_status` and the associated run rather than treating an accepted receipt as completed execution. Project-reader polling/history routes do not grant access to this global administrative list.
 
 After a timeout, 403, 409 or missing exact configuration/consent receipt, retain the **same request ID and complete input**. Use the exact `configuration` or `binding` read. A missing receipt does not prove that no write occurred and does not authorize a new ID or automatic resend. An administrator can inspect current setup/heads while preserving the original operation.

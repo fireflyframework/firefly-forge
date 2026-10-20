@@ -7,6 +7,7 @@
 - Present bounded Codex MCP server, tool, reported status and text output in Studio without treating provider reports as native runner receipts or product QA.
 - Name the known configured-check tool clearly and keep its exact identity under a disclosure. Retain exact bounded identities for other tools.
 - Preserve existing archive limits, integrity checks and explicit full-event reads; unsupported structured results remain available only through the retained event.
+- Label retained previous-attempt verification before its totals in recovery feedback. Keep current-attempt checks distinct without changing delivery identities or replay rules.
 - Refresh the controlled desktop/mobile walkthroughs and document the distinction between actual finite-client messages, presentation fixtures and product acceptance.
 
 ## 0.2.29 — 2026-10-20

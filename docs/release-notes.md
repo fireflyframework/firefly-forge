@@ -11,6 +11,8 @@ Studio now shows observed Codex MCP activity as a readable tool card: server, to
 
 Unsupported arguments and structured result objects stay in the full retained event. Reading that event still requires an explicit action and the existing current-access, integrity and archive-budget checks. Historical events are not backfilled. See [the evidence guide](run-evidence.md#read-complete-provider-activity).
 
+Repository feedback now labels verification retained from an earlier attempt before showing its totals. Results matched to the recovery attempt are labeled separately; incomplete attempt identity stays unconfirmed. Queueing a recovery does not turn earlier checks into current success. Existing delivered comments, fingerprints and uncertain-write holds stay unchanged. See [repository replies](scm.md#6-inspect-the-reply-and-preserve-unknown-outcomes).
+
 The new walkthrough uses actual redacted messages from an official Codex 0.163 finite, model-free client check inside controlled API wrappers. Those messages and display tests do not establish paid provider inference or generated-product acceptance. No execution budget, recovery authority or MCP tool grant changes in this release.
 
 ## 0.2.29
