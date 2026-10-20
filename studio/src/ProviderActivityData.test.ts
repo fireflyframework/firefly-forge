@@ -212,3 +212,59 @@ it("reads the exact Python-produced descriptor and UTF-8 chunk contract", async 
     ),
   ).toBe(nativeFixture.sanitized_message);
 });
+
+it("refuses malformed optional Claude projections before rendering mixed blocks", async () => {
+  const f = await fixture();
+  for (const change of [
+    { provider: "other" },
+    { provider: "claude", tool_name: ["Bash"] },
+    { provider: "claude", tool_outcome: "succeeded" },
+    { provider: "claude", tool_outcome: ["reported_result"] },
+    {
+      provider: "claude",
+      content_blocks: [{ item_type: ["tool_use"], tool_name: "Read" }],
+      omitted_blocks: 0,
+    },
+    { provider: "claude", content_blocks: "not blocks", omitted_blocks: 0 },
+    {
+      provider: "claude",
+      content_blocks: [{ item_type: "tool_use", tool_name: "Read" }],
+      omitted_blocks: -1,
+    },
+    {
+      provider: "claude",
+      content_blocks: [
+        { item_type: "agent_message", output_preview: "x".repeat(129) },
+      ],
+      omitted_blocks: 0,
+    },
+  ])
+    expect(() =>
+      activityRecord(
+        {
+          ...f.row,
+          activity_summary: { ...f.row.activity_summary, ...change },
+        },
+        run,
+      ),
+    ).toThrow();
+});
+
+it("reads Python-produced Claude summaries while preserving exact archived bytes", async () => {
+  const fixture =
+    await import("../../tests/fixtures/activity-claude-contract-v1.json");
+  for (const item of fixture.records) {
+    const record = activityRecord(item.event, fixture.run_id)!;
+    expect(
+      await readActivityContent(
+        record.descriptor,
+        async () => item.chunk,
+        new AbortController().signal,
+      ),
+    ).toBe(item.raw_message);
+  }
+  expect(
+    activityRecord(fixture.records[0].event, fixture.run_id)!.summary!
+      .content_blocks![1].tool_name,
+  ).toBe("Read");
+});

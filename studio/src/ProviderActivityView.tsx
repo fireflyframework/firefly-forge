@@ -1,10 +1,14 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Terminal } from "lucide-react";
+import { FileText, Loader2, Terminal, Wrench } from "lucide-react";
 import { request, type Connection } from "./api";
 import { OutputView } from "./ExecutionPresentation";
 import { boundedText } from "./ExecutionFormat";
-import { activityRecord, readActivityContent } from "./ProviderActivityData";
+import {
+  activityRecord,
+  readActivityContent,
+  type ActivityContentBlock,
+} from "./ProviderActivityData";
 
 type Props = {
   event: Record<string, unknown>;
@@ -113,26 +117,38 @@ function ArchivedActivity({
   const command =
     s?.item_type === "command_execution" &&
     typeof s.command_preview === "string";
+  const structured =
+    !s && /^\s*(?:\{|\[\s*(?:\{|\[|"|\d|]|-|true|false|null))/.test(preview);
   const titles: Record<string, string> = {
     "thread.started": "Provider session started",
     "turn.started": "Provider task started",
     "turn.completed": "Provider task completed",
     "turn.failed": "Provider reported a failure",
     error: "Provider reported an error",
+    "claude.result": "Provider result reported",
+    "claude.result_error": "Provider reported a failure",
   };
   const title = command
     ? s.event_type === "item.completed"
       ? "Provider command finished"
       : "Provider command started"
-    : s?.item_type === "agent_message"
-      ? "Provider report"
-      : s?.item_type === "reasoning"
-        ? "Provider progress"
-        : s && Object.hasOwn(titles, s.event_type)
-          ? titles[s.event_type]
-          : d.stage === "stderr"
-            ? "Provider error output"
-            : "Provider output";
+    : s?.item_type === "tool_use"
+      ? "Tool request recorded"
+      : s?.item_type === "tool_result"
+        ? "Tool result reported"
+        : s?.item_type === "provider_message"
+          ? "Provider message recorded"
+          : s && Object.hasOwn(titles, s.event_type)
+            ? titles[s.event_type]
+            : s?.item_type === "agent_message"
+              ? "Provider report"
+              : s?.item_type === "reasoning"
+                ? "Provider progress"
+                : structured
+                  ? "Structured provider output recorded"
+                  : d.stage === "stderr"
+                    ? "Provider error output"
+                    : "Provider output";
   const commandPreview = command
     ? boundedText(s.command_preview!, 180, 4)
     : null;
@@ -173,6 +189,28 @@ function ArchivedActivity({
             />
           )}
         </div>
+      ) : s?.content_blocks ? (
+        <>
+          {s.content_blocks.map((block, index) => (
+            <ClaudeBlock key={index} block={block} />
+          ))}
+          {!!s.omitted_blocks && (
+            <p className="subtle">
+              {s.omitted_blocks} additional content blocks
+              {d.status === "available"
+                ? " are available in the full recorded event."
+                : " were omitted from this preview."}
+            </p>
+          )}
+        </>
+      ) : s?.item_type === "tool_use" || s?.item_type === "tool_result" ? (
+        <ClaudeBlock block={s as ActivityContentBlock} />
+      ) : structured ? (
+        <p className="subtle">
+          This event uses a structured format without a supported display.
+          {d.status === "available" &&
+            " Open the full recorded event to inspect its contents."}
+        </p>
       ) : (
         <OutputView
           value={s?.output_preview ?? preview}
@@ -182,8 +220,9 @@ function ArchivedActivity({
       )}
       {s?.preview_omitted && (
         <p className="subtle">
-          Preview only. Read the full recorded event for the retained command
-          and output.
+          {d.status === "available"
+            ? "Preview only. Read the full recorded event for its retained contents."
+            : "Only this preview was retained."}
         </p>
       )}
       <p className="subtle">
@@ -238,6 +277,68 @@ function ArchivedActivity({
             </div>
           )}
         </details>
+      )}
+    </section>
+  );
+}
+
+function ClaudeBlock({ block }: { block: ActivityContentBlock }) {
+  return (
+    <section
+      className="record-command record-tool"
+      aria-label={
+        block.item_type === "tool_use"
+          ? "Observed tool request"
+          : block.item_type === "tool_result"
+            ? "Observed tool result"
+            : "Provider text"
+      }
+    >
+      {block.item_type !== "agent_message" && (
+        <>
+          <div className="record-command-heading">
+            <Wrench size={17} />
+            <strong>
+              {block.tool_name ??
+                (block.item_type === "tool_use"
+                  ? "Tool request"
+                  : "Tool result")}
+            </strong>
+          </div>
+          {block.item_id && (
+            <details className="record-tool-identity">
+              <summary>Tool call identity</summary>
+              <code
+                className="record-tool-identity-text"
+                tabIndex={0}
+                aria-label="Tool call identity text"
+              >
+                {block.item_id}
+              </code>
+            </details>
+          )}
+          <p className="subtle">
+            {block.item_type === "tool_use"
+              ? "The provider requested this tool; this is not an execution receipt."
+              : block.tool_outcome === "reported_error"
+                ? "Provider reported an error"
+                : "Provider reported a result"}
+          </p>
+        </>
+      )}
+      {block.command_preview !== undefined && (
+        <OutputView
+          value={block.command_preview}
+          label="Requested command preview"
+          copyLabel="Copy requested command preview"
+        />
+      )}
+      {block.output_preview !== undefined && (
+        <OutputView
+          value={block.output_preview}
+          label="Recorded preview"
+          copyLabel="Copy preview"
+        />
       )}
     </section>
   );

@@ -49,6 +49,22 @@ class ActivityDescriptor(_Strict):
         return value
 
 
+class ActivityContentBlock(_Strict):
+    item_type: Literal["agent_message", "tool_use", "tool_result"]
+    item_id: str | None = Field(default=None, max_length=128)
+    tool_name: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
+    tool_outcome: Literal["reported_result", "reported_error"] | None = None
+    command_preview: str | None = None
+    output_preview: str | None = None
+
+    @field_validator("command_preview", "output_preview")
+    @classmethod
+    def preview_bytes(cls, value: str | None) -> str | None:
+        if value is not None and len(value.encode()) > 128:
+            raise ValueError("Activity block preview exceeds its byte budget")
+        return value
+
+
 class ActivitySummary(_Strict):
     version: Literal[1] = 1
     event_type: str = Field(max_length=64)
@@ -57,6 +73,11 @@ class ActivitySummary(_Strict):
     command_preview: str | None = None
     output_preview: str | None = None
     exit_code: int | None = Field(default=None, ge=-2147483648, le=2147483647)
+    provider: Literal["claude"] | None = None
+    tool_name: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
+    tool_outcome: Literal["reported_result", "reported_error"] | None = None
+    content_blocks: list[ActivityContentBlock] | None = Field(default=None, min_length=1, max_length=4)
+    omitted_blocks: int | None = Field(default=None, ge=0, le=64)
     preview_omitted: bool
     sanitized_message_bytes: int = Field(ge=0, le=MAX_EVENT_BYTES)
     sanitized_message_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -99,6 +120,14 @@ def _summary(message: str, raw: bytes) -> Data | None:
         return None
     if not isinstance(event, dict):
         return None
+    if event.get("type") in ("assistant", "user", "result"):
+        from firefly_forge.activity_claude import claude_summary
+
+        claude_values = claude_summary(event)
+        if claude_values is None:
+            return None
+        claude_values.update(sanitized_message_bytes=len(raw), sanitized_message_sha256=hashlib.sha256(raw).hexdigest())
+        return ActivitySummary.model_validate(claude_values).model_dump(exclude_none=True)
     event_type = event.get("type")
     if not isinstance(event_type, str) or event_type not in {
         "thread.started",
