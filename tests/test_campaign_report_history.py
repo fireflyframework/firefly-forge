@@ -398,9 +398,10 @@ async def test_upgrade_from_revision24_adds_immutable_archive_without_changing_c
 
     project, manager, journal, campaign, token = await seeded(store, tmp_path)
     try:
-        assert SCHEMA_REVISION == 29
+        assert SCHEMA_REVISION == 30
         before = await manager.campaign(project["id"], campaign["id"])
         async with store._unit() as session:
+            assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0
             await session.execute(text("DROP TABLE forge_campaign_report_archives"))
             await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision>=25"))
             await session.execute(
@@ -408,6 +409,7 @@ async def test_upgrade_from_revision24_adds_immutable_archive_without_changing_c
             )
             await migrate(session, store.schema)
             assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == SCHEMA_REVISION
+            assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0
         reports = service(store, manager, journal)
         history = history_service(store, reports)
         report = await reports.report(project["id"], campaign["id"])

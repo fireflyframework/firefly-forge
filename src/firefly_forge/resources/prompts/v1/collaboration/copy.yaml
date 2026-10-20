@@ -85,6 +85,12 @@ user_template: |-
     },
     "choices_heading": "Choices:",
     "verification_refused": "The factory could not start the requested checks. An operator needs to review the original question.",
+    "check_provenance_unknown": "unknown",
+    "check_provenance": {
+      "current": "These checks were recorded for this recovery attempt.",
+      "retained": "These totals include checks from another attempt and do not verify this recovery attempt.",
+      "unknown": "The attempt provenance is incomplete; these retained checks do not verify this recovery attempt."
+    },
     "titles": {
       "recorded": "Request recorded",
       "queued": "Queued for execution",

@@ -1866,3 +1866,18 @@ def export_run_evidence(run_id: str, expected_cut: str, output: Path) -> None:
     with os.fdopen(descriptor, "wb") as target:
         target.write(content)
     click.echo(str(output))
+
+
+@evidence.command("activity")
+@click.argument("run_id")
+@click.argument("event_id")
+@click.option("--expected-descriptor", required=True)
+@click.option("--chunk", type=click.IntRange(0, 255), default=0)
+def read_activity_content(run_id: str, event_id: str, expected_descriptor: str, chunk: int) -> None:
+    """Read one verified fragment of the complete sanitized provider message."""
+    with client() as connection:
+        display(
+            connection.run_activity_content(
+                run_id, event_id, {"expected_descriptor": expected_descriptor, "chunk": chunk}
+            )
+        )

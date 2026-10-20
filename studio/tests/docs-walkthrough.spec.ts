@@ -3405,3 +3405,140 @@ for (const device of ["desktop", "mobile"])
       expect(probes).toBe(0);
     });
   }
+
+// A controlled provider record illustrates the reader, not a generated product.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey provider activity ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const runId = "a".repeat(32),
+        eventId = "b".repeat(32);
+      const output =
+        "tests/test_reservations.py::test_rejects_over_reservation PASSED\n" +
+        "tests/test_reservations.py::test_keeps_stock_after_rejection PASSED\n" +
+        "2 passed in 0.31s";
+      const message = JSON.stringify({
+        type: "item.completed",
+        item: {
+          id: "fixture-check",
+          type: "command_execution",
+          command: "uv run pytest tests/test_reservations.py -v",
+          aggregated_output: output,
+          exit_code: 0,
+        },
+      });
+      const bytes = Buffer.from(message, "utf8"),
+        hash = createHash("sha256").update(bytes).digest("hex");
+      const fields = {
+        version: 1,
+        status: "available",
+        run_id: runId,
+        event_id: eventId,
+        stage: "stdout",
+        encoding: "utf-8",
+        sanitized_message_bytes: bytes.length,
+        sanitized_message_sha256: hash,
+      };
+      const descriptor = createHash("sha256")
+        .update(JSON.stringify(fields, Object.keys(fields).sort()))
+        .digest("hex");
+      const event = {
+        id: eventId,
+        stage: "stdout",
+        created_at: "2026-10-20T15:30:00Z",
+        message,
+        activity_content: { ...fields, descriptor_sha256: descriptor },
+        activity_summary: {
+          version: 1,
+          event_type: "item.completed",
+          item_type: "command_execution",
+          item_id: "fixture-check",
+          command_preview: "uv run pytest tests/test_reservations.py -v",
+          output_preview: output,
+          exit_code: 0,
+          preview_omitted: false,
+          sanitized_message_bytes: bytes.length,
+          sanitized_message_sha256: hash,
+        },
+      };
+      const selected = {
+        ...run,
+        id: runId,
+        brief: "Review recorded coding activity",
+        events: [event],
+        verification: [],
+      };
+      let contentReads = 0;
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const url = new URL(route.request().url()),
+          path = url.pathname;
+        let json: unknown = {};
+        if (path.endsWith("/repositories")) json = [repository];
+        else if (path.endsWith("/runs")) json = [selected];
+        else if (path.endsWith(`/runs/${runId}`)) json = selected;
+        else if (path.endsWith("/plan")) json = { revision: 1, tasks: [] };
+        else if (path.endsWith("/journal")) json = { valid: true, entries: [] };
+        else if (path.endsWith(`/activity/${eventId}/content`)) {
+          expect(url.searchParams.get("expected_descriptor")).toBe(descriptor);
+          expect(url.searchParams.get("chunk")).toBe("0");
+          contentReads++;
+          json = {
+            version: 1,
+            descriptor_sha256: descriptor,
+            chunk: 0,
+            offset: 0,
+            total_bytes: bytes.length,
+            sanitized_message_sha256: hash,
+            data_base64: bytes.toString("base64"),
+            next_chunk: null,
+          };
+        }
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("fixture-bootstrap-token-at-least-24-chars");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "API connected", exact: true }),
+      ).toBeVisible();
+      await navigate(page, "Factory");
+      await page
+        .getByRole("button", { name: /Review recorded coding activity/ })
+        .click();
+      const panel = page.getByRole("tabpanel");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Provider command finished",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(panel.getByText("Exit 0", { exact: true })).toBeVisible();
+      expect(contentReads).toBe(0);
+      await panel.getByText(/Full recorded event ·/).click();
+      await capture(page, "activity-provider-preview", theme, device, {
+        actionSelector: 'button:has-text("Read full recorded event")',
+      });
+      await panel
+        .getByRole("button", { name: "Read full recorded event", exact: true })
+        .click();
+      await expect(
+        panel.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      expect(contentReads).toBe(1);
+      await capture(page, "activity-provider-full", theme, device, {
+        actionSelector: 'button:has-text("Copy full recorded event")',
+      });
+    });

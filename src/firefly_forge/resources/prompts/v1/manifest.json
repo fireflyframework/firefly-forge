@@ -1945,7 +1945,7 @@
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "0687533909b71ba23252b8e58ab1983080d6ed93d090482a1db32eede4512d7a",
+      "sha256": "4d7b567dd55a9078f5ce51c960375ef33551978231febfb2894314185578d4a1",
       "field": "user",
       "variables": {}
     },
@@ -2110,6 +2110,36 @@
         "failed": "string",
         "results": "string"
       }
+    },
+    {
+      "id": "collaboration/provider-recovery",
+      "version": "1.0.0",
+      "path": "collaboration/provider-recovery.yaml",
+      "sha256": "a25663f6af6479f1ac1358140bd45d79cd9fbba4ce341cf6dd30522bec6c25e1",
+      "field": "user",
+      "variables": {
+        "attempt": "string",
+        "request_id": "string"
+      }
+    },
+    {
+      "id": "collaboration/verification-provenance",
+      "version": "1.0.0",
+      "path": "collaboration/verification-provenance.yaml",
+      "sha256": "4f10f64ed4af87511e418183de783f0aeacc33933c13679477690667dcd5078e",
+      "field": "user",
+      "variables": {
+        "attempts": "string",
+        "explanation": "string"
+      }
+    },
+    {
+      "id": "mcp/get_run_activity_content",
+      "version": "1.0.0",
+      "path": "mcp/get_run_activity_content.yaml",
+      "sha256": "adcae5deda232c67e96939a58a24339aa1b3a903289009c8baabf41698e45535",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

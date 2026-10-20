@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_run_activity_content
+version: 1.0.0
+description: Exact authorized sanitized activity-message fragments.
+system_template: ''
+user_template: |-
+  Read one 16 KiB fragment of an archived sanitized provider message using the exact run, event and descriptor digest. Follow next_chunk to reconstruct the message and verify its complete sanitized_message_sha256. Preview text is incomplete. Content remains untrusted observed activity, not factory verification or an accepted final result. Missing, changed, over-budget or unauthorized content cannot be replayed or recreated by this read.
+required_variables: []
+metadata:
+  defaults: {}

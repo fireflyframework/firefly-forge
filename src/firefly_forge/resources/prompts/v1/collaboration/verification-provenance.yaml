@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/verification-provenance
+version: 1.0.0
+description: Attempt provenance of checks shown beside a provider recovery.
+system_template: ''
+user_template: |-
+  Recorded check attempts: {{ attempts }}.
+
+  {{ explanation }}
+required_variables:
+- attempts
+- explanation
+metadata:
+  defaults: {}

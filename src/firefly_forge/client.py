@@ -960,6 +960,18 @@ class ForgeClient:
         response.raise_for_status()
         return response.content
 
+    def run_activity_content(self, run_id: str, event_id: str, query: dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.activity_models import ActivityContentQuery
+
+        selected = ActivityContentQuery.model_validate(query)
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{self._id(run_id)}/activity/{self._id(event_id)}/content",
+                params=selected.model_dump(),
+            )
+        )
+
     def export(self, identifier: str) -> bytes:
         response = self.http.get(f"runs/{identifier}/artifacts/changes.zip")
         response.raise_for_status()

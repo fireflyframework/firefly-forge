@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/provider-recovery
+version: 1.0.0
+description: Native provider recovery identity in repository feedback.
+system_template: ''
+user_template: |-
+  Recovery attempt: **{{ attempt }}**
+
+  Recovery request: `{{ request_id }}`
+required_variables:
+- attempt
+- request_id
+metadata:
+  defaults: {}

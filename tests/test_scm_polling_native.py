@@ -337,3 +337,51 @@ def test_native_disable_waits_for_original_journal_commit(native_poll, monkeypat
     principal = c.http.portal.call(c.service.resolve, c.pending_delivery)
     c.pending_snapshot = ProjectAccess.actor_snapshot(principal)
     c.http.portal.call(partial(exercise_wal_fence, c, monkeypatch, switch_project=False))
+
+
+@pytest.mark.parametrize("change", ["source", "permission"])
+def test_native_feedback_refuses_remote_change_during_token_preparation(native_poll, monkeypatch, change):  # noqa: F811
+    c = native_poll
+    c.ready()
+    binding = c.consent()
+    delivery = c.observe("status")
+    before = c.http.portal.call(c.journal.entries, c.run["id"])
+    authenticate = c.scm.issue_authentication
+    local = c.service.authorize_feedback_local
+    crossed = False
+    checks_after_wait = 0
+
+    async def change_after_token(*args, **kwargs):
+        nonlocal crossed
+        result = await authenticate(*args, **kwargs)
+        assert not crossed
+        crossed = True
+        if change == "source":
+            c.state["comments"][-1]["body"] += " edited while issue token was prepared"
+        else:
+            c.state["permission"] = "none"
+        return result
+
+    async def native_local(data):
+        nonlocal checks_after_wait
+        await local(data)
+        if crossed:
+            checks_after_wait += 1
+
+    monkeypatch.setattr(c.scm, "issue_authentication", change_after_token)
+    monkeypatch.setattr(c.service, "authorize_feedback_local", native_local)
+    result = c.process(delivery)
+    assert crossed and checks_after_wait > 0
+    assert c.state["posts"] == []
+    assert result["status"] == "processed" and result["feedback_status"] == "needs_reconciliation"
+    exact = c.http.portal.call(c.collaboration.receipt, delivery["id"])
+    assert exact == result
+    c.http.portal.call(c.collaboration.sync_feedback)
+    c.http.portal.call(c.collaboration.sync_feedback)
+    assert c.http.portal.call(c.collaboration.receipt, delivery["id"]) == exact
+    assert c.state["posts"] == []
+    assert c.http.get(c.path + "/bindings/requests/" + binding["request"]["request_id"]).json() == binding
+    with pytest.raises(AccessDenied):
+        c.http.portal.call(c.service.authorize_feedback, exact)
+    assert c.http.portal.call(c.journal.entries, c.run["id"]) == before
+    assert c.http.portal.call(c.store.get_run, c.run["id"])["status"] == "paused"

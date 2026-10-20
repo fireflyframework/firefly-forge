@@ -12,6 +12,7 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "get_run_activity_content",
     "request_run_creation",
     "get_run_creation_request",
     "cancel_run_creation_request",
@@ -36,7 +37,7 @@ def _baseline():
 
 async def test_actual_mcp_wire_metadata_stays_byte_exact():
     tools = await create_server().list_tools()
-    assert len(tools) == 157
+    assert len(tools) == 158
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     assert ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True) == _baseline()["wire_json"]
@@ -52,7 +53,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 251
+    assert len(catalog.registry) == 254
 
 
 def test_mcp_callbacks_preserve_the_original_executable_ast():

@@ -292,6 +292,16 @@ explicit status request can establish a new subscription. The peer lookup holds
 when a conversation has more than 200 retained receipts; it does not guess which
 receipt is current.
 
+A valid native provider recovery adds its request ID and reserved implementation
+attempt to the milestone. Two failed recoveries of the same run remain distinct
+even when polling misses the queued and running states between them. The card
+identifies the recovery attempt and the recorded attempts behind any retained
+check totals. Checks from another attempt, or checks without complete attempt
+provenance, do not verify the recovery. Runs without a valid provider recovery
+keep their existing milestone fingerprints, so this change does not repost
+unchanged legacy runs. Updates still depend on polling; every transient stage is
+not guaranteed to be observed or delivered.
+
 A typed automatic-verification handoff is shown as factory verification pending,
 running, completed or held. Pending and running system work does not ask an owner
 to run commands. Completed means command evidence was recorded, while held

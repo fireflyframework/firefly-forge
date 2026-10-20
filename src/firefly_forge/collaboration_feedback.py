@@ -141,11 +141,26 @@ def review_key(run: Data) -> str | None:
     return hashlib.sha256(str(value).encode()).hexdigest() if value else None
 
 
+def provider_recovery(run: Data) -> Data:
+    value = run.get("provider_recovery")
+    if (
+        not isinstance(value, dict)
+        or not isinstance(value.get("request_id"), str)
+        or not re.fullmatch(r"[a-f0-9]{32}", value["request_id"])
+        or type(value.get("attempt")) is not int
+        or not 1 <= value["attempt"] <= 100
+        or not isinstance(value.get("status"), str)
+        or value.get("status") not in {"reserved", "consumed", "completed"}
+    ):
+        return {}
+    return {"request_id": value["request_id"], "attempt": value["attempt"]}
+
+
 def milestone(run: Data) -> Data:
     """Use durable run fields, never provider output messages or wall-clock ticks."""
     request = run.get("worker_request") or {}
     checks = run.get("final_verification") or []
-    return {
+    result = {
         "status": run.get("status"),
         "task": run.get("active_task") if run.get("active_task") in STAGES else None,
         "request": request.get("id") if request.get("status") == "pending" else None,
@@ -156,6 +171,9 @@ def milestone(run: Data) -> Data:
         "handoff": verification_handoff(run),
         "verification_refusal": verification_refusal(run),
     }
+    if recovery := provider_recovery(run):
+        result["provider_recovery"] = recovery
+    return result
 
 
 def milestone_key(run: Data) -> str:
@@ -185,9 +203,13 @@ def feedback_due(data: Data, run: Data) -> bool:
     if data.get("feedback_key"):
         return bool(data["feedback_key"] != milestone_key(run))
     # Existing receipts adopt fingerprints only on a real transition, without reposting on upgrade.
+    recovery, retained = provider_recovery(run), data.get("feedback_intent")
+    reported = retained.get("provider_recovery") if isinstance(retained, dict) else None
     return bool(
         run.get("status") != data.get("feedback_stage")
         or ((run.get("worker_request") or {}).get("id") != data.get("feedback_request_id"))
+        or recovery
+        and recovery != reported
     )
 
 
@@ -211,6 +233,15 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     if stage in active_stages.get(status, set()):
         title, description = copy["stage_titles"][stage], copy["stages"][stage]
     sections, details = [], []
+    recovery = provider_recovery(run)
+    if recovery:
+        sections.append(
+            prompt_text(
+                "collaboration/provider-recovery",
+                attempt=str(recovery["attempt"]),
+                request_id=_identifier(recovery["request_id"], safe),
+            )
+        )
     if result:
         details.append(
             prompt_text(
@@ -286,6 +317,22 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     if checks:
         passed = sum(type(check.get("exit_code")) is int and check["exit_code"] == 0 for check in checks)
         sections.append(prompt_text("collaboration/verification", passed=str(passed), total=str(len(checks))))
+        if recovery:
+            attempts = {
+                check["attempt"]
+                for check in checks
+                if type(check.get("attempt")) is int and 1 <= check["attempt"] <= 100
+            }
+            complete = all(type(check.get("attempt")) is int and 1 <= check["attempt"] <= 100 for check in checks)
+            provenance = "unknown" if not complete else "current" if attempts == {recovery["attempt"]} else "retained"
+            sections.append(
+                prompt_text(
+                    "collaboration/verification-provenance",
+                    attempts=", ".join(str(attempt) for attempt in sorted(attempts))
+                    or copy["check_provenance_unknown"],
+                    explanation=copy["check_provenance"][provenance],
+                )
+            )
     url = _link(run.get("pr_url"), host, repository)
     if url:
         safe(url)

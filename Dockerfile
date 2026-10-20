@@ -4,6 +4,7 @@ WORKDIR /build/studio
 COPY studio/package*.json ./
 RUN npm ci
 COPY studio/ ./
+COPY tests/fixtures/activity-archive-contract-v1.json /build/tests/fixtures/activity-archive-contract-v1.json
 RUN npm run build
 
 FROM python:3.13-slim-trixie

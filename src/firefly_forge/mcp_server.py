@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import SkipValidation, WithJsonSchema
 
 from firefly_forge.access_controllers import MembershipInput
+from firefly_forge.activity_models import ActivityContentQuery
 from firefly_forge.agent_checkpoint_models import RestoreInput
 from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
@@ -59,6 +60,7 @@ CampaignDeliveryPlanRequest = SkipValidation[CampaignDeliveryPlanInput]
 SCMActorBindingRequest = SkipValidation[SCMActorBindingInputV1]
 SCMResumeGrantRequest = SkipValidation[SCMResumeGrantInputV2]
 RunEvidenceRequest = Annotated[Any, WithJsonSchema(EvidenceQuery.model_json_schema())]
+ActivityContentRequest = Annotated[Any, WithJsonSchema(ActivityContentQuery.model_json_schema())]
 SCMProductChangeGrantRequest = SkipValidation[SCMProductChangeGrantInputV1]
 RecoveryIdentifier = Annotated[Any, WithJsonSchema({"type": "string", "pattern": r"^[a-f0-9]{32}$"})]
 CompletionIdentifier = Annotated[Any, WithJsonSchema({"type": "string", "pattern": r"^fbr1_[a-f0-9]{32}$"})]
@@ -308,6 +310,18 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.run_evidence(identifier, query)
+
+    @server.tool(
+        description=prompt_text("mcp/get_run_activity_content"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_run_activity_content(identifier: str, event_id: str, query: ActivityContentRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_activity_content(identifier, event_id, query)
 
     @server.tool(description=prompt_text("mcp/get_execution_journal"))
     def get_execution_journal(identifier: str) -> dict[str, Any]:
