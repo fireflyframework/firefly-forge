@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.25
+
+New provider stdout and stderr records keep a bounded index and complete sanitized content within explicit per-event and per-run limits. Studio presents recognized commands, output previews and known exit codes. **Read full recorded event** reads and verifies the retained bytes before exposing the full content. HTTP, SDK, CLI and MCP use the same current access checks and exact descriptor. Existing activity remains readable; historical content is not reconstructed. See [complete provider activity](run-evidence.md#read-complete-provider-activity).
+
+Source-control milestone feedback distinguishes separate admitted recovery attempts, including failures that end with the same run status. Existing runs without a recovery retain their original fingerprint. Current authority, bounded dispatch and unknown-write holds remain required. A provider's check result does not become final factory QA.
+
+Execution shutdown protects an effect already draining after lease loss from a second cancellation. An expired shutdown deadline retains the storage fence until the effect finishes; it does not authorize a standby to repeat an uncertain command. See [worker takeover](runtime-roles.md).
+
+These changes preserve observed activity and recovery decisions. They do not establish successful live provider recovery or a completed generated product.
+
 ## 0.2.24
 
 An administrator can explicitly adopt the currently configured official CLI executable for one admitted failed-run recovery. The server binds its canonical path, file identity and SHA-256 to the reserved implementation task, then checks it again before dispatch, immediately before process creation and before accepting the result. Changed or inaccessible executable metadata refuses continuation. The original model, timeout, permissions, budgets and snapshot remain frozen; later normal repairs use the original executable configuration. Default recovery keeps its frozen executable. See [adopt an updated CLI](recovery.md#adopt-an-updated-cli-for-one-recovery).

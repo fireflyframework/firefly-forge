@@ -37,6 +37,8 @@ A passing run records its verified source and local checkpoint. Publication rech
 
 Review an [incremental product change](docs/product-lifecycle.md) against its saved revision before adding a feature or integration. Studio retains the original save request and any later draft separately when the outcome is uncertain. Journey references show linked behavior and acceptance criteria; review them against the product's intended experience before implementation.
 
+Read the run's [retained evidence](docs/run-evidence.md) to distinguish coding-provider activity from final factory verification. Studio presents commands and known outcomes, with complete sanitized event content available on demand within archive limits. SDK, CLI and MCP readers use the same current permissions and exact content descriptor.
+
 ## Choose how the factory executes work
 
 The default combined service admits and executes work. A split installation separates API replicas from headless workers: one execution leader runs the jobs while other workers wait as standbys. Processes share the PostgreSQL ledger and retained private storage. Standbys provide takeover; they do not add a distributed pool of active workers. See [runtime roles](docs/runtime-roles.md) and [factory infrastructure](docs/factory-infrastructure.md).

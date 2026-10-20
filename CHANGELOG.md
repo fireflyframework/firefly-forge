@@ -2,7 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.24 — Unreleased
+## 0.2.25 — Unreleased
+
+- Retain complete sanitized coding-provider events within explicit archive limits, with atomic storage and integrity-checked, currently authorized reads through HTTP, SDK, CLI and MCP.
+- Present recognized provider commands and outcomes in Studio, with a separate on-demand full-content reader and current desktop/mobile walkthroughs.
+- Distinguish recovery attempts in source-control milestone feedback while preserving historical delivery identities and unresolved-write holds.
+- Let interrupted execution tasks finish cancellation cleanup when several consumers detect a lost lease or the shutdown deadline expires; retain the storage fence until effects drain.
+
+## 0.2.24 — 2026-10-20
 
 - Bind an explicitly adopted current CLI executable to one failed-run recovery task while preserving its original model, timeout, permissions, budgets and snapshot.
 - Refuse changed or inaccessible executable metadata before continuation, and recheck the admitted entrypoint before process creation and result acceptance.
