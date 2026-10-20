@@ -89,7 +89,11 @@ The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) sh
 
 ## Recover a known failed official CLI attempt
 
-On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. For a parent with a finite soft limit, the trusted CLI launcher preserves its ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. Bounded native and CLI comparisons establish this launch-boundary mitigation; they do not identify the original offending write or file, establish a plugin cause, or qualify a generated application. Inspect the retained process and verification evidence before using the recovery contract below. This change grants no additional attempt, replay or budget reset.
+On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. With the stdlib asyncio event loop and a finite soft limit, the trusted CLI launcher preserves its inherited ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. `forge serve` selects asyncio explicitly; the headless worker already uses `asyncio.run`.
+
+An external ASGI host must select the stdlib loop, such as Uvicorn's `--loop asyncio`. The verified uvloop 0.23 subprocess path resets the child's ignored signal even with `restore_signals=False`. Forge rejects a known uvloop host with a finite soft file-size limit before the configured provider dispatch intent and before the final CLI launch guard or process creation. The typed runtime-admission error explains how to select asyncio. Already-spent implementation tasks and reservations remain spent; this refusal refunds nothing and grants no retry.
+
+Bounded native and CLI comparisons qualify this launch mitigation. They do not identify the original offending write or file, establish a plugin cause, or qualify a generated application. Inspect the retained process and verification evidence before using the recovery contract below. The kernel limit, original attempt history and repair budget remain unchanged.
 
 A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration by default; it does not change workers or repeat a verification handoff.
 

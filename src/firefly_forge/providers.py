@@ -53,6 +53,10 @@ class ProviderError(RuntimeError):
     process_outcome: ProviderProcessOutcome | None = None
 
 
+class ProviderRuntimeAdmissionError(ProviderError):
+    """The current event loop cannot preserve trusted CLI file-size signal behavior."""
+
+
 class ProviderLimitError(ProviderError):
     def __init__(
         self,
@@ -261,6 +265,20 @@ async def _stop_process_group(process: asyncio.subprocess.Process) -> None:
     await process.wait()
 
 
+def assert_cli_runtime_compatible() -> None:
+    if os.name != "posix":
+        return
+    import resource
+
+    if resource.getrlimit(resource.RLIMIT_FSIZE)[0] == resource.RLIM_INFINITY:
+        return
+    if any(base.__module__.split(".", 1)[0] == "uvloop" for base in type(asyncio.get_running_loop()).__mro__):
+        raise ProviderRuntimeAdmissionError(
+            "Trusted CLI execution with a finite RLIMIT_FSIZE requires the asyncio event loop; "
+            "use forge serve or configure the external ASGI server with --loop asyncio"
+        )
+
+
 async def run_process(
     command: list[str],
     workspace: Path,
@@ -274,6 +292,7 @@ async def run_process(
     expected = _cli_launch_executable.get()
     if expected is not None and (not command or command[0] != expected):
         raise ValueError("The actual CLI command differs from its adopted executable")
+    assert_cli_runtime_compatible()
     guard = _cli_launch_guard.get()
     if guard is not None:
         await guard()
