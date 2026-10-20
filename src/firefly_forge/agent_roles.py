@@ -393,6 +393,32 @@ class WorkerFeedback(BaseModel):
         return self
 
 
+class NativeAllowanceWorkerFeedback(WorkerFeedback):
+    """Feedback for the one native, administrator-reserved final provider attempt."""
+
+    protocol: Literal["native-provider-recovery-allowance-v1"]
+    attempt: Literal[5]
+    role_id: Literal["implementer"]
+    task_id: Literal["implement"]
+    allowance_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    allowance_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_validator("attempt", mode="before")
+    @classmethod
+    def exact_attempt(cls, value: Any) -> int:
+        if type(value) is not int or value != 5:
+            raise ValueError("Native final allowance feedback must identify exact attempt five")
+        return value
+
+
+def worker_feedback_model(value: Any) -> type[WorkerFeedback]:
+    if isinstance(value, NativeAllowanceWorkerFeedback) or (
+        isinstance(value, dict) and value.get("protocol") == "native-provider-recovery-allowance-v1"
+    ):
+        return NativeAllowanceWorkerFeedback
+    return WorkerFeedback
+
+
 class WorkerResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     id: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$")

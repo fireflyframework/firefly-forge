@@ -80,6 +80,22 @@ A native factory administrator can review `GET /runs/{id}/provider-recoveries/ca
 
 The strict body requires exactly one native process digest or explicit historical operator attestation. New-protocol unknown outcomes stay held. Current authority, source, provider and policy are checked again before launch, and all implementation intents count toward the four-dispatch limit. See [failed official CLI recovery](recovery.md#recover-a-known-failed-official-cli-attempt) for the proof fields, provenance and lost-response procedure. This change exposes HTTP endpoints only.
 
+### Final native recovery allowance
+
+The separate `/runs/{id}/provider-recoveries/allowances` surface reserves one fifth dispatch after a known native fourth-attempt failure. It requires a current native administrator with current execution authority. It accepts no historical process attestation or budget override.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/runs/{id}/provider-recoveries/allowances/candidate?agent=codex&adopt_current_executable=true` | Review the exact eligible failure and selected executable |
+| POST | `/runs/{id}/provider-recoveries/allowances` | Reserve and consume the one lifetime final allowance |
+| GET | `/runs/{id}/provider-recoveries/allowances/{request_id}` | Read the exact receipt as the original current operator |
+
+The strict POST body contains `request_id` (32 lowercase hexadecimal characters), `candidate_digest`, `native_process_digest`, `mitigation_evidence_digest` (each 64 lowercase hexadecimal characters), `agent` (`codex` or `claude`), `adopt_current_executable` (required literal `true`), and a nonblank `reason` of at most 2,000 characters. The mitigation digest is an administrator attestation, not server-generated QA evidence. HTTP201 retains a version-2 receipt with protocol `native-provider-recovery-allowance-v1`; the HTTP request does not execute inference.
+
+Same ID, body and current operator return the existing receipt. A stale candidate, different request, revoked authority or spent allowance refuses without another reservation. A missing response never renews eligibility. Legacy recovery routes retain their existing schemas and four-dispatch limit; reading a final allowance through the legacy receipt route returns HTTP409 identifying the new endpoint. See [the recovery procedure](recovery.md#reserve-one-final-native-provider-attempt) for launch checks, executable limits and lost-response handling.
+
+Fifth-attempt worker feedback uses `protocol: "native-provider-recovery-allowance-v1"`, literal `attempt: 5`, `role_id: "implementer"`, `task_id: "implement"`, `allowance_id` and `allowance_digest`, alongside the usual feedback fields. The native journal checks the actual consumed reservation and current authority before accepting it. Legacy `WorkerFeedback` remains limited to attempts 1–4.
+
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/health` | Inspect server health |

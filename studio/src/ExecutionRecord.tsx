@@ -8,6 +8,7 @@ import {
   journalDisposition,
 } from "./ExecutionPresentation";
 
+import { ProviderRecoveryAllowance } from "./ProviderRecoveryAllowance";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import type { IdentitySession } from "./Identity";
@@ -245,6 +246,33 @@ export function ExecutionRecord({
             run.publish,
             run.status,
             run.cancel_request?.status,
+          ])}
+          run={run}
+          connection={connection}
+          session={session}
+        />
+      )}
+      {session && (
+        <ProviderRecoveryAllowance
+          key={JSON.stringify([
+            "provider-final-allowance",
+            connection.base,
+            connection.token,
+            session.user.id,
+            session.user.authentication_method,
+            session.global_admin,
+            session.memberships,
+            run.id,
+            run.repository_id,
+            run.project_id,
+            run.agent,
+            run.attempt,
+            run.provider_recovery,
+            run.active_task,
+            run.status,
+            run.cancel_request?.status,
+            run.publish,
+            run.bridge_completion_hold,
           ])}
           run={run}
           connection={connection}

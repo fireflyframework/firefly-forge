@@ -5,11 +5,21 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.28
+
+A current native factory administrator can reserve one final fifth Codex or Claude dispatch after a known fourth-attempt process failure. The process must have terminated, drained its streams and left no process group. Reservation seals the allowance, linked admission and implementation intent in one WAL transaction. It spends the allowance immediately, even when the response is lost or dispatch never starts. Changed source, executable or current authority prevents launch; this contract provides no sixth attempt.
+
+The original four-attempt recovery and worker-feedback contracts stay strict. Fifth-attempt feedback uses a distinct native allowance-bound variant, and a worker cannot grant its own allowance. The SDK provides separate candidate, reservation and exact-receipt methods. Studio guides the administrator through the failed attempt, mitigation and final confirmation, saves the original request before sending it once, and provides read-only recovery when browser storage is lost. See [final allowance recovery](recovery.md#reserve-one-final-native-provider-attempt) and [the Studio guide](recovery.md#review-the-final-allowance-in-studio).
+
+The mitigation fingerprint records the administrator's attestation. It does not establish that forge ran those tests, that the mitigation resolves the failure or that the generated product passed QA. The original source, WAL prefix, model, repair budget and spent verification grants remain attached to the same run. Controlled UI fixtures illustrate the wizard and receipt states; real provider recovery and generated-product acceptance require their own execution evidence.
+
+Source-control writes that begin under acquired execution ownership retain that requirement across token preparation and the final authority callback. A released lease, disconnected ownership session or draining owner stops the POST, including when the Engine poller has stopped. Ownership acquired during those waits is checked too. Existing unowned manual writes retain their authorization path; these checks cannot make a remote provider write atomic with PostgreSQL. See [feedback authorization](scm.md#use-github-issue-comments-from-a-local-factory).
+
 ## 0.2.27
 
 Trusted Codex and Claude CLI launches on POSIX preserve an inherited ignored `SIGXFSZ` when the parent has a finite soft file-size limit. An oversized write can then return `EFBIG` while the kernel limit remains enforced. Unlimited parents, default `SIGXFSZ` dispositions and the separate untrusted command executor retain subprocess defaults. This branch also inherits other ignored signals, including `SIGPIPE`, through Python's shared restoration switch. Process-group cleanup, stream draining and typed outcome checks remain in place. See [the execution boundary](architecture.md#admission-execution-and-the-verified-tree) and [failure recovery](recovery.md#recover-a-known-failed-official-cli-attempt).
 
-Bounded native and CLI comparisons qualify this launch mitigation. The original offending write and file remain unidentified. The change grants no additional attempt or budget reset and does not establish successful same-run recovery or generated-product acceptance. The Studio walkthrough retains current, explicitly labeled 0.2.27 fixtures.
+Bounded native and CLI comparisons qualify this launch mitigation. The original offending write and file remain unidentified. The change grants no additional attempt or budget reset and does not establish successful same-run recovery or generated-product acceptance. The 0.2.27 release refreshed the explicitly labeled Studio fixtures.
 
 ## 0.2.26
 

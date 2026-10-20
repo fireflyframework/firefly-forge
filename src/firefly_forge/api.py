@@ -172,6 +172,8 @@ from firefly_forge.project_persistence import (
 )
 from firefly_forge.projects import Projects
 from firefly_forge.provider_recoveries import ProviderRecoveries
+from firefly_forge.provider_recovery_allowance_controllers import ProviderRecoveryAllowanceController
+from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowances
 from firefly_forge.provider_recovery_controllers import ProviderRecoveryController
 from firefly_forge.repository_role_controllers import RepositoryRoleController
 from firefly_forge.request_limits import RequestLimits
@@ -637,6 +639,10 @@ class FactoryConfiguration:
         recoveries = ProviderRecoveries(store, journal, engine)
         engine.provider_recoveries = recoveries
         return recoveries
+
+    @bean
+    def provider_recovery_allowances(self, recoveries: ProviderRecoveries) -> ProviderRecoveryAllowances:
+        return ProviderRecoveryAllowances(recoveries)
 
     @bean
     def assurance(self, store: Store, journal: Journal) -> Assurance:
@@ -1147,6 +1153,7 @@ def create_runtime(
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,
+        ProviderRecoveryAllowanceController,
         BridgeCompletionController,
         RunEvidenceController,
         ActivityContentController,

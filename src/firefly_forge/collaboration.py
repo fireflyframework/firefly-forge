@@ -1410,13 +1410,29 @@ class Collaboration:
         before_write: Callable[[], Awaitable[None]] | None = None,
     ) -> Data:
         provider = str(repo["connection_provider"])
+        ownership_required = self.store.execution_ownership_acquired or (
+            self.deployments is not None and self.deployments.engine.poller is not None
+        )
         token, api = await self.scm.issue_authentication(
             repo, pull_request=bool(issue and issue["kind"] == "pull_request")
         )
-        if self.deployments is not None and self.deployments.engine.poller is not None:
+        ownership_required = (
+            ownership_required
+            or self.store.execution_ownership_acquired
+            or self.deployments is not None
+            and self.deployments.engine.poller is not None
+        )
+        if ownership_required:
             await self.store.assert_ownership()
         if before_write is not None:
             await before_write()
+        if (
+            ownership_required
+            or self.store.execution_ownership_acquired
+            or self.deployments is not None
+            and self.deployments.engine.poller is not None
+        ):
+            await self.store.assert_ownership()
         self.store.reject_credentials(payload)
         response = await self.scm._request(
             "POST",

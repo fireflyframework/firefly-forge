@@ -235,6 +235,11 @@ class Store:
             await self._engine.dispose()
         self._initialized = False
 
+    @property
+    def execution_ownership_acquired(self) -> bool:
+        """An acquired session needs revalidation; this does not prove its lock is held."""
+        return self._ownership_connection is not None
+
     async def acquire_ownership(self) -> None:
         async with self._ownership_lock:
             await self._acquire_ownership()

@@ -856,15 +856,42 @@ class Journal:
         return [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
 
     async def worker_feedback(self, run_id: str, feedback: Any) -> Data:
-        from firefly_forge.agent_roles import BINDINGS, WorkerFeedback
+        from firefly_forge.agent_roles import NativeAllowanceWorkerFeedback, worker_feedback_model
 
-        feedback = WorkerFeedback.model_validate(feedback)
+        feedback = worker_feedback_model(feedback).model_validate(feedback)
+        if isinstance(feedback, NativeAllowanceWorkerFeedback):
+            from firefly_forge.provider_recoveries import ProviderRecoveries
+
+            run = await self.store.get_run(run_id)
+            actor = (run.get("provider_recovery") or {}).get("actor")
+            if not actor:
+                raise ValueError("Native final feedback requires its original allowance actor")
+            async with ProviderRecoveries(self.store, self, None)._locked(run_id, actor):
+                return await self._worker_feedback(run_id, feedback)
+        return await self._worker_feedback(run_id, feedback)
+
+    async def _worker_feedback(self, run_id: str, feedback: Any) -> Data:
+        from firefly_forge.agent_roles import BINDINGS, NativeAllowanceWorkerFeedback, worker_feedback_model
+
+        model = worker_feedback_model(feedback)
         async with self.store._unit():
             run = await self._run(run_id)
-            payload = WorkerFeedback.model_validate_json(
-                self._worker_payload(run, feedback.model_dump_json())
-            ).model_dump(mode="json")
+            payload = model.model_validate_json(self._worker_payload(run, feedback.model_dump_json())).model_dump(
+                mode="json"
+            )
             entries = await self.records.find_for_run(run.id)
+            if isinstance(feedback, NativeAllowanceWorkerFeedback):
+                from firefly_forge.provider_recovery_allowances import sealed_allowance
+
+                task = await self._task(run_id, "implement")
+                native_entries = [{**copy.deepcopy(e.data), "digest": e.digest} for e in entries]
+                if not self.verify_chain(native_entries):
+                    raise ValueError("Native final feedback requires an intact allowance journal")
+                link = sealed_allowance(run.data, {**task.data, "attempt": task.attempt}, native_entries)
+                if run.data["provider_recovery"].get("status") not in {"consumed", "completed"} or any(
+                    payload[name] != value for name, value in link.items()
+                ):
+                    raise ValueError("Native final feedback does not match its consumed allowance")
             key = _worker_message_key("worker-feedback", feedback.id)
             existing = next(
                 (entry for entry in entries if entry.kind == "worker_feedback" and entry.idempotency_key == key), None
@@ -876,6 +903,10 @@ class Journal:
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
             task = await self._task(run_id, feedback.task_id)
+            if isinstance(feedback, NativeAllowanceWorkerFeedback) and (
+                run.status != "developing" or task.status != "running"
+            ):
+                raise ValueError("New final allowance feedback requires its active implementation")
             if (
                 run.data.get("provider_recovery")
                 and feedback.task_id == "implement"

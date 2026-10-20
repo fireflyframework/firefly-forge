@@ -34,8 +34,14 @@ CAPTURE_HELPERS = {
     "studio/tests/scm-delegation-fixture.ts",
     "studio/tests/scm-delegation-contract-fixture.json",
     "studio/tests/scm-poll-resume-contract-fixture.json",
+    "studio/tests/provider-recovery-allowance-fixture.ts",
+    "studio/tests/provider-recovery-allowance-browser-fixture.ts",
 }
-CAPTURE_PRODUCERS = {"studio/tests/docs-walkthrough.spec.ts", "studio/tests/external-tools.spec.ts"}
+CAPTURE_PRODUCERS = {
+    "studio/tests/docs-walkthrough.spec.ts",
+    "studio/tests/external-tools.spec.ts",
+    "studio/tests/docs-provider-allowance.spec.ts",
+}
 
 
 def _load_walkthrough(config, root=ROOT):
@@ -104,9 +110,19 @@ def _load_walkthrough(config, root=ROOT):
             or name != f"{stage}-{device}-{theme}.png"
         ):
             raise ValueError("Walkthrough screenshot stage differs from its path: " + name)
+        allowance_stages = {
+            "provider-allowance-failure",
+            "provider-allowance-mitigation",
+            "provider-allowance-review",
+            "provider-allowance-reserved",
+        }
+        if stage.startswith("provider-allowance-") and stage not in allowance_stages:
+            raise ValueError("Unknown final allowance capture stage: " + name)
         expected_producer = (
             "studio/tests/external-tools.spec.ts"
             if stage.startswith("external-")
+            else "studio/tests/docs-provider-allowance.spec.ts"
+            if stage in allowance_stages
             else "studio/tests/docs-walkthrough.spec.ts"
         )
         if producer != expected_producer:

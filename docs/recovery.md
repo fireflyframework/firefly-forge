@@ -112,9 +112,92 @@ The receipt and dispatch WAL bind that executable to one reserved implementation
 
 This descriptor identifies the entrypoint file. Administrators remain responsible for its installation, dependencies and filesystem access; the check does not attest every library or make a path-based operating-system launch atomic. Qualify an updated CLI locally before spending another recovery attempt.
 
-The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. Every implementation intent counts toward a maximum of four dispatch reservations, including failed or unreceipted attempts. Consuming a reservation does not renew the repair or verification budget.
+The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. The ordinary recovery contract counts every implementation intent toward a maximum of four dispatch reservations, including failed or unreceipted attempts. The separate final-allowance contract below is the only native exception. Consuming a reservation does not renew the repair or verification budget.
 
 Future official-CLI failures retain typed native process evidence separately from provider output. A known nonzero exit requires the leader to have exited, both streams to have drained and its own process group to be absent. A zero exit without a valid final report, missing receipt or uncertain group remains unresolved. Provider output cannot assert those facts. This HTTP surface has no Studio, CLI or SDK recovery shortcut in this change.
+
+### Reserve one final native provider attempt
+
+After the fourth dispatch fails, a current native factory administrator can explicitly reserve one final dispatch in the same run. This allowance has a separate HTTP contract. The ordinary recovery API and automatic verification remain limited to four attempts.
+
+Eligibility requires a native fourth-attempt process receipt with a nonzero exit, a waited leader, drained streams and an absent process group. Historical operator attestation cannot establish eligibility. Unfinished tools, unknown remote effects, cancellation and changed execution authority keep the run held.
+
+1. Configure the reviewed current CLI executable, then read `GET /api/v1/runs/{id}/provider-recoveries/allowances/candidate?agent=codex&adopt_current_executable=true` (or `claude`). Review the failure, source, Git, policy, configuration and executable bindings.
+2. Retain one new 32-character hexadecimal `request_id`. POST `/api/v1/runs/{id}/provider-recoveries/allowances` with that ID, the returned `candidate_digest` and `native_process_digest`, the same `agent`, `adopt_current_executable: true`, a nonblank `reason` of at most 2,000 characters, and `mitigation_evidence_digest` containing a lowercase SHA-256.
+3. Keep the exact ID and body. If delivery is uncertain, read `GET /api/v1/runs/{id}/provider-recoveries/allowances/{request_id}` using the original current administrator. An identical POST reads back the reservation. A different ID, body or operator is refused.
+
+The reason and mitigation digest record an administrator's attestation. The server does not run the referenced mitigation tests or establish that they address the failure. The executable descriptor identifies the selected entrypoint; it does not attest forge's runtime source or every dependency. Qualify the running worker separately before reserving.
+
+A successful reservation consumes the run's only allowance immediately. It adds a sealed `provider_recovery_allowance`, a linked version-2 native admission and one new implementation intent in the existing transaction. The normal Engine consumer performs the dispatch. A timeout, lost response, cancelled run or failed fifth attempt never restores the allowance. There is no sixth dispatch through this contract.
+
+The original WAL prefix, partial workspace, model settings, repair budget and verification grants remain intact. Current authority and the exact native allowance link are checked at execution boundaries. Source or executable drift prevents launch. A fifth-attempt worker report uses a distinct typed feedback variant with the allowance ID and digest; the worker cannot create or extend the grant. Its completion report remains separate from verification and product acceptance. Questions that require another coding dispatch remain held after the final allowance is spent.
+
+The Python SDK offers `provider_recovery_allowance_candidate`, `reserve_provider_recovery_allowance` and `provider_recovery_allowance`. Each method performs one explicit request. In Studio, open the run's Plan tab and choose **Review final allowance** under **Final provider allowance**. The three steps review the failed attempt and selected CLI, record your mitigation reason and evidence fingerprint, then confirm the final reservation. This action is available to native factory administrators for an eligible failed fourth attempt; the server rechecks eligibility before reservation. Studio saves the exact request in the browser before sending it and offers **Check saved reservation** for readback. Closing the review or losing a response never creates a replacement request.
+
+If the browser's saved request is lost, the run's native allowance identity still provides **Read existing reservation**. This performs only an exact receipt read under the original administrator's current authority. Studio validates the returned operator, protocol, run and task bindings without claiming that the request body was previously saved locally. A missing or refused receipt stays unresolved; this path cannot reserve another attempt.
+
+### Review the final allowance in Studio
+
+Open the failed run, select **Plan**, then choose **Review final allowance**. The server supplies the current candidate and checks native process evidence and administrator authority. These screenshots use controlled HTTP fixtures. They illustrate the review and readback controls without running a CLI or establishing a successful recovery. Screenshots follow the documentation's light or dark appearance; select one to open it at full size.
+
+#### 1. Review the failed attempt
+
+Review the failed fourth attempt and the selected current CLI. Expand **Source and executable fingerprints** to inspect the retained source, Git, executable and native process digests. If the candidate is refused or changes during review, refresh it and inspect the new values before continuing.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop review of the failed attempt and selected current CLI.](assets/screenshots/provider-allowance-failure-desktop-light.png)
+<figcaption>The failure candidate identifies what the administrator is reviewing. It does not establish that another dispatch or product check has succeeded.</figcaption>
+</figure>
+
+#### 2. Record the mitigation
+
+Describe the mitigation you reviewed and enter its 64-character lowercase SHA-256 fingerprint. Confirm **Use the reviewed current CLI for this attempt**. The fingerprint records your attestation; forge does not execute or validate those mitigation tests through this form.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop mitigation form with an evidence fingerprint and explicit current-CLI adoption.](assets/screenshots/provider-allowance-mitigation-desktop-light.png)
+<figcaption>The reason, evidence fingerprint and executable choice stay part of the exact reservation request.</figcaption>
+</figure>
+
+#### 3. Confirm the reservation
+
+Review the reservation summary and acknowledge that this is the run's final allowance. **Reserve final allowance** saves the original request in the browser before sending one POST. Reservation spends the allowance, including a timeout, an unlaunched dispatch or a failed fifth attempt.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop final reservation review with the one-use acknowledgment.](assets/screenshots/provider-allowance-review-desktop-light.png)
+<figcaption>Confirm only after reviewing the source, selected executable and mitigation. This recovery cannot authorize a sixth dispatch.</figcaption>
+</figure>
+
+After submission, **Check saved reservation** reads the exact receipt. A pending, missing, refused or mismatched response leaves the request held. If browser storage is lost, **Read existing reservation** uses the identity retained on the run and performs only a receipt read. Neither action sends another reservation. Follow the run's plan, activity and actual verification results to determine what happened after admission.
+
+<figure class="forge-shot" markdown="1">
+![Controlled desktop result after the exact final-allowance receipt is confirmed.](assets/screenshots/provider-allowance-reserved-desktop-light.png)
+<figcaption>A confirmed reservation records admission. Implementation, verification and product acceptance remain separate outcomes.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review and reserve the final allowance on a phone</summary>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone review of the failed attempt and selected CLI.](assets/screenshots/provider-allowance-failure-mobile-light.png)
+<figcaption>Review the failed attempt, then continue to the mitigation. The dialog scrolls as one form.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone mitigation form with reason, evidence fingerprint and current-CLI choice.](assets/screenshots/provider-allowance-mitigation-mobile-light.png)
+<figcaption>Enter the reviewed evidence fingerprint and explicitly select the current CLI.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone final review with the authorization and reservation controls visible.](assets/screenshots/provider-allowance-review-mobile-light.png)
+<figcaption>Scroll to review the acknowledgment and final action. Closing the dialog preserves any already saved reservation identity.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Controlled phone result with exact receipt readback for the reserved final allowance.](assets/screenshots/provider-allowance-reserved-mobile-light.png)
+<figcaption>Use the retained identity for readback and inspect the execution record for the actual outcome.</figcaption>
+</figure>
+
+</details>
 
 ## Inspect a factory verification handoff
 
