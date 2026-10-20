@@ -17,8 +17,10 @@ class ProviderRecoveryController:
         self.recoveries = recoveries
 
     @get_mapping("/candidate")
-    async def candidate(self, run_id: PathVar[str], agent: QueryParam[str]) -> dict[str, Any]:
-        return await self.recoveries.candidate(run_id, agent)
+    async def candidate(
+        self, run_id: PathVar[str], agent: QueryParam[str], adopt_current_executable: QueryParam[bool] = False
+    ) -> dict[str, Any]:
+        return await self.recoveries.candidate(run_id, agent, adopt_current_executable=adopt_current_executable)
 
     @post_mapping("", status_code=201)
     async def admit(self, run_id: PathVar[str], body: Body[ProviderRecoveryAdmission]) -> dict[str, Any]:

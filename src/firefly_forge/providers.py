@@ -225,15 +225,18 @@ class ProcessResult:
 
 
 _cli_launch_guard: ContextVar[Callable[[], Awaitable[None]] | None] = ContextVar("cli_launch_guard", default=None)
+_cli_launch_executable: ContextVar[str | None] = ContextVar("cli_launch_executable", default=None)
 
 
 @contextmanager
-def cli_dispatch_scope(guard: Callable[[], Awaitable[None]] | None) -> Any:
+def cli_dispatch_scope(guard: Callable[[], Awaitable[None]] | None, *, executable: str | None = None) -> Any:
     token = _cli_launch_guard.set(guard)
+    executable_token = _cli_launch_executable.set(executable)
     try:
         yield
     finally:
         _cli_launch_guard.reset(token)
+        _cli_launch_executable.reset(executable_token)
 
 
 def _redact(text: str) -> str:
@@ -267,6 +270,9 @@ async def run_process(
     env: dict[str, str] | None = None,
 ) -> ProcessResult:
     """Drain both streams, bound retained output, and kill the process group on cancellation."""
+    expected = _cli_launch_executable.get()
+    if expected is not None and (not command or command[0] != expected):
+        raise ValueError("The actual CLI command differs from its adopted executable")
     guard = _cli_launch_guard.get()
     if guard is not None:
         await guard()

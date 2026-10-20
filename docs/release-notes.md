@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.24
+
+An administrator can explicitly adopt the currently configured official CLI executable for one admitted failed-run recovery. The server binds its canonical path, file identity and SHA-256 to the reserved implementation task, then checks it again before dispatch, immediately before process creation and before accepting the result. Changed or inaccessible executable metadata refuses continuation. The original model, timeout, permissions, budgets and snapshot remain frozen; later normal repairs use the original executable configuration. Default recovery keeps its frozen executable. See [adopt an updated CLI](recovery.md#adopt-an-updated-cli-for-one-recovery).
+
+This admission identifies the entrypoint file. Its dependencies and installation still require administrator qualification, and a path-based operating-system launch is not atomic. Controlled host and native recovery tests remain separate from successful live provider inference and generated-product acceptance.
+
 ## 0.2.23
 
 Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. The configurable maximum is three, within the existing four-attempt ceiling and separate from the repair budget. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person. See [verification recovery](recovery.md#inspect-a-factory-verification-handoff).

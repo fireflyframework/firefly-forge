@@ -34,6 +34,20 @@ def test_legacy_attestation_is_explicit_and_never_native_process_evidence():
         request_id="a" * 32, candidate_digest="b" * 64, agent="codex", legacy_attestation=value
     )
     assert body.native_process_digest is None
+    assert body.request_payload() == body.model_dump(exclude={"adopt_current_executable"})
+    assert body.request_payload()["native_process_digest"] is None
+
+
+@pytest.mark.parametrize("choice", ["true", 1, None, {"path": "/unreviewed/cli"}])
+def test_executable_adoption_requires_boolean_and_no_client_supplied_descriptor(choice):
+    with pytest.raises(ValidationError):
+        ProviderRecoveryAdmission(
+            request_id="a" * 32,
+            candidate_digest="b" * 64,
+            agent="codex",
+            legacy_attestation=attestation(),
+            adopt_current_executable=choice,
+        )
 
 
 @pytest.mark.parametrize(

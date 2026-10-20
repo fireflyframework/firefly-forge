@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from test_automatic_verification_journal import Memory
 
-from firefly_forge.configuration import ConfigurationStore
+from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration
 from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
@@ -103,6 +103,106 @@ def body(candidate, **changes):
             **changes,
         }
     )
+
+
+def configure_executable(e, tmp_path):
+    executable = tmp_path / "official-cli"
+    executable.write_text("#!/bin/sh\nexit 0\n")
+    executable.chmod(0o755)
+    e.memory.configuration.update(
+        "codex", ProviderConfiguration(values={"executable": str(executable), "model": "different-model"})
+    )
+    return executable
+
+
+async def test_explicit_cli_adoption_changes_only_one_dispatch_executable_and_keeps_exact_receipt(recovery, tmp_path):
+    e = recovery
+    executable = configure_executable(e, tmp_path)
+    original = e.memory.configuration.load_snapshot(e.memory.run.data["config_revision"])
+    revision = e.memory.run.data["config_revision"]
+    ordinary = await e.service.candidate(e.memory.id.hex, "codex")
+    assert "executable_adoption" not in ordinary
+    candidate = await e.service.candidate(e.memory.id.hex, "codex", adopt_current_executable=True)
+    assert candidate["executable_adoption"]["path"] == str(executable)
+    assert candidate["digest"] != ordinary["digest"]
+    request = body(candidate, adopt_current_executable=True)
+    receipt = await e.service.admit(e.memory.id.hex, request)
+    assert receipt == await e.service.admit(e.memory.id.hex, request)
+    assert receipt == await e.service.get(e.memory.id.hex, request.request_id)
+    assert e.memory.run.data["config_revision"] == revision
+    assert e.memory.configuration.load_snapshot(revision) == original
+    state = e.memory.run.data["provider_recovery"]
+    selected = e.service.execution_settings(e.memory.run.data, original, state["task_key"])
+    assert selected == {**original, "FORGE_CODEX_EXECUTABLE": str(executable)}
+    assert e.service.execution_settings(e.memory.run.data, original, "f" * 32) == original
+    e.memory.run.data["provider_recovery"]["status"] = "completed"
+    assert e.service.execution_settings(e.memory.run.data, original, state["task_key"]) == original
+
+
+@pytest.mark.parametrize("review_choice", [False, True])
+async def test_reviewed_cli_choice_cannot_change_during_admission(recovery, tmp_path, review_choice):
+    configure_executable(recovery, tmp_path)
+    candidate = await recovery.service.candidate(
+        recovery.memory.id.hex, "codex", adopt_current_executable=review_choice
+    )
+    with pytest.raises(ValueError, match="candidate changed"):
+        await recovery.service.admit(
+            recovery.memory.id.hex, body(candidate, adopt_current_executable=not review_choice)
+        )
+    assert recovery.memory.run.status == "failed"
+
+
+@pytest.mark.parametrize("boundary", ["admission", "dispatch", "launch", "result"])
+async def test_adopted_executable_byte_drift_refuses_every_boundary(recovery, tmp_path, boundary):
+    e = recovery
+    executable = configure_executable(e, tmp_path)
+    candidate = await e.service.candidate(e.memory.id.hex, "codex", adopt_current_executable=True)
+    request = body(candidate, adopt_current_executable=True)
+    if boundary != "admission":
+        await e.service.admit(e.memory.id.hex, request)
+        state = e.memory.run.data["provider_recovery"]
+        if boundary in {"launch", "result"}:
+            await e.service.dispatch(e.memory.id.hex, state["task_key"])
+            e.memory.run.status = e.memory.run.data["status"] = "developing"
+    executable.write_text("#!/bin/sh\nexit 9\n")
+    with pytest.raises(ValueError, match="changed|cut|context"):
+        if boundary == "admission":
+            await e.service.admit(e.memory.id.hex, request)
+        elif boundary == "dispatch":
+            await e.service.dispatch(e.memory.id.hex, state["task_key"])
+        elif boundary == "launch":
+            await e.service.assert_launch(e.memory.id.hex, state["task_key"])
+        else:
+            await e.service.assert_result(e.memory.id.hex, state["task_key"])
+
+
+@pytest.mark.parametrize("unsafe", ["relative", "symlink", "writable", "directory", "workspace", "oversize"])
+async def test_cli_adoption_rejects_untrusted_executable_paths(recovery, tmp_path, unsafe):
+    e = recovery
+    executable = configure_executable(e, tmp_path)
+    if unsafe == "relative":
+        configured = "official-cli"
+    elif unsafe == "symlink":
+        link = tmp_path / "alias"
+        link.symlink_to(executable)
+        configured = str(link)
+    elif unsafe == "directory":
+        configured = str(tmp_path)
+    elif unsafe == "workspace":
+        target = e.workspace / "cli"
+        target.write_bytes(executable.read_bytes())
+        target.chmod(0o755)
+        configured = str(target)
+    else:
+        if unsafe == "writable":
+            executable.chmod(0o777)
+        else:
+            with executable.open("r+b") as stream:
+                stream.truncate(512 * 1024 * 1024 + 1)
+        configured = str(executable)
+    e.memory.configuration.update("codex", ProviderConfiguration(values={"executable": configured}))
+    with pytest.raises(ValueError):
+        await e.service.candidate(e.memory.id.hex, "codex", adopt_current_executable=True)
 
 
 async def test_same_failed_run_gets_one_distinct_reserved_dispatch_and_exact_readback(recovery):

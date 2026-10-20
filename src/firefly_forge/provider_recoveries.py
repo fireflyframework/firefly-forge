@@ -19,6 +19,7 @@ from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import Journal, digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+from firefly_forge.provider_executable_adoption import executable_identity
 from firefly_forge.provider_recovery_models import (
     ProviderAttemptClosed,
     ProviderProcessOutcome,
@@ -110,13 +111,32 @@ class ProviderRecoveries:
         return str(tool_policy_snapshot(self.store.configuration)["digest"])
 
     def _provider_digest(self, run: Data) -> str:
-        return digest(
-            {
-                "agent": run["agent"],
-                "retained": self.store.configuration.load_snapshot(run["config_revision"]),
-                "current": self.store.configuration.resolve(run["agent"]),
-            }
-        )
+        value = {
+            "agent": run["agent"],
+            "retained": self.store.configuration.load_snapshot(run["config_revision"]),
+            "current": self.store.configuration.resolve(run["agent"]),
+        }
+        state = run.get("provider_recovery") or {}
+        adoption = state.get("executable_adoption")
+        if adoption and state.get("status") in {"reserved", "consumed"}:
+            observed = self._current_executable(run)
+            if observed != adoption:
+                raise ValueError("The adopted CLI executable changed")
+            value["executable_adoption"] = observed
+        return digest(value)
+
+    def _current_executable(self, run: Data) -> Data:
+        key = "FORGE_" + run["agent"].upper() + "_EXECUTABLE"
+        return executable_identity(self.store.configuration.resolve(run["agent"]).get(key, ""), self.engine.workspaces)
+
+    def execution_settings(self, run: Data, settings: dict[str, str], task_key: str) -> dict[str, str]:
+        state = run.get("provider_recovery") or {}
+        adoption = state.get("executable_adoption")
+        if not adoption or state.get("task_key") != task_key or state.get("status") not in {"reserved", "consumed"}:
+            return dict(settings)
+        if self._current_executable(run) != adoption:
+            raise ValueError("The adopted CLI executable changed before selection")
+        return {**settings, "FORGE_" + run["agent"].upper() + "_EXECUTABLE": adoption["path"]}
 
     def _cut(self, run: Data) -> Data:
         workspace = self.engine.workspaces / run["id"]
@@ -199,7 +219,7 @@ class ProviderRecoveries:
         ):
             raise ValueError("An unknown remote effect requires reconciliation")
 
-    async def _candidate(self, run: Data, agent: str) -> Data:
+    async def _candidate(self, run: Data, agent: str, *, adopt_current_executable: bool = False) -> Data:
         operator = CURRENT_PRINCIPAL.get()
         if operator is None:
             raise AccessDenied("A current native recovery operator is required")
@@ -247,6 +267,8 @@ class ProviderRecoveries:
         await self._settled(run, idle=True)
         if CURRENT_PRINCIPAL.get() != operator:
             raise AccessDenied("The reviewing recovery operator changed")
+        adoption = self._current_executable(run) if adopt_current_executable else None
+        prospective = {"status": "reserved", "executable_adoption": adoption} if adoption else {}
         payload = {
             "version": 1,
             "operator_digest": operator_digest,
@@ -268,15 +290,21 @@ class ProviderRecoveries:
             "next_attempt": attempt + 1,
             "process_evidence": "native_cli_process_receipt" if observed else "legacy_operator_attestation_required",
             "native_process_digest": observed["digest"] if observed else None,
-            "cut": self._cut(run),
+            "cut": self._cut({**run, "provider_recovery": prospective}),
         }
+        if adoption:
+            payload["executable_adoption"] = adoption
         return {**payload, "digest": digest(payload)}
 
-    async def candidate(self, run_id: str, agent: str) -> Data:
+    async def candidate(self, run_id: str, agent: str, *, adopt_current_executable: bool = False) -> Data:
         identifier(run_id)
+        if type(adopt_current_executable) is not bool:
+            raise ValueError("CLI adoption requires an explicit boolean choice")
         await self._operator(run_id)
         async with self.store._unit():
-            value = await self._candidate(await self.store.get_run(run_id), agent)
+            value = await self._candidate(
+                await self.store.get_run(run_id), agent, adopt_current_executable=adopt_current_executable
+            )
         await self._operator(run_id)
         self.store.reject_credentials(value)
         return value
@@ -319,10 +347,12 @@ class ProviderRecoveries:
                 None,
             )
             if prior is not None:
-                if prior["request"] != body.model_dump() or prior["actor"] != snapshot:
+                if prior["request"] != body.request_payload() or prior["actor"] != snapshot:
                     raise ValueError("The recovery identity already binds different content or actor")
                 return copy.deepcopy(prior)
-            candidate = await self._candidate(row.data, body.agent)
+            candidate = await self._candidate(
+                row.data, body.agent, adopt_current_executable=body.adopt_current_executable
+            )
             if candidate["digest"] != body.candidate_digest:
                 raise ValueError("The reviewed recovery candidate changed")
             if candidate["native_process_digest"]:
@@ -339,11 +369,12 @@ class ProviderRecoveries:
             task = await self.journal._task(run_id, "implement")
             if CURRENT_PRINCIPAL.get() != actor:
                 raise AccessDenied("The recovery operator changed before admission")
-            if self._cut(row.data) != candidate["cut"]:
+            prospective = {"status": "reserved", "executable_adoption": candidate.get("executable_adoption")}
+            if self._cut({**row.data, "provider_recovery": prospective}) != candidate["cut"]:
                 raise ValueError("The recovery source or configuration cut changed")
             receipt = {
                 "version": 1,
-                "request": body.model_dump(),
+                "request": body.request_payload(),
                 "candidate": candidate,
                 "actor": snapshot,
                 "process_evidence": evidence,
@@ -386,6 +417,11 @@ class ProviderRecoveries:
                     "attempt": candidate["next_attempt"],
                     "cut": candidate["cut"],
                     "actor": snapshot,
+                    **(
+                        {"executable_adoption": candidate["executable_adoption"]}
+                        if body.adopt_current_executable
+                        else {}
+                    ),
                 },
             }
             await self.store.run_records.save(row)
@@ -456,7 +492,17 @@ class ProviderRecoveries:
                 "implement",
                 key + ":provider",
                 "provider_dispatch_intent",
-                {"version": 1, "task_key": key, "recovery_id": current["request_id"], "attempt": current["attempt"]},
+                {
+                    "version": 1,
+                    "task_key": key,
+                    "recovery_id": current["request_id"],
+                    "attempt": current["attempt"],
+                    **(
+                        {"executable_adoption": current["executable_adoption"]}
+                        if current.get("executable_adoption")
+                        else {}
+                    ),
+                },
             )
             task.status = "running"
             await self.journal.tasks.save(task)
