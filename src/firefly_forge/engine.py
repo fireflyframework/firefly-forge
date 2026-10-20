@@ -242,8 +242,9 @@ class Engine:
             await asyncio.gather(self.poller, return_exceptions=True)
         tasks = list(self.active.values())
         for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+            if not task.cancelling():
+                task.cancel()
+        await asyncio.shield(asyncio.gather(*tasks, return_exceptions=True))
         self.shutdown_tasks.update(self.consumer_tasks())
         if any(not task.done() for task in self.shutdown_tasks):
             self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
@@ -283,7 +284,9 @@ class Engine:
                 self.store.execution_stopping = True
                 for task in self.active.values():
                     task.cancel()
-                await asyncio.gather(*self.active.values(), return_exceptions=True)
+                # Another consumer can trigger native shutdown during this drain.
+                # Cancelling the poller must not cancel effect cleanup a second time.
+                await asyncio.shield(asyncio.gather(*self.active.values(), return_exceptions=True))
                 # Native shutdown drains every higher-phase effect consumer before Engine.stop releases storage.
                 return
             self.active = {identifier: task for identifier, task in self.active.items() if not task.done()}
