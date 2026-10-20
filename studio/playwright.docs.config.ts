@@ -3,8 +3,12 @@ import { defineConfig } from "@playwright/test";
 const port = Number(process.env.FORGE_DOCS_PORT ?? 5227);
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["docs-walkthrough.spec.ts", "external-tools.spec.ts"],
-  grep: /guided fixture journey|actual fixture review frames/,
+  testMatch: [
+    "docs-walkthrough.spec.ts",
+    "external-tools.spec.ts",
+    "docs-provider-allowance.spec.ts",
+  ],
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames/,
   workers: 1,
   timeout: 90000,
   use: {

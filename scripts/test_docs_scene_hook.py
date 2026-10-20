@@ -69,8 +69,11 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/scm-delegation-fixture.ts": "fixture SCM routes",
                 "studio/tests/scm-delegation-contract-fixture.json": "fixture SCM mapping",
                 "studio/tests/scm-poll-resume-contract-fixture.json": "fixture polling consent",
+                "studio/tests/provider-recovery-allowance-fixture.ts": "fixture native allowance",
+                "studio/tests/provider-recovery-allowance-browser-fixture.ts": "fixture allowance routes",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
+                "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -112,6 +115,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/scm-delegation-fixture.ts",
                     "studio/tests/scm-delegation-contract-fixture.json",
                     "studio/tests/scm-poll-resume-contract-fixture.json",
+                    "studio/tests/provider-recovery-allowance-fixture.ts",
+                    "studio/tests/provider-recovery-allowance-browser-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -161,6 +166,9 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/agent-checkpoint-recovery-fixture.ts", "capture helper"),
                 ("studio/tests/run-creation-cancellation-fixture.ts", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
+                ("studio/tests/docs-provider-allowance.spec.ts", "capture producer"),
+                ("studio/tests/provider-recovery-allowance-fixture.ts", "capture helper"),
+                ("studio/tests/provider-recovery-allowance-browser-fixture.ts", "capture helper"),
                 ("studio/playwright.docs.config.ts", "capture config"),
             ]:
                 (root / name).write_text("changed input")
@@ -225,6 +233,26 @@ class WalkthroughTests(unittest.TestCase):
                 hook._load_walkthrough({"docs_dir": str(docs)}, root)
             record["producer"] = "studio/tests/external-tools.spec.ts"
             record["producer_sha256"] = producers[record["producer"]]
+            save()
+            allowance_name = "provider-allowance-review-mobile-light.png"
+            allowance_asset = asset.parent / allowance_name
+            allowance_asset.write_bytes(asset.read_bytes())
+            allowance_record = {
+                **record,
+                "stage": "provider-allowance-review",
+                "path": "assets/screenshots/" + allowance_name,
+                "producer": "studio/tests/docs-provider-allowance.spec.ts",
+            }
+            allowance_record["producer_sha256"] = producers[allowance_record["producer"]]
+            manifest["captures"][allowance_name] = allowance_record
+            save()
+            hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            allowance_record["producer"] = "studio/tests/docs-walkthrough.spec.ts"
+            allowance_record["producer_sha256"] = producers[allowance_record["producer"]]
+            save()
+            with self.assertRaisesRegex(ValueError, "stage.*producer"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][allowance_name]
             save()
             extra = root / "studio/src/New.tsx"
             extra.write_text("new frontend input")
@@ -328,12 +356,16 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/scm-delegation-fixture.ts",
                 "studio/tests/scm-delegation-contract-fixture.json",
                 "studio/tests/scm-poll-resume-contract-fixture.json",
+                "studio/tests/provider-recovery-allowance-fixture.ts",
+                "studio/tests/provider-recovery-allowance-browser-fixture.ts",
             ]
             for name in operator_inputs:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text("fixture operator guide input")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")
+            allowance_capture = root / "studio/tests/docs-provider-allowance.spec.ts"
+            allowance_capture.write_text("fixture allowance producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -352,6 +384,7 @@ class WalkthroughTests(unittest.TestCase):
                 "capture_producers": {
                     "studio/tests/docs-walkthrough.spec.ts": sha(capture),
                     "studio/tests/external-tools.spec.ts": sha(mcp_capture),
+                    "studio/tests/docs-provider-allowance.spec.ts": sha(allowance_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),
