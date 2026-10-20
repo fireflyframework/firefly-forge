@@ -4,6 +4,7 @@
 import json
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,15 @@ async def test_coding_cli_adapter_binds_only_scoped_mcp_without_token_arguments_
         assert 'bearer_token_env_var="FORGE_CODING_RUNTIME_TOKEN"' in configuration
         assert 'enabled_tools=["run_configured_check"]' in configuration
         assert "network_access" not in configuration
+        parsed = tomllib.loads(configuration)
+        assert set(parsed) == {"mcp_servers"}
+        assert set(parsed["mcp_servers"]) == {"forge_coding"}
+        scoped = parsed["mcp_servers"]["forge_coding"]
+        assert scoped["enabled_tools"] == ["run_configured_check"]
+        assert scoped.get("tools") == {"run_configured_check": {"approval_mode": "approve"}}
+        assert "default_tools_approval_mode" not in scoped
+        approval = next(value for value in args if value.startswith("approval_policy="))
+        assert tomllib.loads(approval) == {"approval_policy": "never"}
     else:
         assert "--strict-mcp-config" in args
         assert "mcp__forge_coding__run_configured_check" in args[args.index("--allowedTools") + 1]

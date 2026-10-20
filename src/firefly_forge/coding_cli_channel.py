@@ -31,6 +31,7 @@ class CodingCLIChannel:
             + ',bearer_token_env_var="'
             + TOKEN_ENV
             + '",enabled=true,required=true,enabled_tools=["run_configured_check"],'
+            + 'tools={run_configured_check={approval_mode="approve"}},'
             + 'startup_readiness="connection",startup_timeout_sec=5,tool_timeout_sec='
             + str(timeout)
             + "}}"

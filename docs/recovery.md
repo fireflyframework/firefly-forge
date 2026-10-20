@@ -140,7 +140,7 @@ If the browser's saved request is lost, the run's native allowance identity stil
 
 An eligible final provider recovery can carry a separate native administrator grant for `run_configured_check(command_index, request_id)`. This ephemeral coding MCP channel is distinct from the operator MCP server. It exposes only selected retained configured commands, with their frozen arguments and timeouts; it grants no arbitrary command, operator API, publication, deployment or broader network access.
 
-General role tools remain advisory for official CLIs. Codex keeps `workspace-write`; Claude receives an explicit private, strict MCP configuration. Adapter fixtures alone do not establish live provider or product acceptance.
+General role tools remain advisory for official CLIs. Codex keeps `workspace-write` and global `approval_policy="never"`. For the already granted channel, the adapter sets `approval_mode="approve"` only on `run_configured_check`. Configured checks may write files and still pass through the native grant, runner and source checks. Claude receives an explicit private, strict MCP configuration. Adapter fixtures alone do not establish live provider or product acceptance.
 
 #### Review and bind the grant
 
