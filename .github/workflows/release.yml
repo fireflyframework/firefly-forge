@@ -44,9 +44,11 @@ jobs:
       - run: uv run python scripts/check_distribution.py dist
       - run: tar -czf dist/firefly-forge-studio.tar.gz -C studio/dist .
       - run: python scripts/release_checksums.py dist
+      - name: Bind release documentation links to the publishing tag
+        run: python scripts/release_notes.py docs/release-notes.md "$RUNNER_TEMP/forge-release-notes.md" --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "firefly forge $GITHUB_REF_NAME" --notes-file docs/release-notes.md
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "firefly forge $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/forge-release-notes.md"
   container:
     needs: release
     runs-on: ubuntu-24.04
