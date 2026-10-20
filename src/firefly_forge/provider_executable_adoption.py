@@ -12,9 +12,9 @@ from typing import Any
 
 def executable_identity(configured: str, workspaces: Path) -> dict[str, Any]:
     path = Path(configured)
-    if not configured or not path.is_absolute() or path.is_symlink():
-        raise ValueError("CLI adoption requires an absolute regular executable, without a symlink")
     try:
+        if not configured or not path.is_absolute() or path.is_symlink():
+            raise ValueError("CLI adoption requires an absolute regular executable, without a symlink")
         canonical = path.resolve(strict=True)
         if canonical.is_relative_to(workspaces.resolve()):
             raise ValueError("A project workspace cannot supply the adopted CLI executable")
