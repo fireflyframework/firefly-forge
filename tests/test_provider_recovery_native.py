@@ -9,6 +9,7 @@ from test_automatic_verification_native import prepared
 from test_execution import seed_repository
 from worker_reply_fixtures import authenticated_operator
 
+from firefly_forge.configuration import ProviderConfiguration
 from firefly_forge.engine import Engine
 from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
@@ -139,6 +140,64 @@ async def test_native_changed_source_refuses_admission_and_reserved_dispatch(sto
         assert (await store.get_run(run_id))["status"] != "succeeded"
 
 
+async def test_native_cli_adoption_is_one_dispatch_and_preserves_frozen_configuration(store, tmp_path, monkeypatch):
+    from firefly_forge import providers
+
+    old_cli, new_cli = tmp_path / "retained-cli", tmp_path / "updated-cli"
+    for path in (old_cli, new_cli):
+        path.write_text("#!/bin/sh\nexit 0\n")
+        path.chmod(0o755)
+    monkeypatch.setenv("FORGE_CODEX_EXECUTABLE", str(old_cli))
+    async with authenticated_operator(store):
+        env = await legacy_failure(store, tmp_path, monkeypatch)
+        run_id = env.run["id"]
+        original = await store.get_run(run_id)
+        frozen = store.configuration.load_snapshot(original["config_revision"])
+        store.configuration.update(
+            "codex", ProviderConfiguration(values={"executable": str(new_cli), "model": "different-model"})
+        )
+        candidate = await env.recovery.candidate(run_id, "codex", adopt_current_executable=True)
+        request = admission(candidate).model_copy(update={"adopt_current_executable": True})
+        receipt = await env.recovery.admit(run_id, request)
+        calls = []
+
+        class Worker:
+            def __init__(self, settings):
+                self.settings = settings
+
+            async def execute(self, workspace, brief, backend, frontend, emit):
+                calls.append(dict(self.settings))
+                result = await providers.run_process(
+                    [self.settings["FORGE_CODEX_EXECUTABLE"]], workspace, emit, timeout=2
+                )
+                assert result.returncode == 0
+                (workspace / "partial.py").write_text(f"VALUE = {len(calls) + 1}\n")
+                return AgentResult("Completed controlled native fixture", "fixture")
+
+        def select(agent, settings=None):
+            assert agent == "codex"
+            return Worker(settings)
+
+        monkeypatch.setattr(providers, "get_provider", select)
+        env.engine.configured_provider = True
+        await env.engine.execute_run(run_id)
+        final = await store.get_run(run_id)
+        assert final["status"] == "succeeded", final.get("error")
+        assert calls == [{**frozen, "FORGE_CODEX_EXECUTABLE": str(new_cli)}]
+        assert env.recovery.execution_settings(final, frozen, final["provider_recovery"]["task_key"]) == frozen
+        assert frozen["FORGE_CODEX_EXECUTABLE"] == str(old_cli)
+        assert final["config_revision"] == original["config_revision"]
+        assert final["verification_handoff"] == original["verification_handoff"]
+        assert final["repair_budget"] == original["repair_budget"] == 0
+        assert store.configuration.load_snapshot(final["config_revision"]) == frozen
+        assert receipt == await env.recovery.get(run_id, request.request_id)
+        entries = await env.journal.entries(run_id)
+        assert Journal.verify_chain(entries)
+        dispatches = [row for row in entries if row["kind"] == "provider_dispatch_intent"]
+        assert len(dispatches) == 1
+        assert dispatches[0]["payload"]["executable_adoption"] == candidate["executable_adoption"]
+
+
 def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_path, postgres_schema):
     from starlette.testclient import TestClient
 
@@ -194,7 +253,15 @@ def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_p
         endpoint = f"/api/v1/runs/{run_id}/provider-recoveries"
         candidate = http.get(endpoint + "/candidate?agent=codex")
         assert candidate.status_code == 200, candidate.text
-        body = admission(candidate.json()).model_dump()
+        assert "executable_adoption" not in candidate.json()
+        executable = tmp_path / "configured-cli"
+        executable.write_text("#!/bin/sh\nexit 0\n")
+        executable.chmod(0o755)
+        store.configuration.update("codex", ProviderConfiguration(values={"executable": str(executable)}))
+        candidate = http.get(endpoint + "/candidate?agent=codex&adopt_current_executable=true")
+        assert candidate.status_code == 200, candidate.text
+        assert candidate.json()["executable_adoption"]["path"] == str(executable)
+        body = admission(candidate.json()).model_dump() | {"adopt_current_executable": True}
         response = http.post(endpoint, json=body)
         assert response.status_code == 201, response.text
         assert http.post(endpoint, json=body).json() == response.json()

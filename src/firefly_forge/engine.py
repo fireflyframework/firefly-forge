@@ -974,8 +974,20 @@ class Engine:
                     from firefly_forge.providers import cli_dispatch_scope
 
                     official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
+                    dispatch_provider, adopted_executable = provider, None
                     if official_dispatch:
                         if recovery is not None:
+                            selected = official_dispatch.execution_settings(current, settings, active_key)
+                            adoption = (current.get("provider_recovery") or {}).get("executable_adoption")
+                            if adoption:
+                                if not self.configured_provider:
+                                    raise ValueError(
+                                        "CLI executable adoption requires the configured official provider"
+                                    )
+                                from firefly_forge.providers import get_provider
+
+                                dispatch_provider = get_provider(run["agent"], selected)
+                                adopted_executable = adoption["path"]
                             await official_dispatch.dispatch(identifier, active_key)
                         else:
                             await official_dispatch.normal_dispatch(identifier, active_key)
@@ -991,9 +1003,11 @@ class Engine:
                         with (
                             bridge_completion_scope(completion_scope),
                             checkpoint_invocation(native_invocation),
-                            cli_dispatch_scope(launch_guard if official_dispatch else None),
+                            cli_dispatch_scope(
+                                launch_guard if official_dispatch else None, executable=adopted_executable
+                            ),
                         ):
-                            result = await provider.execute(
+                            result = await dispatch_provider.execute(
                                 workspace,
                                 brief
                                 if restoration is not None

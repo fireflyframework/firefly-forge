@@ -88,6 +88,43 @@ async def test_final_trusted_launch_guard_refuses_before_process_creation(monkey
     assert not created
 
 
+async def test_adopted_cli_path_is_bound_to_actual_command_before_launch(monkeypatch, tmp_path):
+    created = []
+
+    async def create(*args, **kwargs):
+        created.append(True)
+        raise AssertionError("A different executable must not start")
+
+    monkeypatch.setattr(providers.asyncio, "create_subprocess_exec", create)
+    with (
+        providers.cli_dispatch_scope(None, executable="/approved/cli"),
+        pytest.raises(ValueError, match="executable"),
+    ):
+        await providers.run_process(["/different/cli"], tmp_path, discard, timeout=1)
+    assert created == []
+
+
+async def test_cli_adoption_scope_restores_previous_command_binding_after_exception(tmp_path, monkeypatch):
+    calls = []
+
+    async def create(*args, **kwargs):
+        calls.append(args[0])
+        raise RuntimeError("fixture reached process creation")
+
+    monkeypatch.setattr(providers.asyncio, "create_subprocess_exec", create)
+    with providers.cli_dispatch_scope(None, executable="/outer/cli"):
+        with (
+            providers.cli_dispatch_scope(None, executable="/inner/cli"),
+            pytest.raises(ValueError, match="executable"),
+        ):
+            await providers.run_process(["/outer/cli"], tmp_path, discard, timeout=1)
+        with pytest.raises(RuntimeError, match="fixture reached"):
+            await providers.run_process(["/outer/cli"], tmp_path, discard, timeout=1)
+    with pytest.raises(RuntimeError, match="fixture reached"):
+        await providers.run_process(["/unbound/cli"], tmp_path, discard, timeout=1)
+    assert calls == ["/outer/cli", "/unbound/cli"]
+
+
 @pytest.mark.parametrize("stdout", ["", '{"type":"turn.failed","error":"failure"}'])
 async def test_zero_exit_protocol_failure_retains_typed_process_evidence_and_cannot_be_legacy(
     monkeypatch, tmp_path, stdout

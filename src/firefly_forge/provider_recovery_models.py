@@ -60,6 +60,11 @@ class ProviderRecoveryAdmission(BaseModel):
     agent: Literal["codex", "claude"]
     native_process_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     legacy_attestation: LegacyProcessAttestation | None = None
+    adopt_current_executable: bool = False
+
+    def request_payload(self) -> Data:
+        # Preserve replay of receipts written before executable adoption existed.
+        return self.model_dump(exclude=set() if self.adopt_current_executable else {"adopt_current_executable"})
 
     @model_validator(mode="after")
     def one_proof(self) -> ProviderRecoveryAdmission:

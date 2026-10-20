@@ -89,7 +89,7 @@ The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) sh
 
 ## Recover a known failed official CLI attempt
 
-A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration; it does not change workers or repeat a verification handoff.
+A current native factory administrator can explicitly admit one replacement Codex or Claude dispatch in the same failed run. The run must still identify its failed implementation task and retained workspace. Recovery preserves the run ID, source, earlier task receipts, repair budget and spent verification grants. It keeps the original provider and configuration by default; it does not change workers or repeat a verification handoff.
 
 Read `GET /api/v1/runs/{id}/provider-recoveries/candidate?agent=codex` (or `claude`). Review its exact source, failure, operator and policy binding. Keep a new 32-character hexadecimal request ID, then POST `/api/v1/runs/{id}/provider-recoveries` with that `request_id`, the returned `candidate_digest`, the same `agent`, and exactly one process proof:
 
@@ -99,6 +99,16 @@ Read `GET /api/v1/runs/{id}/provider-recoveries/candidate?agent=codex` (or `clau
 The legacy option records an administrator's trusted observation. It does not establish that the server inspected the old process. A new-protocol dispatch with absent or uncertain native evidence cannot use this option. Unknown descendants, an uncertain external effect, current execution or changed authority keep recovery held.
 
 An admission returns HTTP201 with an immutable receipt and queues one reserved dispatch. After a lost response, read `GET /api/v1/runs/{id}/provider-recoveries/{request_id}`. An identical POST returns the original receipt; different content or a replacement ID cannot consume the old failure again. Preserve the original ID and body while settling an uncertain response.
+
+### Adopt an updated CLI for one recovery
+
+Changing provider settings alone leaves an existing run's frozen executable unchanged. To recover with an updated CLI, first configure its absolute executable path in the same provider's settings. Request the candidate with `adopt_current_executable=true`, review its `executable_adoption` descriptor, then include `"adopt_current_executable": true` in the admission body. Keep the returned candidate digest and the process proof described above. The server derives the path and SHA-256; the client cannot supply a replacement descriptor.
+
+The executable must be a regular file outside the execution workspace tree, at most 512 MiB, executable by the worker and not writable by the group or everyone. A symlink entrypoint is refused. API and execution workers must see the same canonical path and file identity; configure the real installed path before reviewing the candidate.
+
+The receipt and dispatch WAL bind that executable to one reserved implementation task. forge checks its bytes and identity again before dispatch, immediately before process creation and before accepting the result. A changed file or configuration stops continuation. Only the executable setting is overlaid: the original model, timeout, permissions and budgets remain frozen. Later normal repairs use the original configuration. The original snapshot and earlier receipts remain intact.
+
+This descriptor identifies the entrypoint file. Administrators remain responsible for its installation, dependencies and filesystem access; the check does not attest every library or make a path-based operating-system launch atomic. Qualify an updated CLI locally before spending another recovery attempt.
 
 The Engine rechecks current authority and the reserved source before launch. Its normal inspection may stage the same retained source; that index-only transition gets a separate native preparation receipt. Source, HEAD, refs and policy changes refuse dispatch. Every implementation intent counts toward a maximum of four dispatch reservations, including failed or unreceipted attempts. Consuming a reservation does not renew the repair or verification budget.
 
