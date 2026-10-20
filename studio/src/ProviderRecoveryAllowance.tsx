@@ -32,6 +32,7 @@ import {
 import { Wizard } from "./Wizard";
 import "./ProjectAccess.css";
 import "./ProviderRecoveryAllowance.css";
+import { codingStateEvent } from "./CodingCheckGrantData";
 
 export function ProviderRecoveryAllowance({
   run,
@@ -74,6 +75,7 @@ export function ProviderRecoveryAllowance({
     agent: run.agent === "claude" ? "claude" : "codex",
   };
   const [loaded, setLoaded] = useState(false),
+    [codingFlow, setCodingFlow] = useState(false),
     [blocked, setBlocked] = useState(false),
     [marker, setMarker] = useState<AllowanceMarker | null>(null),
     [confirmed, setConfirmed] = useState(false),
@@ -104,10 +106,19 @@ export function ProviderRecoveryAllowance({
     const key = allowanceMarkerKey(context);
     async function restore() {
       try {
-        const saved = await readAllowanceMarker(
-          localStorage.getItem(key),
-          context,
-        );
+        const raw = localStorage.getItem(key);
+        if (raw && JSON.parse(raw).kind === "coding-check-recovery") {
+          if (live.current) {
+            setCodingFlow(true);
+            setLoaded(true);
+            setBlocked(true);
+            setEditing(false);
+            setConfirmed(false);
+            controller.current?.abort();
+          }
+          return;
+        }
+        const saved = await readAllowanceMarker(raw, context);
         if (live.current) {
           if (saved) {
             retained.current = saved;
@@ -134,10 +145,12 @@ export function ProviderRecoveryAllowance({
       if (event.key === key || event.key === null) void restore();
     };
     window.addEventListener("storage", storage);
+    window.addEventListener(codingStateEvent, restore);
     return () => {
       live.current = false;
       controller.current?.abort();
       window.removeEventListener("storage", storage);
+      window.removeEventListener(codingStateEvent, restore);
     };
     // ExecutionRecord remounts on the complete connection and authority context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +346,7 @@ export function ProviderRecoveryAllowance({
     }
   }
   if (!potential) return null;
+  if (codingFlow) return null;
   const name = context.agent === "codex" ? "Codex" : "Claude Code";
   return (
     <section

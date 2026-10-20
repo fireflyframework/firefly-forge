@@ -71,9 +71,12 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/scm-poll-resume-contract-fixture.json": "fixture polling consent",
                 "studio/tests/provider-recovery-allowance-fixture.ts": "fixture native allowance",
                 "studio/tests/provider-recovery-allowance-browser-fixture.ts": "fixture allowance routes",
+                "studio/tests/coding-check-grant-fixture.json": "fixture coding grant",
+                "studio/tests/coding-check-recovery-browser-fixture.ts": "fixture coding routes",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
+                "studio/tests/docs-coding-check-recovery.spec.ts": "fixture coding producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -117,6 +120,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/scm-poll-resume-contract-fixture.json",
                     "studio/tests/provider-recovery-allowance-fixture.ts",
                     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
+                    "studio/tests/coding-check-grant-fixture.json",
+                    "studio/tests/coding-check-recovery-browser-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -253,6 +258,24 @@ class WalkthroughTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "stage.*producer"):
                 hook._load_walkthrough({"docs_dir": str(docs)}, root)
             del manifest["captures"][allowance_name]
+            coding_name = "coding-check-review-mobile-light.png"
+            (asset.parent / coding_name).write_bytes(asset.read_bytes())
+            coding_record = {
+                **record,
+                "stage": "coding-check-review",
+                "path": "assets/screenshots/" + coding_name,
+                "producer": "studio/tests/docs-coding-check-recovery.spec.ts",
+            }
+            coding_record["producer_sha256"] = producers[coding_record["producer"]]
+            manifest["captures"][coding_name] = coding_record
+            save()
+            hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            coding_record["producer"] = "studio/tests/docs-provider-allowance.spec.ts"
+            coding_record["producer_sha256"] = producers[coding_record["producer"]]
+            save()
+            with self.assertRaisesRegex(ValueError, "stage.*producer"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][coding_name]
             save()
             extra = root / "studio/src/New.tsx"
             extra.write_text("new frontend input")
@@ -358,6 +381,8 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/scm-poll-resume-contract-fixture.json",
                 "studio/tests/provider-recovery-allowance-fixture.ts",
                 "studio/tests/provider-recovery-allowance-browser-fixture.ts",
+                "studio/tests/coding-check-grant-fixture.json",
+                "studio/tests/coding-check-recovery-browser-fixture.ts",
             ]
             for name in operator_inputs:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
@@ -366,6 +391,8 @@ class WalkthroughTests(unittest.TestCase):
             mcp_capture.write_text("fixture MCP producer")
             allowance_capture = root / "studio/tests/docs-provider-allowance.spec.ts"
             allowance_capture.write_text("fixture allowance producer")
+            coding_capture = root / "studio/tests/docs-coding-check-recovery.spec.ts"
+            coding_capture.write_text("fixture coding producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -385,6 +412,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/docs-walkthrough.spec.ts": sha(capture),
                     "studio/tests/external-tools.spec.ts": sha(mcp_capture),
                     "studio/tests/docs-provider-allowance.spec.ts": sha(allowance_capture),
+                    "studio/tests/docs-coding-check-recovery.spec.ts": sha(coding_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

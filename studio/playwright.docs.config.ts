@@ -7,8 +7,9 @@ export default defineConfig({
     "docs-walkthrough.spec.ts",
     "external-tools.spec.ts",
     "docs-provider-allowance.spec.ts",
+    "docs-coding-check-recovery.spec.ts",
   ],
-  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames/,
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames/,
   workers: 1,
   timeout: 90000,
   use: {
