@@ -46,6 +46,7 @@ async def test_mcp_tools_have_real_input_contracts():
         "get_development_plan",
         "get_execution_journal",
         "query_run_evidence",
+        "get_run_activity_content",
         "get_execution_requests",
         "request_runner_continuation",
         "get_runner_continuation",
@@ -62,6 +63,10 @@ async def test_mcp_tools_have_real_input_contracts():
         "configure_scm_resume_grant",
         "get_scm_resume_grant",
         "get_current_scm_resume_grant",
+        "configure_scm_polling_resume_grant",
+        "get_scm_polling_resume_grant",
+        "get_current_scm_polling_resume_grant",
+        "review_scm_polling_resume",
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
         "get_current_scm_product_change_grant",
@@ -188,6 +193,9 @@ async def test_mcp_tools_have_real_input_contracts():
         "refresh_connection_oauth",
         "disconnect_connection_oauth",
     }
+    activity = tools["get_run_activity_content"]
+    assert activity.input_schema["required"] == ["identifier", "event_id", "query"]
+    assert activity.annotations.read_only_hint is True and activity.annotations.open_world_hint is False
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]
     assert tools["request_incident_maintenance"].input_schema["required"] == ["identifier", "brief", "checks"]

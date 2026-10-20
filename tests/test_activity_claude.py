@@ -132,10 +132,13 @@ def test_four_maximum_tool_blocks_fit_without_widening_the_index_budget():
             assert row["activity_summary"]["omitted_blocks"] == 0
 
 
-def test_public_python_typescript_vectors_preserve_the_original_descriptor_contract():
+@pytest.mark.parametrize(
+    "fixture", ["tests/fixtures/activity-claude-contract-v1.json", "studio/tests/provider-activity-guide-fixture.json"]
+)
+def test_public_python_typescript_vectors_preserve_the_original_descriptor_contract(fixture):
     from pathlib import Path
 
-    vectors = json.loads((Path(__file__).parent / "fixtures/activity-claude-contract-v1.json").read_text())
+    vectors = json.loads((Path(__file__).parents[1] / fixture).read_text())
     for record in vectors["records"]:
         event = record["event"]
         data, payload = project_activity(vectors["run_id"], event["id"], event["stage"], record["raw_message"])

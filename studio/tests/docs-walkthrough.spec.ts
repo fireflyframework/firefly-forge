@@ -16,6 +16,13 @@ import { setup as setupOriginalResult } from "./agent-checkpoint-recovery-fixtur
 import { verifiedReport } from "./campaign-report-fixture";
 import { setupDelivery } from "./campaign-delivery-browser-fixture";
 import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
+import claudeActivity from "./provider-activity-guide-fixture.json" with { type: "json" };
+import pollingConsent from "./scm-poll-resume-contract-fixture.json" with { type: "json" };
+import {
+  setupDelegation as setupScmDelegation,
+  projectCut as scmProjectCut,
+  digest as scmDigest,
+} from "./scm-delegation-fixture";
 import {
   setup as setupCampaignHistory,
   selectCampaign as selectCampaignHistory,
@@ -3540,5 +3547,215 @@ for (const device of ["desktop", "mobile"])
       expect(contentReads).toBe(1);
       await capture(page, "activity-provider-full", theme, device, {
         actionSelector: 'button:has-text("Copy full recorded event")',
+      });
+    });
+
+// Public-format vectors illustrate observed provider messages without live inference.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey Claude activity ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const selected = {
+        ...run,
+        id: claudeActivity.run_id,
+        brief: "Inspect observed Claude activity",
+        events: claudeActivity.records.map((record) => record.event),
+        verification: [],
+      };
+      let reads = 0;
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockIdentity(route)) return;
+        const url = new URL(route.request().url()),
+          path = url.pathname;
+        let json: unknown = {};
+        if (path.endsWith("/repositories")) json = [repository];
+        else if (path.endsWith("/runs")) json = [selected];
+        else if (path.endsWith(`/runs/${selected.id}`)) json = selected;
+        else if (path.endsWith("/plan")) json = { revision: 1, tasks: [] };
+        else if (path.endsWith("/journal")) json = { valid: true, entries: [] };
+        else if (path.includes("/activity/") && path.endsWith("/content")) {
+          const record = claudeActivity.records.find((record) =>
+            path.includes(record.event.id),
+          )!;
+          expect(url.searchParams.get("expected_descriptor")).toBe(
+            record.event.activity_content.descriptor_sha256,
+          );
+          expect(url.searchParams.get("chunk")).toBe("0");
+          reads++;
+          json = record.chunk;
+        }
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("API token", { exact: true })
+        .fill("fixture-bootstrap-token-at-least-24-chars");
+      await page
+        .getByRole("button", { name: "Save connection", exact: true })
+        .click();
+      await navigate(page, "Factory");
+      await page
+        .getByRole("button", { name: /Inspect observed Claude activity/ })
+        .click();
+      const panel = page.getByRole("tabpanel");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Provider message recorded",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(panel.getByText(/^Exit /)).toHaveCount(0);
+      expect(await panel.textContent()).not.toContain("OPAQUE_PROVIDER_FIELD");
+      expect(reads).toBe(0);
+      await capture(page, "activity-claude-request", theme, device, {
+        actionSelector: 'button[aria-label="Copy requested command preview"]',
+        focusSelector:
+          '.record-evidence:has([aria-label="Observed tool request"])',
+      });
+      const result = panel
+        .getByRole("region", { name: "Archived provider event", exact: true })
+        .nth(1);
+      await expect(
+        result.getByText("Provider reported an error", { exact: true }),
+      ).toHaveCount(1);
+      await capture(page, "activity-claude-result", theme, device, {
+        actionSelector:
+          '.record-evidence:has([aria-label="Observed tool result"]) button[aria-label="Copy preview"]',
+        focusSelector:
+          '.record-evidence:has([aria-label="Observed tool result"])',
+      });
+      await result.getByText(/Full recorded event ·/).click();
+      await result
+        .getByRole("button", { name: "Read full recorded event", exact: true })
+        .click();
+      await expect(
+        result.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      expect(reads).toBe(1);
+    });
+
+// Consent fixtures exercise the exact-request UI; no GitHub or consent API is contacted.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey GitHub continuation consent ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const base = await setupScmDelegation(page);
+      const value = structuredClone(pollingConsent.binding);
+      value.project_binding_digest = scmProjectCut;
+      value.request.expected_project_binding_digest = scmProjectCut;
+      value.request_digest = scmDigest(value.request);
+      const { digest: _old, ...bindingFields } = value;
+      void _old;
+      const binding = { ...bindingFields, digest: scmDigest(bindingFields) };
+      const receipts = new Map<string, Record<string, unknown>>();
+      const posts: Record<string, unknown>[] = [];
+      let current: Record<string, unknown> | null = null;
+      await page.route("**/scm-polling/**", async (route) => {
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        if (path.includes("/resume-grants")) {
+          if (request.method() === "POST") {
+            const body = request.postDataJSON() as Record<string, unknown>;
+            posts.push(body);
+            const { digest: _digest, ...fields } = {
+              ...pollingConsent.receipt,
+              event_id: "a".repeat(32),
+              administering_user_id: base.actor,
+              binding_key: binding.binding_key,
+              native_user_id: binding.request.native_user_id,
+              request: body,
+              request_digest: scmDigest(body),
+              previous_digest: body.expected_previous_digest,
+              revision: 1,
+            };
+            void _digest;
+            current = { ...fields, digest: scmDigest(fields) };
+            receipts.set(String(body.request_id), current);
+            return route.fulfill({ status: 201, json: current });
+          }
+          const result = path.includes("/requests/")
+            ? receipts.get(path.split("/").at(-1)!)
+            : current;
+          return route.fulfill({
+            status: result ? 200 : 404,
+            json: result ?? { detail: "No exact consent receipt" },
+          });
+        }
+        if (path.includes("/bindings/requests/"))
+          return route.fulfill({ json: binding });
+        return route.fulfill({
+          json: {
+            project_id: binding.project_id,
+            repository_id: binding.repository_id,
+            heads_only: true,
+            items: [binding],
+            next_after: null,
+          },
+        });
+      });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page
+        .getByRole("button", { name: "Read GitHub accounts", exact: true })
+        .click();
+      await page
+        .getByLabel("GitHub continuation account", { exact: true })
+        .selectOption(binding.request.request_id);
+      await page
+        .getByRole("button", {
+          name: "Review GitHub continuation",
+          exact: true,
+        })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Review GitHub continuation consent",
+        exact: true,
+      });
+      await expect(dialog).toBeVisible();
+      await capture(page, "scm-poll-continuation-mapping", theme, device);
+      await dialog
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      await expect(
+        dialog.getByRole("checkbox", { name: "Inventory API", exact: true }),
+      ).toBeChecked();
+      await capture(page, "scm-poll-continuation-scope", theme, device);
+      await dialog
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      const acknowledge = dialog.getByRole("checkbox", {
+        name: /I approve this GitHub account/,
+      });
+      await acknowledge.check();
+      await capture(page, "scm-poll-continuation-review", theme, device);
+      expect(posts).toHaveLength(0);
+      await dialog
+        .getByRole("button", { name: "Save permission", exact: true })
+        .click();
+      await expect(
+        page.getByRole("region", {
+          name: "Exact resume consent receipt",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(posts).toHaveLength(1);
+      expect(base.posts).toHaveLength(0);
+      await capture(page, "scm-poll-continuation-confirmed", theme, device, {
+        actionSelector:
+          '[aria-label="Exact resume consent receipt"] > details > summary',
+        resetFields: false,
       });
     });

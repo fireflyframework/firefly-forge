@@ -30,6 +30,10 @@ CAPTURE_HELPERS = {
     "studio/tests/worker-dialogue-contract-fixture.json",
     "studio/tests/agent-checkpoint-recovery-fixture.ts",
     "studio/tests/run-creation-cancellation-fixture.ts",
+    "studio/tests/provider-activity-guide-fixture.json",
+    "studio/tests/scm-delegation-fixture.ts",
+    "studio/tests/scm-delegation-contract-fixture.json",
+    "studio/tests/scm-poll-resume-contract-fixture.json",
 }
 CAPTURE_PRODUCERS = {"studio/tests/docs-walkthrough.spec.ts", "studio/tests/external-tools.spec.ts"}
 

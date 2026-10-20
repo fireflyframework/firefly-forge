@@ -5,11 +5,21 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.26
+
+Studio displays Claude stream-json activity as bounded text, tool requests, reported tool results and final provider reports. Mixed messages show their omitted-block count. Unknown structured output has a generic card and an explicit reader when complete sanitized content was retained. The existing byte/hash descriptor, archive limits and current access checks stay intact. Tool requests and provider reports establish no command receipt or final factory verification. See [provider activity](run-evidence.md#read-complete-provider-activity).
+
+A factory administrator can separately authorize a mapped GitHub account to request continuation of an answered clarification through REST issue polling. **Project access** guides Mapping, Scope and Review, retains one request before **Save permission**, and confirms its exact receipt. A lost response or conflict keeps the original request held for readback. Each new continuation still checks current application, account, project and execution authority. Saving consent starts no work. See [the walkthrough](console-tour.md#review-github-continuation-consent) and [polling continuation](scm.md#continue-an-answered-clarification-through-polling).
+
+The HTTP, SDK, CLI and MCP contracts share this separate transport-bound consent. The factory now exposes 162 MCP tools and 258 versioned prompt resources. Local controlled fixtures illustrate the UI and admission boundaries; they do not establish a live GitHub continuation, provider recovery or completed CRM.
+
 ## 0.2.25
 
 New provider stdout and stderr records keep a bounded index and complete sanitized content within explicit per-event and per-run limits. Studio presents recognized commands, output previews and known exit codes. **Read full recorded event** reads and verifies the retained bytes before exposing the full content. HTTP, SDK, CLI and MCP use the same current access checks and exact descriptor. Existing activity remains readable; historical content is not reconstructed. See [complete provider activity](run-evidence.md#read-complete-provider-activity).
 
 Source-control milestone feedback distinguishes separate admitted recovery attempts, including failures that end with the same run status. Existing runs without a recovery retain their original fingerprint. Current authority, bounded dispatch and unknown-write holds remain required. A provider's check result does not become final factory QA.
+
+For GitHub polling feedback, forge repeats the exact comment and author-access checks after preparing the issue token, then checks native authority again before the POST. A changed source or withdrawn permission stops the reply and retains the unresolved write for review. Repeated ticks do not resend it. Remote GitHub changes and the local transaction remain separate boundaries. See [polling feedback](scm.md#6-inspect-the-reply-and-preserve-unknown-outcomes).
 
 Execution shutdown protects an effect already draining after lease loss from a second cancellation. An expired shutdown deadline retains the storage fence until the effect finishes; it does not authorize a standby to repeat an uncertain command. See [worker takeover](runtime-roles.md).
 

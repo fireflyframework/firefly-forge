@@ -65,6 +65,10 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/worker-dialogue-contract-fixture.json": "fixture operator guide input",
                 "studio/tests/agent-checkpoint-recovery-fixture.ts": "fixture checkpoint recovery",
                 "studio/tests/run-creation-cancellation-fixture.ts": "fixture request cancellation",
+                "studio/tests/provider-activity-guide-fixture.json": "fixture Claude projection",
+                "studio/tests/scm-delegation-fixture.ts": "fixture SCM routes",
+                "studio/tests/scm-delegation-contract-fixture.json": "fixture SCM mapping",
+                "studio/tests/scm-poll-resume-contract-fixture.json": "fixture polling consent",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
@@ -104,6 +108,10 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/worker-dialogue-contract-fixture.json",
                     "studio/tests/agent-checkpoint-recovery-fixture.ts",
                     "studio/tests/run-creation-cancellation-fixture.ts",
+                    "studio/tests/provider-activity-guide-fixture.json",
+                    "studio/tests/scm-delegation-fixture.ts",
+                    "studio/tests/scm-delegation-contract-fixture.json",
+                    "studio/tests/scm-poll-resume-contract-fixture.json",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -316,8 +324,13 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/worker-dialogue-contract-fixture.json",
                 "studio/tests/agent-checkpoint-recovery-fixture.ts",
                 "studio/tests/run-creation-cancellation-fixture.ts",
+                "studio/tests/provider-activity-guide-fixture.json",
+                "studio/tests/scm-delegation-fixture.ts",
+                "studio/tests/scm-delegation-contract-fixture.json",
+                "studio/tests/scm-poll-resume-contract-fixture.json",
             ]
             for name in operator_inputs:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text("fixture operator guide input")
             mcp_capture = root / "studio/tests/external-tools.spec.ts"
             mcp_capture.write_text("fixture MCP producer")

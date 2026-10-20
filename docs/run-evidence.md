@@ -48,6 +48,24 @@ Claude tool requests name the requested tool and show a Bash command preview whe
 
 A Claude message can contain several content blocks. Studio displays up to four bounded blocks and states how many blocks were omitted from the preview. When the archive retained the full event, you can read those blocks there. An archive-limit notice means only the preview was retained. Tool input objects, attachments and unsupported block formats stay in the retained event. Unknown, malformed or oversized JSON previews receive a short generic card; plain text logs remain readable. Full content is loaded only when requested and within its archive budget. These display rules recognize an observed JSON format; they do not authenticate the provider or replace a command receipt.
 
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot" markdown="1">
+
+![A Claude Bash request shown as an observed tool request with a bounded command preview.](assets/screenshots/activity-claude-request-desktop-light.png)
+
+<figcaption>This controlled Claude message requested a command. Its request card supplies no execution receipt.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![A reported Claude tool error with its call identity collapsed on a phone.](assets/screenshots/activity-claude-result-mobile-dark.png)
+
+<figcaption>The provider reported a tool error. Read the full retained event explicitly when needed; factory verification is recorded separately.</figcaption>
+</figure>
+
+</div>
+
 <figure class="forge-shot" markdown="1">
 ![Provider command summary and bounded output preview in the execution timeline.](assets/screenshots/activity-provider-preview-desktop-light.png)
 <figcaption>This controlled walkthrough shows a preview. Reading complete content is a separate action.</figcaption>

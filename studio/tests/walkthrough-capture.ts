@@ -87,6 +87,9 @@ export async function captureWalkthrough(
     "scm-delegation-account": "Account",
     "scm-delegation-scope": "Scope",
     "scm-delegation-review": "Review",
+    "scm-poll-continuation-mapping": "Mapping",
+    "scm-poll-continuation-scope": "Scope",
+    "scm-poll-continuation-review": "Review",
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
     "source-analysis-scope": "Scope",
@@ -240,6 +243,10 @@ export async function captureWalkthrough(
     "studio/tests/worker-dialogue-contract-fixture.json",
     "studio/tests/agent-checkpoint-recovery-fixture.ts",
     "studio/tests/run-creation-cancellation-fixture.ts",
+    "studio/tests/provider-activity-guide-fixture.json",
+    "studio/tests/scm-delegation-fixture.ts",
+    "studio/tests/scm-delegation-contract-fixture.json",
+    "studio/tests/scm-poll-resume-contract-fixture.json",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",

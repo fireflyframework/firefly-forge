@@ -19,13 +19,8 @@
       "observed_receipt_id": "22222222222222222222222222222222",
       "expected_reference_digest": "90d0b8c59987927dcadaa3a4ada1ed2102ff6b6369e3d4869ef5aca2b7421139",
       "native_user_id": "33333333333333333333333333333333",
-      "component_ids": [
-        "api"
-      ],
-      "allowed_actions": [
-        "respond",
-        "status"
-      ],
+      "component_ids": ["api"],
+      "allowed_actions": ["respond", "status"],
       "active": true,
       "acknowledge_api_observed_identity": true
     },
@@ -58,12 +53,8 @@
     "expected_project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "expected_binding_request_id": "11111111111111111111111111111111",
     "expected_binding_digest": "ac3cac7393b5882f334ea317097ccb59f52610b1935d2f2cd9a7ee1a42399692",
-    "component_ids": [
-      "api"
-    ],
-    "allowed_actions": [
-      "resume"
-    ],
+    "component_ids": ["api"],
+    "allowed_actions": ["resume"],
     "active": true,
     "acknowledge_same_run_resume": true
   },
@@ -86,12 +77,8 @@
       "expected_project_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       "expected_binding_request_id": "11111111111111111111111111111111",
       "expected_binding_digest": "ac3cac7393b5882f334ea317097ccb59f52610b1935d2f2cd9a7ee1a42399692",
-      "component_ids": [
-        "api"
-      ],
-      "allowed_actions": [
-        "resume"
-      ],
+      "component_ids": ["api"],
+      "allowed_actions": ["resume"],
       "active": true,
       "acknowledge_same_run_resume": true
     },
@@ -142,13 +129,8 @@
           "observed_receipt_id": "22222222222222222222222222222222",
           "expected_reference_digest": "90d0b8c59987927dcadaa3a4ada1ed2102ff6b6369e3d4869ef5aca2b7421139",
           "native_user_id": "33333333333333333333333333333333",
-          "component_ids": [
-            "api"
-          ],
-          "allowed_actions": [
-            "respond",
-            "status"
-          ],
+          "component_ids": ["api"],
+          "allowed_actions": ["respond", "status"],
           "active": true,
           "acknowledge_api_observed_identity": true
         },
