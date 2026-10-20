@@ -990,7 +990,7 @@ class Engine:
                             if current_handoff.get("id"):
                                 await self.journal.verification_hold(identifier, current_handoff["id"])
                             raise ReconciliationRequired(str(exc)) from exc
-                    from firefly_forge.providers import cli_dispatch_scope
+                    from firefly_forge.providers import assert_cli_runtime_compatible, cli_dispatch_scope
 
                     official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
                     dispatch_provider, adopted_executable = provider, None
@@ -998,6 +998,8 @@ class Engine:
                     checks = getattr(self, "coding_checks", None)
                     dispatch_pending = {"value": False}
                     if official_dispatch:
+                        if self.configured_provider:
+                            assert_cli_runtime_compatible()
                         if recovery is not None:
                             if (current.get("provider_recovery") or {}).get("coding_check_grant_id"):
                                 try:

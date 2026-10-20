@@ -52,7 +52,7 @@ def serve(host: str, port: int, data_dir: Path | None, role: str | None) -> None
         app = create_application(data_dir, role=RuntimeRoleConfig.model_validate({"role": role}).role if role else None)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, loop="asyncio")
 
 
 @main.command()

@@ -23,6 +23,8 @@ Each new check call uses current native authority, lease, grant and source check
 
 The SDK and `forge coding-check-grants` group provide explicit candidate, grant, receipt, current-status and revocation operations. Codex and Claude adapters use an invocation-scoped, loopback-only channel with a short-lived token and fixed tool selection. Tokens stay out of command arguments and retained activity. The 162 operator MCP tools remain separate; the versioned Agentic catalog now contains 260 resources. See [the execution boundary](architecture.md#scoped-configured-check-execution) and [client operations](agent-integrations.md#grant-check-access-to-a-coding-recovery).
 
+`forge serve` explicitly uses the stdlib asyncio event loop. A known uvloop host with a finite POSIX file-size limit is refused before trusted CLI dispatch intent or process creation, since the verified uvloop subprocess path resets an inherited ignored `SIGXFSZ`. External ASGI hosts must select asyncio too. The kernel limit and all spent tasks and reservations remain unchanged. This correction establishes no generated-product acceptance; see [file-size failure recovery](recovery.md#recover-a-known-failed-official-cli-attempt).
+
 Native PostgreSQL/API/runner fixtures, cross-language reader checks and controlled Studio captures qualify these contracts. They do not by themselves establish live official-CLI MCP execution or a completed CRM. The walkthrough screenshots are labeled fixtures.
 
 ## 0.2.28
