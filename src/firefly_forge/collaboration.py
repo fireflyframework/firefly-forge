@@ -1574,7 +1574,9 @@ class Collaboration:
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
 
             async def before_write() -> None:
-                await self._feedback_authority(data, local=True)
+                await self._feedback_authority(
+                    data, local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
+                )
                 self.store.reject_credentials(public_values)
 
             remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)

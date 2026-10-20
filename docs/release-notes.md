@@ -11,6 +11,8 @@ New provider stdout and stderr records keep a bounded index and complete sanitiz
 
 Source-control milestone feedback distinguishes separate admitted recovery attempts, including failures that end with the same run status. Existing runs without a recovery retain their original fingerprint. Current authority, bounded dispatch and unknown-write holds remain required. A provider's check result does not become final factory QA.
 
+For GitHub polling feedback, forge repeats the exact comment and author-access checks after preparing the issue token, then checks native authority again before the POST. A changed source or withdrawn permission stops the reply and retains the unresolved write for review. Repeated ticks do not resend it. Remote GitHub changes and the local transaction remain separate boundaries. See [polling feedback](scm.md#6-inspect-the-reply-and-preserve-unknown-outcomes).
+
 Execution shutdown protects an effect already draining after lease loss from a second cancellation. An expired shutdown deadline retains the storage fence until the effect finishes; it does not authorize a standby to repeat an uncertain command. See [worker takeover](runtime-roles.md).
 
 These changes preserve observed activity and recovery decisions. They do not establish successful live provider recovery or a completed generated product.

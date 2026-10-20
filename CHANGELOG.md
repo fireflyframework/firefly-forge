@@ -2,11 +2,12 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.25 — Unreleased
+## 0.2.25 — 2026-10-20
 
 - Retain complete sanitized coding-provider events within explicit archive limits, with atomic storage and integrity-checked, currently authorized reads through HTTP, SDK, CLI and MCP.
 - Present recognized provider commands and outcomes in Studio, with a separate on-demand full-content reader and current desktop/mobile walkthroughs.
 - Distinguish recovery attempts in source-control milestone feedback while preserving historical delivery identities and unresolved-write holds.
+- Recheck the exact polled GitHub comment and its author's current repository access after preparing the issue token, before posting feedback.
 - Let interrupted execution tasks finish cancellation cleanup when several consumers detect a lost lease or the shutdown deadline expires; retain the storage fence until effects drain.
 
 ## 0.2.24 — 2026-10-20
