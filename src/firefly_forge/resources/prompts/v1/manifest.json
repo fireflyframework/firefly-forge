@@ -2132,6 +2132,14 @@
         "attempts": "string",
         "explanation": "string"
       }
+    },
+    {
+      "id": "mcp/get_run_activity_content",
+      "version": "1.0.0",
+      "path": "mcp/get_run_activity_content.yaml",
+      "sha256": "adcae5deda232c67e96939a58a24339aa1b3a903289009c8baabf41698e45535",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

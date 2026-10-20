@@ -28,6 +28,9 @@ from firefly_forge import __version__
 from firefly_forge.access_controllers import AccessController
 from firefly_forge.access_persistence import ForgeAccessEventRepository, ForgeMembershipRepository
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.activity_controllers import ActivityContentController
+from firefly_forge.activity_persistence import ForgeEventContentRepository
+from firefly_forge.activity_service import ActivityArchive
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agent_restore_controllers import AgentCheckpointCandidateController, AgentRestoreController
 from firefly_forge.agent_restores import AgentRestores
@@ -542,6 +545,7 @@ class FactoryConfiguration:
         repository_records: ForgeRepositoryRepository,
         run_records: ForgeRunRepository,
         event_records: ForgeEventRepository,
+        event_content_records: ForgeEventContentRepository,
         deployment_records: ForgeDeploymentRepository,
         product_records: ForgeProductDefinitionRepository,
         campaign_records: ForgeCampaignRepository,
@@ -554,6 +558,7 @@ class FactoryConfiguration:
             repository_records=repository_records,
             run_records=run_records,
             event_records=event_records,
+            event_content_records=event_content_records,
             deployment_records=deployment_records,
             product_records=product_records,
             campaign_records=campaign_records,
@@ -890,6 +895,12 @@ class FactoryConfiguration:
         return RunEvidence(store)
 
     @bean
+    def activity_archive(
+        self, store: Store, records: ForgeEventContentRepository, evidence: RunEvidence
+    ) -> ActivityArchive:
+        return ActivityArchive(store, records, evidence)
+
+    @bean
     def campaign_reports(self, store: Store, campaigns: ProjectCampaigns, journal: Journal) -> CampaignReports:
         return CampaignReports(store, campaigns, journal)
 
@@ -1089,6 +1100,7 @@ def create_runtime(
         ForgeRepositoryRepository,
         ForgeRunRepository,
         ForgeEventRepository,
+        ForgeEventContentRepository,
         ForgeDeploymentRepository,
         ForgePlanRepository,
         ForgeTaskRepository,
@@ -1118,6 +1130,7 @@ def create_runtime(
         ProviderRecoveryController,
         BridgeCompletionController,
         RunEvidenceController,
+        ActivityContentController,
         ForgeCollaborationSettingsRepository,
         ForgeWebhookInboxRepository,
         ForgeProductDefinitionRepository,

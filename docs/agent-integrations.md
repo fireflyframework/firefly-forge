@@ -385,3 +385,22 @@ A mapped SCM account needs separate administrator consent to change an existing 
 Use `forge project scm-product-change-grants configure PROJECT REPOSITORY consent.json` for one reviewed write. The document is the strict `SCMProductChangeGrantInputV1` body described in [SCM product changes](scm.md#change-an-existing-functional-product). Retain its original request ID before sending it. After an uncertain response or conflict, use `get PROJECT REPOSITORY REQUEST` under the same CLI group. `current PROJECT REPOSITORY BINDING_REQUEST` reads the current consent for that mapping; it does not resolve a different original request.
 
 The signed `/forge product_change` command still arrives through verified provider ingress. These clients do not fabricate its signature, infer an actor or send a product edit on behalf of the provider. Read the original result with `forge project scm-product-changes get PROJECT REPOSITORY CHANGE_REQUEST`. A missing receipt does not authorize a resend or replacement identity. Its recorded product revision may differ from the current product.
+
+
+## Read complete retained provider activity
+
+New provider stdout and stderr observations retain a bounded visible preview and, when the native JSON shape is recognized, a version 1 typed `activity_summary`. The summary preserves the command, known exit code and output preview even when the original JSON exceeds the timeline's display budget. Unknown or malformed output remains escaped text. Provider output is untrusted observed data; it does not establish factory verification or acceptance.
+
+Each new observation has an `activity_content` descriptor bound to its run, event, stage, UTF-8 size and sanitized-message SHA256. `available` means the sanitized message was retained atomically with its index in PostgreSQL. The limits are 4 MiB per message, 64 MiB and 4,096 retained messages per run. `budget_exceeded` explicitly means complete content was not retained. Older events keep their historical text and have no invented content descriptor or backfill. The hash identifies sanitized retained bytes, not the provider's original wire output or an immutable execution receipt.
+
+Read an available descriptor through the same current authority as the run:
+
+```sh
+forge evidence activity RUN_ID EVENT_ID --expected-descriptor DESCRIPTOR_SHA256 --chunk 0
+```
+
+The equivalent SDK call is `client.run_activity_content(run_id, event_id, {"expected_descriptor": digest, "chunk": 0})`; MCP exposes `get_run_activity_content`. HTTP uses `GET /api/v1/runs/{run_id}/activity/{event_id}/content?expected_descriptor=SHA256&chunk=0`. Responses contain version 1, the descriptor digest, chunk ordinal and byte offset, total byte count, sanitized-message digest, `data_base64` and `next_chunk`. Each chunk is at most 16 KiB; follow the returned ordinal through `null`, concatenate decoded bytes, and verify the complete size and SHA256 before treating the message as complete. UTF-8 characters can span chunks. Clients do not retry effects or persist authentication in content files.
+
+Every chunk read validates the whole retained payload, current repository and frozen project scope, current reader identity, and credential admission again immediately before returning. A late registered credential anywhere in the message withholds every chunk, including when it crosses a chunk boundary. Changed descriptors, missing or corrupt content, exceeded budgets or changed scope return explicit unavailable responses; they never return a partial success. Reads are private and not cacheable.
+
+Run-evidence pages and ZIP exports keep their existing 1 MiB record/page and 16 MiB snapshot limits. They include only the small observed activity index and bound descriptors, never the BYTEA payload. New manifests mark activity content as excluded with bound references. Historical exports without new descriptors retain their prior format. The UI labels previews separately from complete content and verifies the full digest before offering complete content for copying.

@@ -48,7 +48,14 @@ const run = {
     },
   ],
 };
-async function openRun(page: Page, toolEntries?: Record<string, unknown>[]) {
+async function openRun(
+  page: Page,
+  toolEntries?: Record<string, unknown>[],
+  archived?: { runId: string; events: Record<string, unknown>[] },
+) {
+  const selectedRun = archived
+    ? { ...run, id: archived.runId, events: archived.events }
+    : run;
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
@@ -63,9 +70,9 @@ async function openRun(page: Page, toolEntries?: Record<string, unknown>[]) {
           },
         ]
       : path.endsWith("/runs")
-        ? [run]
-        : path.endsWith("/runs/fixture-run")
-          ? run
+        ? [selectedRun]
+        : path.endsWith("/runs/" + selectedRun.id)
+          ? selectedRun
           : path.endsWith("/plan")
             ? {
                 revision: 1,
@@ -814,3 +821,122 @@ for (const commandCase of [
         expect(await details.getAttribute("open")).toBeNull();
         await visible(heading);
       });
+
+// These are controlled UI fixtures, not results from a generated CRM or a live provider.
+const archivedFixture = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../tests/fixtures/activity-archive-contract-v1.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+) as {
+  run_id: string;
+  event: Record<string, unknown>;
+  sanitized_message: string;
+  chunks: Array<Record<string, unknown>>;
+};
+async function openArchive(
+  page: Page,
+  read: (chunk: number) => Record<string, unknown>,
+) {
+  await openRun(page, undefined, {
+    runId: archivedFixture.run_id,
+    events: [{ ...archivedFixture.event, created_at: "2026-10-20T15:30:00Z" }],
+  });
+  await page.route(/\/activity\/[a-f0-9]{32}\/content\?/, async (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("expected_descriptor")).toBe(
+      archivedFixture.chunks[0].descriptor_sha256,
+    );
+    await route.fulfill({ json: read(Number(url.searchParams.get("chunk"))) });
+  });
+}
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+])
+  for (const theme of ["light", "dark"])
+    test(`archived provider event renders a verified full read at ${viewport.width}px ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      const calls: number[] = [];
+      await openArchive(page, (chunk) => {
+        calls.push(chunk);
+        return archivedFixture.chunks[chunk];
+      });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      const panel = page.getByRole("tabpanel");
+      await expect(
+        panel.getByRole("heading", {
+          name: "Provider command finished",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(panel.getByText("Exit 0", { exact: true })).toBeVisible();
+      expect(calls).toEqual([]);
+      await panel.getByText(/Full recorded event ·/).click();
+      await panel
+        .getByRole("button", { name: "Read full recorded event", exact: true })
+        .click();
+      await expect(
+        panel.getByRole("button", {
+          name: "Copy full recorded event",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(calls).toEqual([0, 1]);
+      await expect(
+        panel.getByRole("region", {
+          name: "Verified recorded event",
+          exact: true,
+        }),
+      ).toContainText("item.completed");
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await expect(
+        panel.getByLabel("Verified recorded event text", { exact: true }),
+      ).toBeFocused();
+      const fullCopy = panel.getByRole("button", {
+        name: "Copy full recorded event",
+        exact: true,
+      });
+      await fullCopy.scrollIntoViewIfNeeded();
+      await expect(fullCopy).toBeInViewport();
+      const button = await fullCopy.boundingBox();
+      const footer = await page.locator("footer").boundingBox();
+      expect(footer).not.toBeNull();
+      expect(button).not.toBeNull();
+      expect(button!.y + button!.height).toBeLessThanOrEqual(footer!.y);
+      expect(button?.width).toBeGreaterThan(0);
+      await page.screenshot({
+        path: test.info().outputPath(`archive-${viewport.width}-${theme}.png`),
+      });
+    });
+test("archived provider event refuses a changed full record without exposing partial content", async ({
+  page,
+}) => {
+  await openArchive(page, (chunk) => ({
+    ...archivedFixture.chunks[chunk],
+    descriptor_sha256: "f".repeat(64),
+  }));
+  const panel = page.getByRole("tabpanel");
+  await panel.getByText(/Full recorded event ·/).click();
+  await panel
+    .getByRole("button", { name: "Read full recorded event", exact: true })
+    .click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "could not be read and verified",
+  );
+  await expect(
+    panel.getByRole("button", {
+      name: "Copy full recorded event",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});

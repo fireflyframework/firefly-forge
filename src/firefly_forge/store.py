@@ -26,6 +26,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
+from firefly_forge.activity_models import MAX_EVENT_BYTES, MAX_EVENTS, MAX_RUN_BYTES, project_activity
+from firefly_forge.activity_persistence import ForgeEventContentEntity, ForgeEventContentRepository
 from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.collaboration_persistence import ForgeProductDefinitionRepository
 from firefly_forge.configuration import ConfigurationStore
@@ -160,6 +162,7 @@ class Store:
         repository_records: ForgeRepositoryRepository | None = None,
         run_records: ForgeRunRepository | None = None,
         event_records: ForgeEventRepository | None = None,
+        event_content_records: ForgeEventContentRepository | None = None,
         deployment_records: ForgeDeploymentRepository | None = None,
         product_records: ForgeProductDefinitionRepository | None = None,
         campaign_records: ForgeCampaignRepository | None = None,
@@ -193,6 +196,7 @@ class Store:
         self.repository_records = repository_records or ForgeRepositoryRepository()
         self.run_records = run_records or ForgeRunRepository()
         self.event_records = event_records or ForgeEventRepository()
+        self.event_content_records = event_content_records or ForgeEventContentRepository()
         self.deployment_records = deployment_records or ForgeDeploymentRepository()
         self.product_records = product_records or ForgeProductDefinitionRepository()
         self.campaign_records = campaign_records or ForgeCampaignRepository()
@@ -840,11 +844,45 @@ class Store:
             )
 
     async def event(self, value: str, stage: str, message: str) -> None:
-        data = {"id": uuid.uuid4().hex, "stage": stage, "message": message[:8000], "created_at": now()}
+        data: Data = {"id": uuid.uuid4().hex, "stage": stage, "message": message[:8000], "created_at": now()}
+        provider_output = stage in {"stdout", "stderr"}
+        if provider_output:
+            await self.admit_credentials(message)
         async with self._unit():
+            payload = None
+            if provider_output:
+                run = await self.run_records.find_by_id(identifier(value), lock=LockMode.PESSIMISTIC_WRITE)
+                if run is None:
+                    raise KeyError("Run not found")
+                count, size = await self.event_content_records.budget(run.id)
+                message_size = len(message.encode("utf-8", errors="replace"))
+                projected, payload = project_activity(
+                    run.id.hex,
+                    data["id"],
+                    stage,
+                    message,
+                    retain=count < MAX_EVENTS
+                    and size + message_size <= MAX_RUN_BYTES
+                    and message_size <= MAX_EVENT_BYTES,
+                )
+                data.update(projected)
+                self.reject_credentials(message)
             await self.event_records.save(
                 ForgeEventEntity(id=identifier(data["id"]), run_id=identifier(value), data=data)
             )
+            if payload is not None:
+                descriptor = data["activity_content"]
+                await self.event_content_records.save(
+                    ForgeEventContentEntity(
+                        id=identifier(data["id"]),
+                        event_id=identifier(data["id"]),
+                        run_id=identifier(value),
+                        version=1,
+                        byte_count=len(payload),
+                        sha256=descriptor["sanitized_message_sha256"],
+                        raw_bytes=payload,
+                    )
+                )
 
     async def finish(self, value: str, status: str, *, error: str | None = None) -> None:
         if status not in TERMINAL:

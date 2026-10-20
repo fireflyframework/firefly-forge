@@ -24,6 +24,7 @@ from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from firefly_forge.activity_models import ActivityUnavailable, validate_descriptor
 from firefly_forge.journal import Journal, digest
 from firefly_forge.persistence import (
     ForgeEventEntity,
@@ -327,6 +328,21 @@ def build_evidence(
         "run_provenance": "observed_run_row",
         "artifact_bytes": "not_included",
     }
+    archived = False
+    for row in activity:
+        data = row.get("data", {})
+        if "activity_content" in data:
+            try:
+                descriptor = validate_descriptor(data["activity_content"])
+                require(
+                    (descriptor["run_id"], descriptor["event_id"], descriptor["stage"])
+                    == (run["id"], row["id"], data.get("stage"))
+                )
+            except ActivityUnavailable as exc:
+                raise EvidenceUnavailable("evidence_integrity") from exc
+            archived = True
+    if archived:
+        manifest["activity_content_bytes"] = "not_included_with_bound_references"
     manifest["digest"] = digest(manifest)
     if len(encoded(manifest)) + sum(len(encoded(v)) for v in members.values()) > MAX_BYTES:
         raise EvidenceUnavailable("evidence_limit")

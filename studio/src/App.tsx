@@ -72,6 +72,7 @@ import {
   TimelineEventView,
 } from "./ExecutionPresentation";
 import { RunVerification } from "./RunVerification";
+import { ProviderActivityView } from "./ProviderActivityView";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
@@ -2844,7 +2845,17 @@ function RunDetail({
                     <Circle size={10} />
                   </span>
                   <div>
-                    <TimelineEventView event={event} />
+                    {Object.hasOwn(event, "activity_content") ||
+                    Object.hasOwn(event, "activity_summary") ? (
+                      <ProviderActivityView
+                        event={event}
+                        runId={run.id}
+                        connection={connection}
+                        actorId={session?.user.id}
+                      />
+                    ) : (
+                      <TimelineEventView event={event} />
+                    )}
                     <time>
                       {date(
                         String(

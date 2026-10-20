@@ -40,6 +40,32 @@ The WAL retains its original payloads and chain hashes. Activity and task rows c
 
 `artifacts.json` contains references. A reference is `receipt_bound` only when its SHA256 appears in a matching immutable receipt. Older `changes.zip` records have no historical byte hash and are labeled `not_historically_bound`. Their bytes are not copied, rebuilt or certified by this export. The existing source ZIP endpoint remains available separately.
 
+## Read complete provider activity
+
+New stdout and stderr events retain a short preview and, for recognized provider JSON, a typed command summary. Studio shows the command, known exit code and observed output without expanding raw JSON by default. **Read full recorded event** retrieves the retained sanitized message explicitly. A provider result describes observed activity; it does not approve the product or establish factory QA.
+
+<figure class="forge-shot" markdown="1">
+![Provider command summary and bounded output preview in the execution timeline.](assets/screenshots/activity-provider-preview-desktop-light.png)
+<figcaption>This controlled walkthrough shows a preview. Reading complete content is a separate action.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![Complete retained provider output read on a phone in the dark theme.](assets/screenshots/activity-provider-full-mobile-dark.png)
+<figcaption>The client verifies all returned chunks before offering the complete sanitized content for copying. These fixture screens establish presentation, not live provider execution or product acceptance.</figcaption>
+</figure>
+
+Each new event carries an `activity_content` descriptor binding the run, event, stage, byte count and sanitized-message SHA256. Available content is limited to 4 MiB per message, 64 MiB and 4,096 messages per run. `budget_exceeded` means the full message was not retained. Historical events are not backfilled. D04 run-evidence pages and ZIP exports retain only the activity index and bound descriptors; they exclude complete content bytes and keep their existing limits.
+
+Read one available message using its exact descriptor:
+
+```bash
+forge evidence activity RUN_ID EVENT_ID --expected-descriptor DESCRIPTOR_SHA256 --chunk 0
+```
+
+HTTP uses `GET /api/v1/runs/{run_id}/activity/{event_id}/content` with `expected_descriptor` and `chunk`. The SDK method is `ForgeClient.run_activity_content(run_id, event_id, query)`; MCP exposes `get_run_activity_content`. Each response returns at most 16 KiB in `data_base64`, with byte offset, total size, sanitized-message digest and `next_chunk`. Follow that ordinal until `null`, concatenate decoded bytes, and verify the complete size and SHA256 before decoding UTF-8: a character may span chunks.
+
+Every chunk requires current native read authority over the run's repository and frozen project scope, and checks the whole retained message for newly registered credentials. Revocation, descriptor or scope changes, missing or corrupt content and exhausted budgets withhold content with an explicit error. Private responses are not cacheable. These reads do not replay commands or change a run's verification state.
+
 ## Current access and withheld evidence
 
 The reader needs a current native identity, project read permission and read access to all historical repositories named by the verified project revision. Unassigned executions require a factory administrator. A delegated SCM status or answer permission does not grant evidence export.
