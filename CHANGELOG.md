@@ -10,6 +10,9 @@
 - Refuse retained unmetered official-CLI environment continuations before admission or launch, including incomplete or conflicting command archives. Keep observed CLI calls distinct from native runner receipts; this guard does not provide preventive combined tool enforcement.
 - Preserve original comment verification, current authority, exact reply receipts and replay holds. Keep the original semantic review bound to its original candidate and retain separate provenance for corrected wording.
 
+- Display authorized question evidence with a raster preview, zoom and the complete recorded decision context. Keep answer recording separate from resume, and preserve current reply permissions and private response headers.
+- Configure communication profiles with an optional routing revision seal, preserving existing callers and detecting concurrent updates.
+
 ## 0.2.31 — 2026-10-20
 
 - Show frozen verification command arguments and timeouts to every initial and ordinarily resumed implementer through one read-only Agentic template, without granting tools or execution permission.

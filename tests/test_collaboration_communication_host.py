@@ -9,6 +9,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from test_communication_writer import configured_store
 from test_scm_delegated_feedback import RECEIPT, received
 from test_scm_delegated_feedback import delegated_feedback as delegated_feedback
+from test_scm_delegated_feedback import signed_reply_binding as signed_reply_binding
 from test_scm_polling import poll_case as poll_case
 
 from firefly_forge.configuration import ConfigurationStore
@@ -139,6 +140,7 @@ async def test_authority_revoked_during_drafting_prevents_comment(delegated_feed
     service, row, run, sent, state = delegated_feedback
     service.store.task_router = (await configured_store(tmp_path)).task_router
     run.update(status="queued", worker_request={})
+    calls = []
 
     def model(messages, info):
         state["deny"] = True
@@ -154,12 +156,16 @@ async def test_authority_revoked_during_drafting_prevents_comment(delegated_feed
             ]
         )
 
-    service.communication_writer.model = reviewed_model(model)
+    service.communication_writer.model = reviewed_model(model, calls=calls)
     received(row, "status")
     await service.process(RECEIPT)
     assert sent == []
     assert row.data["feedback_status"] == "needs_reconciliation"
-    assert row.data["feedback_intent"]["body"].startswith("### Execution update\n\nYour request is queued.")
+    assert row.data["feedback_intent"] is None
+    assert [phase for phase, *_ in calls] == ["draft", "review"]
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert not sent and len(calls) == 2 and row.data["feedback_intent"] is None
 
 
 async def test_run_advancing_during_ai_draft_uses_fresh_native_card_without_second_model_call(
@@ -499,3 +505,318 @@ async def test_new_authenticated_status_receipt_can_request_ai_after_a_held_narr
         assert second["id"] != first["id"] and second["feedback_status"] == "sent"
         assert len(c.state["posts"]) == 1 and [phase for phase, _, _ in calls] == ["draft", "review"]
         assert (await c.collaboration.receipt(first["id"]))["feedback_status"] == "held"
+
+
+async def test_human_question_has_recorded_context_choices_and_complete_reply_command(
+    delegated_feedback, signed_reply_binding
+):
+    service, row, run, sent, _ = delegated_feedback
+    run["worker_request"].update(
+        kind="product_definition",
+        context="The customer has not selected an ownership model.",
+        choices=["One owner per account — simpler access rules", "Shared owners — flexible handoff"],
+    )
+    received(row, "status")
+    await service.process(RECEIPT)
+    body = sent[0]["body"]
+    assert "customer has not selected" in body
+    assert "simpler access rules" in body and "flexible handoff" in body
+    assert '/forge respond {"run_id":"' + run["id"] + '"' in body
+    assert '"request_id":"question-1"' in body
+    assert "stays paused" in body
+    assert run["worker_request"]["status"] == "pending"
+    assert run["status"] == "paused"
+
+
+async def test_question_links_to_real_authenticated_run_destination_when_channel_reply_disabled(
+    delegated_feedback, monkeypatch
+):
+    service, row, run, sent, _ = delegated_feedback
+    original = service.settings
+
+    async def status_only(repository):
+        settings = await original(repository)
+        return {**settings, "channel_commands": ["status"]}
+
+    service.settings = status_only
+    service.browser_origin = "https://forge.example.test"
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert f"[Open agent questions](https://forge.example.test/?run={run['id']}&view=questions)" in sent[0]["body"]
+    assert "/forge respond" not in sent[0]["body"]
+    assert "keeps the run paused" in sent[0]["body"]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "",
+        "http://localhost:5173",
+        "https://127.0.0.1",
+        "https://forge.example.test/path",
+        "https://user:password@forge.example.test",
+        "https://forge.example.test/?token=private",
+        "https://forge.example.test:broken",
+        "https://[invalid",
+        "https://forge.example.test\n",
+    ],
+)
+def test_unusable_or_private_origin_never_becomes_a_github_image_or_broken_navigation_link(origin):
+    from firefly_forge.collaboration_feedback import feedback_card
+
+    run = {
+        "id": "a" * 32,
+        "status": "paused",
+        "worker_request": {
+            "id": "decision",
+            "status": "pending",
+            "question": "Which owner?",
+            "context": "Choose the customer workflow.",
+            "choices": ["One", "Shared"],
+        },
+    }
+    body = feedback_card({"id": "b" * 32, "_feedback_origin": origin}, run, {}, "", lambda value: value)
+    assert "[Open agent questions]" not in body
+    assert "a" * 32 in body and "administrator" in body
+    assert "![" not in body
+
+
+async def test_reply_permission_removed_during_draft_never_advertises_an_unusable_answer_command(
+    delegated_feedback, tmp_path, signed_reply_binding
+):
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run["worker_request"].update(kind="design", context="A product decision is needed", choices=["One", "Shared"])
+    original = service.settings
+    permission = {"enabled": True}
+    calls = []
+
+    async def settings(repository):
+        value = await original(repository)
+        return {**value, "channel_commands": ["respond", "status"] if permission["enabled"] else ["status"]}
+
+    service.settings = settings
+
+    def model(messages, info):
+        permission["enabled"] = False
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
+                        "paragraphs": [
+                            {"text": "The recorded run is paused for a decision.", "fact_ids": ["state", "decision"]}
+                        ],
+                        "decision": {
+                            "question": run["worker_request"]["question"],
+                            "context": "A product decision is needed",
+                            "choices": ["One", "Shared"],
+                        },
+                    },
+                )
+            ]
+        )
+
+    service.communication_writer.model = reviewed_model(model, calls=calls)
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert [phase for phase, *_ in calls] == ["draft", "review"]
+    assert not sent
+    assert row.data["feedback_status"] == "held"
+    assert row.data["feedback_intent"]["body"] == ""
+    assert row.data["feedback_intent"]["communication"]["reason"] == "channel_changed"
+    assert row.data["reason"] == "ai_communication_channel_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 2 and not sent
+
+
+@pytest.mark.parametrize("transport", ["github_rest_poll_v1", "signed_webhook_v1"])
+@pytest.mark.parametrize(
+    "case,expected",
+    [("status_only", []), ("respond", ["respond"]), ("revoked", []), ("changed_binding", []), ("channel_disabled", [])],
+)
+async def test_question_reply_affordance_requires_exact_current_binding_and_channel(
+    delegated_feedback, monkeypatch, case, expected, transport
+):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from firefly_forge.identity import Principal
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, _, _ = delegated_feedback
+    original = service.settings
+
+    async def settings(repository):
+        value = await original(repository)
+        return {**value, "channel_commands": ["status"] if case == "channel_disabled" else ["status", "respond"]}
+
+    async def resolve(_authority, delivery):
+        assert delivery["id"] == RECEIPT
+        return Principal(
+            UUID("6" * 32),
+            "owned-host",
+            "operator",
+            authentication_method="scm_mapping",
+            scm_delegation={"binding_key": "current-key", "binding_digest": "a" * 64},
+        )
+
+    async def head(project, repository, key):
+        assert (project, repository, key) == (run["project_id"], run["repository_id"], "current-key")
+        return {
+            "digest": "b" * 64 if case == "changed_binding" else "a" * 64,
+            "request": {
+                "active": case != "revoked",
+                "allowed_actions": ["status"] if case == "status_only" else ["status", "respond"],
+            },
+        }
+
+    async def signed_head(_authority, *args):
+        return await head(*args)
+
+    service.settings = settings
+    service.polling = SimpleNamespace(_head=head)
+    monkeypatch.setattr(SCMActorAuthority, "resolve", resolve)
+    monkeypatch.setattr(SCMActorAuthority, "_head", signed_head)
+    received(row, "status")
+    row.data["verification"] = {"transport": transport}
+    context = await service._feedback_context(row.data, run)
+    assert context["_feedback_actions"] == expected
+    assert "resume" not in context["_feedback_actions"]
+
+
+async def test_reply_context_refresh_uses_retained_poll_observation_without_presentation_fields(
+    delegated_feedback, monkeypatch
+):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from firefly_forge.identity import Principal
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, _, _ = delegated_feedback
+    received(row, "status")
+    row.data["verification"] = {"transport": "github_rest_poll_v1"}
+    observed = []
+
+    async def resolve(_authority, delivery):
+        assert delivery == await service.receipt(RECEIPT)
+        assert "_feedback_actions" not in delivery and "_feedback_origin" not in delivery
+        observed.append(delivery)
+        return Principal(
+            UUID("6" * 32),
+            "owned-host",
+            "operator",
+            authentication_method="scm_mapping",
+            scm_delegation={"binding_key": "current-key", "binding_digest": "a" * 64},
+        )
+
+    async def head(*_args):
+        return {"digest": "a" * 64, "request": {"active": True, "allowed_actions": ["status", "respond"]}}
+
+    service.polling = SimpleNamespace(_head=head)
+    monkeypatch.setattr(SCMActorAuthority, "resolve", resolve)
+    data = {**row.data, "_feedback_actions": ["respond"], "_feedback_origin": "https://forge.example.test"}
+    assert (await service._feedback_context(data, run))["_feedback_actions"] == ["respond"]
+    assert len(observed) == 1
+
+
+async def test_addressed_read_context_never_creates_execution_authority_or_offers_answer_actions(
+    delegated_feedback, monkeypatch
+):
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, _, _ = delegated_feedback
+    received(row, "status")
+    row.data["command"]["adapter"] = "addressed_status_v1"
+    row.data["verification"] = {"transport": "github_rest_poll_v1"}
+    service.browser_origin = "https://forge.example.test"
+
+    async def forbidden(*_args):
+        pytest.fail("A read-only conversation must not acquire an execution principal")
+
+    monkeypatch.setattr(SCMActorAuthority, "resolve", forbidden)
+    context = await service._feedback_context(row.data, run)
+    assert context == {"_feedback_origin": "https://forge.example.test", "_feedback_actions": []}
+
+
+async def test_origin_changed_during_authentication_holds_exact_intent_without_post_or_regeneration(
+    delegated_feedback, tmp_path
+):
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run.update(status="queued", worker_request={})
+    service.browser_origin = "https://forge.example.test"
+    calls = []
+    service.communication_writer.model = reviewed_model(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": "Your request is queued.", "fact_ids": ["state"]}],
+        },
+        calls=calls,
+    )
+    original_authentication = service.scm.issue_authentication
+    original_write = service._remote_write
+    denials = []
+
+    async def checked_write(*args, **kwargs):
+        from firefly_forge.project_access import AccessDenied
+
+        try:
+            return await original_write(*args, **kwargs)
+        except AccessDenied as error:
+            denials.append(str(error))
+            raise
+
+    service._remote_write = checked_write
+
+    async def authentication(*args, **kwargs):
+        result = await original_authentication(*args, **kwargs)
+        service.browser_origin = "https://revised.example.test"
+        return result
+
+    service.scm.issue_authentication = authentication
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert not sent
+    assert denials == ["The feedback destination or reply permission changed before publication"]
+    assert row.data["feedback_status"] == "needs_reconciliation"
+    intent = row.data["feedback_intent"]
+    assert intent["body"].startswith("### Execution update\n\nYour request is queued.")
+    assert intent["body_sha256"] == hashlib.sha256(intent["body"].encode()).hexdigest()
+    assert [phase for phase, *_ in calls] == ["draft", "review"]
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert row.data["feedback_intent"] == intent and not sent and len(calls) == 2
+
+
+@pytest.mark.parametrize("transport", ["github_rest_poll_v1", "signed_webhook_v1"])
+async def test_separate_resume_authority_does_not_borrow_legacy_answer_affordance(
+    delegated_feedback, monkeypatch, transport
+):
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, _, _ = delegated_feedback
+    received(row, "status")
+    row.data["command"].update(version=2, action="resume")
+    row.data["verification"] = {"transport": transport}
+    service.browser_origin = "https://forge.example.test"
+
+    async def forbidden(*_args):
+        pytest.fail("Separate continuation authority must not resolve a legacy execution mapping")
+
+    monkeypatch.setattr(SCMActorAuthority, "resolve", forbidden)
+    assert await service._feedback_context(row.data, run) == {
+        "_feedback_origin": "https://forge.example.test",
+        "_feedback_actions": [],
+    }
+
+
+async def test_nonproject_legacy_reply_context_preserves_repository_channel_settings(delegated_feedback):
+    service, row, run, _, _ = delegated_feedback
+    received(row, "status")
+    run.pop("project_id")
+    context = await service._feedback_context(row.data, run)
+    assert context["_feedback_actions"] == ["respond", "cancel"]

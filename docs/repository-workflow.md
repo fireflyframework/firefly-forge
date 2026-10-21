@@ -174,7 +174,9 @@ The repository receipt records the target branch and manifest before any content
 
 ## Answer a factory question from the repository
 
-An issue-bound paused run can post its durable worker request through the same feedback intent used for lifecycle status. Enable `respond` in `channel_commands` and grant the author a configuration role. `/forge respond {"run_id":"0123456789abcdef0123456789abcdef","request_id":"request-1","answer":"Support account owners receive alerts."}` records the answer once under the signed actor identity. The run remains paused until an explicitly enabled resume action. An answer does not authorize deployment or publication. See [Factory roles](agent-roles.md) for the typed feedback contract and request budget.
+An issue-bound paused run can post its durable worker request through the same feedback intent used for lifecycle status. Enable `respond` in `channel_commands` and configure the author's native identity and current project execution permission. GitHub polling also requires its explicit current answer consent; status-only consent does not permit an answer. `/forge respond {"run_id":"0123456789abcdef0123456789abcdef","request_id":"request-1","answer":"Support account owners receive alerts."}` records the answer once under that authenticated identity. The run remains paused until an explicitly enabled resume action. An answer does not authorize deployment or publication. See [Factory roles](agent-roles.md) for the typed feedback contract and request budget.
+
+The card supplies the actual question, context, choices and complete enabled command. If repository replies are disabled, it points to **Agent questions** in the authenticated forge portal when a public browser origin is configured. A service restart preserves the pending question without another coding call. Retained screenshots are opened in that protected portal; the bot does not invent image URLs or publish private image tokens. See [the question walkthrough](agent-lifecycle.md#answer-an-agents-question).
 
 ## Coordinate a logical product from signed comments
 

@@ -17,6 +17,7 @@ import {
 } from "./ExecutionFormat";
 import "./ExecutionPresentation.css";
 import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
+import { workerEvidenceImages } from "./WorkerEvidenceData";
 import { VerificationHandoff } from "./VerificationHandoff";
 
 export function TimelineEventView({
@@ -351,6 +352,51 @@ export function EvidenceView({
     kind === "verification_continuation_intent"
   )
     return <VerificationHandoff kind={kind} value={value} />;
+  if (kind === "worker_evidence") {
+    let images;
+    const manifest = asRecord(value);
+    try {
+      if (
+        manifest?.version !== 1 ||
+        typeof manifest.run_id !== "string" ||
+        !/^[a-f0-9]{32}$/.test(manifest.run_id) ||
+        typeof manifest.request_id !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(manifest.request_id)
+      )
+        throw new Error("Invalid screenshot record");
+      images = workerEvidenceImages(manifest.images);
+      if (!images.length) throw new Error("Empty screenshot record");
+    } catch {
+      return (
+        <div className="record-evidence">
+          <p>Screenshot record could not be verified.</p>
+          {advanced && <AdvancedRecord value={value} />}
+        </div>
+      );
+    }
+    return (
+      <div className="record-evidence">
+        <h4>Retained decision screenshots</h4>
+        <p>
+          {images.length} {images.length === 1 ? "image saved" : "images saved"}{" "}
+          with the agent’s question. These are recorded references, not product
+          acceptance.
+        </p>
+        <ul>
+          {images.map((image) => (
+            <li key={image.id}>
+              {image.filename} · {Math.ceil(image.bytes / 1024)} KB
+            </li>
+          ))}
+        </ul>
+        <p>
+          Open Agent questions to view the images with your current project
+          access.
+        </p>
+        {advanced && <AdvancedRecord value={value} />}
+      </div>
+    );
+  }
   if (kind === "repair_proposal") {
     title ??= "Repair proposal";
     omitFields = [

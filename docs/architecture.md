@@ -224,6 +224,14 @@ Older runs without an automatic-verification grant stay manual until an authenti
 
 Progress in the [repository workflow](repository-workflow.md) comes from durable run states. The bot reports starts, checks, questions and delivery outcomes through centralized Agentic templates. A confirmed GitHub comment and a successful product delivery remain separate records.
 
+### Persistent human decisions and image evidence
+
+A pending human `worker_request` keeps its run paused. A normal worker restart reads that retained state without selecting an answer or invoking another coding task. An authenticated `worker_response` records the actor and exact answer once; resumption remains a separate authorized action. Studio hides execution and handoff controls until the human question is answered. Factory-owned verification retains its separate system-response path.
+
+`FactoryConfiguration` injects `WorkerEvidence` into the Engine and its typed controller through pyfly. Before the native question is recorded, the service reads only admitted raster files inside the selected component, decodes them in the existing bounded subprocess and retains private immutable copies. `Journal.worker_feedback()` commits the question and `worker_evidence` manifest in the same PostgreSQL unit. The manifest binds the run, task, question, feedback identity, original evidence path, opaque image ID and canonical image SHA-256. A file without that valid native journal link cannot be served.
+
+Image reads check current native project and repository access, the complete bounded journal chain, manifest bindings and actual private file bytes. The API accepts opaque IDs rather than filesystem paths and returns private, non-cacheable raster responses. Studio verifies size, MIME and hash before creating an object URL, and revokes that URL when its preview closes or changes scope. Byte and metadata credential screening does not inspect text embedded in pixels; image review remains necessary. [The question walkthrough](agent-lifecycle.md#inspect-retained-screenshots) and [API contract](api.md#read-a-human-questions-screenshots) describe the user and client paths.
+
 Source: [`verification_handoffs.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_handoffs.py), [`verification_models.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_models.py), [`verification_controllers.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/verification_controllers.py), [`journal.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/journal.py).
 
 ## Write-ahead intents, receipts and uncertain effects

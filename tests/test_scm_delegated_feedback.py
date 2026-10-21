@@ -246,3 +246,25 @@ async def test_run_transition_reports_current_status_without_rewriting_retained_
     assert row.data["action_result"] == original
     await service.sync_feedback()
     assert len(sent) == 2
+
+
+@pytest.fixture
+def signed_reply_binding(monkeypatch):
+    from dataclasses import replace
+
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    original = SCMActorAuthority.resolve
+
+    async def resolve(authority, delivery):
+        actor = await original(authority, delivery)
+        return replace(
+            actor, scm_delegation={**actor.scm_delegation, "binding_key": "current-key", "binding_digest": "a" * 64}
+        )
+
+    async def head(_authority, _project, _repository, key):
+        assert key == "current-key"
+        return {"digest": "a" * 64, "request": {"active": True, "allowed_actions": ["status", "respond"]}}
+
+    monkeypatch.setattr(SCMActorAuthority, "resolve", resolve)
+    monkeypatch.setattr(SCMActorAuthority, "_head", head)

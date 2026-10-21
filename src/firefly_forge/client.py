@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         UserInviteInput,
         UserProvisionInput,
     )
+    from firefly_forge.worker_evidence import WorkerImage
     from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
 
 
@@ -1053,6 +1054,51 @@ class ForgeClient:
 
     def worker_messages(self, run_id: str) -> list[dict[str, Any]]:
         return list(self.request("GET", f"runs/{self._id(run_id)}/worker-messages"))
+
+    def worker_evidence(self, run_id: str, request_id: str) -> list[WorkerImage]:
+        from firefly_forge.worker_evidence import WorkerImage
+
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", request_id):
+            raise ValueError("Use an exact recorded worker request identifier")
+        value = self.request("GET", f"runs/{self._id(run_id)}/worker-evidence", params={"request_id": request_id})
+        if not isinstance(value, list) or len(value) > 6:
+            raise ValueError("Worker evidence must be a bounded list of retained images")
+        images = [WorkerImage.model_validate(item) for item in value]
+        if len({image.id for image in images}) != len(images):
+            raise ValueError("Worker evidence contains duplicate image identities")
+        return images
+
+    def worker_image(self, run_id: str, image: WorkerImage | dict[str, Any]) -> bytes:
+        import hashlib
+
+        from firefly_forge.worker_evidence import WorkerImage
+
+        selected = WorkerImage.model_validate(image)
+        with self.http.stream("GET", f"runs/{self._id(run_id)}/worker-evidence/{selected.id}") as response:
+            if not response.is_success:
+                raise RuntimeError(f"Factory image request failed (HTTP {response.status_code})")
+            if (
+                response.headers.get("content-type", "").split(";", 1)[0] != selected.mime_type
+                or response.headers.get("x-content-sha256") != selected.sha256
+            ):
+                raise ValueError("Worker image metadata does not match its retained identity")
+            data = bytearray()
+            for chunk in response.iter_bytes():
+                if len(data) + len(chunk) > selected.bytes:
+                    raise ValueError("Worker image exceeds its retained byte count")
+                data.extend(chunk)
+        magic = {
+            "image/png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/jpeg": data.startswith(b"\xff\xd8\xff"),
+            "image/webp": data[:4] == b"RIFF" and data[8:12] == b"WEBP",
+        }
+        if (
+            len(data) != selected.bytes
+            or hashlib.sha256(data).hexdigest() != selected.sha256
+            or not magic[selected.mime_type]
+        ):
+            raise ValueError("Worker image bytes do not match their retained hash and raster type")
+        return bytes(data)
 
     def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
         if agent not in {"codex", "claude", "bridge", "agentic"}:

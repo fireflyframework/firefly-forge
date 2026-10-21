@@ -3,6 +3,7 @@
 
 import copy
 import json
+import re
 
 import pytest
 from test_scm_delegated_feedback import (
@@ -12,16 +13,26 @@ from test_scm_delegated_feedback import (
 from test_scm_delegated_feedback import (
     delegated_feedback as delegated_feedback,
 )
+from test_scm_delegated_feedback import (
+    signed_reply_binding as signed_reply_binding,
+)
 
 
-async def test_status_uses_a_markdown_card_without_serialized_action_data(delegated_feedback):
-    service, row, _, sent, _ = delegated_feedback
+async def test_status_uses_a_markdown_card_without_serialized_action_data(delegated_feedback, signed_reply_binding):
+    service, row, run, sent, _ = delegated_feedback
     received(row, "status")
     await service.process(RECEIPT)
     body = sent[0]["body"]
     assert body.startswith("### forge · Your decision is needed")
     assert "needs an answer" in body and "Which result is expected?" in body
-    assert '"run_id"' not in body and '"worker_request"' not in body
+    command = re.search(r"```text\n(/forge respond [^\n]+)\n```", body)
+    assert command is not None
+    from firefly_forge.collaboration import RepositoryCommand
+
+    parsed = RepositoryCommand.parse(command[1])
+    assert parsed.action == "respond" and parsed.run_id == run["id"]
+    prose = body.replace(command[0], "")
+    assert '"run_id"' not in prose and '"worker_request"' not in body
     assert RECEIPT in body
     assert body.index(RECEIPT) > body.index("<details>")
 

@@ -286,6 +286,44 @@
       "variables": {}
     },
     {
+      "id": "collaboration/copy",
+      "version": "1.0.1",
+      "path": "collaboration/copy-1.0.1.yaml",
+      "sha256": "91dcebf0afc67ba8ae7852b310dfeb42908f352138279f117913128bb8e42325",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/decision-destination",
+      "version": "1.0.0",
+      "path": "collaboration/decision-destination.yaml",
+      "sha256": "3392ac3c83abb99a8efc987c8a611dce44018284d49ccb88f6d9917f134b34a6",
+      "field": "user",
+      "variables": {
+        "reference": "string"
+      }
+    },
+    {
+      "id": "collaboration/decision-reply",
+      "version": "1.0.0",
+      "path": "collaboration/decision-reply.yaml",
+      "sha256": "fd8dc3cd1cc3c63dd0ecf6fd2d8a279feb7420d0266a87e8391b97428e3e207b",
+      "field": "user",
+      "variables": {
+        "command": "string"
+      }
+    },
+    {
+      "id": "collaboration/decision-resume",
+      "version": "1.0.0",
+      "path": "collaboration/decision-resume.yaml",
+      "sha256": "a95c7ad66f9e47d7f2b79411a21593464c4fb20dcf8ca636bc51b41c88695000",
+      "field": "user",
+      "variables": {
+        "command": "string"
+      }
+    },
+    {
       "id": "collaboration/facts",
       "version": "1.0.0",
       "path": "collaboration/facts.yaml",
@@ -344,6 +382,21 @@
       "variables": {
         "question": "string",
         "choices": "string"
+      }
+    },
+    {
+      "id": "collaboration/question",
+      "version": "1.0.1",
+      "path": "collaboration/question-1.0.1.yaml",
+      "sha256": "f95e6f736274d6a3e28ece26e3115811075f571f1b41e73956e7ed8c40924fbe",
+      "field": "user",
+      "variables": {
+        "question": "string",
+        "choices": "string",
+        "context": "string",
+        "reply_instructions": "string",
+        "resume_instructions": "string",
+        "destination": "string"
       }
     },
     {

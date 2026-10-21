@@ -855,7 +855,7 @@ class Journal:
         entries = await self.entries(run_id)
         return [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
 
-    async def worker_feedback(self, run_id: str, feedback: Any) -> Data:
+    async def worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
         from firefly_forge.agent_roles import NativeAllowanceWorkerFeedback, worker_feedback_model
 
         feedback = worker_feedback_model(feedback).model_validate(feedback)
@@ -867,13 +867,26 @@ class Journal:
             if not actor:
                 raise ValueError("Native final feedback requires its original allowance actor")
             async with ProviderRecoveries(self.store, self, None)._locked(run_id, actor):
-                return await self._worker_feedback(run_id, feedback)
-        return await self._worker_feedback(run_id, feedback)
+                return await self._worker_feedback(run_id, feedback, evidence=evidence)
+        return await self._worker_feedback(run_id, feedback, evidence=evidence)
 
-    async def _worker_feedback(self, run_id: str, feedback: Any) -> Data:
+    async def _worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
         from firefly_forge.agent_roles import BINDINGS, NativeAllowanceWorkerFeedback, worker_feedback_model
+        from firefly_forge.worker_evidence import WorkerEvidenceManifest
 
         model = worker_feedback_model(feedback)
+        if evidence is not None:
+            manifest = WorkerEvidenceManifest.model_validate(evidence)
+            evidence = manifest.model_dump()
+            if (
+                evidence["run_id"] != run_id
+                or evidence["feedback_id"] != feedback.id
+                or feedback.request is None
+                or evidence["request_id"] != feedback.request.id
+                or len({image["id"] for image in evidence["images"]}) != len(evidence["images"])
+            ):
+                raise ValueError("Worker evidence must identify this exact native feedback and question")
+            manifest.check_feedback(feedback.model_dump(mode="json"), feedback.task_id)
         async with self.store._unit():
             run = await self._run(run_id)
             payload = model.model_validate_json(self._worker_payload(run, feedback.model_dump_json())).model_dump(
@@ -899,6 +912,14 @@ class Journal:
             if existing:
                 if existing.data["payload"] != payload:
                     raise ValueError("Feedback identifier already contains different content")
+                if evidence is not None:
+                    retained = [
+                        entry.data["payload"]
+                        for entry in entries
+                        if entry.kind == "worker_evidence" and entry.data["payload"].get("feedback_id") == feedback.id
+                    ]
+                    if retained != [evidence]:
+                        raise ValueError("Worker evidence replay differs from its immutable receipt")
                 return copy.deepcopy(existing.data)
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
@@ -936,6 +957,15 @@ class Journal:
                     raise ValueError("Worker request identifier has already been used")
             record = await self._append(run_id, feedback.task_id, key, "worker_feedback", payload)
             run.data = {**run.data, "worker_feedback": payload, "updated_at": now()}
+            if evidence is not None:
+                await self._append(
+                    run_id,
+                    feedback.task_id,
+                    _worker_message_key("worker-evidence", feedback.id),
+                    "worker_evidence",
+                    evidence,
+                )
+                run.data = {**run.data, "worker_evidence": evidence}
             if feedback.request:
                 task.status = "paused"
                 task.data = {**task.data, "worker_feedback": payload, "known_worker_response": True}

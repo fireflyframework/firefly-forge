@@ -1,0 +1,35 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/question
+version: 1.0.1
+description: Deterministic repository feedback question.
+system_template: ''
+user_template: |-
+  #### Decision needed
+
+  {{ question }}
+
+  **Context**
+
+  {{ context }}
+
+  {{ choices }}
+
+  The run stays paused until an authorized person answers.
+
+  {{ destination }}
+
+  {{ reply_instructions }}
+
+  The answer is recorded with your current project identity. Sending it keeps the run paused. After the answer is recorded, select Resume in forge when you are ready to continue.
+  {{ resume_instructions }}
+
+  The authenticated run dialogue contains the full recorded question and options if these excerpts are shortened.
+required_variables:
+- question
+- choices
+- context
+- reply_instructions
+- resume_instructions
+- destination
+metadata:
+  defaults: {}

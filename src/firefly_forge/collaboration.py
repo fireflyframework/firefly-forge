@@ -315,8 +315,11 @@ class Collaboration:
         resume_authority: Any = None,
         product_change_authority: Any = None,
         product_intake_authority: Any = None,
+        *,
+        browser_origin: str = "",
     ) -> None:
         self.store = store
+        self.browser_origin = browser_origin
         self.polling: Any = None
         self.resume_authority = resume_authority
         self.poll_resume_authority: Any = None
@@ -1578,6 +1581,40 @@ class Collaboration:
         }:
             raise AccessDenied("Current repository collaboration permission is required for feedback")
 
+    async def _feedback_context(self, data: Data, run: Data) -> Data:
+        from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+        settings = await self.settings(data["repository_id"])
+        actions = settings.get("channel_commands", [])
+        if (data.get("command") or {}).get("adapter") == "addressed_status_v1":
+            return {"_feedback_origin": self.browser_origin, "_feedback_actions": []}
+
+        polling = (data.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        command = data.get("command") or {}
+        if polling or run.get("project_id"):
+            actions = []
+            authority = SCMActorAuthority(self.store, self.scm)
+            binding_authority = self.polling if polling else authority
+            if (
+                run.get("project_id")
+                and command.get("version") != 2
+                and command.get("action") in {"status", "respond", "cancel"}
+                and binding_authority is not None
+            ):
+                mapped = await authority.resolve(await self.receipt(data["id"]))
+                delegation = mapped.scm_delegation or {}
+                key = delegation.get("binding_key")
+                if key:
+                    binding = await binding_authority._head(run["project_id"], data["repository_id"], key)
+                    if (
+                        binding["request"]["active"] is True
+                        and binding["digest"] == delegation.get("binding_digest")
+                        and "respond" in binding["request"]["allowed_actions"]
+                        and "respond" in settings.get("channel_commands", [])
+                    ):
+                        actions = ["respond"]
+        return {"_feedback_origin": self.browser_origin, "_feedback_actions": actions}
+
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
         if initial.get("feedback_status") == "held":
@@ -1620,6 +1657,7 @@ class Collaboration:
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
+            data.update(await self._feedback_context(data, run))
             from firefly_forge.collaboration_feedback import feedback_card, milestone_key, provider_recovery, review_key
             from firefly_forge.configuration import redact_secrets
             from firefly_forge.secrets import redact_environment
@@ -1676,29 +1714,35 @@ class Collaboration:
                 )
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
-            if data.get("run_id"):
-                from firefly_forge.communication import communication_facts
-                from firefly_forge.product_provenance import content_digest
+            from firefly_forge.communication import communication_facts
+            from firefly_forge.product_provenance import content_digest
 
-                current_run = await self.store.get_run(data["run_id"])
-                if (
-                    milestone_key(current_run) != milestone_key(run)
-                    or content_digest(communication_facts(current_run, conversation=conversation_input))
-                    != drafted["communication"]["facts_sha256"]
-                ):
-                    run = current_run
-                    facts = communication_facts(run, conversation=conversation_input)
-                    configured_ai = drafted["communication"]["mode"] in {"ai", "held"}
-                    drafted = {
-                        "body": "" if configured_ai else native_card(run),
-                        "communication": {
-                            "mode": "held" if configured_ai else "deterministic",
-                            "reason": "state_changed",
-                            "facts": facts,
-                            "facts_sha256": content_digest(facts),
-                            "discarded_generation": drafted["communication"],
-                        },
-                    }
+            current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
+            current_context = await self._feedback_context(data, current_run)
+            facts = (
+                communication_facts(current_run or None, conversation=conversation_input)
+                if conversation_input
+                else communication_facts(current_run)
+            )
+            state_changed = (
+                milestone_key(current_run) != milestone_key(run)
+                or content_digest(facts) != drafted["communication"]["facts_sha256"]
+            )
+            channel_changed = any(data.get(key) != value for key, value in current_context.items())
+            if state_changed or channel_changed:
+                run = current_run
+                data.update(current_context)
+                configured_ai = drafted["communication"]["mode"] in {"ai", "held"}
+                drafted = {
+                    "body": "" if configured_ai else native_card(run),
+                    "communication": {
+                        "mode": "held" if configured_ai else "deterministic",
+                        "reason": "state_changed" if state_changed else "channel_changed",
+                        "facts": facts,
+                        "facts_sha256": content_digest(facts),
+                        "discarded_generation": drafted["communication"],
+                    },
+                }
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if drafted["communication"]["mode"] == "ai":
                 from firefly_forge.collaboration_feedback import communication_controls
@@ -1738,11 +1782,16 @@ class Collaboration:
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
 
             async def before_write() -> None:
+                from firefly_forge.project_access import AccessDenied
+
                 await self._feedback_authority(
                     data,
                     local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
                     and (data.get("command") or {}).get("adapter") != "addressed_status_v1",
                 )
+                current_context = await self._feedback_context(data, run)
+                if any(data.get(key) != value for key, value in current_context.items()):
+                    raise AccessDenied("The feedback destination or reply permission changed before publication")
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])
 

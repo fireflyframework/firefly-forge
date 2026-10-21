@@ -162,6 +162,7 @@ class Engine:
         self.learning: Any = None
         self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
+        self.worker_evidence: Any = None
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:
@@ -1408,7 +1409,17 @@ class Engine:
                 raise ValueError("Worker feedback evidence must exist inside the selected public component")
         if not self.journal:
             raise ValueError("Worker feedback requires the durable execution journal")
-        await self.journal.worker_feedback(identifier, feedback)
+        if feedback.request is not None and feedback.evidence_paths:
+            from firefly_forge.worker_evidence import WorkerEvidence
+
+            archive = self.worker_evidence or WorkerEvidence(self.store, self.journal)
+            retained_images = await archive.freeze(run, feedback, workspace, root)
+        else:
+            retained_images = None
+        if retained_images is not None:
+            await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
+        else:
+            await self.journal.worker_feedback(identifier, feedback)
         if feedback.request:
             raise WorkerAttention(feedback.request.id)
         if feedback.disposition == "failed":
