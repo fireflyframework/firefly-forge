@@ -317,3 +317,11 @@ reconciliation. A newer command cannot bypass an unresolved write in the same
 conversation. Confirming that a comment was posted acknowledges that exact
 retained milestone; it does not post it again. See [receipts and feedback](#receipts-and-feedback)
 for the operator recovery procedure.
+
+## Human wording and recorded status
+
+Issue and pull-request updates can use an explicit [communication model profile](model-profiles.md#write-project-updates-with-ai). The AI writes a short introduction from the recorded state; the native card keeps the run reference, checks, question and delivery evidence. A previous attempt's checks stay labeled as retained results. AI wording does not grant permission, answer a question or turn a provider claim into product acceptance.
+
+With no communication profile, or when its provider is unavailable, forge sends its native update. The receipt identifies which path was used. Existing transport consent and current project access still apply before any comment is written. A missing provider response leaves the original delivery held rather than generating another update.
+
+Human answers and continuation are separate operations. The existing answer command records the authorized person's response and keeps the run paused. Resume requires its own authorized action. Expanded decision cards, protected screenshot previews and a Studio profile selector are being delivered separately; selecting an AI profile alone does not add those interfaces.

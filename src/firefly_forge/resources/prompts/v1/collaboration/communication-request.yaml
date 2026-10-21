@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-request
+version: 1.0.0
+description: Native fact packet for a bounded project update.
+system_template: ''
+user_template: |-
+  Draft the project update using only this recorded fact packet:
+  {{ facts }}
+required_variables:
+  - facts
+metadata:
+  defaults: {}

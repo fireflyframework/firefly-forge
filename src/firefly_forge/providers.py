@@ -526,7 +526,7 @@ class ClaudeProvider(ConfiguredProvider):
 
 
 class APIProvider(ConfiguredProvider):
-    def model(self) -> Any:
+    def model(self, *, single_request: bool = False) -> Any:
         model: Any = None
         base_url = self.settings.get("FORGE_AGENTIC_BASE_URL")
         if base_url:
@@ -558,18 +558,44 @@ class APIProvider(ConfiguredProvider):
                 from pydantic_ai.models.anthropic import AnthropicModel
                 from pydantic_ai.providers.anthropic import AnthropicProvider
 
-                model = AnthropicModel(name, provider=AnthropicProvider(api_key=key))
+                if single_request:
+                    from anthropic import AsyncAnthropic
+
+                    selected_anthropic = AnthropicProvider(anthropic_client=AsyncAnthropic(api_key=key, max_retries=0))
+                else:
+                    selected_anthropic = AnthropicProvider(api_key=key)
+                model = AnthropicModel(name, provider=selected_anthropic)
             elif model_name.startswith("google") and not base_url:
+                from google.genai.types import HttpRetryOptions
                 from pydantic_ai.models.google import GoogleModel
                 from pydantic_ai.providers.google import GoogleProvider
 
-                model = GoogleModel(name, provider=GoogleProvider(api_key=key))
+                model = GoogleModel(
+                    name,
+                    provider=GoogleProvider(
+                        api_key=key, retry_options=HttpRetryOptions(attempts=1) if single_request else None
+                    ),
+                )
             elif model_name.startswith("openai-responses:") and not base_url:
                 from pydantic_ai.models.openai import OpenAIResponsesModel
 
-                model = OpenAIResponsesModel(name, provider=OpenAIProvider(api_key=key))
+                if single_request:
+                    from openai import AsyncOpenAI
+
+                    selected_openai = OpenAIProvider(openai_client=AsyncOpenAI(api_key=key, max_retries=0))
+                else:
+                    selected_openai = OpenAIProvider(api_key=key)
+                model = OpenAIResponsesModel(name, provider=selected_openai)
             else:
-                model = OpenAIChatModel(name, provider=OpenAIProvider(base_url=base_url, api_key=key))
+                if single_request:
+                    from openai import AsyncOpenAI
+
+                    selected_chat = OpenAIProvider(
+                        openai_client=AsyncOpenAI(base_url=base_url, api_key=key, max_retries=0)
+                    )
+                else:
+                    selected_chat = OpenAIProvider(base_url=base_url, api_key=key)
+                model = OpenAIChatModel(name, provider=selected_chat)
         return model
 
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:

@@ -82,6 +82,35 @@
       }
     },
     {
+      "id": "collaboration/communication-message",
+      "version": "1.0.0",
+      "path": "collaboration/communication-message.yaml",
+      "sha256": "a63c9f2f6219d7189574b2ab5f4b6cf8fd6e8f31e75029d91f72a382ea64241b",
+      "field": "user",
+      "variables": {
+        "narrative": "string",
+        "evidence": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-request",
+      "version": "1.0.0",
+      "path": "collaboration/communication-request.yaml",
+      "sha256": "cf7b0f89f818dc02bbe5e19f38cafcd336d26d87090bcb7e98861ba43a2c4dd5",
+      "field": "user",
+      "variables": {
+        "facts": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.0",
+      "path": "collaboration/communication-system.yaml",
+      "sha256": "b75db48e0a86014a9ac20ec0b1828d230b2d3331ce2fde9fa5495587e706f620",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",

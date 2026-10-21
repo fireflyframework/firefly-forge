@@ -327,6 +327,9 @@ class Collaboration:
         self._active_writes: set[str] = set()
         self.analysis_manager: Any = None
         self.product_assistant: Any = None
+        from firefly_forge.communication import CommunicationWriter
+
+        self.communication_writer = CommunicationWriter(store)
 
     def _secret(self, repository_id: str) -> str:
         value = self.store.configuration._read(self.secrets_path).get(repository_id, "")
@@ -1582,10 +1585,32 @@ class Collaboration:
 
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
             message = feedback_card(data, run, repo, host, public_text)
+            drafted = await self.communication_writer.write(run, message, public_text)
+            if data.get("run_id") and drafted["communication"]["mode"] == "ai":
+                current_run = await self.store.get_run(data["run_id"])
+                if milestone_key(current_run) != milestone_key(run):
+                    from firefly_forge.communication import communication_facts
+                    from firefly_forge.product_provenance import content_digest
+
+                    run = current_run
+                    facts = communication_facts(run)
+                    drafted = {
+                        "body": feedback_card(data, run, repo, host, public_text),
+                        "communication": {
+                            "mode": "deterministic",
+                            "reason": "state_changed",
+                            "facts": facts,
+                            "facts_sha256": content_digest(facts),
+                            "discarded_generation": drafted["communication"],
+                        },
+                    }
+            message = drafted["body"]
             if len(message) > 6000:
                 raise ValueError("Conversation feedback exceeds its public text bound")
             intent = {
                 "key": milestone_key(run),
+                "body": message,
+                "communication": drafted["communication"],
                 "body_sha256": hashlib.sha256(message.encode()).hexdigest(),
                 "stage": run.get("status", data.get("feedback_stage")),
                 "request_id": (run.get("worker_request") or {}).get("id"),
@@ -1608,6 +1633,7 @@ class Collaboration:
                     data, local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
                 )
                 self.store.reject_credentials(public_values)
+                self.communication_writer.assert_current(intent["communication"])
 
             remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)
         except Exception:
