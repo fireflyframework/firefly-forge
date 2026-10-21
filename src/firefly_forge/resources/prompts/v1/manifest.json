@@ -523,6 +523,18 @@
       "variables": {}
     },
     {
+      "id": "implementation/verification-contract",
+      "version": "1.0.0",
+      "path": "implementation/verification-contract.yaml",
+      "sha256": "ff2e269d615249a86341fdae23490a80233a92353d512af4fe5cd521b4238e06",
+      "field": "user",
+      "variables": {
+        "commands": "string",
+        "policy_checks": "string",
+        "final_command_limit": "string"
+      }
+    },
+    {
       "id": "implementation/verification-request",
       "version": "1.0.0",
       "path": "implementation/verification-request.yaml",
