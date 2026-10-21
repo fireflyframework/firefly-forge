@@ -29,6 +29,8 @@ Provider-native grants remain authoritative. Repository discovery is restricted 
 
 Optional policy recommendations and quality gates can be selected per project. Core path confinement, credential checks, real verification, source integrity and explicit publication/deployment boundaries remain mandatory.
 
+Newly prepared workspaces exclude untracked `.venv`, `node_modules` and `vendor` dependencies from Git snapshots, including read-only dependency symlinks. This does not authorize a dependency path or make it deliverable source: an already tracked private path is still rejected. Existing retained workspace metadata is not rewritten automatically.
+
 Native Agentic file tools reject traversal, symlink and hardlink access, Git metadata and private credential files. Official CLI providers have their own workspace tool permissions. Neither mechanism establishes operating-system isolation for the complete factory.
 
 Knowledge references are untrusted data with retained citations. They cannot authorize a new action or override core guards. Explicit knowledge indexing accepts selected verified tracked text files; it does not upload an operator's home, whole checkout or private configuration directory.

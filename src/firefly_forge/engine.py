@@ -520,8 +520,9 @@ class Engine:
                 if not run.get("git_metadata_digest"):
                     exclusions = workspace / ".git" / "info" / "exclude"
                     existing = exclusions.read_text() if exclusions.exists() else ""
+                    # Directory-only patterns miss read-only dependency symlinks.
                     exclusions.write_text(
-                        existing + "\n.venv/\nnode_modules/\nvendor/\n__pycache__/\n*.pyc\n"
+                        existing + "\n.venv\nnode_modules\nvendor\n__pycache__/\n*.pyc\n"
                         "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n"
                     )
                     baseline_metadata = metadata_digest(workspace)
