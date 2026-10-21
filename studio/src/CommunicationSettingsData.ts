@@ -129,7 +129,8 @@ export function communicationStatus(value: unknown): string {
   const evidence = value as Record<string, unknown>;
   if (evidence.mode === "ai" && evidence.reason === "generated")
     return "AI wording · recorded facts";
-  if (evidence.mode !== "deterministic") return "";
+  const held = evidence.mode === "held";
+  if (!held && evidence.mode !== "deterministic") return "";
   const reasons: Record<string, string> = {
     unconfigured: "no communication profile selected",
     quota: "provider usage limit reached",
@@ -139,5 +140,19 @@ export function communicationStatus(value: unknown): string {
     state_changed: "run state changed while drafting",
     channel_changed: "repository reply permissions changed while drafting",
   };
-  return `Recorded update${typeof evidence.reason === "string" && reasons[evidence.reason] ? ` · ${reasons[evidence.reason]}` : ""}`;
+  if (held)
+    Object.assign(reasons, {
+      invalid_output: "AI message format could not be admitted",
+      invalid_review: "AI review format could not be admitted",
+      decision_too_large: "recorded question exceeds the public message limit",
+      state_changed: "recorded facts changed while drafting",
+      channel_changed:
+        "reply destination or permissions changed while drafting",
+    });
+  const reason =
+    typeof evidence.reason === "string" &&
+    Object.hasOwn(reasons, evidence.reason)
+      ? reasons[evidence.reason]
+      : "";
+  return `${held ? "AI update held" : "Recorded update"}${reason ? ` · ${reason}` : ""}`;
 }

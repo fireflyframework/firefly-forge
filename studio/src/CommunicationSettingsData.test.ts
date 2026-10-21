@@ -78,3 +78,29 @@ it("accepts a save acknowledgment only for the exact preserved routing and a new
     expect(() => communicationSaved(value, configuration, desired)).toThrow();
   }
 });
+
+it("shows held AI delivery with bounded reasons while keeping historical recorded receipts", () => {
+  expect(communicationStatus({ mode: "held", reason: "quota" })).toBe(
+    "AI update held · provider usage limit reached",
+  );
+  expect(communicationStatus({ mode: "held", reason: "state_changed" })).toBe(
+    "AI update held · recorded facts changed while drafting",
+  );
+  expect(
+    communicationStatus({ mode: "held", reason: "private raw provider error" }),
+  ).toBe("AI update held");
+  expect(communicationStatus({ mode: "deterministic", reason: "quota" })).toBe(
+    "Recorded update · provider usage limit reached",
+  );
+});
+
+it("keeps inherited object names outside native communication reason labels", () => {
+  for (const reason of ["constructor", "__proto__", "toString"]) {
+    expect(communicationStatus({ mode: "held", reason })).toBe(
+      "AI update held",
+    );
+    expect(communicationStatus({ mode: "deterministic", reason })).toBe(
+      "Recorded update",
+    );
+  }
+});

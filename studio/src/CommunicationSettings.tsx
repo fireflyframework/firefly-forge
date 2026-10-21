@@ -126,9 +126,11 @@ export function CommunicationSettings({
         </select>
       </div>
       <p className="subtle">
-        One bounded draft per update. If the selected provider is unavailable or
-        reaches its usage limit, forge sends its recorded update. Coding
-        subscriptions are never selected implicitly.
+        AI writes and reviews each complete update, with one correction before
+        responding when needed. If the selected provider is unavailable, reaches
+        its usage limit or returns an invalid message format, delivery stays
+        held without a substitute message. Coding subscriptions are never
+        selected implicitly.
       </p>
       {current && !current.profiles.length && (
         <p>
