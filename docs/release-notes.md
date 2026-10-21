@@ -21,6 +21,8 @@ Newly prepared source snapshots also exclude untracked `.venv`, `node_modules` a
 
 An administrator can explicitly reconcile a known failed retained workspace whose historical dependency exclusions used older directory-only rules. Review the current candidate and exact preparation changes before admission; the versioned receipt preserves the failed record, source binding and original request. An uncertain filesystem effect stays held for exact readback. This operation resets no budget and grants no additional provider recovery. See [workspace reconciliation](recovery.md#reconcile-legacy-dependency-preparation).
 
+An environment continuation with retained unmetered official-CLI activity is refused before admission, filesystem intent and provider launch. The refusal reports observed CLI calls, governed runner calls and required final checks; missing, conflicting or incomplete archives also hold. CLI observations are not native runner receipts. Counting them afterward does not preventively enforce a combined limit inside the CLI, and this operation grants no additional calls or budget reset.
+
 This continuation does not authorize a fifth ordinary dispatch or a sixth attempt after the separate native final allowance. Controlled screenshots show the current Studio version; protocol tests and those fixtures do not establish completed CRM, live provider or generated-product acceptance.
 
 ## 0.2.30
