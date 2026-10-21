@@ -579,17 +579,17 @@ Generation is optional presentation work with one total deadline and bounded per
 The writer and reviewer are separate `FireflyAgent` invocations using the same selected communication profile. The reviewer sees only the exact structured candidate and bounded recorded facts. The candidate is quoted data, not instructions. Its strict result contains a verdict, issue categories, fact references and a short rationale. It checks the whole passage for supported negations, contradictions, misleading check results, unrecorded actions and human decisions. It neither rewrites the candidate nor uses tools.
 
 ```mermaid
-flowchart LR
-    F["Recorded facts"] --> W["AI writes complete card"]
-    W --> N["Native structure and quotation checks"]
-    N --> R["Separate AI semantic review"]
+flowchart TB
+    F["Recorded facts"] --> W["Draft complete card"]
+    W --> N["Check structure<br/>and exact quotation"]
+    N --> R["Classify meaning"]
     F --> R
-    R --> V{"Supported with valid references?"}
-    V -->|Yes| C["Recheck current facts and authority"]
-    V -->|No or uncertain| B["One final AI correction"]
-    C --> I["Retain exact body and write intent"]
+    R --> V{"Supported?"}
+    V -->|Yes| C["Recheck current facts<br/>and authority"]
+    V -->|No or uncertain| B["Correct once"]
     B --> C
-    I --> P["Existing SCM publication boundary"]
+    C --> I["Retain body<br/>and write intent"]
+    I --> P["SCM write boundary"]
 ```
 
 A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation and no issues with a supported verdict. Unsupported claims or uncertainty trigger one AI correction followed by the response. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
