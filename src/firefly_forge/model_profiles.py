@@ -26,7 +26,9 @@ from firefly_forge.secrets import contains_known_credential
 
 Data = dict[str, Any]
 ModelProvider = Literal["codex", "claude", "bridge", "agentic"]
-Task = Literal["product", "functions", "design", "architecture", "implementation", "review", "multimodal_qa"]
+Task = Literal[
+    "product", "functions", "design", "architecture", "implementation", "review", "multimodal_qa", "communication"
+]
 TASK_PROVIDERS: dict[str, set[str]] = {
     "product": {"agentic", "bridge"},
     "functions": {"agentic", "bridge"},
@@ -35,6 +37,7 @@ TASK_PROVIDERS: dict[str, set[str]] = {
     "implementation": {"codex", "claude", "agentic", "bridge"},
     "review": {"codex", "claude", "agentic", "bridge"},
     "multimodal_qa": {"agentic", "bridge"},
+    "communication": {"agentic", "bridge"},
 }
 
 
@@ -78,6 +81,7 @@ def task_catalog() -> list[Data]:
         "implementation": "Real source-editing worker under frozen execution controls",
         "review": "Independent provider review of an isolated immutable verified tree",
         "multimodal_qa": "Actual native screenshot reasoning with matching verified image-input capability",
+        "communication": "Concise issue and pull-request updates from recorded run facts; deterministic fallback",
     }
     return [
         {

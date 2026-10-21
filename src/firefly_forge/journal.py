@@ -1594,6 +1594,18 @@ class Journal:
                 )
             )
 
+    async def human_clarification_continuation_allowance(self, run_id: str) -> int:
+        from firefly_forge.human_clarifications import continuation_allowance
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            entries = [
+                {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+            ]
+            if not self.verify_chain(entries):
+                raise ValueError("Human clarification requires an intact journal")
+            return continuation_allowance(run.data, entries)
+
     async def recover(self) -> int:
         async with self.store._unit():
             pending = await self.tasks.find_pending_recovery()
@@ -1689,7 +1701,36 @@ class Journal:
             raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
         if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
             raise ValueError("Bridge outcome requires reconciliation before resuming")
-        async with self.store._unit():
+        from firefly_forge.human_clarifications import awaiting_human_resume, continuation_link
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
+
+        human_candidate = not auto and verification_handoff_id is None and awaiting_human_resume(current)
+        actor = CURRENT_PRINCIPAL.get() if human_candidate else None
+        if human_candidate and actor is None:
+            raise AccessDenied("An authenticated operator must explicitly resume a human clarification")
+        async with self.store._unit() as resume_session:
+            if human_candidate:
+                assert actor is not None
+                if actor.authentication_method == "scm_mapping" and (actor.scm_delegation or {}).get("action") not in {
+                    "resume",
+                    "handoff",
+                }:
+                    raise AccessDenied("This SCM delegation does not authorize explicit clarification resume")
+                if current.get("project_id"):
+                    from sqlalchemy import text
+
+                    await resume_session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                        {"key": self.store.schema + ":members:" + current["project_id"]},
+                    )
+                identity = await ForgeIdentityUserRepository().find_by_id(actor.id, lock=LockMode.PESSIMISTIC_WRITE)
+                if (
+                    identity is None
+                    or not identity.enabled
+                    or (identity.issuer, identity.subject) != (actor.issuer, actor.subject)
+                ):
+                    raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
             if run.status not in {"paused", "needs_reconciliation", "interrupted"}:
@@ -1732,6 +1773,29 @@ class Journal:
                 ):
                     raise ValueError("Automatic continuation requires its completed immutable verification handoff")
                 check_verification_cut(self.store, run.data, admitted)
+            human_clarification = None
+            if not auto and verification_handoff_id is None and awaiting_human_resume(run.data):
+                if not human_candidate or actor is None or self._worker_scope(current) != self._worker_scope(run.data):
+                    raise AccessDenied("The human clarification scope changed during resume")
+                access = ProjectAccess(self.store)
+                snapshot = access.actor_snapshot(actor)
+                await access.authorize_actor(snapshot, run.data.get("project_id"), "execute")
+                if run.data.get("publish"):
+                    await access.authorize_actor(snapshot, run.data.get("project_id"), "release")
+                human_entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                if not self.verify_chain(human_entries):
+                    raise ValueError("Human clarification requires an intact journal")
+                task = await self._task(run_id, "implement")
+                human_clarification = continuation_link(
+                    run.data,
+                    {"status": task.status, "attempt": task.attempt},
+                    human_entries,
+                    {"user_id": actor.id.hex, "authentication_method": actor.authentication_method},
+                )
+                if CURRENT_PRINCIPAL.get() != actor:
+                    raise AccessDenied("The clarification resume operator changed")
             old_revision = run.data.get("config_revision")
             old_selection = copy.deepcopy(run.data.get("model_selection"))
             old_agent = run.data.get("agent")
@@ -1824,8 +1888,117 @@ class Journal:
                     "selection_mode": selection_mode,
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
+                    **({"human_clarification": human_clarification} if human_clarification else {}),
                 },
             )
+            return await self.store.get_run(run_id)
+
+    async def queue_environment_reconciled(self, run_id: str, request_id: str) -> Data:
+        """Queue the existing task only after its explicit environment effect has a sealed receipt."""
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+        from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
+
+        identifier(request_id)
+        actor = CURRENT_PRINCIPAL.get()
+        access = ProjectAccess(self.store)
+        if (
+            actor is None
+            or not await access.current_administrator(actor)
+            or actor.authentication_method == "scm_mapping"
+        ):
+            raise AccessDenied("Environment reconciliation requires a current native administrator")
+        snapshot = {
+            **access.actor_snapshot(actor),
+            "identity_digest": digest({"issuer": actor.issuer, "subject": actor.subject}),
+        }
+        await self.store.assert_ownership()
+        async with self.store._unit():
+            run = await self._run(run_id)
+            await access.authorize_execution(run.data)
+            entries = [copy.deepcopy(row.data) for row in await self.records.find_for_run(run.id)]
+            if not self.verify_chain(entries):
+                raise ValueError("Environment reconciliation requires an intact native journal")
+            receipt = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_receipt" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if receipt is None:
+                raise ValueError("Environment reconciliation has no durable completion receipt")
+            value = receipt["payload"]
+            body = WorkspaceReconciliationInput.model_validate(value["request"])
+            candidate = value["candidate"]
+            intent = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_intent" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if (
+                body.request_id != request_id
+                or value["actor"] != snapshot
+                or candidate["digest"] != digest({k: v for k, v in candidate.items() if k != "digest"})
+                or body.candidate_digest != candidate["digest"]
+                or intent is None
+                or value.get("intent_digest") != intent["digest"]
+                or any(
+                    value[key] != intent["payload"][key] for key in ("request", "actor", "candidate", "previous_task")
+                )
+            ):
+                raise AccessDenied("The completed environment transition is not this operator's native intent")
+            queued = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_queued" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if queued is not None:
+                return await self.store.get_run(run_id)
+            task = await self._task(run_id, "implement")
+            task_view = {**copy.deepcopy(task.data), "id": task.task_id, "status": task.status, "attempt": task.attempt}
+            if (
+                run.status != "failed"
+                or digest(run.data) != candidate["previous_run_digest"]
+                or task_view != value["previous_task"]
+                or task.status != "queued"
+                or type(task.attempt) is not int
+                or not 2 <= task.attempt <= 4
+                or run.data.get("git_metadata_digest") != value["effect"]["metadata_before"]
+            ):
+                raise ValueError("The original failed run or already queued implementation task changed")
+            await self._append(
+                run_id,
+                "implement",
+                request_id,
+                "workspace_reconciliation_queued",
+                {
+                    "version": 1,
+                    "receipt_digest": receipt["digest"],
+                    "existing_attempt": task.attempt,
+                },
+            )
+            run.status = "queued"
+            run.data = {
+                **run.data,
+                "status": "queued",
+                "display_status": "queued",
+                "error": None,
+                "resume_existing": True,
+                "updated_at": now(),
+                "git_metadata_digest": value["effect"]["metadata_after"],
+                "workspace_reconciliation": {"request_id": request_id, "receipt_digest": receipt["digest"]},
+            }
+            await self.store.run_records.save(run)
+            await self.store.assert_ownership()
+            if CURRENT_PRINCIPAL.get() != actor or not await access.current_administrator(actor):
+                raise AccessDenied("The environment reconciliation operator changed before commit")
             return await self.store.get_run(run_id)
 
     async def ready_retries(self) -> list[str]:

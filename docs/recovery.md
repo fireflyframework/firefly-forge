@@ -333,6 +333,8 @@ After a lost response, GET `/api/v1/runs/{run_id}/verification-handoffs/adoption
 
 ## Resume the same run
 
+For a human implementation question, first record the answer under its original request identity, then resume explicitly with current execution authority. The journal seals a bounded continuation from that exact question and authenticated answer. This can continue a zero-repair run while preserving its spent calls and the ordinary four-attempt ceiling. It grants no retry for an unknown provider outcome, no fifth dispatch or sixth final-allowance attempt, and no additional tools. See [worker feedback and manager requests](agent-roles.md#worker-feedback-and-manager-requests) for the separate request and repair limits.
+
 Send `POST /api/v1/runs/{id}/resume` with `{}`. Resume preserves the workspace, original brief, policy content and provider revision. Local reconciliation inspects the Git root, authorized origin, HEAD and source tree before continuing an unfinished task.
 
 ```json
@@ -513,3 +515,17 @@ A separate process-local mutable-settings cut starts before preparation and stay
 Credential matching uses the prepared registry and process-local configuration generation, with current native OAuth evidence checked inside the transaction. Fresh credential and authority checks also apply before returning the committed result. A refusal after commit does not establish that nothing was saved. These guards do not serialize configuration files written by another process.
 
 Ordinary `POST /runs` retains its existing contract. Use the [original-request protocol](#settle-an-uncertain-run-submission) when creation needs an exact identity and terminal decision. A matching brief or the latest run list cannot settle an uncertain original submission.
+
+## Reconcile legacy dependency preparation
+
+A retained workspace can have a directory-only factory ignore such as `node_modules/` that fails to exclude a read-only dependency symlink. If source admission refuses that staged alias before an already queued verification continuation dispatches, a current factory administrator can review `GET /api/v1/runs/{run_id}/workspace-reconciliations/candidate` on the execution owner. The candidate binds the failed record, existing task, completed native verification handoff, source and Git metadata, current authority, provider settings and remaining command budget.
+
+Retain a new `request_id` and POST the reviewed `candidate_digest` with both `acknowledge_environment_only: true` and `acknowledge_resume_existing_task: true`. The fixed operation removes only enumerated dependency-symlink index entries absent from the original baseline and adds the factory's bare dependency ignores. It preserves the worktree aliases, dependency targets, application source and Git history. Tracked private paths, private regular files, changed cuts and unresolved effects remain refused.
+
+The native journal commits an intent before the filesystem effect. Only a known completion receipt can queue the same existing task. Its attempt, repair allowance, handoff use and lifetime command budget stay unchanged; final verification still needs its reserved headroom. The historical failed record and its error are retained in the immutable receipt. This operation does not authorize another failed-provider recovery or expand a final allowance.
+
+The sandbox command limit counts native governed runner executions. Shell calls inside an official coding CLI are separate observed effects, not runner receipts. An environment continuation with retained unmetered CLI activity is held before admission, filesystem effects and provider launch. Its refusal reports observed CLI calls, governed calls and required final checks; missing, conflicting or incomplete archives also hold. Observing these calls afterward does not enforce a preventive combined limit. Such a continuation needs a separately supported tool-admission boundary before it can resume; changing a prompt or subtracting an estimated count does not provide that boundary.
+
+After uncertain delivery, read `GET /api/v1/runs/{run_id}/workspace-reconciliations/{request_id}`. A pending intent returns `needs_reconciliation` and cannot execute again, including under another request ID. Do not reset Git metadata or resubmit an unknown effect. Database commits and filesystem changes are not one atomic transaction, and this protocol requires an exclusively owned retained workspace.
+
+The Python client exposes `workspace_reconciliation_candidate`, `reconcile_workspace` and `workspace_reconciliation`; the CLI equivalents are `forge workspace-reconciliations candidate`, `admit` and `get`. Normal execution after admission still checks current permissions, scans source, runs the configured checks and records its own result. An environment receipt is not product acceptance or publication.

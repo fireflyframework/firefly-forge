@@ -520,8 +520,9 @@ class Engine:
                 if not run.get("git_metadata_digest"):
                     exclusions = workspace / ".git" / "info" / "exclude"
                     existing = exclusions.read_text() if exclusions.exists() else ""
+                    # Directory-only patterns miss read-only dependency symlinks.
                     exclusions.write_text(
-                        existing + "\n.venv/\nnode_modules/\nvendor/\n__pycache__/\n*.pyc\n"
+                        existing + "\n.venv\nnode_modules\nvendor\n__pycache__/\n*.pyc\n"
                         "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n"
                     )
                     baseline_metadata = metadata_digest(workspace)
@@ -748,6 +749,17 @@ class Engine:
                     if run.get("policy_snapshot")
                     else inject_skills(run["brief"], run.get("skills", DEFAULT_SKILLS))
                 )
+                source_brief += "\n\n" + prompt_text(
+                    "implementation/verification-contract",
+                    commands=json.dumps([Command.model_validate(command).model_dump() for command in run["commands"]]),
+                    policy_checks=json.dumps(
+                        [
+                            command.model_dump()
+                            for command in policy_commands(run.get("policy_snapshot", {}), run["backend"])
+                        ]
+                    ),
+                    final_command_limit="20",
+                )
                 if run.get("role_snapshot"):
                     from firefly_forge.agent_roles import (
                         NativeAllowanceWorkerFeedback,
@@ -860,7 +872,12 @@ class Engine:
                 if self.journal and hasattr(self.journal, "verification_continuation_allowance")
                 else 0
             )
-            implementation_limit = min(4, repairs + 1 + continuation_allowance)
+            human_allowance = (
+                await self.journal.human_clarification_continuation_allowance(identifier)
+                if self.journal and hasattr(self.journal, "human_clarification_continuation_allowance")
+                else 0
+            )
+            implementation_limit = min(4, repairs + 1 + continuation_allowance + human_allowance)
             completed_rounds = int(run.get("implementation_rounds", 0))
             repair_failures: list[dict[str, Any]] = []
             start_round = max(1, completed_rounds)
@@ -1271,7 +1288,7 @@ class Engine:
                         )
                     )
                     break
-                if attempt > repairs:
+                if attempt > repairs + human_allowance:
                     raise ValueError(f"Verification failed after {attempt} implementation attempts")
                 feedback = "\n\n".join(
                     f"{' '.join(check['argv'])}: exit {check['exit_code']}\n{check['output']}" for check in failures

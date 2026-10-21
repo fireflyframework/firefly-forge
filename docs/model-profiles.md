@@ -68,10 +68,38 @@ Profiles named in this example must already exist. Unsupported task/provider com
 | `implementation` | Source-editing worker | All four providers |
 | `review` | Independent review of an isolated verified tree | All four providers |
 | `multimodal_qa` | Actual screenshot reasoning | `agentic`, `bridge`, with a matching verified image-input capability |
+| `communication` | Issue and pull-request wording over recorded facts | `agentic`, `bridge` |
 
 Dialogue tasks are model proposals for owner review. They do not change the existing architecture recommendation or SVG reference renderer into model calls. Deterministic role gates remain deterministic. CLI implementations do not currently provide the native structured dialogue contract merely because they can edit source.
 
 Task routing produces a frozen provider selection for each implemented invocation. An unbound task returns no override and preserves the existing explicit provider selection. A configured binding that is missing, unsupported or unverified fails; it cannot quietly switch to another provider or model.
+
+## Write project updates with AI
+
+Select an existing `agentic` or `bridge` profile for `communication`. This enables AI wording for subsequent issue and pull-request updates. The implementation profile is independent: a run using the Codex CLI can use an explicitly selected Bridge subscription for its updates. No paid API profile or coding subscription is chosen automatically.
+
+First configure the profile through the write-only model-profile endpoint described above. A Bridge profile needs its normal endpoint, model and scoped token; borrowing the factory's configured credentials requires explicit `inherit_credentials: true`. A direct API profile needs its own model and credentials. Then read `GET /api/v1/task-routing`, preserve the existing bindings and add the communication selection:
+
+```json
+{
+  "bindings": {
+    "implementation": "source-builder",
+    "communication": "project-updates"
+  }
+}
+```
+
+Send that complete binding map to `PUT /api/v1/task-routing`. Profiles in this example must already exist. Configuration uses the existing authenticated administrator endpoints; the Studio communication selector is a separate UI follow-up.
+
+The model writes the complete update: a specific title, an explanation, the available results and the next supported decision. forge applies Markdown formatting; it does not append the old status card. The pinned [Humanizer adaptation](agent-roles.md#pinned-community-instructions) is included in the actual agent instructions, and its revision and content digest are retained with the message.
+
+Each eligible update uses a tool-free drafting request and an independent semantic classification against the same facts. If the classifier finds unsupported claims or uncertainty, one additional AI request corrects the message and returns the final response. There is no second semantic veto or correction loop. All requests use the selected profile with SDK retries disabled. The draft allows 1,400 output tokens; the review allows 700. One total deadline, capped at 120 seconds, covers queue time and all requests. It does not restart for the review. The effective timeout is retained in the communication receipt. Use a 60-second profile timeout for local subscription workers; a shorter configured limit remains in force.
+
+The fact packet contains the recorded state, active stage, recovery attempt, check totals and provenance, known source-safety blockers and native delivery state. A pending human decision also supplies a bounded, safely escaped quotation of the question, context and choices. The generated decision must preserve that quotation and every choice; it cannot supply an answer. Questions that cannot fit the public quotation bounds hold AI delivery rather than silently shortening the options. Customer briefs, raw errors, source, logs and credentials are withheld.
+
+Native checks validate the message structure, citation identities, public quotation and current authority. A separate structured AI review classifies the complete candidate as supported, unsupported or uncertain. It checks meaning in context, including negations, numbers, saved versus current results, delivery claims and pending human decisions. It does not classify prose with keyword lists. A supported classification proceeds directly; otherwise the AI makes its single correction and responds, explaining missing information or asking a specific question when needed. The original review is explicitly bound to the original candidate; it is not relabeled as an independent approval of the correction. The receipt retains the candidate digest, review prompt digest, verdict, issues and rationale. This is a fallible model review, not independent product QA or proof of every sentence. With an AI profile selected, forge never substitutes a generic template. A provider outage, exhausted quota, malformed result or failed native authority/framing check holds delivery with its recorded reason, without a remote comment or automatic repeated model calls. A new explicit request can try again. Choosing recorded updates without an AI profile remains a separate configuration mode. There is no automatic provider substitution.
+
+The receipt retains `feedback_intent.communication`: its mode and any hold reason, fact packet and digest, selected profile revision, prompt digest and applied skill provenance. The exact final body and its SHA-256 are saved before the remote comment is attempted. If the run changes while drafting, configured AI delivery is held without a template replacement or another automatic model call. Unknown remote delivery remains held for reconciliation; a second comment is not sent automatically.
 
 ## Frozen execution and handoff
 

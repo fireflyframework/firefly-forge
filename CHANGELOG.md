@@ -2,6 +2,18 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.31 — 2026-10-20
+
+- Show frozen verification command arguments and timeouts to every initial and ordinarily resumed implementer through one read-only Agentic template, without granting tools or execution permission.
+- Continue an answered implementation question after an explicitly authorized resume, including with a zero repair budget. Seal the original question and authenticated answer in the resume journal; keep spent calls, repair history and the ordinary four-attempt ceiling.
+- Refuse duplicate, ambiguous or changed question/answer bindings, revoked resumers and active provider recoveries. Preserve other factory roles' existing resume behavior and the separate one-use fifth provider allowance.
+- Explain recorded issue and pull-request outcomes with one explicitly selected Agentic or Bridge communication profile. Require exact top-level fact citations and offered blocker/check context; preserve the distinction between a source-guard report and an established credential exposure.
+- Let the selected communication agent write the complete card with the pinned Humanizer instructions, then classify its meaning with a separate structured AI review. Unsupported or uncertain wording receives one correction, within three tool-free requests and one profile deadline. Preserve exact human quotations and original-review provenance; hold material failures without a substitute template or automatic repeated calls.
+- Exclude untracked dependency symlinks from newly prepared source snapshots while preserving rejection of already tracked private paths and existing retained workspace metadata.
+- Add explicit, receipted reconciliation of known failed legacy dependency preparation while preserving source checks, uncertain-effect holds and spent budgets.
+- Refuse retained unmetered official-CLI environment continuations before admission, effect intent or provider launch. Report observed CLI calls separately from native runner receipts; incomplete or conflicting archives also hold, without claiming preventive combined tool enforcement.
+- Refresh the controlled desktop/mobile documentation captures for 0.2.31. These fixtures and protocol checks do not establish generated-product acceptance.
+
 ## 0.2.30 — 2026-10-20
 
 - Present bounded Codex MCP server, tool, reported status and text output in Studio without treating provider reports as native runner receipts or product QA.

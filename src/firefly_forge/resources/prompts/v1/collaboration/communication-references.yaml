@@ -1,0 +1,16 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-references
+version: 1.0.0
+description: Validated native run and receipt references separate from model-authored prose.
+system_template: ''
+user_template: |-
+  <details>
+  <summary>Run reference</summary>
+
+  {{ run_reference }}Receipt: `{{ receipt_id }}`
+  </details>
+required_variables:
+- run_reference
+- receipt_id
+metadata:
+  defaults: {}

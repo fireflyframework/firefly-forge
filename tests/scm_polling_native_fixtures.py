@@ -32,9 +32,10 @@ from firefly_forge.store import Store
 
 
 @pytest.fixture
-def native_poll(tmp_path, postgres_schema, monkeypatch):
+def native_poll(tmp_path, postgres_schema, monkeypatch, request):
     token = "owned-native-poll-bootstrap-token"
     state = {"clock": time.time(), "comments": [], "posts": [], "lost_reply": False, "permission": "write"}
+    implementation = getattr(request, "param", None) == "implementation"
     monkeypatch.setattr("firefly_forge.scm_polling.time", lambda: state["clock"])
 
     def comment(number, body, issue=3):
@@ -160,19 +161,21 @@ def native_poll(tmp_path, postgres_schema, monkeypatch):
                         repository_id=repo["id"],
                         project_id=project["id"],
                         component_id="api",
-                        operation="test",
+                        operation="build" if implementation else "test",
                         agent="bridge",
                         frontend="none",
                         brief="Check the explicitly selected existing result",
                     )
                 )
                 await journal.ensure_plan(run["id"])
+                if implementation:
+                    await journal.intent(run["id"], "implement", 1)
                 await journal.worker_feedback(
                     run["id"],
                     WorkerFeedback(
                         id="poll-native-feedback",
-                        role_id="qa",
-                        task_id="verify",
+                        role_id="implementer" if implementation else "qa",
+                        task_id="implement" if implementation else "verify",
                         attempt=1,
                         disposition="clarification",
                         summary="Choose the expected result",

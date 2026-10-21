@@ -233,6 +233,8 @@ from firefly_forge.verification_controllers import VerificationHandoffController
 from firefly_forge.verification_handoffs import VerificationHandoffs
 from firefly_forge.verification_models import VerificationAdoption
 from firefly_forge.worker_runtime import WorkerSupervision
+from firefly_forge.workspace_reconciliation_controllers import WorkspaceReconciliationController
+from firefly_forge.workspace_reconciliations import WorkspaceReconciliations
 
 
 @service
@@ -647,6 +649,10 @@ class FactoryConfiguration:
         return ProviderRecoveryAllowances(recoveries)
 
     @bean
+    def workspace_reconciliations(self, recoveries: ProviderRecoveries) -> WorkspaceReconciliations:
+        return WorkspaceReconciliations(recoveries)
+
+    @bean
     def coding_check_grants(self, recoveries: ProviderRecoveries) -> CodingCheckGrants:
         grants = CodingCheckGrants(recoveries)
         recoveries.engine.coding_checks = grants
@@ -744,7 +750,9 @@ class FactoryConfiguration:
         inbox: ForgeWebhookInboxRepository,
         events: ForgeAccessEventRepository,
     ) -> SCMResumeAuthority:
-        return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
+        service = SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
+        store.scm_resume_authorities[service.actor_transport] = service
+        return service
 
     @bean
     def scm_poll_resume_authority(
@@ -759,6 +767,7 @@ class FactoryConfiguration:
     ) -> SCMPollResumeAuthority:
         service = SCMPollResumeAuthority(store, authority, journal, settings_records, inbox, events)
         service.polling = polling
+        store.scm_resume_authorities[service.actor_transport] = service
         return service
 
     @bean
@@ -1162,6 +1171,7 @@ def create_runtime(
         VerificationHandoffController,
         ProviderRecoveryController,
         ProviderRecoveryAllowanceController,
+        WorkspaceReconciliationController,
         CodingCheckGrantController,
         BridgeCompletionController,
         RunEvidenceController,

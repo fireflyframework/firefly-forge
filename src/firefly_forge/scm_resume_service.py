@@ -7,7 +7,8 @@ import copy
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from contextvars import ContextVar
+from typing import Any, Literal
 from uuid import uuid4
 
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -20,6 +21,8 @@ from firefly_forge.access_persistence import (
     ForgeMembershipRepository,
 )
 from firefly_forge.collaboration_persistence import ForgeCollaborationSettingsRepository, ForgeWebhookInboxRepository
+from firefly_forge.human_clarifications import awaiting_human_resume
+from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import Journal, digest
 from firefly_forge.persistence import (
@@ -29,7 +32,7 @@ from firefly_forge.persistence import (
     ForgeRunEntity,
     ForgeTaskEntity,
 )
-from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, Permission, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.sandbox_persistence import ForgeSandboxEntity
 from firefly_forge.scm_actor_authority import SCMActorAuthority, binding_key
@@ -37,6 +40,7 @@ from firefly_forge.scm_authority_models import VerifiedSCMReferenceV1
 from firefly_forge.scm_poll_resume_models import SCMPollResumeGrantInputV3, SCMPollResumeGrantReceiptV3
 from firefly_forge.scm_resume_cut import FROZEN_FIELDS, resume_cut
 from firefly_forge.scm_resume_models import (
+    SCMResumeActorContextV1,
     SCMResumeCommandV2,
     SCMResumeGrantInputV2,
     SCMResumeGrantReceiptV2,
@@ -70,6 +74,7 @@ class SCMResumeAuthority:
     """A Factory bean; all mutable admission checks are repeated under native locks."""
 
     state_key = STATE_KEY
+    actor_transport: Literal["signed_resume_v2", "github_rest_poll_resume_v3"] = "signed_resume_v2"
     event_kind = EVENT_KIND
     grant_version = 2
     request_type: type[SCMResumeGrantInputV2] | type[SCMPollResumeGrantInputV3] = SCMResumeGrantInputV2
@@ -87,6 +92,90 @@ class SCMResumeAuthority:
     ) -> None:
         self.store, self.authority, self.journal = store, authority, journal
         self.settings, self.inbox, self.events = settings, inbox, events
+        self._resuming: ContextVar[tuple[SCMResumeActorContextV1, Principal] | None] = ContextVar(
+            "scm_human_resume", default=None
+        )
+
+    def _actor_context(self, delivery: Data, context: Data) -> SCMResumeActorContextV1:
+        run = context["run"]
+        reference = delivery.get("verification", {})
+        if not isinstance(reference, dict):
+            raise AccessDenied("The verified SCM resume reference is unavailable")
+        return SCMResumeActorContextV1(
+            version=1,
+            transport=self.actor_transport,
+            action="resume",
+            verified_receipt_id=delivery["id"],
+            verified_reference_digest=digest(reference),
+            run_id=run["id"],
+            project_id=run["project_id"],
+            repository_id=run["repository_id"],
+            component_id=run["component_id"],
+            native_user_id=context["user_id"],
+            binding_digest=context["binding"]["digest"],
+            grant_digest=context["grant"]["digest"],
+        )
+
+    async def authorize_snapshot(self, actor: Data, project_id: str | None, permission: Permission) -> None:
+        active = self._resuming.get()
+        if active is None or current_unit_of_work() is None:
+            raise AccessDenied("SCM clarification authority exists only inside its verified native resume")
+        scope, principal = active
+        if (
+            CURRENT_PRINCIPAL.get() != principal
+            or actor != ProjectAccess.actor_snapshot(principal)
+            or actor.get("scm_delegation") != scope.model_dump(mode="json")
+            or project_id != scope.project_id
+            or permission not in {"execute", "release"}
+        ):
+            raise AccessDenied("The SCM clarification resume actor or scope changed")
+        delivery = await self._delivery(scope.verified_receipt_id)
+        if delivery.get("action_status") != "writing" or delivery.get("status") != "needs_reconciliation":
+            raise AccessDenied("The current SCM resume intent is no longer being admitted")
+        context = await self._context(delivery)
+        if self._actor_context(delivery, context) != scope:
+            raise AccessDenied("The current SCM clarification grant, binding or verified source changed")
+        async with self.store._unit():
+            identity = await ForgeIdentityUserRepository().find_by_id(principal.id, lock=LockMode.PESSIMISTIC_WRITE)
+            memberships = await ForgeMembershipRepository().for_user(principal.id)
+        if (
+            identity is None
+            or not identity.enabled
+            or (identity.issuer, identity.subject) != (principal.issuer, principal.subject)
+            or not any(
+                row.project_id.hex == project_id and ProjectAccess.permits(row.role, permission) for row in memberships
+            )
+        ):
+            raise AccessDenied("The native SCM resume identity or project permission changed")
+
+    async def _resume(self, delivery: Data, context: Data) -> Data:
+        run = context["run"]
+        if not awaiting_human_resume(run):
+            return await self.journal.resume(run["id"])
+        if current_unit_of_work() is None:
+            raise AccessDenied("SCM clarification resume requires its native transaction locks")
+        scope = self._actor_context(delivery, context)
+        async with self.store._unit():
+            identity = await ForgeIdentityUserRepository().find_by_id(
+                identifier(scope.native_user_id), lock=LockMode.PESSIMISTIC_WRITE
+            )
+        if identity is None or not identity.enabled:
+            raise AccessDenied("The verified native SCM resume identity is unavailable")
+        principal = Principal(
+            identity.id,
+            identity.issuer,
+            identity.subject,
+            authentication_method="scm_mapping",
+            scm_delegation=scope.model_dump(mode="json"),
+        )
+        authority_token = self._resuming.set((scope, principal))
+        principal_token = CURRENT_PRINCIPAL.set(principal)
+        try:
+            await self.authorize_snapshot(ProjectAccess.actor_snapshot(principal), scope.project_id, "execute")
+            return await self.journal.resume(run["id"])
+        finally:
+            CURRENT_PRINCIPAL.reset(principal_token)
+            self._resuming.reset(authority_token)
 
     async def _record(self, event_id: str, project: str, repository: str) -> Data:
         async with self.store._unit() as session:
@@ -663,9 +752,7 @@ class SCMResumeAuthority:
                 }
                 await self._write(row, status="needs_reconciliation", action_status="writing", resume_intent=intent)
                 resumed = (
-                    await self.journal.resume(command.run_id)
-                    if isinstance(command, SCMResumeCommandV2)
-                    else context["run"]
+                    await self._resume(row.data, context) if isinstance(command, SCMResumeCommandV2) else context["run"]
                 )
                 if digest({key: resumed.get(key) for key in sorted(FROZEN_FIELDS)}) != cut["frozen_run_digest"]:
                     raise AccessDenied("Resume changed the frozen execution contract")

@@ -269,7 +269,15 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     wire = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     assert len(original) == baseline["tool_count"] == 150
-    assert hashlib.sha256(wire.encode()).hexdigest() == baseline["wire_sha256"]
+    expected = json.loads(wire)
+    assert json.dumps(expected, ensure_ascii=False, separators=(",", ":")) == wire
+    routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
+    bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
+    # The communication task adds one routing binding; every other original byte stays fixed.
+    assert bindings["maxProperties"] == 8
+    bindings["maxProperties"] = 7
+    original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
+    assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
     assert len(tools) == 162
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")

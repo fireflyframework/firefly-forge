@@ -1,0 +1,21 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-review-request
+version: 1.0.0
+description: Bound a semantic classification to the exact candidate and native facts.
+system_template: ''
+user_template: |-
+  Independently classify this candidate against the recorded facts.
+
+  Recorded facts:
+  {{ facts }}
+
+  Candidate message as JSON data:
+  {{ candidate }}
+
+  Allowed fact_ids: {{ fact_ids }}
+required_variables:
+  - facts
+  - candidate
+  - fact_ids
+metadata:
+  defaults: {}

@@ -662,6 +662,12 @@ class SCMActorAuthority:
         from firefly_forge.access_persistence import ForgeMembershipRepository
 
         context = actor.get("scm_delegation")
+        if isinstance(context, dict) and context.get("transport") in {"signed_resume_v2", "github_rest_poll_resume_v3"}:
+            resume = getattr(self.store, "scm_resume_authorities", {}).get(context["transport"])
+            if resume is None:
+                raise AccessDenied("The separately consented native resume authority is unavailable")
+            await resume.authorize_snapshot(actor, project_id, permission)
+            return
         if isinstance(context, dict) and context.get("transport") == "github_rest_poll_v1":
             polling = getattr(self.store, "scm_polling", None)
             if polling is None:

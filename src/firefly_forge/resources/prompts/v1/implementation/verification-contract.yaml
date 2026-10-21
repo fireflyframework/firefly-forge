@@ -1,0 +1,19 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/verification-contract
+version: 1.0.0
+description: Read-only frozen verification requirements shared by every implementation provider.
+system_template: ''
+user_template: |-
+  FROZEN VERIFICATION CONTRACT (read-only):
+  {{ commands }}
+  Each entry retains the approved argv array and timeout in seconds. Preserve argument boundaries; do not substitute commands or ask for these already supplied requirements again. Independent final verification runs the same frozen commands, followed by these frozen policy checks:
+  {{ policy_checks }}
+  The combined final-verification limit is {{ final_command_limit }} commands. An empty approved-command list means the factory must detect project checks from the completed source under its existing rules; it does not establish an empty passing gate. Report missing checks or environmental blockers honestly.
+  This contract describes requirements only; it does not grant tools, commands, credentials, network access or execution permission. Use only capabilities separately available and authorized for this invocation. A separately granted configured-check MCP channel supplies its own selected command indices, call cap, authority and expiry. This description creates no such channel or grant. Earlier check results do not verify the current source; independent final verification remains required.
+  END FROZEN VERIFICATION CONTRACT
+required_variables:
+- commands
+- policy_checks
+- final_command_limit
+metadata:
+  defaults: {}

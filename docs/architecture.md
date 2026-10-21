@@ -558,3 +558,38 @@ Source: [`runtime_roles.py`](https://github.com/fireflyframework/firefly-forge/b
 ## Read the Studio floor as a projection
 
 Stage labels and the floor scene follow returned plans and jobs. Failed or paused work stays at its recorded stage; hidden, stale, offscreen or reduced-motion scenes suspend motion. Motion and timestamps do not establish completed tasks or percentage progress. Inspect the actual [run evidence](console-tour.md#4-inspect-the-run-before-continuing) and [recovery controls](recovery.md) before accepting or continuing work.
+
+## Outbound communication wording
+
+`Collaboration.feedback` captures the current native run and prepares its deterministic card. `CommunicationWriter` resolves only the explicit `communication` task, validates the frozen model profile, and invokes the bounded drafting/classification flow. Bridge uses prompted structured JSON through the existing OpenAI-compatible adapter; API profiles use the existing native model adapter. Central YAML/Jinja templates own the instructions and composition.
+
+The draft references a bounded fact packet rather than repository prose or command output. Request template `collaboration/communication-request` version `1.0.1` supplies the exact allowed paragraph citation IDs from that packet. Citations name top-level groups such as `state`, rather than a JSON path such as `state.status`; unknown IDs remain invalid. The earlier template is retained for provenance. After validation, the service reads the run again. A changed milestone or fact-packet digest discards the draft and holds configured AI delivery without a substitute card. The retained intent contains the exact body, body hash, fact hash, prompt hash and profile revision before the existing remote-write boundary. Current actor, credentials and selected model routing are checked again there. Existing fingerprints and remote-outcome reconciliation continue to prevent automatic duplicate comments.
+
+System template `collaboration/communication-system` version `1.0.3` asks the agent to write the complete card: a specific title, useful paragraphs and, when needed, the exact human question and choices. The existing skill injector includes the pinned Humanizer adaptation in the real instructions. Its revision and adaptation digest are retained; no upstream script or installation is executed. The fact packet includes internally consistent saved check totals, native acceptance/review-link state and an allowlisted source-safety blocker. That blocker comes from the recorded error; it is not an independent security diagnosis. Raw error messages, provider summaries and command output are withheld. The title and paragraphs cite exact fact groups, including the offered blocker and check context. A separate AI reviewer evaluates claims against those same facts; word matching does not decide whether a negation is a positive claim.
+
+`CommunicationCard` is a strict structured output with a cited title, cited paragraphs and an optional decision quotation. Central `collaboration/communication-card` and `collaboration/communication-decision` templates apply Markdown formatting to that output. They do not append a generic status card. The original templates remain available for provenance. A human decision must retain the complete bounded public question, context and ordered choices; oversized quotations hold configured AI delivery. No generated answer can resume work or grant permissions. Drafting uses one tool-free request with a 1,400-token output ceiling. A separate tool-free `CommunicationReview` request has a 700-token ceiling. A rejected or uncertain classification triggers one final AI correction, after which forge responds without another semantic veto. SDK retries are disabled and all calls share one selected-profile deadline capped at 120 seconds, including bridge queue time. The underlying run, WAL and native receipt remain authoritative.
+
+After any generation outcome, the service checks the current milestone and fact digest again. If either changed during configured AI wording, it holds delivery without posting stale prose or substituting a generic card. Delivery testing includes direct review of the actual published wording: an AI-mode receipt alone does not establish that the update is useful.
+
+Generation is optional presentation work with one total deadline and bounded per-request tokens. It cannot resume execution, increase a repair budget, approve a review or answer for a person. Held-delivery reasons remain in the native receipt; actual delivery and product acceptance require their own evidence.
+
+
+### Semantic review of source-control messages
+
+The writer and reviewer are separate `FireflyAgent` invocations using the same selected communication profile. The reviewer sees only the exact structured candidate and bounded recorded facts. The candidate is quoted data, not instructions. Its strict result contains a verdict, issue categories, fact references and a short rationale. It checks the whole passage for supported negations, contradictions, misleading check results, unrecorded actions and human decisions. It neither rewrites the candidate nor uses tools.
+
+```mermaid
+flowchart TB
+    F["Recorded facts"] --> W["Draft complete card"]
+    W --> N["Check structure<br/>and exact quotation"]
+    N --> R["Classify meaning"]
+    F --> R
+    R --> V{"Supported?"}
+    V -->|Yes| C["Recheck current facts<br/>and authority"]
+    V -->|No or uncertain| B["Correct once"]
+    B --> C
+    C --> I["Retain body<br/>and write intent"]
+    I --> P["SCM write boundary"]
+```
+
+A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation and no issues with a supported verdict. Unsupported claims or uncertainty trigger one AI correction followed by the response. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.

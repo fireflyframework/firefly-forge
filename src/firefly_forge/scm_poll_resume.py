@@ -21,6 +21,7 @@ Data = dict[str, Any]
 
 
 class SCMPollResumeAuthority(SCMResumeAuthority):
+    actor_transport = "github_rest_poll_resume_v3"
     state_key = "_scm_poll_resume_v3"
     event_kind = "scm_poll_resume_grant_v3"
     grant_version = 3

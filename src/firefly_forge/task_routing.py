@@ -17,7 +17,7 @@ Data = dict[str, Any]
 
 class TaskRoutingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    bindings: dict[str, str] = Field(default_factory=dict, max_length=7)
+    bindings: dict[str, str] = Field(default_factory=dict, max_length=8)
 
     @field_validator("bindings")
     @classmethod
