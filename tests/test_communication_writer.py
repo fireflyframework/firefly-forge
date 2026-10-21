@@ -34,16 +34,18 @@ async def test_real_structured_agent_drafts_native_implementation_facts(tmp_path
     store = await configured_store(tmp_path)
     model = TestModel(
         custom_output_args={
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
             "paragraphs": [
                 {"text": "Implementation is underway. The recorded run remains in development.", "fact_ids": ["state"]}
-            ]
+            ],
         }
     )
     writer = CommunicationWriter(store, model=model)
     result = await writer.write({"status": "developing"}, "Native evidence", lambda value: value)
     assert result["communication"]["mode"] == "ai"
     assert "Implementation is underway" in result["body"]
-    assert result["body"].endswith("Native evidence\n</details>")
+    assert result["body"].startswith("### Execution update\n")
+    assert "Native evidence" not in result["body"]
     assert result["communication"]["profile"]["profile_id"] == "updates"
     assert result["communication"]["facts"] == {"state": {"status": "developing"}}
     assert model.last_model_request_parameters.function_tools == []
@@ -54,9 +56,10 @@ async def test_bridge_uses_prompted_structured_output_without_new_provider_stack
 
     store = await configured_store(tmp_path, "bridge")
     output = {
+        "title": {"text": "Execution update", "fact_ids": ["state"]},
         "paragraphs": [
             {"text": "The request is queued. Its execution results are not available yet.", "fact_ids": ["state"]}
-        ]
+        ],
     }
     writer = CommunicationWriter(store, model=TestModel(custom_output_text=json.dumps(output)))
     result = await writer.write({"status": "queued"}, "Native evidence", lambda value: value)
@@ -81,7 +84,12 @@ async def test_unsupported_model_claims_fall_back_to_exact_native_card(tmp_path,
     from firefly_forge.communication import CommunicationWriter
 
     store = await configured_store(tmp_path)
-    model = TestModel(custom_output_args={"paragraphs": [{"text": text, "fact_ids": facts}]})
+    model = TestModel(
+        custom_output_args={
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": text, "fact_ids": facts}],
+        }
+    )
     writer = CommunicationWriter(store, model=model)
     result = await writer.write(
         {"status": "developing", "final_verification": [{"exit_code": 1}]}, "Native evidence", lambda value: value
@@ -100,7 +108,12 @@ async def test_failed_native_checks_cannot_be_treated_as_current_verification_af
         "provider_recovery": {"request_id": "a" * 32, "attempt": 5, "status": "consumed"},
         "final_verification": [{"exit_code": 0, "attempt": 4}],
     }
-    model = TestModel(custom_output_args={"paragraphs": [{"text": "All checks passed.", "fact_ids": ["verification"]}]})
+    model = TestModel(
+        custom_output_args={
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": "All checks passed.", "fact_ids": ["verification"]}],
+        }
+    )
     result = await CommunicationWriter(store, model=model).write(run, "Native historical evidence", lambda value: value)
     assert result["body"] == "Native historical evidence"
     assert result["communication"]["facts"]["verification"]["provenance"] == "retained"
@@ -113,7 +126,12 @@ async def test_fact_packet_excludes_untrusted_issue_prose_logs_and_raw_recovery_
     store = await configured_store(tmp_path)
     writer = CommunicationWriter(
         store,
-        model=TestModel(custom_output_args={"paragraphs": [{"text": "The run is paused.", "fact_ids": ["state"]}]}),
+        model=TestModel(
+            custom_output_args={
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
+                "paragraphs": [{"text": "The run is paused.", "fact_ids": ["state"]}],
+            }
+        ),
     )
     run = {
         "status": "paused",
@@ -172,7 +190,12 @@ async def test_ordinary_attempt_cannot_announce_retained_or_unattributed_checks_
     from firefly_forge.communication import CommunicationWriter
 
     store = await configured_store(tmp_path)
-    model = TestModel(custom_output_args={"paragraphs": [{"text": "All checks passed.", "fact_ids": ["verification"]}]})
+    model = TestModel(
+        custom_output_args={
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": "All checks passed.", "fact_ids": ["verification"]}],
+        }
+    )
     result = await CommunicationWriter(store, model=model).write(
         {"status": "developing", "attempt": 2, "final_verification": checks}, "Native evidence", lambda value: value
     )
@@ -241,7 +264,18 @@ async def test_bridge_request_explains_exact_current_fact_ids(tmp_path, run, all
         # define the IDs. Exercise the exact adapter contract without a live call.
         fact_id = "state" if "Allowed fact_ids: " + json.dumps(allowed) in prompt else "state.status"
         text = "The recorded status is failed." if run["status"] == "failed" else "The run is in development."
-        return ModelResponse(parts=[TextPart(json.dumps({"paragraphs": [{"text": text, "fact_ids": [fact_id]}]}))])
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    json.dumps(
+                        {
+                            "title": {"text": "Execution update", "fact_ids": ["state"]},
+                            "paragraphs": [{"text": text, "fact_ids": [fact_id]}],
+                        }
+                    )
+                )
+            ]
+        )
 
     result = await CommunicationWriter(store, model=FunctionModel(model)).write(
         run, "Exact native evidence", lambda value: value
@@ -250,14 +284,18 @@ async def test_bridge_request_explains_exact_current_fact_ids(tmp_path, run, all
     assert len(prompts) == 1
     assert "Allowed fact_ids: " + json.dumps(allowed) in prompts[0]
     assert "top-level" in prompts[0] and "state.status" in prompts[0]
-    assert result["body"].endswith("Exact native evidence\n</details>")
+    assert result["body"].startswith("### Execution update\n")
+    assert "Exact native evidence" not in result["body"]
 
 
 def test_actual_dotted_fact_reply_remains_rejected_without_weakening_validation():
-    from firefly_forge.communication import CommunicationDraft, _validate_draft
+    from firefly_forge.communication import CommunicationCard, _validate_draft
 
-    actual = CommunicationDraft.model_validate(
-        {"paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state.status"]}]}
+    actual = CommunicationCard.model_validate(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state.status"]}],
+        }
     )
     with pytest.raises(ValueError, match="unknown fact reference"):
         _validate_draft(actual, {"state": {"status": "failed"}})

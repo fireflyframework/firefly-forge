@@ -8,7 +8,7 @@
 - Continue an answered implementation question after an explicitly authorized resume, including with a zero repair budget. Seal the original question and authenticated answer in the resume journal; keep spent calls, repair history and the ordinary four-attempt ceiling.
 - Refuse duplicate, ambiguous or changed question/answer bindings, revoked resumers and active provider recoveries. Preserve other factory roles' existing resume behavior and the separate one-use fifth provider allowance.
 - Explain recorded issue and pull-request outcomes with one explicitly selected Agentic or Bridge communication profile. Require exact top-level fact citations and offered blocker/check context; preserve the distinction between a source-guard report and an established credential exposure.
-- Keep useful AI wording visible and the unchanged native record available in a disclosure. Keep human questions and reconciliation controls visible, discard drafts when native facts change, and retain the one-request limit, exact body, provenance and deterministic fallback.
+- Let the selected communication agent write the complete title and explanation with the pinned Humanizer instructions. Preserve the exact public human question and ordered choices without selecting an answer; keep trusted references separate, discard stale wording, and retain the one-request limit, body and provenance.
 - Exclude untracked dependency symlinks from newly prepared source snapshots while preserving rejection of already tracked private paths and existing retained workspace metadata.
 - Refresh the controlled desktop/mobile documentation captures for 0.2.31. These fixtures and protocol checks do not establish generated-product acceptance.
 

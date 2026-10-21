@@ -81,26 +81,27 @@ async def test_ai_explains_blocker_and_checks_without_repeating_the_visible_nati
     model = TestModel(
         custom_output_text=json.dumps(
             {
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
                 "paragraphs": [
                     {"text": first, "fact_ids": ["state", "blocker", "delivery"]},
                     {"text": second, "fact_ids": ["check_batch"]},
-                ]
+                ],
             }
         )
     )
     native = "### forge · The run failed\n\nThe run stopped with a failure.\n\nExact native check evidence"
     result = await CommunicationWriter(store, model=model).write(stopped_run(), native, lambda value: value)
     assert result["communication"]["mode"] == "ai"
-    visible, retained = result["body"].split("<details>", 1)
-    assert first in visible and second in visible
-    assert "The run stopped with a failure." not in visible
-    assert native in retained and "Execution record" in retained
-    assert result["body"].count(native) == 1
+    assert first in result["body"] and second in result["body"]
+    assert native not in result["body"] and "<details>" not in result["body"]
 
 
 async def test_rich_context_cannot_be_ignored_in_a_one_line_status_restatement(tmp_path):
     store = await configured_store(tmp_path, "bridge")
-    actual_poor_reply = {"paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state"]}]}
+    actual_poor_reply = {
+        "title": {"text": "Execution update", "fact_ids": ["state"]},
+        "paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state"]}],
+    }
     model = TestModel(custom_output_text=json.dumps(actual_poor_reply))
     result = await CommunicationWriter(store, model=model).write(stopped_run(), "Exact native fallback", lambda v: v)
     assert result["body"] == "Exact native fallback"
@@ -124,19 +125,26 @@ async def test_pending_human_question_and_options_remain_visible(tmp_path):
     model = TestModel(
         custom_output_text=json.dumps(
             {
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
+                "decision": {
+                    "question": "Which owner?",
+                    "context": "The product owner is missing",
+                    "choices": ["Sales", "Support"],
+                },
                 "paragraphs": [
                     {
                         "text": "This run is waiting for your decision before it can continue.",
                         "fact_ids": ["state", "decision"],
                     }
-                ]
+                ],
             }
         )
     )
     native = "Which owner?\n\n- Sales\n- Support"
     result = await CommunicationWriter(store, model=model).write(copy.deepcopy(run), native, lambda v: v)
     assert result["communication"]["mode"] == "ai"
-    assert native in result["body"].split("<details>", 1)[0]
+    assert all(value in result["body"] for value in ("Which owner?", "Sales", "Support"))
+    assert "<details>" not in result["body"]
 
 
 @pytest.mark.parametrize("field", ["verification_handoff", "worker_request"])
@@ -161,12 +169,13 @@ async def test_reported_source_guard_cannot_become_a_credential_breach_diagnosis
     model = TestModel(
         custom_output_text=json.dumps(
             {
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
                 "paragraphs": [
                     {
                         "text": claim,
                         "fact_ids": ["state", "blocker", "check_batch"],
                     }
-                ]
+                ],
             }
         )
     )

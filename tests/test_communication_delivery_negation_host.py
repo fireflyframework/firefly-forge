@@ -8,12 +8,13 @@ from pydantic_ai.models.test import TestModel
 from test_communication_writer import configured_store
 from test_human_project_updates_host import stopped_run
 
-from firefly_forge.communication import CommunicationDraft, CommunicationWriter, _validate_draft, communication_facts
+from firefly_forge.communication import CommunicationCard, CommunicationWriter, _validate_draft, communication_facts
 
 
 async def test_actual_codex_delivery_denial_is_not_mistaken_for_a_completion_claim(tmp_path):
     store = await configured_store(tmp_path, "bridge")
     draft = {
+        "title": {"text": "Execution update", "fact_ids": ["state"]},
         "paragraphs": [
             {
                 "text": (
@@ -31,27 +32,42 @@ async def test_actual_codex_delivery_denial_is_not_mistaken_for_a_completion_cla
                 ),
                 "fact_ids": ["check_batch", "blocker"],
             },
-        ]
+        ],
     }
     result = await CommunicationWriter(store, model=TestModel(custom_output_text=json.dumps(draft))).write(
         stopped_run(), "Exact native evidence", lambda value: value
     )
     assert result["communication"]["mode"] == "ai"
-    visible, record = result["body"].split("<details>", 1)
-    assert all(paragraph["text"] in visible for paragraph in draft["paragraphs"])
-    assert "Exact native evidence" in record
+    assert all(paragraph["text"] in result["body"] for paragraph in draft["paragraphs"])
+    assert "Exact native evidence" not in result["body"]
 
 
 @pytest.mark.parametrize(
-    "denial", ["This is not a completed delivery.", "This run was not accepted as a completed delivery."]
+    "denial",
+    [
+        "This is not a completed delivery.",
+        "This run was not accepted as a completed delivery.",
+        "This native run was not accepted as a completed delivery.",
+        "The recorded run was not accepted as a completed delivery.",
+    ],
 )
 def test_delivery_denial_requires_the_cited_native_nonacceptance_fact(denial):
     facts = communication_facts(stopped_run())
     paragraph = {"text": denial, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}
-    assert _validate_draft(CommunicationDraft.model_validate({"paragraphs": [paragraph]}), facts) == denial
+    assert _validate_draft(
+        CommunicationCard.model_validate(
+            {"title": {"text": "Execution update", "fact_ids": ["state"]}, "paragraphs": [paragraph]}
+        ),
+        facts,
+    ).endswith("\n\n" + denial)
     paragraph["fact_ids"].remove("delivery")
     with pytest.raises(ValueError, match="completion"):
-        _validate_draft(CommunicationDraft.model_validate({"paragraphs": [paragraph]}), facts)
+        _validate_draft(
+            CommunicationCard.model_validate(
+                {"title": {"text": "Execution update", "fact_ids": ["state"]}, "paragraphs": [paragraph]}
+            ),
+            facts,
+        )
 
 
 @pytest.mark.parametrize(
@@ -67,8 +83,11 @@ def test_delivery_denial_requires_the_cited_native_nonacceptance_fact(denial):
 )
 def test_a_delivery_denial_does_not_excuse_an_additional_completion_claim(claim):
     facts = communication_facts(stopped_run())
-    draft = CommunicationDraft.model_validate(
-        {"paragraphs": [{"text": claim, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}]}
+    draft = CommunicationCard.model_validate(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": claim, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}],
+        }
     )
     with pytest.raises(ValueError, match="completion"):
         _validate_draft(draft, facts)
