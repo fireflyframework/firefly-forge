@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-language
+version: 1.0.0
+description: Controlled language instructions for a native ticket conversation.
+system_template: ''
+user_template: |-
+  {"en":{"draft":"Write the title and explanatory paragraphs in natural American English. Keep an authoritative human-decision quotation exactly as supplied, including its original language.","review":"Evaluate the meaning of the candidate in American English. Keep the typed review schema and exact fact IDs; return a classification, not a rewritten message."},"es":{"draft":"Write the title and explanatory paragraphs in natural Spanish. Keep an authoritative human-decision quotation exactly as supplied, including its original language.","review":"Evaluate the meaning of the candidate in Spanish. Keep the typed review schema and exact fact IDs; return a classification, not a rewritten message."}}
+required_variables: []
+metadata:
+  defaults: {}

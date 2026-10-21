@@ -1632,61 +1632,65 @@ class Collaboration:
                 return redact_environment(redact_secrets(value, self.scm.redaction_settings()))
 
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
-            message = feedback_card(data, run, repo, host, public_text)
             conversation = data.get("conversation")
-            drafted: Data
-            if conversation and (not run or data["command"]["language"] == "es"):
-                from firefly_forge.product_provenance import content_digest
 
+            def native_card(current_run: Data) -> str:
+                message = feedback_card(data, current_run, repo, host, public_text)
+                if not conversation or (current_run and data["command"]["language"] != "es"):
+                    return message
                 copy_text = json.loads(prompt_text("collaboration/conversation-status"))[data["command"]["language"]]
-                if run:
-                    explanation = (
+                if current_run:
+                    explanation = str(
                         copy_text["run_prefix"]
-                        + copy_text["states"].get(run["status"], copy_text["unknown"])
+                        + copy_text["states"].get(current_run["status"], copy_text["unknown"])
                         + copy_text["run_suffix"]
                     )
-                    if (run.get("worker_request") or {}).get("status") == "pending" or run[
+                    if (current_run.get("worker_request") or {}).get("status") == "pending" or current_run[
                         "status"
                     ] == "needs_reconciliation":
-                        message = explanation + "\n\n" + message
-                    else:
-                        message = prompt_text(
-                            "collaboration/conversation-record",
-                            message=explanation,
-                            summary=copy_text["record"],
-                            evidence=message,
-                        )
-                else:
-                    message = copy_text[conversation["selection"]]
-                facts = {
-                    "conversation": {"selection": conversation["selection"], "language": data["command"]["language"]}
-                }
-                drafted = {
-                    "body": message,
-                    "communication": {
-                        "mode": "deterministic",
-                        "reason": "native_conversation",
-                        "facts": facts,
-                        "facts_sha256": content_digest(facts),
-                    },
-                }
+                        return explanation + "\n\n" + message
+                    return prompt_text(
+                        "collaboration/conversation-record",
+                        message=explanation,
+                        summary=copy_text["record"],
+                        evidence=message,
+                    )
+                return str(copy_text[conversation["selection"]])
+
+            message = native_card(run)
+            from firefly_forge.communication import CommunicationConversationV1
+
+            conversation_input = (
+                CommunicationConversationV1(
+                    selection=conversation["selection"],
+                    language=data["command"]["language"],
+                    linked_runs=len(conversation["candidate_ids"]),
+                )
+                if conversation
+                else None
+            )
+            drafted: Data
+            if conversation_input:
+                drafted = await self.communication_writer.write(
+                    run or None, message, public_text, conversation=conversation_input
+                )
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
-            if data.get("run_id") and (not conversation or drafted["communication"]["mode"] in {"ai", "held"}):
+            if data.get("run_id"):
                 from firefly_forge.communication import communication_facts
                 from firefly_forge.product_provenance import content_digest
-
 
                 current_run = await self.store.get_run(data["run_id"])
                 if (
                     milestone_key(current_run) != milestone_key(run)
-                    or content_digest(communication_facts(current_run)) != drafted["communication"]["facts_sha256"]
+                    or content_digest(communication_facts(current_run, conversation=conversation_input))
+                    != drafted["communication"]["facts_sha256"]
                 ):
                     run = current_run
-                    facts = communication_facts(run)
+                    facts = communication_facts(run, conversation=conversation_input)
                     configured_ai = drafted["communication"]["mode"] in {"ai", "held"}
                     drafted = {
-                        "body": "" if configured_ai else feedback_card(data, run, repo, host, public_text),
+                        "body": "" if configured_ai else native_card(run),
                         "communication": {
                             "mode": "held" if configured_ai else "deterministic",
                             "reason": "state_changed",

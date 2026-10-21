@@ -7,7 +7,7 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 278 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 281 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 
@@ -30,7 +30,7 @@ The resources cover implementation profiles, default roles and skills, product d
 
 ## Edit a template
 
-`collaboration/conversation-status` holds the English and Spanish status-context copy. `collaboration/conversation-record` composes a native record disclosure. These resources format already authorized ticket context; they cannot select a run or authorize a remote write.
+`collaboration/conversation-status` holds the explicit recorded-mode English and Spanish status-context copy. `collaboration/conversation-record` composes its native record disclosure. With a communication profile selected, system version `1.0.4` and `collaboration/communication-language` provide controlled English or Spanish instructions for every ticket selection, including missing or ambiguous links. Review-system version `1.0.1` applies the semantic classification to both languages. These resources cannot select a run or authorize a remote write.
 
 A resource uses the native Agentic field names:
 
