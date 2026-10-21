@@ -286,7 +286,9 @@ class OperatorAuth(OncePerRequestFilter):
         finally:
             if context_token is not None:
                 CURRENT_PRINCIPAL.reset(context_token)
-        response.headers["Cache-Control"] = "no-store" if path.startswith("/api/") else "no-cache"
+        privacy = {item.strip().lower() for item in response.headers.get("Cache-Control", "").split(",")}
+        api_cache = "private, no-store" if "private" in privacy else "no-store"
+        response.headers["Cache-Control"] = api_cache if path.startswith("/api/") else "no-cache"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
@@ -1043,6 +1045,7 @@ class FactoryConfiguration:
             resume_authority,
             product_change_authority,
             intake,
+            browser_origin=self.identity_configuration.browser_origin,
         )
         collaboration.poll_resume_authority = poll_resume_authority
         collaboration.polling = polling

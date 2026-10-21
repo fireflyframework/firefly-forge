@@ -35,6 +35,7 @@ export async function captureWalkthrough(
   } = {},
 ) {
   const dialogStages: Record<string, string[]> = {
+    "studio/tests/docs-walkthrough.spec.ts": ["agent-question-preview"],
     "studio/tests/docs-provider-allowance.spec.ts": [
       "provider-allowance-failure",
       "provider-allowance-mitigation",
@@ -53,8 +54,14 @@ export async function captureWalkthrough(
     !dialogStages[options.producer ?? ""]?.includes(stage)
   )
     throw new Error("Unknown final allowance dialog capture boundary");
+  const questionInitial =
+    options.framing === "initial" &&
+    options.producer === "studio/tests/docs-walkthrough.spec.ts" &&
+    stage === "agent-question-retained" &&
+    options.boundary === undefined;
   if (
     options.framing !== undefined &&
+    !questionInitial &&
     (options.framing !== "initial" ||
       options.producer !== "studio/tests/docs-coding-check-recovery.spec.ts" ||
       options.boundary !== "dialog" ||
@@ -148,8 +155,41 @@ export async function captureWalkthrough(
         ".wizard-actions button.primary, .search-actions button.secondary",
     )
     .last();
+  if (questionInitial) {
+    await page
+      .locator(".worker-thread-meta")
+      .first()
+      .evaluate((node) => {
+        const box = node.getBoundingClientRect(),
+          header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect(),
+          main = node.closest("main")!;
+        main.scrollTop += box.top - header.bottom - 16;
+      });
+    for (const selector of [".worker-thread-meta", ".worker-thread h3"]) {
+      expect(
+        await page
+          .locator(selector)
+          .first()
+          .evaluate((node) => {
+            const box = node.getBoundingClientRect(),
+              header = document
+                .querySelector(".workspace-main > header")!
+                .getBoundingClientRect(),
+              footer = document
+                .querySelector(".workspace-main > footer")!
+                .getBoundingClientRect();
+            return (
+              box.top >= header.bottom &&
+              box.bottom <= Math.min(innerHeight, footer.top)
+            );
+          }),
+      ).toBe(true);
+    }
+  }
   let control = null;
-  if (await action.isVisible()) {
+  if (!questionInitial && (await action.isVisible())) {
     await action.scrollIntoViewIfNeeded();
     if (options.focusSelector) {
       await page.locator(options.focusSelector).evaluate((element) => {
@@ -235,7 +275,7 @@ export async function captureWalkthrough(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  if (options.framing === "initial") {
+  if (options.framing === "initial" && !questionInitial) {
     const modal = page.locator("dialog:modal");
     await modal.evaluate((node) => {
       node.scrollTop = 0;
@@ -342,6 +382,8 @@ export async function captureWalkthrough(
     "studio/tests/campaign-delivery-plan-fixture.ts",
     "studio/tests/campaign-delivery-browser-fixture.ts",
     "studio/tests/worker-dialogue-contract-fixture.json",
+    "studio/tests/worker-decision-evidence-fixture.ts",
+    "studio/tests/worker-evidence-raster-fixture.json",
     "studio/tests/agent-checkpoint-recovery-fixture.ts",
     "studio/tests/run-creation-cancellation-fixture.ts",
     "studio/tests/provider-activity-guide-fixture.json",

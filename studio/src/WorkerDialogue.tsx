@@ -391,7 +391,18 @@ export function WorkerDialogue({
             <summary>Why the agent is asking</summary>
             <RichMarkdown value={thread.question.context} />
           </details>
-          <WorkerEvidencePreview key={JSON.stringify([connection.base, connection.token, session.user.id, run.id, thread.question.id])} connection={connection} runId={run.id} requestId={thread.question.id} />
+          <WorkerEvidencePreview
+            key={JSON.stringify([
+              connection.base,
+              connection.token,
+              session.user.id,
+              run.id,
+              thread.question.id,
+            ])}
+            connection={connection}
+            runId={run.id}
+            requestId={thread.question.id}
+          />
           {thread.response ? (
             <section
               className="worker-recorded-answer"

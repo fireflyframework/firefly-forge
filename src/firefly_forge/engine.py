@@ -1396,11 +1396,11 @@ class Engine:
             from firefly_forge.worker_evidence import WorkerEvidence
 
             archive = self.worker_evidence or WorkerEvidence(self.store, self.journal)
-            evidence = await archive.freeze(run, feedback, workspace, root)
+            retained_images = await archive.freeze(run, feedback, workspace, root)
         else:
-            evidence = None
-        if evidence is not None:
-            await self.journal.worker_feedback(identifier, feedback, evidence=evidence)
+            retained_images = None
+        if retained_images is not None:
+            await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
         else:
             await self.journal.worker_feedback(identifier, feedback)
         if feedback.request:

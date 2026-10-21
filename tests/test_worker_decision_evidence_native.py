@@ -134,3 +134,62 @@ async def test_evidence_replay_and_failed_binding_do_not_change_native_question_
         assert (await store.get_run(run["id"]))["worker_evidence"] == evidence
     finally:
         await identity.client.aclose()
+
+
+def test_real_native_api_di_serves_only_authenticated_hash_bound_question_images(
+    tmp_path, postgres_schema, monkeypatch
+):
+    from starlette.testclient import TestClient
+
+    from firefly_forge.api import create_application
+    from firefly_forge.models import RepositoryInput, RunInput
+    from firefly_forge.store import Store
+
+    monkeypatch.setenv("FORGE_AUTH_MODE", "local_bootstrap")
+    token = "public-native-decision-preview-fixture-token"
+    app = create_application(tmp_path / "api", token, role="api")
+    with TestClient(
+        app, base_url="http://127.0.0.1", headers={"Authorization": "Bearer " + token}, client=("127.0.0.1", 50000)
+    ) as http:
+        repository = http.post(
+            "/api/v1/repositories", json=RepositoryInput(name="Native preview fixture", url=str(tmp_path)).model_dump()
+        ).json()
+        response = http.post(
+            "/api/v1/runs",
+            json=RunInput(
+                repository_id=repository["id"], brief="Read a fictional retained decision image", frontend="none"
+            ).model_dump(mode="json"),
+        )
+        assert response.status_code == 201
+        run = response.json()
+        store = app.state.runtime.context.get_bean(Store)
+        archive = app.state.runtime.context.get_bean(WorkerEvidence)
+        journal = app.state.runtime.context.get_bean(Journal)
+        workspace = tmp_path / "public-images"
+        workspace.mkdir()
+        screenshot(workspace / "choice.png")
+        value = feedback("api-preview-fixture").model_copy(update={"evidence_paths": ["choice.png"]})
+
+        async def record_question():
+            await journal.ensure_plan(run["id"])
+            manifest = await archive.freeze(run, value, workspace, workspace)
+            await journal.worker_feedback(run["id"], value, evidence=manifest)
+            return manifest, await journal.entries(run["id"])
+
+        manifest, prefix = http.portal.call(record_question)
+        path = f"/api/v1/runs/{run['id']}/worker-evidence"
+        listed = http.get(path, params={"request_id": value.request.id})
+        assert listed.status_code == 200 and listed.json() == manifest["images"]
+        image = listed.json()[0]
+        preview = http.get(path + "/" + image["id"])
+        assert preview.status_code == 200
+        assert preview.headers["content-type"] == "image/png"
+        assert preview.headers["cache-control"] == "private, no-store"
+        assert preview.headers["x-content-type-options"] == "nosniff"
+        assert preview.headers["x-content-sha256"] == hashlib.sha256(preview.content).hexdigest() == image["sha256"]
+        assert len(preview.content) == image["bytes"]
+        assert http.get(path + "/" + image["id"], headers={"Authorization": "Bearer invalid"}).status_code == 401
+        assert http.get(path + "/" + "0" * 64).status_code == 404
+        assert http.get(path + "/../private").status_code == 404
+        assert http.portal.call(journal.entries, run["id"]) == prefix
+        assert http.portal.call(store.get_run, run["id"])["worker_request"]["status"] == "pending"

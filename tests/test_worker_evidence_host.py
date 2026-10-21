@@ -90,17 +90,34 @@ async def test_preview_refuses_untrusted_or_unbounded_workspace_image(tmp_path, 
             workspace,
         )
 
+
 @pytest.mark.parametrize("version", [True, 1.0, "1"])
 def test_worker_manifest_requires_exact_integer_version(version):
     from pydantic import ValidationError
+
     from firefly_forge.worker_evidence import WorkerEvidenceManifest
+
     with pytest.raises(ValidationError):
-        WorkerEvidenceManifest.model_validate({"version": version, "run_id": "a" * 32, "feedback_id": "feedback", "request_id": "decision", "images": [{"id": "b" * 64, "filename": "choice.png", "mime_type": "image/png", "bytes": 8, "sha256": "c" * 64}]})
+        WorkerEvidenceManifest.model_validate(
+            {
+                "version": version,
+                "run_id": "a" * 32,
+                "feedback_id": "feedback",
+                "request_id": "decision",
+                "images": [
+                    {"id": "b" * 64, "filename": "choice.png", "mime_type": "image/png", "bytes": 8, "sha256": "c" * 64}
+                ],
+            }
+        )
+
 
 async def test_retained_preview_read_refuses_relaxed_private_directory_permissions(tmp_path):
     from firefly_forge.worker_evidence import WorkerEvidence
-    data = tmp_path / "data"; data.mkdir()
-    workspace = tmp_path / "workspace"; workspace.mkdir()
+
+    data = tmp_path / "data"
+    data.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     screenshot(workspace / "choice.png")
     store = SimpleNamespace(path=data / "forge.json", reject_credentials=lambda _: None, credential_registry=lambda: {})
     service = WorkerEvidence(store, SimpleNamespace())
@@ -108,3 +125,92 @@ async def test_retained_preview_read_refuses_relaxed_private_directory_permissio
     (service.directory / ("a" * 32)).chmod(0o755)
     with pytest.raises(ValueError, match="owner-private"):
         service.read_blob("a" * 32, manifest["images"][0])
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "../choice.png",
+        "folder/choice.png",
+        "folder\\choice.png",
+        ".",
+        "..",
+        "choice\n.png",
+        "choice\x7f.png",
+        "choice\ud800.png",
+    ],
+)
+def test_native_image_metadata_requires_a_safe_bare_unicode_filename(filename):
+    from pydantic import ValidationError
+
+    from firefly_forge.worker_evidence import WorkerImage
+
+    with pytest.raises(ValidationError):
+        WorkerImage.model_validate(
+            {"id": "a" * 64, "filename": filename, "mime_type": "image/png", "bytes": 8, "sha256": "b" * 64}
+        )
+
+
+@pytest.mark.parametrize("case", ["task", "filename", "opaque_id"])
+async def test_manifest_read_rejects_a_valid_wal_chain_with_unbound_feedback_image(tmp_path, monkeypatch, case):
+    from firefly_forge.journal import ZERO_HASH, Journal, digest
+    from firefly_forge.project_access import CURRENT_PRINCIPAL
+    from firefly_forge.run_evidence import RunEvidence
+    from firefly_forge.worker_evidence import WorkerEvidence
+
+    run_id = "a" * 32
+    value = feedback(["design/choice.png"]).model_dump(mode="json")
+    image = {"filename": "choice.png", "mime_type": "image/png", "bytes": 8, "sha256": "b" * 64}
+    image["id"] = digest(
+        {"run": run_id, "feedback": value["id"], "path": "design/choice.png", "sha256": image["sha256"]}
+    )
+    if case == "filename":
+        image["filename"] = "unrecorded.png"
+    elif case == "opaque_id":
+        image["id"] = "c" * 64
+    entries = []
+    for kind, payload in [
+        ("worker_feedback", value),
+        (
+            "worker_evidence",
+            {
+                "version": 1,
+                "run_id": run_id,
+                "feedback_id": value["id"],
+                "request_id": value["request"]["id"],
+                "images": [image],
+            },
+        ),
+    ]:
+        entry = {
+            "run_id": run_id,
+            "sequence": len(entries) + 1,
+            "kind": kind,
+            "task_id": "review" if case == "task" and kind == "worker_evidence" else "implement",
+            "payload": payload,
+            "previous_hash": entries[-1]["digest"] if entries else ZERO_HASH,
+        }
+        entry["digest"] = digest(entry)
+        entries.append(entry)
+    assert Journal.verify_chain(entries)
+
+    async def authorize(*_args):
+        return None
+
+    async def get_run(key):
+        assert key == run_id
+        return {"id": run_id, "repository_id": "d" * 32}
+
+    async def journal_entries(key):
+        assert key == run_id
+        return entries
+
+    monkeypatch.setattr(RunEvidence, "_authorize", authorize)
+    store = SimpleNamespace(path=tmp_path / "forge.json", get_run=get_run, reject_credentials=lambda _: None)
+    service = WorkerEvidence(store, SimpleNamespace(entries=journal_entries))
+    token = CURRENT_PRINCIPAL.set(object())
+    try:
+        with pytest.raises(ValueError, match="recorded question"):
+            await service._snapshot(run_id)
+    finally:
+        CURRENT_PRINCIPAL.reset(token)

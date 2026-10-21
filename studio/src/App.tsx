@@ -434,17 +434,38 @@ export default function App() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [connected, runs, refresh]);
+  const linkedActor = identity.session?.user.id ?? null;
   useEffect(() => {
-    if (identity.loading || !identity.session || !connection.authenticated) { linkedSelection.current = null; return; }
+    if (identity.loading || !linkedActor || !connection.authenticated) {
+      linkedSelection.current = null;
+      return;
+    }
     const link = linkedRun(window.location.search);
-    if (!link || linkedSelection.current === identity.session.user.id + link.id) return;
-    linkedSelection.current = identity.session.user.id + link.id;
+    if (!link) return;
+    const binding = JSON.stringify([
+      connection.base,
+      connection.token,
+      linkedActor,
+      link.id,
+    ]);
+    if (linkedSelection.current === binding) return;
     const controller = new AbortController();
-    request<ForgeRun>(connection, `/runs/${link.id}`, { signal: controller.signal }).then((run) => {
-      if (!controller.signal.aborted && run.id === link.id) { setSelected(run); setPage("run"); setDetailError(""); }
-    }).catch((cause) => { if (!controller.signal.aborted) setError(errorText(cause)); });
+    request<ForgeRun>(connection, `/runs/${link.id}`, {
+      signal: controller.signal,
+    })
+      .then((run) => {
+        if (!controller.signal.aborted && run.id === link.id) {
+          linkedSelection.current = binding;
+          setSelected(run);
+          setPage("run");
+          setDetailError("");
+        }
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorText(cause));
+      });
     return () => controller.abort();
-  }, [identity.loading, identity.session?.user.id, connection]);
+  }, [identity.loading, linkedActor, connection]);
   const selectedDeliveryPending = selected ? deliveryPending(selected) : false;
   useEffect(() => {
     if (
@@ -2506,7 +2527,10 @@ function Connections({
                   body="Check your factory connection and server configuration."
                 />
               )}
-              <CommunicationSettings connection={current} canConfigure={canConfigure} />
+              <CommunicationSettings
+                connection={current}
+                canConfigure={canConfigure}
+              />
             </div>
           )}
           {step === 2 && (
@@ -2693,7 +2717,10 @@ function RunDetail({
     | "deployment"
     | "review"
     | "questions"
-  >(() => { const link = linkedRun(window.location.search); return link?.id === run.id && link.questions ? "questions" : "timeline"; });
+  >(() => {
+    const link = linkedRun(window.location.search);
+    return link?.id === run.id && link.questions ? "questions" : "timeline";
+  });
   const tabs = [
     { id: "timeline" as const, icon: Activity, label: "Timeline" },
     { id: "plan" as const, icon: BookOpen, label: "Plan" },

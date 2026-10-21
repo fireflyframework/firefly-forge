@@ -347,7 +347,15 @@ export function Collaboration({
                           {receipt.feedback_status || "not reported"} ·{" "}
                           {new Date(receipt.created_at).toLocaleString()}
                         </p>
-                        {communicationStatus(receipt.feedback_intent?.communication) && <p className="feature-meta">{communicationStatus(receipt.feedback_intent?.communication)}</p>}
+                        {communicationStatus(
+                          receipt.feedback_intent?.communication,
+                        ) && (
+                          <p className="feature-meta">
+                            {communicationStatus(
+                              receipt.feedback_intent?.communication,
+                            )}
+                          </p>
+                        )}
                         {safeExternalLink(receipt.issue?.url) && (
                           <a
                             href={safeExternalLink(receipt.issue?.url)!}

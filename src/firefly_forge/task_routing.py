@@ -51,7 +51,10 @@ class TaskRouting:
             await self.profiles.validate_selection(name, task)
         with self.private.lock:
             previous = self.private._read(self.path)
-            if request.expected_digest is not None and content_digest(previous or {"revision": 0, "bindings": {}}) != request.expected_digest:
+            if (
+                request.expected_digest is not None
+                and content_digest(previous or {"revision": 0, "bindings": {}}) != request.expected_digest
+            ):
                 raise ValueError("Task routing changed; reload the current settings before saving")
             self.private._write(self.path, {"revision": previous.get("revision", 0) + 1, "bindings": request.bindings})
         return self.current()

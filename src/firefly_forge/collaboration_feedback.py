@@ -218,18 +218,39 @@ def _decision_destination(data: Data, run: Data, safe: Callable[[str], str]) -> 
     run_id = run.get("id")
     origin = data.get("_feedback_origin")
     if not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id):
-        return _copy()["decision_destination_missing"]
-    if isinstance(origin, str):
-        parsed = urlsplit(origin)
-        host = parsed.hostname or ""
+        return str(_copy()["decision_destination_missing"])
+    if (
+        isinstance(origin, str)
+        and len(origin) <= 2048
+        and not any(character.isspace() or ord(character) < 32 for character in origin)
+    ):
         try:
-            public_host = ipaddress.ip_address(host).is_global
+            parsed = urlsplit(origin)
+            port = parsed.port
+            host = (parsed.hostname or "").rstrip(".").lower()
+            try:
+                public_host = ipaddress.ip_address(host).is_global
+            except ValueError:
+                public_host = bool(
+                    re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) and not host.endswith((".local", ".localhost"))
+                )
+            valid = (
+                parsed.scheme == "https"
+                and public_host
+                and (port is None or 1 <= port <= 65535)
+                and not any((parsed.username, parsed.password, parsed.path, parsed.query, parsed.fragment))
+            )
         except ValueError:
-            public_host = bool(re.fullmatch(r"[a-zA-Z0-9.-]+", host) and "." in host and not host.endswith((".local", ".localhost")))
-        if parsed.scheme == "https" and public_host and not any((parsed.username, parsed.password, parsed.path, parsed.query, parsed.fragment)):
+            valid = False
+        if valid:
             reference = safe(origin + "/?run=" + run_id + "&view=questions")
-            return prompt_text("collaboration/decision-destination", reference="[Open agent questions](" + reference + ")")
-    return prompt_text("collaboration/decision-destination", reference=_copy()["decision_destination_missing"] + " Run: `" + run_id + "`.")
+            return prompt_text(
+                "collaboration/decision-destination", reference="[Open agent questions](" + reference + ")"
+            )
+    return prompt_text(
+        "collaboration/decision-destination",
+        reference=_copy()["decision_destination_missing"] + " Run: `" + run_id + "`.",
+    )
 
 
 def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Callable[[str], str]) -> str:

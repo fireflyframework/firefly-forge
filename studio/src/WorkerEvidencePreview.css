@@ -1,20 +1,118 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-.worker-evidence { border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
-.worker-evidence > summary { padding: .85rem 1rem; font-weight: 650; }
-.worker-evidence > summary svg { margin-right: .5rem; vertical-align: middle; }
-.worker-evidence-content { display: grid; gap: .8rem; padding: 0 1rem 1rem; }
-.worker-evidence-content p, .worker-evidence-content small { margin: 0; color: var(--muted); }
-.worker-evidence-list { display: grid; gap: .65rem; list-style: none; margin: 0; padding: 0; }
-.worker-evidence-list li { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; padding: .8rem; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
-.worker-evidence-list li > span { flex: 1 1 12rem; min-width: 0; display: grid; gap: .3rem; overflow-wrap: anywhere; }
-.worker-evidence-list button { flex: 0 0 auto; }
-.worker-image-dialog { width: min(72rem, calc(100vw - 2rem)); max-width: none; max-height: calc(100dvh - 2rem); padding: 1.25rem; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: var(--surface); box-sizing: border-box; overflow: auto; }
-.worker-image-dialog::backdrop { background: #0009; }
-.worker-image-dialog[open] { display: grid; gap: 1rem; }
-.worker-image-dialog > header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
-.worker-image-dialog h3, .worker-image-dialog p { margin: 0; overflow-wrap: anywhere; }
-.worker-image-dialog > header > div { min-width: 0; display: grid; gap: .4rem; }
-.worker-image-dialog > header button { flex: 0 0 auto; }
-.worker-image-canvas { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-.worker-image-canvas img { display: block; width: 100%; max-height: 65dvh; object-fit: contain; }
-@media (max-width: 420px) { .worker-image-dialog { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); padding: .8rem; } }
+.worker-evidence {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.worker-evidence > summary {
+  padding: 0.85rem 1rem;
+  font-weight: 650;
+}
+.worker-evidence > summary svg {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+.worker-evidence-content {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0 1rem 1rem;
+}
+.worker-evidence-content p,
+.worker-evidence-content small {
+  margin: 0;
+  color: var(--muted);
+}
+.worker-evidence-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.worker-evidence-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.worker-evidence-list li > span {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+.worker-evidence-list button {
+  flex: 0 0 auto;
+}
+.worker-image-dialog {
+  width: min(72rem, calc(100vw / var(--evidence-zoom, 1) - 2rem));
+  max-width: none;
+  max-height: calc(100dvh / var(--evidence-zoom, 1) - 2rem);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface);
+  box-sizing: border-box;
+  overflow: auto;
+}
+.worker-image-dialog::backdrop {
+  background: #0009;
+}
+.worker-image-dialog[open] {
+  display: grid;
+  gap: 1rem;
+}
+.worker-image-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+.worker-image-dialog h3,
+.worker-image-dialog p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.worker-image-dialog > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.worker-image-dialog > header button {
+  flex: 0 0 auto;
+}
+.worker-image-canvas {
+  max-height: calc(55dvh / var(--evidence-zoom, 1));
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.worker-image-canvas img {
+  display: block;
+  width: 100%;
+  max-height: calc(55dvh / var(--evidence-zoom, 1));
+  object-fit: contain;
+}
+@media (max-width: 420px) {
+  .worker-image-dialog {
+    width: calc(100vw / var(--evidence-zoom, 1) - 1rem);
+    max-height: calc(100dvh / var(--evidence-zoom, 1) - 1rem);
+    padding: 0.8rem;
+  }
+}
+
+.worker-image-canvas[data-original="true"] img {
+  width: auto;
+  max-width: none;
+  max-height: none;
+}

@@ -327,6 +327,24 @@ A run response reports its ID and status. Poll `/runs/{id}` to obtain events,
 verification, changed files, diff, artifacts, error details and any pull-request
 URL. Do not infer success from HTTP acceptance of the queue request.
 
+### Read a human question's screenshots
+
+`GET /api/v1/runs/{id}/worker-evidence?request_id=QUESTION_ID` lists the raster previews retained for that exact question. Each record contains an opaque 64-character `id`, a bare `filename`, `mime_type`, byte count in `bytes`, and `sha256`. A question without recorded screenshots returns an empty list. This read does not generate images or reopen source-control files.
+
+`GET /api/v1/runs/{id}/worker-evidence/{image_id}` returns only that retained image after current authentication, project/repository authorization and native journal checks. It returns `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` and `X-Content-SHA256`. The body must match the listed MIME type, exact size and SHA-256. SVG, paths supplied by callers and public access tokens are unsupported. These endpoints are read-only; they do not answer the question or resume execution.
+
+The SDK validates metadata, bounds streamed bytes and verifies the returned image before handing it to the caller:
+
+```python
+images = client.worker_evidence(run_id, request_id)
+if images:
+    image_bytes = client.worker_image(run_id, images[0])
+```
+
+See [answering an agent's question](agent-lifecycle.md#answer-an-agents-question) for roles, preview controls, waiting across restarts and answer reconciliation. Images remain worker evidence rather than a delivery approval.
+
+### Interpret verification and recovery
+
 Automatic repairs record an `attempt` number on each command result. The full
 `verification` list preserves failed and successful attempts; `final_verification`
 contains the checks supporting a successful run, and `source_tree` identifies

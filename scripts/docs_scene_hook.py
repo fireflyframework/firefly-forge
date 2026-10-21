@@ -28,6 +28,8 @@ CAPTURE_HELPERS = {
     "studio/tests/campaign-delivery-plan-fixture.ts",
     "studio/tests/campaign-delivery-browser-fixture.ts",
     "studio/tests/worker-dialogue-contract-fixture.json",
+    "studio/tests/worker-decision-evidence-fixture.ts",
+    "studio/tests/worker-evidence-raster-fixture.json",
     "studio/tests/agent-checkpoint-recovery-fixture.ts",
     "studio/tests/run-creation-cancellation-fixture.ts",
     "studio/tests/provider-activity-guide-fixture.json",

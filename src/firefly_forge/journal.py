@@ -876,7 +876,8 @@ class Journal:
 
         model = worker_feedback_model(feedback)
         if evidence is not None:
-            evidence = WorkerEvidenceManifest.model_validate(evidence).model_dump()
+            manifest = WorkerEvidenceManifest.model_validate(evidence)
+            evidence = manifest.model_dump()
             if (
                 evidence["run_id"] != run_id
                 or evidence["feedback_id"] != feedback.id
@@ -885,6 +886,7 @@ class Journal:
                 or len({image["id"] for image in evidence["images"]}) != len(evidence["images"])
             ):
                 raise ValueError("Worker evidence must identify this exact native feedback and question")
+            manifest.check_feedback(feedback.model_dump(mode="json"), feedback.task_id)
         async with self.store._unit():
             run = await self._run(run_id)
             payload = model.model_validate_json(self._worker_payload(run, feedback.model_dump_json())).model_dump(

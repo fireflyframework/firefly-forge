@@ -34,10 +34,26 @@ class WorkerImage(BaseModel):
     bytes: int = Field(ge=1, le=MAX_BYTES)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
+    @field_validator("filename")
+    @classmethod
+    def bare_filename(cls, value: str) -> str:
+        if (
+            value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or any(
+                ord(character) < 32 or ord(character) == 127 or 0xD800 <= ord(character) <= 0xDFFF
+                for character in value
+            )
+        ):
+            raise ValueError("Worker image filename must be a bare, valid Unicode name")
+        return value
+
 
 class WorkerEvidenceManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     version: Literal[1]
+
     @field_validator("version", mode="before")
     @classmethod
     def exact_version(cls, value: Any) -> Any:
@@ -49,6 +65,26 @@ class WorkerEvidenceManifest(BaseModel):
     feedback_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
     request_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
     images: list[WorkerImage] = Field(min_length=1, max_length=6)
+
+    def check_feedback(self, feedback: Data, task_id: str) -> None:
+        if (
+            feedback.get("id") != self.feedback_id
+            or (feedback.get("request") or {}).get("id") != self.request_id
+            or feedback.get("task_id") != task_id
+            or len({image.id for image in self.images}) != len(self.images)
+        ):
+            raise ValueError("Worker evidence does not belong to the recorded question")
+        paths = feedback.get("evidence_paths") or []
+        for image in self.images:
+            if not any(
+                isinstance(path, str)
+                and Path(path).name == image.filename
+                and Path(path).suffix.lower() in IMAGE_TYPES
+                and image.id
+                == digest({"run": self.run_id, "feedback": self.feedback_id, "path": path, "sha256": image.sha256})
+                for path in paths
+            ):
+                raise ValueError("Worker evidence does not belong to the recorded question")
 
 
 @service
@@ -121,9 +157,13 @@ class WorkerEvidence:
                 folder = self._folder(run["id"])
                 if len(list(folder.iterdir())) >= 48 and not (folder / (image_id + ".bin")).exists():
                     raise ValueError("Retained worker evidence reached its per-run byte and count budget")
-                retained = private_identity(
-                    folder / (image_id + ".bin"), lambda content=content: content, size=len(content)
-                )
+
+                image_bytes: bytes = content
+
+                def image_content(value: bytes = image_bytes) -> bytes:
+                    return value
+
+                retained = private_identity(folder / (image_id + ".bin"), image_content, size=len(content))
                 if retained != content:
                     raise ValueError("Worker evidence is immutable")
                 self.store.reject_credentials(image.model_dump())
@@ -181,8 +221,9 @@ class WorkerEvidence:
                 ),
                 None,
             )
-            if not feedback or (feedback["payload"].get("request") or {}).get("id") != manifest.request_id:
+            if not feedback or feedback["task_id"] != entry["task_id"]:
                 raise ValueError("Worker evidence does not belong to the recorded question")
+            manifest.check_feedback(feedback["payload"], entry["task_id"])
             manifests.append(manifest.model_dump())
         self.store.reject_credentials(manifests)
         return run, reader, manifests

@@ -8,7 +8,6 @@ import copy
 import hashlib
 import hmac
 import json
-import os
 import re
 import time
 import uuid
@@ -311,8 +310,11 @@ class Collaboration:
         resume_authority: Any = None,
         product_change_authority: Any = None,
         product_intake_authority: Any = None,
+        *,
+        browser_origin: str = "",
     ) -> None:
         self.store = store
+        self.browser_origin = browser_origin
         self.polling: Any = None
         self.resume_authority = resume_authority
         self.poll_resume_authority: Any = None
@@ -1533,6 +1535,28 @@ class Collaboration:
         }:
             raise AccessDenied("Current repository collaboration permission is required for feedback")
 
+    async def _feedback_context(self, data: Data, run: Data) -> Data:
+        from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+        settings = await self.settings(data["repository_id"])
+        actions = settings.get("channel_commands", [])
+        if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            actions = []
+            if self.polling is not None and run.get("project_id"):
+                mapped = await SCMActorAuthority(self.store, self.scm).resolve(await self.receipt(data["id"]))
+                delegation = mapped.scm_delegation or {}
+                key = delegation.get("binding_key")
+                if key:
+                    binding = await self.polling._head(run["project_id"], data["repository_id"], key)
+                    if (
+                        binding["request"]["active"] is True
+                        and binding["digest"] == delegation.get("binding_digest")
+                        and "respond" in binding["request"]["allowed_actions"]
+                        and "respond" in settings.get("channel_commands", [])
+                    ):
+                        actions = ["respond"]
+        return {"_feedback_origin": self.browser_origin, "_feedback_actions": actions}
+
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
         try:
@@ -1573,20 +1597,7 @@ class Collaboration:
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
-            data["_feedback_origin"] = os.getenv("FORGE_BROWSER_ORIGIN", "")
-            collaboration_settings = await self.settings(data["repository_id"])
-            data["_feedback_actions"] = collaboration_settings.get("channel_commands", [])
-            if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
-                # A status-only polling consent must not advertise commands it cannot admit.
-                data["_feedback_actions"] = []
-                if self.polling is not None and run.get("project_id"):
-                    mapped = await SCMActorAuthority(self.store, self.scm).resolve(data)
-                    delegation = mapped.scm_delegation or {}
-                    binding_key = delegation.get("binding_key")
-                    if binding_key:
-                        binding = await self.polling._head(run["project_id"], data["repository_id"], binding_key)
-                        if "respond" in binding["request"]["allowed_actions"] and "respond" in collaboration_settings.get("channel_commands", []):
-                            data["_feedback_actions"] = ["respond"]
+            data.update(await self._feedback_context(data, run))
             from firefly_forge.collaboration_feedback import feedback_card, milestone_key, provider_recovery, review_key
             from firefly_forge.configuration import redact_secrets
             from firefly_forge.secrets import redact_environment
@@ -1603,17 +1614,21 @@ class Collaboration:
             drafted = await self.communication_writer.write(run, message, public_text)
             if data.get("run_id") and drafted["communication"]["mode"] == "ai":
                 current_run = await self.store.get_run(data["run_id"])
-                if milestone_key(current_run) != milestone_key(run):
+                current_context = await self._feedback_context(data, current_run)
+                state_changed = milestone_key(current_run) != milestone_key(run)
+                channel_changed = any(data.get(key) != value for key, value in current_context.items())
+                if state_changed or channel_changed:
                     from firefly_forge.communication import communication_facts
                     from firefly_forge.product_provenance import content_digest
 
                     run = current_run
+                    data.update(current_context)
                     facts = communication_facts(run)
                     drafted = {
                         "body": feedback_card(data, run, repo, host, public_text),
                         "communication": {
                             "mode": "deterministic",
-                            "reason": "state_changed",
+                            "reason": "state_changed" if state_changed else "channel_changed",
                             "facts": facts,
                             "facts_sha256": content_digest(facts),
                             "discarded_generation": drafted["communication"],

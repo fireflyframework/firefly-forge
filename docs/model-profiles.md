@@ -89,13 +89,15 @@ First configure the profile through the write-only model-profile endpoint descri
 }
 ```
 
-Send that complete binding map to `PUT /api/v1/task-routing`. Profiles in this example must already exist. Configuration uses the existing authenticated administrator endpoints; the Studio communication selector is a separate UI follow-up.
+In Studio, open **Connections > Coding AI > Project updates**. A factory administrator can select a compatible existing profile or choose **Recorded updates · no AI wording**, then save. Other task selections stay unchanged. **Refresh selection** reads the current settings without saving them. A missing response never triggers an automatic second save; read back the selection before deciding what to do next.
+
+API clients send the complete binding map to `PUT /api/v1/task-routing`, together with the `expected_digest` returned by the preceding GET. A changed digest refuses the write. Omitting this optional field preserves the existing API contract. Profiles in this example must already exist; creating one still uses the authenticated model-profile endpoint.
 
 Each eligible update gets at most one tool-free structured draft, bounded to 20 seconds and 800 output tokens. The model receives a small fact packet: recorded run state, active stage, recovery attempt, check totals with attempt provenance, and whether a human decision is pending. Customer briefs, raw questions and choices, source, logs and credentials are excluded. The native message still supplies the actual question and evidence. The model cannot answer for a person, execute a command or approve a delivery.
 
 forge checks referenced fact IDs, unsupported numbers and common contradictory claims before appending its native card. These guards reduce misleading wording; they do not establish product QA or prove every sentence semantically true. If no compatible profile is selected, or generation fails, times out or reaches a usage limit, the native update remains available. There is no automatic provider substitution or generation retry.
 
-The receipt retains `feedback_intent.communication`: its mode and fallback reason, fact packet and digest, selected profile revision, and prompt digest. The exact final body and its SHA-256 are saved before the remote comment is attempted. If the run advances while drafting, forge discards the draft and uses a fresh native card without another model call. Unknown remote delivery remains held for reconciliation; a second comment is not sent automatically.
+The receipt retains `feedback_intent.communication`: its mode and fallback reason, fact packet and digest, selected profile revision, and prompt digest. Studio labels AI wording and explains a recorded-update fallback. The exact final body and its SHA-256 are saved before the remote comment is attempted. If the run advances or the enabled reply actions change while drafting, forge discards the draft and uses a fresh native card without another model call. Unknown remote delivery remains held for reconciliation; a second comment is not sent automatically.
 
 ## Frozen execution and handoff
 
