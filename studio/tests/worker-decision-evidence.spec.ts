@@ -77,6 +77,52 @@ test("authenticated question deep link keeps the decision paused and opens only 
   await expect(page.getByLabel("Your answer", { exact: true })).toBeVisible();
   expect(state.writes).toBe(0);
 });
+for (const frame of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+])
+  for (const theme of ["light", "dark"])
+    test(`leaving a question removes run-only controls ${frame.name} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(frame);
+      const consoleErrors: string[] = [];
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      const state = await setup(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await navigate(page, "Factory");
+      await expect(
+        page.getByRole("heading", { name: "Your factory.", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          name: "Waiting for your answer",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("tab", { name: "Agent questions", exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole("button", {
+          name: /Controlled decision and screenshot fixture/,
+        })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Waiting for your answer",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      expect(
+        consoleErrors.filter((message) =>
+          /same key|unique.*key/i.test(message),
+        ),
+      ).toEqual([]);
+      expect(state.writes).toBe(0);
+    });
 test("current access denial closes preview without a second image request or an execution", async ({
   page,
 }) => {

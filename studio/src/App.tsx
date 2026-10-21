@@ -1301,7 +1301,7 @@ export default function App() {
                 }}
               />
               <RunDetail
-                key={selected.id}
+                key={`detail:${selected.id}`}
                 run={selected}
                 busy={busy}
                 connection={connection}
