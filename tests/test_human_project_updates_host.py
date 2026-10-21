@@ -5,7 +5,7 @@ import copy
 import json
 
 import pytest
-from pydantic_ai.models.test import TestModel
+from communication_model_fixture import reviewed_model
 from test_communication_writer import configured_store
 
 from firefly_forge.communication import CommunicationWriter, communication_facts
@@ -78,16 +78,14 @@ async def test_ai_explains_blocker_and_checks_without_repeating_the_visible_nati
         "The recorded check batch contains 1 failure. Review the workspace finding and that check "
         "before deciding how to continue."
     )
-    model = TestModel(
-        custom_output_text=json.dumps(
-            {
-                "title": {"text": "Execution update", "fact_ids": ["state"]},
-                "paragraphs": [
-                    {"text": first, "fact_ids": ["state", "blocker", "delivery"]},
-                    {"text": second, "fact_ids": ["check_batch"]},
-                ],
-            }
-        )
+    model = reviewed_model(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [
+                {"text": first, "fact_ids": ["state", "blocker", "delivery"]},
+                {"text": second, "fact_ids": ["check_batch"]},
+            ],
+        }
     )
     native = "### forge · The run failed\n\nThe run stopped with a failure.\n\nExact native check evidence"
     result = await CommunicationWriter(store, model=model).write(stopped_run(), native, lambda value: value)
@@ -102,10 +100,10 @@ async def test_rich_context_cannot_be_ignored_in_a_one_line_status_restatement(t
         "title": {"text": "Execution update", "fact_ids": ["state"]},
         "paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state"]}],
     }
-    model = TestModel(custom_output_text=json.dumps(actual_poor_reply))
+    model = reviewed_model(actual_poor_reply)
     result = await CommunicationWriter(store, model=model).write(stopped_run(), "Exact native fallback", lambda v: v)
-    assert result["body"] == "Exact native fallback"
-    assert result["communication"]["mode"] == "deterministic"
+    assert result["body"] == ""
+    assert result["communication"]["mode"] == "held"
     assert result["communication"]["reason"] == "invalid_output"
 
 
@@ -122,23 +120,21 @@ async def test_pending_human_question_and_options_remain_visible(tmp_path):
             "choices": ["Sales", "Support"],
         },
     }
-    model = TestModel(
-        custom_output_text=json.dumps(
-            {
-                "title": {"text": "Execution update", "fact_ids": ["state"]},
-                "decision": {
-                    "question": "Which owner?",
-                    "context": "The product owner is missing",
-                    "choices": ["Sales", "Support"],
-                },
-                "paragraphs": [
-                    {
-                        "text": "This run is waiting for your decision before it can continue.",
-                        "fact_ids": ["state", "decision"],
-                    }
-                ],
-            }
-        )
+    model = reviewed_model(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "decision": {
+                "question": "Which owner?",
+                "context": "The product owner is missing",
+                "choices": ["Sales", "Support"],
+            },
+            "paragraphs": [
+                {
+                    "text": "This run is waiting for your decision before it can continue.",
+                    "fact_ids": ["state", "decision"],
+                }
+            ],
+        }
     )
     native = "Which owner?\n\n- Sales\n- Support"
     result = await CommunicationWriter(store, model=model).write(copy.deepcopy(run), native, lambda v: v)
@@ -166,19 +162,35 @@ def test_malformed_retained_handoff_metadata_is_withheld_without_losing_status(f
 )
 async def test_reported_source_guard_cannot_become_a_credential_breach_diagnosis(tmp_path, claim):
     store = await configured_store(tmp_path, "bridge")
-    model = TestModel(
-        custom_output_text=json.dumps(
-            {
-                "title": {"text": "Execution update", "fact_ids": ["state"]},
-                "paragraphs": [
-                    {
-                        "text": claim,
-                        "fact_ids": ["state", "blocker", "check_batch"],
-                    }
-                ],
-            }
-        )
+    model = reviewed_model(
+        {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [
+                {
+                    "text": claim,
+                    "fact_ids": ["state", "blocker", "check_batch"],
+                }
+            ],
+        },
+        verdict="unsupported",
+        issues=["unsupported_claim"],
+        correction={
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [
+                {
+                    "text": (
+                        "A source-safety check stopped admission. "
+                        "Saved checks include a failure; inspect the workspace and those results."
+                    ),
+                    "fact_ids": ["state", "blocker", "check_batch"],
+                }
+            ],
+        },
     )
     result = await CommunicationWriter(store, model=model).write(stopped_run(), "Exact native fallback", lambda v: v)
-    assert result["body"] == "Exact native fallback"
-    assert result["communication"]["reason"] == "invalid_output"
+    assert result["communication"]["mode"] == "ai"
+    assert result["communication"]["repair_attempted"] is True
+    assert claim not in result["body"]
+    assert "source-safety check" in result["body"]
+    assert result["communication"]["reason"] == "generated"
+    assert result["communication"]["review"]["verdict"] == "unsupported"

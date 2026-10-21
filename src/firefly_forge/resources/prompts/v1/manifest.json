@@ -148,6 +148,19 @@
       }
     },
     {
+      "id": "collaboration/communication-repair-request",
+      "version": "1.0.0",
+      "path": "collaboration/communication-repair-request.yaml",
+      "sha256": "579ff5bfd31fe490fa7666b90471f927202ca6d996c3749f416e7a7f0a8f9131",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "candidate": "string",
+        "review": "string",
+        "fact_ids": "string"
+      }
+    },
+    {
       "id": "collaboration/communication-request",
       "version": "1.0.0",
       "path": "collaboration/communication-request.yaml",
@@ -167,6 +180,26 @@
         "facts": "string",
         "fact_ids": "string"
       }
+    },
+    {
+      "id": "collaboration/communication-review-request",
+      "version": "1.0.0",
+      "path": "collaboration/communication-review-request.yaml",
+      "sha256": "16b634b09e989cf081f1f5113ea475784d4bf8124ae425595889ac359766191c",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "candidate": "string",
+        "fact_ids": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.0",
+      "path": "collaboration/communication-review-system.yaml",
+      "sha256": "eab4575c99438af8f100c6cb4d802ff876df76844346c8130b50bab23c94c6da",
+      "field": "user",
+      "variables": {}
     },
     {
       "id": "collaboration/communication-system",
@@ -189,6 +222,14 @@
       "version": "1.0.2",
       "path": "collaboration/communication-system-1.0.2.yaml",
       "sha256": "c6871defcd2df6afa10f275f912e08fe2a5288e40854129ca52ac58f9be1a803",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.3",
+      "path": "collaboration/communication-system-1.0.3.yaml",
+      "sha256": "391b62fb3635a4de004b9463a07b306e0363cf5d37cb9e9a44b5ff13545f15e0",
       "field": "user",
       "variables": {}
     },

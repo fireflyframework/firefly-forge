@@ -1451,6 +1451,8 @@ class Collaboration:
         }
 
     async def _feedback_head(self, data: Data, *, proactive: bool) -> bool:
+        if data.get("feedback_status") == "held":
+            return False
         if not data.get("run_id"):
             return True
         async with self.store._unit():
@@ -1534,6 +1536,8 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        if initial.get("feedback_status") == "held":
+            return
         try:
             await self._feedback_authority(initial)
             if not await self._feedback_head(initial, proactive=False):
@@ -1597,17 +1601,18 @@ class Collaboration:
                 ):
                     run = current_run
                     facts = communication_facts(run)
+                    configured_ai = drafted["communication"]["mode"] in {"ai", "held"}
                     drafted = {
-                        "body": feedback_card(data, run, repo, host, public_text),
+                        "body": "" if configured_ai else feedback_card(data, run, repo, host, public_text),
                         "communication": {
-                            "mode": "deterministic",
+                            "mode": "held" if configured_ai else "deterministic",
                             "reason": "state_changed",
                             "facts": facts,
                             "facts_sha256": content_digest(facts),
                             "discarded_generation": drafted["communication"],
                         },
                     }
-            message = drafted["body"]
+            message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if drafted["communication"]["mode"] == "ai":
                 from firefly_forge.collaboration_feedback import communication_controls
 
@@ -1634,6 +1639,14 @@ class Collaboration:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
+                if intent["communication"]["mode"] == "held":
+                    await self._write_row(
+                        row,
+                        feedback_intent=intent,
+                        feedback_status="held",
+                        reason="ai_communication_" + intent["communication"]["reason"],
+                    )
+                    return
                 await self._write_row(row, feedback_intent=intent)
             payload = {"content": {"raw": message}} if data["provider"] == "bitbucket" else {"body": message}
 

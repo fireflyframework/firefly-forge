@@ -4,7 +4,7 @@
 import json
 
 import pytest
-from pydantic_ai.models.test import TestModel
+from communication_model_fixture import reviewed_model
 from test_communication_writer import configured_store
 from test_human_project_updates_host import stopped_run
 
@@ -48,17 +48,16 @@ async def test_ai_writes_the_title_and_entire_card_without_a_second_native_templ
         title="A source-safety check is blocking delivery",
         title_facts=["blocker"],
     )
-    writer = CommunicationWriter(
-        await configured_store(tmp_path, "bridge"), model=TestModel(custom_output_text=json.dumps(output))
-    )
+    writer = CommunicationWriter(await configured_store(tmp_path, "bridge"), model=reviewed_model(output))
     result = await writer.write(stopped_run(), "OLD GENERIC CARD MUST NOT APPEAR", lambda value: value)
     assert result["communication"]["mode"] == "ai"
     assert result["body"].startswith("### A source-safety check is blocking delivery\n")
     assert all(item["text"] in result["body"] for item in output["paragraphs"])
     assert "OLD GENERIC CARD" not in result["body"] and "<details>" not in result["body"]
     humanizer = next(item for item in community_catalog() if item["id"] == "humanizer")
-    assert len(calls) == 1 and humanizer["instructions"] in calls[0]["instructions"]
+    assert len(calls) == 2 and humanizer["instructions"] in calls[0]["instructions"]
     assert result["communication"]["skills"][0]["adaptation_sha256"] == humanizer["adaptation_sha256"]
+    assert calls[1]["name"] == "forge-project-communication-review"
 
 
 def question_run():
@@ -94,9 +93,9 @@ async def test_ai_question_card_preserves_the_question_and_choices_without_appen
             "choices": facts["decision"]["choices"],
         },
     )
-    result = await CommunicationWriter(
-        await configured_store(tmp_path, "bridge"), model=TestModel(custom_output_text=json.dumps(output))
-    ).write(run, "OLD QUESTION TEMPLATE", lambda value: value)
+    result = await CommunicationWriter(await configured_store(tmp_path, "bridge"), model=reviewed_model(output)).write(
+        run, "OLD QUESTION TEMPLATE", lambda value: value
+    )
     assert result["communication"]["mode"] == "ai"
     assert all(value in result["body"] for value in [output["decision"]["question"], "Sales", "Support"])
     assert "OLD QUESTION TEMPLATE" not in result["body"] and "<details>" not in result["body"]
@@ -117,19 +116,27 @@ async def test_generated_card_cannot_change_an_authoritative_human_decision(tmp_
     output = full_card(
         [{"text": "The run is paused for your decision.", "fact_ids": ["state", "decision"]}], decision=decision
     )
-    result = await CommunicationWriter(
-        await configured_store(tmp_path, "bridge"), model=TestModel(custom_output_text=json.dumps(output))
-    ).write(run, "Exact native fallback", lambda text: text)
-    assert result["communication"]["reason"] == "invalid_output" and result["body"] == "Exact native fallback"
+    result = await CommunicationWriter(await configured_store(tmp_path, "bridge"), model=reviewed_model(output)).write(
+        run, "Exact native fallback", lambda text: text
+    )
+    assert result["communication"]["reason"] == "invalid_output" and result["body"] == ""
+    assert result["communication"]["mode"] == "held"
 
 
 @pytest.mark.parametrize("title", ["The run completed", "Everything is deployed", "See @everyone"])
 async def test_generated_title_is_subject_to_the_same_fact_and_destination_controls(tmp_path, title):
     output = full_card([{"text": "The run is failed.", "fact_ids": ["state"]}], title=title)
     result = await CommunicationWriter(
-        await configured_store(tmp_path), model=TestModel(custom_output_args=output)
+        await configured_store(tmp_path),
+        model=reviewed_model(
+            output,
+            verdict="unsupported",
+            issues=["unsupported_claim"],
+            correction=full_card([{"text": "The execution has a recorded failure.", "fact_ids": ["state"]}]),
+        ),
     ).write({"status": "failed"}, "Exact native fallback", lambda value: value)
-    assert result["communication"]["reason"] == "invalid_output" and result["body"] == "Exact native fallback"
+    assert result["communication"]["reason"] == ("invalid_output" if "@" in title else "generated")
+    assert (result["body"] == "") if "@" in title else ("The execution has a recorded failure." in result["body"])
 
 
 @pytest.mark.parametrize("title", ["Choose Sales", "I recommend Sales", "Sales is the approved owner"])
@@ -143,9 +150,24 @@ async def test_question_title_cannot_select_one_of_the_actual_choices(tmp_path, 
         decision={key: facts["decision"][key] for key in ("question", "context", "choices")},
     )
     result = await CommunicationWriter(
-        await configured_store(tmp_path, "bridge"), model=TestModel(custom_output_text=json.dumps(output))
+        await configured_store(tmp_path, "bridge"),
+        model=reviewed_model(
+            output,
+            verdict="unsupported",
+            issues=["changed_decision"],
+            correction=full_card(
+                [{"text": "The run remains paused for your decision.", "fact_ids": ["state", "decision"]}],
+                title="Your decision is needed",
+                title_facts=["decision"],
+                decision=output["decision"],
+            ),
+        ),
     ).write(run, "Exact native fallback", lambda value: value)
-    assert result["communication"]["reason"] == "invalid_output" and result["body"] == "Exact native fallback"
+    assert result["communication"]["reason"] == "generated" and result["body"].startswith("### Your decision is needed")
+    assert result["communication"]["review"]["issues"] == ["changed_decision"]
+    assert result["communication"]["repair_attempted"]
+    assert result["communication"]["review_applies_to"] == "original_candidate"
+    assert result["communication"]["review_candidate_sha256"] != result["communication"]["candidate_sha256"]
 
 
 async def test_private_question_context_is_refused_before_it_can_enter_a_feedback_receipt(tmp_path):
@@ -158,7 +180,7 @@ async def test_private_question_context_is_refused_before_it_can_enter_a_feedbac
             raise ValueError("Configured credential is not public feedback")
 
     store.reject_credentials = reject
-    writer = CommunicationWriter(store, model=TestModel(custom_output_text="{}"))
+    writer = CommunicationWriter(store, model=reviewed_model({}))
     with pytest.raises(ValueError, match="Configured credential"):
         await writer.write(run, "Safe native card", lambda value: value)
 
@@ -177,6 +199,21 @@ async def test_ai_cannot_select_an_owner_by_merely_naming_an_offered_option(tmp_
         decision={key: facts["decision"][key] for key in ("question", "context", "choices")},
     )
     result = await CommunicationWriter(
-        await configured_store(tmp_path, "bridge"), model=TestModel(custom_output_text=json.dumps(output))
+        await configured_store(tmp_path, "bridge"),
+        model=reviewed_model(
+            output,
+            verdict="unsupported",
+            issues=["changed_decision"],
+            correction=full_card(
+                [{"text": "The run remains paused for your decision.", "fact_ids": ["state", "decision"]}],
+                title="Your decision is needed",
+                title_facts=["decision"],
+                decision=output["decision"],
+            ),
+        ),
     ).write(run, "Exact native fallback", lambda value: value)
-    assert result["body"] == "Exact native fallback" and result["communication"]["reason"] == "invalid_output"
+    assert result["body"].startswith("### Your decision is needed") and result["communication"]["reason"] == "generated"
+    assert result["communication"]["review"]["verdict"] == "unsupported"
+    assert result["communication"]["repair_attempted"]
+    assert result["communication"]["review_applies_to"] == "original_candidate"
+    assert result["communication"]["review_candidate_sha256"] != result["communication"]["candidate_sha256"]

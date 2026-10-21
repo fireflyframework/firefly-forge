@@ -2,10 +2,9 @@
 """Communication uses the selected profile deadline, with a bounded maximum."""
 
 import asyncio
-import json
 
 import pytest
-from pydantic_ai.models.test import TestModel
+from communication_model_fixture import reviewed_model
 from test_communication_writer import configured_store
 
 from firefly_forge.communication import CommunicationWriter
@@ -48,14 +47,16 @@ async def test_profile_deadline_reaches_both_agent_and_outer_cancellation(tmp_pa
         "title": {"text": "Request queued", "fact_ids": ["state"]},
         "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],
     }
-    result = await CommunicationWriter(store, model=TestModel(custom_output_text=json.dumps(output))).write(
+    result = await CommunicationWriter(store, model=reviewed_model(output)).write(
         {"status": "queued"},
         "Exact native fallback",
         lambda value: value,
     )
     assert result["communication"]["mode"] == "ai"
     assert outer[0] == expected
-    assert agent_deadlines == [expected]
+    assert len(agent_deadlines) == 2
+    assert agent_deadlines[0] == expected
+    assert 0 < agent_deadlines[1] <= expected
     assert result["communication"]["timeout_seconds"] == expected
 
 
@@ -96,6 +97,57 @@ async def test_expired_profile_cancels_the_single_inflight_generation_without_re
         timeout=3,
     )
     assert calls == [1] and cancelled.is_set()
-    assert result["body"] == "Exact native fallback"
+    assert result["body"] == ""
+    assert result["communication"]["mode"] == "held"
+    assert result["communication"]["reason"] == "timeout"
+    assert result["communication"]["timeout_seconds"] == 1
+
+
+async def test_review_consumes_the_same_total_deadline_instead_of_starting_a_fresh_one(tmp_path):
+    import json
+
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    store = await configured_store(tmp_path, "bridge")
+    store.task_router.profiles.save(
+        "updates",
+        ModelProfileInput(
+            name="Project updates",
+            provider="bridge",
+            values={"timeout": "1"},
+        ),
+    )
+    calls = []
+    cancelled = asyncio.Event()
+
+    async def bounded_model(messages, info):
+        calls.append(1)
+        if len(calls) == 1:
+            await asyncio.sleep(0.35)
+            value = {
+                "title": {"text": "Request queued", "fact_ids": ["state"]},
+                "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],
+            }
+        else:
+            try:
+                await asyncio.sleep(0.8)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            value = {"verdict": "supported", "issues": [], "fact_ids": ["state"], "rationale": "Grounded."}
+        return ModelResponse(parts=[TextPart(json.dumps(value))])
+
+    result = await asyncio.wait_for(
+        CommunicationWriter(store, model=FunctionModel(bounded_model)).write(
+            {"status": "queued"},
+            "Exact native fallback",
+            lambda value: value,
+        ),
+        timeout=3,
+    )
+    assert calls == [1, 1] and cancelled.is_set()
+    assert result["body"] == ""
+    assert result["communication"]["mode"] == "held"
     assert result["communication"]["reason"] == "timeout"
     assert result["communication"]["timeout_seconds"] == 1

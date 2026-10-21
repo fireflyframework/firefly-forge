@@ -2,9 +2,10 @@
 """Controlled question quotations and server-owned references require no provider access."""
 
 import pytest
+from communication_model_fixture import reviewed_model
 from test_communication_writer import configured_store
 
-from firefly_forge.communication import CommunicationCard, CommunicationWriter, _validate_draft, communication_facts
+from firefly_forge.communication import CommunicationCard, CommunicationWriter, communication_facts
 
 
 def pending_request(**changes):
@@ -40,19 +41,34 @@ async def test_incomplete_or_collapsed_question_quotes_fall_back_before_model_cr
     result = await CommunicationWriter(await configured_store(tmp_path)).write(
         pending_request(**changes), "Exact native question", lambda value: value
     )
-    assert result["body"] == "Exact native question"
+    assert result["body"] == ""
     assert result["communication"]["reason"] == "decision_too_large"
+    assert result["communication"]["mode"] == "held"
 
 
-def test_punctuated_choice_cannot_bypass_the_conservative_human_selection_guard():
+async def test_punctuated_choice_requires_supported_semantic_review(tmp_path):
     facts = communication_facts(pending_request(choices=["Sales.", "Support."]))
     card = CommunicationCard(
         title={"text": "Choose Sales", "fact_ids": ["decision"]},
         paragraphs=[{"text": "The run is paused for your decision.", "fact_ids": ["state", "decision"]}],
         decision={key: facts["decision"][key] for key in ("question", "context", "choices")},
     )
-    with pytest.raises(ValueError, match="(?i)human"):
-        _validate_draft(card, facts)
+    calls = []
+    result = await CommunicationWriter(
+        await configured_store(tmp_path),
+        model=reviewed_model(
+            card.model_dump(),
+            verdict="unsupported",
+            issues=["changed_decision"],
+            calls=calls,
+            correction={**card.model_dump(), "title": {"text": "Your decision is needed", "fact_ids": ["decision"]}},
+        ),
+    ).write(pending_request(choices=["Sales.", "Support."]), "Exact native fallback", lambda value: value)
+    assert result["body"].startswith("### Your decision is needed")
+    assert result["communication"]["reason"] == "generated"
+    assert result["communication"]["review"]["issues"] == ["changed_decision"]
+    assert [phase for phase, _, _ in calls] == ["draft", "review", "draft"]
+    assert result["communication"]["repair_attempted"]
 
 
 def test_reference_slot_preserves_exact_scoped_links_and_never_invents_channel_actions():

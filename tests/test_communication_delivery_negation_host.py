@@ -1,14 +1,12 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Retain grounded delivery denials without admitting positive completion claims."""
 
-import json
-
 import pytest
-from pydantic_ai.models.test import TestModel
+from communication_model_fixture import reviewed_model
 from test_communication_writer import configured_store
 from test_human_project_updates_host import stopped_run
 
-from firefly_forge.communication import CommunicationCard, CommunicationWriter, _validate_draft, communication_facts
+from firefly_forge.communication import CommunicationWriter
 
 
 async def test_actual_codex_delivery_denial_is_not_mistaken_for_a_completion_claim(tmp_path):
@@ -34,7 +32,7 @@ async def test_actual_codex_delivery_denial_is_not_mistaken_for_a_completion_cla
             },
         ],
     }
-    result = await CommunicationWriter(store, model=TestModel(custom_output_text=json.dumps(draft))).write(
+    result = await CommunicationWriter(store, model=reviewed_model(draft)).write(
         stopped_run(), "Exact native evidence", lambda value: value
     )
     assert result["communication"]["mode"] == "ai"
@@ -51,23 +49,42 @@ async def test_actual_codex_delivery_denial_is_not_mistaken_for_a_completion_cla
         "The recorded run was not accepted as a completed delivery.",
     ],
 )
-def test_delivery_denial_requires_the_cited_native_nonacceptance_fact(denial):
-    facts = communication_facts(stopped_run())
-    paragraph = {"text": denial, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}
-    assert _validate_draft(
-        CommunicationCard.model_validate(
-            {"title": {"text": "Execution update", "fact_ids": ["state"]}, "paragraphs": [paragraph]}
+async def test_delivery_denial_requires_supported_review_of_its_native_facts(tmp_path, denial):
+    draft = {
+        "title": {"text": "Execution update", "fact_ids": ["state"]},
+        "paragraphs": [{"text": denial, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}],
+    }
+    result = await CommunicationWriter(await configured_store(tmp_path), model=reviewed_model(draft)).write(
+        stopped_run(), "Exact native fallback", lambda value: value
+    )
+    assert result["communication"]["mode"] == "ai" and denial in result["body"]
+    draft["paragraphs"][0]["fact_ids"].remove("delivery")
+    calls = []
+    rejected = await CommunicationWriter(
+        await configured_store(tmp_path),
+        model=reviewed_model(
+            draft,
+            verdict="unsupported",
+            issues=["insufficient_context"],
+            calls=calls,
+            correction={
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
+                "paragraphs": [
+                    {
+                        "text": "There is no accepted delivery. Saved checks include a failure.",
+                        "fact_ids": ["state", "blocker", "check_batch", "delivery"],
+                    }
+                ],
+            },
         ),
-        facts,
-    ).endswith("\n\n" + denial)
-    paragraph["fact_ids"].remove("delivery")
-    with pytest.raises(ValueError, match="completion"):
-        _validate_draft(
-            CommunicationCard.model_validate(
-                {"title": {"text": "Execution update", "fact_ids": ["state"]}, "paragraphs": [paragraph]}
-            ),
-            facts,
-        )
+    ).write(stopped_run(), "Exact native fallback", lambda value: value)
+    assert rejected["communication"]["reason"] == "generated"
+    assert rejected["communication"]["review"]["issues"] == ["insufficient_context"]
+    assert "There is no accepted delivery." in rejected["body"] and [phase for phase, _, _ in calls] == [
+        "draft",
+        "review",
+        "draft",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -81,13 +98,32 @@ def test_delivery_denial_requires_the_cited_native_nonacceptance_fact(denial):
         "This run was not accepted as a completed delivery is false.",
     ],
 )
-def test_a_delivery_denial_does_not_excuse_an_additional_completion_claim(claim):
-    facts = communication_facts(stopped_run())
-    draft = CommunicationCard.model_validate(
-        {
-            "title": {"text": "Execution update", "fact_ids": ["state"]},
-            "paragraphs": [{"text": claim, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}],
-        }
-    )
-    with pytest.raises(ValueError, match="completion"):
-        _validate_draft(draft, facts)
+async def test_a_delivery_denial_does_not_override_an_unsupported_semantic_review(tmp_path, claim):
+    draft = {
+        "title": {"text": "Execution update", "fact_ids": ["state"]},
+        "paragraphs": [{"text": claim, "fact_ids": ["state", "blocker", "check_batch", "delivery"]}],
+    }
+    calls = []
+    result = await CommunicationWriter(
+        await configured_store(tmp_path),
+        model=reviewed_model(
+            draft,
+            verdict="unsupported",
+            issues=["unsupported_claim"],
+            calls=calls,
+            correction={
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
+                "paragraphs": [
+                    {
+                        "text": "There is no accepted delivery. Saved checks include a failure.",
+                        "fact_ids": ["state", "blocker", "check_batch", "delivery"],
+                    }
+                ],
+            },
+        ),
+    ).write(stopped_run(), "Exact native fallback", lambda value: value)
+    assert result["communication"]["reason"] == "generated" and "There is no accepted delivery." in result["body"]
+    assert result["communication"]["review"]["verdict"] == "unsupported"
+    assert result["communication"]["review_applies_to"] == "original_candidate"
+    assert result["communication"]["review_candidate_sha256"] != result["communication"]["candidate_sha256"]
+    assert [phase for phase, _, _ in calls] == ["draft", "review", "draft"]

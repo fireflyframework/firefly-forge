@@ -7,7 +7,7 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 272 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 276 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 
@@ -77,3 +77,6 @@ Templates are package data in both wheel and source distributions. Loading uses 
 Each YAML resource is limited to 64 KiB. The manifest has its own 256 KiB read limit, and the complete catalog is limited to 512 entries and 1 MiB total. Duplicate identities or paths, traversal, resource symlinks, digest mismatches and unsupported YAML declarations fail before rendering. Rebuild a distribution after changing resources; there is no live template-editing endpoint or automatic registry reload.
 
 Instructions confer no authority. Existing project access, tool grants, credential admission, cancellation, verification and publication guards still decide what may happen. The catalog does not publish knowledge automatically or add a new invocation receipt. Bridge's runtime prompts and operator workflow DSL are a separate compatibility boundary.
+
+
+The complete SCM message writer uses `collaboration/communication-system` version `1.0.3`. Its independent classifier uses `collaboration/communication-review-system` and `collaboration/communication-review-request`. These YAML resources keep instructions and candidate/fact inputs separate. The structured review classifies meaning, including grounded denials, rather than enforcing a word list. Both calls share a finite profile deadline; a rejected or uncertain classification feeds one final correction through `collaboration/communication-repair-request`. The corrected AI response then proceeds through native framing and current-authority checks; there is no repeated semantic veto.
