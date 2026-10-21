@@ -273,6 +273,8 @@ class CommunicationWriter:
                 raise ValueError("Communication requires an explicit compatible profile")
             settings = router.profiles.validate_snapshot(selection)
             evidence["profile"] = selection
+            timeout = min(120, int(settings.get("FORGE_PROVIDER_TIMEOUT", "60")))
+            evidence["timeout_seconds"] = timeout
             prompt = prompt_text(
                 "collaboration/communication-request",
                 version="1.0.1",
@@ -318,10 +320,10 @@ class CommunicationWriter:
                 model_settings={"max_tokens": 1200},
                 config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             )
-            async with asyncio.timeout(20):
+            async with asyncio.timeout(timeout):
                 generated = await agent.run(
                     prompt,
-                    timeout=20,
+                    timeout=timeout,
                     usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=1400),
                 )
             try:
