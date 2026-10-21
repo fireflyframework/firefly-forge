@@ -1,0 +1,16 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-request
+version: 1.0.1
+description: Native fact packet with explicit paragraph citation identifiers.
+system_template: ''
+user_template: |-
+  Draft the project update using only this recorded fact packet:
+  {{ facts }}
+
+  Allowed fact_ids: {{ fact_ids }}
+  Each paragraph's fact_ids must contain only exact identifiers from that list. These are top-level fact groups, not JSON paths. For example, cite "state" for the recorded status; never cite "state.status". Do not invent identifiers or cite groups absent from the list.
+required_variables:
+  - facts
+  - fact_ids
+metadata:
+  defaults: {}

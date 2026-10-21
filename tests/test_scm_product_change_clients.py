@@ -282,4 +282,12 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
     previous = [tool for tool in tools if tool.name not in new]
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-product-change-baseline-v1.json").read_text())
     assert len(previous) == 145 and len(tools) == 162
-    assert ListToolsResult(tools=previous).model_dump_json(by_alias=True, exclude_none=True) == baseline["wire_json"]
+    expected = json.loads(baseline["wire_json"])
+    routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
+    bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
+    # The communication task adds one routing binding; all other prior fields remain literal.
+    assert bindings["maxProperties"] == 7
+    bindings["maxProperties"] = 8
+    assert ListToolsResult(tools=previous).model_dump_json(by_alias=True, exclude_none=True) == json.dumps(
+        expected, ensure_ascii=False, separators=(",", ":")
+    )

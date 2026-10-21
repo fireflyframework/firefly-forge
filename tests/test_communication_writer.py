@@ -212,3 +212,52 @@ async def test_communication_request_disables_native_sdk_retries_without_changin
             await client.aio.aclose()
         else:
             await client.close()
+
+
+@pytest.mark.parametrize(
+    "run,allowed",
+    [
+        ({"status": "failed"}, ["state"]),
+        ({"status": "developing", "active_task": "implement"}, ["stage", "state"]),
+    ],
+)
+async def test_bridge_request_explains_exact_current_fact_ids(tmp_path, run, allowed):
+    from pydantic_ai.messages import ModelResponse, TextPart
+
+    from firefly_forge.communication import CommunicationWriter
+
+    store = await configured_store(tmp_path, "bridge")
+    prompts = []
+
+    def model(messages, info):
+        prompt = "\n".join(
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(getattr(part, "content", None), str)
+        )
+        prompts.append(prompt)
+        # The first real Codex reply used a dotted path because its prompt did not
+        # define the IDs. Exercise the exact adapter contract without a live call.
+        fact_id = "state" if "Allowed fact_ids: " + json.dumps(allowed) in prompt else "state.status"
+        text = "The recorded status is failed." if run["status"] == "failed" else "The run is in development."
+        return ModelResponse(parts=[TextPart(json.dumps({"paragraphs": [{"text": text, "fact_ids": [fact_id]}]}))])
+
+    result = await CommunicationWriter(store, model=FunctionModel(model)).write(
+        run, "Exact native evidence", lambda value: value
+    )
+    assert result["communication"]["mode"] == "ai"
+    assert len(prompts) == 1
+    assert "Allowed fact_ids: " + json.dumps(allowed) in prompts[0]
+    assert "top-level" in prompts[0] and "state.status" in prompts[0]
+    assert result["body"].endswith("Exact native evidence")
+
+
+def test_actual_dotted_fact_reply_remains_rejected_without_weakening_validation():
+    from firefly_forge.communication import CommunicationDraft, _validate_draft
+
+    actual = CommunicationDraft.model_validate(
+        {"paragraphs": [{"text": "The recorded status is failed.", "fact_ids": ["state.status"]}]}
+    )
+    with pytest.raises(ValueError, match="unknown fact reference"):
+        _validate_draft(actual, {"state": {"status": "failed"}})

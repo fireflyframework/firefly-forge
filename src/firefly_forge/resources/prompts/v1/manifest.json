@@ -103,6 +103,17 @@
       }
     },
     {
+      "id": "collaboration/communication-request",
+      "version": "1.0.1",
+      "path": "collaboration/communication-request-1.0.1.yaml",
+      "sha256": "d48e711c1cfa0f95c39b934ccfaae4aa8936bd0b67937c5a52258686152ec236",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string"
+      }
+    },
+    {
       "id": "collaboration/communication-system",
       "version": "1.0.0",
       "path": "collaboration/communication-system.yaml",
