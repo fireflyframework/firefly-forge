@@ -4,11 +4,12 @@
 import hashlib
 
 import pytest
+from communication_model_fixture import reviewed_model
 from pydantic_ai.messages import ModelResponse, ToolCallPart
-from pydantic_ai.models.function import FunctionModel
 from test_communication_writer import configured_store
 from test_scm_delegated_feedback import RECEIPT, received
 from test_scm_delegated_feedback import delegated_feedback as delegated_feedback
+from test_scm_polling import poll_case as poll_case
 
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.model_profiles import ModelProfileInput, ModelProfiles
@@ -79,7 +80,7 @@ async def test_ai_body_and_native_fact_profile_evidence_are_retained_before_tran
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     original_write = service._remote_write
 
     async def checked_write(repo, payload, issue, *, before_write=None):
@@ -121,7 +122,7 @@ async def test_lost_ai_comment_response_keeps_exact_body_without_regeneration(de
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     state["fail_delivery"] = True
     received(row, "status")
     await service.process(RECEIPT)
@@ -153,7 +154,7 @@ async def test_authority_revoked_during_drafting_prevents_comment(delegated_feed
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
     assert sent == []
@@ -186,15 +187,18 @@ async def test_run_advancing_during_ai_draft_uses_fresh_native_card_without_seco
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
-    assert len(calls) == 1 and len(sent) == 1
-    assert "Execution has not started yet" not in sent[0]["body"]
-    assert "Implementing the requested change" in sent[0]["body"]
-    assert row.data["feedback_status"] == "sent"
+    assert len(calls) == 1 and not sent
+    assert row.data["feedback_status"] == "held"
     assert row.data["feedback_intent"]["stage"] == "developing"
     assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
+    assert row.data["feedback_status"] == "held" and row.data["feedback_intent"]["body"] == ""
+    assert row.data["reason"] == "ai_communication_state_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 1 and not sent
 
 
 async def test_changed_communication_profile_blocks_outbound_write_after_draft(delegated_feedback, tmp_path):
@@ -222,7 +226,7 @@ async def test_changed_communication_profile_blocks_outbound_write_after_draft(d
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
     assert not sent
@@ -270,13 +274,16 @@ async def test_question_answered_during_draft_drops_old_question_without_choosin
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
-    assert len(calls) == 1 and len(sent) == 1
-    assert "Which owner?" not in sent[0]["body"]
-    assert "The recorded run is paused for a decision." not in sent[0]["body"]
+    assert len(calls) == 1 and not sent
     assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
+    assert row.data["feedback_status"] == "held" and row.data["feedback_intent"]["body"] == ""
+    assert row.data["reason"] == "ai_communication_state_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 1 and not sent
 
 
 def test_real_pyfly_api_container_registers_existing_profile_and_routing_contracts_without_startup(tmp_path):
@@ -340,12 +347,16 @@ async def test_reported_blocker_changing_during_draft_discards_stale_explanation
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
-    assert len(calls) == 1 and len(sent) == 1
-    assert "A source-safety guard stopped this execution." not in sent[0]["body"]
+    assert len(calls) == 1 and not sent
     assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
+    assert row.data["feedback_status"] == "held" and row.data["feedback_intent"]["body"] == ""
+    assert row.data["reason"] == "ai_communication_state_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 1 and not sent
 
 
 async def test_invalid_model_output_does_not_publish_a_native_card_from_before_the_run_changed(
@@ -364,17 +375,127 @@ async def test_invalid_model_output_does_not_publish_a_native_card_from_before_t
                 ToolCallPart(
                     info.output_tools[0].name,
                     {
-                        "title": {"text": "Everything is merged", "fact_ids": ["state"]},
+                        "title": {"text": "See @everyone", "fact_ids": ["state"]},
                         "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],
                     },
                 )
             ]
         )
 
-    service.communication_writer.model = FunctionModel(model)
+    service.communication_writer.model = reviewed_model(model)
     received(row, "status")
     await service.process(RECEIPT)
-    assert len(calls) == 1 and len(sent) == 1
-    assert "Implementing the requested change" in sent[0]["body"]
-    assert "Queued for execution" not in sent[0]["body"]
+    assert len(calls) == 1 and not sent
     assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
+    assert row.data["feedback_status"] == "held" and row.data["feedback_intent"]["body"] == ""
+    assert row.data["reason"] == "ai_communication_state_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 1 and not sent
+
+
+async def test_configured_ai_failure_is_retained_without_write_token_or_automatic_retry(delegated_feedback, tmp_path):
+    from firefly_forge.communication import communication_facts
+    from firefly_forge.product_provenance import content_digest
+
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run.update(status="queued", worker_request={})
+    calls = []
+    tokens = []
+
+    async def held_writer(current, native, safe):
+        calls.append(1)
+        facts = communication_facts(current)
+        return {
+            "body": "",
+            "communication": {"mode": "held", "reason": "quota", "facts": facts, "facts_sha256": content_digest(facts)},
+        }
+
+    async def forbidden_token(*args, **kwargs):
+        tokens.append(1)
+        pytest.fail("Held AI feedback must not prepare a write token")
+
+    service.communication_writer.write = held_writer
+    service.scm.issue_authentication = forbidden_token
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert row.data["feedback_status"] == "held" and row.data["reason"] == "ai_communication_quota"
+    assert row.data["feedback_intent"]["body"] == "" and not sent and not tokens
+    retained = row.data["feedback_intent"]
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    await service.process(RECEIPT)
+    assert row.data["feedback_intent"] == retained and len(calls) == 1 and not tokens and not sent
+
+
+async def test_configured_ai_state_change_is_held_instead_of_posting_a_native_fallback(delegated_feedback, tmp_path):
+    from firefly_forge.communication import communication_facts
+    from firefly_forge.product_provenance import content_digest
+
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run.update(status="queued", worker_request={})
+    calls = []
+    tokens = []
+
+    async def changed_writer(current, native, safe):
+        calls.append(1)
+        facts = communication_facts(current)
+        run.update(status="developing", active_task="implement")
+        return {
+            "body": "Old AI wording",
+            "communication": {
+                "mode": "ai",
+                "reason": "generated",
+                "facts": facts,
+                "facts_sha256": content_digest(facts),
+            },
+        }
+
+    async def forbidden_token(*args, **kwargs):
+        tokens.append(1)
+        pytest.fail("Changed configured AI facts must not prepare a write token")
+
+    service.communication_writer.write = changed_writer
+    service.scm.issue_authentication = forbidden_token
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert row.data["feedback_status"] == "held" and row.data["reason"] == "ai_communication_state_changed"
+    assert row.data["feedback_intent"]["body"] == "" and row.data["feedback_intent"]["stage"] == "developing"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 1 and not sent and not tokens
+
+
+async def test_new_authenticated_status_receipt_can_request_ai_after_a_held_narrative(poll_case, tmp_path):
+    from pydantic_ai.models.function import FunctionModel
+
+    async with poll_case() as c:
+        await c.ready()
+        await c.consent()
+        c.db["runs"][c.run_id].data.update(status="developing", worker_request={})
+        c.store.task_router = (await configured_store(tmp_path)).task_router
+        failed_calls = []
+
+        def unavailable(messages, info):
+            failed_calls.append(1)
+            raise TimeoutError()
+
+        c.collaboration.communication_writer.model = FunctionModel(unavailable)
+        first = await c.collaboration.process((await c.new_command("status", 20))["id"])
+        assert first["feedback_status"] == "held" and not c.state["posts"]
+        await c.collaboration.sync_feedback()
+        assert len(failed_calls) == 1
+        calls = []
+        c.collaboration.communication_writer.model = reviewed_model(
+            {
+                "title": {"text": "Execution update", "fact_ids": ["state"]},
+                "paragraphs": [{"text": "The work remains in development.", "fact_ids": ["state"]}],
+            },
+            calls=calls,
+        )
+        second = await c.collaboration.process((await c.new_command("status", 21))["id"])
+        assert second["id"] != first["id"] and second["feedback_status"] == "sent"
+        assert len(c.state["posts"]) == 1 and [phase for phase, _, _ in calls] == ["draft", "review"]
+        assert (await c.collaboration.receipt(first["id"]))["feedback_status"] == "held"

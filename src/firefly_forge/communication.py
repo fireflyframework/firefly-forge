@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import html
 import json
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +42,24 @@ class CommunicationDecision(BaseModel):
 class CommunicationCard(CommunicationDraft):
     title: CommunicationParagraph
     decision: CommunicationDecision | None = None
+
+
+class CommunicationReview(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    verdict: Literal["supported", "unsupported", "uncertain"]
+    issues: list[
+        Literal[
+            "unsupported_claim",
+            "contradictory_state",
+            "misleading_checks",
+            "unrecorded_action",
+            "changed_decision",
+            "insufficient_context",
+            "uncertain",
+        ]
+    ] = Field(max_length=8)
+    fact_ids: list[str] = Field(min_length=1, max_length=12)
+    rationale: str = Field(min_length=1, max_length=600)
 
 
 def communication_facts(run: Data) -> Data:
@@ -140,90 +157,47 @@ def communication_facts(run: Data) -> Data:
 
 
 def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
-    texts = []
+    """Validate framing and references; the separate model review evaluates meaning."""
     paragraphs = [draft.title, *draft.paragraphs] if isinstance(draft, CommunicationCard) else draft.paragraphs
     for paragraph in paragraphs:
         if len(set(paragraph.fact_ids)) != len(paragraph.fact_ids) or set(paragraph.fact_ids) - facts.keys():
             raise ValueError("Communication contains an unknown fact reference")
-        text = paragraph.text
-        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", text):
+        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
-        referenced = {key: facts[key] for key in paragraph.fact_ids}
-        if facts.get("blocker", {}).get("credential_exposure") == "not_established":
-            diagnostic = re.sub(
-                r"\b(?:(?:does not|doesn['’]t) (?:establish|confirm|prove) (?:a |any )?credential (?:leak|exposure)|"
-                r"no evidence of (?:a |any )?credential (?:leak|exposure)|"
-                r"credential (?:leak|exposure) is not (?:established|confirmed|proven))\b",
-                "",
-                text,
-                flags=re.I,
-            )
-            if re.search(
-                r"\b(?:leaks?|leaked|leaking|leakage|exposed|exposure|breach(?:ed)?|compromis(?:e|ed)|stolen)\b",
-                diagnostic,
-                re.I,
-            ):
-                raise ValueError("A recorded source guard cannot establish a credential breach")
-        for word, statuses in {
-            "queued": {"queued"},
-            "paused": {"paused"},
-            "cancelled": {"cancelled"},
-            "interrupted": {"interrupted"},
-            "implementation": {"running", "developing"},
-            "development": {"running", "developing"},
-        }.items():
-            if re.search(r"\b" + word + r"\b", text, re.I) and (
-                "state" not in referenced or facts["state"]["status"] not in statuses
-            ):
-                raise ValueError("Communication contradicts the recorded run state")
-        allowed_numbers = set(re.findall(r"\b\d+\b", json.dumps(referenced)))
-        if set(re.findall(r"\b\d+\b", text)) - allowed_numbers:
-            raise ValueError("Communication introduces an unrecorded number")
-        if re.search(
-            r"\b(?:deploy(?:ed|ment)?|merged|released|published|production.ready|ready for review|"
-            r"fixed|implemented|built|"
-            r"resolved|added|created|deleted|removed)\b",
-            text,
-            re.I,
-        ):
-            raise ValueError("Communication cannot claim an external delivery")
-        if re.search(r"\b(?:will|shall|going to)\b|\bI['’]ll\b", text, re.I):
-            raise ValueError("Communication cannot promise an unrecorded future action")
-        if "decision" in facts:
-            normalized_text = " " + " ".join(re.findall(r"\w+", text.casefold())) + " "
-            for choice in facts["decision"].get("choices", []):
-                plain_choice = re.sub(r"\\([^\w\s])", r"\1", html.unescape(choice)).strip().casefold()
-                words = " ".join(re.findall(r"\w+", plain_choice))
-                if words and " " + words + " " in normalized_text or not words and plain_choice in text.casefold():
-                    raise ValueError("Human choice names belong only in the exact decision quotation")
-            if re.search(r"\b(?:recommend|choose|chosen|approved|answer is|I accept|we accept)\b", text, re.I):
-                raise ValueError("Communication must not choose or answer on the human's behalf")
-        completion_claim = text
-        if referenced.get("delivery", {}).get("factory_result") == "not_accepted":
-            completion_claim = re.sub(
-                r"(^|[.!?]\s+)(?:this|(?:this|the) (?:(?:native|recorded) )?(?:run|delivery)) (?:is|was) "
-                r"not (?:accepted as )?a completed delivery(?=[.,;]|$)",
-                r"\1",
-                completion_claim,
-                flags=re.I,
-            )
-        if re.search(r"\b(?:complete[ds]?|succeeded|finished|ready for review)\b", completion_claim, re.I) and facts[
-            "state"
-        ]["status"] not in {"succeeded"}:
-            raise ValueError("Communication cannot announce unrecorded completion")
-        if re.search(r"\b(?:pass(?:ed|ing)?|green)\b", text, re.I):
-            verification = referenced.get("verification", {})
-            if (
-                not verification
-                or verification.get("provenance") != "current"
-                or verification["passed"] != verification["recorded"]
-            ):
-                raise ValueError("Communication cannot turn retained or failed checks into current success")
-        texts.append(text)
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
     if ({"blocker", "check_batch"} & facts.keys()) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
-    return "\n\n".join(texts)
+    return "\n\n".join(paragraph.text for paragraph in paragraphs)
+
+
+def _render_card(
+    draft: CommunicationCard, facts: Data, safe: Callable[[str], str], reject: Callable[[Any], None]
+) -> str:
+    if len(draft.title.text) > 100:
+        raise ValueError("Communication title exceeds its display bound")
+    narrative = _validate_draft(draft, facts)
+    expected = facts.get("decision")
+    if expected:
+        quotation = {key: expected[key] for key in ("question", "context", "choices")}
+        if draft.decision is None or draft.decision.model_dump() != quotation:
+            raise ValueError("Communication must preserve the human question and every choice")
+    elif draft.decision is not None:
+        raise ValueError("Communication cannot invent a human decision")
+    reject(narrative)
+    title, narrative = safe(narrative).split("\n\n", 1)
+    decision_body = ""
+    if draft.decision:
+        decision_body = prompt_text(
+            "collaboration/communication-decision",
+            question=draft.decision.question,
+            context=draft.decision.context,
+            choices="\n".join("- " + value for value in draft.decision.choices),
+        )
+    body = prompt_text("collaboration/communication-card", title=title, narrative=narrative, decision=decision_body)
+    if len(body) > 6000:
+        raise ValueError("Communication exceeds its public text bound")
+    reject(body)
+    return body
 
 
 class CommunicationWriter:
@@ -253,21 +227,25 @@ class CommunicationWriter:
             "facts_sha256": content_digest(facts),
         }
         result = {"body": native_card, "communication": evidence}
-        decision = facts.get("decision")
-        if decision and (
-            len(decision["question"]) > 600
-            or len(decision["context"]) > 600
-            or any(len(value) > 160 for value in decision["choices"])
-            or len(set(decision["choices"])) != len(decision["choices"])
-        ):
-            evidence["reason"] = "decision_too_large"
-            return result
         router = getattr(self.store, "task_router", None)
         if router is None:
             return result
+        evidence.update(mode="held", reason="unavailable", repair_limit=1, repair_attempted=False)
+        result["body"] = ""
         try:
             selection = await router.resolve("communication")
             if selection is None:
+                evidence.update(mode="deterministic", reason="unconfigured")
+                result["body"] = native_card
+                return result
+            decision = facts.get("decision")
+            if decision and (
+                len(decision["question"]) > 600
+                or len(decision["context"]) > 600
+                or any(len(value) > 160 for value in decision["choices"])
+                or len(set(decision["choices"])) != len(decision["choices"])
+            ):
+                evidence["reason"] = "decision_too_large"
                 return result
             if selection["provider"] not in {"agentic", "bridge"}:
                 raise ValueError("Communication requires an explicit compatible profile")
@@ -282,7 +260,7 @@ class CommunicationWriter:
                 fact_ids=json.dumps(sorted(facts)),
             )
             instructions = inject_skills(
-                prompt_text("collaboration/communication-system", version="1.0.2"), ["humanizer"]
+                prompt_text("collaboration/communication-system", version="1.0.3"), ["humanizer"]
             )
             skill = next(item for item in community_catalog() if item["id"] == "humanizer")
             evidence["skills"] = [
@@ -320,46 +298,96 @@ class CommunicationWriter:
                 model_settings={"max_tokens": 1200},
                 config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             )
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout(timeout) as deadline:
                 generated = await agent.run(
                     prompt,
                     timeout=timeout,
                     usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=1400),
                 )
-            try:
-                draft = CommunicationCard.model_validate(generated.output)
-                if len(draft.title.text) > 100:
-                    raise ValueError("Communication title exceeds its display bound")
-                narrative = _validate_draft(draft, facts)
-                expected_decision = facts.get("decision")
-                if expected_decision:
-                    expected_quote = {key: expected_decision[key] for key in ("question", "context", "choices")}
-                    if draft.decision is None or draft.decision.model_dump() != expected_quote:
-                        raise ValueError("Communication must preserve the human question and every choice")
-                elif draft.decision is not None:
-                    raise ValueError("Communication cannot invent a human decision")
-                self.store.reject_credentials(narrative)
-                title, narrative = safe(narrative).split("\n\n", 1)
-            except (ValueError, TypeError):
-                evidence["reason"] = "invalid_output"
-                return result
-            decision_body = ""
-            if draft.decision:
-                decision_body = prompt_text(
-                    "collaboration/communication-decision",
-                    question=draft.decision.question,
-                    context=draft.decision.context,
-                    choices="\n".join("- " + value for value in draft.decision.choices),
+                try:
+                    draft = CommunicationCard.model_validate(generated.output)
+                    body = _render_card(draft, facts, safe, self.store.reject_credentials)
+                except (ValueError, TypeError):
+                    evidence["reason"] = "invalid_output"
+                    return result
+                evidence["candidate_sha256"] = content_digest(draft.model_dump())
+                review_instructions = prompt_text("collaboration/communication-review-system")
+                review_prompt = prompt_text(
+                    "collaboration/communication-review-request",
+                    facts=json.dumps(facts, sort_keys=True),
+                    candidate=draft.model_dump_json(),
+                    fact_ids=json.dumps(sorted(facts)),
                 )
-            body = prompt_text(
-                "collaboration/communication-card", title=title, narrative=narrative, decision=decision_body
-            )
-            if len(body) > 6000:
-                evidence["reason"] = "invalid_output"
-                return result
-            self.store.reject_credentials(body)
-            evidence.update(mode="ai", reason="generated")
-            return {"body": body, "communication": evidence}
+                self.store.reject_credentials([review_instructions, review_prompt])
+                evidence["review_prompt_sha256"] = hashlib.sha256(
+                    (review_instructions + "\n" + review_prompt).encode()
+                ).hexdigest()
+                review_output: Any = (
+                    PromptedOutput(CommunicationReview) if selection["provider"] == "bridge" else CommunicationReview
+                )
+                reviewer: FireflyAgent[None, CommunicationReview] = FireflyAgent(
+                    name="forge-project-communication-review",
+                    model=model,
+                    instructions=review_instructions,
+                    output_type=review_output,
+                    retries=0,
+                    tools=[],
+                    auto_register=False,
+                    model_settings={"max_tokens": 600},
+                    config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+                )
+                when = deadline.when()
+                assert when is not None
+                remaining = max(0.001, when - asyncio.get_running_loop().time())
+                reviewed = await reviewer.run(
+                    review_prompt,
+                    timeout=remaining,
+                    usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=700),
+                )
+                try:
+                    review = CommunicationReview.model_validate(reviewed.output)
+                    references = set(review.fact_ids)
+                    cited = {key for paragraph in [draft.title, *draft.paragraphs] for key in paragraph.fact_ids}
+                    if (
+                        len(references) != len(review.fact_ids)
+                        or references - facts.keys()
+                        or cited - references
+                        or (review.verdict == "supported" and review.issues)
+                        or (review.verdict != "supported" and not review.issues)
+                    ):
+                        raise ValueError("Communication review must bind the whole candidate to known facts")
+                    self.store.reject_credentials(review.model_dump())
+                except (ValueError, TypeError):
+                    evidence["reason"] = "invalid_review"
+                    return result
+                evidence["review"] = review.model_dump()
+                evidence["review_candidate_sha256"] = evidence["candidate_sha256"]
+                evidence["review_applies_to"] = "original_candidate"
+                if review.verdict != "supported":
+                    repair_prompt = prompt_text(
+                        "collaboration/communication-repair-request",
+                        facts=json.dumps(facts, sort_keys=True),
+                        candidate=draft.model_dump_json(),
+                        review=review.model_dump_json(),
+                        fact_ids=json.dumps(sorted(facts)),
+                    )
+                    self.store.reject_credentials(repair_prompt)
+                    evidence["repair_attempted"] = True
+                    evidence["repair_prompt_sha256"] = hashlib.sha256(repair_prompt.encode()).hexdigest()
+                    corrected = await agent.run(
+                        repair_prompt,
+                        timeout=max(0.001, when - asyncio.get_running_loop().time()),
+                        usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=1400),
+                    )
+                    try:
+                        draft = CommunicationCard.model_validate(corrected.output)
+                        body = _render_card(draft, facts, safe, self.store.reject_credentials)
+                    except (ValueError, TypeError):
+                        evidence["reason"] = "invalid_output"
+                        return result
+                    evidence["candidate_sha256"] = content_digest(draft.model_dump())
+                evidence.update(mode="ai", reason="generated")
+                return {"body": body, "communication": evidence}
         except TimeoutError:
             evidence["reason"] = "timeout"
         except Exception as exc:
