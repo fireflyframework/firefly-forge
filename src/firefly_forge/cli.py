@@ -1934,6 +1934,35 @@ def coding_check_grants() -> None:
     """Review explicit configured-check authority, separate from a recovery allowance."""
 
 
+@main.group("workspace-reconciliations")
+def workspace_reconciliations() -> None:
+    """Review an environment-only transition for the existing queued task and unchanged budgets."""
+
+
+@workspace_reconciliations.command("candidate")
+@click.argument("run_id")
+def workspace_reconciliation_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.workspace_reconciliation_candidate(run_id))
+
+
+@workspace_reconciliations.command("admit")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def reconcile_workspace(run_id: str, document: Path) -> None:
+    """Submit the reviewed original request once; uncertain delivery requires exact receipt readback."""
+    with client() as connection:
+        display(connection.reconcile_workspace(run_id, json_document(document)))
+
+
+@workspace_reconciliations.command("get")
+@click.argument("run_id")
+@click.argument("request_id")
+def workspace_reconciliation_receipt(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.workspace_reconciliation(run_id, request_id))
+
+
 @coding_check_grants.command("candidate")
 @click.argument("run_id")
 @click.argument("recovery_request_id")

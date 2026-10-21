@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         UserInviteInput,
         UserProvisionInput,
     )
+    from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
 
 
 class ForgeClient:
@@ -123,6 +124,25 @@ class ForgeClient:
     def provider_recovery_allowance(self, run_id: str, request_id: str) -> dict[str, Any]:
         run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
         return dict(self.request("GET", f"runs/{run_id}/provider-recoveries/allowances/{request_id}"))
+
+    def workspace_reconciliation_candidate(self, run_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("GET", f"runs/{self._recovery_identifier(run_id)}/workspace-reconciliations/candidate")
+        )
+
+    def reconcile_workspace(
+        self, run_id: str, request: WorkspaceReconciliationInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit the reviewed environment transition once; uncertain delivery requires exact readback."""
+        from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
+
+        run_id = self._recovery_identifier(run_id)
+        body = self._recovery_body(WorkspaceReconciliationInput, request)
+        return dict(self.request("POST", f"runs/{run_id}/workspace-reconciliations", json=body))
+
+    def workspace_reconciliation(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/workspace-reconciliations/{request_id}"))
 
     def coding_check_candidate(self, run_id: str, recovery_request_id: str, *, bind_port: int = 0) -> dict[str, Any]:
         run_id = self._recovery_identifier(run_id)

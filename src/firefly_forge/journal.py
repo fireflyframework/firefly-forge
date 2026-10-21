@@ -1893,6 +1893,114 @@ class Journal:
             )
             return await self.store.get_run(run_id)
 
+    async def queue_environment_reconciled(self, run_id: str, request_id: str) -> Data:
+        """Queue the existing task only after its explicit environment effect has a sealed receipt."""
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+        from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
+
+        identifier(request_id)
+        actor = CURRENT_PRINCIPAL.get()
+        access = ProjectAccess(self.store)
+        if (
+            actor is None
+            or not await access.current_administrator(actor)
+            or actor.authentication_method == "scm_mapping"
+        ):
+            raise AccessDenied("Environment reconciliation requires a current native administrator")
+        snapshot = {
+            **access.actor_snapshot(actor),
+            "identity_digest": digest({"issuer": actor.issuer, "subject": actor.subject}),
+        }
+        await self.store.assert_ownership()
+        async with self.store._unit():
+            run = await self._run(run_id)
+            await access.authorize_execution(run.data)
+            entries = [copy.deepcopy(row.data) for row in await self.records.find_for_run(run.id)]
+            if not self.verify_chain(entries):
+                raise ValueError("Environment reconciliation requires an intact native journal")
+            receipt = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_receipt" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if receipt is None:
+                raise ValueError("Environment reconciliation has no durable completion receipt")
+            value = receipt["payload"]
+            body = WorkspaceReconciliationInput.model_validate(value["request"])
+            candidate = value["candidate"]
+            intent = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_intent" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if (
+                body.request_id != request_id
+                or value["actor"] != snapshot
+                or candidate["digest"] != digest({k: v for k, v in candidate.items() if k != "digest"})
+                or body.candidate_digest != candidate["digest"]
+                or intent is None
+                or value.get("intent_digest") != intent["digest"]
+                or any(
+                    value[key] != intent["payload"][key] for key in ("request", "actor", "candidate", "previous_task")
+                )
+            ):
+                raise AccessDenied("The completed environment transition is not this operator's native intent")
+            queued = next(
+                (
+                    row
+                    for row in entries
+                    if row["kind"] == "workspace_reconciliation_queued" and row["idempotency_key"] == request_id
+                ),
+                None,
+            )
+            if queued is not None:
+                return await self.store.get_run(run_id)
+            task = await self._task(run_id, "implement")
+            task_view = {**copy.deepcopy(task.data), "id": task.task_id, "status": task.status, "attempt": task.attempt}
+            if (
+                run.status != "failed"
+                or digest(run.data) != candidate["previous_run_digest"]
+                or task_view != value["previous_task"]
+                or task.status != "queued"
+                or type(task.attempt) is not int
+                or not 2 <= task.attempt <= 4
+                or run.data.get("git_metadata_digest") != value["effect"]["metadata_before"]
+            ):
+                raise ValueError("The original failed run or already queued implementation task changed")
+            await self._append(
+                run_id,
+                "implement",
+                request_id,
+                "workspace_reconciliation_queued",
+                {
+                    "version": 1,
+                    "receipt_digest": receipt["digest"],
+                    "existing_attempt": task.attempt,
+                },
+            )
+            run.status = "queued"
+            run.data = {
+                **run.data,
+                "status": "queued",
+                "display_status": "queued",
+                "error": None,
+                "resume_existing": True,
+                "updated_at": now(),
+                "git_metadata_digest": value["effect"]["metadata_after"],
+                "workspace_reconciliation": {"request_id": request_id, "receipt_digest": receipt["digest"]},
+            }
+            await self.store.run_records.save(run)
+            await self.store.assert_ownership()
+            if CURRENT_PRINCIPAL.get() != actor or not await access.current_administrator(actor):
+                raise AccessDenied("The environment reconciliation operator changed before commit")
+            return await self.store.get_run(run_id)
+
     async def ready_retries(self) -> list[str]:
         async with self.store._unit():
             return [row.id.hex for row in await self.store.run_records.find_ready_retries(time.time())]
