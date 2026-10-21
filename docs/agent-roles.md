@@ -68,6 +68,10 @@ Response calls must run outside an active caller transaction. Credential admissi
 
 Answering leaves the run paused. Resume explicitly after resolving the question. A pending request must be answered before resuming. Responses remain in the journal alongside prior attempts and their evidence.
 
+An authenticated operator's explicit resume can admit one continuation for an answered implementation question, including when the repair budget is zero. The resume record binds the original question and authenticated answer by their immutable journal digests. Each answer can admit that continuation once, within the run's frozen request bound of at most three and the ordinary maximum of four implementation attempts. Current identity, execute permission and any required release permission are checked before admission. A missing or ambiguous answer, changed question, cancellation or active provider recovery keeps continuation held. Automatic verification retains its separate contract.
+
+The original implementation calls and their usage stay recorded; this does not refund a call or change the repair budget. A question at the fourth attempt cannot create a fifth dispatch. The administrator-reserved final provider allowance remains a separate one-use contract and cannot create a sixth attempt. Answered questions from other factory roles retain their existing resume behavior without adding implementation capacity.
+
 For issue-bound runs, the existing source-control feedback intent records the pending question before posting it. The signed channel parser recognizes an enabled `/forge respond` command in that repository:
 
 ```text
