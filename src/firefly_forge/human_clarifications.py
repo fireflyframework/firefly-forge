@@ -44,6 +44,8 @@ class _Link(BaseModel):
 
 def _limit(run: Data) -> int:
     snapshot = run.get("role_snapshot") or {}
+    if not snapshot:
+        return 0
     if snapshot and snapshot.get("digest") != role_digest({k: v for k, v in snapshot.items() if k != "digest"}):
         raise ValueError("Human clarification requires the frozen role snapshot")
     limit = snapshot.get("max_requests", 3)
@@ -117,7 +119,8 @@ def continuation_allowance(run: Data, entries: list[Data]) -> int:
 def awaiting_human_resume(run: Data) -> bool:
     request = run.get("worker_request", {})
     return bool(
-        run.get("pause", {}).get("kind") == "worker_request"
+        run.get("role_snapshot")
+        and run.get("pause", {}).get("kind") == "worker_request"
         and request.get("status") == "answered"
         and request.get("role_id") == "implementer"
         and request.get("task_id") == "implement"

@@ -44,6 +44,10 @@ async def test_v2_resume_with_real_journal_preserves_missing_native_counter(resu
     assert "retry_count" not in store.run.data
     assert {key: store.run.data.get(key) for key in FROZEN_FIELDS} == {key: original.get(key) for key in FROZEN_FIELDS}
     assert store.run.data["execution_actor"] == original["execution_actor"]
+    assert await journal.human_clarification_continuation_allowance(original["id"]) == 0
+    assert "human_clarification" not in next(
+        entry.data["payload"] for entry in journal.records.rows if entry.kind == "resume"
+    )
     assert len([entry for entry in journal.records.rows if entry.kind == "resume"]) == 1
     assert await service.process(row.data["id"]) == result
     assert len([entry for entry in journal.records.rows if entry.kind == "resume"]) == 1

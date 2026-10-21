@@ -38,11 +38,12 @@ from firefly_forge.store import Store
 
 
 @pytest.fixture
-def native_resume(tmp_path, postgres_schema):
+def native_resume(tmp_path, postgres_schema, request):
     """Actual API-role DI, persisted identities/settings, signed ingress and Journal."""
     token = "owned-native-resume-bootstrap-token"
     secret = "owned-native-resume-webhook-fixture"
     comments = []
+    implementation = getattr(request, "param", None) == "implementation"
 
     def provider(request):
         from pyfly.data.transaction import current_unit_of_work
@@ -142,19 +143,21 @@ def native_resume(tmp_path, postgres_schema):
                         repository_id=repo["id"],
                         project_id=project["id"],
                         component_id="api",
-                        operation="test",
+                        operation="build" if implementation else "test",
                         agent="bridge",
                         frontend="none",
                         brief="Verify the owner-selected empty result",
                     )
                 )
                 await journal.ensure_plan(run["id"])
+                if implementation:
+                    await journal.intent(run["id"], "implement", 1)
                 await journal.worker_feedback(
                     run["id"],
                     WorkerFeedback(
                         id="native-feedback",
-                        role_id="qa",
-                        task_id="verify",
+                        role_id="implementer" if implementation else "qa",
+                        task_id="implement" if implementation else "verify",
                         attempt=1,
                         disposition="clarification",
                         summary="Choose the expected result",
@@ -287,6 +290,7 @@ def native_resume(tmp_path, postgres_schema):
             collaboration=collaboration,
             run=run,
             owner=owner,
+            mapped=mapped,
             project=project,
             repo=repo,
             binding=binding,
