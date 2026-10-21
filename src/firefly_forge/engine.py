@@ -748,6 +748,17 @@ class Engine:
                     if run.get("policy_snapshot")
                     else inject_skills(run["brief"], run.get("skills", DEFAULT_SKILLS))
                 )
+                source_brief += "\n\n" + prompt_text(
+                    "implementation/verification-contract",
+                    commands=json.dumps([Command.model_validate(command).model_dump() for command in run["commands"]]),
+                    policy_checks=json.dumps(
+                        [
+                            command.model_dump()
+                            for command in policy_commands(run.get("policy_snapshot", {}), run["backend"])
+                        ]
+                    ),
+                    final_command_limit="20",
+                )
                 if run.get("role_snapshot"):
                     from firefly_forge.agent_roles import (
                         NativeAllowanceWorkerFeedback,

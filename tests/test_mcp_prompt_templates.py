@@ -57,7 +57,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 260
+    assert len(catalog.registry) == 261
     assert entries["coding-runtime/run-configured-check"]["variables"] == {}
     assert entries["implementation/configured-checks"]["variables"] == {
         "checks": "string",

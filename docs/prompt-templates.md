@@ -7,7 +7,7 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 260 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 261 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 
@@ -23,6 +23,8 @@ The resources cover implementation profiles, default roles and skills, product d
 | `mcp/` | Factory MCP descriptions exposed to external coding agents |
 
 `manifest.json` lists each ID, version, relative YAML path, source SHA256, native output field and string-variable contract. Forge checks that manifest before registering or rendering a resource. The catalog digest identifies those packaged bytes; it is not a receipt proving which prompt a historical model call received.
+
+`implementation/verification-contract` gives every initial and ordinary resumed implementer the frozen command argument arrays and timeouts, separate policy checks and existing final-verification ceiling. It describes requirements without granting execution, tools, credentials or network access. Empty command lists retain the existing project-detection behavior after implementation. Exact checkpoint restoration preserves its original bound instructions. The separately granted configured-check channel keeps its own authority and limits.
 
 `implementation/automatic-verification` describes the typed capability and its finite continuation allowance. `implementation/verification-result` projects known command receipts into bounded factory feedback and marks execution output as untrusted data. The sixteen `collaboration/` resources format recorded actions, questions, checks, recovery states and publication references without another model call. Provider recovery cards identify the native reserved attempt and distinguish current checks from retained results with older or incomplete attempt provenance. These verification and feedback instructions preserve existing factory MCP policy wire contracts; the automatic-verification policy setting is additive on HTTP. Polling continuation operator tools have their own explicit transport-bound consent contracts.
 
@@ -72,6 +74,6 @@ Run `uv run pytest tests/test_prompt_templates.py tests/test_mcp_prompt_template
 
 Templates are package data in both wheel and source distributions. Loading uses `importlib.resources`, including zip-imported wheels, and the native `PromptLoader`, `PromptTemplate` and a private `PromptRegistry`. Forge adds strict catalog validation because the pinned native registry allows replacement and its renderer accepts extra arguments by default.
 
-Each YAML resource is limited to 64 KiB. The manifest has its own 256 KiB read limit, and the complete catalog is limited to 256 entries and 1 MiB total. Duplicate identities or paths, traversal, resource symlinks, digest mismatches and unsupported YAML declarations fail before rendering. Rebuild a distribution after changing resources; there is no live template-editing endpoint or automatic registry reload.
+Each YAML resource is limited to 64 KiB. The manifest has its own 256 KiB read limit, and the complete catalog is limited to 512 entries and 1 MiB total. Duplicate identities or paths, traversal, resource symlinks, digest mismatches and unsupported YAML declarations fail before rendering. Rebuild a distribution after changing resources; there is no live template-editing endpoint or automatic registry reload.
 
 Instructions confer no authority. Existing project access, tool grants, credential admission, cancellation, verification and publication guards still decide what may happen. The catalog does not publish knowledge automatically or add a new invocation receipt. Bridge's runtime prompts and operator workflow DSL are a separate compatibility boundary.
