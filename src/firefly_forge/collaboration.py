@@ -1586,7 +1586,7 @@ class Collaboration:
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
             message = feedback_card(data, run, repo, host, public_text)
             drafted = await self.communication_writer.write(run, message, public_text)
-            if data.get("run_id") and drafted["communication"]["mode"] == "ai":
+            if data.get("run_id"):
                 from firefly_forge.communication import communication_facts
                 from firefly_forge.product_provenance import content_digest
 
@@ -1608,6 +1608,12 @@ class Collaboration:
                         },
                     }
             message = drafted["body"]
+            if drafted["communication"]["mode"] == "ai":
+                from firefly_forge.collaboration_feedback import communication_controls
+
+                controls = communication_controls(data, run, repo, host, public_text)
+                if controls:
+                    message = message.rstrip() + "\n\n" + controls
             if len(message) > 6000:
                 raise ValueError("Conversation feedback exceeds its public text bound")
             intent = {

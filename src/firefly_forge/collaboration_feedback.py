@@ -370,3 +370,33 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         ),
         receipt_id=_identifier(data["id"], safe),
     )
+
+
+def communication_controls(data: Data, run: Data, repository: Data, host: str, safe: Callable[[str], str]) -> str:
+    """Keep native references and conservative human controls outside model-authored prose."""
+    run_id = run.get("id", data.get("run_id", ""))
+    receipt_id = data.get("id", "")
+    run_id = run_id if isinstance(run_id, str) and re.fullmatch(r"[a-f0-9]{32}", run_id) else ""
+    receipt_id = receipt_id if isinstance(receipt_id, str) and re.fullmatch(r"[a-f0-9]{32}", receipt_id) else ""
+    review = _link(run.get("pr_url"), host, repository)
+    reference = (data.get("action_result") or {}).get("remote_reference") or {}
+    reference_url = _link(reference.get("url"), host, repository, reference=True) if reference.get("published") else ""
+    request = run.get("worker_request") or {}
+    waiting = run.get("status") == "paused" and request.get("status") == "pending" and not verification_handoff(run)
+    sections = []
+    if waiting:
+        sections.append(prompt_text("collaboration/communication-controls"))
+    for url, template in ((review, "collaboration/review"), (reference_url, "collaboration/reference")):
+        if url:
+            safe(url)
+            sections.append(prompt_text(template, url=url))
+    if receipt_id:
+        safe(receipt_id)
+        run_reference = ""
+        if run_id:
+            safe(run_id)
+            run_reference = prompt_text("collaboration/run", run_id=run_id)
+        sections.append(
+            prompt_text("collaboration/communication-references", run_reference=run_reference, receipt_id=receipt_id)
+        )
+    return "\n\n".join(sections)

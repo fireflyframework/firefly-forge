@@ -70,9 +70,10 @@ async def test_ai_body_and_native_fact_profile_evidence_are_retained_before_tran
                 ToolCallPart(
                     info.output_tools[0].name,
                     {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
                         "paragraphs": [
                             {"text": "Your request is queued. Execution has not started yet.", "fact_ids": ["state"]}
-                        ]
+                        ],
                     },
                 )
             ]
@@ -96,8 +97,8 @@ async def test_ai_body_and_native_fact_profile_evidence_are_retained_before_tran
     row.data["issue"]["kind"] = kind
     await service.process(RECEIPT)
     assert len(observed) == 1 and len(sent) == 1
-    assert sent[0]["body"].startswith("Your request is queued.")
-    assert "Queued for execution" in sent[0]["body"]
+    assert sent[0]["body"].startswith("### Execution update\n\nYour request is queued.")
+    assert "Queued for execution" not in sent[0]["body"]
 
 
 async def test_lost_ai_comment_response_keeps_exact_body_without_regeneration(delegated_feedback, tmp_path):
@@ -112,7 +113,10 @@ async def test_lost_ai_comment_response_keeps_exact_body_without_regeneration(de
             parts=[
                 ToolCallPart(
                     info.output_tools[0].name,
-                    {"paragraphs": [{"text": "Your request is queued.", "fact_ids": ["state"]}]},
+                    {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
+                        "paragraphs": [{"text": "Your request is queued.", "fact_ids": ["state"]}],
+                    },
                 )
             ]
         )
@@ -141,7 +145,10 @@ async def test_authority_revoked_during_drafting_prevents_comment(delegated_feed
             parts=[
                 ToolCallPart(
                     info.output_tools[0].name,
-                    {"paragraphs": [{"text": "Your request is queued.", "fact_ids": ["state"]}]},
+                    {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
+                        "paragraphs": [{"text": "Your request is queued.", "fact_ids": ["state"]}],
+                    },
                 )
             ]
         )
@@ -151,7 +158,7 @@ async def test_authority_revoked_during_drafting_prevents_comment(delegated_feed
     await service.process(RECEIPT)
     assert sent == []
     assert row.data["feedback_status"] == "needs_reconciliation"
-    assert row.data["feedback_intent"]["body"].startswith("Your request is queued.")
+    assert row.data["feedback_intent"]["body"].startswith("### Execution update\n\nYour request is queued.")
 
 
 async def test_run_advancing_during_ai_draft_uses_fresh_native_card_without_second_model_call(
@@ -170,9 +177,10 @@ async def test_run_advancing_during_ai_draft_uses_fresh_native_card_without_seco
                 ToolCallPart(
                     info.output_tools[0].name,
                     {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
                         "paragraphs": [
                             {"text": "The request is queued. Execution has not started yet.", "fact_ids": ["state"]}
-                        ]
+                        ],
                     },
                 )
             ]
@@ -206,7 +214,10 @@ async def test_changed_communication_profile_blocks_outbound_write_after_draft(d
             parts=[
                 ToolCallPart(
                     info.output_tools[0].name,
-                    {"paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}]},
+                    {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
+                        "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],
+                    },
                 )
             ]
         )
@@ -245,9 +256,15 @@ async def test_question_answered_during_draft_drops_old_question_without_choosin
                 ToolCallPart(
                     info.output_tools[0].name,
                     {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
                         "paragraphs": [
                             {"text": "The recorded run is paused for a decision.", "fact_ids": ["state", "decision"]}
-                        ]
+                        ],
+                        "decision": {
+                            "question": "Which owner?",
+                            "context": "A product decision is needed",
+                            "choices": ["One", "Shared"],
+                        },
                     },
                 )
             ]
@@ -308,6 +325,7 @@ async def test_reported_blocker_changing_during_draft_discards_stale_explanation
                 ToolCallPart(
                     info.output_tools[0].name,
                     {
+                        "title": {"text": "Execution update", "fact_ids": ["state"]},
                         "paragraphs": [
                             {
                                 "text": (
@@ -316,7 +334,7 @@ async def test_reported_blocker_changing_during_draft_discards_stale_explanation
                                 ),
                                 "fact_ids": ["state", "blocker", "check_batch"],
                             }
-                        ]
+                        ],
                     },
                 )
             ]
@@ -327,4 +345,36 @@ async def test_reported_blocker_changing_during_draft_discards_stale_explanation
     await service.process(RECEIPT)
     assert len(calls) == 1 and len(sent) == 1
     assert "A source-safety guard stopped this execution." not in sent[0]["body"]
+    assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
+
+
+async def test_invalid_model_output_does_not_publish_a_native_card_from_before_the_run_changed(
+    delegated_feedback, tmp_path
+):
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run.update(status="queued", worker_request={})
+    calls = []
+
+    def model(messages, info):
+        calls.append(1)
+        run.update(status="developing", active_task="implement")
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "title": {"text": "Everything is merged", "fact_ids": ["state"]},
+                        "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],
+                    },
+                )
+            ]
+        )
+
+    service.communication_writer.model = FunctionModel(model)
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert len(calls) == 1 and len(sent) == 1
+    assert "Implementing the requested change" in sent[0]["body"]
+    assert "Queued for execution" not in sent[0]["body"]
     assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"
