@@ -10,6 +10,23 @@ from pydantic import Field, field_validator, model_validator
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
 
 
+class SCMResumeActorContextV1(StrictContract):
+    """Internal, invocation-scoped authority; never an ordinary SCM binding."""
+
+    version: Literal[1]
+    transport: Literal["signed_resume_v2", "github_rest_poll_resume_v3"]
+    action: Literal["resume"]
+    verified_receipt_id: NativeID
+    verified_reference_digest: Digest
+    run_id: NativeID
+    project_id: NativeID
+    repository_id: NativeID
+    component_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    native_user_id: NativeID
+    binding_digest: Digest
+    grant_digest: Digest
+
+
 class SCMResumeGrantInputV2(StrictContract):
     version: Literal[2]
     request_id: NativeID

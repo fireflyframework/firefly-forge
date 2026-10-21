@@ -744,7 +744,9 @@ class FactoryConfiguration:
         inbox: ForgeWebhookInboxRepository,
         events: ForgeAccessEventRepository,
     ) -> SCMResumeAuthority:
-        return SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
+        service = SCMResumeAuthority(store, authority, journal, settings_records, inbox, events)
+        store.scm_resume_authorities[service.actor_transport] = service
+        return service
 
     @bean
     def scm_poll_resume_authority(
@@ -759,6 +761,7 @@ class FactoryConfiguration:
     ) -> SCMPollResumeAuthority:
         service = SCMPollResumeAuthority(store, authority, journal, settings_records, inbox, events)
         service.polling = polling
+        store.scm_resume_authorities[service.actor_transport] = service
         return service
 
     @bean
