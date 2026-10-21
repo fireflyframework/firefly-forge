@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.32 — 2026-10-20
+
+- Answer bounded English and Spanish status questions addressed to the native `@forge` alias or the configured App alias through signed comments and separately authorized polling.
+- Resolve context within the exact ticket using current native read authority and authenticated execution links. Missing or ambiguous links prompt clarification; unsupported requests grant no execution effects.
+- Use the selected AI communication profile for every conversation state, with controlled language instructions and a separate semantic classification. One correction can produce the final response within three requests and one shared deadline; configured material failures stay held without a substitute template or automatic repeated calls.
+- Refuse retained unmetered official-CLI environment continuations before admission or launch, including incomplete or conflicting command archives. Keep observed CLI calls distinct from native runner receipts; this guard does not provide preventive combined tool enforcement.
+- Preserve original comment verification, current authority, exact reply receipts and replay holds. Keep the original semantic review bound to its original candidate and retain separate provenance for corrected wording.
+
 ## 0.2.31 — 2026-10-20
 
 - Show frozen verification command arguments and timeouts to every initial and ordinarily resumed implementer through one read-only Agentic template, without granting tools or execution permission.

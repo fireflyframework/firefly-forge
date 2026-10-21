@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.32
+
+A mapped person with current project read access can ask a bounded status question directly in a GitHub issue or pull request: `@forge, how is this going?` or `@forge, ¿cómo va el CRM?`. Signed comments and separately configured polling use the same ticket-scoped context rules. `@forge` is a native address alias, not a GitHub account or App rename. The configured technical App slug remains compatible. See [ticket status conversations](scm.md#ask-about-the-current-ticket).
+
+The factory resolves an execution from that exact ticket's native links or earlier authenticated receipts. Several active executions require clarification; an absent link does not select the latest repository run. A terminal ticket uses its latest explicit context receipt. Original source verification stays intact, and current comment, account, project and read consent are checked again before the reply. Status wording grants no execution permission or new provider attempt.
+
+With an AI communication profile selected, the writer handles English and Spanish responses for selected, missing, ambiguous and clarification contexts. Typed selection facts contain no raw comment instructions or fabricated run. New central language and system instructions bring the catalog to 281 resources while retaining existing versions. A separate AI classification can trigger one correction, followed by the response through native framing and authority checks. The three-request ceiling and shared profile deadline remain unchanged. The original review applies only to the original candidate; a corrected response retains its own digest. Material failures hold configured AI delivery without a generic substitute or automatic repeated calls.
+
+Retained environment continuations with unmetered official-CLI activity are refused before admission, filesystem changes or provider launch. The refusal reports observed CLI calls, governed runner calls and required final checks; missing, conflicting or incomplete archives also hold. These observations are not native runner receipts, and the guard does not preventively enforce a combined command limit inside the CLI. See [legacy workspace reconciliation](recovery.md#reconcile-legacy-dependency-preparation).
+
+Controlled model outputs and native PostgreSQL/API cases qualify context, authority, exact receipts, one-correction publication and replay behavior. They do not establish external model inference, the quality of an actual App response or generated-product acceptance.
+
 ## 0.2.31
 
 Initial and ordinarily resumed Codex, Claude, Bridge and native Agentic implementers receive the run's frozen verification commands with their exact argument boundaries and timeouts. The read-only contract also identifies separate policy checks and the existing final-verification ceiling. It grants no tools, credentials, execution permission or network access; a separately authorized configured-check channel retains its own authority and limits. Exact checkpoint restoration preserves its original bound instructions. The versioned prompt catalog contains 276 resources.
