@@ -174,9 +174,18 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
             r"\b(?:recommend|choose|chosen|approved|answer is|I accept|we accept)\b", text, re.I
         ):
             raise ValueError("Communication must not choose or answer on the human's behalf")
-        if re.search(r"\b(?:complete[ds]?|succeeded|finished|ready for review)\b", text, re.I) and facts["state"][
-            "status"
-        ] not in {"succeeded"}:
+        completion_claim = text
+        if referenced.get("delivery", {}).get("factory_result") == "not_accepted":
+            completion_claim = re.sub(
+                r"(^|[.!?]\s+)(?:this(?: run| delivery)?|the run|the delivery) (?:is|was) "
+                r"not (?:accepted as )?a completed delivery(?=[.,;]|$)",
+                r"\1",
+                completion_claim,
+                flags=re.I,
+            )
+        if re.search(r"\b(?:complete[ds]?|succeeded|finished|ready for review)\b", completion_claim, re.I) and facts[
+            "state"
+        ]["status"] not in {"succeeded"}:
             raise ValueError("Communication cannot announce unrecorded completion")
         if re.search(r"\b(?:pass(?:ed|ing)?|green)\b", text, re.I):
             verification = referenced.get("verification", {})
