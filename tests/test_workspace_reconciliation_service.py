@@ -75,6 +75,7 @@ async def reconciliation_service(environment_journal, legacy_workspace, monkeypa
         return []
 
     journal.sandboxes = SimpleNamespace(for_run=sandbox_rows)
+    store.event_records = SimpleNamespace(provider_budget_events=sandbox_rows)
     identity = SimpleNamespace(enabled=True, issuer=actor.issuer, subject=actor.subject)
 
     async def find_identity(*args, **kwargs):

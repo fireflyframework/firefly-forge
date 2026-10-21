@@ -616,6 +616,10 @@ class ProviderRecoveries:
             ):
                 raise ValueError("The provider dispatch was consumed or its finite budget is exhausted")
             await self._settled(row.data, idle=False)
+            if row.data.get("workspace_reconciliation"):
+                from firefly_forge.cli_command_budget import assert_environment_command_budget
+
+                await assert_environment_command_budget(self.store, self.journal, row.data, entries, task_key=key)
             cut = self._cut(row.data)
             await self.journal._append(
                 run_id,
@@ -645,6 +649,12 @@ class ProviderRecoveries:
             ):
                 raise ValueError("The original provider dispatch is no longer active")
             await self._settled(row.data, idle=False)
+            if row.data.get("workspace_reconciliation"):
+                from firefly_forge.cli_command_budget import assert_environment_command_budget
+
+                await assert_environment_command_budget(
+                    self.store, self.journal, row.data, await self._entries(run_id), task_key=key
+                )
             if self._cut(row.data) != state["cut"]:
                 raise ValueError("The source/provider/policy cut changed before process launch")
         if self._cut(row.data) != state["cut"]:
