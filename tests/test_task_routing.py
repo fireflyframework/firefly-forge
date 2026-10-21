@@ -41,3 +41,17 @@ async def test_invalid_task_or_model_binding_does_not_replace_saved_routes(tmp_p
     assert routing.current()["bindings"] == {}
     with pytest.raises(ValueError):
         routing_mod.TaskRoutingInput(bindings={"imaginary": "cli"})
+
+async def test_communication_settings_refuse_stale_routing_without_overwriting_other_tasks(tmp_path):
+    from firefly_forge.model_profiles import ModelProfileInput, ModelProfiles
+    from firefly_forge.task_routing import TaskRouting, TaskRoutingInput
+    profiles = ModelProfiles(ConfigurationStore(tmp_path))
+    profiles.save("updates", ModelProfileInput(name="Updates", provider="bridge", values={"endpoint": "http://127.0.0.1:12345/v1", "token": "fixture-token"}))
+    routing = TaskRouting(profiles)
+    original = routing.current()
+    current = await routing.save(TaskRoutingInput(bindings={"product": "updates"}))
+    with pytest.raises(ValueError, match="changed"):
+        await routing.save(TaskRoutingInput(bindings={"communication": "updates"}, expected_digest=original["digest"]))
+    assert routing.current() == current
+    saved = await routing.save(TaskRoutingInput(bindings={**current["bindings"], "communication": "updates"}, expected_digest=current["digest"]))
+    assert saved["bindings"] == {"product": "updates", "communication": "updates"}

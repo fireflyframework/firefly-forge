@@ -84,6 +84,9 @@ user_template: |-
       "setting": "[setting omitted]"
     },
     "choices_heading": "Choices:",
+    "reply_answer_placeholder": "Replace with your decision",
+    "decision_destination_missing": "Open your configured forge workspace, select this run and choose Agent questions. Ask your administrator to configure the public forge address for a direct link.",
+    "decision_reply_disabled": "Open the run's Agent questions section in forge to record your answer. This repository does not currently enable answer commands.",
     "verification_refused": "The factory could not start the requested checks. An operator needs to review the original question.",
     "handoff_provenance": {
       "current": "**Current-attempt verification**",

@@ -82,12 +82,71 @@
       }
     },
     {
+      "id": "collaboration/communication-message",
+      "version": "1.0.0",
+      "path": "collaboration/communication-message.yaml",
+      "sha256": "a63c9f2f6219d7189574b2ab5f4b6cf8fd6e8f31e75029d91f72a382ea64241b",
+      "field": "user",
+      "variables": {
+        "narrative": "string",
+        "evidence": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-request",
+      "version": "1.0.0",
+      "path": "collaboration/communication-request.yaml",
+      "sha256": "cf7b0f89f818dc02bbe5e19f38cafcd336d26d87090bcb7e98861ba43a2c4dd5",
+      "field": "user",
+      "variables": {
+        "facts": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.0",
+      "path": "collaboration/communication-system.yaml",
+      "sha256": "b75db48e0a86014a9ac20ec0b1828d230b2d3331ce2fde9fa5495587e706f620",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",
-      "sha256": "966af19471584093287828800a3a231ae997aecfd4f6981f955f3241146afb55",
+      "sha256": "3404f6c0d43563025cb8cd9e7a92fcafc0d00b9e95b009de974d2d07a6174605",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/decision-destination",
+      "version": "1.0.0",
+      "path": "collaboration/decision-destination.yaml",
+      "sha256": "3392ac3c83abb99a8efc987c8a611dce44018284d49ccb88f6d9917f134b34a6",
+      "field": "user",
+      "variables": {
+        "reference": "string"
+      }
+    },
+    {
+      "id": "collaboration/decision-reply",
+      "version": "1.0.0",
+      "path": "collaboration/decision-reply.yaml",
+      "sha256": "fd8dc3cd1cc3c63dd0ecf6fd2d8a279feb7420d0266a87e8391b97428e3e207b",
+      "field": "user",
+      "variables": {
+        "command": "string"
+      }
+    },
+    {
+      "id": "collaboration/decision-resume",
+      "version": "1.0.0",
+      "path": "collaboration/decision-resume.yaml",
+      "sha256": "a95c7ad66f9e47d7f2b79411a21593464c4fb20dcf8ca636bc51b41c88695000",
+      "field": "user",
+      "variables": {
+        "command": "string"
+      }
     },
     {
       "id": "collaboration/facts",
@@ -143,11 +202,15 @@
       "id": "collaboration/question",
       "version": "1.0.0",
       "path": "collaboration/question.yaml",
-      "sha256": "a9c59b934dd4495c7dc3c06e7a6f19691eb87b90fa05789b55d9224082c49bd7",
+      "sha256": "b5fa67027c1642a5a9c1ea31998c33b85c8c3841e923f0833988778bfc240e59",
       "field": "user",
       "variables": {
         "question": "string",
-        "choices": "string"
+        "choices": "string",
+        "context": "string",
+        "reply_instructions": "string",
+        "resume_instructions": "string",
+        "destination": "string"
       }
     },
     {

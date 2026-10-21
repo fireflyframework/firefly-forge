@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import ipaddress
 import json
 import re
 from collections.abc import Callable
@@ -213,6 +214,24 @@ def feedback_due(data: Data, run: Data) -> bool:
     )
 
 
+def _decision_destination(data: Data, run: Data, safe: Callable[[str], str]) -> str:
+    run_id = run.get("id")
+    origin = data.get("_feedback_origin")
+    if not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        return _copy()["decision_destination_missing"]
+    if isinstance(origin, str):
+        parsed = urlsplit(origin)
+        host = parsed.hostname or ""
+        try:
+            public_host = ipaddress.ip_address(host).is_global
+        except ValueError:
+            public_host = bool(re.fullmatch(r"[a-zA-Z0-9.-]+", host) and "." in host and not host.endswith((".local", ".localhost")))
+        if parsed.scheme == "https" and public_host and not any((parsed.username, parsed.password, parsed.path, parsed.query, parsed.fragment)):
+            reference = safe(origin + "/?run=" + run_id + "&view=questions")
+            return prompt_text("collaboration/decision-destination", reference="[Open agent questions](" + reference + ")")
+    return prompt_text("collaboration/decision-destination", reference=_copy()["decision_destination_missing"] + " Run: `" + run_id + "`.")
+
+
 def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Callable[[str], str]) -> str:
     copy = _copy()
     result = data.get("action_result") or {}
@@ -308,6 +327,33 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
             prompt_text(
                 "collaboration/question",
                 question=_text(request.get("question", ""), safe),
+                destination=_decision_destination(data, run, safe),
+                context=_text(request.get("context", ""), safe, 800),
+                reply_instructions=prompt_text(
+                    "collaboration/decision-reply",
+                    command=(
+                        "/forge respond "
+                        + json.dumps(
+                            {
+                                "run_id": _identifier(run.get("id", ""), safe),
+                                "request_id": _identifier(request.get("id", ""), safe),
+                                "answer": copy["reply_answer_placeholder"],
+                            },
+                            separators=(",", ":"),
+                        )
+                    ),
+                )
+                if "respond" in data.get("_feedback_actions", [])
+                else copy["decision_reply_disabled"],
+                resume_instructions=prompt_text(
+                    "collaboration/decision-resume",
+                    command=(
+                        "/forge resume "
+                        + json.dumps({"run_id": _identifier(run.get("id", ""), safe)}, separators=(",", ":"))
+                    ),
+                )
+                if "resume" in data.get("_feedback_actions", [])
+                else "",
                 choices=(
                     copy["choices_heading"]
                     + "\n"

@@ -1,0 +1,15 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/decision-reply
+version: 1.0.0
+description: Complete enabled repository answer command.
+system_template: ''
+user_template: |-
+  Reply in this issue or pull request with the command below, replacing only the answer text:
+
+  ```text
+  {{ command }}
+  ```
+required_variables:
+  - command
+metadata:
+  defaults: {}

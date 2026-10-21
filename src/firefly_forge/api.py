@@ -232,6 +232,8 @@ from firefly_forge.user_administration_persistence import (
 from firefly_forge.verification_controllers import VerificationHandoffController
 from firefly_forge.verification_handoffs import VerificationHandoffs
 from firefly_forge.verification_models import VerificationAdoption
+from firefly_forge.worker_evidence import WorkerEvidence
+from firefly_forge.worker_evidence_controllers import WorkerEvidenceController
 from firefly_forge.worker_runtime import WorkerSupervision
 
 
@@ -606,6 +608,7 @@ class FactoryConfiguration:
         runners: RunnerConfiguration,
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
+        worker_evidence: WorkerEvidence,
     ) -> Engine:
         engine = Engine(
             store,
@@ -615,6 +618,7 @@ class FactoryConfiguration:
             journal=journal,
         )
         engine.assurance = assurance
+        engine.worker_evidence = worker_evidence
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
@@ -1208,6 +1212,8 @@ def create_runtime(
         ForgeLearningEventRepository,
         ForgeLearningProjectionRepository,
         RunnerController,
+        WorkerEvidence,
+        WorkerEvidenceController,
         ToolController,
         ExternalMCPController,
         ForgeCampaignRepository,

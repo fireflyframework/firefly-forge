@@ -8,6 +8,7 @@ import copy
 import hashlib
 import hmac
 import json
+import os
 import re
 import time
 import uuid
@@ -327,6 +328,9 @@ class Collaboration:
         self._active_writes: set[str] = set()
         self.analysis_manager: Any = None
         self.product_assistant: Any = None
+        from firefly_forge.communication import CommunicationWriter
+
+        self.communication_writer = CommunicationWriter(store)
 
     def _secret(self, repository_id: str) -> str:
         value = self.store.configuration._read(self.secrets_path).get(repository_id, "")
@@ -1569,6 +1573,20 @@ class Collaboration:
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
+            data["_feedback_origin"] = os.getenv("FORGE_BROWSER_ORIGIN", "")
+            collaboration_settings = await self.settings(data["repository_id"])
+            data["_feedback_actions"] = collaboration_settings.get("channel_commands", [])
+            if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                # A status-only polling consent must not advertise commands it cannot admit.
+                data["_feedback_actions"] = []
+                if self.polling is not None and run.get("project_id"):
+                    mapped = await SCMActorAuthority(self.store, self.scm).resolve(data)
+                    delegation = mapped.scm_delegation or {}
+                    binding_key = delegation.get("binding_key")
+                    if binding_key:
+                        binding = await self.polling._head(run["project_id"], data["repository_id"], binding_key)
+                        if "respond" in binding["request"]["allowed_actions"] and "respond" in collaboration_settings.get("channel_commands", []):
+                            data["_feedback_actions"] = ["respond"]
             from firefly_forge.collaboration_feedback import feedback_card, milestone_key, provider_recovery, review_key
             from firefly_forge.configuration import redact_secrets
             from firefly_forge.secrets import redact_environment
@@ -1582,10 +1600,32 @@ class Collaboration:
 
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
             message = feedback_card(data, run, repo, host, public_text)
+            drafted = await self.communication_writer.write(run, message, public_text)
+            if data.get("run_id") and drafted["communication"]["mode"] == "ai":
+                current_run = await self.store.get_run(data["run_id"])
+                if milestone_key(current_run) != milestone_key(run):
+                    from firefly_forge.communication import communication_facts
+                    from firefly_forge.product_provenance import content_digest
+
+                    run = current_run
+                    facts = communication_facts(run)
+                    drafted = {
+                        "body": feedback_card(data, run, repo, host, public_text),
+                        "communication": {
+                            "mode": "deterministic",
+                            "reason": "state_changed",
+                            "facts": facts,
+                            "facts_sha256": content_digest(facts),
+                            "discarded_generation": drafted["communication"],
+                        },
+                    }
+            message = drafted["body"]
             if len(message) > 6000:
                 raise ValueError("Conversation feedback exceeds its public text bound")
             intent = {
                 "key": milestone_key(run),
+                "body": message,
+                "communication": drafted["communication"],
                 "body_sha256": hashlib.sha256(message.encode()).hexdigest(),
                 "stage": run.get("status", data.get("feedback_stage")),
                 "request_id": (run.get("worker_request") or {}).get("id"),
@@ -1608,6 +1648,7 @@ class Collaboration:
                     data, local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
                 )
                 self.store.reject_credentials(public_values)
+                self.communication_writer.assert_current(intent["communication"])
 
             remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)
         except Exception:

@@ -64,6 +64,8 @@ import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { activeVerificationRequest } from "./VerificationHandoff";
+import { CommunicationSettings } from "./CommunicationSettings";
+import { linkedRun } from "./RunQuestionLink";
 import { WorkerDialogue } from "./WorkerDialogue";
 import {
   EvidenceView,
@@ -306,6 +308,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
   const [selected, setSelected] = useState<ForgeRun | null>(null);
+  const linkedSelection = useRef<string | null>(null);
   const [detailError, setDetailError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -431,6 +434,17 @@ export default function App() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [connected, runs, refresh]);
+  useEffect(() => {
+    if (identity.loading || !identity.session || !connection.authenticated) { linkedSelection.current = null; return; }
+    const link = linkedRun(window.location.search);
+    if (!link || linkedSelection.current === identity.session.user.id + link.id) return;
+    linkedSelection.current = identity.session.user.id + link.id;
+    const controller = new AbortController();
+    request<ForgeRun>(connection, `/runs/${link.id}`, { signal: controller.signal }).then((run) => {
+      if (!controller.signal.aborted && run.id === link.id) { setSelected(run); setPage("run"); setDetailError(""); }
+    }).catch((cause) => { if (!controller.signal.aborted) setError(errorText(cause)); });
+    return () => controller.abort();
+  }, [identity.loading, identity.session?.user.id, connection]);
   const selectedDeliveryPending = selected ? deliveryPending(selected) : false;
   useEffect(() => {
     if (
@@ -1029,6 +1043,7 @@ export default function App() {
           {page === "settings" && (
             <Connections
               current={connection}
+              canConfigure={!!identity.session?.global_admin}
               connected={connected}
               providers={providers}
               loading={loading}
@@ -1265,6 +1280,7 @@ export default function App() {
                 }}
               />
               <RunDetail
+                key={selected.id}
                 run={selected}
                 busy={busy}
                 connection={connection}
@@ -2343,6 +2359,7 @@ function ProfileInfo({
 
 function Connections({
   current,
+  canConfigure,
   connected,
   providers,
   loading,
@@ -2354,6 +2371,7 @@ function Connections({
   doneLabel = "Open production floor",
 }: {
   doneLabel?: string;
+  canConfigure: boolean;
   current: Connection;
   connected: boolean;
   providers: unknown;
@@ -2488,6 +2506,7 @@ function Connections({
                   body="Check your factory connection and server configuration."
                 />
               )}
+              <CommunicationSettings connection={current} canConfigure={canConfigure} />
             </div>
           )}
           {step === 2 && (
@@ -2674,7 +2693,7 @@ function RunDetail({
     | "deployment"
     | "review"
     | "questions"
-  >("timeline");
+  >(() => { const link = linkedRun(window.location.search); return link?.id === run.id && link.questions ? "questions" : "timeline"; });
   const tabs = [
     { id: "timeline" as const, icon: Activity, label: "Timeline" },
     { id: "plan" as const, icon: BookOpen, label: "Plan" },
