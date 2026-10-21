@@ -93,6 +93,18 @@
       }
     },
     {
+      "id": "collaboration/communication-message",
+      "version": "1.0.1",
+      "path": "collaboration/communication-message-1.0.1.yaml",
+      "sha256": "239adeec214cf0493f76e730bcda736071a6cf7bdd0978d7950549c507fac5ff",
+      "field": "user",
+      "variables": {
+        "narrative": "string",
+        "evidence": "string",
+        "status": "string"
+      }
+    },
+    {
       "id": "collaboration/communication-request",
       "version": "1.0.0",
       "path": "collaboration/communication-request.yaml",
@@ -118,6 +130,14 @@
       "version": "1.0.0",
       "path": "collaboration/communication-system.yaml",
       "sha256": "b75db48e0a86014a9ac20ec0b1828d230b2d3331ce2fde9fa5495587e706f620",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.1",
+      "path": "collaboration/communication-system-1.0.1.yaml",
+      "sha256": "cb1f8564b8161423ec3b8143c456e69e9d352e408973ff2bdbd9d36bf1465984",
       "field": "user",
       "variables": {}
     },

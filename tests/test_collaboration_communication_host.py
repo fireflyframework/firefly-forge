@@ -289,3 +289,42 @@ async def test_existing_native_profile_controller_exposes_and_saves_communicatio
     )
     assert current["bindings"] == {"communication": "updates", "product": "updates"}
     assert controller.task_routing() == current
+
+
+async def test_reported_blocker_changing_during_draft_discards_stale_explanation(delegated_feedback, tmp_path):
+    from test_human_project_updates_host import stopped_run
+
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    preserved_id = run["id"]
+    run.update(stopped_run(), id=preserved_id)
+    calls = []
+
+    def model(messages, info):
+        calls.append(1)
+        run["error"] = "A different recorded failure"
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "paragraphs": [
+                            {
+                                "text": (
+                                    "A source-safety guard stopped this execution. "
+                                    "Its recorded check batch contains 1 failure."
+                                ),
+                                "fact_ids": ["state", "blocker", "check_batch"],
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+    service.communication_writer.model = FunctionModel(model)
+    received(row, "status")
+    await service.process(RECEIPT)
+    assert len(calls) == 1 and len(sent) == 1
+    assert "A source-safety guard stopped this execution." not in sent[0]["body"]
+    assert row.data["feedback_intent"]["communication"]["reason"] == "state_changed"

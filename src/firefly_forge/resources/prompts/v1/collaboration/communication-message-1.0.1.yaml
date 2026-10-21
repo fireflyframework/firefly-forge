@@ -1,0 +1,19 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/communication-message
+version: 1.0.1
+description: Project explanation with the unchanged native record available on demand.
+system_template: ''
+user_template: |-
+  {{ narrative }}
+
+  <details>
+  <summary>Execution record · {{ status }}</summary>
+
+  {{ evidence }}
+  </details>
+required_variables:
+  - narrative
+  - evidence
+  - status
+metadata:
+  defaults: {}
