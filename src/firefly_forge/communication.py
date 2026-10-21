@@ -176,7 +176,12 @@ class CommunicationWriter:
                 raise ValueError("Communication requires an explicit compatible profile")
             settings = router.profiles.validate_snapshot(selection)
             evidence["profile"] = selection
-            prompt = prompt_text("collaboration/communication-request", facts=json.dumps(facts, sort_keys=True))
+            prompt = prompt_text(
+                "collaboration/communication-request",
+                version="1.0.1",
+                facts=json.dumps(facts, sort_keys=True),
+                fact_ids=json.dumps(sorted(facts)),
+            )
             instructions = prompt_text("collaboration/communication-system")
             self.store.reject_credentials([prompt, instructions])
             evidence["prompt_sha256"] = hashlib.sha256((instructions + "\n" + prompt).encode()).hexdigest()
