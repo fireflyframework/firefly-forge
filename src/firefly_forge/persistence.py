@@ -168,6 +168,23 @@ class ForgeRunRepository(Repository[ForgeRunEntity, UUID]):
 
 @repository
 class ForgeEventRepository(Repository[ForgeEventEntity, UUID]):
+    async def provider_budget_events(self, identifier: UUID) -> list[ForgeEventEntity]:
+        from firefly_forge.activity_models import MAX_EVENTS, MAX_RUN_BYTES
+
+        entity = ForgeEventEntity
+        predicates = (entity.run_id == identifier, entity.data["stage"].as_string().in_(("stdout", "stderr")))
+        session = self._require_session()
+        count, size = (
+            await session.execute(
+                select(func.count(), func.coalesce(func.sum(func.octet_length(cast(entity.data, Text))), 0)).where(
+                    *predicates
+                )
+            )
+        ).one()
+        if type(count) is not int or type(size) is not int or count > MAX_EVENTS or size > MAX_RUN_BYTES:
+            raise ValueError("CLI command history exceeds the archive limit")
+        return list(await session.scalars(select(entity).where(*predicates).order_by(entity.sequence)))
+
     async def find_for_run(self, identifier: UUID) -> list[ForgeEventEntity]:
         result = await self._require_session().scalars(
             select(ForgeEventEntity).where(ForgeEventEntity.run_id == identifier).order_by(ForgeEventEntity.sequence)
