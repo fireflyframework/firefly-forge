@@ -163,3 +163,52 @@ async def test_unavailable_model_is_not_retried_and_does_not_block_native_update
     assert result["body"] == "Exact fallback"
     assert result["communication"]["reason"] == reason
     assert "private body" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "checks,expected", [([{"exit_code": 0, "attempt": 1}], "retained"), ([{"exit_code": 0}], "unknown")]
+)
+async def test_ordinary_attempt_cannot_announce_retained_or_unattributed_checks_as_current(tmp_path, checks, expected):
+    from firefly_forge.communication import CommunicationWriter
+
+    store = await configured_store(tmp_path)
+    model = TestModel(custom_output_args={"paragraphs": [{"text": "All checks passed.", "fact_ids": ["verification"]}]})
+    result = await CommunicationWriter(store, model=model).write(
+        {"status": "developing", "attempt": 2, "final_verification": checks}, "Native evidence", lambda value: value
+    )
+    assert result["body"] == "Native evidence"
+    assert result["communication"]["facts"]["verification"]["provenance"] == expected
+    assert result["communication"]["reason"] == "invalid_output"
+
+
+@pytest.mark.parametrize("family", ["openai-responses", "openai-chat", "anthropic", "google-gla"])
+async def test_communication_request_disables_native_sdk_retries_without_changing_other_callers(family):
+    from firefly_forge.providers import APIProvider
+
+    provider = APIProvider(
+        {"FORGE_AGENTIC_MODEL": family + ":public-fixture-model", "FORGE_AGENTIC_API_KEY": "public-fixture-key"}
+    )
+    default_model = provider.model()
+    default_client = default_model._provider.client
+    try:
+        if family == "google-gla":
+            assert default_client._api_client._http_options.retry_options is None
+        else:
+            assert default_client.max_retries == 2
+    finally:
+        if family == "google-gla":
+            await default_client.aio.aclose()
+        else:
+            await default_client.close()
+    model = provider.model(single_request=True)
+    client = model._provider.client
+    try:
+        if family == "google-gla":
+            assert client._api_client._http_options.retry_options.attempts == 1
+        else:
+            assert client.max_retries == 0
+    finally:
+        if family == "google-gla":
+            await client.aio.aclose()
+        else:
+            await client.close()

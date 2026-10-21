@@ -69,16 +69,17 @@ def communication_facts(run: Data) -> Data:
         and 1 <= len(checks) <= 20
         and all(isinstance(check, dict) and type(check.get("exit_code")) is int for check in checks)
     ):
-        provenance = "current"
-        if recovery:
-            attempts = [check.get("attempt") for check in checks]
-            provenance = (
-                "unknown"
-                if not all(type(attempt) is int and 1 <= attempt <= 100 for attempt in attempts)
-                else "current"
-                if set(attempts) == {recovery["attempt"]}
-                else "retained"
-            )
+        attempt = recovery["attempt"] if recovery else run.get("attempt")
+        attempts = [check.get("attempt") for check in checks]
+        provenance = (
+            "unknown"
+            if type(attempt) is not int
+            or not 1 <= attempt <= 100
+            or not all(type(value) is int and 1 <= value <= 100 for value in attempts)
+            else "current"
+            if set(attempts) == {attempt}
+            else "retained"
+        )
         facts["verification"] = {
             "recorded": len(checks),
             "passed": sum(check["exit_code"] == 0 for check in checks),
@@ -112,7 +113,9 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if set(re.findall(r"\b\d+\b", text)) - allowed_numbers:
             raise ValueError("Communication introduces an unrecorded number")
         if re.search(
-            r"\b(?:deploy(?:ed|ment)?|merged|released|published|production.ready|ready for review|fixed|implemented|built|resolved|added|created|deleted|removed)\b",
+            r"\b(?:deploy(?:ed|ment)?|merged|released|published|production.ready|ready for review|"
+            r"fixed|implemented|built|"
+            r"resolved|added|created|deleted|removed)\b",
             text,
             re.I,
         ):
@@ -184,13 +187,19 @@ class CommunicationWriter:
 
             from firefly_forge.providers import APIProvider, BridgeProvider
 
-            provider = BridgeProvider(settings) if selection["provider"] == "bridge" else APIProvider(settings)
+            model = self.model
+            if model is None:
+                model = (
+                    BridgeProvider(settings).model()
+                    if selection["provider"] == "bridge"
+                    else APIProvider(settings).model(single_request=True)
+                )
             output: Any = (
                 PromptedOutput(CommunicationDraft) if selection["provider"] == "bridge" else CommunicationDraft
             )
             agent: FireflyAgent[None, CommunicationDraft] = FireflyAgent(
                 name="forge-project-communication",
-                model=self.model if self.model is not None else provider.model(),
+                model=model,
                 instructions=instructions,
                 output_type=output,
                 retries=0,

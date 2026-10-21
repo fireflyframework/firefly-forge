@@ -68,10 +68,34 @@ Profiles named in this example must already exist. Unsupported task/provider com
 | `implementation` | Source-editing worker | All four providers |
 | `review` | Independent review of an isolated verified tree | All four providers |
 | `multimodal_qa` | Actual screenshot reasoning | `agentic`, `bridge`, with a matching verified image-input capability |
+| `communication` | Issue and pull-request wording over recorded facts | `agentic`, `bridge` |
 
 Dialogue tasks are model proposals for owner review. They do not change the existing architecture recommendation or SVG reference renderer into model calls. Deterministic role gates remain deterministic. CLI implementations do not currently provide the native structured dialogue contract merely because they can edit source.
 
 Task routing produces a frozen provider selection for each implemented invocation. An unbound task returns no override and preserves the existing explicit provider selection. A configured binding that is missing, unsupported or unverified fails; it cannot quietly switch to another provider or model.
+
+## Write project updates with AI
+
+Select an existing `agentic` or `bridge` profile for `communication`. This enables AI wording for subsequent issue and pull-request updates. The implementation profile is independent: a run using the Codex CLI can use an explicitly selected Bridge subscription for its updates. No paid API profile or coding subscription is chosen automatically.
+
+First configure the profile through the write-only model-profile endpoint described above. A Bridge profile needs its normal endpoint, model and scoped token; borrowing the factory's configured credentials requires explicit `inherit_credentials: true`. A direct API profile needs its own model and credentials. Then read `GET /api/v1/task-routing`, preserve the existing bindings and add the communication selection:
+
+```json
+{
+  "bindings": {
+    "implementation": "source-builder",
+    "communication": "project-updates"
+  }
+}
+```
+
+Send that complete binding map to `PUT /api/v1/task-routing`. Profiles in this example must already exist. Configuration uses the existing authenticated administrator endpoints; the Studio communication selector is a separate UI follow-up.
+
+Each eligible update gets at most one tool-free structured draft, bounded to 20 seconds and 800 output tokens. The model receives a small fact packet: recorded run state, active stage, recovery attempt, check totals with attempt provenance, and whether a human decision is pending. Customer briefs, raw questions and choices, source, logs and credentials are excluded. The native message still supplies the actual question and evidence. The model cannot answer for a person, execute a command or approve a delivery.
+
+forge checks referenced fact IDs, unsupported numbers and common contradictory claims before appending its native card. These guards reduce misleading wording; they do not establish product QA or prove every sentence semantically true. If no compatible profile is selected, or generation fails, times out or reaches a usage limit, the native update remains available. There is no automatic provider substitution or generation retry.
+
+The receipt retains `feedback_intent.communication`: its mode and fallback reason, fact packet and digest, selected profile revision, and prompt digest. The exact final body and its SHA-256 are saved before the remote comment is attempted. If the run advances while drafting, forge discards the draft and uses a fresh native card without another model call. Unknown remote delivery remains held for reconciliation; a second comment is not sent automatically.
 
 ## Frozen execution and handoff
 
