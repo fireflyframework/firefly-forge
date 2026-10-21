@@ -43,7 +43,7 @@ async def test_real_structured_agent_drafts_native_implementation_facts(tmp_path
     result = await writer.write({"status": "developing"}, "Native evidence", lambda value: value)
     assert result["communication"]["mode"] == "ai"
     assert "Implementation is underway" in result["body"]
-    assert result["body"].endswith("Native evidence")
+    assert result["body"].endswith("Native evidence\n</details>")
     assert result["communication"]["profile"]["profile_id"] == "updates"
     assert result["communication"]["facts"] == {"state": {"status": "developing"}}
     assert model.last_model_request_parameters.function_tools == []
@@ -250,7 +250,7 @@ async def test_bridge_request_explains_exact_current_fact_ids(tmp_path, run, all
     assert len(prompts) == 1
     assert "Allowed fact_ids: " + json.dumps(allowed) in prompts[0]
     assert "top-level" in prompts[0] and "state.status" in prompts[0]
-    assert result["body"].endswith("Exact native evidence")
+    assert result["body"].endswith("Exact native evidence\n</details>")
 
 
 def test_actual_dotted_fact_reply_remains_rejected_without_weakening_validation():

@@ -1587,11 +1587,14 @@ class Collaboration:
             message = feedback_card(data, run, repo, host, public_text)
             drafted = await self.communication_writer.write(run, message, public_text)
             if data.get("run_id") and drafted["communication"]["mode"] == "ai":
-                current_run = await self.store.get_run(data["run_id"])
-                if milestone_key(current_run) != milestone_key(run):
-                    from firefly_forge.communication import communication_facts
-                    from firefly_forge.product_provenance import content_digest
+                from firefly_forge.communication import communication_facts
+                from firefly_forge.product_provenance import content_digest
 
+                current_run = await self.store.get_run(data["run_id"])
+                if (
+                    milestone_key(current_run) != milestone_key(run)
+                    or content_digest(communication_facts(current_run)) != drafted["communication"]["facts_sha256"]
+                ):
                     run = current_run
                     facts = communication_facts(run)
                     drafted = {

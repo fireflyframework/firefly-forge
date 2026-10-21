@@ -35,6 +35,39 @@ def communication_facts(run: Data) -> Data:
     known = TERMINAL | {"queued", "running", "paused", "needs_reconciliation", "developing", "validating"}
     facts: Data = {"state": {"status": status if isinstance(status, str) and status in known else "unknown"}}
     status = facts["state"]["status"]
+    if status in {"failed", "needs_reconciliation"} and run.get("error") == (
+        "Generated changes contain private credentials or worker metadata; inspect the workspace"
+    ):
+        facts["blocker"] = {
+            "kind": "source_admission_guard",
+            "basis": "recorded_error",
+            "credential_exposure": "not_established",
+            "next_step": "inspect_workspace_and_recorded_checks",
+        }
+    handoff = (
+        verification_handoff(run)
+        if isinstance(run.get("verification_handoff"), dict) and isinstance(run.get("worker_request"), dict)
+        else {}
+    )
+    if (
+        handoff.get("status") == "completed"
+        and 1 <= handoff["commands_count"] <= 20
+        and 0 <= handoff["failed_commands"] <= handoff["completed_commands"] <= handoff["commands_count"]
+    ):
+        facts["check_batch"] = {
+            "source": "governed_handoff",
+            "provenance": "retained",
+            "total": handoff["commands_count"],
+            "recorded": handoff["completed_commands"],
+            "failed": handoff["failed_commands"],
+        }
+    if isinstance(run.get("id"), str) and re.fullmatch(r"[a-f0-9]{32}", run["id"]) and status in TERMINAL:
+        facts["delivery"] = {
+            "factory_result": "accepted" if status == "succeeded" else "not_accepted",
+            "review_link": "recorded"
+            if isinstance(run.get("pr_url"), str) and run["pr_url"].strip()
+            else "not_recorded",
+        }
     stage = run.get("active_task")
     if isinstance(stage, str) and stage in STAGES and status in {"running", "developing", "validating"}:
         facts["stage"] = {"name": stage}
@@ -97,6 +130,21 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
         referenced = {key: facts[key] for key in paragraph.fact_ids}
+        if facts.get("blocker", {}).get("credential_exposure") == "not_established":
+            diagnostic = re.sub(
+                r"\b(?:(?:does not|doesn['’]t) (?:establish|confirm|prove) (?:a |any )?credential (?:leak|exposure)|"
+                r"no evidence of (?:a |any )?credential (?:leak|exposure)|"
+                r"credential (?:leak|exposure) is not (?:established|confirmed|proven))\b",
+                "",
+                text,
+                flags=re.I,
+            )
+            if re.search(
+                r"\b(?:leaks?|leaked|leaking|leakage|exposed|exposure|breach(?:ed)?|compromis(?:e|ed)|stolen)\b",
+                diagnostic,
+                re.I,
+            ):
+                raise ValueError("A recorded source guard cannot establish a credential breach")
         for word, statuses in {
             "queued": {"queued"},
             "paused": {"paused"},
@@ -139,6 +187,9 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
             ):
                 raise ValueError("Communication cannot turn retained or failed checks into current success")
         texts.append(text)
+    cited = {key for paragraph in draft.paragraphs for key in paragraph.fact_ids}
+    if ({"blocker", "check_batch"} & facts.keys()) - cited:
+        raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(texts)
 
 
@@ -182,7 +233,7 @@ class CommunicationWriter:
                 facts=json.dumps(facts, sort_keys=True),
                 fact_ids=json.dumps(sorted(facts)),
             )
-            instructions = prompt_text("collaboration/communication-system")
+            instructions = prompt_text("collaboration/communication-system", version="1.0.1")
             self.store.reject_credentials([prompt, instructions])
             evidence["prompt_sha256"] = hashlib.sha256((instructions + "\n" + prompt).encode()).hexdigest()
             from fireflyframework_agentic.agents import FireflyAgent
@@ -227,7 +278,16 @@ class CommunicationWriter:
             except (ValueError, TypeError):
                 evidence["reason"] = "invalid_output"
                 return result
-            body = prompt_text("collaboration/communication-message", narrative=narrative, evidence=native_card)
+            if "decision" in facts or facts["state"]["status"] == "needs_reconciliation":
+                body = prompt_text("collaboration/communication-message", narrative=narrative, evidence=native_card)
+            else:
+                body = prompt_text(
+                    "collaboration/communication-message",
+                    version="1.0.1",
+                    narrative=narrative,
+                    evidence=native_card,
+                    status=facts["state"]["status"],
+                )
             if len(body) > 6000:
                 evidence["reason"] = "invalid_output"
                 return result
