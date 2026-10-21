@@ -2,6 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.31 — 2026-10-20
+
+- Show frozen verification command arguments and timeouts to every initial and ordinarily resumed implementer through one read-only Agentic template, without granting tools or execution permission.
+- Continue an answered implementation question after an explicitly authorized resume, including with a zero repair budget. Seal the original question and authenticated answer in the resume journal; keep spent calls, repair history and the ordinary four-attempt ceiling.
+- Refuse duplicate, ambiguous or changed question/answer bindings, revoked resumers and active provider recoveries. Preserve other factory roles' existing resume behavior and the separate one-use fifth provider allowance.
+- Refresh the controlled desktop/mobile documentation captures for 0.2.31. These fixtures and protocol checks do not establish generated-product acceptance.
+
 ## 0.2.30 — 2026-10-20
 
 - Present bounded Codex MCP server, tool, reported status and text output in Studio without treating provider reports as native runner receipts or product QA.

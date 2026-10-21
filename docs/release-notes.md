@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.31
+
+Initial and ordinarily resumed Codex, Claude, Bridge and native Agentic implementers receive the run's frozen verification commands with their exact argument boundaries and timeouts. The read-only contract also identifies separate policy checks and the existing final-verification ceiling. It grants no tools, credentials, execution permission or network access; a separately authorized configured-check channel retains its own authority and limits. Exact checkpoint restoration preserves its original bound instructions. The versioned prompt catalog contains 261 resources.
+
+An answered implementation question can continue a zero-repair run after an authenticated operator explicitly resumes it. The immutable resume record binds the original question and authenticated answer, and each answer admits its next ordinary implementation attempt once. The run's frozen request bound remains at most three; ordinary implementation remains capped at four attempts. Already-spent calls, usage and the repair budget stay recorded. Missing or ambiguous answers, changed bindings, cancellation, revoked authority and active provider recovery keep continuation held. Other roles keep their existing resume behavior without added implementation capacity. See [worker feedback](agent-roles.md#worker-feedback-and-manager-requests).
+
+This continuation does not authorize a fifth ordinary dispatch or a sixth attempt after the separate native final allowance. Controlled screenshots show the current Studio version; protocol tests and those fixtures do not establish completed CRM, live provider or generated-product acceptance.
+
 ## 0.2.30
 
 Studio now shows observed Codex MCP activity as a readable tool card: server, tool, reported status and a bounded text preview. The known configured-check call is labeled **Run configured project check**, with its exact identity under **Tool identity**. Unknown tools keep their bounded server and tool names. A provider-reported completion or exit code remains separate from native runner receipts and independent final verification.
