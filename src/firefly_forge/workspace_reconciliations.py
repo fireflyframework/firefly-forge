@@ -70,6 +70,9 @@ class WorkspaceReconciliations:
         task = r._task_view(await r.journal._task(run["id"], "implement"))
         executions = await r.journal.sandbox_executions(run["id"])
         runner = validate_sandbox_snapshot(run["sandbox_snapshot"])
+        from firefly_forge.cli_command_budget import assert_environment_command_budget
+
+        await assert_environment_command_budget(r.store, r.journal, run, entries)
         commands = run.get("commands", [])
         final = len(commands) + len(policy_commands(run.get("policy_snapshot", {}), run["backend"]))
         budget = queued_environment_scope(
@@ -215,6 +218,9 @@ class WorkspaceReconciliations:
             if CURRENT_PRINCIPAL.get() != actor:
                 raise AccessDenied("The environment operator changed before completion")
             await r.store.assert_ownership()
+            from firefly_forge.cli_command_budget import assert_environment_command_budget
+
+            await assert_environment_command_budget(r.store, r.journal, row.data, await r._entries(run_id))
             receipt = {**payload, "intent_digest": intent["digest"], "effect": effect, "completed_cut": after}
             r.store.reject_credentials(receipt)
             await r.journal._append(run_id, "implement", body.request_id, "workspace_reconciliation_receipt", receipt)
