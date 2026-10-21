@@ -56,8 +56,10 @@ async def test_roles_are_frozen_in_the_run_plan_and_in_actual_worker_instruction
     assert "Frozen role and skill instructions" in observed[0] and "[docs; coding_provider]" in observed[0]
 
 
-async def test_real_worker_blocker_pauses_and_requires_answer_before_explicit_resume(store, tmp_path):
+@pytest.mark.parametrize("repair_budget", [0, 2])
+async def test_real_worker_blocker_pauses_and_requires_answer_before_explicit_resume(store, tmp_path, repair_budget):
     run = await fixture_run(store, tmp_path)
+    await store.update(run["id"], repair_budget=repair_budget)
     journal = Journal(store)
     observed = []
 
@@ -95,10 +97,15 @@ async def test_real_worker_blocker_pauses_and_requires_answer_before_explicit_re
         await journal.worker_response(
             run["id"], "stock-amount", WorkerResponse(id="answer-stock", actor="operator", answer="Use 5")
         )
-    await journal.resume(run["id"])
+        assert (await store.get_run(run["id"]))["status"] == "paused" and len(observed) == 1
+        await journal.resume(run["id"])
+    journal = Journal(store)
+    engine = Engine(store, tmp_path / "workspaces", lambda _: Worker(), journal=journal)
+    assert await journal.human_clarification_continuation_allowance(run["id"]) == 1
     await engine.execute_run(run["id"])
     completed = await store.get_run(run["id"])
     assert completed["status"] == "succeeded" and "Use 5" in observed[1]
+    assert completed["repair_budget"] == repair_budget and completed["implementation_rounds"] == 2
     assert journal.verify_chain(await journal.entries(run["id"])) is True
 
 
@@ -115,3 +122,51 @@ async def test_repository_role_defaults_persist_and_runs_freeze_their_selected_r
     assert (await store.repository_roles(repo["id"]))["roles"]["disabled"] == ["docs"]
     with pytest.raises(ValueError, match="mandatory"):
         await store.set_repository_roles(repo["id"], ProjectRoles(disabled=["security"]))
+
+
+async def test_clarification_resume_rechecks_the_persisted_operator_before_queueing(store, tmp_path):
+    from firefly_forge.agent_roles import WorkerFeedback
+    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+    from firefly_forge.project_access import AccessDenied
+
+    run = await fixture_run(store, tmp_path)
+    await store.update(run["id"], repair_budget=0)
+    journal = Journal(store)
+    await journal.intent(run["id"], "implement")
+    await journal.worker_feedback(
+        run["id"],
+        WorkerFeedback.model_validate(
+            {
+                "id": "feedback-revoked",
+                "role_id": "implementer",
+                "task_id": "implement",
+                "attempt": 1,
+                "disposition": "clarification",
+                "summary": "Owner decision required",
+                "request": {
+                    "id": "owner-revoked",
+                    "kind": "product_definition",
+                    "question": "Which owner?",
+                    "context": "The owner is unspecified",
+                },
+            }
+        ),
+    )
+    async with authenticated_operator(store) as actor:
+        await journal.worker_response(
+            run["id"],
+            "owner-revoked",
+            WorkerResponse(id="answer-revoked", actor="Fictional operator", answer="Support"),
+        )
+        async with store._unit():
+            identities = ForgeIdentityUserRepository()
+            row = await identities.find_by_id(actor.id)
+            assert row is not None
+            row.enabled = False
+            await identities.save(row)
+        with pytest.raises(AccessDenied, match="identity"):
+            await journal.resume(run["id"])
+    retained = await store.get_run(run["id"])
+    assert retained["status"] == "paused" and retained["repair_budget"] == 0
+    assert (await journal.plan(run["id"]))["tasks"][1]["attempt"] == 1
+    assert await journal.human_clarification_continuation_allowance(run["id"]) == 0

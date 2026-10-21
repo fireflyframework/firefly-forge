@@ -333,6 +333,8 @@ After a lost response, GET `/api/v1/runs/{run_id}/verification-handoffs/adoption
 
 ## Resume the same run
 
+For a human implementation question, first record the answer under its original request identity, then resume explicitly with current execution authority. The journal seals a bounded continuation from that exact question and authenticated answer. This can continue a zero-repair run while preserving its spent calls and the ordinary four-attempt ceiling. It grants no retry for an unknown provider outcome, no fifth dispatch or sixth final-allowance attempt, and no additional tools. See [worker feedback and manager requests](agent-roles.md#worker-feedback-and-manager-requests) for the separate request and repair limits.
+
 Send `POST /api/v1/runs/{id}/resume` with `{}`. Resume preserves the workspace, original brief, policy content and provider revision. Local reconciliation inspects the Git root, authorized origin, HEAD and source tree before continuing an unfinished task.
 
 ```json

@@ -1594,6 +1594,18 @@ class Journal:
                 )
             )
 
+    async def human_clarification_continuation_allowance(self, run_id: str) -> int:
+        from firefly_forge.human_clarifications import continuation_allowance
+
+        async with self.store._unit():
+            run = await self._run(run_id)
+            entries = [
+                {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+            ]
+            if not self.verify_chain(entries):
+                raise ValueError("Human clarification requires an intact journal")
+            return continuation_allowance(run.data, entries)
+
     async def recover(self) -> int:
         async with self.store._unit():
             pending = await self.tasks.find_pending_recovery()
@@ -1689,7 +1701,36 @@ class Journal:
             raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
         if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
             raise ValueError("Bridge outcome requires reconciliation before resuming")
-        async with self.store._unit():
+        from firefly_forge.human_clarifications import awaiting_human_resume, continuation_link
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
+
+        human_candidate = not auto and verification_handoff_id is None and awaiting_human_resume(current)
+        actor = CURRENT_PRINCIPAL.get() if human_candidate else None
+        if human_candidate and actor is None:
+            raise AccessDenied("An authenticated operator must explicitly resume a human clarification")
+        async with self.store._unit() as resume_session:
+            if human_candidate:
+                assert actor is not None
+                if actor.authentication_method == "scm_mapping" and (actor.scm_delegation or {}).get("action") not in {
+                    "resume",
+                    "handoff",
+                }:
+                    raise AccessDenied("This SCM delegation does not authorize explicit clarification resume")
+                if current.get("project_id"):
+                    from sqlalchemy import text
+
+                    await resume_session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                        {"key": self.store.schema + ":members:" + current["project_id"]},
+                    )
+                identity = await ForgeIdentityUserRepository().find_by_id(actor.id, lock=LockMode.PESSIMISTIC_WRITE)
+                if (
+                    identity is None
+                    or not identity.enabled
+                    or (identity.issuer, identity.subject) != (actor.issuer, actor.subject)
+                ):
+                    raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
             if run.status not in {"paused", "needs_reconciliation", "interrupted"}:
@@ -1732,6 +1773,29 @@ class Journal:
                 ):
                     raise ValueError("Automatic continuation requires its completed immutable verification handoff")
                 check_verification_cut(self.store, run.data, admitted)
+            human_clarification = None
+            if not auto and verification_handoff_id is None and awaiting_human_resume(run.data):
+                if not human_candidate or actor is None or self._worker_scope(current) != self._worker_scope(run.data):
+                    raise AccessDenied("The human clarification scope changed during resume")
+                access = ProjectAccess(self.store)
+                snapshot = access.actor_snapshot(actor)
+                await access.authorize_actor(snapshot, run.data.get("project_id"), "execute")
+                if run.data.get("publish"):
+                    await access.authorize_actor(snapshot, run.data.get("project_id"), "release")
+                human_entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                if not self.verify_chain(human_entries):
+                    raise ValueError("Human clarification requires an intact journal")
+                task = await self._task(run_id, "implement")
+                human_clarification = continuation_link(
+                    run.data,
+                    {"status": task.status, "attempt": task.attempt},
+                    human_entries,
+                    {"user_id": actor.id.hex, "authentication_method": actor.authentication_method},
+                )
+                if CURRENT_PRINCIPAL.get() != actor:
+                    raise AccessDenied("The clarification resume operator changed")
             old_revision = run.data.get("config_revision")
             old_selection = copy.deepcopy(run.data.get("model_selection"))
             old_agent = run.data.get("agent")
@@ -1824,6 +1888,7 @@ class Journal:
                     "selection_mode": selection_mode,
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
+                    **({"human_clarification": human_clarification} if human_clarification else {}),
                 },
             )
             return await self.store.get_run(run_id)

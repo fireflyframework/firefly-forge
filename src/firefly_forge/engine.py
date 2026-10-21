@@ -871,7 +871,12 @@ class Engine:
                 if self.journal and hasattr(self.journal, "verification_continuation_allowance")
                 else 0
             )
-            implementation_limit = min(4, repairs + 1 + continuation_allowance)
+            human_allowance = (
+                await self.journal.human_clarification_continuation_allowance(identifier)
+                if self.journal and hasattr(self.journal, "human_clarification_continuation_allowance")
+                else 0
+            )
+            implementation_limit = min(4, repairs + 1 + continuation_allowance + human_allowance)
             completed_rounds = int(run.get("implementation_rounds", 0))
             repair_failures: list[dict[str, Any]] = []
             start_round = max(1, completed_rounds)
@@ -1282,7 +1287,7 @@ class Engine:
                         )
                     )
                     break
-                if attempt > repairs:
+                if attempt > repairs + human_allowance:
                     raise ValueError(f"Verification failed after {attempt} implementation attempts")
                 feedback = "\n\n".join(
                     f"{' '.join(check['argv'])}: exit {check['exit_code']}\n{check['output']}" for check in failures
