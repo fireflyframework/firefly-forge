@@ -558,3 +558,11 @@ Source: [`runtime_roles.py`](https://github.com/fireflyframework/firefly-forge/b
 ## Read the Studio floor as a projection
 
 Stage labels and the floor scene follow returned plans and jobs. Failed or paused work stays at its recorded stage; hidden, stale, offscreen or reduced-motion scenes suspend motion. Motion and timestamps do not establish completed tasks or percentage progress. Inspect the actual [run evidence](console-tour.md#4-inspect-the-run-before-continuing) and [recovery controls](recovery.md) before accepting or continuing work.
+
+## Outbound communication wording
+
+`Collaboration.feedback` captures the current native run and prepares its deterministic card. `CommunicationWriter` resolves only the explicit `communication` task, validates the frozen model profile, and invokes a tool-free Firefly Agentic structured agent once. Bridge uses prompted structured JSON through the existing OpenAI-compatible adapter; API profiles use the existing native model adapter. Central YAML/Jinja templates own the instructions and composition.
+
+The draft references a bounded fact packet rather than repository prose or command output. After validation, the service reads the run again. A changed milestone discards the generated introduction and selects a fresh native card. The retained intent contains the exact body, body hash, fact hash, prompt hash and profile revision before the existing remote-write boundary. Current actor, credentials and selected model routing are checked again there. Existing fingerprints and remote-outcome reconciliation continue to prevent automatic duplicate comments.
+
+Generation is optional presentation work with its own single-request timeout and token bound. It cannot resume execution, increase a repair budget, approve a review or answer for a person. Fallback reasons remain in the native receipt; actual delivery and product acceptance require their own evidence.
