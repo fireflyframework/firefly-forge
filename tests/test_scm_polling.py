@@ -265,7 +265,7 @@ def poll_case(tmp_path, monkeypatch):
         ]:
             db["users"][key] = SimpleNamespace(id=UUID(key), issuer=issuer, subject=subject, enabled=True)
         db["memberships"]["member"] = SimpleNamespace(
-            user_id=UUID(user_id), project_id=UUID(project), role="developer", active=True
+            user_id=UUID(user_id), project_id=UUID(project), role="developer", active=True, revision=1
         )
         db["settings"][repository] = SimpleNamespace(
             id=UUID(repository),

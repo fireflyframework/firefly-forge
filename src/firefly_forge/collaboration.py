@@ -1582,6 +1582,7 @@ class Collaboration:
             raise AccessDenied("Current repository collaboration permission is required for feedback")
 
     async def _feedback_context(self, data: Data, run: Data) -> Data:
+        from firefly_forge.project_access import ProjectAccess
         from firefly_forge.scm_actor_authority import SCMActorAuthority
 
         settings = await self.settings(data["repository_id"])
@@ -1612,7 +1613,12 @@ class Collaboration:
                         and "respond" in binding["request"]["allowed_actions"]
                         and "respond" in settings.get("channel_commands", [])
                     ):
-                        actions = ["respond"]
+                        memberships = await ProjectAccess(self.store).memberships(mapped)
+                        if any(
+                            member["project_id"] == run["project_id"] and "execute" in member["permissions"]
+                            for member in memberships
+                        ):
+                            actions = ["respond"]
         return {"_feedback_origin": self.browser_origin, "_feedback_actions": actions}
 
     async def feedback(self, receipt_id: str) -> None:

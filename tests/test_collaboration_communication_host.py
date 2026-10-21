@@ -633,9 +633,81 @@ async def test_reply_permission_removed_during_draft_never_advertises_an_unusabl
 
 
 @pytest.mark.parametrize("transport", ["github_rest_poll_v1", "signed_webhook_v1"])
+async def test_native_membership_downgrade_during_draft_holds_reply_without_post_or_repeat(
+    delegated_feedback, tmp_path, monkeypatch, signed_reply_binding, transport
+):
+    import json
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from pydantic_ai.messages import TextPart
+
+    from firefly_forge.access_persistence import ForgeMembershipRepository
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, sent, _ = delegated_feedback
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    role = {"value": "developer"}
+    run["worker_request"].update(kind="design", context="A human decision is needed", choices=[])
+    calls = []
+
+    async def memberships(_repository, user_id):
+        assert user_id.hex == "6" * 32
+        return [SimpleNamespace(project_id=UUID(run["project_id"]), role=role["value"], revision=1)]
+
+    async def head(*args):
+        return await SCMActorAuthority(service.store, service.scm)._head(*args)
+
+    monkeypatch.setattr(ForgeMembershipRepository, "for_user", memberships)
+
+    async def authorize(delivery):
+        assert delivery["id"] == RECEIPT and delivery["command"]["action"] == "status"
+
+    if transport == "github_rest_poll_v1":
+        service.polling = SimpleNamespace(_head=head, authorize_feedback=authorize, authorize_feedback_local=authorize)
+
+    def draft(messages, info):
+        role["value"] = "viewer"
+        payload = {
+            "title": {"text": "Execution update", "fact_ids": ["state"]},
+            "paragraphs": [{"text": "The run is paused for your decision.", "fact_ids": ["state", "decision"]}],
+            "decision": {
+                "question": run["worker_request"]["question"],
+                "context": run["worker_request"]["context"],
+                "choices": [],
+            },
+        }
+        part = ToolCallPart(info.output_tools[0].name, payload) if info.output_tools else TextPart(json.dumps(payload))
+        return ModelResponse(parts=[part])
+
+    service.communication_writer.model = reviewed_model(draft, calls=calls)
+    received(row, "status")
+    row.data["verification"] = {"transport": transport}
+    await service.process(RECEIPT)
+    assert [phase for phase, *_ in calls] == ["draft", "review"]
+    assert not sent
+    assert row.data["feedback_status"] == "held"
+    assert row.data["feedback_intent"]["body"] == ""
+    assert row.data["feedback_intent"]["communication"]["reason"] == "channel_changed"
+    await service.feedback(RECEIPT)
+    await service.sync_feedback()
+    assert len(calls) == 2 and not sent
+
+
+@pytest.mark.parametrize("transport", ["github_rest_poll_v1", "signed_webhook_v1"])
 @pytest.mark.parametrize(
     "case,expected",
-    [("status_only", []), ("respond", ["respond"]), ("revoked", []), ("changed_binding", []), ("channel_disabled", [])],
+    [
+        ("status_only", []),
+        ("respond", ["respond"]),
+        ("revoked", []),
+        ("changed_binding", []),
+        ("channel_disabled", []),
+        ("native_viewer", []),
+        ("native_reviewer", []),
+        ("native_other_project", []),
+        ("native_suspended", []),
+    ],
 )
 async def test_question_reply_affordance_requires_exact_current_binding_and_channel(
     delegated_feedback, monkeypatch, case, expected, transport
@@ -643,11 +715,27 @@ async def test_question_reply_affordance_requires_exact_current_binding_and_chan
     from types import SimpleNamespace
     from uuid import UUID
 
+    from firefly_forge.access_persistence import ForgeMembershipRepository
     from firefly_forge.identity import Principal
+    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
     from firefly_forge.scm_actor_authority import SCMActorAuthority
 
     service, row, run, _, _ = delegated_feedback
     original = service.settings
+
+    async def memberships(_repository, user_id):
+        assert user_id.hex == "6" * 32
+        if case == "native_other_project":
+            return [SimpleNamespace(project_id=UUID("9" * 32), role="developer", revision=1)]
+        role = {"native_viewer": "viewer", "native_reviewer": "reviewer"}.get(case, "developer")
+        return [SimpleNamespace(project_id=UUID(run["project_id"]), role=role, revision=1)]
+
+    async def identity(_repository, user_id):
+        assert user_id.hex == "6" * 32
+        return SimpleNamespace(enabled=case != "native_suspended")
+
+    monkeypatch.setattr(ForgeMembershipRepository, "for_user", memberships)
+    monkeypatch.setattr(ForgeIdentityUserRepository, "find_by_id", identity)
 
     async def settings(repository):
         value = await original(repository)
@@ -688,7 +776,7 @@ async def test_question_reply_affordance_requires_exact_current_binding_and_chan
 
 
 async def test_reply_context_refresh_uses_retained_poll_observation_without_presentation_fields(
-    delegated_feedback, monkeypatch
+    delegated_feedback, monkeypatch, signed_reply_binding
 ):
     from types import SimpleNamespace
     from uuid import UUID
