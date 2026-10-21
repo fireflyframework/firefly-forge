@@ -79,6 +79,8 @@ def poll_case(tmp_path, monkeypatch):
                     raise ValueError("Controlled cursor persistence failure")
                 if row.id is None:
                     row.id = uuid4()
+                if self.kind == "inbox" and not getattr(row, "sequence", None):
+                    row.sequence = len(db["inbox"]) + 1
                 db[self.kind][row.id.hex] = row
                 return row
 
@@ -126,6 +128,21 @@ def poll_case(tmp_path, monkeypatch):
                     )
                 )[:201]
 
+            async def ticket_context(self, data):
+                return sorted(
+                    [
+                        row
+                        for row in db[self.kind].values()
+                        if row.repository_id.hex == data["repository_id"]
+                        and row.provider == data["provider"]
+                        and (row.data.get("issue") or {}).get("kind") == data["issue"]["kind"]
+                        and (row.data.get("issue") or {}).get("number") == data["issue"]["number"]
+                        and row.status == "processed"
+                    ],
+                    key=lambda row: row.sequence,
+                    reverse=True,
+                )[:201]
+
             async def find_pending(self):
                 return [
                     r
@@ -154,6 +171,16 @@ def poll_case(tmp_path, monkeypatch):
 
             async def scalar(self, statement, *args, **kwargs):
                 params = list(statement.compile().params.values())
+                if str(statement).startswith("SELECT forge_access_events.id") and "ORDER BY" not in str(statement):
+                    rows = [
+                        r
+                        for r in db["events"].values()
+                        if r.data["kind"] in params
+                        and r.project_id in params
+                        and r.data["receipt"]["repository_id"] in params
+                        and r.data["receipt"]["binding_key"] in params
+                    ]
+                    return rows[0].id if rows else None
                 if "ORDER BY" in str(statement) and "forge_access_events" in str(statement):
                     rows = [r for r in db["events"].values() if r.data["kind"] in params]
                     if "binding_key" in params:
@@ -278,6 +305,8 @@ def poll_case(tmp_path, monkeypatch):
             "firefly_forge.project_access",
             "firefly_forge.journal",
             "firefly_forge.identity_persistence",
+            "firefly_forge.access_persistence",
+            "firefly_forge.scm_conversations",
             module.__name__,
         ]:
             target = importlib.import_module(modname)
@@ -285,6 +314,9 @@ def poll_case(tmp_path, monkeypatch):
                 ("ForgeIdentityUserRepository", "users"),
                 ("ForgeProjectRepository", "projects"),
                 ("ForgeMembershipRepository", "memberships"),
+                ("ForgeAccessEventRepository", "events"),
+                ("ForgeCollaborationSettingsRepository", "settings"),
+                ("ForgeWebhookInboxRepository", "inbox"),
             ]:
                 if hasattr(target, name):
                     monkeypatch.setattr(target, name, lambda k=kind: records[k])
@@ -369,12 +401,26 @@ def poll_case(tmp_path, monkeypatch):
                 )
             if path == "/repos/team/product/issues/3":
                 return httpx.Response(200, json={"number": 3, "id": 100})
-            if path == "/repos/team/product/issues/3/comments" and request.method == "POST":
+            if path.startswith("/repos/team/product/issues/") and request.method == "GET":
+                number = path.rsplit("/", 1)[1]
+                if number in state.get("extra_issues", {}):
+                    return httpx.Response(200, json=copy.deepcopy(state["extra_issues"][number]))
+            if (
+                path.startswith("/repos/team/product/issues/")
+                and path.endswith("/comments")
+                and request.method == "POST"
+            ):
                 state["posts"].append(json.loads(request.content))
                 if state["lost_reply"]:
                     raise httpx.ReadError("Controlled lost reply", request=request)
                 return httpx.Response(
-                    201, json={"id": 101, "html_url": "https://github.com/team/product/issues/3#issuecomment-101"}
+                    201,
+                    json={
+                        "id": 101,
+                        "html_url": "https://github.com/team/product/issues/"
+                        + path.split("/")[-2]
+                        + "#issuecomment-101",
+                    },
                 )
             raise AssertionError("Unexpected provider request " + str(request.url))
 

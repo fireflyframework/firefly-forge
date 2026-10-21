@@ -46,6 +46,7 @@ from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_
 
 if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
+    from firefly_forge.scm_conversation_models import AddressedStatusV1
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
     from firefly_forge.scm_product_intake import SCMProductIntake
     from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -179,7 +180,7 @@ class RepositoryCommand(BaseModel):
 
     @classmethod
     def parse(
-        cls, text: str
+        cls, text: str, *, bot_addresses: tuple[str, ...] = ()
     ) -> (
         RepositoryCommand
         | ChannelCommand
@@ -187,9 +188,13 @@ class RepositoryCommand(BaseModel):
         | SCMResumeStatusV2
         | SCMProductChangeCommandV1
         | SCMProductIntakeCommandV1
+        | AddressedStatusV1
     ):
+        from firefly_forge.scm_conversation_models import addressed_status
         from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 
+        if addressed := addressed_status(text, bot_addresses):
+            return addressed
         if text.strip().startswith("/forge intake "):
             from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
 
@@ -662,8 +667,35 @@ class Collaboration:
                     self.store.reject_credentials(event)
                 reason = self._allowed(repo, settings, event, provider)
                 if not reason:
-                    command = RepositoryCommand.parse(event.pop("text"))
+                    command = RepositoryCommand.parse(
+                        event.pop("text"),
+                        bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider),
+                    )
                     event["command"] = command.model_dump(exclude_none=True)
+                    if getattr(command, "adapter", None) == "addressed_status_v1":
+                        from firefly_forge.journal import digest as source_digest
+                        from firefly_forge.scm_comment_source import github_comment_source
+                        from firefly_forge.scm_conversation_models import SignedAddressedSourceV1
+
+                        if provider != "github" or verified_reference is None:
+                            raise ValueError("Addressed status requires a qualified GitHub App signature")
+                        source = github_comment_source(body["comment"], repo, self.scm._api("github"))
+                        if (
+                            source["author_type"] != "User"
+                            or body["sender"].get("type") != "User"
+                            or source["author_id"] != event["actor"]
+                            or source["issue_number"] != event["issue"]["number"]
+                        ):
+                            raise ValueError("Only an exact signed human comment can request native status")
+                        event["source_snapshot"] = source
+                        event["addressed_source"] = SignedAddressedSourceV1(
+                            payload_digest=digest,
+                            source_digest=source_digest(source),
+                            resource_kind=event["issue"]["kind"],
+                            issue_number=source["issue_number"],
+                            external_actor_id=source["author_id"],
+                            comment_id=source["comment_id"],
+                        ).model_dump(mode="json")
                     versioned_resume = (
                         isinstance(command, SCMResumeCommandV2)
                         and verified_reference is not None
@@ -785,6 +817,9 @@ class Collaboration:
                 data["remote_id"] = event["remote_id"]
             if verified_reference is not None:
                 data["verification"] = verified_reference
+            if not reason and "addressed_source" in event:
+                data["source_snapshot"] = event["source_snapshot"]
+                data["addressed_source"] = event["addressed_source"]
             self.store.reject_credentials(data)
             await self.inbox.save(
                 ForgeWebhookInboxEntity(
@@ -832,6 +867,10 @@ class Collaboration:
     async def process(self, receipt_id: str) -> Data:
         settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
+        if (initial.get("command") or {}).get("adapter") == "addressed_status_v1":
+            from firefly_forge.scm_conversations import SCMConversations
+
+            return await SCMConversations(self).process(receipt_id)
         if (initial.get("command") or {}).get("action") == "intake":
             from firefly_forge.project_access import AccessDenied
 
@@ -1471,6 +1510,11 @@ class Collaboration:
         from firefly_forge.scm_actor_authority import SCMActorAuthority
 
         command = data.get("command") or {}
+        if command.get("adapter") == "addressed_status_v1":
+            from firefly_forge.scm_conversations import SCMConversations
+
+            await SCMConversations(self).authorize_feedback(data, remote=not local)
+            return
         if command.get("action") == "intake":
             if self.product_intake_authority is None:
                 raise AccessDenied("The intake feedback authority is unavailable")
@@ -1589,10 +1633,49 @@ class Collaboration:
 
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
             message = feedback_card(data, run, repo, host, public_text)
-            drafted = await self.communication_writer.write(run, message, public_text)
-            if data.get("run_id"):
+            conversation = data.get("conversation")
+            drafted: Data
+            if conversation and (not run or data["command"]["language"] == "es"):
+                from firefly_forge.product_provenance import content_digest
+
+                copy_text = json.loads(prompt_text("collaboration/conversation-status"))[data["command"]["language"]]
+                if run:
+                    explanation = (
+                        copy_text["run_prefix"]
+                        + copy_text["states"].get(run["status"], copy_text["unknown"])
+                        + copy_text["run_suffix"]
+                    )
+                    if (run.get("worker_request") or {}).get("status") == "pending" or run[
+                        "status"
+                    ] == "needs_reconciliation":
+                        message = explanation + "\n\n" + message
+                    else:
+                        message = prompt_text(
+                            "collaboration/conversation-record",
+                            message=explanation,
+                            summary=copy_text["record"],
+                            evidence=message,
+                        )
+                else:
+                    message = copy_text[conversation["selection"]]
+                facts = {
+                    "conversation": {"selection": conversation["selection"], "language": data["command"]["language"]}
+                }
+                drafted = {
+                    "body": message,
+                    "communication": {
+                        "mode": "deterministic",
+                        "reason": "native_conversation",
+                        "facts": facts,
+                        "facts_sha256": content_digest(facts),
+                    },
+                }
+            else:
+                drafted = await self.communication_writer.write(run, message, public_text)
+            if data.get("run_id") and (not conversation or drafted["communication"]["mode"] in {"ai", "held"}):
                 from firefly_forge.communication import communication_facts
                 from firefly_forge.product_provenance import content_digest
+
 
                 current_run = await self.store.get_run(data["run_id"])
                 if (
@@ -1652,7 +1735,9 @@ class Collaboration:
 
             async def before_write() -> None:
                 await self._feedback_authority(
-                    data, local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
+                    data,
+                    local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
+                    and (data.get("command") or {}).get("adapter") != "addressed_status_v1",
                 )
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])

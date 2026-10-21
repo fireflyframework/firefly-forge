@@ -10,7 +10,6 @@ import json
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
 from time import time
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -480,49 +479,9 @@ class SCMPolling:
         return await self._return(actor, project, repository, result)
 
     def _source(self, comment: Data, repository: Data) -> Data:
-        if not isinstance(comment, dict) or not isinstance(comment.get("user"), dict):
-            raise ValueError("The polled comment author is unavailable")
-        user = comment["user"]
-        number = comment.get("id")
-        actor = user.get("id")
-        body = comment.get("body")
-        parsed = urlsplit(str(comment.get("issue_url", "")))
-        api = self.scm._api("github")
-        expected = urlsplit(api).path + "/repos/" + repository["name"] + "/issues/"
-        if (
-            type(number) is not int
-            or number <= 0
-            or type(actor) is not int
-            or actor <= 0
-            or not isinstance(body, str)
-            or len(body.encode()) > 100000
-            or not parsed.path.startswith(expected)
-            or not parsed.path.removeprefix(expected).isdecimal()
-            or parsed.query
-            or parsed.fragment
-            or parsed.username
-            or comment.get("issue_url")
-            != api + "/repos/" + repository["name"] + "/issues/" + parsed.path.removeprefix(expected)
-        ):
-            raise ValueError("The polled comment identity or body is invalid")
-        for name in ("created_at", "updated_at"):
-            value = comment.get(name)
-            if (
-                not isinstance(value, str)
-                or len(value) > 50
-                or datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is None
-            ):
-                raise ValueError("The provider comment timestamp is invalid")
-        return dict(
-            comment_id=str(number),
-            author_id=str(actor),
-            author_login=str(user.get("login", "")),
-            author_type=user.get("type"),
-            body=body,
-            issue_number=int(parsed.path.removeprefix(expected)),
-            created_at=str(comment.get("created_at", "")),
-            updated_at=str(comment.get("updated_at", "")),
-        )
+        from firefly_forge.scm_comment_source import github_comment_source
+
+        return github_comment_source(comment, repository, self.scm._api("github"))
 
     @staticmethod
     def _next_page(response: Any, page: int) -> int | None:
@@ -658,22 +617,31 @@ class SCMPolling:
                 if source["author_type"] != "User":
                     reason = "unsupported_poll_author"
                 command = None
-                if reason is None:
+                if reason is None or reason == "unsupported_poll_issue" and issue is not None and issue["pull_request"]:
                     from firefly_forge.collaboration import RepositoryCommand
 
                     try:
-                        parsed = RepositoryCommand.parse(source["body"])
+                        parsed = RepositoryCommand.parse(source["body"], bot_addresses=self.scm.bot_addresses("github"))
                         version = getattr(parsed, "version", None)
+                        natural_status = getattr(parsed, "adapter", None) == "addressed_status_v1"
+                        if issue is not None and issue["pull_request"] and not natural_status:
+                            raise ValueError("Only the read-only addressed adapter supports polling pull requests")
                         if not (
                             parsed.action in {"respond", "status"}
                             and version is None
+                            or natural_status
                             or parsed.action == "resume"
                             and version == 2
                         ):
                             raise ValueError("Unsupported polling action")
                         command = parsed.model_dump(exclude_none=True)
+                        reason = "baseline_existing" if not cursor["ready"] else None
                     except (ValueError, TypeError, AttributeError):
-                        reason = "not_an_enabled_poll_command"
+                        reason = (
+                            "unsupported_poll_issue"
+                            if issue is not None and issue["pull_request"]
+                            else "not_an_enabled_poll_command"
+                        )
                 proof = GitHubPollReferenceV1.model_validate(
                     {
                         **scope,
@@ -696,7 +664,12 @@ class SCMPolling:
                     delivery_id="poll:" + source["comment_id"] + ":" + source_digest,
                     digest=source_digest,
                     actor=source["author_id"],
-                    issue={"kind": "issue", "number": source["issue_number"]},
+                    issue={
+                        "kind": "pull_request"
+                        if command and command.get("adapter") and issue and issue["pull_request"]
+                        else "issue",
+                        "number": source["issue_number"],
+                    },
                     command=command,
                     source_snapshot=None if withheld else source,
                     verification=proof,
@@ -769,12 +742,18 @@ class SCMPolling:
         if response.status_code != 200 or self._source(response.json(), repository) != source:
             raise AccessDenied("The exact GitHub comment or author changed; publish a new comment")
         issue = await self.scm.github_poll_read(repository, "issue", value=str(source["issue_number"]))
+        addressed = (delivery.get("command") or {}).get("adapter") == "addressed_status_v1"
+        resource = issue.json() if issue.status_code == 200 else {}
         if (
             issue.status_code != 200
-            or "pull_request" in issue.json()
-            or issue.json().get("number") != source["issue_number"]
+            or not isinstance(resource, dict)
+            or "pull_request" in resource
+            and not addressed
+            or addressed
+            and ("pull_request" in resource) != (delivery["issue"]["kind"] == "pull_request")
+            or resource.get("number") != source["issue_number"]
         ):
-            raise AccessDenied("The current GitHub issue is unavailable or is a pull request")
+            raise AccessDenied("The current GitHub ticket is unavailable or its qualified resource kind changed")
         permissions = await self.scm.github_poll_read(repository, "permission", value=source["author_login"])
         if permissions.status_code != 200:
             raise AccessDenied("Current GitHub account permission is unavailable")
@@ -911,6 +890,132 @@ class SCMPolling:
         return await self._return(
             actor, project, repository, await self._event(pointer, BINDING_KIND, project, repository)
         )
+
+    async def conversation_scope(self, delivery: Data, *, remote: bool = True) -> Data:
+        """Authorize an observed status address without inventing a run or execution principal."""
+        from firefly_forge.scm_conversation_models import AddressedStatusV1, ConversationReadScopeV1, addressed_status
+
+        message = AddressedStatusV1.model_validate(delivery.get("command"))
+        repository = delivery["repository_id"]
+        policy, state = await self._policy(repository)
+        project = policy["project_id"]
+        repo = await self._scope(repository, policy)
+        original = await self._observation(project, repository, delivery["id"])
+        if original != delivery or delivery.get("source_conflict") or not state["cursor"]["ready"]:
+            raise AccessDenied("The retained status observation or polling baseline changed")
+        parsed = addressed_status(delivery["source_snapshot"]["body"], self.scm.bot_addresses("github"))
+        if parsed != message:
+            raise AccessDenied("The status address no longer binds its exact original human comment")
+        reference = delivery["verification"]
+        key = poll_key(project, reference)
+        if key not in state["heads"]:
+            raise AccessDenied("Current API-observed status consent is required")
+        receipt = await self._head(project, repository, key)
+        request = receipt["request"]
+        current_project = await self.authority._project(project, repository, request["component_ids"])
+        if (
+            not request["active"]
+            or "status" not in request["allowed_actions"]
+            or receipt["project_binding_digest"] != digest(current_project)
+            or any(
+                receipt["verified_reference"][k] != reference[k]
+                for k in (
+                    "provider",
+                    "api_origin",
+                    "installation_id",
+                    "remote_repository_id",
+                    "external_actor_id",
+                    "connection_revision",
+                    "connection_scope_digest",
+                )
+            )
+        ):
+            raise AccessDenied("The status consent is revoked or outside the current native project scope")
+        if remote:
+            await self._fresh(delivery, repo)
+        await self._scope(repository, policy)
+        if await self._observation(project, repository, delivery["id"]) != original:
+            raise AccessDenied("The original status observation changed during authorization")
+        async with self.store._unit():
+            user = await self.users.find_by_id(identifier(request["native_user_id"]))
+            if user is None or not user.enabled:
+                raise AccessDenied("The mapped native status reader is unavailable")
+            memberships = await self.memberships.for_user(user.id)
+            if not any(
+                r.project_id.hex == project and r.active and ProjectAccess.permits(r.role, "read") for r in memberships
+            ):
+                raise AccessDenied("The mapped user lacks current project read permission")
+            row, current = await self._state(repository)
+            if (
+                current["configuration"] != state["configuration"]
+                or current["heads"].get(key) != state["heads"].get(key)
+                or not row.data.get("enabled")
+                or delivery["actor"] not in row.data.get("trusted_actors", [])
+                or "status" not in row.data.get("allowed_commands", [])
+            ):
+                raise AccessDenied("The current status consent, actor or command changed")
+        return ConversationReadScopeV1(
+            transport="github_rest_poll_v1",
+            project_id=project,
+            repository_id=repository,
+            native_user_id=user.id.hex,
+            component_ids=sorted(request["component_ids"]),
+            binding_key=key,
+            binding_digest=receipt["digest"],
+            binding_request_id=request["request_id"],
+            verified_receipt_id=delivery["id"],
+            verified_reference_digest=digest(reference),
+            project_binding_digest=digest(current_project),
+            observation_digest=digest(
+                {
+                    "source": delivery["source_snapshot"],
+                    "issue": delivery["issue"],
+                    "command": message.model_dump(mode="json"),
+                }
+            ),
+        ).model_dump(mode="json")
+
+    async def ticket_reference(self, delivery: Data, run: Data) -> None:
+        """Validate a historical authenticated ticket link; this confers no current authority."""
+        project, repository = run["project_id"], run["repository_id"]
+        if await self._observation(project, repository, delivery["id"]) != delivery:
+            raise AccessDenied("The retained ticket context receipt changed")
+        actor = delivery.get("scm_execution_actor") or {}
+        context = actor.get("scm_delegation") or {}
+        command = delivery.get("command") or {}
+        if (
+            delivery.get("status") != "processed"
+            or delivery.get("source_conflict")
+            or delivery.get("action_status") != "completed"
+            or context.get("transport") != TRANSPORT
+            or context.get("project_id") != project
+            or context.get("repository_id") != repository
+            or context.get("component_id") != run["component_id"]
+            or context.get("run_id") != run["id"]
+            or context.get("verified_receipt_id") != delivery["id"]
+            or context.get("verified_reference") != delivery["verification"]
+            or command.get("run_id") != run["id"]
+            or command.get("action") != context.get("action")
+            or context.get("action") not in {"respond", "status"}
+        ):
+            raise AccessDenied("The historical ticket context does not bind this native run")
+        async with self.store._unit():
+            _, state = await self._state(repository)
+        pointer = state["requests"].get(project + ":" + context["binding_request_id"])
+        if pointer is None:
+            raise AccessDenied("The historical ticket consent receipt is unavailable")
+        receipt = await self._event(pointer, BINDING_KIND, project, repository)
+        request = receipt["request"]
+        if (
+            receipt["digest"] != context["binding_digest"]
+            or receipt["binding_key"] != context["binding_key"]
+            or poll_key(project, delivery["verification"]) != context["binding_key"]
+            or request["native_user_id"] != actor.get("user_id")
+            or not request["active"]
+            or run["component_id"] not in request["component_ids"]
+            or context["action"] not in request["allowed_actions"]
+        ):
+            raise AccessDenied("The historical ticket link lacks its exact native consent")
 
     async def resolve(self, delivery: Data) -> Principal:
         command = delivery.get("command") or {}

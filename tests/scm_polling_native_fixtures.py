@@ -84,15 +84,26 @@ def native_poll(tmp_path, postgres_schema, monkeypatch, request):
             return httpx.Response(200, json=copy.deepcopy(next(c for c in state["comments"] if c["id"] == number)))
         if request.method == "GET" and path == "/repos/team/product/issues/3":
             return httpx.Response(200, json={"number": 3})
+        if request.method == "GET" and path == "/repos/team/product/issues/4":
+            return httpx.Response(
+                200, json={"number": 4, **({} if state.get("pr_kind_changed") else {"pull_request": {}})}
+            )
         if request.method == "GET" and path == "/repos/team/product/collaborators/alice/permission":
             return httpx.Response(200, json={"permission": state["permission"], "user": {"id": 7}})
-        if request.method == "POST" and path == "/repos/team/product/issues/3/comments":
+        if request.method == "POST" and path in {
+            "/repos/team/product/issues/3/comments",
+            "/repos/team/product/issues/4/comments",
+        }:
             state["posts"].append(json.loads(request.content))
             if state["lost_reply"]:
                 raise httpx.ReadError("Owned post-admission response loss", request=request)
             number = len(state["posts"]) + 100
             return httpx.Response(
-                201, json={"id": number, "html_url": f"https://github.com/team/product/issues/3#issuecomment-{number}"}
+                201,
+                json={
+                    "id": number,
+                    "html_url": f"https://github.com/team/product/issues/{path.split('/')[-2]}#issuecomment-{number}",
+                },
             )
         raise AssertionError("Unexpected recorded App route: " + request.method + " " + path)
 

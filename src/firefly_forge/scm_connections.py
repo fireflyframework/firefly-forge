@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 import time
 import uuid
@@ -91,6 +92,13 @@ class SCMConnections:
             return False
         values = self._values(provider)
         return all(values.get(key) for key in self._definition(provider)["required"])
+
+    def bot_addresses(self, provider: str) -> tuple[str, ...]:
+        """Native address aliases; these do not claim ownership of GitHub handles."""
+        slug = self._record(provider).get("values", {}).get("app_slug") if provider == "github" else None
+        if isinstance(slug, str) and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}", slug) and slug.lower() != "forge":
+            return "forge", slug.lower()
+        return ("forge",)
 
     def snapshot(self, repository: Data) -> Data:
         provider = repository.get("connection_provider") or repository["provider"]
