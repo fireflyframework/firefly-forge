@@ -7,6 +7,8 @@
 - Show frozen verification command arguments and timeouts to every initial and ordinarily resumed implementer through one read-only Agentic template, without granting tools or execution permission.
 - Continue an answered implementation question after an explicitly authorized resume, including with a zero repair budget. Seal the original question and authenticated answer in the resume journal; keep spent calls, repair history and the ordinary four-attempt ceiling.
 - Refuse duplicate, ambiguous or changed question/answer bindings, revoked resumers and active provider recoveries. Preserve other factory roles' existing resume behavior and the separate one-use fifth provider allowance.
+- Write issue and pull-request introductions with one explicitly selected Agentic or Bridge communication profile. Bound generation to one request and retain the native status card, exact body, fact/prompt/profile receipts and deterministic fallback.
+- Exclude untracked dependency symlinks from newly prepared source snapshots while preserving rejection of already tracked private paths and existing retained workspace metadata.
 - Refresh the controlled desktop/mobile documentation captures for 0.2.31. These fixtures and protocol checks do not establish generated-product acceptance.
 
 ## 0.2.30 — 2026-10-20
