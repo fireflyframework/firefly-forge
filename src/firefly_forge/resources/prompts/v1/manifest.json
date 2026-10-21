@@ -122,6 +122,26 @@
       "variables": {}
     },
     {
+      "id": "collaboration/conversation-record",
+      "version": "1.0.0",
+      "path": "collaboration/conversation-record.yaml",
+      "sha256": "24d2e51197a1854fcb83fa420983638551cb3dc74cdeeaa99733abbc3ca49edf",
+      "field": "user",
+      "variables": {
+        "message": "string",
+        "summary": "string",
+        "evidence": "string"
+      }
+    },
+    {
+      "id": "collaboration/conversation-status",
+      "version": "1.0.0",
+      "path": "collaboration/conversation-status.yaml",
+      "sha256": "8f5b8381ed22b0e00608590aaaa1d427e3ea50204e968f73bf35997d99c1e5f1",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/copy",
       "version": "1.0.0",
       "path": "collaboration/copy.yaml",

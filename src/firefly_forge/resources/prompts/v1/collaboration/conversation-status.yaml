@@ -1,0 +1,34 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/conversation-status
+version: 1.0.0
+description: Ticket-bound read-only status and clarification in English or Spanish.
+system_template: ''
+user_template: "{\n  \"en\": {\n    \"missing\": \"I cannot find a run linked to this\
+  \ ticket in the available authenticated receipts. Ask the project operator to confirm\
+  \ the intended run; I will not select another run from the repository.\",\n    \"\
+  ambiguous\": \"More than one active run is linked to this ticket. I need to clarify\
+  \ which one you mean before reporting its status.\",\n    \"clarify\": \"I can read\
+  \ the recorded status of this ticket. Are you asking how it is going? Product changes\
+  \ and continuation use their authorized workflows; this question does not start\
+  \ either action.\",\n    \"record\": \"Execution record\"\n  },\n  \"es\": {\n \
+  \   \"missing\": \"No encuentro una ejecución vinculada a este ticket en los recibos\
+  \ autenticados disponibles. Pide al responsable del proyecto que confirme qué ejecución\
+  \ corresponde; no voy a elegir otra del repositorio.\",\n    \"ambiguous\": \"Hay\
+  \ más de una ejecución activa vinculada a este ticket. Necesito aclarar cuál quieres\
+  \ consultar antes de presentar el estado de una de ellas.\",\n    \"clarify\": \"\
+  Puedo consultar el estado registrado de este ticket. ¿Quieres saber cómo va? Cambiar\
+  \ el producto o continuar una ejecución requiere su flujo autorizado; esta pregunta\
+  \ no inicia esas acciones.\",\n    \"run_prefix\": \"El estado registrado de la\
+  \ ejecución vinculada a este ticket es: \",\n    \"run_suffix\": \". Es el resultado\
+  \ guardado por la fábrica; no acredita por sí solo que el producto esté listo para\
+  \ producción.\",\n    \"unknown\": \"desconocido\",\n    \"states\": {\n      \"\
+  queued\": \"en cola\",\n      \"running\": \"en curso\",\n      \"developing\":\
+  \ \"en desarrollo\",\n      \"validating\": \"en verificación\",\n      \"paused\"\
+  : \"en pausa\",\n      \"needs_reconciliation\": \"pendiente de conciliación\",\n\
+  \      \"succeeded\": \"finalizada con resultado aceptado por la fábrica\",\n  \
+  \    \"failed\": \"detenida por un fallo\",\n      \"cancelled\": \"cancelada\"\
+  ,\n      \"interrupted\": \"interrumpida\"\n    },\n    \"record\": \"Registro de\
+  \ ejecución\"\n  }\n}"
+required_variables: []
+metadata:
+  defaults: {}

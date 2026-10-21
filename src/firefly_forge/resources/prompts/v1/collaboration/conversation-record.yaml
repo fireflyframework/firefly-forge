@@ -1,0 +1,22 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/conversation-record
+version: 1.0.0
+description: A ticket explanation with retained native evidence in a disclosure.
+system_template: ''
+user_template: '{{ message }}
+
+
+  <details>
+
+  <summary>{{ summary }}</summary>
+
+
+  {{ evidence }}
+
+  </details>'
+required_variables:
+- message
+- summary
+- evidence
+metadata:
+  defaults: {}

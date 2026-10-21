@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import builtins
 import copy
 import json
 from typing import Any
@@ -13,7 +14,11 @@ from pyfly.data.transaction import current_unit_of_work
 from sqlalchemy import Text, cast, func, literal, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 
-from firefly_forge.access_persistence import ForgeAccessEventEntity, ForgeAccessEventRepository
+from firefly_forge.access_persistence import (
+    ForgeAccessEventEntity,
+    ForgeAccessEventRepository,
+    ForgeMembershipRepository,
+)
 from firefly_forge.collaboration_persistence import (
     ForgeCollaborationSettingsRepository,
     ForgeWebhookInboxRepository,
@@ -760,6 +765,219 @@ class SCMActorAuthority:
         if scope != {key: reference[key] for key in scope} or not self._key_current(repository["id"], reference):
             raise AccessDenied("The SCM connection or webhook key changed")
         self.store.reject_credentials({"actor": actor, "receipt": receipt})
+
+    async def conversation_scopes(self, delivery: Data, *, remote: bool = True) -> builtins.list[Data]:
+        """Current status-only consent for an exact signed human ticket comment; no run is fabricated."""
+        from firefly_forge.scm_comment_source import github_comment_source
+        from firefly_forge.scm_conversation_models import (
+            AddressedStatusV1,
+            ConversationReadScopeV1,
+            SignedAddressedSourceV1,
+            addressed_status,
+        )
+
+        message = AddressedStatusV1.model_validate(delivery.get("command"))
+        reference = VerifiedSCMReferenceV1.model_validate(delivery.get("verification")).model_dump(mode="json")
+        source = delivery.get("source_snapshot") or {}
+        bound = SignedAddressedSourceV1.model_validate(delivery.get("addressed_source")).model_dump(mode="json")
+        repository_id = delivery["repository_id"]
+        repository = await self.store.repository(repository_id)
+        if (
+            reference["provider"] != "github"
+            or delivery["provider"] != "github"
+            or reference["payload_digest"] != delivery["digest"]
+            or bound["payload_digest"] != delivery["digest"]
+            or bound["source_digest"] != digest(source)
+            or source.get("author_type") != "User"
+            or source.get("author_id") != delivery["actor"]
+            or reference["external_actor_id"] != delivery["actor"]
+            or bound["external_actor_id"] != delivery["actor"]
+            or bound["comment_id"] != source.get("comment_id")
+            or bound["issue_number"] != delivery["issue"]["number"]
+            or source.get("issue_number") != delivery["issue"]["number"]
+            or bound["resource_kind"] != delivery["issue"]["kind"]
+            or addressed_status(source.get("body", ""), self.scm.bot_addresses("github")) != message
+            or delivery.get("source_conflict")
+        ):
+            raise AccessDenied("The signed status address no longer binds its exact human source")
+        scope = self.scm.delegation_scope(repository)
+        if scope != {key: reference[key] for key in scope} or not self._key_current(repository_id, reference):
+            raise AccessDenied("The signed status connection or verification key changed")
+        async with self.store._unit():
+            row = await self.inbox.find_by_id(identifier(delivery["id"]))
+            settings_row = await self.settings.find_for_repository(identifier(repository_id))
+            settings = copy.deepcopy(settings_row.data) if settings_row else {}
+            if row is None or row.repository_id.hex != repository_id or row.data != delivery:
+                raise AccessDenied("The retained signed status observation changed")
+            state = authority_state(settings)
+        if (
+            not settings.get("enabled")
+            or delivery["actor"] not in settings.get("trusted_actors", [])
+            or "status" not in settings.get("allowed_commands", [])
+        ):
+            raise AccessDenied("Current repository status access is required")
+        if delivery.get("global_ingress"):
+            channel = self.store.configuration._read(self.store.configuration.directory / "channel-bootstrap.json").get(
+                "github", {}
+            )
+            if not channel.get("enabled") or delivery["actor"] not in channel.get("trusted_actors", []):
+                raise AccessDenied("The signed ingress account is no longer enabled")
+        scopes = []
+        for key, pointer in sorted(state["heads"].items()):
+            async with self.store._unit():
+                event = await self.events.find_by_id(identifier(pointer["event_id"]))
+                if event is None:
+                    raise AccessDenied("The native signed consent history is unavailable")
+                project_id = event.project_id.hex
+            if binding_key(project_id, reference) != key:
+                continue
+            receipt = await self._head(project_id, repository_id, key)
+            request = receipt["request"]
+            if not request["active"] or "status" not in request["allowed_actions"]:
+                continue
+            project = await self._project(project_id, repository_id, request["component_ids"])
+            if receipt["project_binding_digest"] != digest(project) or any(
+                receipt["verified_reference"][key] != value
+                for key, value in reference.items()
+                if key != "payload_digest"
+            ):
+                raise AccessDenied("The signed status consent or project binding changed")
+            async with self.store._unit():
+                user = await ForgeIdentityUserRepository().find_by_id(identifier(request["native_user_id"]))
+                if user is None or not user.enabled:
+                    continue
+                memberships = await ForgeMembershipRepository().for_user(user.id)
+                if not any(
+                    m.project_id.hex == project_id and m.active and ProjectAccess.permits(m.role, "read")
+                    for m in memberships
+                ):
+                    continue
+            scopes.append(
+                ConversationReadScopeV1(
+                    transport="signed_webhook_v1",
+                    project_id=project_id,
+                    repository_id=repository_id,
+                    native_user_id=user.id.hex,
+                    component_ids=sorted(request["component_ids"]),
+                    binding_key=key,
+                    binding_digest=receipt["digest"],
+                    binding_request_id=request["request_id"],
+                    verified_receipt_id=delivery["id"],
+                    verified_reference_digest=digest(reference),
+                    project_binding_digest=digest(project),
+                    observation_digest=digest(
+                        {
+                            "source": source,
+                            "issue": delivery["issue"],
+                            "command": message.model_dump(mode="json"),
+                            "addressed_source": bound,
+                        }
+                    ),
+                ).model_dump(mode="json")
+            )
+        if not scopes:
+            raise AccessDenied("A current native status mapping and project membership are required")
+        if remote:
+            comment = await self.scm.github_poll_read(repository, "comment", value=source["comment_id"])
+            if (
+                comment.status_code != 200
+                or github_comment_source(comment.json(), repository, self.scm._api("github")) != source
+            ):
+                raise AccessDenied("The exact signed comment or its author changed")
+            issue = await self.scm.github_poll_read(repository, "issue", value=str(source["issue_number"]))
+            ticket = issue.json() if issue.status_code == 200 else {}
+            if (
+                not isinstance(ticket, dict)
+                or ticket.get("number") != source["issue_number"]
+                or ("pull_request" in ticket) != (bound["resource_kind"] == "pull_request")
+            ):
+                raise AccessDenied("The exact signed ticket or resource kind changed")
+            permission = await self.scm.github_poll_read(repository, "permission", value=source["author_login"])
+            current = permission.json() if permission.status_code == 200 else {}
+            if (
+                not isinstance(current, dict)
+                or current.get("permission") not in {"read", "write", "admin"}
+                or type(current.get("user", {}).get("id")) is not int
+                or str(current["user"]["id"]) != source["author_id"]
+            ):
+                raise AccessDenied("The signed human author lacks current repository access")
+            grants = await self.scm.repositories("github")
+            if not any(
+                str(item["id"]) == reference["remote_repository_id"] and item["url"] == repository["url"]
+                for item in grants
+            ):
+                raise AccessDenied("The application no longer grants this exact repository")
+            if await self.conversation_scopes(delivery, remote=False) != scopes:
+                raise AccessDenied("The current native signed status consent changed during fresh provider reads")
+        self.store.reject_credentials(scopes)
+        return scopes
+
+    async def ticket_reference(self, delivery: Data, run: Data) -> None:
+        """Check a retained signed ticket/run link without reviving historical execution authority."""
+        reference = VerifiedSCMReferenceV1.model_validate(delivery.get("verification")).model_dump(mode="json")
+        project, repository = run["project_id"], run["repository_id"]
+        async with self.store._unit():
+            row = await self.inbox.find_by_id(identifier(delivery["id"]))
+            settings = await self.settings.find_for_repository(identifier(repository))
+            state = authority_state(settings.data if settings else {})
+        if (
+            row is None
+            or row.repository_id.hex != repository
+            or row.data != delivery
+            or delivery.get("source_conflict")
+            or delivery.get("status") != "processed"
+            or delivery.get("run_id") != run["id"]
+            or reference["payload_digest"] != delivery["digest"]
+            or reference["external_actor_id"] != delivery["actor"]
+            or reference["remote_repository_id"] != delivery.get("remote_id")
+        ):
+            raise AccessDenied("The retained signed ticket/run receipt changed")
+        command = delivery.get("command") or {}
+        origin = run.get("issue_context") or {}
+        if command.get("action") in {"run", "test", "maintain", "intake"} and all(
+            origin.get(key) == value
+            for key, value in {
+                "provider": delivery["provider"],
+                "receipt_id": delivery["id"],
+                "actor": delivery["actor"],
+                "kind": delivery["issue"]["kind"],
+                "number": delivery["issue"]["number"],
+            }.items()
+        ):
+            return
+        actor = delivery.get("scm_execution_actor") or {}
+        context = actor.get("scm_delegation") or {}
+        if (
+            delivery.get("action_status") != "completed"
+            or actor.get("authentication_method") != "scm_mapping"
+            or context.get("project_id") != project
+            or context.get("repository_id") != repository
+            or context.get("component_id") != run["component_id"]
+            or context.get("run_id") != run["id"]
+            or context.get("verified_receipt_id") != delivery["id"]
+            or context.get("verified_reference") != reference
+            or command.get("run_id") != run["id"]
+            or context.get("action") != command.get("action")
+            or context.get("action") not in {"respond", "status", "cancel"}
+        ):
+            raise AccessDenied("The historical signed receipt does not bind this exact run action")
+        pointer = state["requests"].get(project + ":" + context["binding_request_id"])
+        if pointer is None:
+            raise AccessDenied("The historical signed consent receipt is unavailable")
+        receipt = await self._record(pointer["event_id"], project, repository)
+        request = receipt["request"]
+        if (
+            receipt["digest"] != pointer["digest"]
+            or receipt["digest"] != context["binding_digest"]
+            or receipt["binding_key"] != context["binding_key"]
+            or binding_key(project, reference) != context["binding_key"]
+            or request["request_id"] != context["binding_request_id"]
+            or request["native_user_id"] != actor.get("user_id")
+            or not request["active"]
+            or run["component_id"] not in request["component_ids"]
+            or context["action"] not in request["allowed_actions"]
+        ):
+            raise AccessDenied("The historical signed link lacks its exact immutable consent")
 
     async def resolve(self, delivery: Data) -> Principal:
         if (delivery.get("verification") or {}).get("transport") == "github_rest_poll_v1":

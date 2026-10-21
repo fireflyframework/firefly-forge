@@ -7,7 +7,7 @@ description: Maintain the versioned YAML instructions rendered by native Firefly
 
 forge's built-in model instructions live in `src/firefly_forge/resources/prompts/v1/`. Python selects a known template and supplies already validated text. Firefly Agentic 26.10.1 loads the YAML, registers its exact version and renders it with its native Jinja2 implementation.
 
-The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 264 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
+The resources cover implementation profiles, default roles and skills, product dialogue, independent review, repair, task guidance and model-facing tool descriptions. The catalog contains 267 templates, including 162 factory MCP descriptions. The other resources cover model instructions, opt-in execution evidence, the scoped configured-check tool, factory verification and source-control feedback. The seven community adaptations remain in their existing licensed JSON catalog. Runtime commands, SQL, general UI labels, provider credentials and user messages are not template source.
 
 ## Find the right resource
 
@@ -29,6 +29,8 @@ The resources cover implementation profiles, default roles and skills, product d
 `implementation/automatic-verification` describes the typed capability and its finite continuation allowance. `implementation/verification-result` projects known command receipts into bounded factory feedback and marks execution output as untrusted data. The sixteen `collaboration/` resources format recorded actions, questions, checks, recovery states and publication references without another model call. Provider recovery cards identify the native reserved attempt and distinguish current checks from retained results with older or incomplete attempt provenance. These verification and feedback instructions preserve existing factory MCP policy wire contracts; the automatic-verification policy setting is additive on HTTP. Polling continuation operator tools have their own explicit transport-bound consent contracts.
 
 ## Edit a template
+
+`collaboration/conversation-status` holds the English and Spanish status-context copy. `collaboration/conversation-record` composes a native record disclosure. These resources format already authorized ticket context; they cannot select a run or authorize a remote write.
 
 A resource uses the native Agentic field names:
 
