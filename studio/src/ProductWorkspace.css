@@ -293,6 +293,9 @@
   line-height: 1.7;
   color: var(--muted);
 }
+.assistant-empty p {
+  margin: 0 0 12px;
+}
 .product-assistant-close {
   display: none;
 }

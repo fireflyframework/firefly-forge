@@ -53,7 +53,7 @@ Optional architecture and design settings retain the backend/frontend choice, pr
 
 On a wide screen, the AI assistant opens beside the editor in a collapsible panel. Closing it gives the form the available width and preserves the conversation and selected files. On a narrow screen, **AI assistant** opens a dialog; closing it returns to the same draft.
 
-Choose the next task and a configured provider or model profile, then start a conversation. Follow-up messages and replies stay in that product's recorded conversation.
+Choose the next task and a configured provider or model profile, then choose **Start conversation** in the empty assistant. Use **New** to start another conversation from an existing dialogue. Creating a conversation does not call the model; sending a message does. Follow-up messages and replies stay in that product's recorded conversation.
 
 Use **Ask AI** within a step to prepare a message containing its current, unsaved draft. Review and edit this message before sending. If you already have a message in progress, choose whether to append the step context or replace it. Preparing this context does not invoke a model or save the definition. The assistant's ordinary retained context uses the saved product revision; it cannot see unsaved form edits unless you include them in a message.
 

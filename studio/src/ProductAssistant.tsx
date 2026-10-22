@@ -467,10 +467,20 @@ export function ProductAssistant({
         </p>
       )}
       {!current && (
-        <p className="assistant-empty">
-          Start a conversation to ask the provider for a proposal. Creating the
-          conversation alone does not call the model.
-        </p>
+        <div className="assistant-empty">
+          <p>
+            Choose a task, then start a conversation. The model runs when you
+            send a message.
+          </p>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => void create()}
+          >
+            <Plus size={18} />
+            Start conversation
+          </button>
+        </div>
       )}
       {current && (
         <>

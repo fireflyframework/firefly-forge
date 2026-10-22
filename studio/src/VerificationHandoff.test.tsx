@@ -220,23 +220,41 @@ describe("automatic verification continuation controls", () => {
     ).not.toContain("Resume run");
   });
 
-  it("keeps review controls when automatic handling is held", () => {
-    expect(
-      view({ ...run, verification_handoff: { ...handoff, status: "held" } }),
-    ).toContain("Resume run");
+  it("keeps question review available when automatic handling is held", () => {
+    const html = view({
+      ...run,
+      verification_handoff: { ...handoff, status: "held" },
+    });
+    expect(html).toContain('aria-label="Waiting for your answer"');
+    expect(html).toContain("Open agent questions");
+    expect(html).not.toContain("Resume run");
+    expect(html).not.toContain("Hand off run");
   });
 
   it("never hides a new human question behind an earlier handoff", () => {
-    expect(
-      view({
-        ...run,
-        worker_request: {
-          id: "product-choice",
-          kind: "approval",
-          status: "pending",
-        },
-      }),
-    ).toContain("Resume run");
+    const html = view({
+      ...run,
+      worker_request: {
+        id: "product-choice",
+        kind: "approval",
+        status: "pending",
+      },
+    });
+    expect(html).toContain('aria-label="Waiting for your answer"');
+    expect(html).toContain("Open agent questions");
+    expect(html).not.toContain("Resume run");
+    expect(html).not.toContain("Hand off run");
+  });
+
+  it("offers explicit continuation after the held question is answered", () => {
+    const html = view({
+      ...run,
+      verification_handoff: { ...handoff, status: "held" },
+      worker_request: { ...run.worker_request, status: "answered" },
+    });
+    expect(html).toContain('aria-label="Continue retained work"');
+    expect(html).toContain("Resume run");
+    expect(html).not.toContain("Open agent questions");
   });
 
   it("preserves review of an unknown provider result", () => {
