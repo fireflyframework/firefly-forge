@@ -314,6 +314,15 @@ class AgenticBoundary(AbstractCapability[Any]):
         contract = dataclasses.asdict(request.model_request_parameters)
         for field in ("deferred_capability_ids", "revealed_tool_names"):
             contract.pop(field)
+        for field in ("_telemetry_mcp_url_ids", "_telemetry_mcp_url_toolset_ids", "_telemetry_mcp_url_tool_names"):
+            if field not in contract:
+                continue
+            value = contract[field]
+            if value is None and field != "_telemetry_mcp_url_toolset_ids":
+                continue
+            if type(value) is not set or any(type(item) is not str for item in value):
+                raise ValueError("Checkpoint telemetry provenance must retain native string sets")
+            contract[field] = sorted(value)
         record = _Record(
             version=1,
             compatibility=_compatibility(),

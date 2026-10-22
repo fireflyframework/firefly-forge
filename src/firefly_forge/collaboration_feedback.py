@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import ipaddress
 import json
 import re
 from collections.abc import Callable
@@ -22,7 +23,7 @@ STAGES = frozenset({"prepare", "implement", "verify", "review", "checkpoint"})
 
 @cache
 def _copy() -> Data:
-    return dict(json.loads(prompt_text("collaboration/copy")))
+    return dict(json.loads(prompt_text("collaboration/copy", version="1.0.1")))
 
 
 def _text(value: object, safe: Callable[[str], str], limit: int = 1200) -> str:
@@ -213,6 +214,45 @@ def feedback_due(data: Data, run: Data) -> bool:
     )
 
 
+def _decision_destination(data: Data, run: Data, safe: Callable[[str], str]) -> str:
+    run_id = run.get("id")
+    origin = data.get("_feedback_origin")
+    if not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        return str(_copy()["decision_destination_missing"])
+    if (
+        isinstance(origin, str)
+        and len(origin) <= 2048
+        and not any(character.isspace() or ord(character) < 32 for character in origin)
+    ):
+        try:
+            parsed = urlsplit(origin)
+            port = parsed.port
+            host = (parsed.hostname or "").rstrip(".").lower()
+            try:
+                public_host = ipaddress.ip_address(host).is_global
+            except ValueError:
+                public_host = bool(
+                    re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) and not host.endswith((".local", ".localhost"))
+                )
+            valid = (
+                parsed.scheme == "https"
+                and public_host
+                and (port is None or 1 <= port <= 65535)
+                and not any((parsed.username, parsed.password, parsed.path, parsed.query, parsed.fragment))
+            )
+        except ValueError:
+            valid = False
+        if valid:
+            reference = safe(origin + "/?run=" + run_id + "&view=questions")
+            return prompt_text(
+                "collaboration/decision-destination", reference="[Open agent questions](" + reference + ")"
+            )
+    return prompt_text(
+        "collaboration/decision-destination",
+        reference=_copy()["decision_destination_missing"] + " Run: `" + run_id + "`.",
+    )
+
+
 def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Callable[[str], str]) -> str:
     copy = _copy()
     result = data.get("action_result") or {}
@@ -307,7 +347,35 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
         sections.append(
             prompt_text(
                 "collaboration/question",
+                version="1.0.1",
                 question=_text(request.get("question", ""), safe),
+                destination=_decision_destination(data, run, safe),
+                context=_text(request.get("context", ""), safe, 800),
+                reply_instructions=prompt_text(
+                    "collaboration/decision-reply",
+                    command=(
+                        "/forge respond "
+                        + json.dumps(
+                            {
+                                "run_id": _identifier(run.get("id", ""), safe),
+                                "request_id": _identifier(request.get("id", ""), safe),
+                                "answer": copy["reply_answer_placeholder"],
+                            },
+                            separators=(",", ":"),
+                        )
+                    ),
+                )
+                if "respond" in data.get("_feedback_actions", [])
+                else copy["decision_reply_disabled"],
+                resume_instructions=prompt_text(
+                    "collaboration/decision-resume",
+                    command=(
+                        "/forge resume "
+                        + json.dumps({"run_id": _identifier(run.get("id", ""), safe)}, separators=(",", ":"))
+                    ),
+                )
+                if "resume" in data.get("_feedback_actions", [])
+                else "",
                 choices=(
                     copy["choices_heading"]
                     + "\n"

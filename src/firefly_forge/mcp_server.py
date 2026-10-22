@@ -33,7 +33,7 @@ from firefly_forge.scm_authority_models import SCMActorBindingInputV1
 from firefly_forge.scm_poll_resume_models import SCMPollResumeGrantInputV3
 from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
 from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
-from firefly_forge.task_routing import TaskRoutingInput
+from firefly_forge.task_routing_mcp import TaskRoutingInput
 from firefly_forge.tool_broker import ToolPolicyInput
 from firefly_forge.user_administration import (
     AdministrationReconciliation,

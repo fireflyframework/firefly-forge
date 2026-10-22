@@ -320,6 +320,8 @@ Run `forge mcp` from a compatible MCP client with `FORGE_URL` and `FORGE_API_TOK
 
 `handoff_run` accepts a named `model_profile_id` or a legacy `agent`. `start_product_conversation` accepts the dialogue task, named profile and reviewed AS-IS fields described above. `configure_model_profile` accepts typed metadata and an optional `credential_file` path on the **MCP host**. It rejects inline `values.api_key` and `values.token`; neither a key nor its file contents appear in the tool result. The remaining tools preserve their native authorization and review requirements.
 
+The original MCP `save_task_routing` accepts a request containing only `bindings`, for example `{"bindings": {"functions": "product-planning"}}`. Its request rejects `expected_digest`. The HTTP API, Python SDK and Studio support the optional [routing digest check](model-profiles.md#write-project-updates-with-ai).
+
 `upload_product_attachment` takes an explicit bounded base64 request and returns metadata only. It does not read an arbitrary host path. `request_product_design_turn` accepts optional `attachment_ids` with the same inherit, detach and selection behavior as Python and the CLI. Listing or reading a file receipt does not invoke a model; asking a design turn remains a separate action.
 
 The existing run, repository, knowledge, application and deployment tools remain available. Publication and deployment require separate explicit calls and retain their native gates. Role tool grants constrain available native executors; official CLI worker permissions remain a separate provider boundary. See [Factory roles](agent-roles.md) and [Repository workflow](repository-workflow.md) for source-control permissions and questions.

@@ -15,6 +15,7 @@ import {
 import { setup as setupOriginalResult } from "./agent-checkpoint-recovery-fixture";
 import { verifiedReport } from "./campaign-report-fixture";
 import { setupDelivery } from "./campaign-delivery-browser-fixture";
+import { setup as setupDecisionEvidence } from "./worker-decision-evidence-fixture";
 import workerContract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 import claudeActivity from "./provider-activity-guide-fixture.json" with { type: "json" };
 import codexMCPActivity from "./provider-mcp-activity-guide-fixture.json" with { type: "json" };
@@ -3845,3 +3846,89 @@ for (const device of ["desktop", "mobile"])
       ).toBeFocused();
       expect(reads).toBe(1);
     });
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"]) {
+    test(`guided fixture journey: retained question evidence ${device} ${theme}`, async ({
+      page,
+    }, info) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 1000 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setupDecisionEvidence(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      async function frame(
+        stage: string,
+        options: Parameters<typeof capture>[4],
+      ) {
+        await capture(page, stage, theme, device, options);
+        if (!process.env.UPDATE_DOC_SCREENSHOTS)
+          await page.screenshot({ path: info.outputPath(stage + ".png") });
+      }
+      await page.getByText("Why the agent is asking", { exact: true }).click();
+      await frame("agent-question-retained", {
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        framing: "initial",
+        actionSelector: ".worker-answer-form button.primary",
+      });
+      expect(
+        await page
+          .getByRole("heading", {
+            name: "What is the maximum reservation?",
+            exact: true,
+          })
+          .evaluate((node) => {
+            const box = node.getBoundingClientRect(),
+              header = document
+                .querySelector(".workspace-main > header")!
+                .getBoundingClientRect();
+            return box.top >= header.bottom && box.bottom <= innerHeight;
+          }),
+      ).toBe(true);
+      expect(
+        await page
+          .locator(".worker-answer-form button.primary")
+          .evaluate((node) => {
+            const box = node.getBoundingClientRect(),
+              footer = document
+                .querySelector(".workspace-main > footer")!
+                .getBoundingClientRect();
+            return box.top >= footer.top || box.bottom <= footer.top;
+          }),
+      ).toBe(true);
+      await page.getByText("Retained screenshots", { exact: true }).click();
+      await page
+        .getByRole("button", { name: "View image", exact: true })
+        .click();
+      await expect(page.getByRole("dialog").getByRole("img")).toHaveJSProperty(
+        "naturalWidth",
+        1000,
+      );
+      await frame("agent-question-preview", {
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        boundary: "dialog",
+        actionSelector:
+          ".worker-image-dialog button[aria-label='Close screenshot']",
+      });
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "14 items", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Review answer", exact: true })
+        .click();
+      await frame("agent-question-evidence-review", {
+        actionSelector: ".worker-answer-review button.primary",
+      });
+      await navigate(page, "Connections");
+      await page
+        .getByLabel("Communication profile", { exact: true })
+        .selectOption("updates");
+      await frame("communication-profile", {
+        actionSelector:
+          "section[aria-label='Project update wording'] button.primary",
+      });
+      expect(state.writes).toBe(0);
+      expect(state.saves).toBe(0);
+    });
+  }

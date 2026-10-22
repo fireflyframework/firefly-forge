@@ -10,12 +10,13 @@ import re
 from collections.abc import Callable
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from firefly_forge.collaboration_feedback import STAGES, TERMINAL, _text, provider_recovery, verification_handoff
 from firefly_forge.community_skills import community_catalog
 from firefly_forge.product_provenance import content_digest
 from firefly_forge.prompts import prompt_text
+from firefly_forge.scm_authority_models import StrictContract
 from firefly_forge.skills import inject_skills
 
 Data = dict[str, Any]
@@ -62,10 +63,46 @@ class CommunicationReview(BaseModel):
     rationale: str = Field(min_length=1, max_length=600)
 
 
-def communication_facts(run: Data) -> Data:
+class CommunicationConversationV1(StrictContract):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    version: Literal[1] = 1
+    selection: Literal["run", "missing", "ambiguous", "clarify"]
+    language: Literal["en", "es"]
+    linked_runs: int = Field(ge=0, le=200)
+
+    @model_validator(mode="after")
+    def consistent_selection(self) -> CommunicationConversationV1:
+        expected = 1 if self.selection == "run" else 0
+        if (self.selection == "ambiguous" and self.linked_runs < 2) or (
+            self.selection != "ambiguous" and self.linked_runs != expected
+        ):
+            raise ValueError("Conversation selection and linked execution count disagree")
+        return self
+
+
+def communication_facts(run: Data | None, *, conversation: CommunicationConversationV1 | None = None) -> Data:
+    conversation_facts = {}
+    if conversation is not None:
+        if (conversation.selection == "run") != (run is not None):
+            raise ValueError("Conversation selection requires its actual selected execution or no execution")
+        conversation_facts = {
+            **conversation.model_dump(exclude={"version"}),
+            "next_step": {
+                "run": "explain_selected_execution",
+                "missing": "ask_for_ticket_execution_link",
+                "ambiguous": "ask_which_linked_execution",
+                "clarify": "ask_whether_ticket_status_is_requested",
+            }[conversation.selection],
+        }
+        if run is None:
+            return {"conversation": conversation_facts}
+    if run is None:
+        raise ValueError("Communication requires an actual execution or native conversation context")
     status = run.get("status")
     known = TERMINAL | {"queued", "running", "paused", "needs_reconciliation", "developing", "validating"}
     facts: Data = {"state": {"status": status if isinstance(status, str) and status in known else "unknown"}}
+    if conversation_facts:
+        facts["conversation"] = conversation_facts
     status = facts["state"]["status"]
     if status in {"failed", "needs_reconciliation"} and run.get("error") == (
         "Generated changes contain private credentials or worker metadata; inspect the workspace"
@@ -165,7 +202,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if ({"blocker", "check_batch"} & facts.keys()) - cited:
+    if ({"blocker", "check_batch", "conversation"} & facts.keys()) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
@@ -214,10 +251,18 @@ class CommunicationWriter:
         if router.profiles._read(selected["profile_id"])["revision"] != selected["profile_revision"]:
             raise ValueError("Communication profile changed before delivery")
 
-    async def write(self, run: Data, native_card: str, safe: Callable[[str], str]) -> Data:
-        facts = communication_facts(run)
+    async def write(
+        self,
+        run: Data | None,
+        native_card: str,
+        safe: Callable[[str], str],
+        *,
+        conversation: CommunicationConversationV1 | None = None,
+    ) -> Data:
+        facts = communication_facts(run, conversation=conversation)
         if reject := getattr(self.store, "reject_credentials", None):
             if "decision" in facts:
+                assert run is not None
                 reject({key: run["worker_request"].get(key) for key in ("question", "context", "choices")})
             reject(facts)
         evidence: Data = {
@@ -260,8 +305,16 @@ class CommunicationWriter:
                 fact_ids=json.dumps(sorted(facts)),
             )
             instructions = inject_skills(
-                prompt_text("collaboration/communication-system", version="1.0.3"), ["humanizer"]
+                prompt_text("collaboration/communication-system", version="1.0.4" if conversation else "1.0.3"),
+                ["humanizer"],
             )
+            language_instructions = (
+                json.loads(prompt_text("collaboration/communication-language"))[conversation.language]
+                if conversation
+                else {}
+            )
+            if language_instructions:
+                instructions += "\n" + language_instructions["draft"]
             skill = next(item for item in community_catalog() if item["id"] == "humanizer")
             evidence["skills"] = [
                 {
@@ -311,7 +364,11 @@ class CommunicationWriter:
                     evidence["reason"] = "invalid_output"
                     return result
                 evidence["candidate_sha256"] = content_digest(draft.model_dump())
-                review_instructions = prompt_text("collaboration/communication-review-system")
+                review_instructions = prompt_text(
+                    "collaboration/communication-review-system", version="1.0.1" if conversation else "1.0.0"
+                )
+                if language_instructions:
+                    review_instructions += "\n" + language_instructions["review"]
                 review_prompt = prompt_text(
                     "collaboration/communication-review-request",
                     facts=json.dumps(facts, sort_keys=True),

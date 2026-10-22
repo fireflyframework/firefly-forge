@@ -191,7 +191,7 @@ def test_every_packaged_resource_matches_its_reviewed_text_vector():
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
-    assert len(catalog.registry) == 276
+    assert len(catalog.registry) == 286
     for vector in fixture["vectors"]:
         assert (
             catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]
@@ -575,3 +575,24 @@ def test_manifest_has_a_separate_256_kib_read_bound(tmp_path):
     path.write_bytes(path.read_bytes() + b" ")
     with pytest.raises(ValueError, match="limit"):
         PromptCatalog(tmp_path)
+
+
+def test_question_versions_keep_historical_inputs_and_select_new_context_explicitly():
+    from firefly_forge.prompts import prompt_text
+
+    historical = prompt_text("collaboration/question", question="Which owner?", choices="One or shared")
+    assert "A project operator can record your answer" in historical
+    assert "**Context**" not in historical
+    current = prompt_text(
+        "collaboration/question",
+        version="1.0.1",
+        question="Which owner?",
+        choices="One or shared",
+        context="Choose the customer workflow.",
+        reply_instructions="Use the authenticated dialogue.",
+        resume_instructions="",
+        destination="Open the current run.",
+    )
+    assert "**Context**\n\nChoose the customer workflow." in current
+    assert "Open the current run." in current
+    assert "Use the authenticated dialogue." in current

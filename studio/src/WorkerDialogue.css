@@ -152,6 +152,19 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 480px) {
+  .worker-answer-form .markdown-toolbar {
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px;
+  }
+  .worker-answer-form .markdown-toolbar button {
+    min-width: 32px;
+    padding: 6px;
+  }
+  .worker-answer-form .markdown-toolbar .markdown-preview-toggle {
+    font-size: 0;
+    gap: 0;
+  }
   .worker-dialogue-heading > button,
   .worker-dialogue-actions > button {
     width: 100%;

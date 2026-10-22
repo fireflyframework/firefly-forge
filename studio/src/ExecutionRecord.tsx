@@ -53,7 +53,7 @@ export function ContinueRun({
     run.pause?.kind === "provider_outcome_unknown" ||
     (run.agent === "bridge" && !!run.bridge_completion_hold);
   async function resume(handoff: boolean) {
-    if (unknownOutcome) return;
+    if (unknownOutcome || run.worker_request?.status === "pending") return;
     setBusy(true);
     setError("");
     try {
@@ -98,6 +98,30 @@ export function ContinueRun({
             to this run.
           </small>
         </div>
+      </section>
+    );
+  if (run.worker_request?.status === "pending")
+    return (
+      <section
+        className="continuation-panel"
+        aria-label="Waiting for your answer"
+      >
+        <div>
+          <h2>Waiting for your answer</h2>
+          <p>
+            The agent needs your decision. Read the context and options, then
+            send your answer before resuming the run.
+          </p>
+        </div>
+        <button
+          className="secondary"
+          onClick={() => {
+            document.getElementById("tab-questions")?.click();
+            document.getElementById("tab-questions")?.focus();
+          }}
+        >
+          Open agent questions
+        </button>
       </section>
     );
   return (

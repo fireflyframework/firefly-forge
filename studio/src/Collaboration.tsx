@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { communicationStatus } from "./CommunicationSettingsData";
 import { repositoryLabels } from "./RepositoryLabels";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -50,6 +51,7 @@ type Receipt = {
   command?: { action?: string };
   run_id?: string;
   feedback_status: string;
+  feedback_intent?: { communication?: unknown };
   created_at: string;
 };
 const failure = (value: unknown) =>
@@ -345,6 +347,15 @@ export function Collaboration({
                           {receipt.feedback_status || "not reported"} ·{" "}
                           {new Date(receipt.created_at).toLocaleString()}
                         </p>
+                        {communicationStatus(
+                          receipt.feedback_intent?.communication,
+                        ) && (
+                          <p className="feature-meta">
+                            {communicationStatus(
+                              receipt.feedback_intent?.communication,
+                            )}
+                          </p>
+                        )}
                         {safeExternalLink(receipt.issue?.url) && (
                           <a
                             href={safeExternalLink(receipt.issue?.url)!}

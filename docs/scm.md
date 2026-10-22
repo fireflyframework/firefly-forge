@@ -407,6 +407,26 @@ The Studio consent flow and SDK/CLI/MCP adapters use these same API contracts. L
 
 Product changes accept at most 80,000 UTF-8 input bytes. Saved product revisions and project cuts are bounded to 1 MiB each. Consent retains at most 100 heads, 50 revisions per head and 5,000 original requests; product edits retain at most 5,000 operations per repository. The combined consent and edit-event history has a 16 MiB budget, with 64 KiB consent and 128 KiB action envelopes. Limits refuse the operation; they do not omit evidence or report partial success.
 
+## Ask about the current ticket
+
+After an administrator configures GitHub conversation access and maps your account to current project read permission, ask in the issue or pull request itself:
+
+- `@forge, how is this going?`
+- `@forge, ¿cómo va el CRM?`
+- `forge, what happened?`
+
+`@forge` is Forge's native conversation alias. It does not rename the GitHub App or claim ownership of a GitHub account with that name. The configured technical App slug remains a compatible alias. The same status path accepts direct English and Spanish questions through signed GitHub comments or separately configured REST polling. Existing explicit commands remain available.
+
+Forge finds context within that exact ticket and your current project/component scope. It uses a run's native ticket link or an earlier authenticated ticket receipt. This also supports API-created runs whose ticket association was established by a processed status request. A unique active execution supplies the status. If all linked executions are terminal, the latest explicit ticket-context receipt identifies the conversation. Several active executions, or a missing link, produce a clarification. An identifier pasted into ordinary prose cannot select another run.
+
+With a communication profile selected, the AI writes the complete response in English or Spanish for the selected execution or the clarification needed to identify it. Missing or ambiguous context supplies only typed ticket-selection facts; it does not create a run or invent progress. A separate AI classification can request one correction, within the same three-request limit and shared profile deadline described under [AI communication profiles](model-profiles.md#write-project-updates-with-ai). Provider failure or invalid framing holds configured AI delivery without a generic substitute or automatic repeated calls. Explicit recorded mode remains available without an AI profile. Current comment, identity and read permission checks still apply before the reply.
+
+Status questions grant read access only. Requests to change a product, answer a worker or resume execution still use their separately authorized workflows. Unclear or combined requests receive a clarification. Quoted text, code examples, forwarded mentions and bot comments do not invoke this path. The bounded recognizer handles status questions; it does not interpret arbitrary instructions as executable commands.
+
+Forge retains the original comment, current read scope, context references and selected run before preparing the reply. It checks the current comment, author, native user, project membership and consent again before publication. An edited or deleted source, revoked access or changed context stops the reply. The native receipt retains the exact final body and hash. An uncertain remote outcome stays held for reconciliation, without an automatic second comment. The existing [communication profile](model-profiles.md#write-project-updates-with-ai) controls optional AI wording.
+
+The signed and polling transports keep their own verification and consent records. A record observed through one transport is not silently promoted to the other's authority. Protocol fixtures qualify these boundaries; a live App reply still requires independent author, body and native-receipt readback.
+
 ## Use GitHub issue comments from a local factory
 
 Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.

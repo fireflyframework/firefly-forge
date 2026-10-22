@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: collaboration/decision-destination
+version: 1.0.0
+description: Verified authenticated destination for a retained human question.
+system_template: ''
+user_template: |-
+  {{ reference }}
+required_variables:
+- reference
+metadata:
+  defaults: {}

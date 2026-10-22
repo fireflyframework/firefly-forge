@@ -93,11 +93,11 @@ The run's verification panel shows command counts and `pending`, `running`, `com
 
 **Agent questions** attributes the retained result to factory verification. Its protected version-4 `responding_actor` records `authentication_method: "factory_verification"`, the handoff ID and source, command, policy and provider digests. It is separate from an authenticated human answer; public answer requests cannot supply that provenance. Full bounded results remain in the command receipts, while the recorded answer contains a normalized excerpt of at most 8,000 characters.
 
-For an authorized source-control conversation, the bot reports meaningful changes from native run facts, including system-owned verification, a decision needed from a person, known check results and a recorded review-request link. Central `collaboration/` templates format these messages without another model call. Feedback still requires current conversation and repository authority. An uncertain remote comment stays held for reconciliation, and a completed implementation does not imply publication.
+For an authorized source-control conversation, the bot reports meaningful changes from native run facts, including system-owned verification, a decision needed from a person, known check results and a recorded review-request link. Central `collaboration/` templates supply the question, controls and recorded evidence. An explicitly selected [communication profile](model-profiles.md#write-project-updates-with-ai) can write a bounded introduction. Feedback still requires current conversation and repository authority. An uncertain remote comment stays held for reconciliation, and a completed implementation does not imply publication.
 
 ## Answer an agent's question
 
-When an agent needs a decision, it can pause its current task and record a question. Open the run and select **Agent questions**, or use **Open agent questions** on the paused-run notice. The conversation belongs to that run and its recorded task; answering does not create another run.
+When an agent needs a decision, it can pause its current task and record a question. Open the run and select **Agent questions**, or use **Open agent questions** on the **Waiting for your answer** notice. Resume and handoff controls remain unavailable while a human answer is pending. The conversation belongs to that run and its recorded task; answering does not create another run.
 
 1. Read the question and expand **Why the agent is asking**. Suggested answers are starting points; select one or write your own in **Your answer**. The Markdown editor supports formatting and preview. Keep passwords, keys and other secrets out of the answer because it becomes part of the execution record.
 2. Select **Review answer**. Check the rendered answer, then use **Edit answer** if it needs correction. No response is sent during editing or review.
@@ -120,9 +120,27 @@ The screenshots below use a fictional inventory question and controlled API resp
 
 Sending a human answer records it in the write-ahead log and marks that question answered. The run stays paused. Inspect the retained work before using **Resume run**. Each run allows only one pending question at a time and a bounded number of questions. Factory-owned verification follows its separate grant and continuation limit above.
 
+A service restart does not select an answer or start another coding call for a pending human question. The same question, context and retained evidence remain available when you return. A project viewer may inspect the conversation and screenshots; answering and continuing require current execution permission. Revoked access also blocks image reads and later actions.
+
 The portal retains the API, user, project, repository, run and original response identity before sending. It saves the normalized input digest and question event digest, without saving the answer text or a credential in browser storage. After a connection failure or reload, **Check original answer** reads the existing conversation. A missing response or permission refusal keeps the original identity unresolved. The portal does not resend the answer or create a replacement automatically. Keep browser storage until the original result is reconciled.
 
 If delivery is unconfirmed, use **Check original answer**. A missing result keeps the original request held. Reloading may show the original question without its matching answer; the editor stays unavailable while that response is unresolved. A changed or unreadable stored identity also blocks another answer. Preserve the browser reference and ask an authorized operator to review the retained conversation rather than replacing the request.
+
+### Inspect retained screenshots
+
+Expand **Retained screenshots** when the worker has supplied images with its question. Each entry identifies a recorded file; **View image** reads its protected bytes and verifies their size and SHA-256 before opening the preview. Nothing is fetched from a public image URL. Close the dialog with its close button or Escape to return to the same image control and answer form.
+
+The preview fits the available screen. **View original size** enables scrolling without shrinking small interface details; focus the image region and use the arrow keys. **Fit to screen** restores the overview. The gallery stays collapsed while you write so screenshots do not crowd the answer controls.
+
+forge retains an immutable, re-encoded copy when the question is recorded. Later workspace changes cannot silently replace it. Supported inputs are PNG, JPEG and WebP, with at most six images per question, one megabyte per image and four million decoded pixels. Animated images, SVG, symlinks and files outside the selected component are refused. Current project read permission is checked on every image request. Browser object URLs are revoked when the preview closes or its conversation changes.
+
+These images describe the worker's evidence; they do not approve a design or prove product acceptance. Byte and metadata credential checks are not OCR and cannot remove a password visible in the pixels. Review screenshots before adding them to a question.
+
+### Follow a question from source control
+
+The question card includes recorded context, suggested choices and the next available action. With an enabled answer channel and current consent, it supplies a complete `/forge respond` command. It does not claim that sending an answer resumes execution. Continue separately in forge, or use a continuation command only when that channel explicitly permits it.
+
+When repository replies are unavailable, the card links to the run's **Agent questions** tab using the configured public HTTPS `FORGE_BROWSER_ORIGIN`. Opening the link still requires sign-in and current project access; it performs no execution action. Missing or private browser origins produce an honest run reference and administrator setup guidance. Screenshots stay behind the authenticated API and are never embedded in a GitHub comment through a localhost URL or public access token.
 
 <figure class="forge-shot" markdown="1">
 ![Controlled phone view retaining an unanswered response identity after reload.](assets/screenshots/agent-answer-unresolved-mobile-dark.png)
