@@ -2,6 +2,12 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.33 — 2026-10-22
+
+- Pin Studio's Vitest test tooling and its associated locked packages to 4.1.12, addressing GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp. Preserve all other locked dependencies.
+- Document full source-development dependency audits and the existing loopback development-server boundary.
+- Refresh canonical Studio walkthrough captures for the 0.2.33 version stamp.
+
 ## 0.2.32 — 2026-10-22
 
 - Answer bounded English and Spanish status questions addressed to the native `@forge` alias or the configured App alias through signed comments and separately authorized polling.

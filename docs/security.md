@@ -15,6 +15,19 @@ Source-control OAuth callbacks are the narrow exception: their exact GET paths a
 
 Studio uses an opaque HttpOnly session cookie and native CSRF protection; it does not persist authentication tokens in browser storage. Serve remote users through one HTTPS origin with an exact allowed host and browser origin. Host-header validation remains enabled.
 
+## Maintain Studio development tools
+
+Install Studio dependencies from the current lockfile and include development dependencies in security checks:
+
+```bash
+npm --prefix studio ci
+npm --prefix studio audit
+```
+
+Full audits cover test tools such as Vitest. Forge 0.2.33 pins Vitest and its locked companion packages to 4.1.12, which addresses [manual mock code injection](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8) and [Windows redirect path traversal](https://github.com/vitest-dev/vitest/security/advisories/GHSA-xp26-3454-mjgp). Review future lockfile updates and rerun the Studio checks before publishing a source change.
+
+Keep the development server on its configured `127.0.0.1` listener. Operator installations serve the built Studio through the authenticated API origin; see [source development](installation.md#source-development) for the build commands.
+
 ## Protect credentials
 
 File-backed service credentials and immutable run revisions are plaintext files with mode `0600` inside a mode `0700` configuration directory. Secret GET responses report presence only. Empty secret fields preserve saved values; explicit clearing removes them. This is owner-level filesystem protection, not encryption at rest.

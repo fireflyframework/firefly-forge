@@ -75,7 +75,7 @@ npm --prefix studio ci
 npm --prefix studio run build
 ```
 
-Studio's production files are written to `studio/dist/`. The API serves that build. The installed distribution also includes Studio; a source checkout needs the build above.
+Studio's production files are written to `studio/dist/`. The API serves that build. The installed distribution also includes Studio; a source checkout needs the build above. Run [full development dependency audits](security.md#maintain-studio-development-tools) when updating the source toolchain.
 
 ### Prepare PostgreSQL
 
