@@ -357,12 +357,17 @@ for (const viewport of [
       await expect(
         dialogue.getByText("Needs your decision", { exact: true }),
       ).toBeVisible();
-      const resume = page.getByRole("button", {
-        name: "Resume run",
-        exact: true,
-      });
-      await expect(resume).toBeEnabled();
-      await reachable(page, resume);
+      for (const name of ["Resume run", "Hand off run"])
+        await expect(
+          page.getByRole("button", { name, exact: true }),
+        ).toHaveCount(0);
+      const openQuestion = page
+        .getByRole("region", { name: "Waiting for your answer", exact: true })
+        .getByRole("button", { name: "Open agent questions", exact: true });
+      await expect(
+        page.getByRole("button", { name: "Open agent questions", exact: true }),
+      ).toHaveCount(1);
+      await reachable(page, openQuestion);
       const input = dialogue.getByLabel("Your answer", { exact: true });
       await reachable(page, input);
       await input.fill("Review the recorded failed check before continuing.");

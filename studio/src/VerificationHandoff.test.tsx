@@ -231,6 +231,21 @@ describe("automatic verification continuation controls", () => {
     expect(html).not.toContain("Hand off run");
   });
 
+  it.each(["needs_reconciliation", "interrupted"])(
+    "keeps a pending answer ahead of continuation when %s",
+    (status) => {
+      const html = view({
+        ...run,
+        status,
+        verification_handoff: { ...handoff, status: "held" },
+      });
+      expect(html).toContain('aria-label="Waiting for your answer"');
+      expect(html).toContain("Open agent questions");
+      expect(html).not.toContain("Resume run");
+      expect(html).not.toContain("Hand off run");
+    },
+  );
+
   it("never hides a new human question behind an earlier handoff", () => {
     const html = view({
       ...run,

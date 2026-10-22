@@ -11,6 +11,7 @@
 - Preserve original comment verification, current authority, exact reply receipts and replay holds. Keep the original semantic review bound to its original candidate and retain separate provenance for corrected wording.
 
 - Display authorized question evidence with a raster preview, zoom and the complete recorded decision context. Keep answer recording separate from resume, and preserve current reply permissions and private response headers.
+- Show one question action while an answer is pending. Keep resume and provider handoff unavailable for paused, interrupted and reconciliation states until the question is answered.
 - Configure communication profiles with an optional routing revision seal, preserving existing callers and detecting concurrent updates.
 - Capture Agentic request checkpoints with Pydantic AI 2.58 by retaining known telemetry string sets in a deterministic order. Reject unsupported values and preserve the original request, runtime and replay checks.
 - Show **Start conversation** in the empty Studio assistant. Creating a conversation prepares the dialogue; the model runs when you send a message.

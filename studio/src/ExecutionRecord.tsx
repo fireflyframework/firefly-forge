@@ -100,7 +100,7 @@ export function ContinueRun({
         </div>
       </section>
     );
-  if (run.status === "paused" && run.worker_request?.status === "pending")
+  if (run.worker_request?.status === "pending")
     return (
       <section
         className="continuation-panel"
@@ -110,8 +110,7 @@ export function ContinueRun({
           <h2>Waiting for your answer</h2>
           <p>
             The agent needs your decision. Read the context and options, then
-            send your answer. The run stays paused until you explicitly resume
-            it.
+            send your answer before resuming the run.
           </p>
         </div>
         <button
