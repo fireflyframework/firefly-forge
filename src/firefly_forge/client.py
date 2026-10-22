@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.task_routing import TaskRoutingInput
+    from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
     from firefly_forge.user_administration import (
         AdministrationReconciliation,
         AdministrationRecovery,
@@ -401,11 +402,14 @@ class ForgeClient:
     def task_routing(self) -> dict[str, Any]:
         return dict(self.request("GET", "task-routing"))
 
-    def save_task_routing(self, request: TaskRoutingInput | dict[str, Any]) -> dict[str, Any]:
+    def save_task_routing(self, request: TaskRoutingInput | MCPTaskRoutingInput | dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.task_routing import TaskRoutingInput
+        from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
 
-        model = TaskRoutingInput.model_validate(request)
-        return dict(self.request("PUT", "task-routing", json=model.model_dump()))
+        original_mcp = isinstance(request, MCPTaskRoutingInput)
+        body = request.model_dump() if isinstance(request, MCPTaskRoutingInput) else request
+        model = TaskRoutingInput.model_validate(body)
+        return dict(self.request("PUT", "task-routing", json=model.model_dump(exclude_unset=original_mcp)))
 
     def repository_workflow(self, repository_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"repositories/{repository_id}/collaboration"))
