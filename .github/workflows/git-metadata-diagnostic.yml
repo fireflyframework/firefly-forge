@@ -1,8 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 name: Git metadata diagnostic
 on:
-  push:
-    branches: [diagnostic/v0.2.31-git-metadata-20261022]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
