@@ -53,9 +53,21 @@ async def test_original_mcp_routing_keeps_native_binding_validation(monkeypatch,
 
 
 @pytest.mark.parametrize("as_model", [False, True])
-def test_native_sdk_routing_preserves_explicit_concurrency(as_model):
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({}, {"bindings": {}}),
+        ({"bindings": {}}, {"bindings": {}}),
+        ({"bindings": {"communication": "updates"}}, {"bindings": {"communication": "updates"}}),
+        ({"expected_digest": None}, {"bindings": {}, "expected_digest": None}),
+        (
+            {"bindings": {"communication": "updates"}, "expected_digest": "a" * 64},
+            {"bindings": {"communication": "updates"}, "expected_digest": "a" * 64},
+        ),
+    ],
+)
+def test_native_sdk_routing_preserves_concurrency_field_presence(as_model, body, expected):
     calls = []
-    body = {"bindings": {"communication": "updates"}, "expected_digest": "a" * 64}
 
     def transport(request):
         calls.append(request)
@@ -69,4 +81,4 @@ def test_native_sdk_routing_preserves_explicit_concurrency(as_model):
         request = TaskRoutingInput.model_validate(body) if as_model else body
         assert connection.save_task_routing(request) == {"revision": 2}
     assert len(calls) == 1
-    assert json.loads(calls[0].content) == body
+    assert json.loads(calls[0].content) == expected

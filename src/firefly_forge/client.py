@@ -406,10 +406,10 @@ class ForgeClient:
         from firefly_forge.task_routing import TaskRoutingInput
         from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
 
-        original_mcp = isinstance(request, MCPTaskRoutingInput)
         body = request.model_dump() if isinstance(request, MCPTaskRoutingInput) else request
         model = TaskRoutingInput.model_validate(body)
-        return dict(self.request("PUT", "task-routing", json=model.model_dump(exclude_unset=original_mcp)))
+        omitted = {"expected_digest"} if "expected_digest" not in model.model_fields_set else set()
+        return dict(self.request("PUT", "task-routing", json=model.model_dump(exclude=omitted)))
 
     def repository_workflow(self, repository_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"repositories/{repository_id}/collaboration"))
