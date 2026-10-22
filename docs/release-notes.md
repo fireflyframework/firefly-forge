@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.33
+
+Studio's development and test toolchain pins Vitest and its associated locked packages to 4.1.12. This version fixes the manual mock code-injection issue [GHSA-qxg6-89mg-rqv8](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8) and the Windows redirect path-traversal issue [GHSA-xp26-3454-mjgp](https://github.com/vitest-dev/vitest/security/advisories/GHSA-xp26-3454-mjgp) in `@vitest/mocker`. Other locked dependencies retain their existing versions.
+
+Source developers should install from the updated lockfile and run the full dependency audit described in [Studio development tools](security.md#maintain-studio-development-tools). The development server retains its loopback listener. Factory execution behavior and runtime dependency requirements are unchanged; the Studio footer and canonical walkthrough captures carry the 0.2.33 version stamp.
+
 ## 0.2.32
 
 A mapped person with current project read access can ask a bounded status question directly in a GitHub issue or pull request: `@forge, how is this going?` or `@forge, ¿cómo va el CRM?`. Signed comments and separately configured polling use the same ticket-scoped context rules. `@forge` is a native address alias, not a GitHub account or App rename. The configured technical App slug remains compatible. See [ticket status conversations](scm.md#ask-about-the-current-ticket).
