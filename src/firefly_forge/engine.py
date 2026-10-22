@@ -126,6 +126,9 @@ class Engine:
         self.store = store
         self.connections = connections
         self.journal = journal
+        from firefly_forge.communication import CommunicationWriter
+
+        self.communication_writer = CommunicationWriter(store)
         self.knowledge: Any = None
         self.assurance: Any = None
         self.workspaces = workspaces
@@ -2092,6 +2095,133 @@ class Engine:
             )
         )
 
+    @staticmethod
+    def _publication_binding(run: dict[str, Any], repository: dict[str, Any]) -> str:
+        from firefly_forge.product_provenance import content_digest
+
+        return content_digest(
+            {
+                "run": {
+                    key: run.get(key)
+                    for key in (
+                        "repository_id",
+                        "project_id",
+                        "status",
+                        "branch",
+                        "brief",
+                        "summary",
+                        "source_tree",
+                        "checkpoint_revision",
+                        "final_verification",
+                        "attempt",
+                        "provider_recovery",
+                        "assurance",
+                        "review",
+                        "scm_snapshot",
+                        "cancel_request",
+                    )
+                },
+                "repository": {
+                    key: repository.get(key)
+                    for key in ("id", "provider", "url", "default_branch", "connection_provider")
+                },
+            }
+        )
+
+    async def _assert_publication_current(
+        self, identifier: str, draft: dict[str, Any], actor: dict[str, Any] | None
+    ) -> None:
+        from firefly_forge.project_access import ProjectAccess
+
+        await self.assert_ownership()
+        await self.store.admit_credentials(draft)
+        await self.validated_workspace(identifier)
+        current = await self.store.get_run(identifier)
+        await ProjectAccess(self.store).authorize_actor(actor, current.get("project_id"), "release")
+        repository = await self.store.repository(current["repository_id"])
+        if self.connections:
+            self.connections.assert_snapshot(repository, current.get("scm_snapshot"))
+        current = await self.store.get_run(identifier)
+        if self._publication_binding(current, repository) != draft["binding_sha256"]:
+            raise ValueError("Publication facts or destination changed after drafting")
+        self.communication_writer.assert_current(draft["communication"])
+        self.store.reject_credentials(draft)
+
+    async def _hold_publication_draft(self, identifier: str, reason: str) -> None:
+        await self.store.update(
+            identifier,
+            publication_draft={
+                "title": "",
+                "body": "",
+                "title_sha256": hashlib.sha256(b"").hexdigest(),
+                "body_sha256": hashlib.sha256(b"").hexdigest(),
+                "communication": {"mode": "held", "reason": reason},
+            },
+        )
+
+    async def _prepare_publication_draft(
+        self, identifier: str, run: dict[str, Any], repository: dict[str, Any], actor: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        from firefly_forge.communication import CommunicationPublicationV1
+        from firefly_forge.project_access import AccessDenied, ProjectAccess
+
+        evidence: dict[str, Any] = {"mode": "held", "reason": "publication_input_unavailable"}
+        try:
+            await ProjectAccess(self.store).authorize_actor(actor, run.get("project_id"), "release")
+            context = CommunicationPublicationV1.model_validate(
+                {key: run.get(key) for key in ("summary", "source_tree", "checkpoint_revision")}
+            )
+            await self.store.admit_credentials(context.model_dump())
+
+            def public_text(value: str) -> str:
+                self.store.reject_credentials(value)
+                return redact_environment(redact_secrets(value, self.credential_registry()))
+
+            context = CommunicationPublicationV1.model_validate(
+                {**context.model_dump(), "summary": public_text(context.summary)}
+            )
+            await self.assert_ownership()
+            await ProjectAccess(self.store).authorize_actor(actor, run.get("project_id"), "release")
+            body = (
+                "Implemented by firefly forge.\n\n"
+                + context.summary
+                + "\n\nVerification:\n"
+                + "\n".join(f"- {' '.join(check['argv'])}: passed" for check in run["final_verification"])
+            )
+            drafted = await self.communication_writer.write(run, body, public_text, publication=context)
+            evidence = drafted["communication"]
+            if evidence["mode"] == "held":
+                raise ValueError("Selected publication communication is held")
+            body = public_text(drafted["body"])
+            title = (
+                body.splitlines()[0].removeprefix("### ")
+                if evidence["mode"] == "ai"
+                else public_text(run["brief"][:150])
+            )
+            draft = {
+                "title": title,
+                "body": body,
+                "title_sha256": hashlib.sha256(title.encode()).hexdigest(),
+                "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "communication": evidence,
+                "binding_sha256": self._publication_binding(run, repository),
+            }
+            await self._assert_publication_current(identifier, draft, actor)
+            await self.store.update(identifier, publication_draft=draft)
+            return draft
+        except Exception as error:
+            await self._hold_publication_draft(
+                identifier,
+                evidence.get("reason", "unavailable")
+                if evidence.get("mode") == "held"
+                else "publication_boundary_changed",
+            )
+            if isinstance(error, AccessDenied):
+                raise
+            raise ValueError(
+                "Publication communication is held; inspect its recorded reason before a new request"
+            ) from None
+
     async def publish(self, identifier: str, *, actor: dict[str, Any] | None = None) -> str:
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
             await self.store.execution_requests.request_publish(identifier)
@@ -2121,6 +2251,15 @@ class Engine:
                 raise ValueError(
                     "Publication is in progress or has an ambiguous outcome; inspect the remote before retrying"
                 )
+            if self.journal:
+                try:
+                    plan = await self.journal.plan(identifier)
+                except KeyError:
+                    plan = {"tasks": []}
+                if any(task["id"] == "publish" and task["status"] != "queued" for task in plan["tasks"]):
+                    raise ReconciliationRequired(
+                        "Publication intent exists without a reconciled outcome; inspect the remote before retrying"
+                    )
             repo = await self.store.repository(run["repository_id"])
             if self.connections:
                 self.connections.assert_snapshot(repo, run.get("scm_snapshot"))
@@ -2136,12 +2275,22 @@ class Engine:
             if not authentication and not os.environ.get(f"FORGE_{repo['provider'].upper()}_TOKEN"):
                 raise ValueError(f"Configure FORGE_{repo['provider'].upper()}_TOKEN before publishing")
             workspace = await self.validated_workspace(identifier)
+            if not run.get("checkpoint_revision"):
+                await self._checkpoint_commit(identifier, workspace)
+            run = await self.store.get_run(identifier)
+            draft = await self._prepare_publication_draft(identifier, run, repo, releaser)
             publication_key = None
             if self.journal:
                 publication = await self.journal.intent(
                     identifier,
                     "publish",
-                    payload={"branch": run["branch"], "source_tree": run["source_tree"], "actor": releaser},
+                    payload={
+                        "branch": run["branch"],
+                        "source_tree": run["source_tree"],
+                        "actor": releaser,
+                        "publication_body_sha256": draft["body_sha256"],
+                        "publication_title_sha256": draft["title_sha256"],
+                    },
                 )
                 if publication["disposition"] != "execute":
                     raise ReconciliationRequired(
@@ -2149,23 +2298,17 @@ class Engine:
                     )
                 publication_key = publication["idempotency_key"]
             (await self.store.update(identifier, publication_status="publishing", publication_actor=releaser))
-            if not run.get("checkpoint_revision"):
-                await self._checkpoint_commit(identifier, workspace)
             revision = (await self.store.get_run(identifier))["checkpoint_revision"]
-            await self.assert_ownership()
-            await access.authorize_actor(releaser, run.get("project_id"), "release")
+            try:
+                await self._assert_publication_current(identifier, draft, releaser)
+            except Exception:
+                await self._hold_publication_draft(identifier, "publication_boundary_changed")
+                raise
             await push(workspace, run["branch"], env=git_env, repository_url=repo["url"], revision=revision)
-            body = (
-                "Implemented by firefly forge.\n\n"
-                + run["summary"]
-                + "\n\nVerification:\n"
-                + "\n".join(f"- {' '.join(check['argv'])}: passed" for check in run["final_verification"])
-            )
             async with httpx.AsyncClient(follow_redirects=False) as client:
-                await self.assert_ownership()
-                await access.authorize_actor(releaser, run.get("project_id"), "release")
+                await self._assert_publication_current(identifier, draft, releaser)
                 url = await PullRequests(client).create(
-                    repo, run["branch"], run["brief"][:150], body, authentication=authentication
+                    repo, run["branch"], draft["title"], draft["body"], authentication=authentication
                 )
             (await self.store.update(identifier, pr_url=url, publication_status="published"))
             await self._receipt(
