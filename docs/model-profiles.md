@@ -91,7 +91,9 @@ First configure the profile through the write-only model-profile endpoint descri
 
 In Studio, open **Connections > Coding AI > Project updates**. A factory administrator can select a compatible existing profile or choose **Recorded updates · no AI wording**, then save. Other task selections stay unchanged. **Refresh selection** reads the current settings without saving them. A missing response never triggers an automatic second save; read back the selection before deciding what to do next.
 
-API clients send the complete binding map to `PUT /api/v1/task-routing`, together with the `expected_digest` returned by the preceding GET. A changed digest refuses the write. Omitting this optional field preserves the existing API contract. Profiles in this example must already exist; creating one still uses the authenticated model-profile endpoint.
+API clients and Python SDK `save_task_routing` callers can include `expected_digest` with the complete binding map. Set it to the `digest` returned by the preceding `GET /api/v1/task-routing`. Studio sends this value when saving the project-updates selection. A changed digest refuses the write. Omitting this optional field preserves the existing API and SDK payloads. An explicit `null` is sent unchanged and does not enable the digest check. Profiles in this example must already exist; creating one still uses the authenticated model-profile endpoint.
+
+The original MCP `save_task_routing` tool accepts only `bindings` and rejects `expected_digest`. Use the HTTP API or Python SDK when a routing update needs the digest check.
 
 The model writes the complete update: a specific title, an explanation, the available results and the next supported decision. forge applies Markdown formatting; it does not append the old status card. The pinned [Humanizer adaptation](agent-roles.md#pinned-community-instructions) is included in the actual agent instructions, and its revision and content digest are retained with the message.
 

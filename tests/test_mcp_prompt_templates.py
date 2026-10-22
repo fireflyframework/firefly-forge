@@ -46,19 +46,12 @@ async def test_actual_mcp_wire_metadata_stays_byte_exact():
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     baseline = _baseline()["wire_json"]
-    # The eighth task and optional optimistic-concurrency seal are the only routing wire changes.
+    # The eighth task is the only routing wire change.
     expected = json.loads(baseline)
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
     assert bindings["maxProperties"] == 7
     bindings["maxProperties"] = 8
-    properties = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]
-    assert "expected_digest" not in properties
-    properties["expected_digest"] = {
-        "anyOf": [{"pattern": "^[a-f0-9]{64}$", "type": "string"}, {"type": "null"}],
-        "default": None,
-        "title": "Expected Digest",
-    }
     assert actual == json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
 
 
