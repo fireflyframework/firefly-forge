@@ -300,7 +300,7 @@ def poll_case(tmp_path, monkeypatch):
             },
         )
 
-        for modname in [
+        targets = [
             "firefly_forge.scm_actor_authority",
             "firefly_forge.project_access",
             "firefly_forge.journal",
@@ -308,8 +308,10 @@ def poll_case(tmp_path, monkeypatch):
             "firefly_forge.access_persistence",
             "firefly_forge.scm_conversations",
             module.__name__,
-        ]:
-            target = importlib.import_module(modname)
+        ]
+        # Cold consumers must capture native aliases before any dependency is replaced.
+        targets = [importlib.import_module(modname) for modname in targets]
+        for target in targets:
             for name, kind in [
                 ("ForgeIdentityUserRepository", "users"),
                 ("ForgeProjectRepository", "projects"),
