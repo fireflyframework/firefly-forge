@@ -1,0 +1,54 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: Git metadata diagnostic
+on:
+  push:
+    branches: [diagnostic/v0.2.31-git-metadata-20261022]
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      PYTEST_ADDOPTS: '-n 2 --dist=loadfile --max-worker-restart=0 -p git_metadata_diagnostic'
+      PYTHONPATH: '${{ github.workspace }}/src:${{ github.workspace }}/scripts'
+      FORGE_METADATA_DIAGNOSTIC_OUTPUT: '${{ runner.temp }}/forge-git-metadata-diagnostic'
+      FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
+      FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
+          POSTGRES_DB: forge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forge_test -d forge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Require the original runner Git version
+        run: |
+          git --version
+          test "$(git --version)" = "git version 2.55.0"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
+      - name: Check the existing PHP recipe fixture
+        run: make php-fixture-check
+      - run: uv sync --locked --group dev --group docs --extra analytics
+      - name: Verify diagnostic observer contracts
+        run: |
+          uv run ruff check scripts/git_metadata_diagnostic.py scripts/test_git_metadata_diagnostic.py
+          uv run ruff format --check scripts/git_metadata_diagnostic.py scripts/test_git_metadata_diagnostic.py
+          uv run python -m unittest scripts.test_git_metadata_diagnostic
+      - run: make python-check
+      - name: Retain hash-only Git metadata evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-metadata-diagnostic
+          path: ${{ runner.temp }}/forge-git-metadata-diagnostic/
+          retention-days: 3
+          if-no-files-found: warn
