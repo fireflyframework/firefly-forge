@@ -2,7 +2,7 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.32 — 2026-10-20
+## 0.2.32 — 2026-10-22
 
 - Answer bounded English and Spanish status questions addressed to the native `@forge` alias or the configured App alias through signed comments and separately authorized polling.
 - Resolve context within the exact ticket using current native read authority and authenticated execution links. Missing or ambiguous links prompt clarification; unsupported requests grant no execution effects.
