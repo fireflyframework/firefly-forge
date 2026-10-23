@@ -81,7 +81,7 @@ async def fixture():
     async def get_run(key):
         return copy.deepcopy(runs[key])
 
-    async def records(key):
+    async def records(key, request_id):
         return copy.deepcopy(entries[key.hex])
 
     async def references(*args, **kwargs):
@@ -95,7 +95,7 @@ async def fixture():
         store=store,
         inbox=SimpleNamespace(conversation_context=context),
         deployments=SimpleNamespace(
-            engine=SimpleNamespace(journal=SimpleNamespace(records=SimpleNamespace(find_for_run=records)))
+            engine=SimpleNamespace(journal=SimpleNamespace(records=SimpleNamespace(find_question_context=records)))
         ),
     )
     natural = SCMNaturalTasks(collaboration)

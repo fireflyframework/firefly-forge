@@ -7,6 +7,18 @@ description: Connect GitHub, GitLab or Bitbucket applications and retain project
 
 A source-control connection lets forge read granted repositories and publish reviewed changes through the provider's API. GitHub Apps, GitLab OAuth applications and Bitbucket OAuth consumers supply that authority. Your factory sign-in controls who may configure forge; it does not grant access to the provider account.
 
+## Talk to forge in your issue
+
+Use ordinary language in the connected GitHub issue. You do not need slash commands or JSON to ask about work or answer a confirmed pending question:
+
+- `@forge, what is blocking this task and what do you need from me?`
+- `@forge, help me define a CRM for our account managers.`
+- After forge publishes a confirmed question in that issue, reply naturally: `Keep the existing contacts and let their account owners approve changes.` You do not need to repeat the mention or copy a request identifier.
+
+The configured AI interprets the message using the issue's linked work and retained questions. Unclear or conflicting references require clarification. A reply can save your answer without restarting work; it does not silently authorize a new run, source change, publication or budget.
+
+An administrator first connects the repository, enables [local issue polling](#use-github-issue-comments-from-a-local-factory), maps your account to current project permissions and configures the communication profile. Product discussions also require the [separate functional allowance](#review-the-account-and-allowance-in-studio). Read the [natural conversation guide](#ask-about-the-current-ticket) for supported requests and authority boundaries. The typed slash-command and signed-ingress examples later on this page remain advanced compatibility paths for integrations and troubleshooting.
+
 ## Connect one repository
 
 A factory administrator completes these steps in **Connections → Repositories**:
@@ -16,7 +28,7 @@ A factory administrator completes these steps in **Connections → Repositories*
 3. Install the GitHub App on the intended repositories. For GitLab or a Bitbucket authorization-code grant, choose **Authorize in…** and finish consent in the same browser. Bitbucket client credentials use the configured consumer and workspace instead.
 4. Choose **Check access**. This makes a real provider request. A successful check describes the current grant, not a permanent permission.
 5. Choose **Find granted repositories**, inspect the returned repository name and URL, then **Connect NAME**. forge checks discovery again and registers the selected remote repository ID with its provider URL and default branch. It does not accept a caller-substituted URL or credentials in this action.
-6. Select that registered repository when defining a product or starting work. Enable [signed conversation commands](repository-workflow.md) or [local GitHub issue polling](#use-github-issue-comments-from-a-local-factory) separately; connecting an application alone does not enable either transport.
+6. Select that registered repository when defining a product or starting work. Enable [local GitHub issue polling](#use-github-issue-comments-from-a-local-factory) for natural issue conversations. [Signed conversation commands](repository-workflow.md) remain a separate compatibility transport; connecting an application alone does not enable either one.
 
 <figure class="forge-shot" markdown="1">
 ![Studio repository-access step in the factory connection wizard.](assets/screenshots/connect-repositories-desktop-light.png)
@@ -28,7 +40,7 @@ A factory administrator completes these steps in **Connections → Repositories*
 | Direction | Implemented behavior | What the result establishes |
 | --- | --- | --- |
 | Provider → factory | Discover granted repositories and clone their configured default branch when preparing a fresh run; a campaign can supply its frozen source commit. | The run's recorded source base, not a continuously synchronized workspace. |
-| Provider conversation → factory | Accept an enabled signed command, or poll GitHub issue comments for separately authorized `respond` and `status` actions. | A retained delivery and its allowed action; ordinary discussion does not start work. |
+| Provider conversation → factory | Read natural GitHub issue conversations within current account consent, or accept separately enabled typed and signed actions. | A retained message and its admitted response or action; ordinary discussion alone does not authorize execution. |
 | Factory → provider | Push verified source to the run branch and request a pull or merge request; optionally publish separate review-reference files. | A recorded publication outcome, not a merged default branch or deployment. |
 | Factory → conversation | Post queued, stopped or terminal status and supported worker questions using the conversation's original identity. | Feedback about retained work; an uncertain reply remains unresolved until checked. |
 
@@ -264,6 +276,8 @@ Live acceptance requires the real application registration, provider consent,
 repository grant and successful remote operation for each account.
 
 ## Explicit SCM delegation
+
+This is the advanced signed-command compatibility path. For everyday issue discussion, start with [natural conversations](#talk-to-forge-in-your-issue).
 
 After a delegated `respond`, `status`, or `cancel` action completes, Forge retains
 its result and schedules a comment in the same issue or pull-request conversation.
@@ -682,6 +696,8 @@ with ForgeClient(os.environ["FORGE_URL"], os.environ["FORGE_API_TOKEN"]) as fact
 The other SDK reads are `scm_polling_setup`, `scm_polling_configuration`, `scm_polling_status`, `scm_polling_candidates` and `scm_polling_heads`, with the same project/repository arguments. The exact configuration read also takes its original request ID. An SDK exception does not authorize another POST.
 
 ### 5. Publish a new status or answer comment
+
+The explicit commands below are compatibility examples. For normal use, [ask or answer in ordinary language](#talk-to-forge-in-your-issue) after the same polling and account setup.
 
 From the consented GitHub account, post one complete command in an issue of the configured repository. Replace the placeholders with the existing run ID and its exact pending worker-request ID:
 

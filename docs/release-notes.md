@@ -5,6 +5,12 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.38
+
+Natural replies to a confirmed pending worker question no longer load unrelated provider and tool output from the whole execution journal. The lookup selects the exact run and question ancestry, enforcing its row and byte limits in one SQL statement snapshot before returning payloads. A large retained diagnostic history therefore cannot hide a small current question; changed or ambiguous question evidence still refuses answer application.
+
+The source-control guide starts with ordinary issue conversation and replies without copied command identifiers. Typed commands remain available as an advanced compatibility path. Tool documentation distinguishes the conditional native registry from ordinary CLI permissions and the separately qualified source-only profile. This release does not introduce owner-note delivery, repeated restricted source readmission or a new model allowance.
+
 ## 0.2.37
 
 GitHub conversations accept ordinary language for product requests, status and answers. A reply to a confirmed pending question can omit the mention when its issue, author and question binding are unambiguous. The factory retains the original text and question provenance across restarts. Ambiguous references ask for clarification rather than guessing a run or requiring a command. See the [conversation guide](scm.md).

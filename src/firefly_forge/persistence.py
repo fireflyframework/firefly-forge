@@ -455,6 +455,46 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
         )
         return [{"id": row[0].hex, "completion_id": row[1], "status": row[2]} for row in rows]
 
+    async def find_question_context(self, run_id: UUID, request_id: str) -> list[ForgeJournalEntity]:
+        """Read exact typed question ancestry without loading unrelated provider/tool output."""
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 100:
+            raise ValueError("Select one bounded native worker question identity")
+        event = ForgeJournalEntity
+        payload = event.data["payload"]
+        matching = and_(
+            event.run_id == run_id,
+            or_(
+                and_(event.kind == "worker_feedback", payload["request"]["id"].astext == request_id),
+                and_(event.kind == "worker_response", payload["request_id"].astext == request_id),
+                and_(
+                    event.kind.in_(("resume", "handoff")),
+                    payload["human_clarification"]["request_id"].astext == request_id,
+                ),
+            ),
+        )
+        budget = (
+            select(
+                func.count().label("rows"),
+                func.coalesce(func.sum(func.octet_length(cast(event.data, Text))), 0).label("bytes"),
+            )
+            .where(matching)
+            .cte("question_budget")
+        )
+        # One statement snapshot prevents a concurrent append from invalidating a prior byte probe.
+        rows = (
+            await self._require_session().execute(
+                select(budget.c.rows, budget.c.bytes, event)
+                .select_from(
+                    budget.outerjoin(event, and_(matching, budget.c.rows <= 2000, budget.c.bytes <= 4 * 1024 * 1024))
+                )
+                .order_by(event.sequence)
+                .limit(2001)
+            )
+        ).all()
+        if not rows or int(rows[0][0]) > 2000 or int(rows[0][1]) > 4 * 1024 * 1024:
+            raise ValueError("The selected question ancestry exceeds its bounded native lookup")
+        return [row[2] for row in rows if row[2] is not None]
+
     async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
         return list(
             await self._require_session().scalars(
