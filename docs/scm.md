@@ -660,6 +660,8 @@ forge project scm-polling candidates PROJECT_ID REPOSITORY_ID
 
 Renewing the same native account's read consent does not erase an already published worker question. A retained answer can be reviewed against the exact archived publication and a current active binding for the same project, account and components. Saving that answer still requires current `respond` permission and explicit native readmission; it does not renew a resume grant, replay a classifier call, or authorize another implementation attempt. Changed owners, component scope, publication evidence or revoked read access remain blocked. New question notifications continue to require the activation's exact current binding.
 
+The candidates read returns at most 50 compact observations: `id`, the typed `verification` reference, and `reference_digest`. The reference contains the numeric author, repository and issue identities. Retained message bodies, conversation context and execution receipts stay in the inbox and are not returned by this read. Credential admission and current administrator checks still apply to the projected response; saving consent reloads the original observation and verifies its exact reference.
+
 Select an observation from the exact repository and review its numeric author ID. Use its `id` and `reference_digest`, plus the page's `project_binding_digest`, in `consent.json`. Replace the placeholders with reviewed values; `component_ids` contains actual component IDs from the project:
 
 ```json

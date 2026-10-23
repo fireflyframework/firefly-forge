@@ -91,6 +91,7 @@ nav:
       - Choose a stack: profiles.md
       - Build, maintain and test: workflows.md
       - Coordinate project campaigns: project-campaigns.md
+      - Save development progress: development-workflow.md
       - Delivery assurance: assurance.md
   - Agents:
       - Choose an agent: agents.md

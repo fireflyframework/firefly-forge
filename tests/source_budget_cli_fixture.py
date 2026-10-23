@@ -12,6 +12,16 @@ import httpx
 args = __import__("sys").argv[1:]
 brief = __import__("sys").stdin.read()
 amended = '"source-budget-continuation-v1"' in brief
+marker = "Recorded operator response to the previous worker question"
+start = brief.index("\n", brief.index(marker))
+retained, _ = json.JSONDecoder().raw_decode(brief[start:].lstrip())
+assert retained["kind"] == "historical_worker_question_answers" and retained["version"] == 1
+assert retained["historical_only"] is True and retained["grants_authority"] is False
+assert retained["pairs"] and retained["current_response_digest"] == retained["pairs"][-1]["response"]["digest"]
+assert all(pair["feedback"]["sequence"] < pair["response"]["sequence"] for pair in retained["pairs"])
+if amended:
+    assert len(retained["pairs"]) >= 2
+    assert any(pair["request_id"] == "native-read-budget-question" for pair in retained["pairs"])
 assert (
     ('"used": 13' in brief and '"limit": 20' in brief) if amended else ('"used": 0' in brief and '"limit": 10' in brief)
 )

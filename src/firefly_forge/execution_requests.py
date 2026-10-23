@@ -58,6 +58,7 @@ class ExecutionRequests:
         self.journal = journal or ForgeExecutionRequestEventRepository()
         self.runner_continuations: RunnerContinuations | None = None
         self.agent_restores: Any = None
+        self.git_deliveries: Any = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
         self.poller: asyncio.Task[None] | None = None
@@ -451,6 +452,10 @@ class ExecutionRequests:
         observed = await self.get(request_id)
         if observed["run_id"] != identifier(run_id).hex:
             raise KeyError("Execution request not found in this run")
+        if observed["kind"] == "git_delivery":
+            raise ValueError(
+                "Inspect exact Git delivery observations; generic reconciliation cannot settle its custody"
+            )
         run = await self.store.get_run(run_id)
         actor = self._actor(run)
         permission: Literal["release", "execute"] = (
@@ -578,6 +583,8 @@ class ExecutionRequests:
             await self.runner_continuations.recover()
         if self.agent_restores is not None:
             await self.agent_restores.recover()
+        if self.git_deliveries is not None:
+            await self.git_deliveries.recover()
         self.poller = asyncio.create_task(self._poll())
 
     async def stop(self) -> None:
@@ -603,11 +610,17 @@ class ExecutionRequests:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="agent_restore")
                     ]
+                if self.git_deliveries is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="git_delivery")
+                    ]
             for row in queued:
                 if row["kind"] == "cancel":
                     await self.execute(row["id"])
                 elif not self.active:
-                    if row["kind"] == "agent_restore":
+                    if row["kind"] == "git_delivery":
+                        action = self.git_deliveries.execute
+                    elif row["kind"] == "agent_restore":
                         action = self.agent_restores.execute
                     elif row["kind"] == "runner_continue":
                         if self.runner_continuations is None:

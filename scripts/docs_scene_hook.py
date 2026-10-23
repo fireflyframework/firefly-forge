@@ -42,12 +42,14 @@ CAPTURE_HELPERS = {
     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
     "studio/tests/coding-check-grant-fixture.json",
     "studio/tests/coding-check-recovery-browser-fixture.ts",
+    "studio/tests/git-delivery-contract-fixture.json",
 }
 CAPTURE_PRODUCERS = {
     "studio/tests/docs-walkthrough.spec.ts",
     "studio/tests/external-tools.spec.ts",
     "studio/tests/docs-provider-allowance.spec.ts",
     "studio/tests/docs-coding-check-recovery.spec.ts",
+    "studio/tests/development-workflow.spec.ts",
 }
 
 
@@ -134,8 +136,17 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("coding-check-") and stage not in coding_stages:
             raise ValueError("Unknown configured-check capture stage: " + name)
+        workflow_stages = {
+            "development-workflow-settings",
+            "development-workflow-actions",
+            "development-workflow-history",
+        }
+        if stage.startswith("development-workflow-") and stage not in workflow_stages:
+            raise ValueError("Unknown development workflow capture stage: " + name)
         expected_producer = (
-            "studio/tests/external-tools.spec.ts"
+            "studio/tests/development-workflow.spec.ts"
+            if stage in workflow_stages
+            else "studio/tests/external-tools.spec.ts"
             if stage.startswith("external-")
             else "studio/tests/docs-coding-check-recovery.spec.ts"
             if stage in coding_stages

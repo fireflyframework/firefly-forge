@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_git_delivery_policy
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Save a project checkpoint policy using the reviewed versioned request and expected previous digest. Schedules apply to new runs; disabling stops further checkpoints in existing runs. Requires current administrator and project authority. After an uncertain response, read the saved policy before another write."
+required_variables: []
+metadata:
+  defaults: {}

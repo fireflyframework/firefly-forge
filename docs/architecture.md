@@ -238,6 +238,108 @@ Inspect `GET /api/v1/runs/{id}`, `/plan` and `/journal`; [the HTTP guide](api.md
 
 Source: [`store.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/store.py) (`create_run`, `claim`), [`engine.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/engine.py) (`dispatch_queued`, `execute_run`, `_checkpoint_commit`, `validated_workspace`).
 
+## Development checkpoints and draft reviews
+
+A run can save intermediate Git commits after a completed implementation unit or a safe pause. The project records this workflow as a versioned policy, and admission copies it into each new run. The policy starts disabled. Schedule and delivery-mode changes apply to future snapshots. Disabling the project policy also prevents further checkpoints in existing opted-in runs; their saved commits and frozen policy remain intact. Its schedule counts completed implementation attempts, with a limit of 1 to 20 between checkpoints. It can retain up to 50 checkpoints, including a reserved final checkpoint; a limit of 1 therefore saves only the final verified result. [Save development progress](development-workflow.md) explains the Studio controls.
+
+The factory owns these Git operations. A checkpoint waits for the provider invocation to end, the implementation task to close and all tool outcomes to settle. A typed pending worker question can establish a safe pause. An active coding worker, unresolved tool, unknown provider result, draining owner or revoked permission prevents the operation. The coding model cannot authorize a push by mentioning one in its output.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Development checkpoint lifecycle" aria-describedby="development-checkpoint-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 24
+---
+flowchart LR
+    A[Completed round<br/>or safe pause] --> B[Recheck owner<br/>and source]
+    B --> C[Retain Git intent]
+    C --> D[Commit exact tree]
+    D --> E[Retain receipt]
+    E --> F[Scoped push<br/>and draft]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="development-checkpoint-guide">Each checkpoint retains its intent before Git runs. A remote update has a separate intent and receipt. Focus and scroll the diagram on a narrow screen.</p>
+
+### Baseline, checkpoint head and verified tree
+
+| Reference | Purpose | Changes when |
+| --- | --- | --- |
+| Original base revision | Defines the complete application diff and preserved repository baseline. | It remains fixed for the run. |
+| Latest factory checkpoint | Identifies the head accepted by the next coding unit. | A new commit and its matching receipt are retained. |
+| Verified source tree | Binds executable checks and any required review to the final source. | Fresh verification accepts a changed tree. |
+
+`GitDeliveries` serializes checkpoint operations for a run. It checks that HEAD equals the original base or the last factory-owned checkpoint, snapshots the source and stages its exact tree. The commit receipt retains the parent revision, new revision, tree, changed paths, patch digest, task and attempt. A foreign HEAD or changed source cut fails admission. Subsequent implementation units use the retained checkpoint head while their full diff continues to use the original base.
+
+`GitDeliveryPolicies` owns project configuration through native pyfly services. The project administrator must have current membership-management authority. Remote delivery also requires release permission and a connected repository whose adapter supports draft updates. GitHub and GitLab have explicit draft lifecycles; an unsupported provider is refused before a remote checkpoint push. Local checkpoints remain available where that remote capability is absent.
+
+### Remote delivery and uncertainty
+
+The remote path obtains scoped credentials from the selected SCM connection, checks the exact repository and branch, and records a separate publication intent. Its Git push binds the expected remote revision with an exact ref lease, and the service independently requires the previous revision to be an ancestor of the new commit. A branch created or reset by another writer is refused; callers cannot opt into history rewrites. The configured communication model drafts the update from typed checkpoint facts. A held communication result produces no remote write. The first successful update creates a draft review; later updates retain that same review identity. Final publication updates and marks that review ready after the ordinary verification and review gates pass.
+
+A local development commit establishes saved progress. Final verification and any required independent review must still match the delivered tree. Marking a review ready does not establish that it has merged, deployed or passed remote CI.
+
+If an owner stops after a local or remote intent, the result stays uncertain until its retained identity and observed repository state can be inspected. A new request ID cannot bypass an unfinished intent. The observation route reads the local and remote state without retrying the effect. This preserves the distinction between an observed branch or review and an authorized recovery action.
+
+### API and worker ownership
+
+| Endpoint | Responsibility |
+| --- | --- |
+| `GET/PUT /api/v1/projects/{project_id}/git-delivery-policy` | Read or conditionally save the default for future runs. |
+| `GET /api/v1/runs/{run_id}/git-deliveries` | Read typed checkpoint history and remote status. |
+| `POST /api/v1/runs/{run_id}/git-deliveries` | Queue a bounded request against an exact expected head and source tree. |
+| `GET /api/v1/runs/{run_id}/git-deliveries/requests/{request_id}` | Read the request and its ordered event receipts. |
+
+The API records a durable execution request and returns acceptance before Git executes. The owning worker claims the ticket and rechecks authority and source custody. A restart leaves an executing ticket in reconciliation; it is not queued again automatically. Automatic checkpoints use the same factory-owned service at closed implementation boundaries. Studio exposes configuration and receipt inspection without interrupting an active model call.
+
+Source: `git_delivery_models.py`, `git_delivery_policy.py`, `git_delivery_requests.py`, `git_deliveries.py`, `git_delivery_remote.py`, `git_delivery_controllers.py`, `engine.py` and `journal.py`.
+
+## Retained worker context across handoffs
+
+Each later implementation turn receives the authenticated question-and-answer history from its run's WAL, alongside the current response. `Journal.implementation_context()` reads message payloads together with the complete ordered journal headers, checks their hashes and pairs each answer with its unique earlier typed question. A diagnostic therefore survives a later answer about a different blocker. The projection retains the request and task, attempt, actor-provenance digest, journal sequences and timestamps.
+
+The projection permits at most 64 messages and 256 KiB of retained message data, with at most 10,000 journal headers. An oversized or inconsistent history refuses the dispatch. Current project and execution authority are checked before reading and after credential admission; the run scope, current answer and projected history must still match. A cancellation or credential disclosure also prevents use of the context.
+
+These records are marked historical and carry no execution authority. A previous check result describes the source and conditions recorded at that time. It cannot approve changed source, add a command, replenish a budget or authorize a provider retry. The latest answer remains separately identified so the implementer can distinguish a current decision from earlier evidence.
+
+The generated worker-feedback schema includes the same disposition/request condition as the runtime validator: `blocked` and `clarification` require one typed request; `completed` and `failed` require a null or omitted request. A malformed report remains a failed result with its original activity retained. It does not create a synthetic question or an automatic replacement model call.
+
+Source: `worker_context.py`, `Journal.implementation_context()`, `ForgeJournalRepository.find_implementation_context()` and `WorkerFeedback` in `agent_roles.py`.
+
+### Continue after an invalid completed report
+
+A completed native turn can still return an invalid implementation report. The failed activation, archived message, usage and tool receipts remain recorded. An administrator can review a new `known_completed_output` source-budget candidate; the system does not invent a question or reinterpret that output as success.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Explicit continuation after an invalid report" aria-describedby="completed-output-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 24
+---
+flowchart LR
+  failed[Failed turn] --> review[Review source<br/>and evidence]
+  review --> consent[Finite consent]
+  consent --> queue[Queue next turn]
+  queue --> verify[Build and verify]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="completed-output-flow-guide">Continuation preserves the failed turn and requires a new source review. Focus and scroll the diagram on a narrow screen.</p>
+
+The candidate binds the exact parent receipt, canonical dispatch, raw Git index, current source manifest and remaining tool budget. Credential admission includes newly created public UTF-8 files without staging them. Submission records the reviewed source and patch digests, a finite expiry and explicit acknowledgments that completed output establishes neither implementation success nor process exit.
+
+Consent, queue state and receipt commit through the physical execution-lease connection. A changed source, revoked administrator, lost owner or failed receipt rolls back admission. The next activation uses ordinary dispatch with its original commands and final-check reserve; an unknown admission is inspected through the retained request rather than resubmitted. A current measured native profile must independently cover the loader and limits. Historical v5/v6 evidence cannot authorize the v7 loader's additional module. The [recovery contract](recovery.md) describes the API, SDK and CLI inputs.
+
+Source: `source_budget_output.py`, `source_budget_allowances.py`, `source_result_readmission.py` and `source_edit_qualification.py`.
+
 ## Factory-owned verification handoffs
 
 A coding agent may need checks that its own sandbox cannot perform, such as connecting to the project's dedicated test database. It returns a typed `verification` request. forge executes the run's already approved commands in the configured runner and sends the recorded results back to the coding agent. A product decision, missing credential or unknown side effect is not permission to invent a command or expand access.
@@ -387,7 +489,7 @@ flowchart LR
 
 <p class="forge-flow-caption" id="coding-check-flow-guide">Review and grant before reserving the linked attempt. Each interactive call repeats current authority, source and budget checks; independent final verification follows separately. On a narrow screen, scroll horizontally or focus a diagram and use the arrow keys.</p>
 
-The coding channel is separate from the 166-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
+The coding channel is separate from the 172-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
@@ -517,7 +619,7 @@ Built-in model instructions are versioned YAML resources loaded and rendered by 
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Native PHP diagnostics | Explicit `profile_php` plus command grant, frozen Docker/archive/network-`none` runner | Runtime metrics or preinstalled Xdebug observations retain command receipts; they do not authorize or approve work. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 166 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 172 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 

@@ -17,6 +17,7 @@ from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
 from firefly_forge.campaign_report_history import CampaignReportArchiveInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
+from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
@@ -71,6 +72,8 @@ RunCreationRequest = SkipValidation[RunCreationInput]
 RunCreationCancelRequest = SkipValidation[RunCreationCancelInput]
 AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
+GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
+GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
 
 
 def create_server() -> MCPServer:
@@ -568,6 +571,80 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.project(project_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_git_delivery_policy"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_git_delivery_policy(project_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.git_delivery_policy(project_id)
+
+    @server.tool(
+        description=prompt_text("mcp/configure_git_delivery_policy"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def configure_git_delivery_policy(
+        project_id: RecoveryIdentifier, request: GitDeliveryPolicyRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_git_deliveries(project_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_git_deliveries"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_git_deliveries(run_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.git_deliveries(run_id)
+
+    @server.tool(
+        description=prompt_text("mcp/request_git_delivery"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def request_git_delivery(run_id: RecoveryIdentifier, request: GitDeliveryRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_git_delivery(run_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_git_delivery_request"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_git_delivery_request(run_id: RecoveryIdentifier, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.git_delivery_request(run_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_git_delivery_observations"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def get_git_delivery_observations(run_id: RecoveryIdentifier, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.git_delivery_observations(run_id, request_id)
 
     @server.tool(description=prompt_text("mcp/get_project_revision"))
     def get_project_revision(project_id: str, revision: int) -> dict[str, Any]:

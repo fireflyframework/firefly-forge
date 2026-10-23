@@ -14,10 +14,11 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 5
-LOADER_PROFILE = "codex-exec-restricted-source/v6"
+REGISTRY_VERSION = 6
+LOADER_PROFILE = "codex-exec-restricted-source/v7"
 LOADER_MODULES = (
     "source_budget_allowances.py",
+    "source_budget_output.py",
     "source_tool_budget.py",
     "tool_broker.py",
     "providers.py",
@@ -179,6 +180,7 @@ SOURCE_BUDGET_CHECKS = (
     "unamended_activation_limit4",
     "amended_canonical_activation",
     "unknown_never_replayed",
+    "known_completed_output_finite_activation",
 )
 
 
@@ -197,7 +199,11 @@ def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
     if (
         profile not in _profiles()
         or (profile.version, profile.loader_profile)
-        not in {(4, "codex-exec-restricted-source/v5"), (5, "codex-exec-restricted-source/v6")}
+        not in {
+            (4, "codex-exec-restricted-source/v5"),
+            (5, "codex-exec-restricted-source/v6"),
+            (6, "codex-exec-restricted-source/v7"),
+        }
         or profile.proof.contract_digest != profile_contract_digest(profile)
     ):
         raise ValueError("The immutable historical native profile is not registered provenance")

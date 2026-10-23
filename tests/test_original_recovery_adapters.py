@@ -105,6 +105,12 @@ CASES = [
     ),
 ]
 NEW_TOOLS = {case[1] for case in CASES} | {
+    "get_git_delivery_policy",
+    "configure_git_delivery_policy",
+    "get_git_deliveries",
+    "request_git_delivery",
+    "get_git_delivery_request",
+    "get_git_delivery_observations",
     "get_run_activity_content",
     "configure_scm_polling_resume_grant",
     "get_scm_polling_resume_grant",
@@ -282,7 +288,7 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
     bindings["maxProperties"] = 7
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 166
+    assert len(tools) == 172
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}

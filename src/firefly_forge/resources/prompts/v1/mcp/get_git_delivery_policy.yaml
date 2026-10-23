@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_git_delivery_policy
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Read a project's saved development checkpoint policy, current permissions and remote draft capabilities. This read does not change a run or its consent."
+required_variables: []
+metadata:
+  defaults: {}

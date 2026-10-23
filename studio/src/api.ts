@@ -1,4 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import type { GitDelivery, GitDeliveryPolicy } from "./GitDeliveryData";
+
 export type Connection = {
   base: string;
   token: string;
@@ -14,6 +16,11 @@ export type Repository = {
   remote_repository_id?: string;
 };
 export type ForgeRun = {
+  git_delivery_policy?: GitDeliveryPolicy;
+  git_delivery_summary?: Pick<
+    GitDelivery,
+    "revision" | "source_tree" | "sequence" | "remote_status" | "pr_url"
+  >;
   project_id?: string | null;
   component_id?: string | null;
   publish?: boolean;

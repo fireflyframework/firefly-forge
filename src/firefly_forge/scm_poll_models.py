@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -45,6 +45,16 @@ class GitHubPollReferenceV1(ProviderIdentity):
     @classmethod
     def canonical_origin(cls, value: str) -> str:
         return exact_origin(value)
+
+
+class GitHubPollCandidateV1(PollContract):
+    id: NativeID
+    verification: GitHubPollReferenceV1
+    reference_digest: Digest
+
+    @classmethod
+    def from_observation(cls, data: dict[str, Any], reference_digest: str) -> GitHubPollCandidateV1:
+        return cls(id=data["id"], verification=data["verification"], reference_digest=reference_digest)
 
 
 class SCMPollActorBindingInputV2(PollContract):

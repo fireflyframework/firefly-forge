@@ -12,6 +12,7 @@ import { ProviderRecoveryAllowance } from "./ProviderRecoveryAllowance";
 import { CodingCheckRecovery } from "./CodingCheckRecovery";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
+import { RunGitDeliveries } from "./RunGitDeliveries";
 import type { IdentitySession } from "./Identity";
 import { asRecord } from "./ExecutionFormat";
 import {
@@ -364,6 +365,20 @@ export function ExecutionRecord({
           </li>
         ))}
       </ol>
+      {session && (run.git_delivery_policy || run.git_delivery_summary) && (
+        <RunGitDeliveries
+          key={JSON.stringify([
+            connection.base,
+            connection.token,
+            session.user.id,
+            session.global_admin,
+            session.memberships,
+            run.id,
+          ])}
+          connection={connection}
+          runId={run.id}
+        />
+      )}
       {(run.checkpoint_revision || run.source_tree) && (
         <dl className="wizard-summary">
           <div>

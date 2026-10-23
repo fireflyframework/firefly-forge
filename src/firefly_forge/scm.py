@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -126,11 +126,33 @@ async def push(
     env: dict[str, str] | None = None,
     repository_url: str | None = None,
     revision: str | None = None,
+    expected_remote_revision: str | None | Literal[False] = False,
 ) -> None:
     if repository_url and await checked(["git", "remote", "get-url", "--push", "origin"], workspace) != repository_url:
         raise ValueError("Git push origin changed from the authorized repository")
     repository_url = repository_url or await checked(["git", "remote", "get-url", "--push", "origin"], workspace)
     revision = revision or await checked(["git", "rev-parse", "HEAD"], workspace)
+    lease: list[str] = []
+    if expected_remote_revision is not False:
+        if (
+            not branch.startswith("forge/")
+            or await checked(["git", "symbolic-ref", "--short", "HEAD"], workspace) != branch
+        ):
+            raise ValueError("Checkpoint push requires the exact factory-owned implementation branch")
+        await checked(["git", "check-ref-format", "refs/heads/" + branch], workspace)
+        if await checked(["git", "rev-parse", "HEAD"], workspace) != revision:
+            raise ValueError("Checkpoint push revision differs from the factory-owned workspace head")
+        if expected_remote_revision is not None:
+            if type(expected_remote_revision) is not str or not re.fullmatch(
+                r"[a-f0-9]{40}|[a-f0-9]{64}", expected_remote_revision
+            ):
+                raise ValueError("Checkpoint push needs an exact previous remote revision")
+            try:
+                await checked(["git", "merge-base", "--is-ancestor", expected_remote_revision, revision], workspace)
+            except RuntimeError:
+                raise ValueError("Checkpoint push cannot rewrite divergent remote history") from None
+        # Expected-ref CAS alone can permit rewrites; the separate ancestry proof is mandatory.
+        lease = [f"--force-with-lease=refs/heads/{branch}:{expected_remote_revision or ''}"]
     # Worker-controlled Git hooks and TLS settings never receive application credentials.
     with tempfile.TemporaryDirectory(prefix="forge-publication-") as directory:
         staging = Path(directory)
@@ -150,6 +172,7 @@ async def push(
                         "-c",
                         "http.sslVerify=true",
                         "push",
+                        *lease,
                         "--",
                         repository_url,
                         f"{revision}:refs/heads/{branch}",

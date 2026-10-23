@@ -57,12 +57,16 @@ class SourceEditContinuationController:
         read_file_lifetime_limit: QueryParam[int],
         activation_ceiling: QueryParam[int],
         additional_activations: QueryParam[int],
+        basis: QueryParam[str | None] = None,
     ) -> dict[str, Any]:
-        proposal = SourceBudgetProposal(
-            version=1,
-            read_file_lifetime_limit=read_file_lifetime_limit,
-            activation_ceiling=activation_ceiling,
-            additional_activations=additional_activations,
+        proposal = SourceBudgetProposal.model_validate(
+            {
+                "version": 1,
+                **({"basis": basis} if basis is not None else {}),
+                "read_file_lifetime_limit": read_file_lifetime_limit,
+                "activation_ceiling": activation_ceiling,
+                "additional_activations": additional_activations,
+            }
         )
         return await SourceBudgetReadmissions(self.reconciliations).candidate(
             run_id, request_id, previous_catalog_path, proposal

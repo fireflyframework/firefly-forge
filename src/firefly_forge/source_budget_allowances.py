@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pyfly.container import service
 
 from firefly_forge.configuration import ConfigurationStore
@@ -37,6 +37,7 @@ class SourceBudgetPolicy(BaseModel):
 class SourceBudgetProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1]
+    basis: Literal["known_completed_output"] | None = Field(default=None, exclude_if=lambda value: value is None)
     read_file_lifetime_limit: int = Field(ge=11, le=30)
     activation_ceiling: int = Field(ge=5, le=32)
     additional_activations: int = Field(ge=1, le=1)
@@ -63,6 +64,34 @@ class SourceBudgetAllowanceInput(BaseModel):
     acknowledge_one_new_canonical_activation: Literal[True]
     acknowledge_no_replay: Literal[True]
 
+    acknowledge_output_not_success: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
+    acknowledge_no_exit_attestation: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
+    acknowledge_current_source_changes: Literal[True] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    reviewed_source_digest: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$", exclude_if=lambda value: value is None
+    )
+    reviewed_patch_sha256: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$", exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def explicit_output_review(self) -> SourceBudgetAllowanceInput:
+        values = (
+            self.acknowledge_output_not_success,
+            self.acknowledge_no_exit_attestation,
+            self.acknowledge_current_source_changes,
+            self.reviewed_source_digest,
+            self.reviewed_patch_sha256,
+        )
+        if self.proposal.basis == "known_completed_output":
+            if any(value is not True for value in values[:3]) or any(value is None for value in values[3:]):
+                raise ValueError("Known output admission requires explicit source and output review")
+        elif any(value is not None for value in values):
+            raise ValueError("Known output acknowledgements require their explicit admission basis")
+        return self
+
     @field_validator("version", mode="before")
     @classmethod
     def exact_version(cls, value: Any) -> int:
@@ -73,6 +102,9 @@ class SourceBudgetAllowanceInput(BaseModel):
         "acknowledge_original_commands_and_final_reserve",
         "acknowledge_one_new_canonical_activation",
         "acknowledge_no_replay",
+        "acknowledge_output_not_success",
+        "acknowledge_no_exit_attestation",
+        "acknowledge_current_source_changes",
         mode="before",
     )
     @classmethod
@@ -100,7 +132,7 @@ def checked_parameters(
         or used_allowances + proposal.additional_activations > policy.max_additional_activations
     ):
         raise ValueError("The exact next activation exceeds its configured finite allowance")
-    return proposal.model_dump(exclude={"version"})
+    return proposal.model_dump(exclude={"version", "basis"})
 
 
 def policy_snapshot(private: ConfigurationStore) -> Data:
@@ -167,6 +199,7 @@ def admission_contract_digest() -> str:
             name: hashlib.sha256((root / name).read_bytes()).hexdigest()
             for name in (
                 "source_budget_allowances.py",
+                "source_budget_output.py",
                 "source_tool_budget.py",
                 "source_human_readmission.py",
                 "source_result_readmission.py",
@@ -638,11 +671,22 @@ class SourceBudgetReadmissions(SourceHumanReadmissions):
     async def candidate(
         self, run_id: str, parent_request: str, previous_catalog_path: str, proposal: SourceBudgetProposal | None = None
     ) -> Data:
-        bound = SourceBudgetReadmissions(self.service, proposal or self.proposal)
+        selected = proposal or self.proposal
+        if selected is not None and selected.basis == "known_completed_output":
+            from firefly_forge.source_budget_output import SourceBudgetOutputReadmissions
+
+            return await SourceBudgetOutputReadmissions(self.service, selected).candidate(
+                run_id, parent_request, previous_catalog_path
+            )
+        bound = SourceBudgetReadmissions(self.service, selected)
         return await SourceHumanReadmissions.candidate(bound, run_id, parent_request, previous_catalog_path)
 
     async def admit(self, run_id: str, parent_request: str, body: Any) -> Data:
         body = SourceBudgetAllowanceInput.model_validate(body.model_dump())
+        if body.proposal.basis == "known_completed_output":
+            from firefly_forge.source_budget_output import SourceBudgetOutputReadmissions
+
+            return await SourceBudgetOutputReadmissions(self.service, body.proposal).admit(run_id, parent_request, body)
         return await SourceHumanReadmissions.admit(
             SourceBudgetReadmissions(self.service, body.proposal), run_id, parent_request, body
         )
@@ -700,6 +744,10 @@ def validate_budget_parent(entries: list[Data], event: Data, actor: Data) -> Dat
     from firefly_forge.human_clarifications import _pair
     from firefly_forge.source_human_readmission import _ancestral_unknown, _validated_parent
 
+    if event["payload"].get("candidate", {}).get("source_budget_readmission", {}).get("basis") is not None:
+        from firefly_forge.source_budget_output import validate_output_parent
+
+        return validate_output_parent(entries, event, actor)
     receipt, candidate = _validated_parent(entries, event, actor)
     body = SourceBudgetAllowanceInput.model_validate(receipt["human_request"])
     intent = next(e for e in entries if e["digest"] == receipt["intent_digest"])
@@ -974,11 +1022,13 @@ async def queued_paused_provider_successor(r: Any, run: Data, state: Data) -> bo
     if receipt is None:
         return False
     proof = receipt["candidate"]["source_budget_readmission"]
-    if proof["budget_review"].get("paused_provider_observation") is None:
+    known_output = proof.get("basis") == "known_completed_output"
+    if not known_output and proof["budget_review"].get("paused_provider_observation") is None:
         return False
     previous = receipt["candidate"]["previous_run"].get("provider_recovery")
     link = proof["link"]
-    old_key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:implement:{link['from_attempt']}").hex
+    old_attempt = previous.get("attempt") if known_output and isinstance(previous, dict) else link["from_attempt"]
+    old_key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:implement:{old_attempt}").hex
     new_key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:implement:{link['to_attempt']}").hex
     async with r.store.source_budget_admission_unit(), r._locked(run["id"], receipt["actor"]) as row:
         initial = copy.deepcopy(row.data)
@@ -993,7 +1043,7 @@ async def queued_paused_provider_successor(r: Any, run: Data, state: Data) -> bo
             or state != initial.get("provider_recovery")
             or state.get("status") != "consumed"
             or state.get("task_key") != old_key
-            or state.get("attempt") != link["from_attempt"]
+            or state.get("attempt") != old_attempt
             or task.get("status") != "queued"
             or task.get("attempt") != link["to_attempt"]
             or task.get("idempotency_key") != new_key

@@ -566,6 +566,10 @@ A restricted source-only grant admits one implementation attempt. Saving a human
 
 The answer stays attached to its original question, even after the execution grant expires. Review the completed activation, the current source and the authenticated answer before admitting another attempt. Each clarification needs its own admission. The existing request limit and four-attempt ceiling still apply.
 
+The next implementation prompt includes the run's retained question-and-answer pairs in their original order, with native receipt references, alongside the latest answer. This bounded context preserves earlier diagnostics when a later reply resolves a different hold. It contains historical information: an old verification result does not establish that the current source passes, and an answer does not grant tools, commands, another attempt or publication authority. Current access and credential admission are checked again before the context is supplied. An oversized, altered or ambiguous message history is held instead of silently dropping an earlier answer.
+
+Implementation feedback must match its stated disposition. A blocked or clarification report needs one genuine typed question and its context; a completed or failed report must omit the question or set it to null. An invalid report remains a failed attempt with its original provider output retained. forge does not invent a question, retry the model or reset an allowance to repair its format.
+
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source-only human continuation diagram" aria-describedby="source-human-continuation-guide" tabindex="0" markdown="1">
 
 ```mermaid
@@ -755,3 +759,9 @@ same run, parent and request identities. Neither the SDK nor CLI retries the wri
 chooses a new identity or falls back to another provider. An unknown dispatch stays
 held for reconciliation. A saved answer does not grant this continuation, and
 notes arriving during a sealed source-only call are not injected into that call.
+
+A failed source-only activation whose native CLI turn completed but whose implementation report failed validation needs a new, explicit review. It does not become an answered worker question or a successful implementation. For this case, the source-budget candidate accepts `basis=known_completed_output`; the CLI exposes the same choice with `--basis known_completed_output`. The default candidate continues to require its authenticated answered question.
+
+The candidate binds the completed parent receipt, the archived final message and usage, the failed canonical activation, the original tool history, and the current public source manifest. It requires the exact retained Git index, refs, provider configuration and execution authority. New public UTF-8 files are included in the bounded credential review without staging them. Admission additionally requires `acknowledge_output_not_success`, `acknowledge_no_exit_attestation`, `acknowledge_current_source_changes`, `reviewed_source_digest`, and `reviewed_patch_sha256`. The source and patch digests must match the fresh candidate. Review the actual source changes before acknowledging them.
+
+A finite policy and a newly measured native profile must both cover the exact next activation and reader ceiling. The native transaction records consent before queuing that activation, preserves prior failed output and tool receipts, and keeps the original command ceiling and final-check reserve. It does not replay the old environment effect, process dispatch or source invocation. An incomplete or unknown admission remains held. The prior native v5/v6 profiles remain historical evidence and do not authorize the new v7 loader or its additional module. No additional model turn is issued to repair the failed report implicitly.

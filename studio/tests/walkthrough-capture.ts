@@ -399,12 +399,14 @@ export async function captureWalkthrough(
     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
     "studio/tests/coding-check-grant-fixture.json",
     "studio/tests/coding-check-recovery-browser-fixture.ts",
+    "studio/tests/git-delivery-contract-fixture.json",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",
     "studio/tests/external-tools.spec.ts",
     "studio/tests/docs-provider-allowance.spec.ts",
     "studio/tests/docs-coding-check-recovery.spec.ts",
+    "studio/tests/development-workflow.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

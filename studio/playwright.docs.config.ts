@@ -8,8 +8,9 @@ export default defineConfig({
     "external-tools.spec.ts",
     "docs-provider-allowance.spec.ts",
     "docs-coding-check-recovery.spec.ts",
+    "development-workflow.spec.ts",
   ],
-  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames/,
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames/,
   workers: 1,
   timeout: 90000,
   use: {
@@ -18,7 +19,7 @@ export default defineConfig({
     launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
   },
   webServer: {
-    command: `npm run dev -- --port ${port} --strictPort`,
+    command: `npm run dev -- --port ${port} --strictPort --configLoader runner`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: false,
   },
