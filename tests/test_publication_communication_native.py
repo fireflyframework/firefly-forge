@@ -66,9 +66,11 @@ async def native_publication(store, store_factory, tmp_path, monkeypatch):
 
     original_client = httpx.AsyncClient
 
-    def transport(request):
+    async def transport(request):
         state["effects"].append("pr")
         state["requests"].append(json.loads(request.content))
+        if action := state.get("after_response"):
+            await action()
         if state.get("lost_response"):
             raise httpx.ReadTimeout("Public fixture response not retained")
         return httpx.Response(201, json={"html_url": "https://github.com/fixture/public/pull/1"})
@@ -80,11 +82,29 @@ async def native_publication(store, store_factory, tmp_path, monkeypatch):
         lambda **kwargs: original_client(transport=httpx.MockTransport(transport), **kwargs),
     )
     monkeypatch.setenv("FORGE_GITHUB_TOKEN", "public-fixture-scm-token")
+    await store.acquire_ownership()
+    engine.enforce_ownership = True
+    state["owner_pid"] = store._ownership_pid
+    state["owned_write_pids"] = []
+    from firefly_forge.persistence import ForgeRunRepository
+
+    original_save = ForgeRunRepository.save
+
+    async def observed_save(records, row):
+        if records._manual_session is not None and row.id.hex == run["id"]:
+            from sqlalchemy import text
+
+            pid = await records._manual_session.scalar(text("SELECT pg_backend_pid()"))
+            state["owned_write_pids"].append(pid)
+        return await original_save(records, row)
+
+    monkeypatch.setattr(ForgeRunRepository, "save", observed_save)
     token = CURRENT_PRINCIPAL.set(owner)
     try:
         yield engine, store, await store.get_run(run["id"]), project, owner, builder, workspace, state
     finally:
         CURRENT_PRINCIPAL.reset(token)
+        await store.release_ownership()
 
 
 async def test_native_ai_publication_draft_commits_before_intent_and_exact_payload(native_publication):
@@ -104,6 +124,7 @@ async def test_native_ai_publication_draft_commits_before_intent_and_exact_paylo
     assert saved["publication_draft"] == draft
     assert await engine.publish(run["id"]) == url
     assert len(state["calls"]) == 2 and state["effects"] == ["push", "pr"]
+    assert state["owned_write_pids"] == [state["owner_pid"]] * 3
 
 
 async def test_native_selected_ai_failure_commits_empty_hold_without_publish_intent(native_publication):
@@ -216,3 +237,103 @@ async def test_native_configured_credential_never_enters_model_or_publication_cu
     assert secret not in json.dumps(saved["publication_draft"])
     assert saved["publication_draft"]["body"] == ""
     assert state["calls"] == [] and state["effects"] == []
+
+
+@pytest.mark.parametrize(
+    ("boundary", "successor"),
+    [
+        (boundary, successor)
+        for boundary in ("during_model", "before_push")
+        for successor in (None, "published", "publishing")
+    ]
+    + [("after_response", "published"), ("after_response", "publishing")],
+)
+async def test_native_takeover_preserves_successor_custody_and_fences_reconnection(
+    native_publication, boundary, successor
+):
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    engine, store, run, _, _, _, _, state = native_publication
+    peer = state["shadow"]
+    original_token = store.execution_ownership_token
+    original_assert = engine.assert_ownership
+    retained = {}
+    replaced = False
+
+    async def takeover():
+        nonlocal replaced
+        replaced = True
+        await store.release_ownership()
+        await peer.acquire_ownership()
+        await peer.assert_ownership()
+        if successor:
+            body = "Successor retained body"
+            title = "Successor draft"
+            draft = {
+                "title": title,
+                "body": body,
+                "title_sha256": hashlib.sha256(title.encode()).hexdigest(),
+                "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "communication": {"mode": "deterministic"},
+            }
+            await peer.update_publication(
+                run["id"],
+                await peer.get_run(run["id"]),
+                ownership=peer.execution_ownership_token,
+                publication_draft=draft,
+                publication_status=successor,
+                pr_url="https://github.com/fixture/public/pull/2" if successor == "published" else "",
+            )
+        retained.update(await peer.get_run(run["id"]))
+
+    async def assert_ownership():
+        if boundary == "before_push" and not replaced:
+            current = await peer.get_run(run["id"])
+            if current.get("publication_status") == "publishing":
+                await takeover()
+        await original_assert()
+
+    async def model(_messages, info):
+        phase = communication_phase(info)
+        if phase == "draft" and boundary == "during_model":
+            await takeover()
+        payload = (
+            card()
+            if phase == "draft"
+            else {
+                "verdict": "supported",
+                "issues": [],
+                "fact_ids": ["publication", "verification", "delivery"],
+                "rationale": "The recorded public facts support this candidate.",
+            }
+        )
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, payload)])
+
+    engine.assert_ownership = assert_ownership
+    engine.communication_writer.model = FunctionModel(model)
+    if boundary == "after_response":
+        state["after_response"] = takeover
+    try:
+        with pytest.raises(RuntimeError, match="ownership"):
+            await engine.publish(run["id"])
+        assert replaced and await peer.get_run(run["id"]) == retained
+        assert state["effects"] == (["push", "pr"] if boundary == "after_response" else [])
+        entries = await Journal(peer).entries(run["id"])
+        assert not any(e["task_id"] == "publish" and e["kind"] == "receipt" for e in entries)
+        await peer.release_ownership()
+        await store.acquire_ownership()
+        await store.assert_ownership()
+        assert store.execution_ownership_token is not original_token
+        with pytest.raises(RuntimeError, match="ownership"):
+            await store.update_publication(
+                run["id"], retained, ownership=original_token, publication_draft={"body": "stale hold"}
+            )
+        assert await peer.get_run(run["id"]) == retained
+        if successor or boundary == "before_push":
+            with pytest.raises(ValueError, match="custody"):
+                await store.update_publication(
+                    run["id"], run, ownership=store.execution_ownership_token, publication_draft={"body": "stale"}
+                )
+            assert await peer.get_run(run["id"]) == retained
+    finally:
+        await peer.release_ownership()

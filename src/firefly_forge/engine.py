@@ -2147,9 +2147,14 @@ class Engine:
         self.communication_writer.assert_current(draft["communication"])
         self.store.reject_credentials(draft)
 
-    async def _hold_publication_draft(self, identifier: str, reason: str) -> None:
-        await self.store.update(
+    async def _hold_publication_draft(
+        self, identifier: str, reason: str, expected: dict[str, Any], ownership: object | None
+    ) -> None:
+        await self.assert_ownership()
+        await self.store.update_publication(
             identifier,
+            expected,
+            ownership=ownership,
             publication_draft={
                 "title": "",
                 "body": "",
@@ -2160,7 +2165,12 @@ class Engine:
         )
 
     async def _prepare_publication_draft(
-        self, identifier: str, run: dict[str, Any], repository: dict[str, Any], actor: dict[str, Any] | None
+        self,
+        identifier: str,
+        run: dict[str, Any],
+        repository: dict[str, Any],
+        actor: dict[str, Any] | None,
+        ownership: object | None,
     ) -> dict[str, Any]:
         from firefly_forge.communication import CommunicationPublicationV1
         from firefly_forge.project_access import AccessDenied, ProjectAccess
@@ -2207,7 +2217,7 @@ class Engine:
                 "binding_sha256": self._publication_binding(run, repository),
             }
             await self._assert_publication_current(identifier, draft, actor)
-            await self.store.update(identifier, publication_draft=draft)
+            await self.store.update_publication(identifier, run, ownership=ownership, publication_draft=draft)
             return draft
         except Exception as error:
             await self._hold_publication_draft(
@@ -2215,6 +2225,8 @@ class Engine:
                 evidence.get("reason", "unavailable")
                 if evidence.get("mode") == "held"
                 else "publication_boundary_changed",
+                run,
+                ownership,
             )
             if isinstance(error, AccessDenied):
                 raise
@@ -2278,7 +2290,9 @@ class Engine:
             if not run.get("checkpoint_revision"):
                 await self._checkpoint_commit(identifier, workspace)
             run = await self.store.get_run(identifier)
-            draft = await self._prepare_publication_draft(identifier, run, repo, releaser)
+            ownership = self.store.execution_ownership_token if self.enforce_ownership else None
+            draft = await self._prepare_publication_draft(identifier, run, repo, releaser, ownership)
+            drafted_run = {**run, "publication_draft": draft}
             publication_key = None
             if self.journal:
                 publication = await self.journal.intent(
@@ -2297,12 +2311,21 @@ class Engine:
                         "Publication intent exists without a reconciled outcome; inspect the remote before retrying"
                     )
                 publication_key = publication["idempotency_key"]
-            (await self.store.update(identifier, publication_status="publishing", publication_actor=releaser))
+            await self.store.update_publication(
+                identifier,
+                drafted_run,
+                ownership=ownership,
+                publication_status="publishing",
+                publication_actor=releaser,
+            )
+            publishing_run = {**drafted_run, "publication_status": "publishing", "publication_actor": releaser}
             revision = (await self.store.get_run(identifier))["checkpoint_revision"]
             try:
                 await self._assert_publication_current(identifier, draft, releaser)
             except Exception:
-                await self._hold_publication_draft(identifier, "publication_boundary_changed")
+                await self._hold_publication_draft(
+                    identifier, "publication_boundary_changed", publishing_run, ownership
+                )
                 raise
             await push(workspace, run["branch"], env=git_env, repository_url=repo["url"], revision=revision)
             async with httpx.AsyncClient(follow_redirects=False) as client:
@@ -2310,7 +2333,9 @@ class Engine:
                 url = await PullRequests(client).create(
                     repo, run["branch"], draft["title"], draft["body"], authentication=authentication
                 )
-            (await self.store.update(identifier, pr_url=url, publication_status="published"))
+            await self.store.update_publication(
+                identifier, publishing_run, ownership=ownership, pr_url=url, publication_status="published"
+            )
             await self._receipt(
                 identifier, publication_key, {"pr_url": url, "branch": run["branch"], "source_tree": run["source_tree"]}
             )

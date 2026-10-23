@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from communication_model_fixture import reviewed_model
+from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from test_communication_writer import configured_store
 from test_execution import seed_repository
@@ -82,6 +83,12 @@ async def publication(tmp_path, monkeypatch):
             self.reject_credentials(fields)
             run.update(copy.deepcopy(fields))
 
+        async def update_publication(self, identifier, expected, *, ownership=None, **fields):
+            keys = ("publication_draft", "publication_status", "publication_actor", "pr_url")
+            if any(run.get(key) != expected.get(key) for key in keys):
+                raise ValueError("Publication custody changed; no publication update was recorded")
+            await self.update(identifier, **fields)
+
         async def event(self, *args):
             pass
 
@@ -109,6 +116,8 @@ async def publication(tmp_path, monkeypatch):
     def transport(request):
         state["requests"].append(json.loads(request.content))
         state["effects"].append("pr")
+        if action := state.get("after_response"):
+            action()
         if state.get("lost_response"):
             raise httpx.ReadTimeout("Public fixture lost response")
         return httpx.Response(
@@ -467,3 +476,131 @@ async def test_recorded_title_drift_during_draft_storage_blocks_push(publication
     with pytest.raises(ValueError):
         await p.engine.publish(p.run["id"])
     assert p.state["effects"] == [] and p.run["publication_draft"]["body"] == ""
+
+
+@pytest.mark.parametrize("boundary", ["during_model", "before_push"])
+@pytest.mark.parametrize("successor", [None, "published", "publishing"])
+async def test_lost_owner_never_writes_a_hold_over_current_publication(publication, boundary, successor):
+    p = publication
+    state = {"lost": False, "unauthorized_writes": [], "retained": None}
+    original_update = p.store.update
+
+    def lose_owner():
+        state["lost"] = True
+        if successor:
+            p.run.update(
+                publication_draft={"title": "Successor draft", "body": "Successor retained body"},
+                publication_status=successor,
+                pr_url="https://github.com/org/public/pull/2" if successor == "published" else "",
+            )
+        state["retained"] = copy.deepcopy(p.run)
+
+    async def assert_ownership():
+        if boundary == "before_push" and p.run.get("publication_status") == "publishing" and not state["lost"]:
+            lose_owner()
+        if state["lost"]:
+            raise RuntimeError("PostgreSQL execution ownership was lost")
+
+    async def update(identifier, **fields):
+        if state["lost"]:
+            state["unauthorized_writes"].append(copy.deepcopy(fields))
+        await original_update(identifier, **fields)
+
+    def draft(_messages, info):
+        if boundary == "during_model":
+            lose_owner()
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, card())])
+
+    p.engine.assert_ownership = assert_ownership
+    p.store.update = update
+    p.engine.communication_writer.model = reviewed_model(draft)
+    with pytest.raises((RuntimeError, ValueError)) as failure:
+        await p.engine.publish(p.run["id"])
+    assert state["retained"] is not None, str(failure.value)
+    assert state["unauthorized_writes"] == []
+    assert p.run == state["retained"]
+    assert "ownership" in str(failure.value)
+    assert p.state["effects"] == []
+
+
+@pytest.mark.parametrize("successor", ["published", "publishing"])
+async def test_later_publication_custody_is_not_replaced_by_an_older_draft(publication, successor):
+    p = publication
+    retained = {}
+
+    def draft(_messages, info):
+        p.run.update(
+            publication_draft={"title": "Later draft", "body": "Later body"},
+            publication_status=successor,
+            pr_url="https://github.com/org/public/pull/2" if successor == "published" else "",
+        )
+        retained.update(copy.deepcopy(p.run))
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, card())])
+
+    p.engine.communication_writer.model = reviewed_model(draft)
+    with pytest.raises(ValueError):
+        await p.engine.publish(p.run["id"])
+    assert p.run == retained
+    assert p.state["effects"] == []
+
+
+@pytest.mark.parametrize("field", ["publication_draft", "publication_status", "publication_actor", "pr_url"])
+async def test_each_publication_custody_field_refuses_a_stale_draft(publication, field):
+    p = publication
+    retained = {}
+    values = {
+        "publication_draft": {"title": "Later draft", "body": "Later body"},
+        "publication_status": "publishing",
+        "publication_actor": {"user_id": "c" * 32},
+        "pr_url": "https://github.com/org/public/pull/2",
+    }
+
+    def draft(_messages, info):
+        p.run[field] = values[field]
+        retained.update(copy.deepcopy(p.run))
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, card())])
+
+    p.engine.communication_writer.model = reviewed_model(draft)
+    with pytest.raises(ValueError, match="custody"):
+        await p.engine.publish(p.run["id"])
+    assert p.run == retained and p.state["effects"] == []
+
+
+@pytest.mark.parametrize("successor", ["published", "publishing"])
+async def test_final_remote_response_never_overwrites_later_custody(publication, successor):
+    p = publication
+    retained = {}
+
+    def successor_writes():
+        p.run.update(
+            publication_draft={"title": "Later draft", "body": "Later body"},
+            publication_status=successor,
+            publication_actor={"user_id": "c" * 32},
+            pr_url="https://github.com/org/public/pull/2" if successor == "published" else "",
+        )
+        retained.update(copy.deepcopy(p.run))
+
+    p.state["after_response"] = successor_writes
+    with pytest.raises(ValueError, match="custody"):
+        await p.engine.publish(p.run["id"])
+    assert p.run == retained and p.state["effects"] == ["push", "pr"]
+
+
+@pytest.mark.parametrize("change", ["closed", "invalidated", "released", "replaced", "stopping"])
+async def test_native_store_publication_fence_refuses_without_reconnecting(tmp_path, change):
+    from firefly_forge.store import Store
+
+    store = Store(tmp_path / "factory.db")
+    original = SimpleNamespace(closed=False, invalidated=False)
+    store._ownership_connection = original
+    token = store.execution_ownership_token
+    if change in {"closed", "invalidated"}:
+        setattr(original, change, True)
+    elif change == "released":
+        store._ownership_connection = None
+    elif change == "replaced":
+        store._ownership_connection = SimpleNamespace(closed=False, invalidated=False)
+    else:
+        store.execution_stopping = True
+    with pytest.raises(RuntimeError, match="ownership"):
+        await store.update_publication("a" * 32, {}, ownership=token, publication_draft={"body": "stale"})
