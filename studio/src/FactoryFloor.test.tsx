@@ -13,10 +13,11 @@ it("keeps a concise floor instruction and an accessible complete stage guide", (
       theme="dark"
       onOpen={() => undefined}
       onCreate={() => undefined}
-      onProjectChange={() => undefined}
+      selection={{ project: "", view: "floor", run: "" }}
+      onSelectionChange={() => undefined}
     />,
   );
-  expect(html).toContain("Choose a project and run, then select a stage.");
+  expect(html).toContain("Select a stage to inspect its work.");
   expect(html).toContain("<summary>How stages work</summary>");
   expect(html).toContain("Prepare inspects source");
   expect(html).toContain("separate recorded actions");

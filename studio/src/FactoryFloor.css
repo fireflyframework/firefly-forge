@@ -73,7 +73,7 @@
     padding-inline: 16px;
   }
   .production-floor .production-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     padding-inline: 16px;
   }
   .production-floor .production-status {
@@ -81,7 +81,11 @@
     padding-bottom: 0;
   }
   .production-floor .production-explanation {
+    margin-bottom: 4px;
     padding-inline: 16px;
+  }
+  .production-floor .production-view-switch {
+    padding-bottom: 4px;
   }
   .production-floor .factory-live-viewport {
     height: clamp(180px, calc(100dvh - 650px), 240px);

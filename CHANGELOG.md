@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.35 — 2026-10-22
+
+- Keep the selected project, Floor or Board view, and manufacturing run when returning from Inspect or another Studio page.
+- Reset that selection when the signed-in user, factory API or connection changes. Resolve removed projects and runs from the current accessible list, with the selected plan kept within its run.
+- Hide retained Factory records while identity validation is pending or fails. Load fresh records for a new user and prevent late responses or run actions from changing the current user's data and feedback.
+- Give Project and Manufacturing run selectors the full available width on phones. Keep the production scene above the footer after opening a run, with shorter guidance and the existing scene size.
+- Refresh the canonical Studio walkthrough captures for the 0.2.35 version stamp. Controlled browser fixtures verify these navigation and identity transitions; they do not establish live model or generated-product acceptance.
+
 ## 0.2.34 — 2026-10-22
 
 - Let the selected AI communication profile write the complete proposed pull request title and description, with a separate semantic classification and one final correction within three requests.
