@@ -1787,7 +1787,7 @@ class Collaboration:
                 if conversation
                 else None
             )
-            assistant_input = assistant_communication(data)
+            assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
             if assistant_input:
                 drafted = await self.communication_writer.write(
@@ -1804,7 +1804,11 @@ class Collaboration:
 
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
-            current_assistant = assistant_communication(await self.receipt(receipt_id)) if assistant_input else None
+            current_assistant = (
+                assistant_communication(await self.receipt(receipt_id), repository=repo, host=host)
+                if assistant_input
+                else None
+            )
             facts = (
                 communication_facts(current_run or None, assistant=current_assistant)
                 if assistant_input
@@ -1832,7 +1836,11 @@ class Collaboration:
                     },
                 }
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
-            if drafted["communication"]["mode"] == "ai":
+            if drafted["communication"]["mode"] == "ai" or (
+                drafted["communication"]["mode"] == "deterministic"
+                and assistant_input
+                and assistant_input.reply_reference_digest
+            ):
                 from firefly_forge.collaboration_feedback import communication_controls
 
                 controls = communication_controls(data, run, repo, host, public_text)
@@ -1881,7 +1889,7 @@ class Collaboration:
                 if any(data.get(key) != value for key, value in current_context.items()):
                     raise AccessDenied("The feedback destination or reply permission changed before publication")
                 if assistant_input:
-                    latest = assistant_communication(await self.receipt(receipt_id))
+                    latest = assistant_communication(await self.receipt(receipt_id), repository=repo, host=host)
                     if (
                         content_digest(communication_facts(None, assistant=latest))
                         != intent["communication"]["facts_sha256"]

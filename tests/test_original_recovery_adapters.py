@@ -110,6 +110,10 @@ NEW_TOOLS = {case[1] for case in CASES} | {
     "get_scm_polling_resume_grant",
     "get_current_scm_polling_resume_grant",
     "review_scm_polling_resume",
+    "configure_scm_polling_functional_grant",
+    "get_scm_polling_functional_grant",
+    "get_current_scm_polling_functional_grant",
+    "review_scm_polling_functional",
 }
 PRESENCE_CASES = [
     (*CASES[0][:4], {"version": 1, "input": {**ENVELOPE["input"], "skills": []}}, *CASES[0][5:]),

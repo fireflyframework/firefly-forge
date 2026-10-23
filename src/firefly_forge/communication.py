@@ -9,10 +9,11 @@ import json
 import re
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from firefly_forge.collaboration_feedback import STAGES, TERMINAL, _text, provider_recovery, verification_handoff
+from firefly_forge.collaboration_feedback import STAGES, TERMINAL, _link, _text, provider_recovery, verification_handoff
 from firefly_forge.community_skills import community_catalog
 from firefly_forge.product_provenance import content_digest
 from firefly_forge.prompts import prompt_text
@@ -114,6 +115,7 @@ class CommunicationAssistantV1(StrictContract):
     turn_count: int | None = Field(default=None, ge=0, le=5)
     turns: list[CommunicationAssistantTurnV1] = Field(default_factory=list, max_length=5)
     retained_reply: CommunicationAssistantRetainedReplyV1 | None = None
+    reply_reference_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")
     def confirmed_operation(self) -> CommunicationAssistantV1:
@@ -136,6 +138,8 @@ class CommunicationAssistantV1(StrictContract):
             raise ValueError("Only assistant status communication can summarize retained conversations")
         if self.operation != "status" and (self.turns or self.retained_reply):
             raise ValueError("Only a status read can quote a retained completed turn")
+        if self.reply_reference_digest and (self.operation != "turn" or self.proposal_status != "unreviewed"):
+            raise ValueError("Only a confirmed unreviewed proposal can use its retained reply reference")
         if self.operation == "status":
             if self.conversation_id is not None and self.turn_count != len(self.turns):
                 raise ValueError("Assistant status must retain every bounded turn state")
@@ -149,7 +153,9 @@ class CommunicationAssistantV1(StrictContract):
         return self
 
 
-def assistant_communication(data: Data) -> CommunicationAssistantV1 | None:
+def assistant_communication(
+    data: Data, *, repository: Data | None = None, host: str = ""
+) -> CommunicationAssistantV1 | None:
     command = data.get("command") or {}
     if command.get("action") != "assistant":
         return None
@@ -170,6 +176,14 @@ def assistant_communication(data: Data) -> CommunicationAssistantV1 | None:
             questions=result.get("questions", []),
             proposal_status=result.get("proposal_status"),
         )
+        reference = result.get("remote_reference")
+        if isinstance(reference, dict) and reference.get("published") is True:
+            url = _link(reference.get("url"), host, repository or {}, reference=True)
+            digest = reference.get("digest")
+            if url and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest):
+                path = unquote(urlsplit(url).path)
+                if path.endswith("/forge-reference") or path.endswith("/forge/references/" + digest):
+                    values["reply_reference_digest"] = content_digest({"published": True, "url": url, "digest": digest})
     else:
         values.update(status="read")
         if "conversation_id" in result:
@@ -345,7 +359,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
 
-def _assistant_content(assistant: Data, safe: Callable[[str], str]) -> str:
+def _assistant_content(assistant: Data, safe: Callable[[str], str], *, excerpt: bool = False) -> str:
     quotation, references = [], []
     retained = assistant.get("retained_reply")
     if assistant.get("turns"):
@@ -370,17 +384,34 @@ def _assistant_content(assistant: Data, safe: Callable[[str], str]) -> str:
         else:
             notice += " No completed reply is available in this status snapshot."
         quotation.append(notice)
-    if assistant.get("reply"):
+    if excerpt:
+        if not assistant.get("reply_reference_digest"):
+            raise ValueError("A reply excerpt requires its admitted full reference")
+        full = assistant["reply"]
+        if assistant["questions"]:
+            full += "\n\nQuestions:\n" + "\n".join("- " + question for question in assistant["questions"])
+        quotation.append("Reply excerpt. The full reply and questions are retained in the reference files below.")
+        quotation.append(
+            "  \n".join(
+                "> " + _text(line, safe, 12000, preserve_word_slashes=True) for line in (full[:2000] + "…").splitlines()
+            )
+        )
+    elif assistant.get("reply"):
         quotation.append(
             "  \n".join(
                 "> " + _text(line, safe, 12000, preserve_word_slashes=True) for line in assistant["reply"].splitlines()
             )
         )
-    quotation.extend(
-        "> - " + _text(question, safe, 12000, preserve_word_slashes=True) for question in assistant["questions"]
-    )
+    if not excerpt:
+        quotation.extend(
+            "> - " + _text(question, safe, 12000, preserve_word_slashes=True) for question in assistant["questions"]
+        )
     if assistant.get("proposal_status") == "unreviewed":
-        quotation.append(json.loads(prompt_text("collaboration/copy", version="1.0.1"))["proposal_description"])
+        description = json.loads(prompt_text("collaboration/copy", version="1.0.1"))["proposal_description"]
+        if excerpt:
+            quotation.insert(0, description)
+        else:
+            quotation.append(description)
     content = "\n\n".join(quotation)
     if references:
         return prompt_text(
@@ -418,6 +449,14 @@ def _render_card(
     if facts.get("assistant"):
         decision_body = _assistant_content(facts["assistant"], safe)
     body = prompt_text("collaboration/communication-card", title=title, narrative=narrative, decision=decision_body)
+    # Native reference controls are appended outside model-authored prose.
+    if len(body) > 5000 and (facts.get("assistant") or {}).get("reply_reference_digest"):
+        body = prompt_text(
+            "collaboration/communication-card",
+            title=title,
+            narrative=narrative,
+            decision=_assistant_content(facts["assistant"], safe, excerpt=True),
+        )
     if len(body) > 6000:
         raise ValueError("Communication exceeds its public text bound")
     reject(body)
@@ -468,17 +507,23 @@ class CommunicationWriter:
                 if (value := facts["assistant"].get(key))
             ]
             narrative = prompt_text("collaboration/action", summary=copy["actions"]["other"], status=assistant.status)
-            native_card = prompt_text(
-                "collaboration/communication-card",
-                title=copy["titles"]["recorded"],
-                narrative=narrative,
-                decision="\n\n".join(
-                    [
-                        _assistant_content(facts["assistant"], safe),
-                        prompt_text("collaboration/facts", facts="\n".join(assistant_references)),
-                    ]
-                ),
-            )
+
+            def assistant_card(*, excerpt: bool = False) -> str:
+                return prompt_text(
+                    "collaboration/communication-card",
+                    title=copy["titles"]["recorded"],
+                    narrative=narrative,
+                    decision="\n\n".join(
+                        [
+                            _assistant_content(facts["assistant"], safe, excerpt=excerpt),
+                            prompt_text("collaboration/facts", facts="\n".join(assistant_references)),
+                        ]
+                    ),
+                )
+
+            native_card = assistant_card()
+            if len(native_card) > 5000 and assistant.reply_reference_digest:
+                native_card = assistant_card(excerpt=True)
             self.store.reject_credentials(native_card)
             if len(native_card) > 6000:
                 raise ValueError("Assistant communication exceeds its public text bound")

@@ -734,6 +734,14 @@ If several conversations exist in the issue, select the exact conversation ID
 with the typed command. An uncertain AI result consumes its already reserved
 turn and stays held; posting a duplicate is not a recovery mechanism.
 
+When an assistant reply exceeds the public comment limit, forge can show an
+explicit excerpt only after its complete reply and questions have been retained
+in the immutable reference files. The comment links to that reference in the
+same repository. The native fact packet keeps the full reply and binds the
+validated reference receipt; changed or unavailable references block delivery.
+Selecting an AI communication profile does not authorize recorded wording after
+that profile fails.
+
 Every AI turn is reserved durably under the native repository lock before
 provider entry. A duplicate delivery cannot reserve another call. An unknown,
 interrupted, or unconfirmed result stays held and is not automatically retried

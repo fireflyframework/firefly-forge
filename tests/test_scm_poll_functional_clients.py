@@ -205,3 +205,30 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
         with pytest.raises(ValueError):
             getattr(connection, method)(*arguments)
     assert calls == []
+
+
+async def test_additive_functional_mcp_tools_keep_strict_consent_and_read_annotations():
+    from jsonschema import Draft202012Validator
+
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    names = {
+        "configure_scm_polling_functional_grant": {"project_id", "repository_id", "request"},
+        "get_scm_polling_functional_grant": {"project_id", "repository_id", "request_id"},
+        "get_current_scm_polling_functional_grant": {"project_id", "repository_id", "binding_request_id"},
+        "review_scm_polling_functional": {"project_id", "repository_id", "binding_request_id"},
+    }
+    for name, required in names.items():
+        tool = tools[name]
+        Draft202012Validator.check_schema(tool.input_schema)
+        assert set(tool.input_schema["required"]) == required
+        assert set(tool.input_schema["properties"]) == required
+        assert tool.annotations.idempotent_hint is True
+        writing = name == "configure_scm_polling_functional_grant"
+        assert tool.annotations.read_only_hint is not writing
+        assert tool.annotations.destructive_hint is writing
+        assert tool.annotations.open_world_hint is writing
+    contract = tools["configure_scm_polling_functional_grant"].input_schema["properties"]["request"]
+    assert contract["additionalProperties"] is False
+    assert contract["properties"]["version"]["const"] == 1
+    assert contract["properties"]["acknowledge_separate_assistant_allowance"]["const"] is True
+    assert contract["properties"]["max_model_turns"]["maximum"] == 3

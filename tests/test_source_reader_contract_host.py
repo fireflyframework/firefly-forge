@@ -88,4 +88,20 @@ def test_selected_prompt_or_renderer_drift_revokes_profile_before_admission(chan
 
 def test_reader_bound_proof_uses_a_new_registry_and_loader_contract():
     assert qualification.REGISTRY_VERSION == 4
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v4"
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v5"
+    assert {"source_edit_filesystem_policy.py", "workspace_tools.py"} <= set(qualification.LOADER_MODULES)
+    assert qualification.FILESYSTEM_CHECKS == (
+        "patch_add",
+        "patch_update",
+        "patch_move",
+        "patch_delete",
+        "private_read_denied",
+        "private_write_denied",
+        "outside_read_denied",
+        "outside_write_denied",
+        "case_alias_read_denied",
+        "case_alias_write_denied",
+        "public_env_example_allowed",
+        "filesystem_groups_absent",
+        "filesystem_streams_drained",
+    )
