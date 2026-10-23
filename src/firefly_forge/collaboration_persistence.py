@@ -147,6 +147,23 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
             )
         )
 
+    async def conversation_context(self, data: dict[str, Any]) -> list[ForgeWebhookInboxEntity]:
+        """Retained question lookup has no age or latest-page cutoff; inbox capacity remains finite."""
+        return list(
+            await self._require_session().scalars(
+                select(ForgeWebhookInboxEntity)
+                .where(
+                    ForgeWebhookInboxEntity.repository_id == UUID(data["repository_id"]),
+                    ForgeWebhookInboxEntity.provider == data["provider"],
+                    ForgeWebhookInboxEntity.data["issue"]["kind"].as_string() == data["issue"]["kind"],
+                    ForgeWebhookInboxEntity.data["issue"]["number"].as_integer() == data["issue"]["number"],
+                    ForgeWebhookInboxEntity.status == "processed",
+                )
+                .order_by(ForgeWebhookInboxEntity.sequence.desc())
+                .limit(5001)
+            )
+        )
+
     async def find_pending(self) -> list[ForgeWebhookInboxEntity]:
         recovery = ForgeRunEntity.data["provider_recovery"]
         reported = ForgeWebhookInboxEntity.data["feedback_intent"]["provider_recovery"]

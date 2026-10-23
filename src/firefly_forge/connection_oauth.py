@@ -83,6 +83,7 @@ class ConnectionOAuth:
         self._secrets = {"FORGE_CONNECTION_OAUTH_SECRET_ENCRYPTION_KEY": encryption_key}
         self.matcher = OAuthCredentialMatcher(encryption_key, store.schema)
         self.store.vault_credential_admission = self.admit_credentials
+        self.store.vault_source_patch_admission = self.admit_source_patch
         self.records = records or OAuthConnectionRepository()
         self.browser_origin = browser_origin
         self.catalog = dict(catalog or {})
@@ -260,6 +261,16 @@ class ConnectionOAuth:
         self._verify_reservation(effect)
 
     async def admit_credentials(self, value: Any) -> None:
+        await self._admit_credentials(value)
+
+    async def admit_source_patch(self, patch: Any) -> None:
+        from firefly_forge.source_patch_admission import SourcePatch
+
+        if type(patch) is not SourcePatch:
+            raise TypeError("Credential admission requires the typed bounded source patch")
+        await self._admit_credentials(patch, source_patch=True)
+
+    async def _admit_credentials(self, value: Any, *, source_patch: bool = False) -> None:
         # One statement sees evidence and source coverage at the same committed
         # snapshot, including inside an ambient unit. It acquires no advisory lock.
         evidence = OAuthCredentialEvidenceEntity
@@ -324,7 +335,12 @@ class ConnectionOAuth:
                 }
                 if not 1 <= row["revision"] <= MAX_HISTORY or history != set(range(1, row["revision"] + 1)):
                     raise ValueError("Retired OAuth credential history is incomplete; reviewed recovery is required")
-            if self.matcher.contains(value, packets) or contains_known_credential(value, self._secrets):
+            matched = (
+                self.matcher.contains_source_patch(value, packets)
+                if source_patch
+                else self.matcher.contains(value, packets)
+            )
+            if matched or contains_known_credential(value.text if source_patch else value, self._secrets):
                 raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
 
     async def stop(self) -> None:

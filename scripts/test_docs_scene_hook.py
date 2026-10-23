@@ -56,6 +56,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/walkthrough-capture.ts": "fixture helper",
                 "studio/tests/navigation.ts": "fixture navigation",
                 "studio/tests/auth-fixture.ts": "fixture identity",
+                "studio/tests/agent-lifecycle-fixture.ts": "fixture role editor",
                 "studio/tests/learning-record-fixture.ts": "fixture learning record",
                 "studio/tests/campaign-report-fixture.ts": "fixture campaign report",
                 "studio/tests/campaign-report-history-fixture.ts": "fixture history routes",
@@ -108,6 +109,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/walkthrough-capture.ts",
                     "studio/tests/navigation.ts",
                     "studio/tests/auth-fixture.ts",
+                    "studio/tests/agent-lifecycle-fixture.ts",
                     "studio/tests/learning-record-fixture.ts",
                     "studio/tests/campaign-report-fixture.ts",
                     "studio/tests/campaign-report-history-fixture.ts",
@@ -378,6 +380,7 @@ class WalkthroughTests(unittest.TestCase):
             archive_fixture = root / "studio/tests/campaign-report-archive-fixture.json"
             archive_fixture.write_text("fixture archive data")
             operator_inputs = [
+                "studio/tests/agent-lifecycle-fixture.ts",
                 "studio/tests/campaign-delivery-plan-fixture.ts",
                 "studio/tests/campaign-delivery-browser-fixture.ts",
                 "studio/tests/worker-dialogue-contract-fixture.json",

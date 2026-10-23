@@ -1,0 +1,14 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: scm-natural/feedback
+version: 1.0.0
+description: A retained assistant quote and a separate server-recorded task outcome.
+system_template: ''
+user_template: |
+  {{ message }}
+
+  {{ outcome }}
+required_variables:
+  - message
+  - outcome
+metadata:
+  defaults: {}

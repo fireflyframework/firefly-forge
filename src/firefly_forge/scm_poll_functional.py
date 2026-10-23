@@ -70,6 +70,9 @@ def functional_policy_digest() -> str:
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > 2 * 1024 * 1024:
             raise AccessDenied("The package-owned functional policy file changed")
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    from firefly_forge.scm_natural_tasks import natural_policy_digest
+
+    hashes["natural_product_projection_policy"] = natural_policy_digest()
     return digest(hashes)
 
 
@@ -488,13 +491,19 @@ class SCMPollFunctionalAuthority:
         from firefly_forge.scm_functional_address import AddressedFunctionalV1
 
         raw = delivery.get("command") or {}
-        parsed = RepositoryCommand.parse(
-            delivery["source_snapshot"]["body"],
-            bot_addresses=self.polling.scm.bot_addresses("github"),
-            functional_dialogue=True,
-        )
-        if parsed.model_dump(exclude_none=True) != raw:
-            raise AccessDenied("The retained functional command differs from its observed source")
+        product_projection = delivery.get("natural_product_parent") is not None
+        if product_projection:
+            from firefly_forge.scm_natural_product import authorize_product_projection
+
+            await authorize_product_projection(self, delivery, remote=remote)
+        else:
+            parsed = RepositoryCommand.parse(
+                delivery["source_snapshot"]["body"],
+                bot_addresses=self.polling.scm.bot_addresses("github"),
+                functional_dialogue=True,
+            )
+            if parsed.model_dump(exclude_none=True) != raw:
+                raise AccessDenied("The retained functional command differs from its observed source")
         natural = AddressedFunctionalV1.model_validate(raw) if raw.get("adapter") == "addressed_functional_v1" else None
         command = None if natural else ChannelCommand.model_validate(raw)
         operation: str | None
@@ -528,7 +537,7 @@ class SCMPollFunctionalAuthority:
             raise AccessDenied("A separate functional polling grant is required")
         request = self.request_type.model_validate(grant["request"])
         prepared = datetime.fromisoformat(grant["prepared_at"])
-        if (
+        if not product_projection and (
             datetime.fromisoformat(delivery["created_at"]) < prepared
             or datetime.fromisoformat(reference["observed_at"]) < prepared
         ):

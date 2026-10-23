@@ -13,6 +13,212 @@ import { parseDiff, boundedText, tokenizeCode } from "./ExecutionFormat";
 import { receipt } from "../tests/provider-recovery-allowance-fixture";
 
 describe("execution evidence presentation", () => {
+  const sanitationIntent = () => {
+    const request = {
+      version: 1,
+      request_id: "a".repeat(32),
+      original_intent_digest: "b".repeat(64),
+      candidate_digest: "c".repeat(64),
+      admission_contract_digest: "d".repeat(64),
+      previous_catalog_path: "/public/package/source-only-model.json",
+      valid_for_seconds: 900,
+      acknowledge_index_only_generated_artifacts: true,
+      acknowledge_preserve_files_source_and_budgets: true,
+      acknowledge_original_scm_outcome_unknown: true,
+      acknowledge_no_queue_or_provider_dispatch: true,
+    };
+    return {
+      kind: "index_sanitation_intent",
+      task_id: "implement",
+      idempotency_key: request.request_id,
+      digest: "e".repeat(64),
+      payload: {
+        version: 1,
+        request,
+        actor: {
+          user_id: "f".repeat(32),
+          global_admin: true,
+          authentication_method: "local_bootstrap",
+        },
+        original_request_id: "1".repeat(32),
+        original_intent_digest: request.original_intent_digest,
+        candidate: {
+          digest: request.candidate_digest,
+          index_plan: {
+            artifacts: [
+              {
+                path:
+                  "frontend/.cache/vite/vitest/" +
+                  "0".repeat(40) +
+                  "/results.json",
+              },
+            ],
+            public_entries: Object.fromEntries(
+              Array.from({ length: 70 }, (_, n) => [
+                "unshown-public-path-" + n,
+                { mode: "100644" },
+              ]),
+            ),
+          },
+        },
+        expires_at_ms: 1800000000000,
+        public_patch_sha256: "2".repeat(64),
+        no_queue_or_provider_dispatch: true,
+      },
+    };
+  };
+  const sanitationReceipt = (intent: ReturnType<typeof sanitationIntent>) => ({
+    ...structuredClone(intent),
+    kind: "index_sanitation_receipt",
+    digest: "3".repeat(64),
+    payload: {
+      ...structuredClone(intent.payload),
+      intent_digest: intent.digest,
+      effect: { artifacts: [{ path: "retained-cache" }] },
+    },
+  });
+  it("correlates an index-only receipt to its exact original admission without claiming a resumed run", () => {
+    const intent = sanitationIntent();
+    const receipt = sanitationReceipt(intent);
+    expect(journalDisposition(intent, [intent])).toBe(
+      "Outcome not recorded; review required",
+    );
+    expect(journalDisposition(intent, [intent, receipt])).toBe(
+      "Index-only receipt recorded; run not resumed",
+    );
+    expect(journalDisposition(receipt, [intent, receipt])).toBe(
+      "Index-only receipt recorded; run not resumed",
+    );
+    expect(journalDisposition(receipt, [receipt])).toBe(
+      "Outcome not recorded; review required",
+    );
+  });
+  it.each([
+    "task",
+    "key",
+    "digest",
+    "request",
+    "actor",
+    "original_request",
+    "original_intent",
+    "candidate",
+    "expiry",
+    "patch",
+    "queue",
+    "missing",
+    "extra",
+    "ack",
+  ])("refuses a foreign or incomplete sanitation receipt: %s", (field) => {
+    const intent = sanitationIntent();
+    const receipt = sanitationReceipt(intent);
+    switch (field) {
+      case "task":
+        receipt.task_id = "verify";
+        break;
+      case "key":
+        receipt.idempotency_key = "4".repeat(32);
+        break;
+      case "digest":
+        receipt.payload.intent_digest = "4".repeat(64);
+        break;
+      case "request":
+        receipt.payload.request.valid_for_seconds = 901;
+        break;
+      case "actor":
+        receipt.payload.actor.global_admin = false;
+        break;
+      case "original_request":
+        receipt.payload.original_request_id = "4".repeat(32);
+        break;
+      case "original_intent":
+        receipt.payload.original_intent_digest = "4".repeat(64);
+        break;
+      case "candidate":
+        receipt.payload.candidate.index_plan.public_entries[
+          "unshown-public-path-0"
+        ].mode = "100755";
+        break;
+      case "expiry":
+        receipt.payload.expires_at_ms += 1;
+        break;
+      case "patch":
+        receipt.payload.public_patch_sha256 = "4".repeat(64);
+        break;
+      case "queue":
+        receipt.payload.no_queue_or_provider_dispatch = false;
+        break;
+      case "extra":
+        Object.assign(receipt.payload.request, { unexpected: true });
+        break;
+      case "ack":
+        receipt.payload.request.acknowledge_original_scm_outcome_unknown = false;
+        break;
+      case "missing":
+        delete (receipt.payload as Partial<typeof receipt.payload>).candidate;
+        break;
+    }
+    expect(journalDisposition(intent, [intent, receipt])).toBe(
+      "Outcome not recorded; review required",
+    );
+    expect(journalDisposition(receipt, [intent, receipt])).toBe(
+      "Outcome not recorded; review required",
+    );
+  });
+  it("compares exact sanitation evidence independently of JSON key order", () => {
+    const intent = sanitationIntent();
+    const receipt = sanitationReceipt(intent);
+    receipt.payload.actor = Object.fromEntries(
+      Object.entries(receipt.payload.actor).reverse(),
+    ) as typeof receipt.payload.actor;
+    expect(journalDisposition(intent, [intent, receipt])).toBe(
+      "Index-only receipt recorded; run not resumed",
+    );
+  });
+  it.each([
+    "index_sanitation_intent",
+    "index_sanitation_receipt",
+    "workspace_observed_readmission",
+  ])(
+    "keeps %s human-readable and the full public-file inventory inside the closed advanced record",
+    (kind) => {
+      const intent = sanitationIntent();
+      const payload =
+        kind === "workspace_observed_readmission"
+          ? {
+              version: 1,
+              request: intent.payload.request,
+              actor: intent.payload.actor,
+              original_intent_digest: intent.payload.original_intent_digest,
+              no_provider_dispatch: true,
+              observed_effect: intent.payload.candidate,
+            }
+          : kind === "index_sanitation_receipt"
+            ? sanitationReceipt(intent).payload
+            : intent.payload;
+      const html = renderToStaticMarkup(
+        <EvidenceView kind={kind} value={payload} />,
+      );
+      const visible = html.split('<details class="record-advanced">')[0];
+      expect(visible).toContain(
+        kind === "workspace_observed_readmission"
+          ? "Observed-effect readmission"
+          : "Index-only cache sanitation",
+      );
+      expect(visible).toContain(
+        kind === "workspace_observed_readmission"
+          ? "original source-control delivery remains unknown"
+          : "does not resume the run",
+      );
+      expect(visible).not.toContain("unshown-public-path-");
+      expect(visible.length).toBeLessThan(2500);
+      expect(html).toContain("unshown-public-path-0");
+      expect(html).toContain("Copy includes the full recorded output.");
+      expect(html).toContain("<summary>Advanced record</summary>");
+      expect(html).not.toContain("<details open");
+      expect(visible).not.toContain(">Passed<");
+    },
+  );
+
   it("presents the final allowance WAL as labeled evidence with raw JSON closed and no verification claim", async () => {
     const value = await receipt({
       request_id: "a".repeat(32),

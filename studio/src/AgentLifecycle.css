@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.workspace-main:has(.agent-lifecycle) {
+  grid-template-columns: minmax(0, 1fr);
+}
 .agent-lifecycle {
   min-width: 0;
   margin-bottom: 24px;
+  padding: 28px;
 }
 .agent-lifecycle .section-heading {
   flex-wrap: wrap;
@@ -92,26 +96,52 @@
 }
 .lifecycle-editor {
   margin-top: 24px;
-  padding-top: 20px;
+  padding-top: 24px;
   border-top: 1px solid var(--line);
+}
+.lifecycle-editor > p {
+  max-width: 80ch;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.agent-lifecycle .lifecycle-editor .field {
+  max-width: none;
+}
+.lifecycle-editor-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin: 24px 0;
 }
 .lifecycle-editor fieldset {
   min-width: 0;
-  margin: 18px 0;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 16px;
+  background: var(--surface-subtle);
+}
+.lifecycle-editor legend {
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.lifecycle-editor .card-actions {
+  padding-top: 8px;
 }
 .lifecycle-choices {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 8px;
 }
 .lifecycle-editor .check-choice {
   margin: 8px 0;
 }
-.lifecycle-editor textarea {
-  min-height: 130px;
+.agent-lifecycle .lifecycle-editor textarea {
+  min-height: 220px;
+  resize: vertical;
 }
 .lifecycle-knowledge {
   margin-top: 24px;
@@ -133,7 +163,8 @@
     padding: 10px 6px;
   }
   .lifecycle-evidence div,
-  .lifecycle-choices {
+  .lifecycle-choices,
+  .lifecycle-editor-options {
     grid-template-columns: minmax(0, 1fr);
   }
   .lifecycle-evidence div {

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { openRoleEditor } from "./agent-lifecycle-fixture";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
 import {
@@ -4144,3 +4145,30 @@ for (const device of ["desktop", "mobile"])
         focusSelector: '[aria-label="GitHub functional assistant consent"] h3',
       });
     });
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"]) {
+    test(`guided fixture journey agent role editor ${device} ${theme}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      await openRoleEditor(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page
+        .getByLabel("Role instructions")
+        .fill(
+          "Preserve the reviewed stock reservation behavior.\n\nReject requests above available stock and retain the verification evidence. Ask the owner when the expected behavior is unclear.",
+        );
+      await capture(page, "agent-role-instructions", theme, device, {
+        actionSelector: "#role-instructions",
+        focusSelector: ".lifecycle-editor h3",
+      });
+      await capture(page, "agent-role-authority", theme, device, {
+        actionSelector: ".lifecycle-editor .primary",
+      });
+    });
+  }

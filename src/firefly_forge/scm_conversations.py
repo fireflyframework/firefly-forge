@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
@@ -82,61 +83,77 @@ class SCMConversations:
             await self.collaboration._repo_lock(repository)
             yield
 
+    async def references(self, delivery: Data, scopes: list[Data], *, durable: bool = False) -> tuple[list[Data], Data]:
+        references, runs = [], {}
+        async with self.store._unit():
+            rows = await (
+                self.collaboration.inbox.conversation_context(delivery)
+                if durable
+                else self.collaboration.inbox.ticket_context(delivery)
+            )
+            if (
+                len(rows) > (5000 if durable else 200)
+                or len(json.dumps([row.data for row in rows]).encode()) > 16 * 1024 * 1024
+            ):
+                raise AccessDenied("Ticket context exceeds the bounded lookup; review its exact native receipts")
+            candidates = [(copy.deepcopy(row.data), row.sequence) for row in rows]
+        for previous, sequence in candidates:
+            run_id = previous.get("run_id")
+            if (
+                not run_id
+                or previous["id"] == delivery["id"]
+                or previous.get("natural_parent")
+                or (previous.get("command") or {}).get("adapter")
+            ):
+                continue
+            try:
+                run = await self.store.get_run(run_id)
+                scope = next(
+                    (
+                        s
+                        for s in scopes
+                        if s["project_id"] == run.get("project_id") and run.get("component_id") in s["component_ids"]
+                    ),
+                    None,
+                )
+                if scope is None or run.get("repository_id") != delivery["repository_id"]:
+                    continue
+                if (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                    polling = self.collaboration.polling or getattr(self.store, "scm_polling", None)
+                    if polling is None:
+                        continue
+                    await polling.ticket_reference(previous, run)
+                else:
+                    await SCMActorAuthority(self.store, self.collaboration.scm).ticket_reference(previous, run)
+            except (AccessDenied, KeyError, ValueError, TypeError):
+                continue
+            if run_id in runs:
+                continue
+            runs[run_id] = run
+            if len(runs) > 200:
+                raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
+            references.append(
+                TicketContextReferenceV1(
+                    receipt_id=previous["id"],
+                    sequence=sequence,
+                    run_id=run_id,
+                    project_id=run["project_id"],
+                    component_id=run["component_id"],
+                    context_digest=digest(
+                        {
+                            "observation": observation_cut(previous),
+                            "actor": previous.get("scm_execution_actor"),
+                            "run_id": run_id,
+                            "action_status": previous.get("action_status"),
+                        }
+                    ),
+                ).model_dump(mode="json")
+            )
+        return references, runs
+
     async def selection(self, delivery: Data, scopes: list[Data]) -> Data:
         message = AddressedStatusV1.model_validate(delivery["command"])
-        references, runs = [], {}
-        if message.intent == "status":
-            async with self.store._unit():
-                rows = await self.collaboration.inbox.ticket_context(delivery)
-                if len(rows) > 200:
-                    raise AccessDenied("Ticket context exceeds the bounded lookup; review its exact native receipts")
-                candidates = [(copy.deepcopy(row.data), row.sequence) for row in rows]
-            for previous, sequence in candidates:
-                run_id = previous.get("run_id")
-                if not run_id or previous["id"] == delivery["id"] or (previous.get("command") or {}).get("adapter"):
-                    continue
-                try:
-                    run = await self.store.get_run(run_id)
-                    scope = next(
-                        (
-                            s
-                            for s in scopes
-                            if s["project_id"] == run.get("project_id")
-                            and run.get("component_id") in s["component_ids"]
-                        ),
-                        None,
-                    )
-                    if scope is None or run.get("repository_id") != delivery["repository_id"]:
-                        continue
-                    if (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
-                        polling = self.collaboration.polling or getattr(self.store, "scm_polling", None)
-                        if polling is None:
-                            continue
-                        await polling.ticket_reference(previous, run)
-                    else:
-                        await SCMActorAuthority(self.store, self.collaboration.scm).ticket_reference(previous, run)
-                except (AccessDenied, KeyError, ValueError, TypeError):
-                    continue
-                if run_id in runs:
-                    continue
-                runs[run_id] = run
-                references.append(
-                    TicketContextReferenceV1(
-                        receipt_id=previous["id"],
-                        sequence=sequence,
-                        run_id=run_id,
-                        project_id=run["project_id"],
-                        component_id=run["component_id"],
-                        context_digest=digest(
-                            {
-                                "observation": observation_cut(previous),
-                                "actor": previous.get("scm_execution_actor"),
-                                "run_id": run_id,
-                                "action_status": previous.get("action_status"),
-                            }
-                        ),
-                    ).model_dump(mode="json")
-                )
+        references, runs = await self.references(delivery, scopes) if message.intent == "status" else ([], {})
         active = [r for r in references if runs[r["run_id"]]["status"] not in TERMINAL]
         eligible = active if active else references[:1]
         selection = (
@@ -161,6 +178,47 @@ class SCMConversations:
         initial = await self.collaboration.receipt(receipt_id)
         if initial["status"] != "received":
             return initial
+        if (
+            initial["command"].get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}
+            and (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        ):
+            from firefly_forge.scm_natural_effects import NaturalEffects
+            from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+            natural = SCMNaturalTasks(self.collaboration)
+            try:
+                result = await natural.process(receipt_id)
+            except (AccessDenied, ValueError, KeyError):
+                async with self.store._unit():
+                    row = await self.collaboration.inbox.find_by_id(
+                        identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE
+                    )
+                    if (
+                        row is not None
+                        and row.status == "received"
+                        and observation_cut(row.data) == observation_cut(initial)
+                    ):
+                        await self.collaboration._write_row(
+                            row,
+                            status="denied",
+                            action_status="not_dispatched",
+                            reason="natural_current_read_authority_or_question_changed",
+                        )
+                return await self.collaboration.receipt(receipt_id)
+            if result["status"] == "processed" and (result["natural_turn"].get("resolution") or {}).get("state") in {
+                "answer",
+                "resume",
+            }:
+                result = await NaturalEffects(natural).apply(receipt_id)
+            if result["status"] == "processed" and (result["natural_turn"].get("resolution") or {}).get("state") in {
+                "product_answer",
+                "product_request",
+            }:
+                from firefly_forge.scm_natural_product import NaturalProductContinuation
+
+                result = await NaturalProductContinuation(natural).apply(receipt_id)
+            await self.collaboration.feedback(receipt_id)
+            return await self.collaboration.receipt(receipt_id)
         try:
             scopes = await self.scopes(initial, remote=True)
             selected = await self.selection(initial, scopes)
@@ -204,6 +262,11 @@ class SCMConversations:
         return await self.collaboration.receipt(receipt_id)
 
     async def authorize_feedback(self, expected: Data, *, remote: bool) -> None:
+        if expected.get("natural_turn") is not None:
+            from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+            await SCMNaturalTasks(self.collaboration).authorize_feedback(expected, remote=remote)
+            return
         current = await self.collaboration.receipt(expected["id"])
         retained = AddressedContextV1.model_validate(current.get("conversation")).model_dump(mode="json")
         unsigned = {k: v for k, v in retained.items() if k != "digest"}

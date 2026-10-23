@@ -222,14 +222,28 @@ async def test_native_partial_completion_stays_unknown_and_never_replays(store, 
         env = await retained_environment_refusal(store, tmp_path, monkeypatch)
         body = admission(await env.service.candidate(env.run_id))
         if failure == "cancel_after_effect":
+            from firefly_forge import workspace_reconciliations as module
+            from firefly_forge.source_patch_admission import SourcePatch
+
             original = store.admit_credentials
+            apply = module.apply_dependency_plan
+            effects, admitted = [], []
 
-            async def interrupted(value):
-                if isinstance(value, str):
+            def completed_effect(*args):
+                effect = apply(*args)
+                effects.append(effect)
+                return effect
+
+            async def interrupted(patch):
+                assert type(patch) is SourcePatch
+                if effects:
+                    assert patch.text == admitted[0]
                     raise asyncio.CancelledError()
-                await original(value)
+                await original(patch.text)
+                admitted.append(patch.text)
 
-            monkeypatch.setattr(store, "admit_credentials", interrupted)
+            monkeypatch.setattr(module, "apply_dependency_plan", completed_effect)
+            monkeypatch.setattr(store, "vault_source_patch_admission", interrupted)
             error = asyncio.CancelledError
         else:
 
@@ -240,6 +254,8 @@ async def test_native_partial_completion_stays_unknown_and_never_replays(store, 
             error = RuntimeError
         with pytest.raises(error):
             await env.service.admit(env.run_id, body)
+        if failure == "cancel_after_effect":
+            assert len(effects) == len(admitted) == 1
         assert (await store.get_run(env.run_id))["status"] == "failed"
         assert (await env.service.get(env.run_id, body.request_id))["status"] == "needs_reconciliation"
         with pytest.raises(ValueError, match="unknown|reconciliation"):

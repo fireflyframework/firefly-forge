@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.37
+
+GitHub conversations accept ordinary language for product requests, status and answers. A reply to a confirmed pending question can omit the mention when its issue, author and question binding are unambiguous. The factory retains the original text and question provenance across restarts. Ambiguous references ask for clarification rather than guessing a run or requiring a command. See the [conversation guide](scm.md).
+
+Conversation authority does not authorize execution. A late answer remains available after execution consent expires; continuing the original ProductAssistant session or worker task requires fresh bounded native authority for that exact context. Product requests use the existing functional assistant, knowledge and configured task route. Proposals remain unreviewed. The selected Agentic or Bridge communication route uses Humanizer instructions, with one correction for a confirmed invalid response and no automatic replay of an unknown provider outcome.
+
+The package includes a measured source-only Codex 0.163 Darwin arm64 capability profile. Its tool, loader, runtime and filesystem evidence is specific to that profile. MCP resources accept bounded standard progress metadata and return correlated errors without broadening tool arguments or resource access. Source reconciliation preserves the original intent and spent command budget; an explicitly reviewed generated index entry can be sanitized without discarding source changes. See the [recovery guide](recovery.md).
+
+Studio makes retained worker questions, recorded answers and continuation state visible with responsive evidence. The complete controlled walkthrough is regenerated for version 0.2.37. Host, browser, native PostgreSQL and finite no-model protocol proofs cover their stated boundaries; actual CRM completion, external model behavior and generated-product acceptance remain separate.
+
+Known limitations: a restricted source-only grant admits one implementation attempt. A saved human answer does not grant the next attempt; dedicated human/source readmission is being implemented in a separate successor. The generic native conversation proofs do not establish that restricted resume. Retained verification context can also be clipped and omit the root error; scoped retained-diagnostics retrieval is being corrected separately. Preserve the paused request and its evidence while these boundaries remain held.
+
 ## 0.2.36
 
 A GitHub issue can host a separately authorized functional conversation. A native administrator reviews the exact API-observed account, project, repository, issue and named assistant profile, then records a finite allowance. Start and status do not invoke a model; each turn reserves one of at most three assistant model turns before entering the product provider. The same issue-bound conversation can receive a natural message addressed to `@forge`. Unknown outcomes retain their original request and allowance instead of triggering an automatic retry. See the [functional GitHub dialogue guide](scm.md#functional-dialogue-through-local-github-polling).

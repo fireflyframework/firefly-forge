@@ -2,6 +2,15 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.37 — 2026-10-23
+
+- Continue GitHub conversations in natural language, including later replies to confirmed assistant and worker questions. Keep question, author, issue and original task provenance durable across restarts; clarify ambiguous references without requiring commands or internal IDs.
+- Keep read-only conversation separate from execution consent. Reuse fresh, bounded native authorization for ProductAssistant continuation and worker response or resume; hold uncertain outcomes without automatic replay. The selected Agentic or Bridge route includes Humanizer guidance and at most one confirmed response correction.
+- Add the package-owned, measured Codex 0.163 Darwin arm64 source-only profile, bounded MCP resource metadata and correlated error handling. Preserve private-file boundaries, original command budgets and independent final verification.
+- Reconcile observed source-only effects and sanitize only an explicitly reviewed generated index entry, retaining original intent, current source and authority checks. Preserve the read-only Git index boundary and credential admission checks.
+- Show retained worker requests, answers and continuation state in Studio with readable responsive evidence. Refresh the complete canonical walkthrough for the 0.2.37 stamp.
+- Qualify these transitions with controlled host, browser and native PostgreSQL fixtures. They do not establish completed CRM, live model quality or generated-product acceptance.
+
 ## 0.2.36 — 2026-10-22
 
 - Add separately consented GitHub issue conversations under the exact API-observed account, project, repository, issue and selected assistant profile. Bound each grant by expiration and at most three model turns; retain original requests and uncertain outcomes without automatic retry.

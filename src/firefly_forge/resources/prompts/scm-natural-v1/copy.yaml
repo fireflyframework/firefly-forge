@@ -1,0 +1,39 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: scm-natural/copy
+version: 1.0.0
+description: Server-recorded natural conversation outcomes in English and Spanish.
+system_template: ''
+user_template: |
+  {
+    "en": {
+      "waiting_configuration": "Your message is retained. The communication model needs to be configured before I can interpret it. No task was started or resumed.",
+      "waiting": "I retained your message. Please clarify which pending question or task you mean; no task was changed.",
+      "dialogue": "This is a discussion reply. It does not approve or execute work.",
+      "product_answer": "Your answer is saved for the original product question. No new architect turn has completed yet.",
+      "product_request": "Your product request is saved. No new architect turn has completed yet.",
+      "product_pending_permission": "Your original message is saved. A current separate product-model allowance is needed before the architect can continue. It does not approve or execute work.",
+      "conversation_answer": "Your answer is retained for the original conversation question. It does not approve or execute work.",
+      "status": "This reply refers to the recorded task linked to this issue. It does not change the task.",
+      "answer_pending_permission": "Your answer is retained for the original question. Applying it is waiting for current permission; the task has not resumed.",
+      "answer_saved_pending_resume": "Your answer has been recorded for the original question. The same task is waiting for current continuation permission.",
+      "resumed": "The original authorized task has been queued to continue. This does not mean its work or checks have completed.",
+      "task": "Linked task"
+    },
+    "es": {
+      "waiting_configuration": "Tu mensaje está guardado. Falta configurar el modelo de comunicación para interpretarlo. No se ha iniciado ni reanudado ninguna tarea.",
+      "waiting": "Tu mensaje está guardado. Aclara a qué pregunta pendiente o tarea te refieres; no se ha cambiado ninguna tarea.",
+      "dialogue": "Esta respuesta forma parte de la conversación. No aprueba ni ejecuta trabajo.",
+      "product_answer": "Tu respuesta está guardada para la pregunta de producto original. Aún no ha terminado un nuevo turno del arquitecto.",
+      "product_request": "Tu solicitud de producto está guardada. Aún no ha terminado un nuevo turno del arquitecto.",
+      "product_pending_permission": "Tu mensaje original está guardado. Falta un cupo de modelo de producto vigente y separado para continuar con el arquitecto. No aprueba ni ejecuta trabajo.",
+      "conversation_answer": "Tu respuesta está guardada para la pregunta original de la conversación. No aprueba ni ejecuta trabajo.",
+      "status": "Esta respuesta se refiere a la tarea registrada y vinculada a este hilo. No cambia la tarea.",
+      "answer_pending_permission": "Tu respuesta está guardada para la pregunta original. Falta permiso vigente para aplicarla; la tarea no se ha reanudado.",
+      "answer_saved_pending_resume": "Tu respuesta se ha registrado para la pregunta original. La misma tarea espera permiso vigente para continuar.",
+      "resumed": "La tarea original autorizada se ha puesto en cola para continuar. Esto no significa que el trabajo o sus comprobaciones hayan terminado.",
+      "task": "Tarea vinculada"
+    }
+  }
+required_variables: []
+metadata:
+  defaults: {}

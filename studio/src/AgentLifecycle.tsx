@@ -362,6 +362,7 @@ export function AgentLifecycle({
           {draft && (
             <form
               className="lifecycle-editor"
+              aria-label={`Edit ${draft.name}`}
               onSubmit={(event) => {
                 event.preventDefault();
                 void save();
@@ -386,6 +387,7 @@ export function AgentLifecycle({
                   <label htmlFor="role-instructions">Role instructions</label>
                   <textarea
                     id="role-instructions"
+                    autoFocus
                     disabled={busy}
                     value={draft.instructions}
                     required
@@ -408,40 +410,46 @@ export function AgentLifecycle({
                   Enable documentation guidance in the same coding worker
                 </label>
               )}
-              <fieldset disabled={busy}>
-                <legend>Instruction skills</legend>
-                <div className="lifecycle-choices">
-                  {catalog.skills.map((skill) => (
-                    <label className="check-choice" key={skill.id}>
-                      <input
-                        type="checkbox"
-                        checked={draft.skills.includes(skill.id)}
-                        onChange={(event) =>
-                          toggle("skills", skill.id, event.target.checked)
-                        }
-                      />
-                      {skill.name}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              {draft.execution_mode === "coding_provider" && (
+              <div className="lifecycle-editor-options">
                 <fieldset disabled={busy}>
-                  <legend>Requested native tools</legend>
-                  {catalog.tools.map((tool) => (
-                    <label className="check-choice" key={tool.id}>
-                      <input
-                        type="checkbox"
-                        checked={draft.allowed_tools.includes(tool.id)}
-                        onChange={(event) =>
-                          toggle("allowed_tools", tool.id, event.target.checked)
-                        }
-                      />
-                      {human(tool.id)} · {human(tool.availability)}
-                    </label>
-                  ))}
+                  <legend>Instruction skills</legend>
+                  <div className="lifecycle-choices">
+                    {catalog.skills.map((skill) => (
+                      <label className="check-choice" key={skill.id}>
+                        <input
+                          type="checkbox"
+                          checked={draft.skills.includes(skill.id)}
+                          onChange={(event) =>
+                            toggle("skills", skill.id, event.target.checked)
+                          }
+                        />
+                        {skill.name}
+                      </label>
+                    ))}
+                  </div>
                 </fieldset>
-              )}
+                {draft.execution_mode === "coding_provider" && (
+                  <fieldset disabled={busy}>
+                    <legend>Requested native tools</legend>
+                    {catalog.tools.map((tool) => (
+                      <label className="check-choice" key={tool.id}>
+                        <input
+                          type="checkbox"
+                          checked={draft.allowed_tools.includes(tool.id)}
+                          onChange={(event) =>
+                            toggle(
+                              "allowed_tools",
+                              tool.id,
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        {human(tool.id)} · {human(tool.availability)}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+              </div>
               <div className="card-actions">
                 <button className="primary" disabled={busy}>
                   {busy

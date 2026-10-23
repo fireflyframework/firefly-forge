@@ -112,15 +112,16 @@ class CapabilityProfile:
     loader_hashes: tuple[tuple[str, str], ...]
     runtime_versions: tuple[tuple[str, str], ...]
     catalog: tuple[tuple[str, str, str], ...]
-    configuration_features: tuple[tuple[str, bool], ...]
+    configuration_features: tuple[tuple[str, bool | None], ...]
     configuration_tools: tuple[tuple[str, bool], ...]
     proof: NativeQualificationProof
 
 
-# No production build has passed the complete native probe yet. Test profiles
-# enter through this internal seam, never provider settings or an API request.
 def _profiles() -> tuple[CapabilityProfile, ...]:
-    return ()
+    """Load package-owned literals after qualification types are initialized."""
+    from .source_edit_supported_profiles import PROFILES
+
+    return PROFILES
 
 
 def loader_hashes() -> tuple[tuple[str, str], ...]:

@@ -537,7 +537,7 @@ A current native administrator can review `GET /api/v1/runs/{run_id}/source-edit
 
 The activation explicitly enables only `list_files`, `read_file` and `search_text` already present in frozen implementation roles. It does not infer external MCP authority from those roles, edit the original MCP snapshot, grant an operator API, or enable arbitrary execution. The original broker retains its durable request/source identities, unknown holds and shared tool-call limits, capped at 30 calls and 10 per reader. Reads exclude private paths, symlinks and hardlinks, admit credentials before returning content, and require an unchanged current source cut. Known readback consumes no new call; reusing an identity after a source change is refused.
 
-This mode requires a package-owned, versioned native capability profile before any metadata process or durable activation intent. The profile binds executable bytes, platform, model/provider, the canonical model-catalog asset SHA256 and loader helper, policy flags, loader source hashes, runtime versions, the exact native tool schemas, and complete positive and negative native probe evidence. Unknown builds, missing proof, capability drift, or profile withdrawal hold admission. Provider settings and API requests cannot supply a profile or a `closed: true` assertion. The production registry is currently empty, including for the retained Codex 0.163 build; source-only activation remains unavailable until actual native qualification passes. Normal Codex and Claude execution paths are unchanged.
+This mode requires a package-owned, versioned native capability profile before any metadata process or durable activation intent. The profile binds executable bytes, platform, model/provider, the canonical model-catalog asset SHA256 and loader helper, policy flags, loader source hashes, runtime versions, the exact native tool schemas, and complete positive and negative native probe evidence. Unknown builds, missing proof, capability drift, or profile withdrawal hold admission. Provider settings and API requests cannot supply a profile or a `closed: true` assertion. The package includes one measured Codex 0.163 Darwin arm64 profile for the pinned executable, model, provider, runtime and loader bytes. Its native boundary evidence covers 235 supported cases and 15 separate diagnostics without real model calls. Account configuration, managed-policy admission and actual project verification remain independent gates. Normal Codex and Claude execution paths are unchanged.
 
 A registered profile is sealed into the reviewed candidate and revalidated at activation, source reads, dispatch and final verification. Its native qualification must exercise the actual tool catalog, patch operations and filesystem boundaries in one bounded run, with no real model calls. Private and outside-source sentinel reads and writes, including case aliases, must be denied. Minimal operating-system runtime reads remain available; this does not establish blanket denial of all reads outside the workspace. A successful catalog listing alone cannot qualify the profile.
 
@@ -557,6 +557,12 @@ The reviewed scope also names four bounded native utilities: `clock.curr_time` r
 
 The combined command budget does not reset. For example, a limit of 35 with 21 observed CLI calls and 7 native checks leaves 7 independent final checks and zero interactive commands. Each final native effect rechecks that combined count. Activation preserves the same provider, model, attempt, history and final verification plan; it cannot authorize another verification handoff, another failed-provider allowance, publication or a new run.
 
+
+#### Version 0.2.37 limitations
+
+A restricted source-only grant admits one implementation attempt. Saving a human answer does not admit the next attempt under that grant. Dedicated human/source readmission is being implemented separately; the generic conversation and PostgreSQL answer/resume proofs do not qualify that restricted continuation.
+
+The retained verification context can be clipped and omit the original root error. Scoped retrieval of retained diagnostics is being corrected separately. Inspect the available native evidence and preserve the paused request; a saved answer or an incomplete diagnostic excerpt is not permission to resume.
 
 #### Reader argument checks
 
@@ -592,3 +598,65 @@ Every reader requires a unique `request_id` containing exactly 32 lowercase hexa
 The version-1.0.1 reader descriptions state these constraints in the packaged prompt catalog. The selected resource bytes, catalog manifest and prompt renderer are part of the native loader fingerprint, so changing them invalidates the qualified profile.
 
 The version-4 registry requires a separate `source_reader_bounds_enforced` result. Earlier sixteen-outcome proofs cannot activate this mode. Qualification must send malformed arguments through the actual native client and distinguish a client-side rejection of a non-object argument envelope from a server-side refusal. It also checks valid transport boundaries. Those positive transport cases do not prove that an arbitrary path exists or is readable; real source reads and filesystem denials have separate checks. Host-only validation and an advertised tool listing cannot replace this native evidence.
+
+
+### Observe an interrupted source-only environment transition
+
+If that review finds a newly indexed Vitest result cache outside the protected
+public source, it stays held. A separate native administrator action can review
+`GET .../{original_request_id}/index-sanitation-candidate` and submit
+`POST .../{original_request_id}/index-sanitations`. The strict
+`IndexSanitationInput` binds a fresh request ID, original intent, exact candidate
+and admission-contract digests, previous catalog path and a finite duration of
+1–1800 seconds. Four explicit acknowledgements authorize only generated-index
+sanitation, preservation of physical files and original budgets, continued unknown
+SCM delivery, and no queue or provider dispatch.
+
+This operation accepts only bounded new `.cache/vite/vitest/{40-hex}/results.json`
+entries absent from the original Git base. It verifies their staged blobs against
+descriptor-safe regular files and the exact current public source. Private paths,
+links, case aliases, existing repository assets and other generated files remain
+refused. The complete proposed public patch passes credential admission before
+a durable intent commits. The effect removes only the reviewed index entries;
+the physical cache and all run, task and budget values remain unchanged. A second
+credential and authority check precedes the completion receipt. Read
+`GET .../{original_request_id}/index-sanitations/{new_request_id}` after a lost
+response. An intent without completion holds every further recovery and cannot
+be replayed. A completed sanitation still requires the separate observed-effect
+readmission below before the existing task can queue.
+
+Future snapshots exclude only new untracked known Vitest results absent from the
+Git base. They preserve established tracked assets and hold an already indexed
+new cache for explicit sanitation. Staged-cache and exact admitted patch/index
+checks repeat across asynchronous credential admission before checkpointing.
+
+A durable environment intent with an unknown outcome must not be replayed. A current
+native administrator can review an already completed effect through
+`GET /api/v1/runs/{run_id}/source-edit-continuations/{original_request_id}/observed-effect-candidate`,
+supplying the original package-owned `previous_catalog_path`. The review requires
+unchanged public source, exact staged public-file blobs and modes, protected Git
+identity, preserved dependency aliases, and the original task and command reserve.
+
+The separate `POST .../{original_request_id}/observed-effect-readmissions` accepts
+`ObservedSourceReadmissionInput`: a fresh request ID, the exact original intent,
+observed candidate and admission-contract digests, the previous catalog path, a
+finite integer duration of 1–1800 seconds within the original provider limit, and
+four explicit acknowledgements. It does not apply the dependency plan again. The
+service checks the authenticated credential history and current secrets against
+the complete bounded source patch before writing a readmission event, new native
+intent, completion receipt and queue transition in one transaction.
+
+The original intent and unknown SCM delivery remain unchanged. The new event
+records the old and new deadlines and preserves the original SCM provenance as a
+parent reference; it grants native administrator consent rather than reusing the
+old SCM seal. It cannot reset counters, add commands, admit a new provider dispatch
+after the original intent, or silently accept configuration drift. A catalog path
+relocation is allowed only when exact old/new configuration digest reconstruction
+proves that the package path is the sole difference. Lost readmission responses
+require reading the new request's receipt; repeating the old environment effect
+is never a recovery procedure.
+
+Source patches use a dedicated flat-text credential admission capped at the
+existing 4 MiB Git bound. Generic JSON admission retains its 1 MiB text bound, and
+credential-history, matching-work and full-match limits remain unchanged. A patch
+that exceeds those matching limits stays held before an environment effect.

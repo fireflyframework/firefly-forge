@@ -1489,12 +1489,7 @@ export function NewProduct({
     initialComponent?.component.frontend ?? "react",
     true,
   );
-  const [agent, setAgent] = useProductDraftField(
-    session,
-    "agent",
-    "codex",
-    true,
-  );
+  const [agent, setAgent] = useProductDraftField(session, "agent", "", true);
   const [operation, setOperation] = useProductDraftField(
     session,
     "operation",
@@ -1895,7 +1890,7 @@ export function NewProduct({
         operation,
         backend,
         frontend,
-        agent: operation === "test" ? "codex" : agent,
+        ...(operation === "test" ? { agent: "codex" } : agent ? { agent } : {}),
         ...(initialComponent
           ? {
               project_id: initialComponent.project.id,
@@ -2141,12 +2136,13 @@ export function NewProduct({
               {operation !== "test" ? (
                 <Field
                   label="Execution agent"
-                  hint="The provider must be configured and signed in on the factory server."
+                  hint="Use the factory’s configured implementation route, or choose an explicit provider. The selected provider must be ready on the factory server."
                 >
                   <select
                     value={agent}
                     onChange={(event) => setAgent(event.target.value)}
                   >
+                    <option value="">Use configured task routing</option>
                     <option value="codex">Codex</option>
                     <option value="claude">Claude Code</option>
                     <option value="bridge">Firefly Agent Bridge</option>
@@ -2284,7 +2280,11 @@ export function NewProduct({
               <div>
                 <dt>Worker</dt>
                 <dd>
-                  {operation === "test" ? "Verification runner" : human(agent)}
+                  {operation === "test"
+                    ? "Verification runner"
+                    : agent
+                      ? human(agent)
+                      : "Configured implementation task route"}
                 </dd>
               </div>
               <div>

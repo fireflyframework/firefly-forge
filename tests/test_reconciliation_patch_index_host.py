@@ -42,7 +42,7 @@ async def test_reconciliation_patch_read_never_refreshes_staged_index(
 
     monkeypatch.setattr(module, "_git", inspect)
     receipt = await env.service.admit(env.root.name, request(candidate))
-    assert observed == [True]
+    assert observed == [True, True]
     assert receipt["completed_cut"]["index_digest"] == receipt["effect"]["index_after"]
     assert env.store.run.status == "queued" and env.task.attempt == 2
 
@@ -76,6 +76,6 @@ async def test_source_reconciliation_patch_read_never_refreshes_staged_index(
 
     monkeypatch.setattr(module, "_git", inspect)
     receipt = await env.service.activate_source_edit(env.root.name, source_request(candidate))
-    assert observed == [True]
+    assert observed == [True, True]
     assert receipt["completed_cut"]["index_digest"] == receipt["effect"]["index_after"]
     assert env.store.run.status == "queued" and env.task.attempt == 2

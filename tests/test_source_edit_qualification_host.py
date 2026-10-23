@@ -19,7 +19,8 @@ def qualified(tmp_path, monkeypatch):
     return profile, executable_identity(str(executable), tmp_path / "workspaces")
 
 
-def test_production_registry_admits_neither_unknown_build_nor_pinned_unproven_build():
+def test_empty_registry_admits_neither_unknown_build_nor_pinned_unproven_build(monkeypatch):
+    monkeypatch.setattr(module, "_profiles", lambda: ())
     assert module._profiles() == ()
     for checksum, size in (
         ("f" * 64, 100),

@@ -100,4 +100,13 @@ The explorer uses `GET /api/v1/agent-roles/lifecycle` and `GET /api/v1/repositor
 
 Choose **Edit** on an instruction role to change its factory instructions or its project skill and native-tool selections. The execution binding and stages stay fixed. Only documentation guidance can be disabled. A draft survives phase navigation and failed saves; close or save it before changing the project. Saving affects later admitted work and leaves retained run snapshots intact.
 
+Factory instructions open in a full-width writing field with keyboard focus.
+Instruction skills and requested native tools have separate labeled groups;
+on a narrow screen they stack above the save and close controls. Project role
+edits keep the same groups while retaining instructions from the registry.
+
+![Factory role instructions and separate skill and tool choices](assets/screenshots/agent-role-instructions-desktop-light.png)
+
+![Role authority and save controls on a narrow screen](assets/screenshots/agent-role-authority-mobile-light.png)
+
 Product dialogue participants are separate from these seven instruction roles. Their task skills are selected from the current validated catalog and frozen in each admitted turn. They do not reuse the deterministic architect role as a model agent. See the [agent lifecycle guide](agent-lifecycle.md) for the phase, skill and knowledge contracts.

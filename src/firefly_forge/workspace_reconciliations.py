@@ -16,12 +16,20 @@ from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, Projec
 from firefly_forge.provider_recoveries import ProviderRecoveries
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
-from firefly_forge.store import identifier
+from firefly_forge.source_patch_admission import SourcePatch
+from firefly_forge.store import Store, identifier
 from firefly_forge.verification_models import check_verification_cut
 from firefly_forge.workspace_reconciliation import _git, apply_dependency_plan, dependency_plan
 from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput, queued_environment_scope
 
 Data = dict[str, Any]
+
+
+def _source_patch(workspace: Any, base: str, aliases: list[str] | None = None) -> str:
+    exclusions = [f":(top,literal,exclude){name}" for name in aliases or []]
+    return _git(
+        workspace, "diff-index", "-p", "--binary", "--no-ext-diff", "--no-color", base, "--", *exclusions
+    ).decode()
 
 
 @service
@@ -243,6 +251,15 @@ class WorkspaceReconciliations:
             candidate = await self._candidate(row.data, snapshot, source_edit=source_edit)
             if candidate["digest"] != body.candidate_digest:
                 raise ValueError("The reviewed environment candidate changed")
+            workspace = r.engine.workspaces / run_id
+            prepared_patch = _source_patch(workspace, candidate["plan"]["base_revision"], candidate["plan"]["aliases"])
+            settings = r.store.configuration.load_snapshot(candidate["previous_run"]["config_revision"])
+            if redact_secrets(redact(prepared_patch), settings) != prepared_patch:
+                raise ValueError("Reconciled source still contains a configured credential; delivery remains held")
+            await Store.admit_source_patch(r.store, SourcePatch(prepared_patch))
+            await operator()
+            if r._cut(row.data) != candidate["cut"]:
+                raise ValueError("The reviewed source changed during patch credential admission")
             payload = {
                 "version": 1,
                 "request": request,
@@ -278,20 +295,13 @@ class WorkspaceReconciliations:
             }:
                 raise ValueError("Environment reconciliation changed source, history or execution authority")
             # Porcelain diff can refresh index stat data and invalidate the sealed source cut.
-            patch = _git(
-                workspace,
-                "diff-index",
-                "-p",
-                "--binary",
-                "--no-ext-diff",
-                "--no-color",
-                candidate["plan"]["base_revision"],
-                "--",
-            ).decode()
+            patch = _source_patch(workspace, candidate["plan"]["base_revision"])
+            if patch != prepared_patch:
+                raise ValueError("The reconciled source patch differs from its admitted pre-effect bytes")
         settings = r.store.configuration.load_snapshot(candidate["previous_run"]["config_revision"])
         if redact_secrets(redact(patch), settings) != patch:
             raise ValueError("Reconciled source still contains a configured credential; delivery remains held")
-        await r.store.admit_credentials(patch)
+        await Store.admit_source_patch(r.store, SourcePatch(patch))
         await operator()
         async with r._locked(run_id, snapshot) as row:
             await operator()

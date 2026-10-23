@@ -136,5 +136,5 @@ async def test_metadata_does_not_admit_execution_tool_or_extra_tool_arguments():
                 },
             )
             assert response.status_code == 400
-            assert response.json()["id"] is None
+            assert response.json()["id"] == 9
         assert calls == []
