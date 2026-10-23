@@ -89,6 +89,9 @@ def workspace_collector(limit: int) -> str:
         "from urllib.parse import unquote,urlsplit\n"
         "from contextvars import ContextVar\n"
         "_ephemeral=ContextVar('forge_ephemeral_credentials',default=())\n"
+        f"PRIVATE_BASENAMES=frozenset({sorted(workspace_tools.PRIVATE_BASENAMES)!r})\n"
+        f"PUBLIC_ENV_SUFFIXES={workspace_tools.PUBLIC_ENV_SUFFIXES!r}\n"
+        f"PRIVATE_KEY_SUFFIXES={workspace_tools.PRIVATE_KEY_SUFFIXES!r}\n"
     )
     return (
         prefix

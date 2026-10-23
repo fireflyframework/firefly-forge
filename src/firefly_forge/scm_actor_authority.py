@@ -673,6 +673,12 @@ class SCMActorAuthority:
                 raise AccessDenied("The separately consented native resume authority is unavailable")
             await resume.authorize_snapshot(actor, project_id, permission)
             return
+        if isinstance(context, dict) and context.get("transport") == "github_rest_poll_functional_v1":
+            functional = getattr(self.store, "scm_poll_functional", None)
+            if functional is None:
+                raise AccessDenied("The separately consented functional authority is unavailable")
+            await functional.authorize_snapshot(actor, project_id, permission)
+            return
         if isinstance(context, dict) and context.get("transport") == "github_rest_poll_v1":
             polling = getattr(self.store, "scm_polling", None)
             if polling is None:

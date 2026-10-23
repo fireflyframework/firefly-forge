@@ -1,0 +1,19 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "implementation/source-edit-only",
+  "version": "1.0.1",
+  "description": "Explicit confined source-only coding capability.",
+  "system_template": "",
+  "user_template": "This is the explicit source-edit-only continuation of the existing task. Command execution is disabled, including shell, stdin sessions, child agents and external execution tools. Use the granted list_files/read_file/search_text source readers and native apply_patch for source edits. The native clock.curr_time utility reports time only. Native MCP resource methods have no registered resources or templates; they cannot read source, file URIs or network URIs. Reader budget: {{ calls_limit }} total, {{ per_tool_limit }} per reader; prior calls count. After a source change use a new request_id. If a result is uncertain, report the hold; never evade a limit with another identity. The original combined command limit remains {{ command_limit }}: {{ cli_commands }} retained CLI calls plus {{ native_commands }} native checks are already observed; {{ final_checks }} independent final checks remain reserved. Do not run implementation checks or request another verification handoff. Return the typed implementation result for the native final checks; no claim of verification, completion or publication without actual evidence.",
+  "required_variables": [
+    "calls_limit",
+    "per_tool_limit",
+    "command_limit",
+    "cli_commands",
+    "native_commands",
+    "final_checks"
+  ],
+  "metadata": {
+    "defaults": {}
+  }
+}

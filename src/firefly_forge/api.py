@@ -206,6 +206,8 @@ from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_poll_controllers import SCMPollController
+from firefly_forge.scm_poll_functional import SCMPollFunctionalAuthority
+from firefly_forge.scm_poll_functional_controllers import SCMPollFunctionalController
 from firefly_forge.scm_poll_resume import SCMPollResumeAuthority
 from firefly_forge.scm_poll_resume_controllers import SCMPollResumeController
 from firefly_forge.scm_polling import SCMPolling
@@ -215,6 +217,8 @@ from firefly_forge.scm_product_intake import SCMProductIntake
 from firefly_forge.scm_product_intake_controllers import SCMProductIntakeController
 from firefly_forge.scm_resume_controllers import SCMResumeAuthorityController
 from firefly_forge.scm_resume_service import SCMResumeAuthority
+from firefly_forge.scm_source_edit import SCMSourceEditAuthority
+from firefly_forge.scm_source_edit_controllers import SCMSourceEditController
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store
@@ -235,7 +239,10 @@ from firefly_forge.verification_models import VerificationAdoption
 from firefly_forge.worker_evidence import WorkerEvidence
 from firefly_forge.worker_evidence_controllers import WorkerEvidenceController
 from firefly_forge.worker_runtime import WorkerSupervision
-from firefly_forge.workspace_reconciliation_controllers import WorkspaceReconciliationController
+from firefly_forge.workspace_reconciliation_controllers import (
+    SourceEditContinuationController,
+    WorkspaceReconciliationController,
+)
 from firefly_forge.workspace_reconciliations import WorkspaceReconciliations
 
 
@@ -743,6 +750,18 @@ class FactoryConfiguration:
         return polling
 
     @bean
+    def scm_poll_functional_authority(self, store: Store, polling: SCMPolling) -> SCMPollFunctionalAuthority:
+        authority = SCMPollFunctionalAuthority(store, polling)
+        store.scm_poll_functional = authority
+        return authority
+
+    @bean
+    def scm_source_edit_authority(
+        self, store: Store, polling: SCMPolling, workspaces: WorkspaceReconciliations
+    ) -> SCMSourceEditAuthority:
+        return SCMSourceEditAuthority(store, polling, workspaces)
+
+    @bean
     def scm_actor_authority(self, store: Store, connections: SCMConnections) -> SCMActorAuthority:
         return SCMActorAuthority(store, connections)
 
@@ -1040,6 +1059,8 @@ class FactoryConfiguration:
         assistant: ProductAssistant,
         resume_authority: SCMResumeAuthority,
         poll_resume_authority: SCMPollResumeAuthority,
+        poll_functional_authority: SCMPollFunctionalAuthority,
+        source_edit_authority: SCMSourceEditAuthority,
         product_change_authority: SCMProductChangeAuthority,
         intake: SCMProductIntake,
         polling: SCMPolling,
@@ -1057,6 +1078,8 @@ class FactoryConfiguration:
             browser_origin=self.identity_configuration.browser_origin,
         )
         collaboration.poll_resume_authority = poll_resume_authority
+        collaboration.poll_functional_authority = poll_functional_authority
+        collaboration.source_edit_authority = source_edit_authority
         collaboration.polling = polling
         polling.collaboration = collaboration
         collaboration.analysis_manager = analysis
@@ -1179,6 +1202,7 @@ def create_runtime(
         ProviderRecoveryController,
         ProviderRecoveryAllowanceController,
         WorkspaceReconciliationController,
+        SourceEditContinuationController,
         CodingCheckGrantController,
         BridgeCompletionController,
         RunEvidenceController,
@@ -1190,6 +1214,8 @@ def create_runtime(
         SCMActorAuthorityController,
         SCMResumeAuthorityController,
         SCMPollResumeController,
+        SCMPollFunctionalController,
+        SCMSourceEditController,
         SCMPollController,
         SCMProductChangeController,
         SCMProductIntakeController,

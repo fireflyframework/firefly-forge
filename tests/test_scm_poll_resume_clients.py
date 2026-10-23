@@ -221,7 +221,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 162
+    assert len(tools) == 166
     names = {
         "configure_scm_polling_resume_grant",
         "get_scm_polling_resume_grant",

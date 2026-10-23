@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { ScmPollFunctionalConsent } from "./ScmPollFunctionalConsent";
 import { useEffect, useRef, useState } from "react";
 import { GitBranch, History, ShieldCheck, X } from "lucide-react";
 import {
@@ -989,14 +990,23 @@ function PollingAccounts({
         </label>
       )}
       {binding && (
-        <ScmPollResumeConsent
-          key={binding.digest}
-          connection={connection}
-          session={session}
-          project={project}
-          binding={binding}
-          personName={name(binding)}
-        />
+        <>
+          <ScmPollFunctionalConsent
+            connection={connection}
+            session={session}
+            project={project}
+            binding={binding}
+            personName={name(binding)}
+          />
+          <ScmPollResumeConsent
+            key={binding.digest}
+            connection={connection}
+            session={session}
+            project={project}
+            binding={binding}
+            personName={name(binding)}
+          />
+        </>
       )}
     </section>
   );

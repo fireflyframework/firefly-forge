@@ -484,15 +484,20 @@ class SCMPolling:
         return github_comment_source(comment, repository, self.scm._api("github"))
 
     @staticmethod
-    def _next_page(response: Any, page: int) -> int | None:
+    def _next_page(response: Any, page: int, remote_repository_id: str) -> int | None:
         link = response.links.get("next", {}).get("url")
         if link is None:
             return None
         parsed, original = urlsplit(link), urlsplit(str(response.request.url))
-        query = parse_qs(parsed.query)
-        expected = parse_qs(original.query)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        expected = parse_qs(original.query, keep_blank_values=True)
+        paths = {original.path}
+        resource = re.fullmatch(r"(.*)/repos/[^/]+/[^/]+(/issues(?:/comments)?)", original.path)
+        if resource and re.fullmatch(r"[1-9][0-9]*", remote_repository_id):
+            paths.add(resource[1] + "/repositories/" + remote_repository_id + resource[2])
         if (
-            (parsed.scheme, parsed.netloc, parsed.path) != (original.scheme, original.netloc, original.path)
+            (parsed.scheme, parsed.netloc) != (original.scheme, original.netloc)
+            or parsed.path not in paths
             or parsed.username
             or parsed.fragment
             or set(query) != set(expected)
@@ -533,7 +538,7 @@ class SCMPolling:
         entries = response.json()
         if not isinstance(entries, list) or len(entries) > 50 or any(not isinstance(item, dict) for item in entries):
             raise ValueError("The provider returned an invalid bounded polling page")
-        next_page = self._next_page(response, cursor["page"])
+        next_page = self._next_page(response, cursor["page"], repo["remote_repository_id"])
         cursor["pages"] += 1
         cursor["bytes"] += len(response.content)
         if cursor["pages"] > 20 or cursor["bytes"] > MAX_BYTES:
@@ -621,7 +626,18 @@ class SCMPolling:
                     from firefly_forge.collaboration import RepositoryCommand
 
                     try:
-                        parsed = RepositoryCommand.parse(source["body"], bot_addresses=self.scm.bot_addresses("github"))
+                        from firefly_forge.scm_resume_service import grant_state
+
+                        functional = grant_state(row.data, "_scm_poll_functional_v1", 1)
+                        functional_enabled = (
+                            poll_key(policy["project_id"], {**scope, "external_actor_id": source["author_id"]})
+                            in functional["heads"]
+                        )
+                        parsed = RepositoryCommand.parse(
+                            source["body"],
+                            bot_addresses=self.scm.bot_addresses("github"),
+                            functional_dialogue=functional_enabled,
+                        )
                         version = getattr(parsed, "version", None)
                         natural_status = getattr(parsed, "adapter", None) == "addressed_status_v1"
                         if issue is not None and issue["pull_request"] and not natural_status:
@@ -630,8 +646,12 @@ class SCMPolling:
                             parsed.action in {"respond", "status"}
                             and version is None
                             or natural_status
+                            or parsed.action == "assistant"
+                            and getattr(parsed, "operation", None) in {"start", "status", "turn"}
                             or parsed.action == "resume"
                             and version == 2
+                            or parsed.action == "source_edit"
+                            and version == 1
                         ):
                             raise ValueError("Unsupported polling action")
                         command = parsed.model_dump(exclude_none=True)

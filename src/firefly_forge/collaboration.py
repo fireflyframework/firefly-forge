@@ -41,12 +41,14 @@ from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
+from firefly_forge.scm_source_edit_models import SCMSourceEditCommandV1
 from firefly_forge.store import Store, identifier, now, prepared_credential_rejection
 from firefly_forge.visual_design import ProcessWorkflow, VisualDesign, validate_process_references
 
 if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
     from firefly_forge.scm_conversation_models import AddressedStatusV1
+    from firefly_forge.scm_functional_address import AddressedFunctionalV1
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
     from firefly_forge.scm_product_intake import SCMProductIntake
     from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -180,20 +182,27 @@ class RepositoryCommand(BaseModel):
 
     @classmethod
     def parse(
-        cls, text: str, *, bot_addresses: tuple[str, ...] = ()
+        cls, text: str, *, bot_addresses: tuple[str, ...] = (), functional_dialogue: bool = False
     ) -> (
         RepositoryCommand
         | ChannelCommand
         | SCMResumeCommandV2
         | SCMResumeStatusV2
+        | SCMSourceEditCommandV1
         | SCMProductChangeCommandV1
         | SCMProductIntakeCommandV1
         | AddressedStatusV1
+        | AddressedFunctionalV1
     ):
         from firefly_forge.scm_conversation_models import addressed_status
         from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 
         if addressed := addressed_status(text, bot_addresses):
+            if functional_dialogue:
+                from firefly_forge.scm_functional_address import addressed_functional
+
+                if functional := addressed_functional(text, addressed):
+                    return functional
             return addressed
         if text.strip().startswith("/forge intake "):
             from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -209,6 +218,13 @@ class RepositoryCommand(BaseModel):
             if not isinstance(options, dict) or "action" in options:
                 raise ValueError("Command options cannot override the product change action")
             return SCMProductChangeCommandV1.model_validate({"action": "product_change", **options})
+        if text.strip().startswith("/forge source_edit "):
+            from firefly_forge.scm_source_edit_models import SCMSourceEditCommandV1
+
+            options = json.loads(text.strip().removeprefix("/forge source_edit "))
+            if not isinstance(options, dict) or "action" in options:
+                raise ValueError("Source-edit options cannot override the action")
+            return SCMSourceEditCommandV1.model_validate({"action": "source_edit", **options})
         versioned = re.fullmatch(r"/forge (status|resume) ([^\r\n]+)", text.strip())
         if versioned:
             options = json.loads(versioned[2])
@@ -323,6 +339,8 @@ class Collaboration:
         self.polling: Any = None
         self.resume_authority = resume_authority
         self.poll_resume_authority: Any = None
+        self.poll_functional_authority: Any = None
+        self.source_edit_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority
         self.scm = scm or SCMConnections(store)
@@ -368,6 +386,10 @@ class Collaboration:
             data.pop("_scm_authority_v1", None)
             data.pop("_scm_resume_authority_v2", None)
             data.pop("_scm_poll_resume_v3", None)
+            data.pop("_scm_poll_functional_v1", None)
+            data.pop("_scm_poll_functional_usage_v1", None)
+            data.pop("_scm_poll_source_edit_v1", None)
+            data.pop("_scm_source_edit_used_v1", None)
             data.pop("_scm_product_change_authority_v1", None)
             data.pop("_scm_product_intake_v1", None)
             return {
@@ -418,6 +440,10 @@ class Collaboration:
                 "_scm_authority_v1",
                 "_scm_resume_authority_v2",
                 "_scm_poll_resume_v3",
+                "_scm_poll_functional_v1",
+                "_scm_poll_functional_usage_v1",
+                "_scm_poll_source_edit_v1",
+                "_scm_source_edit_used_v1",
                 "_scm_product_change_authority_v1",
                 "_scm_product_intake_v1",
                 "_github_poll_v1",
@@ -923,6 +949,45 @@ class Collaboration:
                         )
                         return {"id": receipt_id, "status": "denied", "reason": "scm_product_edit_setup_or_conflict"}
                 return {"id": receipt_id, "status": "withheld", "reason": "scm_product_edit_result_unconfirmed"}
+        if (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1" and (
+            initial.get("command") or {}
+        ).get("action") == "assistant":
+            try:
+                if self.poll_functional_authority is None:
+                    raise ValueError("The functional polling service is unavailable")
+                await self.poll_functional_authority.process(receipt_id)
+            except Exception:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if row is not None and row.status == "received":
+                        await self._write_row(
+                            row,
+                            status="denied",
+                            action_status="not_dispatched",
+                            reason="scm_functional_authority_required",
+                        )
+                return await self.receipt(receipt_id)
+            await self.feedback(receipt_id)
+            return await self.receipt(receipt_id)
+        if (initial.get("command") or {}).get("action") == "source_edit":
+            try:
+                if (
+                    self.source_edit_authority is None
+                    or (initial.get("verification") or {}).get("transport") != "github_rest_poll_v1"
+                ):
+                    raise ValueError("The separate source-only polling authority is unavailable")
+                return dict(await self.source_edit_authority.process(receipt_id))
+            except Exception:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if row is not None and row.status == "received":
+                        await self._write_row(
+                            row,
+                            status="denied",
+                            action_status="not_dispatched",
+                            reason="scm_source_only_authority_required",
+                        )
+                return await self.receipt(receipt_id)
         if (initial.get("command") or {}).get("version") == 2:
             resume_authority = (
                 self.poll_resume_authority
@@ -1047,6 +1112,10 @@ class Collaboration:
                         "_scm_authority_v1",
                         "_scm_resume_authority_v2",
                         "_scm_poll_resume_v3",
+                        "_scm_poll_functional_v1",
+                        "_scm_poll_functional_usage_v1",
+                        "_scm_poll_source_edit_v1",
+                        "_scm_source_edit_used_v1",
                         "_scm_product_change_authority_v1",
                         "_scm_product_intake_v1",
                     ):
@@ -1524,6 +1593,11 @@ class Collaboration:
             await self.product_intake_authority.authorize_feedback(data["id"], remote=not local)
             return
         if (data.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            if command.get("action") == "assistant":
+                if self.poll_functional_authority is None:
+                    raise AccessDenied("The functional polling feedback authority is unavailable")
+                await self.poll_functional_authority.authorize_feedback(data["id"], remote=not local)
+                return
             if command.get("version") == 2:
                 if self.poll_resume_authority is None:
                     raise AccessDenied("The polling continuation feedback authority is unavailable")
@@ -1702,7 +1776,7 @@ class Collaboration:
                 return str(copy_text[conversation["selection"]])
 
             message = native_card(run)
-            from firefly_forge.communication import CommunicationConversationV1
+            from firefly_forge.communication import CommunicationConversationV1, assistant_communication
 
             conversation_input = (
                 CommunicationConversationV1(
@@ -1713,8 +1787,13 @@ class Collaboration:
                 if conversation
                 else None
             )
+            assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
-            if conversation_input:
+            if assistant_input:
+                drafted = await self.communication_writer.write(
+                    run or None, message, public_text, assistant=assistant_input
+                )
+            elif conversation_input:
                 drafted = await self.communication_writer.write(
                     run or None, message, public_text, conversation=conversation_input
                 )
@@ -1725,8 +1804,15 @@ class Collaboration:
 
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
+            current_assistant = (
+                assistant_communication(await self.receipt(receipt_id), repository=repo, host=host)
+                if assistant_input
+                else None
+            )
             facts = (
-                communication_facts(current_run or None, conversation=conversation_input)
+                communication_facts(current_run or None, assistant=current_assistant)
+                if assistant_input
+                else communication_facts(current_run or None, conversation=conversation_input)
                 if conversation_input
                 else communication_facts(current_run)
             )
@@ -1738,7 +1824,7 @@ class Collaboration:
             if state_changed or channel_changed:
                 run = current_run
                 data.update(current_context)
-                configured_ai = drafted["communication"]["mode"] in {"ai", "held"}
+                configured_ai = assistant_input is not None or drafted["communication"]["mode"] in {"ai", "held"}
                 drafted = {
                     "body": "" if configured_ai else native_card(run),
                     "communication": {
@@ -1750,7 +1836,11 @@ class Collaboration:
                     },
                 }
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
-            if drafted["communication"]["mode"] == "ai":
+            if drafted["communication"]["mode"] == "ai" or (
+                drafted["communication"]["mode"] == "deterministic"
+                and assistant_input
+                and assistant_input.reply_reference_digest
+            ):
                 from firefly_forge.collaboration_feedback import communication_controls
 
                 controls = communication_controls(data, run, repo, host, public_text)
@@ -1798,6 +1888,13 @@ class Collaboration:
                 current_context = await self._feedback_context(data, run)
                 if any(data.get(key) != value for key, value in current_context.items()):
                     raise AccessDenied("The feedback destination or reply permission changed before publication")
+                if assistant_input:
+                    latest = assistant_communication(await self.receipt(receipt_id), repository=repo, host=host)
+                    if (
+                        content_digest(communication_facts(None, assistant=latest))
+                        != intent["communication"]["facts_sha256"]
+                    ):
+                        raise AccessDenied("The confirmed assistant outcome changed before publication")
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])
 

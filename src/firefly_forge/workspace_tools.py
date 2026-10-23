@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import sys
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -45,24 +46,52 @@ class ToolRuntimeContext:
     php_profile: Callable[[PHPProfileRequest], Awaitable[dict[str, Any]]] | None = None
 
 
+PRIVATE_BASENAMES = frozenset(
+    {
+        ".git",
+        ".npmrc",
+        ".pypirc",
+        ".ssh",
+        ".forge",
+        ".codex",
+        ".claude",
+        "credentials.json",
+        "id_rsa",
+        "id_ed25519",
+    }
+)
+PUBLIC_ENV_SUFFIXES = (".example", ".sample", ".template")
+PRIVATE_KEY_SUFFIXES = (".pem", ".key")
+
+
 def _private_name(name: str) -> bool:
+    folded = name.casefold()
     return (
-        name
-        in {
-            ".git",
-            ".npmrc",
-            ".pypirc",
-            ".ssh",
-            ".forge",
-            ".codex",
-            ".claude",
-            "credentials.json",
-            "id_rsa",
-            "id_ed25519",
-        }
-        or (name.startswith(".env") and not name.endswith((".example", ".sample", ".template")))
-        or name.endswith((".pem", ".key"))
+        folded in PRIVATE_BASENAMES
+        or (folded.startswith(".env") and not name.endswith(PUBLIC_ENV_SUFFIXES))
+        or folded.endswith(PRIVATE_KEY_SUFFIXES)
     )
+
+
+def _descriptor_path(fd: int) -> Path:
+    """Use the opened object's spelling; resolve() preserves APFS case aliases."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        # Darwin F_GETPATH returns the kernel's path without reading file contents.
+        value = fcntl.fcntl(fd, 50, bytes(1024)).split(b"\x00", 1)[0]
+        return Path(os.fsdecode(value))
+    if sys.platform.startswith("linux"):
+        return Path(os.readlink(f"/proc/self/fd/{fd}"))
+    raise ValueError("Verified workspace descriptor paths are unavailable on this platform")
+
+
+def _directory_path(path: Path) -> Path:
+    fd = os.open(path.resolve(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        return _descriptor_path(fd)
+    finally:
+        os.close(fd)
 
 
 class WorkspaceTools:
@@ -71,11 +100,11 @@ class WorkspaceTools:
     ) -> None:
         if workspace.is_symlink() or not workspace.is_dir():
             raise ValueError("Workspace must be a real directory")
-        self.root = workspace.resolve()
+        self.root = _directory_path(workspace)
         repository = repository_root if repository_root is not None else workspace
         if repository.is_symlink() or not repository.is_dir():
             raise ValueError("Repository must be a real directory")
-        self.repository_root = repository.resolve()
+        self.repository_root = _directory_path(repository)
         if not self.root.is_relative_to(self.repository_root):
             raise ValueError("Workspace must be confined to the repository")
         self.max_file_bytes = max_file_bytes
@@ -89,9 +118,17 @@ class WorkspaceTools:
             raise ValueError("Credential files and git metadata are unavailable")
         return value.parts
 
+    def _check_descriptor(self, fd: int) -> None:
+        actual = _descriptor_path(fd)
+        if not actual.is_relative_to(self.root):
+            raise ValueError("Opened path is unavailable outside the workspace")
+        if any(_private_name(part) for part in actual.relative_to(self.root).parts):
+            raise ValueError("Credential files and git metadata are unavailable")
+
     def _parent_fd(self, parts: tuple[str, ...], *, create: bool) -> int:
         fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
+            self._check_descriptor(fd)
             for part in parts[:-1]:
                 if create:
                     with suppress(FileExistsError):
@@ -102,6 +139,7 @@ class WorkspaceTools:
                     raise ValueError("Path contains a symlink or invalid directory") from exc
                 os.close(fd)
                 fd = child
+                self._check_descriptor(fd)
             return fd
         except BaseException:
             os.close(fd)
@@ -121,6 +159,7 @@ class WorkspaceTools:
                     raise ValueError("Only regular files are readable")
                 if os.fstat(source.fileno()).st_nlink != 1:
                     raise ValueError("Hardlinked files are unavailable")
+                self._check_descriptor(source.fileno())
                 data = source.read(self.max_file_bytes + 1)
                 if len(data) > self.max_file_bytes:
                     raise ValueError("File exceeds the workspace read limit")
@@ -145,6 +184,7 @@ class WorkspaceTools:
                     raise ValueError("Only regular files are writable")
                 if os.fstat(target.fileno()).st_nlink != 1:
                     raise ValueError("Hardlinked files are unavailable")
+                self._check_descriptor(target.fileno())
                 if expected_sha256 is not None:
                     previous = target.read(self.max_file_bytes + 1)
                     if hashlib.sha256(previous).hexdigest() != expected_sha256:

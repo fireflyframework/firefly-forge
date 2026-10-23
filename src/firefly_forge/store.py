@@ -180,6 +180,7 @@ class Store:
         self.runners: Any = None
         self.connections: Any = None
         self.scm_polling: Any = None
+        self.scm_poll_functional: Any = None
         self.scm_resume_authorities: dict[str, Any] = {}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.schema = schema or os.environ.get("FORGE_DATABASE_SCHEMA", "forge")

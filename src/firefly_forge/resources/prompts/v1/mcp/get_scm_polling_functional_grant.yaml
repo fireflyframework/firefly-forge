@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_scm_polling_functional_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read the exact immutable functional polling consent by its original request identity. Absence or uncertainty never permits another write or model call.
+required_variables: []
+metadata:
+  defaults: {}

@@ -10,7 +10,7 @@ import math
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -28,6 +28,10 @@ from firefly_forge.profiles import build_instruction
 from firefly_forge.prompts import prompt_text
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.store import TERMINAL, Store, identifier, now
+
+if TYPE_CHECKING:
+    from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
+
 
 Data = dict[str, Any]
 ZERO_HASH = "0" * 64
@@ -1923,7 +1927,9 @@ class Journal:
             )
             return await self.store.get_run(run_id)
 
-    async def queue_environment_reconciled(self, run_id: str, request_id: str) -> Data:
+    async def queue_environment_reconciled(
+        self, run_id: str, request_id: str, *, scm_source_admission: SealedSourceEditAdmission | None = None
+    ) -> Data:
         """Queue the existing task only after its explicit environment effect has a sealed receipt."""
         from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
         from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
@@ -1931,16 +1937,33 @@ class Journal:
         identifier(request_id)
         actor = CURRENT_PRINCIPAL.get()
         access = ProjectAccess(self.store)
-        if (
-            actor is None
-            or not await access.current_administrator(actor)
-            or actor.authentication_method == "scm_mapping"
-        ):
-            raise AccessDenied("Environment reconciliation requires a current native administrator")
-        snapshot = {
-            **access.actor_snapshot(actor),
-            "identity_digest": digest({"issuer": actor.issuer, "subject": actor.subject}),
-        }
+        if scm_source_admission is None:
+            if (
+                actor is None
+                or not await access.current_administrator(actor)
+                or actor.authentication_method == "scm_mapping"
+            ):
+                raise AccessDenied("Environment reconciliation requires a current native administrator")
+            snapshot = {
+                **access.actor_snapshot(actor),
+                "identity_digest": digest({"issuer": actor.issuer, "subject": actor.subject}),
+            }
+        else:
+            from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
+            from firefly_forge.source_edit_continuations import _assert_source_administrator
+
+            if (
+                not isinstance(scm_source_admission, SealedSourceEditAdmission)
+                or actor != scm_source_admission.caller
+                or actor is None
+                or actor.authentication_method != "scm_mapping"
+                or scm_source_admission.run_id != run_id
+                or scm_source_admission.request.request_id != request_id
+            ):
+                raise AccessDenied("The exact sealed SCM source trigger is required")
+            await scm_source_admission.verify()
+            snapshot = copy.deepcopy(scm_source_admission.native_actor)
+            await _assert_source_administrator(self.store, snapshot)
         await self.store.assert_ownership()
         async with self.store._unit():
             run = await self._run(run_id)
@@ -1959,7 +1982,22 @@ class Journal:
             if receipt is None:
                 raise ValueError("Environment reconciliation has no durable completion receipt")
             value = receipt["payload"]
-            body = WorkspaceReconciliationInput.model_validate(value["request"])
+            source_edit = candidate_source = value["candidate"].get("source_edit")
+            body: WorkspaceReconciliationInput
+            if source_edit is not None:
+                from firefly_forge.source_edit_models import PROTOCOL, SourceEditContinuationInput
+
+                if candidate_source.get("protocol") != PROTOCOL:
+                    raise ValueError("The source-edit capability version is unavailable")
+                body = SourceEditContinuationInput.model_validate(value["request"])
+            else:
+                body = WorkspaceReconciliationInput.model_validate(value["request"])
+            if scm_source_admission is not None and (
+                source_edit is None
+                or value.get("scm_source_activation") != scm_source_admission.evidence
+                or value["request"] != scm_source_admission.request.model_dump()
+            ):
+                raise AccessDenied("The native receipt does not bind the exact SCM source trigger")
             candidate = value["candidate"]
             intent = next(
                 (
@@ -2024,11 +2062,24 @@ class Journal:
                 "updated_at": now(),
                 "git_metadata_digest": value["effect"]["metadata_after"],
                 "workspace_reconciliation": {"request_id": request_id, "receipt_digest": receipt["digest"]},
+                **(
+                    {"source_edit_continuation": {"request_id": request_id, "receipt_digest": receipt["digest"]}}
+                    if source_edit
+                    else {}
+                ),
             }
             await self.store.run_records.save(run)
             await self.store.assert_ownership()
-            if CURRENT_PRINCIPAL.get() != actor or not await access.current_administrator(actor):
+            if CURRENT_PRINCIPAL.get() != actor:
                 raise AccessDenied("The environment reconciliation operator changed before commit")
+            if scm_source_admission is None:
+                if not await access.current_administrator(actor):
+                    raise AccessDenied("The environment reconciliation operator changed before commit")
+            else:
+                await scm_source_admission.verify()
+                await _assert_source_administrator(self.store, snapshot)
+                if CURRENT_PRINCIPAL.get() != actor:
+                    raise AccessDenied("The SCM source trigger caller changed before commit")
             return await self.store.get_run(run_id)
 
     async def ready_retries(self) -> list[str]:

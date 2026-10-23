@@ -173,7 +173,15 @@ test("operator explores lifecycle, retains a draft across phases and saves proje
     "Project authority changed",
   );
   await expect(page.getByLabel("Humanizer", { exact: true })).toBeChecked();
+  const projectSaved = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        "/api/v1/repositories/repo-1/agent-roles" &&
+      response.request().method() === "PUT" &&
+      response.status() === 200,
+  );
   await page.getByRole("button", { name: "Save project role" }).click();
+  await projectSaved;
   expect(saved).toEqual({
     enabled: [],
     disabled: [],
@@ -191,7 +199,14 @@ test("operator explores lifecycle, retains a draft across phases and saves proje
   await page
     .getByLabel("Role instructions")
     .fill("Retain the customer reservation boundaries.");
+  const factorySaved = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/v1/agent-roles" &&
+      response.request().method() === "PUT" &&
+      response.status() === 200,
+  );
   await page.getByRole("button", { name: "Save factory role" }).click();
+  await factorySaved;
   expect(saved).toEqual({
     version: "1.0.0",
     max_requests: 3,

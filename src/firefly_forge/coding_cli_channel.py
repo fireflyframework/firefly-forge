@@ -23,16 +23,22 @@ class CodingCLIChannel:
         self.private_file: Path | None = None
         self.private_identity: tuple[int, int] | None = None
 
-    def codex_override(self) -> str:
+    def codex_override(self, *, source_only: bool = False) -> str:
         timeout = max(1, math.ceil((self.server.expires_at_ms - time.time() * 1000) / 1000))
+        tools = self.server.tool_names
+        approval = ",".join(name + '={approval_mode="approve"}' for name in tools)
         return (
             "mcp_servers={forge_coding={url="
             + json.dumps(self.server.endpoint)
             + ',bearer_token_env_var="'
             + TOKEN_ENV
-            + '",enabled=true,required=true,enabled_tools=["run_configured_check"],'
-            + 'tools={run_configured_check={approval_mode="approve"}},'
-            + 'startup_readiness="connection",startup_timeout_sec=5,tool_timeout_sec='
+            + '",enabled=true,required=true'
+            + (',omit_tools_from=["deferred","code_mode"]' if source_only else "")
+            + ",enabled_tools="
+            + json.dumps(tools)
+            + ",tools={"
+            + approval
+            + '},startup_readiness="connection",startup_timeout_sec=5,tool_timeout_sec='
             + str(timeout)
             + "}}"
         )

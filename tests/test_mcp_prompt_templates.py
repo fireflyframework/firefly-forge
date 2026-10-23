@@ -12,6 +12,10 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "configure_scm_polling_functional_grant",
+    "get_scm_polling_functional_grant",
+    "get_current_scm_polling_functional_grant",
+    "review_scm_polling_functional",
     "get_run_activity_content",
     "configure_scm_polling_resume_grant",
     "get_scm_polling_resume_grant",
@@ -41,7 +45,7 @@ def _baseline():
 
 async def test_actual_mcp_wire_metadata_stays_byte_exact():
     tools = await create_server().list_tools()
-    assert len(tools) == 162
+    assert len(tools) == 166
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
@@ -65,7 +69,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 289
+    assert len(catalog.registry) == 301
     assert entries["collaboration/decision-destination"]["variables"] == {"reference": "string"}
     assert entries["collaboration/decision-reply"]["variables"] == {"command": "string"}
     assert entries["collaboration/decision-resume"]["variables"] == {"command": "string"}

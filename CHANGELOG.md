@@ -2,6 +2,16 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.36 — 2026-10-22
+
+- Add separately consented GitHub issue conversations under the exact API-observed account, project, repository, issue and selected assistant profile. Bound each grant by expiration and at most three model turns; retain original requests and uncertain outcomes without automatic retry.
+- Show mapped-user readiness for each assistant action during grant review. Require current read membership for status and edit membership for start or turn before writing active consent, with a second check under the native admission locks.
+- Ground assistant feedback in confirmed conversation facts and retain the complete sanitized reply and questions. Keep proposals unreviewed, preserve readable slash-separated prose and line breaks, and retain the separate AI classifier and one-correction limit.
+- Add separately administered source-only consent for the same existing run and task. Bind native administrator authority, current SCM provenance, source/profile receipts and the remaining command allowance; refuse unsupported native profiles without resetting the run or its budget.
+- Preserve later operator decisions when an earlier model call returns, and recheck current actor, source and grant authority before effects and feedback. Keep private and outside-source read boundaries explicit without claiming blanket operating-system isolation.
+- Follow GitHub pagination links only for the verified repository ID, API origin, resource and unchanged query, preserving the existing page limit and polling cursor.
+- Add the Studio functional-consent walkthrough and exact-receipt recovery guide. Preserve the published read-only patch-index fix and two-tab reservation regression; refresh the canonical screenshots for the 0.2.36 stamp.
+
 ## 0.2.35 — 2026-10-22
 
 - Keep the selected project, Floor or Board view, and manufacturing run when returning from Inspect or another Studio page.

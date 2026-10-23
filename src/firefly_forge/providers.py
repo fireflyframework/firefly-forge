@@ -42,6 +42,12 @@ from firefly_forge.store import now
 Emit = Callable[[str, str], Awaitable[None]]
 
 
+class ProcessStdinProtocol(Protocol):
+    def receive_stdout(self, raw: bytes) -> None: ...
+
+    async def exchange(self, writer: asyncio.StreamWriter) -> None: ...
+
+
 @dataclass
 class AgentResult:
     summary: str
@@ -287,8 +293,11 @@ async def run_process(
     timeout: float,
     stdin: str | None = None,
     env: dict[str, str] | None = None,
+    stdin_protocol: ProcessStdinProtocol | None = None,
 ) -> ProcessResult:
     """Drain both streams, bound retained output, and kill the process group on cancellation."""
+    if stdin is not None and stdin_protocol is not None:
+        raise ValueError("A process cannot share stdin between a prompt and a protocol")
     expected = _cli_launch_executable.get()
     if expected is not None and (not command or command[0] != expected):
         raise ValueError("The actual CLI command differs from its adopted executable")
@@ -304,7 +313,7 @@ async def run_process(
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=workspace,
-        stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+        stdin=asyncio.subprocess.PIPE if stdin is not None or stdin_protocol else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
@@ -317,6 +326,8 @@ async def run_process(
 
     async def drain(stream: asyncio.StreamReader, kind: str) -> None:
         while raw := await stream.readline():
+            if kind == "stdout" and stdin_protocol is not None:
+                stdin_protocol.receive_stdout(raw)
             line = redact_secrets(_redact(raw.decode("utf-8", errors="replace")), env or {})
             output[kind] = (output[kind] + line)[-1_000_000:]
             await emit(kind, line.rstrip("\n"))
@@ -325,6 +336,9 @@ async def run_process(
         asyncio.create_task(drain(process.stdout, "stdout")),
         asyncio.create_task(drain(process.stderr, "stderr")),
     ]
+    if stdin_protocol is not None:
+        assert process.stdin is not None
+        streams.append(asyncio.create_task(stdin_protocol.exchange(process.stdin)))
     try:
         async with asyncio.timeout(timeout):
             if stdin is not None:
@@ -385,11 +399,26 @@ class ConfiguredProvider:
         self.settings = settings if settings is not None else dict(os.environ)
         self.runtime_context: Any = None
         self.coding_checks: Any = None
+        self.source_edits: Any = None
+        self.source_edit_activation: Any = None
+        self.source_edit_private_roots: tuple[Path, ...] | None = None
 
     def configure_coding_checks(self, server: Any, instructions: str) -> None:
         from firefly_forge.coding_cli_channel import CodingCLIChannel
 
         self.coding_checks = CodingCLIChannel(server, instructions)
+
+    def configure_source_edits(
+        self, server: Any, instructions: str, activation: Any = None, *, private_roots: tuple[Path, ...] | None = None
+    ) -> None:
+        from firefly_forge.coding_cli_channel import CodingCLIChannel
+        from firefly_forge.source_edit_models import READ_TOOLS
+
+        if not isinstance(self, CodexProvider) or self.coding_checks or tuple(server.tool_names) != READ_TOOLS:
+            raise ProviderError("Only the explicit Codex source readers can use source-edit mode")
+        self.source_edits = CodingCLIChannel(server, instructions)
+        self.source_edit_activation = activation
+        self.source_edit_private_roots = private_roots
 
     def configure_runtime(self, **kwargs: Any) -> None:
         from firefly_forge.workspace_tools import ToolRuntimeContext
@@ -424,18 +453,69 @@ class CodexProvider(ConfiguredProvider):
         model = self.settings.get("FORGE_CODEX_MODEL")
         if model:
             command[-1:-1] = ["--model", model]
+        permissions_digest = None
         if self.coding_checks:
             command[-1:-1] = ["-c", self.coding_checks.codex_override()]
             prompt += "\n" + self.coding_checks.instructions
+        if self.source_edits:
+            from firefly_forge.journal import digest
+            from firefly_forge.provider_executable_adoption import executable_identity
+            from firefly_forge.source_edit_cli_policy import SOURCE_ONLY_OVERRIDES
+            from firefly_forge.source_edit_filesystem_policy import (
+                build_named_permissions,
+                native_policy_overrides,
+                source_private_roots,
+            )
+            from firefly_forge.source_edit_model_catalog import model_catalog_override
+            from firefly_forge.source_edit_qualification import qualified_profile
+
+            if self.coding_checks:
+                raise ProviderError("Source-edit mode cannot expose configured-check execution")
+            profile = qualified_profile(executable_identity(command[0], workspace), model or "")
+            private_roots = self.source_edit_private_roots
+            if private_roots is None:
+                private_roots = source_private_roots()
+            permissions_digest = digest(build_named_permissions(workspace, private_roots))
+            position = command.index("--sandbox")
+            del command[position : position + 2]
+            command[-1:-1] = ["--strict-config"]
+            command[-1:-1] = [
+                value
+                for override in (
+                    *SOURCE_ONLY_OVERRIDES,
+                    *native_policy_overrides(workspace, private_roots),
+                    model_catalog_override(profile.model),
+                    "model_provider=" + json.dumps(profile.native_provider),
+                )
+                for value in ("-c", override)
+            ]
+            command[-1:-1] = ["-c", self.source_edits.codex_override(source_only=True)]
+            prompt += "\n" + self.source_edits.instructions
         await emit("provider", "Using the official Codex CLI with its existing login")
-        result = await run_process(
-            command,
-            workspace,
-            emit,
-            timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
-            stdin=prompt,
-            env=runtime_environment(self.coding_checks.server.environment) if self.coding_checks else None,
-        )
+        from contextlib import nullcontext
+
+        from firefly_forge.source_edit_cli_policy import SOURCE_ONLY_ENV, source_edit_launch
+
+        with (
+            source_edit_launch(
+                self.source_edits.server, self.source_edit_activation, permissions_digest=permissions_digest
+            )
+            if self.source_edits
+            else nullcontext()
+        ):
+            result = await run_process(
+                command,
+                workspace,
+                emit,
+                timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                stdin=prompt,
+                env=runtime_environment(
+                    (self.source_edits or self.coding_checks).server.environment
+                    | (SOURCE_ONLY_ENV if self.source_edits else {})
+                )
+                if self.source_edits or self.coding_checks
+                else None,
+            )
         try:
             if result.process_outcome is not None and not result.process_outcome.group_absent:
                 raise ProviderOutcomeUnknown("The official CLI process group has not been confirmed drained")

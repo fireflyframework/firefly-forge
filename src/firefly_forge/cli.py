@@ -596,6 +596,51 @@ def review_scm_polling_resume(project_id: str, repository_id: str, binding_reque
         display(connection.review_scm_polling_resume(project_id, repository_id, binding_request_id, run_id))
 
 
+@project.group("scm-polling-functional-grants")
+def scm_polling_functional_grants() -> None:
+    """Review and save explicit consent for API-observed GitHub bounded functional assistant actions."""
+
+
+@scm_polling_functional_grants.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_scm_polling_functional_grant(project_id: str, repository_id: str, document: Path) -> None:
+    """Submit one reviewed consent JSON; retain its request ID after an uncertain response."""
+    with client() as connection:
+        display(connection.configure_scm_polling_functional_grant(project_id, repository_id, json_document(document)))
+
+
+@scm_polling_functional_grants.command("get")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def get_scm_polling_functional_grant(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read the original consent receipt without resending or replacing its request."""
+    with client() as connection:
+        display(connection.scm_polling_functional_grant(project_id, repository_id, request_id))
+
+
+@scm_polling_functional_grants.command("current")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("binding_request_id")
+def get_current_scm_polling_functional_grant(project_id: str, repository_id: str, binding_request_id: str) -> None:
+    """Read current consent for an exact polling binding; this does not resume a run."""
+    with client() as connection:
+        display(connection.current_scm_polling_functional_grant(project_id, repository_id, binding_request_id))
+
+
+@scm_polling_functional_grants.command("review")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("binding_request_id")
+def review_scm_polling_functional(project_id: str, repository_id: str, binding_request_id: str) -> None:
+    """Read the exact current functional assistant scope without invoking a model."""
+    with client() as connection:
+        display(connection.review_scm_polling_functional(project_id, repository_id, binding_request_id))
+
+
 @project.group("scm-product-change-grants")
 def scm_product_change_grants() -> None:
     """Review and save explicit consent for signed whole-product edits."""
@@ -1937,6 +1982,34 @@ def coding_check_grants() -> None:
 @main.group("workspace-reconciliations")
 def workspace_reconciliations() -> None:
     """Review an environment-only transition for the existing queued task and unchanged budgets."""
+
+
+@main.group("source-edit-continuations")
+def source_edit_continuations() -> None:
+    """Explicitly activate existing readers while preserving the original command budget."""
+
+
+@source_edit_continuations.command("candidate")
+@click.argument("run_id")
+def source_edit_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.source_edit_candidate(run_id))
+
+
+@source_edit_continuations.command("activate")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def activate_source_edit(run_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.activate_source_edit(run_id, json_document(document)))
+
+
+@source_edit_continuations.command("get")
+@click.argument("run_id")
+@click.argument("request_id")
+def source_edit_receipt(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.source_edit_continuation(run_id, request_id))
 
 
 @workspace_reconciliations.command("candidate")

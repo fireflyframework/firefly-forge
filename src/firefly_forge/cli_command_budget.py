@@ -97,7 +97,13 @@ def command_observation(events: list[Data]) -> dict[str, int]:
 
 
 async def retained_command_observation(store: Store, run_id: str) -> dict[str, int]:
+    history = await retained_command_history(store, run_id)
+    return {key: history[key] for key in ("cli_commands", "cli_invocations")}
+
+
+async def retained_command_history(store: Store, run_id: str, *, archive_cut: list[Data] | None = None) -> Data:
     events: list[Data] = []
+    identities: list[Data] = []
     total = 0
     async with store._unit():
         rows = await store.event_records.provider_budget_events(identifier(run_id))
@@ -128,19 +134,47 @@ async def retained_command_observation(store: Store, run_id: str) -> dict[str, i
             )
             if hashlib.sha256(payload).hexdigest() != descriptor["sanitized_message_sha256"]:
                 raise ValueError("CLI command history archive is ambiguous")
+            identity = {
+                "event_id": row.id.hex,
+                "stage": descriptor["stage"],
+                "sha256": descriptor["sanitized_message_sha256"],
+            }
+            index = len(identities)
+            identities.append(identity)
+            if archive_cut is not None and index < len(archive_cut) and identity != archive_cut[index]:
+                raise ValueError("The sealed CLI archive cut changed")
             if descriptor["stage"] == "stdout":
                 try:
-                    events.append(json.loads(payload))
+                    event = json.loads(payload)
                 except (ValueError, UnicodeError) as exc:
                     raise ValueError("CLI command history is unsupported") from exc
-    return command_observation(events)
+                if archive_cut is None or index < len(archive_cut):
+                    events.append(event)
+                elif not isinstance(event, dict) or (event.get("item") or {}).get("type") == "command_execution":
+                    raise ValueError("A source-only continuation observed an unexpected command")
+    if archive_cut is not None and len(identities) < len(archive_cut):
+        raise ValueError("The sealed CLI archive cut is incomplete")
+    return {**command_observation(events), "archive_cut": identities if archive_cut is None else archive_cut}
 
 
 async def assert_environment_command_budget(
-    store: Store, journal: Journal, run: Data, entries: list[Data], *, task_key: str | None = None
+    store: Store,
+    journal: Journal,
+    run: Data,
+    entries: list[Data],
+    *,
+    task_key: str | None = None,
+    recoveries: Any = None,
 ) -> None:
     """An observed CLI stream does not authorize its next unmetered shell effects."""
     if run.get("agent") not in {"codex", "claude"}:
+        return
+    if run.get("source_edit_continuation"):
+        from firefly_forge.source_edit_continuations import assert_source_edit_dispatch
+
+        if recoveries is None or recoveries.journal is not journal or recoveries.store is not store:
+            raise ValueError("The native source-only admission service is unavailable")
+        await assert_source_edit_dispatch(recoveries, run, task_key)
         return
     observed = await retained_command_observation(store, run["id"])
     prior: set[str] = set()

@@ -13,6 +13,14 @@
       }
     },
     {
+      "id": "assistant/functional-policy",
+      "version": "1.0.0",
+      "path": "assistant/functional-policy.yaml",
+      "sha256": "5b822d5cc6f8eda0b77a9062955bac162562fb6981afc307372ea4e30ba1a941",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "assistant/request",
       "version": "1.0.0",
       "path": "assistant/request.yaml",
@@ -50,6 +58,54 @@
       "version": "1.0.0",
       "path": "coding-runtime/run-configured-check.yaml",
       "sha256": "9454c1e193e975479ada39e925039a104492824bbfe25091a2a070692303a461",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-list",
+      "version": "1.0.0",
+      "path": "coding-runtime/source-list.yaml",
+      "sha256": "36c7833ae2adea4ec926079ed51423363587db7f637b75d0e983c9a8fe335c58",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-list",
+      "version": "1.0.1",
+      "path": "coding-runtime/source-list-1.0.1.yaml",
+      "sha256": "8a3ef3eadff60c42583726263aa6e8a1cb5c78723bc062864effec876d97ec2f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-read",
+      "version": "1.0.0",
+      "path": "coding-runtime/source-read.yaml",
+      "sha256": "934598d3e90dd976f1b23d9e02bf773fb7b42368d47051f3a394cf8524114158",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-read",
+      "version": "1.0.1",
+      "path": "coding-runtime/source-read-1.0.1.yaml",
+      "sha256": "b03731ba6352795909d5981e753a2d0c537b64963c3eea42515349eeb96c185c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-search",
+      "version": "1.0.0",
+      "path": "coding-runtime/source-search.yaml",
+      "sha256": "55430b98bf32280d1f04f1dec5671f3a36ba8d4fcc3ddb7f8517c5c2188fb321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-search",
+      "version": "1.0.1",
+      "path": "coding-runtime/source-search-1.0.1.yaml",
+      "sha256": "c50ae29419f7aeb72fd39dcfccd2ec779bdebdc7a80ec47a3f316b714a0b5084",
       "field": "user",
       "variables": {}
     },
@@ -370,6 +426,33 @@
       "version": "1.0.0",
       "path": "collaboration/publication-held.yaml",
       "sha256": "dbbce1e843da6de07f80c5189fc24045f55f2155e09291641f437c33551a520d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-request",
+      "version": "1.0.0",
+      "path": "collaboration/publication-request.yaml",
+      "sha256": "5d1b6b84d18ee4f71ce12c6baa2a8aefa65594a4abc72cb2e9d1b88145b51198",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string"
+      }
+    },
+    {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.0",
+      "path": "collaboration/publication-review-system.yaml",
+      "sha256": "9321a8810d15c9b9b1bf6929b1fed8444687c1ed84658583f7c850b8b7a3fee8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.0",
+      "path": "collaboration/publication-system.yaml",
+      "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
       "field": "user",
       "variables": {}
     },
@@ -764,6 +847,21 @@
       "variables": {}
     },
     {
+      "id": "implementation/source-edit-only",
+      "version": "1.0.1",
+      "path": "implementation/source-edit-only.yaml",
+      "sha256": "f77a29b683f5a3f3488f8aff341d5b5d1c9728e4be9349f60e6dca88869186a0",
+      "field": "user",
+      "variables": {
+        "calls_limit": "string",
+        "per_tool_limit": "string",
+        "command_limit": "string",
+        "cli_commands": "string",
+        "native_commands": "string",
+        "final_checks": "string"
+      }
+    },
+    {
       "id": "implementation/tool-rules",
       "version": "1.0.0",
       "path": "implementation/tool-rules.yaml",
@@ -950,6 +1048,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/configure_scm_polling_functional_grant",
+      "version": "1.0.0",
+      "path": "mcp/configure_scm_polling_functional_grant.yaml",
+      "sha256": "6782538fcbdc24325aaf43faf76619610d13de4b26b3ca0e46cf832f3841a9ca",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/configure_scm_polling_resume_grant",
       "version": "1.0.0",
       "path": "mcp/configure_scm_polling_resume_grant.yaml",
@@ -1106,6 +1212,14 @@
       "version": "1.0.0",
       "path": "mcp/get_connection_oauth_providers.yaml",
       "sha256": "2d695343f83b74236a28ff905dc0f70e6859b578e530649384ae441bbfa363a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_current_scm_polling_functional_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_current_scm_polling_functional_grant.yaml",
+      "sha256": "a5d5356c993e3c99469eb8d7358ebae1a32bb58f5c28d6c52d5bc5ab711be8f6",
       "field": "user",
       "variables": {}
     },
@@ -1434,6 +1548,14 @@
       "version": "1.0.0",
       "path": "mcp/get_scm_actor_binding.yaml",
       "sha256": "996f65c73036bd7f5741c3293ffd71915c30c2a44b5e70384951ea122d33e321",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_scm_polling_functional_grant",
+      "version": "1.0.0",
+      "path": "mcp/get_scm_polling_functional_grant.yaml",
+      "sha256": "8dd29edbb2178ffedcb0191bef1a558eed1fc29d9c9711dc128898944f953b20",
       "field": "user",
       "variables": {}
     },
@@ -1950,6 +2072,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/review_scm_polling_functional",
+      "version": "1.0.0",
+      "path": "mcp/review_scm_polling_functional.yaml",
+      "sha256": "397ab5d71459d98fbc686b6d6b1afe8348c1ecec2581bae56138913769c49f40",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/review_scm_polling_resume",
       "version": "1.0.0",
       "path": "mcp/review_scm_polling_resume.yaml",
@@ -2451,33 +2581,6 @@
       "version": "1.0.0",
       "path": "tools/write_file.yaml",
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/publication-system",
-      "version": "1.0.0",
-      "path": "collaboration/publication-system.yaml",
-      "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
-      "field": "user",
-      "variables": {}
-    },
-    {
-      "id": "collaboration/publication-request",
-      "version": "1.0.0",
-      "path": "collaboration/publication-request.yaml",
-      "sha256": "5d1b6b84d18ee4f71ce12c6baa2a8aefa65594a4abc72cb2e9d1b88145b51198",
-      "field": "user",
-      "variables": {
-        "facts": "string",
-        "fact_ids": "string"
-      }
-    },
-    {
-      "id": "collaboration/publication-review-system",
-      "version": "1.0.0",
-      "path": "collaboration/publication-review-system.yaml",
-      "sha256": "9321a8810d15c9b9b1bf6929b1fed8444687c1ed84658583f7c850b8b7a3fee8",
       "field": "user",
       "variables": {}
     }

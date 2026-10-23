@@ -31,6 +31,10 @@ async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
         "list_repositories",
+        "configure_scm_polling_functional_grant",
+        "get_scm_polling_functional_grant",
+        "get_current_scm_polling_functional_grant",
+        "review_scm_polling_functional",
         "connect_repository",
         "create_run",
         "request_run_creation",

@@ -26,11 +26,14 @@ def _copy() -> Data:
     return dict(json.loads(prompt_text("collaboration/copy", version="1.0.1")))
 
 
-def _text(value: object, safe: Callable[[str], str], limit: int = 1200) -> str:
+def _text(value: object, safe: Callable[[str], str], limit: int = 1200, *, preserve_word_slashes: bool = False) -> str:
     if not isinstance(value, (str, int)) or isinstance(value, bool):
         return ""
     value = safe(str(value))
-    value = re.sub(r"(?:[A-Za-z]:\\|/)[^\s<>]+", _copy()["redactions"]["path"], value)
+    path_pattern = r"(?:[A-Za-z]:\\|/)[^\s<>]+"
+    if preserve_word_slashes:
+        path_pattern = r"(?<!\w)" + path_pattern
+    value = re.sub(path_pattern, _copy()["redactions"]["path"], value)
     value = re.sub(r"\b[A-Z][A-Z0-9_]*=\S+", _copy()["redactions"]["setting"], value)
     result = []
     length = 0

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/review_scm_polling_functional
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Review current exact polling binding, project scope and product model profile before a new explicit finite assistant allowance. This read does not grant consent or invoke a model.
+required_variables: []
+metadata:
+  defaults: {}

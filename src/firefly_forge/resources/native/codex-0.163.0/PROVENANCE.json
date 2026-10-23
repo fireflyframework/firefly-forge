@@ -1,0 +1,21 @@
+{
+  "upstream_commit": "83086188ae0614bd882818ff1aa23f3194962012",
+  "source_url": "https://raw.githubusercontent.com/openai/codex/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/models-manager/models.json",
+  "source_sha256": "943ca7fe1d19ed019054158303f0dbbd80b3bef43b3aa425a71aa7cb3fb52c2b",
+  "upstream_entry_sha256": "0439d68a07179bcc861dbfc633892077f73fd2a2f43a0f3d77065337bceb3b05",
+  "derived_sha256": "0321266b8a9e1812c9fdc11d64cd36201a4d070d93ca3808186fada2cd149094",
+  "model": "gpt-6-astra",
+  "native_provider": "openai",
+  "only_change": {
+    "field": "tool_mode",
+    "upstream": "code_mode_only",
+    "derived": "direct",
+    "reason": "Explicit client presentation for the restricted source-only tool contract; model/provider and every other upstream entry byte remain unchanged."
+  },
+  "instructions_bytes": 21428,
+  "instructions_sha256": "35bd51b5f577cb7b24cd5f4629e49e37cb724ab57754ce6f8f202001635bab8a",
+  "license": "Apache-2.0",
+  "license_sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+  "notice_sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915",
+  "acceptance": "Requires exact native catalog, invocation, filesystem and current configuration proof; no real-provider or CRM acceptance established by this asset."
+}

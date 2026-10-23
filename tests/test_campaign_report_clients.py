@@ -85,7 +85,7 @@ def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_sch
 async def test_report_tool_is_read_only_bounded_and_requires_both_scope_ids():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     tool = tools["get_project_campaign_report"]
-    assert len(tools) == 162
+    assert len(tools) == 166
     assert tool.input_schema["required"] == ["project_id", "campaign_id"]
     assert tool.annotations.read_only_hint is True and tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False and tool.annotations.destructive_hint is False
