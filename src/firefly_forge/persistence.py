@@ -83,6 +83,34 @@ class ForgeRunRepository(Repository[ForgeRunEntity, UUID]):
         )
         return list(result)
 
+    async def find_native_worker_questions(self) -> list[ForgeRunEntity]:
+        from firefly_forge.collaboration_persistence import ForgeWebhookInboxEntity
+
+        request = ForgeRunEntity.data["worker_request"]
+        notification = ForgeWebhookInboxEntity.data["native_question"]
+        reserved = (
+            select(ForgeWebhookInboxEntity.id)
+            .where(
+                notification["run_id"].as_string() == ForgeRunEntity.data["id"].as_string(),
+                notification["question_id"].as_string() == request["id"].as_string(),
+            )
+            .exists()
+        )
+        return list(
+            await self._require_session().scalars(
+                select(ForgeRunEntity)
+                .where(
+                    ForgeRunEntity.status == "paused",
+                    ForgeRunEntity.data["active_task"].as_string() == "implement",
+                    request["status"].as_string() == "pending",
+                    request["role_id"].as_string() == "implementer",
+                    ~reserved,
+                )
+                .order_by(ForgeRunEntity.sequence)
+                .limit(50)
+            )
+        )
+
     async def find_queued(self) -> list[ForgeRunEntity]:
         result = await self._require_session().scalars(
             select(ForgeRunEntity).where(ForgeRunEntity.status == "queued").order_by(ForgeRunEntity.sequence)

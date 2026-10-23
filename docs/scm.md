@@ -543,9 +543,11 @@ and the separately reserved architect turn are distinct recorded allowances.
 
 For several pending questions, ordinary references such as `Sobre los permisos del
 almacén, solo los administradores pueden cambiarlos` can select a question. The
-model supplies exact spans from the human message and the offered question; the
-server checks their unique grounding. Bare `yes` cannot select one of several
-questions. Execution or same-run continuation still needs separate current authority.
+model supplies the offered one-based index and exact spans from the human message
+and the selected question. The two texts may be in different languages; shared
+words are not required. The server checks the exact spans, unique question reference,
+current provenance and authority. A missing index or ambiguous reference asks for
+clarification. Bare `yes` cannot select one of several questions. Execution or same-run continuation still needs separate current authority.
 
 These paths have controlled host coverage. Native PostgreSQL/API, live configured
 provider and real GitHub acceptance remain separate pending gates for this cut.
@@ -577,6 +579,12 @@ flowchart LR
 ### 1. Prepare the App and native permissions
 
 Connect the selected repository through the [GitHub App](#github-app). The installation needs **Issues: read** for polling and current collaborator checks, and **Issues: write** to send feedback. Repository discovery uses the installation's metadata grant. forge requests a separate issue-read token for scans and an issue-write token for replies; it does not use an owner token or increase publication permissions.
+
+Provider requests share a persistent cooldown for the same application and installation, across repository scans, grant checks and replies. A 403 or 429 response starts a hold of at least 60 seconds. Valid `Retry-After` or exhausted-quota reset metadata can extend it, up to the explicit 24-hour cap; without usable metadata, repeated refusals use a bounded exponential delay of up to one hour. A 403 alone does not establish that a rate limit was exhausted. There is no immediate retry. Private operational metadata retains only bounded status, numeric rate headers, request identifiers and request/credential hashes, never response bodies or credentials. It is separate from approved connection configuration. Concurrent requests for that scope fail locally instead of queuing behind a request; provider I/O has a 20-second total deadline. Unchanged sent feedback and polling cursors that are not due avoid remote authorization work, while current local authority remains required before reading run details and fresh provider authority remains required before a new reply.
+
+A reply held locally before HTTP dispatch retains its original body and model receipt, with explicit no-dispatch evidence and a retry deadline. After that deadline, Forge rechecks current identity, permissions, channel, task facts and communication route before sending that same draft. It does not ask the model to replace it. A changed cut holds the draft for review. Native worker questions additionally bind this wait to an immutable journal event and their original publication intent. This applies only to a typed local hold: a dispatched write with an uncertain result still requires observation and reconciliation, and is never automatically replayed.
+
+A delegated answer or status action can also wait locally before its effect is admitted. When a typed provider hold confirms no dispatch, Forge retains the same action and its retry deadline. Once due, it rechecks current authority before continuing; the wait is not a permission denial. A natural answer stays pending while its exact child action waits. A confirmed answer advances that same conversation through background synchronization; an uncertain child outcome holds it for reconciliation. Terminal denials and uncertain effects remain closed to automatic replay. Admission diagnostics retain only bounded stage, error class and code location metadata, without exception messages or conversation payloads.
 
 Register the intended native user and assign [project access](identity.md#grant-project-access). In the repository's collaboration settings, enable the workflow, enter the exact numeric GitHub account in `trusted_actors`, and permit `status` in `allowed_commands` and/or `respond` in `channel_commands`. Keep unrelated settings unchanged. A GitHub login name or `author_association` is not an authorization rule.
 
@@ -649,6 +657,8 @@ If the intended account has no retained observation, ask that person to post an 
 ```sh
 forge project scm-polling candidates PROJECT_ID REPOSITORY_ID
 ```
+
+Renewing the same native account's read consent does not erase an already published worker question. A retained answer can be reviewed against the exact archived publication and a current active binding for the same project, account and components. Saving that answer still requires current `respond` permission and explicit native readmission; it does not renew a resume grant, replay a classifier call, or authorize another implementation attempt. Changed owners, component scope, publication evidence or revoked read access remain blocked. New question notifications continue to require the activation's exact current binding.
 
 Select an observation from the exact repository and review its numeric author ID. Use its `id` and `reference_digest`, plus the page's `project_binding_digest`, in `consent.json`. Replace the placeholders with reviewed values; `component_ids` contains actual component IDs from the project:
 
@@ -964,7 +974,34 @@ methods are `configure_scm_source_edit_grant`, `scm_source_edit_grant` and
 `current_scm_source_edit_grant`. Preserve both the consent request ID and its
 sealed activation request ID. Unknown activation outcomes remain held; another
 comment cannot replay the reservation. Native administrators inspect the
-original source-edit continuation receipt to reconcile it. This route emits no
-automatic SCM comment; the existing read-only status journey can report the
-original run. Host fixtures and collected SQL cases are separate from actual
-GitHub/provider acceptance.
+original source-edit continuation receipt to reconcile it. Activation outcomes
+remain separate from later question notifications; sending a question never
+marks an uncertain source activation completed.
+
+### Receive and answer native worker questions
+
+For an API-observed GitHub source-only activation, a later pending implementation
+question gets its own native outbox record. Its identity binds the existing run,
+immutable worker feedback, question and exact original issue. The collaboration
+worker reserves that identity before drafting, retains the exact publication
+intent before HTTP, and records its outcome separately. The original source
+activation receipt, run execution identity and budgets remain unchanged.
+
+Notifications require the current connected repository, enabled collaboration,
+trusted GitHub account, current polling binding with `status` permission, and the
+mapped native user's current project read permission. They do not use an expired
+source-edit or functional grant as publication authority. Revocation or a changed
+question holds the notification. A configured communication profile uses the
+existing AI draft, independent review and at most one correction; a selected AI
+failure retains an empty body and sends nothing. Without a communication route,
+the existing recorded communication mode remains explicit.
+
+A run can reserve at most its frozen question limit, never more than three. A
+repeated poll returns the same notification. An unknown remote result requires
+explicit observation and reconciliation; Forge does not regenerate or resend it.
+Confirmed notifications retain the native question and published comment
+reference, so a later ordinary reply can reach the existing natural answer
+pipeline without a mention or copied identifier. Saving that answer does not
+renew source-only consent, resume execution, create a run or reset a budget.
+The separate current native continuation gates still apply. Controlled host and
+SQL fixtures are separate from real GitHub delivery acceptance.

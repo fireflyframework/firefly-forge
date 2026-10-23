@@ -2583,6 +2583,22 @@
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "implementation/source-edit-only",
+      "version": "1.0.2",
+      "path": "implementation/source-edit-only-1.0.2.yaml",
+      "sha256": "bfddfa409f23c8db488c3322c4fa2e6ea939fe66af094c7cbbbed1b833644bfd",
+      "field": "user",
+      "variables": {
+        "calls_limit": "string",
+        "per_tool_limit": "string",
+        "command_limit": "string",
+        "cli_commands": "string",
+        "native_commands": "string",
+        "final_checks": "string",
+        "capabilities": "string"
+      }
     }
   ]
 }

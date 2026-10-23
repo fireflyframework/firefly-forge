@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from firefly_forge.agent_roles import WorkerFeedback, WorkerResponse, role_digest
+from firefly_forge.agent_roles import WorkerFeedback, WorkerResponse, role_digest, worker_feedback_model
 
 Data = dict[str, Any]
 
@@ -59,7 +59,7 @@ def _pair(entries: list[Data], link: _Link) -> tuple[WorkerFeedback, Data]:
     responses = [e for e in entries if e["kind"] == "worker_response" and e["digest"] == link.response_digest]
     if len(feedback) != 1 or len(responses) != 1:
         raise ValueError("Human clarification lacks an exact immutable question or answer")
-    question = WorkerFeedback.model_validate(feedback[0]["payload"])
+    question = worker_feedback_model(feedback[0]["payload"]).model_validate(feedback[0]["payload"])
     response = responses[0]["payload"]
     WorkerResponse.model_validate({k: v for k, v in response.items() if k not in {"request_id", "responding_actor"}})
     actor = response.get("responding_actor", {})

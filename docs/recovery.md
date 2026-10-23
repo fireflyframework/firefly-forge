@@ -560,7 +560,41 @@ The combined command budget does not reset. For example, a limit of 35 with 21 o
 
 #### Version 0.2.37 limitations
 
-A restricted source-only grant admits one implementation attempt. Saving a human answer does not admit the next attempt under that grant. Dedicated human/source readmission is being implemented separately; the generic conversation and PostgreSQL answer/resume proofs do not qualify that restricted continuation.
+A restricted source-only grant admits one implementation attempt. Saving a human answer does not admit the next attempt under that grant. A current native administrator can review the answered question and grant its next attempt through the dedicated human-readmission API. The new grant preserves the original tool scope, command history and reserved final checks; it does not renew the old grant or repeat its environment changes.
+
+### Continue after a source-only question
+
+The answer stays attached to its original question, even after the execution grant expires. Review the completed activation, the current source and the authenticated answer before admitting another attempt. Each clarification needs its own admission. The existing request limit and four-attempt ceiling still apply.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source-only human continuation diagram" aria-describedby="source-human-continuation-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart LR
+    Q["Agent asks a question"] --> A["Answer saved in the WAL"]
+    A --> R["Review answer and current source"]
+    R --> G["Grant one next attempt"]
+    G --> C["Continue with the same budgets"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="source-human-continuation-guide">Follow the original question and saved answer from left to right. Scroll horizontally on small screens; keyboard users can focus the diagram and use the arrow keys.</p>
+
+| Action | Result |
+| --- | --- |
+| Read the human-readmission candidate | Reviews the exact question, answer, source, current administrator and remaining allowance. No work starts. |
+| Admit the reviewed candidate | Saves a new intent, links the human answer, queues one next attempt and seals its receipt in one transaction. |
+| Read the saved admission | Returns the original receipt. It never queues another attempt. |
+| Source, index, configuration or authority changed | Holds the admission for review. It does not accept the changed state silently. |
+
+The candidate and admission routes are under `/api/v1/runs/{run_id}/source-edit-continuations/{completed_activation_request}`: `human-readmission-candidate`, `human-readmissions` and `human-readmissions/{admission_id}`. They require current native administrator authentication. Request bodies are strict, include the reviewed candidate and contract fingerprints, acknowledge the preserved budgets, and set a lifetime of at most 30 minutes within the retained provider timeout.
+
+This recovery requires the same source and staged public content as the completed activation. A Git index stat-cache refresh can be reviewed only when a completed native index-sanitation receipt proves the exact public entries, file identities, modes and blobs. Each renewed human receipt preserves that verified ancestry, and the current raw index must remain unchanged throughout its admission. Private or extra entries, different staged content and unproven index changes remain held. If the model edited files before asking its question, keep the answer and review that source transition separately. A saved answer, an expired allowance or a lost response never authorizes an uncertain operation to run again. Ordinary GitHub conversation remains available independently of this restricted execution grant.
 
 The retained verification context can be clipped and omit the original root error. Scoped retrieval of retained diagnostics is being corrected separately. Inspect the available native evidence and preserve the paused request; a saved answer or an incomplete diagnostic excerpt is not permission to resume.
 
@@ -660,3 +694,64 @@ Source patches use a dedicated flat-text credential admission capped at the
 existing 4 MiB Git bound. Generic JSON admission retains its 1 MiB text bound, and
 credential-history, matching-work and full-match limits remain unchanged. A patch
 that exceeds those matching limits stays held before an environment effect.
+
+## Review an exhausted source-read budget
+
+A refused read is different from a tool whose outcome is unknown. When the lifetime
+read allowance is exhausted, the tool reports that no effect started, the consumed
+and remaining counts, and the other capabilities still available. It does not ask
+the agent to reconcile an operation that never ran.
+
+An administrator may enable a finite source-budget policy. The default policy
+disables extensions. Enabling the policy alone does not change an existing run:
+the operator must review its current question and answer, retained tool history,
+source, permissions and newly qualified native profile before admitting one exact
+continuation. The approved limit is an absolute lifetime ceiling. Raising ten file
+reads to twenty keeps the first ten counted; it makes at most ten further reads
+available, still subject to the unchanged shared tool limit. Original command
+consumption and the reserved final checks remain intact.
+
+A worker question pauses the implementation while its provider reservation remains
+consumed. Reviewing that pause requires the exact native dispatch, its complete
+archived turn, unchanged summary and usage, accepted typed worker question and
+authenticated answer. The review also requires idle execution and settled tools.
+This evidence does not declare the implementation complete or attest an operating
+system exit. A missing output, changed question, active invocation or unknown
+effect remains held.
+
+The final budget admission writes its intent, queue state and receipt in a native
+PyFly unit on the existing execution-lease connection. Nested Store checks require
+the same task, unit, session and backend PID; they neither reacquire the lease lock
+nor commit that connection. The lock remains held through transaction settlement.
+A 30-second work deadline includes waiting for the lease lock; PostgreSQL lock and
+statement timeouts are one and five seconds. Cancellation waits for shielded commit
+or rollback cleanup, so the work deadline is not a hard bound on lost-network
+settlement. A lost or uncertain commit never authorizes automatic replay. Other
+admission paths retain their existing transaction contracts.
+
+A separately admitted budget successor retains the old paused provider reservation
+as consumed history. Only its exact sealed, current queued activation can enter
+normal dispatch for the next canonical task key. That dispatch records its own
+intent and launch custody; it does not complete or reuse the prior reservation.
+Missing consent, changed authority or unknown outcomes keep execution held.
+
+The Python SDK exposes `source_budget_policy`, `configure_source_budget_policy`,
+`source_budget_candidate`, `admit_source_budget` and `source_budget_receipt`.
+Candidates require the original run and parent receipt, the previous catalog path
+and a versioned proposal containing all three explicit limits. Admission also
+requires the exact candidate and contract digests, a fresh request identity, a
+finite duration and all four acknowledgements. The server checks current authority
+and may refuse a stale candidate even when the client accepted its structure.
+
+Operators can use the equivalent `forge source-budget` commands: `policy`,
+`configure-policy`, `candidate`, `admit` and `get`. The candidate command requires
+`--previous-catalog-path`, `--read-file-lifetime-limit`, `--activation-ceiling` and
+`--additional-activations`. Policy and admission commands read their reviewed JSON
+document from a file. These are administration interfaces; people answering an
+agent's question in GitHub continue to write ordinary messages.
+
+Submit an admission once. If its HTTP response is lost, read the receipt using the
+same run, parent and request identities. Neither the SDK nor CLI retries the write,
+chooses a new identity or falls back to another provider. An unknown dispatch stays
+held for reconciliation. A saved answer does not grant this continuation, and
+notes arriving during a sealed source-only call are not injected into that call.

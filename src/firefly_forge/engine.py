@@ -767,6 +767,7 @@ class Engine:
                 if run.get("role_snapshot"):
                     from firefly_forge.agent_roles import (
                         NativeAllowanceWorkerFeedback,
+                        SourceBudgetWorkerFeedback,
                         WorkerFeedback,
                         inject_role_snapshot,
                     )
@@ -780,6 +781,14 @@ class Engine:
                         feedback_schema = NativeAllowanceWorkerFeedback.model_json_schema()
                         for name, value in link.items():
                             feedback_schema["properties"][name]["const"] = value
+                    if run.get("source_edit_continuation") and self.provider_recoveries:
+                        from firefly_forge.source_budget_allowances import active_feedback_binding
+
+                        source_budget_feedback = await active_feedback_binding(self.provider_recoveries, run)
+                        if source_budget_feedback is not None:
+                            feedback_schema = SourceBudgetWorkerFeedback.model_json_schema()
+                            for name, value in source_budget_feedback.items():
+                                feedback_schema["properties"][name]["const"] = value
                     source_brief += prompt_text("implementation/worker-feedback", schema=json.dumps(feedback_schema))
                 if (run.get("mcp_snapshot") or {}).get("grants"):
                     source_brief += prompt_text(
@@ -882,6 +891,12 @@ class Engine:
                 else 0
             )
             implementation_limit = min(4, repairs + 1 + continuation_allowance + human_allowance)
+            if run.get("source_edit_continuation") and self.provider_recoveries:
+                from firefly_forge.source_budget_allowances import active_feedback_binding
+
+                source_budget_allowance = await active_feedback_binding(self.provider_recoveries, run)
+                if source_budget_allowance is not None:
+                    implementation_limit = source_budget_allowance["attempt"]
             completed_rounds = int(run.get("implementation_rounds", 0))
             repair_failures: list[dict[str, Any]] = []
             start_round = max(1, completed_rounds)
@@ -1041,7 +1056,17 @@ class Engine:
 
                                 dispatch_provider = get_provider(run["agent"], selected)
                                 adopted_executable = adoption["path"]
-                            if coding_grant:
+                            if current.get("source_edit_continuation"):
+                                from firefly_forge.source_edit_continuations import source_edit_receipt
+
+                                if coding_grant or not self.configured_provider:
+                                    raise ReconciliationRequired(
+                                        "Source-only recovery requires its exclusive official CLI adapter"
+                                    )
+                                source_activation = await source_edit_receipt(official_dispatch, current)
+                                adopted_executable = source_activation["candidate"]["source_edit"]["executable"]["path"]
+                                dispatch_pending["value"] = True
+                            elif coding_grant:
                                 dispatch_pending["value"] = True
                             else:
                                 await official_dispatch.dispatch(identifier, active_key)
@@ -1068,6 +1093,7 @@ class Engine:
                         checks_service: Any = checks,
                         pending: Any = dispatch_pending,
                         source: Any = source_activation,
+                        source_recovery: bool = recovery is not None,
                     ) -> None:
                         await self.assert_ownership()
                         if grant:
@@ -1078,12 +1104,23 @@ class Engine:
                                 pending["value"] = False
                             await checks_service.assert_reserved(identifier, task_key)
                         if source:
-                            from firefly_forge.source_edit_continuations import source_edit_receipt
+                            from firefly_forge.source_edit_continuations import (
+                                assert_source_edit_dispatch,
+                                source_edit_receipt,
+                            )
 
-                            await source_edit_receipt(dispatch, await self.store.get_run(identifier), task_key=task_key)
+                            await source_edit_receipt(
+                                dispatch,
+                                await self.store.get_run(identifier),
+                                task_key=None if source_recovery and pending["value"] else task_key,
+                            )
                             if pending["value"]:
-                                await dispatch.normal_dispatch(identifier, task_key)
+                                if source_recovery:
+                                    await dispatch.dispatch(identifier, task_key)
+                                else:
+                                    await dispatch.normal_dispatch(identifier, task_key)
                                 pending["value"] = False
+                            await assert_source_edit_dispatch(dispatch, await self.store.get_run(identifier), task_key)
                         if dispatch:
                             await dispatch.assert_launch(identifier, task_key)
 
@@ -1113,7 +1150,13 @@ class Engine:
                                 channel,
                                 prompt_text(
                                     "implementation/source-edit-only",
-                                    version="1.0.1",
+                                    version="1.0.2",
+                                    capabilities=json.dumps(
+                                        await source_runtime.capabilities(
+                                            before_dispatch=recovery is not None and dispatch_pending["value"]
+                                        ),
+                                        sort_keys=True,
+                                    ),
                                     **{
                                         key: str(scope[key])
                                         for key in (

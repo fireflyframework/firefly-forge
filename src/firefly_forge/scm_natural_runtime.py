@@ -11,7 +11,7 @@ from typing import Any
 
 from firefly_forge.prompts import PromptCatalog
 from firefly_forge.providers import APIProvider, BridgeProvider
-from firefly_forge.scm_natural_models import NaturalDecision
+from firefly_forge.scm_natural_models import NaturalDecision, question_choices
 from firefly_forge.skills import inject_skills
 
 
@@ -62,7 +62,11 @@ async def classify(
     bridge = settings.get("ASSISTANT_PROVIDER") == "bridge"
     if model is None:
         model = BridgeProvider(settings).model() if bridge else APIProvider(settings).model(single_request=True)
-    prompt = catalog().text("scm-natural/request", context=json.dumps(context, ensure_ascii=False), message=message)
+    prompt = catalog().text(
+        "scm-natural/request",
+        context=json.dumps({**context, "question_choices": question_choices(context)}, ensure_ascii=False),
+        message=message,
+    )
     if len(prompt.encode()) > 100000:
         raise ValueError("Natural conversation exceeds its bounded context")
     output_spec: Any = PromptedOutput(NaturalDecision) if bridge else NaturalDecision
@@ -70,7 +74,7 @@ async def classify(
         name="forge-natural-task-intent",
         model=model,
         output_type=output_spec,
-        instructions=inject_skills(catalog().text("scm-natural/system"), ["humanizer"]),
+        instructions=inject_skills(catalog().text("scm-natural/system", version="1.0.2"), ["humanizer"]),
         tools=[],
         retries=0,
         auto_register=False,

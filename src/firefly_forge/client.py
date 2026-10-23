@@ -40,6 +40,11 @@ if TYPE_CHECKING:
     from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.scm_source_edit_models import SCMSourceEditGrantInputV1
+    from firefly_forge.source_budget_allowances import (
+        SourceBudgetAllowanceInput,
+        SourceBudgetPolicy,
+        SourceBudgetProposal,
+    )
     from firefly_forge.source_edit_models import SourceEditContinuationInput
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
@@ -154,6 +159,56 @@ class ForgeClient:
     def source_edit_continuation(self, run_id: str, request_id: str) -> dict[str, Any]:
         run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
         return dict(self.request("GET", f"runs/{run_id}/source-edit-continuations/{request_id}"))
+
+    def source_budget_policy(self) -> dict[str, Any]:
+        return dict(self.request("GET", "source-budget/policy"))
+
+    def configure_source_budget_policy(self, request: SourceBudgetPolicy | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.source_budget_allowances import SourceBudgetPolicy
+
+        body = self._recovery_body(SourceBudgetPolicy, request)
+        return dict(self.request("PUT", "source-budget/policy", json=body))
+
+    def _source_budget_path(self, run_id: str, parent_request_id: str) -> str:
+        run_id = self._recovery_identifier(run_id)
+        parent_request_id = self._recovery_identifier(parent_request_id)
+        return f"runs/{run_id}/source-edit-continuations/{parent_request_id}"
+
+    def source_budget_candidate(
+        self,
+        run_id: str,
+        parent_request_id: str,
+        previous_catalog_path: str,
+        proposal: SourceBudgetProposal | dict[str, Any],
+    ) -> dict[str, Any]:
+        from firefly_forge.source_budget_allowances import SourceBudgetProposal
+
+        path = self._source_budget_path(run_id, parent_request_id)
+        if (
+            not isinstance(previous_catalog_path, str)
+            or not previous_catalog_path.strip()
+            or len(previous_catalog_path) > 4096
+            or "\x00" in previous_catalog_path
+        ):
+            raise ValueError("Select the original bounded native model catalog path")
+        body = self._recovery_body(SourceBudgetProposal, proposal)
+        params = {"previous_catalog_path": previous_catalog_path, **{k: v for k, v in body.items() if k != "version"}}
+        return dict(self.request("GET", path + "/budget-allowance-candidate", params=params))
+
+    def admit_source_budget(
+        self, run_id: str, parent_request_id: str, request: SourceBudgetAllowanceInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; an uncertain transport requires reading this same request's receipt."""
+        from firefly_forge.source_budget_allowances import SourceBudgetAllowanceInput
+
+        path = self._source_budget_path(run_id, parent_request_id)
+        body = self._recovery_body(SourceBudgetAllowanceInput, request)
+        return dict(self.request("POST", path + "/budget-allowances", json=body))
+
+    def source_budget_receipt(self, run_id: str, parent_request_id: str, request_id: str) -> dict[str, Any]:
+        path = self._source_budget_path(run_id, parent_request_id)
+        request_id = self._recovery_identifier(request_id)
+        return dict(self.request("GET", path + "/budget-allowances/" + request_id))
 
     def reconcile_workspace(
         self, run_id: str, request: WorkspaceReconciliationInput | dict[str, Any]

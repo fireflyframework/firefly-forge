@@ -8,12 +8,15 @@ import copy
 import hashlib
 import hmac
 import json
+import logging
+import math
 import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote
 
@@ -40,6 +43,7 @@ from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
+from firefly_forge.scm_provider_backoff import DeferredFeedbackChanged, ProviderRequestDeferred, retained_deferred
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 from firefly_forge.scm_source_edit_models import SCMSourceEditCommandV1
 from firefly_forge.store import Store, identifier, now, prepared_credential_rejection
@@ -1029,7 +1033,9 @@ class Collaboration:
             or (initial.get("command") or {}).get("action") == "respond"
             or (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
         ):
-            await self._process_delegated(receipt_id)
+            delegated = await self._process_delegated(receipt_id)
+            if delegated["status"] == "received" and delegated.get("action_deferred") is not None:
+                return delegated
             await self.feedback(receipt_id)
             return await self.receipt(receipt_id)
         if initial.get("global_ingress"):
@@ -1210,6 +1216,95 @@ class Collaboration:
         await self.feedback(receipt_id)
         return await self.receipt(receipt_id)
 
+    @staticmethod
+    def _delegated_intent(delivery: Data) -> Data:
+        return {
+            key: copy.deepcopy(delivery.get(key))
+            for key in (
+                "id",
+                "repository_id",
+                "provider",
+                "actor",
+                "digest",
+                "verification",
+                "source_snapshot",
+                "command",
+                "natural_parent",
+                "natural_product_parent",
+            )
+        }
+
+    @staticmethod
+    def _delegated_diagnostic(error: Exception, stage: str) -> None:
+        frame = error.__traceback__
+        while frame is not None and frame.tb_next is not None:
+            frame = frame.tb_next
+        location = None
+        if frame is not None:
+            module = Path(frame.tb_frame.f_code.co_filename).name
+            function = frame.tb_frame.f_code.co_name
+            location = {
+                "module": module if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}\.py", module) else "external",
+                "function": function if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}", function) else "external",
+                "line": frame.tb_lineno,
+            }
+        logging.getLogger(__name__).warning(
+            "SCM delegated admission diagnostic %s",
+            json.dumps(
+                {
+                    "stage": stage,
+                    "exception_type": type(error).__name__
+                    if type(error).__name__ in {"AccessDenied", "ValueError", "KeyError", "ProviderRequestDeferred"}
+                    else "ValidationError",
+                    "location": location,
+                },
+                sort_keys=True,
+            ),
+        )
+
+    @classmethod
+    def _delegated_wait(cls, delivery: Data) -> Data | None:
+        evidence = delivery.get("action_deferred")
+        if evidence is None:
+            return None
+        if (
+            not isinstance(evidence, dict)
+            or set(evidence) != {"kind", "outcome", "retry_at", "intent_sha256"}
+            or evidence["kind"] != "provider_request_deferred_v1"
+            or evidence["outcome"] != "not_dispatched"
+            or delivery.get("action_status") != "not_dispatched"
+            or type(evidence["retry_at"]) not in (int, float)
+            or not math.isfinite(evidence["retry_at"])
+            or evidence["retry_at"] <= 0
+            or evidence["intent_sha256"]
+            != ProviderRequestDeferred("Retained local action wait", retry_at=evidence["retry_at"]).evidence(
+                cls._delegated_intent(delivery)
+            )["intent_sha256"]
+        ):
+            raise ValueError("The retained delegated nondispatch evidence changed")
+        return evidence
+
+    async def _defer_delegated(
+        self, initial: Data, error: ProviderRequestDeferred, stage: Literal["resolve", "locked_admission"]
+    ) -> Data:
+        self._delegated_diagnostic(error, stage)
+        async with self.store._unit():
+            row = await self.inbox.find_by_id(identifier(initial["id"]), lock=LockMode.PESSIMISTIC_WRITE)
+            assert row is not None
+            if (
+                row.status == "received"
+                and row.data == initial
+                and row.data.get("action_status") in {None, "not_dispatched"}
+            ):
+                await self._write_row(
+                    row,
+                    action_status="not_dispatched",
+                    reason="provider_request_deferred",
+                    action_deferred=error.evidence(self._delegated_intent(initial)),
+                    action_diagnostic={"stage": stage, "code": "provider_not_dispatched"},
+                )
+            return copy.deepcopy(row.data)
+
     async def _process_delegated(self, receipt_id: str) -> Data:
         from sqlalchemy import text
 
@@ -1220,18 +1315,39 @@ class Collaboration:
 
         authority = SCMActorAuthority(self.store, self.scm)
         initial = await self.receipt(receipt_id)
+        if initial["status"] != "received":
+            return initial
         command = initial.get("command") or {}
+        stage = "retained_wait"
         try:
+            deferred = self._delegated_wait(initial)
+            if deferred is not None and deferred["retry_at"] > time.time():
+                return initial
+            stage = "resolve"
             actor = await authority.resolve(initial)
             if command["action"] == "cancel" and self.store.execution_requests is None:
                 raise AccessDenied("SCM cancellation requires the admitted execution-request runtime")
-        except (AccessDenied, ValueError, KeyError):
+        except ProviderRequestDeferred as error:
+            return await self._defer_delegated(initial, error, "resolve")
+        except (AccessDenied, ValueError, KeyError) as error:
+            self._delegated_diagnostic(error, stage)
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
                 if row.status == "received":
                     await self._write_row(
-                        row, status="denied", reason="scm_authority_setup_required", action_status="not_dispatched"
+                        row,
+                        status="denied",
+                        reason="scm_authority_setup_required",
+                        action_status="not_dispatched",
+                        action_diagnostic={
+                            "stage": stage,
+                            "code": "authority_denied"
+                            if isinstance(error, AccessDenied)
+                            else "reference_unavailable"
+                            if isinstance(error, KeyError)
+                            else "validation_failed",
+                        },
                     )
                 return copy.deepcopy(row.data)
         token = CURRENT_PRINCIPAL.set(actor)
@@ -1297,6 +1413,8 @@ class Collaboration:
                         status="needs_reconciliation",
                         reason="channel_action_pending",
                         action_status="writing",
+                        action_deferred=None,
+                        action_diagnostic=None,
                         scm_execution_actor=ProjectAccess.actor_snapshot(actor),
                     )
                     if command["action"] == "cancel":
@@ -1313,13 +1431,20 @@ class Collaboration:
                             feedback_stage=locked.data["status"],
                         )
                         return copy.deepcopy(row.data)
-            except AccessDenied:
+            except ProviderRequestDeferred as error:
+                return await self._defer_delegated(initial, error, "locked_admission")
+            except AccessDenied as error:
+                self._delegated_diagnostic(error, "locked_admission")
                 async with self.store._unit():
                     row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                     assert row is not None
                     if row.status == "received":
                         await self._write_row(
-                            row, status="denied", reason="scm_authority_setup_required", action_status="not_dispatched"
+                            row,
+                            status="denied",
+                            reason="scm_authority_setup_required",
+                            action_status="not_dispatched",
+                            action_diagnostic={"stage": "locked_admission", "code": "authority_denied"},
                         )
                     return copy.deepcopy(row.data)
             try:
@@ -1697,6 +1822,11 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        if initial.get("native_question") is not None:
+            from firefly_forge.native_question_publications import NativeQuestionPublications
+
+            await NativeQuestionPublications(self).publish(receipt_id)
+            return
         if initial.get("natural_parent") is not None:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -1705,11 +1835,32 @@ class Collaboration:
             return
         if initial.get("feedback_status") == "held":
             return
+        deferred = None
         try:
+            deferred = retained_deferred(initial)
+            if deferred is not None and deferred["retry_at"] > time.time():
+                return
             await self._feedback_authority(initial)
             if not await self._feedback_head(initial, proactive=False):
                 return
+        except ProviderRequestDeferred as error:
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is not None and row.data == initial and row.data.get("feedback_status") == "pending":
+                    await self._write_row(
+                        row,
+                        reason="provider_request_deferred",
+                        feedback_deferred=error.evidence(row.data.get("feedback_intent")),
+                    )
+            return
         except Exception:
+            if initial.get("feedback_deferred") is not None:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if row is not None and row.data == initial:
+                        await self._write_row(
+                            row, feedback_status="held", reason="deferred_feedback_authority_or_evidence_changed"
+                        )
             return
         from sqlalchemy import text
 
@@ -1738,8 +1889,13 @@ class Collaboration:
             if row is None or row.data.get("feedback_status") != "pending":
                 return
             data = copy.deepcopy(row.data)
-            await self._write_row(row, feedback_status="writing", feedback_intent=None)
+            await self._write_row(
+                row, feedback_status="writing", feedback_intent=data.get("feedback_intent") if deferred else None
+            )
             self._active_writes.add(receipt_id)
+        intent: Data | None = None
+        retained = data.get("feedback_intent") if deferred else None
+        write_started = False
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
@@ -1811,7 +1967,19 @@ class Collaboration:
                 )
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
-            if data.get("natural_turn") is not None:
+            if retained is not None:
+                if (
+                    not isinstance(retained, dict)
+                    or not isinstance(retained.get("body"), str)
+                    or hashlib.sha256(retained["body"].encode()).hexdigest() != retained.get("body_sha256")
+                ):
+                    raise DeferredFeedbackChanged("The original deferred feedback body changed")
+                try:
+                    self.communication_writer.assert_current(retained["communication"])
+                except ValueError:
+                    raise DeferredFeedbackChanged("The deferred feedback communication route changed") from None
+                drafted = {"body": retained["body"], "communication": retained["communication"]}
+            elif data.get("natural_turn") is not None:
                 drafted = {
                     "body": message,
                     "communication": {
@@ -1878,10 +2046,13 @@ class Collaboration:
                     },
                 }
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
-            if drafted["communication"]["mode"] == "ai" or (
-                drafted["communication"]["mode"] == "deterministic"
-                and assistant_input
-                and assistant_input.reply_reference_digest
+            if retained is None and (
+                drafted["communication"]["mode"] == "ai"
+                or (
+                    drafted["communication"]["mode"] == "deterministic"
+                    and assistant_input
+                    and assistant_input.reply_reference_digest
+                )
             ):
                 from firefly_forge.collaboration_feedback import communication_controls
 
@@ -1911,6 +2082,12 @@ class Collaboration:
                 from firefly_forge.scm_natural_questions import natural_producer
 
                 intent["natural_turn_digest"] = content_digest(natural_producer(data))
+            if retained is not None and intent != retained:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(row, feedback_status="held", reason="deferred_feedback_context_changed")
+                return
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
@@ -1947,13 +2124,50 @@ class Collaboration:
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])
 
-            remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)
-        except Exception:
+            async def retained_before_write() -> None:
+                from firefly_forge.project_access import AccessDenied
+
+                try:
+                    await before_write()
+                except ProviderRequestDeferred:
+                    raise
+                except (AccessDenied, ValueError):
+                    raise DeferredFeedbackChanged("The deferred feedback authority or route changed") from None
+
+            write_started = True
+            remote = await self._remote_write(
+                repo,
+                payload,
+                data["issue"],
+                before_write=retained_before_write if retained is not None else before_write,
+            )
+        except DeferredFeedbackChanged:
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(row, feedback_status="held", reason="deferred_feedback_context_changed")
+        except ProviderRequestDeferred as error:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
                 await self._write_row(
-                    row, feedback_status="needs_reconciliation", reason="remote_feedback_outcome_unknown"
+                    row,
+                    feedback_status="pending",
+                    reason="provider_request_deferred",
+                    feedback_deferred=error.evidence(intent),
+                )
+        except Exception as error:
+            from firefly_forge.project_access import AccessDenied
+
+            held = retained is not None and not write_started and isinstance(error, AccessDenied)
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(
+                    row,
+                    feedback_status="held" if held else "needs_reconciliation",
+                    reason="deferred_feedback_authority_changed" if held else "remote_feedback_outcome_unknown",
+                    feedback_deferred=row.data.get("feedback_deferred") if held else None,
                 )
         else:
             async with self.store._unit():
@@ -1962,6 +2176,7 @@ class Collaboration:
                 await self._write_row(
                     row,
                     feedback_status="sent",
+                    feedback_deferred=None,
                     feedback_remote=remote,
                     feedback_stage=intent["stage"],
                     feedback_request_id=intent["request_id"],
@@ -2102,14 +2317,66 @@ class Collaboration:
             self._active_writes.discard(str(data["id"]))
         return await self.receipt(data["id"])
 
+    async def _catch_up_natural_answer(self, delivery: Data) -> None:
+        from firefly_forge.scm_natural_effects import NaturalEffects, validate_projection
+        from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+        turn = delivery.get("natural_turn") or {}
+        effects = delivery.get("natural_effects") or {}
+        if (
+            delivery.get("status") != "processed"
+            or turn.get("state") != "answer_pending_permission"
+            or (turn.get("resolution") or {}).get("state") != "answer"
+            or not isinstance(effects, dict)
+        ):
+            return
+        eligible = []
+        for child_id, marker in effects.items():
+            if not isinstance(marker, dict) or marker.get("stage") != "answer":
+                continue
+            try:
+                child = await self.receipt(child_id)
+                validate_projection(child, delivery)
+                if child.get("status") == "received":
+                    wait = self._delegated_wait(child)
+                    if wait is None or wait["retry_at"] > time.time():
+                        continue
+                elif child.get("status") != "processed" or child.get("action_status") != "completed":
+                    if (
+                        child.get("status") == "needs_reconciliation"
+                        or child.get("action_status") == "needs_reconciliation"
+                    ):
+                        await NaturalEffects(SCMNaturalTasks(self))._retain_state(
+                            delivery["id"], "needs_reconciliation", expected=delivery
+                        )
+                        return
+                    continue
+                eligible.append(marker)
+            except (ValueError, KeyError):
+                continue
+        if len(eligible) != 1:
+            return
+        admission = eligible[0]["admission_id"]
+        await NaturalEffects(SCMNaturalTasks(self)).apply(
+            delivery["id"],
+            admission=admission,
+            explicit=admission in (delivery.get("natural_admissions") or {}),
+        )
+
     async def sync_feedback(self) -> None:
+        from firefly_forge.native_question_publications import NativeQuestionPublications
+
+        await NativeQuestionPublications(self).sync()
         async with self.store._unit():
             rows = [copy.deepcopy(row.data) for row in await self.inbox.find_pending()]
         for data in rows:
+            await self._catch_up_natural_answer(data)
             if data["status"] == "received":
                 await self.process(data["id"])
             elif data.get("feedback_status") == "pending":
                 await self.feedback(data["id"])
+            elif data.get("native_question") is not None and data.get("feedback_status") == "writing":
+                await NativeQuestionPublications(self).interrupted(data)
             elif data.get("feedback_status") == "writing" and data["id"] not in self._active_writes:
                 async with self.store._unit():
                     row = await self.inbox.find_by_id(identifier(str(data["id"])), lock=LockMode.PESSIMISTIC_WRITE)
@@ -2117,16 +2384,20 @@ class Collaboration:
                     await self._write_row(
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
-            elif data.get("run_id") and data.get("feedback_status") == "sent":
+            elif data.get("run_id") and data.get("feedback_status") == "sent" and not data.get("native_question"):
                 from firefly_forge.collaboration_feedback import feedback_due, sent_history
 
                 try:
-                    await self._feedback_authority(data)
+                    await self._feedback_authority(data, local=True)
                 except Exception:
                     continue
                 run = await self.store.get_run(data["run_id"])
                 if feedback_due(data, run):
                     if not await self._feedback_head(data, proactive=True):
+                        continue
+                    try:
+                        await self._feedback_authority(data)
+                    except Exception:
                         continue
                     async with self.store._unit():
                         row = await self.inbox.find_by_id(identifier(str(data["id"])), lock=LockMode.PESSIMISTIC_WRITE)

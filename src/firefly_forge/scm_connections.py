@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import re
@@ -23,6 +24,7 @@ from pyfly.container import service
 
 from firefly_forge.configuration import ConfigurationStore, validate_endpoint
 from firefly_forge.models import RepositoryInput
+from firefly_forge.scm_provider_backoff import ProviderBackoff, ProviderRequestDeferred
 from firefly_forge.store import Store
 
 Data = dict[str, Any]
@@ -318,16 +320,32 @@ class SCMConnections:
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         allowed_statuses = kwargs.pop("allowed_statuses", (200, 201))
         response_limit = kwargs.pop("response_limit", None)
+        provider = next(
+            (
+                name
+                for name in DEFINITIONS
+                if url.startswith(self._api(name) + "/")
+                or name != "github"
+                and url == self._host(name) + ("/oauth/token" if name == "gitlab" else "/site/oauth2/access_token")
+            ),
+            None,
+        )
+        if provider is None:
+            raise ValueError("Provider request does not match a configured API or token endpoint")
+        values = self._values(provider)
+        scope = [provider, self._api(provider), values.get("app_id", values.get("client_id", ""))]
+        scope.extend([values.get("installation_id", ""), values.get("workspace", "")])
+        guard = ProviderBackoff(self.private.directory.parent, scope)
 
         async def perform(client: httpx.AsyncClient) -> httpx.Response:
-            if response_limit is None:
-                return await client.request(method, url, timeout=20, follow_redirects=False, **kwargs)
             async with client.stream(method, url, timeout=20, follow_redirects=False, **kwargs) as streamed:
+                guard.observe(streamed)
                 content = bytearray()
-                async for chunk in streamed.aiter_bytes():
-                    if len(content) + len(chunk) > response_limit:
-                        raise ValueError("Provider reference response exceeds its size limit")
-                    content.extend(chunk)
+                if streamed.status_code not in {403, 429}:
+                    async for chunk in streamed.aiter_bytes():
+                        if response_limit is not None and len(content) + len(chunk) > response_limit:
+                            raise ValueError("Provider reference response exceeds its size limit")
+                        content.extend(chunk)
                 headers = {
                     key: value
                     for key, value in streamed.headers.items()
@@ -337,14 +355,16 @@ class SCMConnections:
                     streamed.status_code, content=bytes(content), headers=headers, request=streamed.request
                 )
 
-        try:
-            if self._client is not None:
-                response = await perform(self._client)
-            else:
-                async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-                    response = await perform(client)
-        except httpx.HTTPError:
-            raise ValueError("Provider connection could not be completed") from None
+        async with guard:
+            try:
+                async with asyncio.timeout(20):
+                    if self._client is not None:
+                        response = await perform(self._client)
+                    else:
+                        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+                            response = await perform(client)
+            except (httpx.HTTPError, TimeoutError):
+                raise ValueError("Provider connection could not be completed") from None
         if response.status_code not in allowed_statuses:
             raise ValueError(f"Provider rejected the application request (HTTP {response.status_code})")
         return response
@@ -546,12 +566,18 @@ class SCMConnections:
             if form["grant_type"] == "refresh_token":
                 grant["refresh_state"] = "dispatching"
                 self.private._write(self.path, data)
-            response = await self._request(
-                "POST",
-                self._host(provider) + ("/oauth/token" if provider == "gitlab" else "/site/oauth2/access_token"),
-                data=form,
-                **({"auth": (values["client_id"], values["client_secret"])} if provider == "bitbucket" else {}),
-            )
+            try:
+                response = await self._request(
+                    "POST",
+                    self._host(provider) + ("/oauth/token" if provider == "gitlab" else "/site/oauth2/access_token"),
+                    data=form,
+                    **({"auth": (values["client_id"], values["client_secret"])} if provider == "bitbucket" else {}),
+                )
+            except ProviderRequestDeferred:
+                if form["grant_type"] == "refresh_token":
+                    del grant["refresh_state"]
+                    self.private._write(self.path, data)
+                raise
             record["grant"] = self._grant(response)
             if provider == "bitbucket":
                 scope = set(str(record["grant"]["scope"]).split())

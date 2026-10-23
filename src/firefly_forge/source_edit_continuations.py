@@ -194,7 +194,12 @@ async def source_edit_receipt(
         await recoveries.store.assert_ownership()
         if stable_cut(recoveries._cut(current)) != stable_cut(receipt["completed_cut"]):
             raise ValueError("Source-edit execution authority changed during native policy qualification")
+        from firefly_forge.source_budget_allowances import apply_current_budget_scope
+
+        scope = apply_current_budget_scope(recoveries.store, current, entries, scope)
         # Native final checks may spend the original remaining reserve, never increase it.
+        if set(scope) != set(candidate["source_edit"]):
+            raise ValueError("The source-only scope has an unsupported capability field")
         fixed = [key for key in scope if key not in {"native_commands", "remaining_commands"}]
         if any(scope[key] != candidate["source_edit"][key] for key in fixed):
             raise ValueError("Source-edit retained command history or capability changed")
@@ -230,6 +235,53 @@ async def assert_source_edit_dispatch(recoveries: Any, run: Data, task_key: str 
 class SourceEditInvocation:
     def __init__(self, recoveries: Any, run_id: str, task_key: str) -> None:
         self.recoveries, self.run_id, self.task_key = recoveries, run_id, task_key
+
+    async def _capability_receipt(self, run: Data, *, before_dispatch: bool) -> None:
+        r = self.recoveries
+        receipt = await source_edit_receipt(r, run, task_key=None if before_dispatch else self.task_key)
+        if not before_dispatch:
+            return
+        current = await r.store.get_run(self.run_id)
+        task = await r.journal._task(self.run_id, "implement")
+        attempt = receipt["candidate"]["previous_task"]["attempt"]
+        key = uuid5(NAMESPACE_URL, f"forge:{self.run_id}:implement:{attempt}").hex
+        reservation = current.get("provider_recovery") or {}
+        if (
+            self.task_key != key
+            or task.status != "queued"
+            or task.attempt != attempt
+            or task.data.get("idempotency_key") != key
+            or task.data.get("provider_recovery_id") != receipt["request"]["request_id"]
+            or reservation.get("status") != "reserved"
+            or reservation.get("task_key") != key
+            or reservation.get("attempt") != attempt
+            or reservation.get("request_id") != receipt["request"]["request_id"]
+            or reservation.get("actor") != receipt["actor"]
+            or current.get("source_edit_continuation") != run.get("source_edit_continuation")
+        ):
+            raise ValueError("Capability projection requires the exact queued source recovery reservation")
+
+    async def capabilities(self, *, before_dispatch: bool = False) -> Data:
+        from firefly_forge.source_budget_allowances import effective_source_read_limits
+        from firefly_forge.source_tool_budget import source_budget_snapshot
+        from firefly_forge.tool_broker import ToolReconciliationRequired
+
+        r = self.recoveries
+        async with r.store._unit():
+            run = await r.store.get_run(self.run_id)
+            await self._capability_receipt(run, before_dispatch=before_dispatch)
+            broker = r.engine.tool_broker
+            if broker is None:
+                raise ValueError("Source capability review requires the original durable tool broker")
+            rows = await broker.records.for_run(identifier(self.run_id))
+            if any(row.status in {"pending", "unknown"} for row in rows):
+                raise ToolReconciliationRequired(
+                    "Unresolved source tools require reconciliation before capability review"
+                )
+            limits, _authority = await effective_source_read_limits(r.store, r.journal, run, rows)
+            value = source_budget_snapshot(rows, run["tool_policy_snapshot"]["settings"], per_tool=limits)
+            await self._capability_receipt(await r.store.get_run(self.run_id), before_dispatch=before_dispatch)
+            return value
 
     async def run(self, request: SourceReadRequest) -> Data:
         request = SourceReadRequest.model_validate(request.model_dump(exclude_unset=True))

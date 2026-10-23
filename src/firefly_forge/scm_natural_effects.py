@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+from contextlib import suppress
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -191,7 +192,7 @@ def validate_projection(child: Data, parent: Data) -> None:
 
 async def authorize_projection(polling: Any, child: Data) -> None:
     """Repeat parent, read-scope and immutable-question checks inside native effect admission."""
-    from firefly_forge.agent_roles import WorkerFeedback
+    from firefly_forge.agent_roles import worker_feedback_model
 
     marker = child.get("natural_parent")
     if not isinstance(marker, dict) or marker.get("receipt_id") == child["id"]:
@@ -242,7 +243,7 @@ async def authorize_projection(polling: Any, child: Data) -> None:
     ]
     if len(questions) != 1:
         raise AccessDenied("The original natural question journal record changed")
-    feedback = WorkerFeedback.model_validate(questions[0]["payload"])
+    feedback = worker_feedback_model(questions[0]["payload"]).model_validate(questions[0]["payload"])
     request = run.get("worker_request") or {}
     if (
         feedback.request is None
@@ -424,9 +425,15 @@ class NaturalEffects:
                     await self.collaboration._process_delegated(child["id"])
                 completed = await self.collaboration.receipt(child["id"])
                 if completed.get("status") != "processed" or completed.get("action_status") != "completed":
+                    known_wait = False
+                    if completed.get("status") == "received":
+                        with suppress(ValueError):
+                            known_wait = self.collaboration._delegated_wait(completed) is not None
                     return await self._retain_state(
                         receipt_id,
-                        "answer_pending_permission" if completed["status"] == "denied" else "needs_reconciliation",
+                        "answer_pending_permission"
+                        if completed["status"] == "denied" or known_wait
+                        else "needs_reconciliation",
                         expected=expected,
                     )
                 parent = await self.collaboration.receipt(receipt_id)

@@ -87,8 +87,16 @@ def test_selected_prompt_or_renderer_drift_revokes_profile_before_admission(chan
 
 
 def test_reader_bound_proof_uses_a_new_registry_and_loader_contract():
-    assert qualification.REGISTRY_VERSION == 4
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v5"
+    assert qualification.REGISTRY_VERSION == 5
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v6"
+    historical = [
+        profile for profile in qualification._profiles() if profile.loader_profile == "codex-exec-restricted-source/v5"
+    ]
+    assert len(historical) == 1
+    assert (
+        qualification.historical_profile_seal(historical[0])["profile_digest"]
+        == "17320f82c0f2f9ab4b65c7e3bd8b89741a3716a8896dd5f674f6409ac1490c3c"
+    )
     assert {"source_edit_filesystem_policy.py", "workspace_tools.py"} <= set(qualification.LOADER_MODULES)
     assert qualification.FILESYSTEM_CHECKS == (
         "patch_add",
