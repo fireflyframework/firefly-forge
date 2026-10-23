@@ -56,6 +56,12 @@ Feedback is typed data with a stable ID, role, planned task, attempt 1 to 4, dis
 
 The manager journals feedback before pausing. Questions survive restarts and do not trigger automatic retries. Replaying the same feedback is idempotent; reusing its ID with different content fails. The frozen request budget limits new questions. A response is evidence of an answer, not deployment or publication approval.
 
+For a confirmed question published in a configured GitHub issue, answer naturally in the same thread: “Support account owners receive the alerts.” No mention, request ID or JSON is needed when one current question is unambiguous. forge checks the mapped account, current read access and exact question/publication provenance. It retains the answer across restarts; applying a worker response or continuing execution requires the separate current authority. If several questions fit, identify the question in your own words or answer the clarification. A product-design answer remains part of its ProductAssistant conversation rather than becoming a worker response.
+
+Read-only conversation remains available after an execution grant expires. A request such as “@forge, continue the same task” can use the supported same-run resume path only with fresh consent and unchanged scope. Restricted source-only implementation keeps its [separate readmission limitation](recovery.md); an answer alone does not authorize its next attempt.
+
+### Authenticated API and compatibility clients
+
 Read the durable conversation at `GET /api/v1/runs/{id}/worker-messages`. An authenticated operator answers through `POST /api/v1/runs/{id}/worker-requests/{request_id}/respond`:
 
 ```json
@@ -78,7 +84,7 @@ For issue-bound runs, the existing source-control feedback intent records the pe
 /forge respond {"run_id":"0123456789abcdef0123456789abcdef","request_id":"request-1","answer":"Support account owners receive the alerts."}
 ```
 
-The signed channel receipt supplies a provider actor label and stable response ID, but does not establish an authenticated Forge operator. New replies without that operator context are refused, including internal or channel calls that only supply a label. External actor mapping remains separate work; use the authenticated API or client to answer. The command cannot answer another repository's run, Forge operator credentials are never sent to the provider, and uncertain comment writes require reconciliation rather than blind reposting. `/forge resume` remains a separate enabled action.
+This legacy signed command supplies a provider actor label and stable response ID; the label alone does not establish an authenticated forge operator. Calls without the required operator context are refused. Configured GitHub polling instead uses its explicit native account mapping and separate response/resume consent, as described above. Neither path can answer another repository's run. forge operator credentials are never sent to the provider, and uncertain comment writes require reconciliation rather than blind reposting.
 
 ## Pinned community instructions
 

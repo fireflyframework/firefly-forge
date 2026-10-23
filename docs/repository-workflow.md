@@ -6,7 +6,9 @@ description: Use repository conversations to define products, request changes an
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-Use an issue or pull request conversation to request work and receive its recorded result. forge accepts structured comments from GitHub issues and pull requests, GitLab issues and merge requests, and Bitbucket Cloud pull requests. `run`, `test` and `maintain` admit factory runs; the other supported commands read evidence, change explicitly authorized settings or request an existing lifecycle action. An accepted command is not evidence that its work passed verification.
+Use ordinary language to discuss your product and inspect linked work. With [GitHub polling and account mapping](scm.md#ask-about-the-current-ticket) configured, write “@forge, how is this going?” or “@forge, help define the customer ticket journey.” forge uses the configured communication profile to understand the message and replies in the same conversation. A confirmed pending question can be answered later in that thread without another mention. Current access and the original question binding still apply.
+
+Natural conversation supports product dialogue, linked status, answers and separately authorized same-run continuation. It does not create a coding run, start tests or maintenance, or deploy an application from free text. Use Studio for those actions. Signed structured commands remain available for advanced integrations on GitHub issues and pull requests, GitLab issues and merge requests, and Bitbucket Cloud pull requests. An accepted request is not evidence that its work passed verification.
 
 Source-control integration has two directions: a signed conversation can request a permitted action, and forge can reply with its retained outcome or publish verified code. This is not continuous mirroring of issue text, product definitions and repository files. Your team still reviews requirements, resolves conflicts and merges pull requests. [Source-control connections](scm.md#understand-the-two-directions) describe the Git boundary.
 
@@ -51,22 +53,24 @@ GitHub and Bitbucket signatures are verified against raw bytes without JSON rese
 
 A provider user ID is separate from the factory session identity. Granting a comment author permission does not turn that author into a factory administrator or let a command replace operator-owned checks. A factory administrator should complete the full Studio setup and receipt-inspection journey; the repository policy API also enforces the narrower project permissions above.
 
-## First request: inspect, test, then build
+## First conversation, then reviewed work
 
-1. Finish the connection and workflow setup, including exact actor IDs and operator-owned verification commands. Confirm that the signed webhook URL is reachable through your deployment's HTTPS gateway. An API-only process can receive a delivery but does not start the collaboration poller. A configured execution owner is required to execute admitted runs and provide automatic lifecycle processing.
-2. From an allowed provider account, post `/forge project` to read the registered repository and saved product revision. For a Bitbucket workspace, use a pull request conversation.
-3. Post `/forge test` to request the configured checks. Inspect its receipt and the associated run in Studio; a queued run, a provider reply or an execution intent does not establish passing checks.
-4. Once the product definition is reviewed, post a new `/forge run` command with a concrete brief. Inspect **Plan**, **Changes**, **Verification** and any required independent review before publication.
-5. Keep publication disabled for a first test. Enable the separate publication policy only when the provider grant, project release authority and review gates are ready. Merging the resulting pull request remains a provider-side action.
+1. Finish repository connection, current account mapping and the scoped GitHub polling setup. The execution owner must be running; an API-only process does not process the conversation.
+2. From the mapped account, ask “@forge, what is the current product and what still needs a decision?” forge resolves the current issue and linked context. If several questions or runs fit, clarify the choice in ordinary language.
+3. Describe the product or answer the assistant's questions in that same thread. ProductAssistant model turns need their separate current allowance. A saved answer remains available after that allowance expires; another model turn or execution effect needs fresh authority.
+4. Review the proposed definition in Studio before saving it. Use Studio to create a coding run or request configured checks. Inspect **Plan**, **Changes**, **Verification** and any required independent review before publication.
+5. Keep publication disabled for a first test. Enable it only after the provider grant, project release authority and review gates are ready. Merging a pull request remains a provider-side action.
+
+For GitLab, Bitbucket and signed webhook integrations, use the compatibility commands below; the natural GitHub polling adapter does not widen those transports.
 
 <figure class="forge-shot" markdown="1">
 ![Studio run review with the selected product, saved definition and independent-review setting.](assets/screenshots/run-review-desktop-light.png)
 <figcaption>Studio and signed commands use the factory's run machinery. This controlled setup screenshot illustrates reviewing a run before starting it; it is not a real webhook delivery or provider publication.</figcaption>
 </figure>
 
-## Commands
+## Compatibility commands for advanced integrations
 
-Post one complete command as the comment. Options are a JSON object on the same line. Ordinary discussion, edited comments, review annotations, and shell command lines do not dispatch work.
+These explicit commands are a separate integration interface, not the normal GitHub conversation syntax. Post one complete command as the comment, with JSON options on the same line. Edited comments, review annotations and shell command lines do not dispatch work. Ordinary language uses the separately configured GitHub polling conversation path above.
 
 ```text
 /forge run {"brief":"Add customer ticket search with account-level access checks"}
@@ -196,7 +200,7 @@ The repository inbox records an action intent before a model request, source ins
 
 `/forge intake` creates one logical project and its first product definition in
 an already provider-verified GitHub repository. Send a complete definition and
-one component; Forge does not infer a product from an issue title or download
+one component; forge does not infer a product from an issue title or download
 attachments. The result remains a manual, unreviewed definition. It creates no
 run, source branch, build, publication or deployment.
 
