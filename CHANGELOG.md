@@ -9,6 +9,7 @@
 - Add typed API, SDK and CLI review for finite source-read allowances. Qualify the v6 Codex 0.163 Darwin arm64 profile for 20 lifetime file reads and canonical activation ceiling 5; preserve ordinary 10/4 limits, the shared tool ceiling 30, recorded tool rows and original command/final-verification budgets.
 - Bind final allowance admission to the physical execution-lease connection, preserve consumed prior dispatch custody and roll back intent, queue and receipt after lease loss before commit.
 - Ground cross-language question answers in exact offered evidence. Persist scoped provider cooldowns and retain one feedback draft after definite local non-dispatch, while keeping unknown remote outcomes held without automatic replay.
+- Retain delegated SCM actions during a typed local provider hold that confirms no dispatch. Recheck current authority when due, keep natural answers pending with their exact child action, advance them through background synchronization after that action completes, and preserve terminal denials and uncertain effects without automatic replay. Record bounded admission diagnostics without exception messages or private payloads.
 - Preserve the immutable historical v5 profile, existing prompt bytes and the public interface. Refresh the canonical Studio walkthrough for the 0.2.39 version stamp.
 
 ## 0.2.37 — 2026-10-23

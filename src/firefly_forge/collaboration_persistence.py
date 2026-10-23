@@ -197,6 +197,13 @@ class ForgeWebhookInboxRepository(Repository[ForgeWebhookInboxEntity, UUID]):
                         and_(
                             ForgeWebhookInboxEntity.status == "processed",
                             or_(
+                                and_(
+                                    ForgeWebhookInboxEntity.data["natural_turn"]["state"].as_string()
+                                    == "answer_pending_permission",
+                                    ForgeWebhookInboxEntity.data["natural_turn"]["resolution"]["state"].as_string()
+                                    == "answer",
+                                    func.jsonb_typeof(ForgeWebhookInboxEntity.data["natural_effects"]) == "object",
+                                ),
                                 ForgeWebhookInboxEntity.data["feedback_status"].as_string().in_(["pending", "writing"]),
                                 and_(
                                     ForgeWebhookInboxEntity.data["feedback_status"].as_string() == "sent",

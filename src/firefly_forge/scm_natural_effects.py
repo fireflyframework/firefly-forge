@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+from contextlib import suppress
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -424,9 +425,15 @@ class NaturalEffects:
                     await self.collaboration._process_delegated(child["id"])
                 completed = await self.collaboration.receipt(child["id"])
                 if completed.get("status") != "processed" or completed.get("action_status") != "completed":
+                    known_wait = False
+                    if completed.get("status") == "received":
+                        with suppress(ValueError):
+                            known_wait = self.collaboration._delegated_wait(completed) is not None
                     return await self._retain_state(
                         receipt_id,
-                        "answer_pending_permission" if completed["status"] == "denied" else "needs_reconciliation",
+                        "answer_pending_permission"
+                        if completed["status"] == "denied" or known_wait
+                        else "needs_reconciliation",
                         expected=expected,
                     )
                 parent = await self.collaboration.receipt(receipt_id)
