@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 from test_source_budget_native import answered_thirteen, retained_tool_rows, review_allowance
+from test_source_budget_native import measured_witness_directory as measured_witness_directory
 from test_source_budget_output_host import proposal, request
 from test_source_completed_output_native import snapshot
 from worker_reply_fixtures import authenticated_operator

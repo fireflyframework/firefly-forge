@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from test_git_delivery_local import delivery_case as delivery_case
+from test_git_delivery_local import git
 
 from firefly_forge.execution_requests import ExecutionRequests
 from firefly_forge.git_delivery_controllers import GitDeliveryController
@@ -13,8 +15,6 @@ from firefly_forge.git_delivery_models import GitDeliveryInputV1
 from firefly_forge.git_delivery_requests import GitDeliveryRequests
 from firefly_forge.identity import Principal
 from firefly_forge.project_access import CURRENT_PRINCIPAL
-from tests.test_git_delivery_local import delivery_case as delivery_case
-from tests.test_git_delivery_local import git
 
 
 @pytest.fixture

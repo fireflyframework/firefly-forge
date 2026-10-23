@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from test_git_delivery_local import delivery_case as delivery_case
+from test_git_delivery_local import git
 
 from firefly_forge import scm
 from firefly_forge.git_workspace import metadata_digest
-from tests.test_git_delivery_local import delivery_case as delivery_case
-from tests.test_git_delivery_local import git
 
 
 @pytest.fixture

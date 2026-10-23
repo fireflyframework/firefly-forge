@@ -103,7 +103,7 @@ def admission(tmp_path, monkeypatch):
 
     async def project_row(records, value, **kwargs):
         assert value == UUID(PROJECT)
-        return SimpleNamespace()
+        return SimpleNamespace(data={})
 
     monkeypatch.setattr(ForgeProjectRepository, "find_by_id", project_row)
     monkeypatch.setattr(store, "_unit", unit)
@@ -140,6 +140,7 @@ async def test_legacy_run_preserves_explicit_command_and_policy_presence(admissi
     assert run["component_snapshot"] == component
     assert run["agent"] == "codex" and run["operation"] == "build" and run["publish"] is False
     assert run["product_definition"] is None and run["execution_actor"] is None
+    assert "git_delivery_policy" not in run
     assert state["writes"] == ["run", "event"]
     assert len(run["events"]) == 1 and run["events"][0]["stage"] == "queued"
     assert run["events"][0]["message"] == "Run queued"

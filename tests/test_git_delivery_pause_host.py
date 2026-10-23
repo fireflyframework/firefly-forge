@@ -6,9 +6,9 @@ import copy
 from types import SimpleNamespace
 
 import pytest
+from test_git_delivery_local import delivery_case as delivery_case
 
 from firefly_forge.engine import Engine, WorkerAttention
-from tests.test_git_delivery_local import delivery_case as delivery_case
 
 
 @pytest.fixture
