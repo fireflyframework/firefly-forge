@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_scm_polling_functional_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Save or revoke separate version1 GitHub polling functional assistant consent for an exact issue, current account/project binding and named model profile. Consent expires within 60 minutes and permits at most three model-capable turns; start and status are model-free. This never changes existing status/respond/resume consent or the original run budget. Requires current native administrator authority. Preserve the original request identity after one POST; recover uncertain results by exact read without resending.
+required_variables: []
+metadata:
+  defaults: {}

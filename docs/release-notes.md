@@ -5,6 +5,20 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.36
+
+A GitHub issue can host a separately authorized functional conversation. A native administrator reviews the exact API-observed account, project, repository, issue and named assistant profile, then records a finite allowance. Start and status do not invoke a model; each turn reserves one of at most three assistant model turns before entering the product provider. The same issue-bound conversation can receive a natural message addressed to `@forge`. Unknown outcomes retain their original request and allowance instead of triggering an automatic retry. See the [functional GitHub dialogue guide](scm.md#functional-dialogue-through-local-github-polling).
+
+Grant review reports the mapped native user's readiness for each action. Status requires an enabled account with current project read membership; start and turn require edit membership. The administrator's own role does not grant the mapped person those permissions. Active consent is refused before a grant or allowance ledger is written when the membership is insufficient, and admission checks it again under the existing native transaction locks.
+
+Feedback uses confirmed assistant facts rather than inventing an execution state. Status distinguishes the latest attempted turn from an earlier completed response, keeps the original reply and questions, and places turn references in a collapsed section. It retains the sanitized reply and questions, including slash-separated prose and line breaks, while keeping any proposed product definition unreviewed. A selected AI communication profile still uses the separate full-candidate classifier and one final correction within the existing three-request ceiling. Material failures hold the response without a substitute message. Changed outcomes, revoked authority and later operator decisions fence stale replies before publication.
+
+Source-only activation has its own versioned command and native administrator consent. It binds the original issue, repository, run, task, source candidate, qualified native profile and SCM caller provenance. The administrator remains the sealed authority; the SCM caller retains its own identity. This route preserves the existing run and command budget, including the reserved final checks. It refuses activation when no matching native capability has been qualified. This release does not add a production native profile or establish completed native CLI isolation, live GitHub execution or generated-product acceptance.
+
+GitHub polling accepts the provider's canonical numeric repository pagination path only when it matches the verified repository, API origin, resource and exact query. The existing page ceiling, cursor and immutable consent remain in force.
+
+The prompt catalog contains 301 versioned resources and preserves all previous prompt bytes. Studio adds a functional-consent walkthrough and exact-receipt recovery guidance. The source also retains the published read-only patch-index fix and its ordinary and source-only regressions, plus the two-tab final-allowance reservation test. Controlled host, browser and PostgreSQL fixtures qualify the recorded transitions; actual provider and product acceptance remain separate.
+
 ## 0.2.35
 
 Studio keeps your place on the production floor. Choose a project, switch to Board and select a manufacturing run; after Inspect or a visit to another page, returning to Factory restores those choices. The selection stays in memory for the current session. Switching the signed-in user or factory API, or disconnecting, resets it. A project or run that disappears from the accessible list no longer supplies the selected plan.

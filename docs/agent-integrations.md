@@ -285,7 +285,7 @@ Python exposes `model_profiles`, `save_model_profile`, `test_model_profile`, `ta
 
 ## Grant check access to a coding recovery
 
-The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 162 operator tools to that coding process.
+The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 166 operator tools to that coding process.
 
 Use the native SDK methods `coding_check_candidate`, `grant_coding_checks`, `coding_check_receipt`, `coding_check_current` and `revoke_coding_checks`, or the matching CLI commands:
 

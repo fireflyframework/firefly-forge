@@ -1016,6 +1016,7 @@ class Engine:
                     official_dispatch = self.provider_recoveries if run["agent"] in {"codex", "claude"} else None
                     dispatch_provider, adopted_executable = provider, None
                     coding_grant = None
+                    source_activation = None
                     checks = getattr(self, "coding_checks", None)
                     dispatch_pending = {"value": False}
                     if official_dispatch:
@@ -1045,7 +1046,20 @@ class Engine:
                             else:
                                 await official_dispatch.dispatch(identifier, active_key)
                         else:
-                            await official_dispatch.normal_dispatch(identifier, active_key)
+                            if current.get("source_edit_continuation"):
+                                from firefly_forge.source_edit_continuations import source_edit_receipt
+
+                                source_activation = await source_edit_receipt(
+                                    official_dispatch, current, task_key=active_key
+                                )
+                                if not self.configured_provider:
+                                    raise ReconciliationRequired(
+                                        "Source-only continuation requires its official CLI adapter"
+                                    )
+                                adopted_executable = source_activation["candidate"]["source_edit"]["executable"]["path"]
+                                dispatch_pending["value"] = True
+                            else:
+                                await official_dispatch.normal_dispatch(identifier, active_key)
 
                     async def launch_guard(
                         dispatch: Any = official_dispatch,
@@ -1053,6 +1067,7 @@ class Engine:
                         grant: Any = coding_grant,
                         checks_service: Any = checks,
                         pending: Any = dispatch_pending,
+                        source: Any = source_activation,
                     ) -> None:
                         await self.assert_ownership()
                         if grant:
@@ -1062,11 +1077,58 @@ class Engine:
                                 await dispatch.dispatch(identifier, task_key)
                                 pending["value"] = False
                             await checks_service.assert_reserved(identifier, task_key)
+                        if source:
+                            from firefly_forge.source_edit_continuations import source_edit_receipt
+
+                            await source_edit_receipt(dispatch, await self.store.get_run(identifier), task_key=task_key)
+                            if pending["value"]:
+                                await dispatch.normal_dispatch(identifier, task_key)
+                                pending["value"] = False
                         if dispatch:
                             await dispatch.assert_launch(identifier, task_key)
 
                     channel_stack = AsyncExitStack()
                     try:
+                        if source_activation:
+                            from firefly_forge.coding_check_transport import CodingCheckServer
+                            from firefly_forge.secrets import ephemeral_credentials
+                            from firefly_forge.source_edit_continuations import SourceEditInvocation
+                            from firefly_forge.source_edit_filesystem_policy import source_private_roots
+
+                            if not isinstance(active_key, str) or not hasattr(
+                                dispatch_provider, "configure_source_edits"
+                            ):
+                                raise ReconciliationRequired("The official source-only CLI adapter is unavailable")
+                            scope = source_activation["candidate"]["source_edit"]
+                            source_runtime = SourceEditInvocation(official_dispatch, identifier, active_key)
+                            channel = CodingCheckServer(
+                                None,
+                                source_callback=source_runtime.run,
+                                expires_at_ms=source_activation["expires_at_ms"],
+                                invocation_timeout=scope["provider_timeout"],
+                            )
+                            credential_scopes.enter_context(ephemeral_credentials(channel.environment))
+                            await channel_stack.enter_async_context(channel.running())
+                            dispatch_provider.configure_source_edits(
+                                channel,
+                                prompt_text(
+                                    "implementation/source-edit-only",
+                                    version="1.0.1",
+                                    **{
+                                        key: str(scope[key])
+                                        for key in (
+                                            "calls_limit",
+                                            "per_tool_limit",
+                                            "command_limit",
+                                            "cli_commands",
+                                            "native_commands",
+                                            "final_checks",
+                                        )
+                                    },
+                                ),
+                                current["source_edit_continuation"],
+                                private_roots=source_private_roots(self.store.configuration.directory),
+                            )
                         if coding_grant:
                             from firefly_forge.coding_check_runtime import ConfiguredCheckInvocation
                             from firefly_forge.coding_check_transport import CodingCheckServer

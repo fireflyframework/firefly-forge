@@ -230,11 +230,46 @@ class ChannelProducts:
                     visible.append(self._analysis_summary(report))
                 return {"project_id": command.project_id, "analyses": visible[:20], "shown": min(20, len(visible))}
             return self._analysis_summary(report)
+        return await self._assistant(repo, command, settings, receipt_id, context)
+
+    async def execute_functional(self, repo: Data, command: Any, settings: Data, receipt_id: str) -> Data:
+        authority = self.collaboration.poll_functional_authority
+        if authority is None:
+            raise ValueError("The functional polling authority is unavailable")
+        active = authority._active.get()
+        if (
+            active is None
+            or active[1]["delivery"]["id"] != receipt_id
+            or command != active[1]["command"]
+            or repo["id"] != active[1]["delivery"]["repository_id"]
+        ):
+            raise ValueError("A verified functional polling action is required")
+        from firefly_forge.project_access import ProjectAccess
+
+        verified = active[1]
+        await authority.authorize_snapshot(ProjectAccess.actor_snapshot(active[0]), command.project_id, "read")
+        context = dict(
+            receipt=verified["delivery"],
+            project=verified["project"],
+            graphs=[verified["project"]["definition"]],
+            target_id=repo["id"],
+            model_profile_id=verified["request"].model_profile_id,
+            assistant_agent=verified["model"]["provider"],
+        )
+        return await self._assistant(repo, command, settings, receipt_id, context)
+
+    async def _assistant(self, repo: Data, command: Any, settings: Data, receipt_id: str | None, context: Data) -> Data:
         manager = self.collaboration.product_assistant
         if command.operation == "start":
             conversation = await manager.create(
                 context["target_id"],
-                AssistantSessionInput(agent=settings["assistant_agent"], project_id=command.project_id),
+                AssistantSessionInput.model_validate(
+                    dict(
+                        agent=context.get("assistant_agent", settings["assistant_agent"]),
+                        project_id=command.project_id,
+                        model_profile_id=context.get("model_profile_id"),
+                    )
+                ),
             )
             return {
                 "conversation_id": conversation["id"],
@@ -288,9 +323,11 @@ class ChannelProducts:
             "questions": (turn.get("reply") or {}).get("questions", []),
             "detail": turn.get("detail"),
         }
+        if "model_profile_id" in context:
+            result["intent"] = (turn.get("reply") or {}).get("intent")
         if (turn.get("reply") or {}).get("proposal"):
             result["proposal_status"] = "unreviewed"
-            if settings.get("remote_artifacts"):
+            if settings.get("remote_artifacts") and "model_profile_id" not in context:
                 result["remote_reference"] = await self._proposal_reference(repo, command, context, turn, receipt_id)
             else:
                 result["proposal_access"] = (

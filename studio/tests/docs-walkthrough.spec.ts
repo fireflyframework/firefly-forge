@@ -3939,3 +3939,208 @@ for (const device of ["desktop", "mobile"])
       expect(state.saves).toBe(0);
     });
   }
+
+// The consent and recovery journey uses public API responses; no GitHub or AI request runs.
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey GitHub functional assistant ${device} ${theme}`, async ({
+      page,
+    }) => {
+      page.setDefaultTimeout(10000);
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const base = await setupScmDelegation(page);
+      const value = structuredClone(pollingConsent.binding);
+      value.project_binding_digest = scmProjectCut;
+      value.request.expected_project_binding_digest = scmProjectCut;
+      value.request_digest = scmDigest(value.request);
+      const { digest: _old, ...fields } = value;
+      void _old;
+      const binding = { ...fields, digest: scmDigest(fields) };
+      let retained: Record<string, unknown> | null = null;
+      const posts: Record<string, unknown>[] = [];
+      const reads: string[] = [];
+      await page.route("**/scm-polling/**", async (route) => {
+        const request = route.request(),
+          path = new URL(request.url()).pathname;
+        if (path.includes("/functional-grants")) {
+          if (request.method() === "POST") {
+            const body = request.postDataJSON() as Record<string, unknown>;
+            posts.push(body);
+            expect(body.max_model_turns).toBe(3);
+            expect(body.expected_binding_digest).toBe(binding.digest);
+            expect(body.expected_model_profile_revision).toBe(2);
+            expect(body.expected_functional_policy_digest).toBe("3".repeat(64));
+            expect(Object.keys(body)).not.toContain("run_id");
+            expect(Object.keys(body)).not.toContain("budget");
+            const unsigned = {
+              version: 1,
+              event_id: "a".repeat(32),
+              project_id: binding.project_id,
+              repository_id: binding.repository_id,
+              binding_key: binding.binding_key,
+              native_user_id: binding.request.native_user_id,
+              revision: 1,
+              previous_digest: body.expected_previous_digest,
+              prepared_at: "2026-10-22T12:00:00Z",
+              administering_user_id: base.actor,
+              admin_snapshot: {
+                user_id: base.actor,
+                authentication_method: "local_bootstrap",
+                global_admin: true,
+                api_audience: null,
+              },
+              request: body,
+              request_digest: scmDigest(body),
+            };
+            retained = { ...unsigned, digest: scmDigest(unsigned) };
+            // The server retained the write; the browser never receives its response.
+            return route.abort("failed");
+          }
+          if (path.endsWith("/review"))
+            return route.fulfill({
+              json: {
+                binding,
+                project_binding_digest: scmProjectCut,
+                model_profile_id: "functional",
+                model_profile_revision: 2,
+                model_profile_digest: "1".repeat(64),
+                routing_digest: "2".repeat(64),
+                functional_policy_digest: "3".repeat(64),
+                max_model_turns: 3,
+                max_duration_minutes: 60,
+              },
+            });
+          if (path.includes("/requests/")) reads.push(path.split("/").at(-1)!);
+          return route.fulfill({
+            status: retained ? 200 : 404,
+            json: retained ?? { detail: "No separate consent yet" },
+          });
+        }
+        if (path.includes("/bindings/requests/"))
+          return route.fulfill({ json: binding });
+        return route.fulfill({
+          json: {
+            project_id: binding.project_id,
+            repository_id: binding.repository_id,
+            heads_only: true,
+            items: [binding],
+            next_after: null,
+          },
+        });
+      });
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      async function account() {
+        await page
+          .getByRole("button", { name: "Read GitHub accounts", exact: true })
+          .click();
+        await page
+          .getByLabel("GitHub continuation account", { exact: true })
+          .selectOption(binding.request.request_id);
+      }
+      await account();
+      const panel = page.getByRole("region", {
+        name: "GitHub functional assistant consent",
+        exact: true,
+      });
+      await panel
+        .getByRole("button", { name: "Review functional scope", exact: true })
+        .click();
+      await expect(
+        panel.getByRole("heading", {
+          name: "Review functional consent",
+          exact: true,
+        }),
+      ).toBeVisible();
+      const actions =
+        '[aria-label="GitHub functional assistant consent"] .wizard-actions';
+      await expect(panel.locator(".wizard")).toHaveAttribute(
+        "data-layout",
+        "flow",
+      );
+      await expect(
+        panel.getByRole("button", { name: "Continue", exact: true }),
+      ).toHaveClass(/primary/);
+      await capture(page, "scm-functional-scope", theme, device, {
+        actionSelector: actions + ' button:has-text("Continue")',
+        focusSelector:
+          '[aria-label="GitHub functional assistant consent"] .wizard',
+      });
+      await panel
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      await panel
+        .getByRole("combobox", { name: "Model-capable turns", exact: true })
+        .selectOption("3");
+      await panel
+        .getByRole("combobox", { name: "Consent duration", exact: true })
+        .selectOption("30");
+      await capture(page, "scm-functional-allowance", theme, device, {
+        actionSelector: actions + ' button:has-text("Continue")',
+        focusSelector:
+          '[aria-label="GitHub functional assistant consent"] .wizard',
+      });
+      await panel
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
+      await panel
+        .getByRole("checkbox", {
+          name: /I authorize only these assistant actions/,
+        })
+        .check();
+      expect(posts).toHaveLength(0);
+      await capture(page, "scm-functional-confirm", theme, device, {
+        actionSelector: actions + ' button:has-text("Record separate consent")',
+        focusSelector:
+          '[aria-label="GitHub functional assistant consent"] .wizard',
+      });
+      await panel
+        .getByRole("button", { name: "Record separate consent", exact: true })
+        .click();
+      await expect(panel.getByRole("alert")).toContainText("unconfirmed");
+      expect(posts).toHaveLength(1);
+      expect(
+        await page.evaluate(
+          () =>
+            Object.keys(sessionStorage).filter((k) =>
+              k.startsWith("forge.scm-poll-functional.v1:"),
+            ).length,
+        ),
+      ).toBe(1);
+      await capture(page, "scm-functional-held", theme, device, {
+        actionSelector:
+          '[aria-label="GitHub functional assistant consent"] button:has-text("Read original functional result")',
+        focusSelector: '[aria-label="GitHub functional assistant consent"] h3',
+      });
+      await page.reload();
+      await navigate(page, "Project access");
+      await account();
+      await panel
+        .getByRole("button", {
+          name: "Read original functional result",
+          exact: true,
+        })
+        .click();
+      await expect(panel.getByRole("status")).toContainText(
+        "Exact functional consent confirmed",
+      );
+      expect(posts).toHaveLength(1);
+      expect(reads).toEqual([String(posts[0].request_id)]);
+      expect(base.posts).toHaveLength(0);
+      expect(
+        await page.evaluate(
+          () =>
+            Object.keys(sessionStorage).filter((k) =>
+              k.startsWith("forge.scm-poll-functional.v1:"),
+            ).length,
+        ),
+      ).toBe(0);
+      await capture(page, "scm-functional-confirmed", theme, device, {
+        actionSelector:
+          '[aria-label="GitHub functional assistant consent"] button:has-text("Review functional scope")',
+        focusSelector: '[aria-label="GitHub functional assistant consent"] h3',
+      });
+    });

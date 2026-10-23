@@ -641,3 +641,188 @@ A limit refuses the operation and preserves its cursor/evidence. Known sensitive
 Complete rescans can observe resources that remain present after pagination shifts. REST polling cannot recover a comment deleted before observation or every intermediate edit. Native DI/PostgreSQL tests using recorded App HTTP and controlled Studio vectors are separate from a live GitHub issue round trip.
 
 For your own installation, confirm the baseline, save the separate consent, and publish a new status comment followed by an answer to an actual pending question. Retain the configuration/consent request IDs, GitHub comment IDs, delivery receipt, answer's WAL reference and App reply URL privately. Check that status adds no run WAL, the answer appears once with V3 attribution, the original run remains paused, and feedback arrives from the App in the same issue. Recover any uncertain result through its original receipt rather than resending it. Source publication, repository bootstrap and full GitFlow remain separate workflows.
+
+## Functional dialogue through local GitHub polling
+
+Functional assistant consent is separate from existing status, answer, and
+same-run continuation permissions. An administrator reviews an existing native
+GitHub account mapping in **Local GitHub continuation → GitHub functional
+assistant** and records a new version-1 functional grant. Existing version-2
+actor mappings are never widened.
+
+### Review the account and allowance in Studio
+
+1. Open **Administration → Project access**, select the logical project and
+   origin repository, then choose **Read GitHub accounts** under **Local GitHub
+   continuation**. Select the account already mapped to the registered person.
+2. Under **GitHub functional assistant**, choose **Review functional scope**.
+   Check the issue, complete project graph and product model profile. Existing
+   status, answer and resume permissions remain separate.
+3. In **Allowance**, choose **Model-capable turns** and **Consent duration**.
+   Choose **None: start and status only** when no AI answer is authorized. A
+   model-capable allowance covers at most three turns and expires within an hour.
+4. In **Confirm**, review the issue, maximum turns and expiration. Acknowledge
+   the separate allowance, then choose **Record separate consent** once. Saving
+   permission does not send an AI request or start work.
+5. If the response is uncertain, keep the original request ID. Choose **Read
+   original functional result**; the same browser tab retains that exact request
+   across reload. Confirmation reads its immutable receipt rather than sending
+   the permission again. Do not replace an unresolved request.
+
+<figure class="forge-shot" markdown="1">
+![The functional consent Allowance step with three model-capable turns and a thirty-minute expiration.](assets/screenshots/scm-functional-allowance-desktop-light.png)
+<figcaption>Choose a separate conversation allowance after reviewing the account and project. This controlled Studio view shows the form; it does not establish a live GitHub conversation, model response or CRM acceptance.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![The mobile Confirm step shows the issue, turn limit, expiration and separate-consent acknowledgement.](assets/screenshots/scm-functional-confirm-mobile-light.png)
+<figcaption>Confirm the bounded conversation permission on a narrow screen. Proposals remain unreviewed, and the original run and its budget stay unchanged.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+![An uncertain consent response retains its original request ID and offers Read original functional result.](assets/screenshots/scm-functional-held-desktop-light.png)
+<figcaption>Recover the original consent result after a lost response. The walkthrough deliberately withholds the first response and confirms through an exact read; it sends only one consent request.</figcaption>
+</figure>
+
+The grant binds the exact issue, GitHub installation/repository/account, native
+user, frozen logical project graph, origin components, named product model
+profile revision/digest, task routing digest, and functional runtime/prompt
+policy digest. All member repositories must retain current actor permission.
+It expires within 60 minutes and may authorize at most three model-capable
+assistant turns. Starting or reading the conversation invokes no model. This is
+a separate assistant allowance; it never replenishes the original CRM run,
+command budget, coding-provider allowance, or journal. Missing consumption
+history refuses dispatch rather than replenishing the allowance.
+
+After consent, post a **new** issue comment using the existing typed assistant
+command. The project and conversation identifiers below are placeholders:
+
+```text
+/forge assistant {"operation":"start","project_id":"<project-id>"}
+/forge assistant {"operation":"status","project_id":"<project-id>","conversation_id":"<conversation-id>"}
+/forge assistant {"operation":"turn","project_id":"<project-id>","conversation_id":"<conversation-id>","request_id":"<32-lowercase-hex-id>","message":"Which roles own opportunity qualification?"}
+```
+
+Use the conversation ID returned by `start`. Natural follow-ups such as
+`@forge, ¿Y si una oportunidad cambia de responsable a mitad del proceso?`
+use that issue/account's single linked conversation. No English or Spanish
+intent keyword list selects an operation. The tool-free AI classifies the
+message and answers in the **same** typed response, using the frozen product
+context and recorded conversation history. Its only intents are `dialogue`,
+`status`, and `clarify`; only dialogue can include an unreviewed proposal.
+Recognized read-only status requests retain the existing status adapter. Without
+a separately recorded functional grant, other addressed messages retain the
+existing read-only clarification behavior. If several issue conversations match,
+use the explicit typed conversation ID rather than guessing.
+
+### Continue the product discussion in the issue
+
+Start the conversation once using the typed command above, then write a new
+addressed follow-up in the same issue. For example:
+
+> **Owner:** @forge, ¿Qué debería ocurrir si una oportunidad cambia de
+> responsable cuando ya hay una propuesta pendiente?
+
+The assistant uses the linked product context and conversation history to
+classify that message and answer in one tool-free AI turn. It can ask which
+roles may reassign an opportunity and propose a review rule. That proposal is
+an answer for the owner to review; it does not update the product or execute a
+run. This is an illustrative exchange, not a retained provider response.
+
+Use `status` to read the linked conversation without consuming a model turn.
+If several conversations exist in the issue, select the exact conversation ID
+with the typed command. An uncertain AI result consumes its already reserved
+turn and stays held; posting a duplicate is not a recovery mechanism.
+
+Every AI turn is reserved durably under the native repository lock before
+provider entry. A duplicate delivery cannot reserve another call. An unknown,
+interrupted, or unconfirmed result stays held and is not automatically retried
+or refunded. Source edits/deletion, changed connection, grant revocation or
+expiration, suspended administrator/user, membership changes, and model or
+runtime-policy drift fence dispatch and feedback. Commands observed before the
+current grant are not retroactively authorized. A functional proposal does not
+apply a product definition, approve work, launch or resume a run, push code,
+publish a pull request, or activate source-only coding.
+
+The administration API is rooted at
+`/api/v1/projects/{project_id}/repositories/{repository_id}/scm-polling/functional-grants`:
+
+| Method and suffix | Purpose |
+| --- | --- |
+| `GET /review?binding_request_id=…` | Read the current account/project/model cut without invoking a model. |
+| `POST` | Record or revoke one explicitly reviewed finite grant. |
+| `GET /requests/{request_id}` | Recover the exact original immutable receipt after an uncertain response. |
+| `GET /current/{binding_request_id}` | Read the current separately consented grant. |
+
+Review returns `native_user_readiness` for the exact mapped native user, with the
+required permission and current readiness for each assistant action. Status needs
+an enabled account and active project membership with `read`; start and turn need
+`edit`. A viewer or reviewer can receive status-only consent. A developer,
+maintainer, or owner can receive start/turn consent. The grant administrator's own
+role does not replace the mapped user's membership. Active consent is refused
+before writing a grant or allowance ledger when that membership is insufficient;
+review **Project access** and the mapped account. Readiness is a current check,
+not a new permission, and dispatch still rechecks revocation and membership.
+
+The typed SDK exposes `configure_scm_polling_functional_grant`,
+`scm_polling_functional_grant`, `current_scm_polling_functional_grant`, and
+`review_scm_polling_functional`. The corresponding CLI group is
+`forge project scm-polling-functional-grants`; MCP exposes the same four bounded
+operations. Retain the request identity before one POST. An uncertain write or
+missing receipt never authorizes a replacement request or a model call.
+
+### Remaining GitHub journey boundaries
+
+Internal campaign milestones and progress are not GitHub Projects. The current
+product has no GitHub ProjectsV2 board/card/status-field adapter or remote
+milestone synchronization. Those require a separate scoped adapter and operator
+permission; this feature requests no new GitHub privilege or authentication flow.
+Intermediate code pushes are also separate from verified final publication.
+
+The typed polling `resume` command remains ordinary same-run continuation. It
+does not activate source-only coding. Natural dialogue and functional consent
+also grant no coding authority.
+
+### Activate one existing source-only task from GitHub
+
+The separate `/forge source_edit` version 1 command can trigger one explicitly
+sealed native activation. A current factory administrator first reads
+`GET /api/v1/runs/{run_id}/source-edit-continuations/candidate`. An empty native
+capability registry or any changed source, provider, role or budget refuses this
+review; the GitHub route cannot bypass qualification.
+
+The administrator records a separate grant at
+`POST /api/v1/projects/{project_id}/repositories/{repository_id}/scm-polling/source-edit-grants`.
+Its strict version 1 input binds the current polling binding, exact issue and
+run, native source candidate digest, source capability profile digest and the
+complete `SourceEditContinuationInput` acknowledgements. Consent expires within
+60 minutes. The server retains the original native administrator snapshot; the
+mapped GitHub user must still have current native execution permission.
+
+After reviewing that immutable receipt, the same observed GitHub account can
+post this explicit command on the bound issue:
+
+```text
+/forge source_edit {"version":1,"run_id":"<original-run-id>","expected_grant_digest":"<reviewed-source-grant-digest>"}
+```
+
+The command reserves one durable trigger before native activation. The caller
+remains an SCM principal: it is never turned into a bootstrap or OIDC
+administrator. The existing native admission validates the sealed administrator,
+source, checkpoint, qualified profile and original final-check reserve again.
+The WAL retains both the administrator and exact SCM delivery/grant provenance.
+It queues the same existing implementation task, grants zero interactive
+commands, and never creates a run or replenishes a budget. Consent, authority
+and delivery custody are checked after admission waits and before the effect
+and queue commit. A newer operator reconciliation remains intact.
+
+`GET /requests/{request_id}` and `GET /current/{binding_request_id}` below the
+same grant API recover exact consent evidence without another write. The SDK
+methods are `configure_scm_source_edit_grant`, `scm_source_edit_grant` and
+`current_scm_source_edit_grant`. Preserve both the consent request ID and its
+sealed activation request ID. Unknown activation outcomes remain held; another
+comment cannot replay the reservation. Native administrators inspect the
+original source-edit continuation receipt to reconcile it. This route emits no
+automatic SCM comment; the existing read-only status journey can report the
+original run. Host fixtures and collected SQL cases are separate from actual
+GitHub/provider acceptance.

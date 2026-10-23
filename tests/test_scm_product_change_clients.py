@@ -229,7 +229,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 162
+    assert len(tools) == 166
     names = {
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
@@ -281,7 +281,7 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
     tools = await create_server().list_tools()
     previous = [tool for tool in tools if tool.name not in new]
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-product-change-baseline-v1.json").read_text())
-    assert len(previous) == 145 and len(tools) == 162
+    assert len(previous) == 145 and len(tools) == 166
     expected = json.loads(baseline["wire_json"])
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]

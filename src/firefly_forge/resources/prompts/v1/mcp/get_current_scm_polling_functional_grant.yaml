@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_current_scm_polling_functional_grant
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: |
+  Read current separate functional polling consent for an exact API-observed actor binding. This does not start a conversation, call a model or resume a run.
+required_variables: []
+metadata:
+  defaults: {}

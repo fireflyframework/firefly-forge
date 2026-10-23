@@ -122,13 +122,19 @@ class ToolInvocationBroker:
         observation: Callable[[], Data] | None = None,
         validate_receipt: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
         validate_result: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
+        validate_admission: Callable[[], Awaitable[Callable[[], None] | None]] | None = None,
     ) -> Data:
         if not re.fullmatch(r"[a-f0-9]{32}", correlation_id):
             raise ValueError("Tool correlation ID requires 32 lowercase hexadecimal characters")
         external = re.fullmatch(r"external_mcp:([a-z][a-z0-9-]{0,30}):([a-z][a-z0-9_]{0,80})", tool)
         knowledge_lookup = tool == "knowledge_lookup"
-        if tool != "internet_search" and not knowledge_lookup and external is None:
+        from firefly_forge.source_edit_models import READ_TOOLS, SourceReadRequest
+
+        source_read = tool in READ_TOOLS
+        if tool != "internet_search" and not knowledge_lookup and external is None and not source_read:
             raise ValueError("Select a registered broker tool")
+        if source_read and (validate_admission is None or validate_result is None or validate_receipt is None):
+            raise ValueError("Source readers require sealed admission and result authority")
         if any(
             not isinstance(source.get(key), str) or not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", source[key])
             for key in ("base_revision", "head", "source_tree")
@@ -149,7 +155,9 @@ class ToolInvocationBroker:
         ):
             raise ValueError("Tool refresh requires a stable explicit request identity")
         clean_arguments = {key: value for key, value in arguments.items() if key not in refresh}
-        if knowledge_lookup:
+        if source_read:
+            SourceReadRequest.model_validate({"tool": tool, "request_id": correlation_id, **clean_arguments})
+        elif knowledge_lookup:
             from firefly_forge.knowledge_first import KnowledgeQuery
 
             arguments = {**KnowledgeQuery.model_validate(clean_arguments).model_dump(), **refresh}
@@ -167,7 +175,9 @@ class ToolInvocationBroker:
                     "learning_snapshot": run.data.get("learning_snapshot"),
                 }
                 if knowledge_lookup
-                else run.data.get("mcp_snapshot" if external else "search_snapshot")
+                else run.data.get(
+                    "source_edit_continuation" if source_read else "mcp_snapshot" if external else "search_snapshot"
+                )
             )
             if configuration != expected_configuration:
                 raise ValueError("Tool configuration differs from the frozen run")
@@ -184,10 +194,14 @@ class ToolInvocationBroker:
                     raise ValueError("Knowledge lookup requires captured enabled knowledge access and learning policy")
             roles = roles_for_stage(run.data.get("role_snapshot") or {}, task_id)
             provider = "agentic" if run.data["agent"] == "api" else run.data["agent"]
-            if ("external_mcp" if external else tool) not in (
-                stage_allowed_tools(run.data["role_snapshot"], task_id, provider) or set()
-            ):
+            granted = (
+                {name for role in roles for name in role["allowed_tools"]}
+                if source_read
+                else stage_allowed_tools(run.data["role_snapshot"], task_id, provider) or set()
+            )
+            if ("external_mcp" if external else tool) not in granted:
                 raise ValueError("The frozen execution role does not grant this tool")
+            admission_guard = await validate_admission() if validate_admission else None
             if external:
                 if (
                     self.external_mcp is None
@@ -261,6 +275,12 @@ class ToolInvocationBroker:
                 ):
                     raise ValueError("The frozen learning lookup budget is exhausted")
             limits = policy["settings"]
+            if source_read:
+                limits = {
+                    **limits,
+                    "calls_limit": min(30, limits["calls_limit"]),
+                    "per_tool_limit": min(10, limits["per_tool_limit"]),
+                }
             if len(rows) >= limits["calls_limit"] or sum(row.tool == tool for row in rows) >= limits["per_tool_limit"]:
                 raise ValueError("The frozen run tool-call budget is exhausted")
             if any(row.status in {"pending", "unknown"} for row in rows):
@@ -271,6 +291,8 @@ class ToolInvocationBroker:
             if task.status != "running" or run.data.get("active_task") != task_id:
                 raise ValueError("A tool invocation requires its active execution stage")
             database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
+            if admission_guard is not None:
+                admission_guard()
             await self.records.save(
                 ForgeToolInvocationEntity(
                     id=uuid.uuid4(),
@@ -288,6 +310,8 @@ class ToolInvocationBroker:
                 )
             )
             await self.journal._append(run_id, task_id, correlation_id, "tool_intent", request)
+            if admission_guard is not None:
+                admission_guard()
 
         def evidence(payload: Data) -> Data:
             if observation is None:

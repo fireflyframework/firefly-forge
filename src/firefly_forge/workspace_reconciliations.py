@@ -15,6 +15,7 @@ from firefly_forge.policies import policy_commands
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.provider_recoveries import ProviderRecoveries
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
+from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
 from firefly_forge.store import identifier
 from firefly_forge.verification_models import check_verification_cut
 from firefly_forge.workspace_reconciliation import _git, apply_dependency_plan, dependency_plan
@@ -39,7 +40,9 @@ class WorkspaceReconciliations:
     def _original(run: Data) -> Data:
         return {k: copy.deepcopy(v) for k, v in run.items() if k != "events"}
 
-    async def _candidate(self, run: Data, actor: Data, *, reserved: str | None = None) -> Data:
+    async def _candidate(
+        self, run: Data, actor: Data, *, reserved: str | None = None, source_edit: bool = False
+    ) -> Data:
         r = self.recoveries
         await r.store.assert_ownership()
         await r._settled(run, idle=True)
@@ -72,7 +75,13 @@ class WorkspaceReconciliations:
         runner = validate_sandbox_snapshot(run["sandbox_snapshot"])
         from firefly_forge.cli_command_budget import assert_environment_command_budget
 
-        await assert_environment_command_budget(r.store, r.journal, run, entries)
+        source_scope = None
+        if source_edit:
+            from firefly_forge.source_edit_continuations import source_edit_scope
+
+            source_scope = await source_edit_scope(r, run)
+        else:
+            await assert_environment_command_budget(r.store, r.journal, run, entries)
         commands = run.get("commands", [])
         final = len(commands) + len(policy_commands(run.get("policy_snapshot", {}), run["backend"]))
         budget = queued_environment_scope(
@@ -81,9 +90,11 @@ class WorkspaceReconciliations:
             entries,
             verification_allowance=await r.journal.verification_continuation_allowance(run["id"]),
             human_allowance=await r.journal.human_clarification_continuation_allowance(run["id"]),
-            remaining=runner.command_limit - len(executions),
+            remaining=source_scope["remaining_commands"] if source_scope else runner.command_limit - len(executions),
             final_checks=final,
         )
+        if source_edit:
+            check_verification_cut(r.store, run, verified)
         cut = r._cut(run)
         workspace = r.engine.workspaces / run["id"]
         plan = dependency_plan(
@@ -105,9 +116,31 @@ class WorkspaceReconciliations:
             "cut": cut,
             "plan": plan,
             "budget": budget,
+            **({"source_edit": source_scope} if source_scope else {}),
         }
         r.store.reject_credentials(value)
         return {**value, "digest": digest(value)}
+
+    async def source_candidate(self, run_id: str) -> Data:
+        identifier(run_id)
+        r = self.recoveries
+        actor = await r._operator(run_id)
+        async with r._locked(run_id, self._actor(actor)) as row:
+            value = await self._candidate(row.data, self._actor(actor), source_edit=True)
+        await r._operator(run_id)
+        return value
+
+    async def activate_source_edit(self, run_id: str, body: Any) -> Data:
+        from firefly_forge.source_edit_models import SourceEditContinuationInput
+
+        body = SourceEditContinuationInput.model_validate(body.model_dump())
+        return await self._admit(run_id, body, source_edit=True)
+
+    async def activate_source_edit_from_scm(self, admission: SealedSourceEditAdmission) -> Data:
+        from firefly_forge.source_edit_models import SourceEditContinuationInput
+
+        body = SourceEditContinuationInput.model_validate(admission.request.model_dump())
+        return await self._admit(admission.run_id, body, source_edit=True, scm_admission=admission)
 
     async def candidate(self, run_id: str) -> Data:
         identifier(run_id)
@@ -157,21 +190,57 @@ class WorkspaceReconciliations:
             return found
 
     async def admit(self, run_id: str, body: WorkspaceReconciliationInput) -> Data:
+        body = WorkspaceReconciliationInput.model_validate(body.model_dump())
+        return await self._admit(run_id, body)
+
+    async def _admit(
+        self,
+        run_id: str,
+        body: Any,
+        *,
+        source_edit: bool = False,
+        scm_admission: SealedSourceEditAdmission | None = None,
+    ) -> Data:
         r = self.recoveries
-        actor = await r._operator(run_id)
-        snapshot, request = self._actor(actor), body.model_dump()
+
+        async def operator() -> Any:
+            if scm_admission is None:
+                return await r._operator(run_id)
+            from firefly_forge.source_edit_continuations import _assert_source_administrator
+
+            if (
+                not source_edit
+                or scm_admission.run_id != run_id
+                or scm_admission.request.model_dump() != body.model_dump()
+                or CURRENT_PRINCIPAL.get() != scm_admission.caller
+                or scm_admission.caller.authentication_method != "scm_mapping"
+            ):
+                raise AccessDenied("The exact verified SCM source activation is required")
+            await scm_admission.verify()
+            await _assert_source_administrator(r.store, scm_admission.native_actor)
+            await ProjectAccess(r.store).authorize_execution(await r.store.get_run(run_id))
+            if CURRENT_PRINCIPAL.get() != scm_admission.caller:
+                raise AccessDenied("The source activation caller changed")
+            return scm_admission.caller
+
+        actor = await operator()
+        snapshot = copy.deepcopy(scm_admission.native_actor) if scm_admission else self._actor(actor)
+        request = body.model_dump()
         # The native admission wait precedes the locked current-authority recheck.
         await r.store.admit_credentials(request)
-        await r._operator(run_id)
+        await operator()
         async with r._locked(run_id, snapshot) as row:
+            await operator()
             prior = self._existing(await r._entries(run_id), body.request_id)
             if prior is not None:
                 if prior["request"] != request or prior["actor"] != snapshot:
                     raise ValueError("The reconciliation identity already binds another request or operator")
+                if scm_admission is not None and prior.get("scm_source_activation") != scm_admission.evidence:
+                    raise AccessDenied("The prior native activation does not bind this exact SCM trigger provenance")
                 if prior.get("status") == "needs_reconciliation":
                     raise ValueError("The original environment outcome is unknown and requires reconciliation")
                 return prior
-            candidate = await self._candidate(row.data, snapshot)
+            candidate = await self._candidate(row.data, snapshot, source_edit=source_edit)
             if candidate["digest"] != body.candidate_digest:
                 raise ValueError("The reviewed environment candidate changed")
             payload = {
@@ -180,7 +249,12 @@ class WorkspaceReconciliations:
                 "actor": snapshot,
                 "candidate": candidate,
                 "previous_task": candidate["previous_task"],
+                **({"scm_source_activation": copy.deepcopy(scm_admission.evidence)} if scm_admission else {}),
             }
+            if source_edit:
+                from firefly_forge.source_edit_continuations import clock_ms
+
+                payload["expires_at_ms"] = clock_ms() + int(candidate["source_edit"]["provider_timeout"] * 1000)
             r.store.reject_credentials(payload)
             intent = await r.journal._append(
                 run_id, "implement", body.request_id, "workspace_reconciliation_intent", payload
@@ -189,10 +263,12 @@ class WorkspaceReconciliations:
 
         # The committed intent survives every filesystem, admission, cancellation or SQL failure below.
         async with r._locked(run_id, snapshot) as row:
-            fresh = await self._candidate(row.data, snapshot, reserved=body.request_id)
+            await operator()
+            fresh = await self._candidate(row.data, snapshot, reserved=body.request_id, source_edit=source_edit)
             if fresh != candidate or CURRENT_PRINCIPAL.get() != actor:
                 raise ValueError("The durable environment intent lost its reviewed cut")
             await r.store.assert_ownership()
+            await operator()
             workspace = r.engine.workspaces / run_id
             effect = apply_dependency_plan(workspace, candidate["plan"])
             current = {**row.data, "git_metadata_digest": effect["metadata_after"]}
@@ -216,8 +292,9 @@ class WorkspaceReconciliations:
         if redact_secrets(redact(patch), settings) != patch:
             raise ValueError("Reconciled source still contains a configured credential; delivery remains held")
         await r.store.admit_credentials(patch)
-        await r._operator(run_id)
+        await operator()
         async with r._locked(run_id, snapshot) as row:
+            await operator()
             if digest(self._original(row.data)) != candidate["previous_run_digest"]:
                 raise ValueError("The failed native run changed after the environment effect")
             await r._settled(row.data, idle=True)
@@ -228,9 +305,24 @@ class WorkspaceReconciliations:
             await r.store.assert_ownership()
             from firefly_forge.cli_command_budget import assert_environment_command_budget
 
-            await assert_environment_command_budget(r.store, r.journal, row.data, await r._entries(run_id))
+            if source_edit:
+                from firefly_forge.source_edit_continuations import clock_ms, source_edit_scope
+
+                if (
+                    await source_edit_scope(r, row.data) != candidate["source_edit"]
+                    or payload["expires_at_ms"] <= clock_ms()
+                ):
+                    raise ValueError("The source-only capability or original deadline changed")
+                await r.store.assert_ownership()
+                if r._cut({**row.data, "git_metadata_digest": effect["metadata_after"]}) != after:
+                    raise ValueError("The reconciled source or authority changed during native policy qualification")
+            else:
+                await assert_environment_command_budget(r.store, r.journal, row.data, await r._entries(run_id))
+            await operator()
             receipt = {**payload, "intent_digest": intent["digest"], "effect": effect, "completed_cut": after}
             r.store.reject_credentials(receipt)
             await r.journal._append(run_id, "implement", body.request_id, "workspace_reconciliation_receipt", receipt)
-            await r.journal.queue_environment_reconciled(run_id, body.request_id)
+            await r.journal.queue_environment_reconciled(
+                run_id, body.request_id, **({"scm_source_admission": scm_admission} if scm_admission else {})
+            )
             return copy.deepcopy(receipt)

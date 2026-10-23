@@ -529,3 +529,66 @@ The sandbox command limit counts native governed runner executions. Shell calls 
 After uncertain delivery, read `GET /api/v1/runs/{run_id}/workspace-reconciliations/{request_id}`. A pending intent returns `needs_reconciliation` and cannot execute again, including under another request ID. Do not reset Git metadata or resubmit an unknown effect. Database commits and filesystem changes are not one atomic transaction, and this protocol requires an exclusively owned retained workspace.
 
 The Python client exposes `workspace_reconciliation_candidate`, `reconcile_workspace` and `workspace_reconciliation`; the CLI equivalents are `forge workspace-reconciliations candidate`, `admit` and `get`. Normal execution after admission still checks current permissions, scans source, runs the configured checks and records its own result. An environment receipt is not product acceptance or publication.
+
+
+### Explicit source-only continuation
+
+A current native administrator can review `GET /api/v1/runs/{run_id}/source-edit-continuations/candidate` for the same supported environment refusal and queued implementation task. Activation requires version 1, the original request identity and candidate digest, and all four explicit acknowledgements: environment-only change, the existing task, existing read scope and no commands. POST that strict document to `/source-edit-continuations`; read the identical request at `/{request_id}` after any uncertain response. The SDK provides `source_edit_candidate`, `activate_source_edit` and `source_edit_continuation`; the CLI group is `forge source-edit-continuations candidate|activate|get`.
+
+The activation explicitly enables only `list_files`, `read_file` and `search_text` already present in frozen implementation roles. It does not infer external MCP authority from those roles, edit the original MCP snapshot, grant an operator API, or enable arbitrary execution. The original broker retains its durable request/source identities, unknown holds and shared tool-call limits, capped at 30 calls and 10 per reader. Reads exclude private paths, symlinks and hardlinks, admit credentials before returning content, and require an unchanged current source cut. Known readback consumes no new call; reusing an identity after a source change is refused.
+
+This mode requires a package-owned, versioned native capability profile before any metadata process or durable activation intent. The profile binds executable bytes, platform, model/provider, the canonical model-catalog asset SHA256 and loader helper, policy flags, loader source hashes, runtime versions, the exact native tool schemas, and complete positive and negative native probe evidence. Unknown builds, missing proof, capability drift, or profile withdrawal hold admission. Provider settings and API requests cannot supply a profile or a `closed: true` assertion. The production registry is currently empty, including for the retained Codex 0.163 build; source-only activation remains unavailable until actual native qualification passes. Normal Codex and Claude execution paths are unchanged.
+
+A registered profile is sealed into the reviewed candidate and revalidated at activation, source reads, dispatch and final verification. Its native qualification must exercise the actual tool catalog, patch operations and filesystem boundaries in one bounded run, with no real model calls. Private and outside-source sentinel reads and writes, including case aliases, must be denied. Minimal operating-system runtime reads remain available; this does not establish blanket denial of all reads outside the workspace. A successful catalog listing alone cannot qualify the profile.
+
+The source-only policy sets `agents.enabled=false` and exposes the three governed MCP readers directly, excluding deferred and Code Mode exposure. Both metadata and execution force the same package-owned model catalog. Its explicitly derived client presentation changes only the pinned upstream entry's `tool_mode` from `code_mode_only` to `direct`; the original instructions, other model metadata, model and provider remain unchanged. Upstream provenance, the exact one-field difference and license notices accompany the asset. Mandatory managed controls retain precedence. Actual native catalog and denied-invocation evidence are still required before registration.
+
+Source-only execution uses a named native permissions profile bound to the current workspace and trusted private directories. It grants workspace source edits, denies private filenames and their descendants, and disables network access. It grants no general home-directory, root-filesystem or temporary-directory access. The metadata check and eventual provider launch use the same canonical policy, whose digest is retained in the reviewed receipt. This replaces the legacy `workspace-write` sandbox selection only for this explicitly admitted recovery mode.
+
+Filesystem policy version 2 also inspects current workspace names before configuration or launch. The bounded scan adds literal deny paths for existing private objects, without reading file contents or following dependency symlinks. It does not descend private directories. Hardlinks, special files, unstable entries or exceeded scan limits hold admission. A changed set of private names changes the permissions digest and invalidates earlier metadata; actual lowercase environment examples remain available.
+
+The fixed no-model metadata operation initializes the native app server, waits for initialization, then reads effective configuration and managed requirements before closing stdin. Its version-5 proof retains only configuration, profile and permissions fingerprints. The pinned native agents representation must contain exactly `enabled: false` and its six unused options as null, with no role declarations or extra fields. Missing responses, unexpected capabilities, enabled autoloading, telemetry or incompatible mandatory requirements hold admission. The native API does not expose every utility switch; the qualified catalog and invocation checks establish their absence. Raw configuration, native error bodies and managed requirement values never enter activity logs or the retained proof.
+
+Governed file tools check both the requested relative name and the actual opened file or directory before reading contents, truncating a file or creating descendants. This prevents a case-insensitive filesystem from treating an allowed spelling such as `.env.example` as an alias for the private `.env.EXAMPLE`. Real lowercase `.example`, `.sample` and `.template` suffixes remain available. Unsupported descriptor-path verification fails closed.
+
+These controls assume a trusted developer machine and an exclusively owned workspace. They do not isolate hostile processes sharing the service account. Production multi-tenant runners require separate operating-system identities or containers. Native qualification and metadata checks also do not establish that the real project's implementation and final tests have passed.
+
+The reviewed scope also names four bounded native utilities: `clock.curr_time` reports UTC time, and `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource` can address only the singleton source server. That server registers no resources or templates: listings are empty, reads return not found, and resource URIs never open files or network locations. These utilities grant no additional source access. Image viewing, plan updates, user-input callbacks, deferred execution, context reset and sleeping remain disabled. Unknown native tools, namespaces or changed schemas hold qualification.
+
+The combined command budget does not reset. For example, a limit of 35 with 21 observed CLI calls and 7 native checks leaves 7 independent final checks and zero interactive commands. Each final native effect rechecks that combined count. Activation preserves the same provider, model, attempt, history and final verification plan; it cannot authorize another verification handoff, another failed-provider allowance, publication or a new run.
+
+
+#### Reader argument checks
+
+The pinned Codex 0.163 client keeps property types and required fields when it presents MCP tools to the model, but omits pattern, string-length and numeric-limit keywords. The factory validates the original arguments before the reader callback runs. A simplified advertised schema does not grant broader access.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Source reader argument validation diagram" aria-describedby="source-reader-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart LR
+    C["Native client"] --> V["Strict MCP boundary"]
+    V -->|"Valid arguments"| B["Durable tool broker"]
+    B --> R["Confined source reader"]
+    V -->|"Invalid arguments"| X["Refused before callback"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="source-reader-flow-guide">Follow validation from left to right. Invalid arguments stop before the reader callback. Scroll horizontally on small screens; keyboard users can focus the diagram and use the arrow keys.</p>
+
+Every reader requires a unique `request_id` containing exactly 32 lowercase hexadecimal characters (`0–9`, `a–f`). Unknown fields and type coercion are refused.
+
+| Reader&nbsp;identifier | Arguments and bounds |
+| --- | --- |
+| `list_files` | Only `request_id` is accepted. |
+| `read_file` | Required `path` string: relative path, 1–1,000 characters. |
+| `search_text` | Required `text` string: literal text, 1–500 characters. Optional `path` string: relative path prefix, 0–1,000 characters. Optional `max_results`: integer, 1–100, default 50. Booleans and numeric strings are refused. |
+
+The version-1.0.1 reader descriptions state these constraints in the packaged prompt catalog. The selected resource bytes, catalog manifest and prompt renderer are part of the native loader fingerprint, so changing them invalidates the qualified profile.
+
+The version-4 registry requires a separate `source_reader_bounds_enforced` result. Earlier sixteen-outcome proofs cannot activate this mode. Qualification must send malformed arguments through the actual native client and distinguish a client-side rejection of a non-object argument envelope from a server-side refusal. It also checks valid transport boundaries. Those positive transport cases do not prove that an arbitrary path exists or is readable; real source reads and filesystem denials have separate checks. Host-only validation and an advertised tool listing cannot replace this native evidence.

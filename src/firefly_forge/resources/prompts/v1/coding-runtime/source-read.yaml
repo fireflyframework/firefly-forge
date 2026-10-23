@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "coding-runtime/source-read",
+  "version": "1.0.0",
+  "description": "Explicit confined source-only coding capability.",
+  "system_template": "",
+  "user_template": "Read one bounded UTF-8 regular source file within the granted component using a relative path and request_id. Private names, symlinks and hardlinks are unavailable. Current actor, native lease and source cut are rechecked; unknown receipts hold further calls.",
+  "required_variables": [],
+  "metadata": {
+    "defaults": {}
+  }
+}

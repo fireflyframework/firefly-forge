@@ -307,6 +307,8 @@ def poll_case(tmp_path, monkeypatch):
             "firefly_forge.identity_persistence",
             "firefly_forge.access_persistence",
             "firefly_forge.scm_conversations",
+            "firefly_forge.scm_poll_functional",
+            "firefly_forge.scm_source_edit",
             module.__name__,
         ]
         # Cold consumers must capture native aliases before any dependency is replaced.

@@ -34,10 +34,13 @@ if TYPE_CHECKING:
     from firefly_forge.runner_continuations import RunnerContinuationInput
     from firefly_forge.sandbox_models import SandboxInput
     from firefly_forge.scm_authority_models import SCMActorBindingInputV1
+    from firefly_forge.scm_poll_functional_models import SCMPollFunctionalGrantInputV1
     from firefly_forge.scm_poll_resume_models import SCMPollResumeGrantInputV3
     from firefly_forge.scm_product_change_models import SCMProductChangeGrantInputV1
     from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
+    from firefly_forge.scm_source_edit_models import SCMSourceEditGrantInputV1
+    from firefly_forge.source_edit_models import SourceEditContinuationInput
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
     from firefly_forge.user_administration import (
@@ -131,6 +134,26 @@ class ForgeClient:
         return dict(
             self.request("GET", f"runs/{self._recovery_identifier(run_id)}/workspace-reconciliations/candidate")
         )
+
+    def source_edit_candidate(self, run_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("GET", f"runs/{self._recovery_identifier(run_id)}/source-edit-continuations/candidate")
+        )
+
+    def activate_source_edit(
+        self, run_id: str, request: SourceEditContinuationInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; unknown transport outcomes require the same request's readback."""
+        from firefly_forge.source_edit_models import SourceEditContinuationInput
+
+        body = self._recovery_body(SourceEditContinuationInput, request)
+        return dict(
+            self.request("POST", f"runs/{self._recovery_identifier(run_id)}/source-edit-continuations", json=body)
+        )
+
+    def source_edit_continuation(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/source-edit-continuations/{request_id}"))
 
     def reconcile_workspace(
         self, run_id: str, request: WorkspaceReconciliationInput | dict[str, Any]
@@ -581,6 +604,35 @@ class ForgeClient:
             )
         )
 
+    def _scm_source_edit_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-polling/source-edit-grants"
+
+    def configure_scm_source_edit_grant(
+        self, project_id: str, repository_id: str, request: SCMSourceEditGrantInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Seal one exact native source activation; uncertainty permits original-result reads only."""
+        from firefly_forge.scm_source_edit_models import SCMSourceEditGrantInputV1
+
+        path = self._scm_source_edit_path(project_id, repository_id)
+        try:
+            value = request.model_dump(warnings=False) if isinstance(request, SCMSourceEditGrantInputV1) else request
+            body = SCMSourceEditGrantInputV1.model_validate(value)
+        except ValueError:
+            raise ValueError("Use an exact bounded source-only consent and original request identity") from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_source_edit_grant(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        path = self._scm_source_edit_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def current_scm_source_edit_grant(
+        self, project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        path = self._scm_source_edit_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
     def _scm_resume_grant_path(self, project_id: str, repository_id: str) -> str:
         project = self._scm_actor_identifier(project_id)
         repository = self._scm_actor_identifier(repository_id)
@@ -657,6 +709,56 @@ class ForgeClient:
                 params={
                     "binding_request_id": self._scm_actor_identifier(binding_request_id),
                     "run_id": self._scm_actor_identifier(run_id),
+                },
+            )
+        )
+
+    def _scm_poll_functional_grant_path(self, project_id: str, repository_id: str) -> str:
+        project = self._scm_actor_identifier(project_id)
+        repository = self._scm_actor_identifier(repository_id)
+        return f"projects/{project}/repositories/{repository}/scm-polling/functional-grants"
+
+    def configure_scm_polling_functional_grant(
+        self, project_id: str, repository_id: str, request: SCMPollFunctionalGrantInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit one finite assistant consent; retain its identity after an uncertain result."""
+        from firefly_forge.scm_poll_functional_models import SCMPollFunctionalGrantInputV1
+
+        path = self._scm_poll_functional_grant_path(project_id, repository_id)
+        try:
+            value = (
+                request.model_dump(warnings=False) if isinstance(request, SCMPollFunctionalGrantInputV1) else request
+            )
+            body = SCMPollFunctionalGrantInputV1.model_validate(value)
+        except ValueError:
+            raise ValueError(
+                "Use a bounded V1 functional assistant consent with exact reviewed scope and request identities"
+            ) from None
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def scm_polling_functional_grant(self, project_id: str, repository_id: str, request_id: str) -> dict[str, Any]:
+        """Read the exact retained consent; missing evidence never authorizes another write."""
+        path = self._scm_poll_functional_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/requests/" + self._scm_actor_identifier(request_id)))
+
+    def current_scm_polling_functional_grant(
+        self, project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        """Read the current consent for an exact API-observed polling binding without dispatching a run action."""
+        path = self._scm_poll_functional_grant_path(project_id, repository_id)
+        return dict(self.request("GET", path + "/current/" + self._scm_actor_identifier(binding_request_id)))
+
+    def review_scm_polling_functional(
+        self, project_id: str, repository_id: str, binding_request_id: str
+    ) -> dict[str, Any]:
+        """Read the current same-run clarification cut; do not dispatch a command."""
+        path = self._scm_poll_functional_grant_path(project_id, repository_id)
+        return dict(
+            self.request(
+                "GET",
+                path + "/review",
+                params={
+                    "binding_request_id": self._scm_actor_identifier(binding_request_id),
                 },
             )
         )

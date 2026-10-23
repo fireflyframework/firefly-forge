@@ -853,11 +853,17 @@ class SandboxExecutor:
         if not directory.is_relative_to(workspace) or not workspace.is_dir() or not directory.is_dir():
             raise ValueError("Runner working directory must be confined to the component workspace")
 
+        execution_identity: str | None = None
+
         async def admit() -> dict[str, Any]:
             current = await self._admit_execution(run_id)
             if _invocation_guard is not None:
                 await _invocation_guard()
                 current = await self._admit_execution(run_id)
+            if current.get("source_edit_continuation") and execution_identity is not None:
+                from firefly_forge.source_edit_continuations import assert_source_final_budget
+
+                await assert_source_final_budget(self.store, self.journal, current, task_id, execution_identity)
             return current
 
         async with self._run_locks[run_id], self._capacity:
@@ -898,8 +904,13 @@ class SandboxExecutor:
             if type(ordinal) is not int or not 1 <= ordinal <= config.command_limit:
                 raise ValueError("Frozen command budget is exhausted")
             execution_id = uuid.uuid5(uuid.NAMESPACE_URL, f"forge:sandbox:{run_id}:{task_id}:{attempt}:{ordinal}").hex
+            execution_identity = execution_id
             records = await self.journal.sandbox_executions(run_id)
             existing = next((record for record in records if record["execution_id"] == execution_id), None)
+            if run.get("source_edit_continuation"):
+                from firefly_forge.source_edit_continuations import assert_source_final_budget
+
+                await assert_source_final_budget(self.store, self.journal, run, task_id, execution_id)
             if existing is None and len(records) >= config.command_limit:
                 raise ValueError("Frozen total command budget is exhausted; resume and handoff do not reset it")
             if _browser and existing is None:

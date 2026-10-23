@@ -443,6 +443,8 @@ class ProductAssistant:
             ):
                 await self._authorize_session(row.data)
                 return self._turn_data(turn, current_time)
+            if changes.get("status") == "completed":
+                await self._authorize_session(row.data, "edit")
             turn.data = {**turn.data, **changes, "updated_at": now()}
             if turn.data["status"] == "completed":
                 turn.data["provenance"] = receipt_provenance(turn.data, row.data)
@@ -689,10 +691,21 @@ class ProductAssistant:
             if not await self._renew_claim(data["id"], 1):
                 raise AssistantClaimLost("Dialogue ownership expired; explicitly recover its retained receipt")
             await self.store.admit_credentials(prompt)
+            await self._authorize_session(session, "edit")
+            functional = getattr(self.store, "scm_poll_functional", None)
+            settings.pop("ASSISTANT_OUTPUT_CONTRACT", None)
+            if actor is not None and (actor.scm_delegation or {}).get("transport") == "github_rest_poll_functional_v1":
+                if functional is None:
+                    raise AccessDenied("The functional dialogue authority is unavailable")
+                settings["ASSISTANT_OUTPUT_CONTRACT"] = functional.model_contract()
             if images:
                 reply = await self.designer(prompt, settings, images=images, image_input_receipt=image_receipt)
             else:
                 reply = await self.designer(prompt, settings)
+            if settings.get("ASSISTANT_OUTPUT_CONTRACT") == "functional_intent_v1":
+                from firefly_forge.product_assistant_runtime import FunctionalAssistantReply
+
+                reply = FunctionalAssistantReply.model_validate(reply.model_dump(mode="json"))
             if reply.proposal and reply.proposal.ai_origin is not None:
                 raise ValueError("AI proposals cannot assign provenance; use the server conversation receipt")
             if reply.proposal and (

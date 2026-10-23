@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -88,12 +88,129 @@ class CommunicationPublicationV1(StrictContract):
     checkpoint_revision: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
 
 
+class CommunicationAssistantTurnV1(StrictContract):
+    turn_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    status: Literal["processing", "completed", "failed", "needs_attention", "needs_reconciliation"]
+
+
+class CommunicationAssistantRetainedReplyV1(StrictContract):
+    basis: Literal["retained_completed_turn"] = "retained_completed_turn"
+    turn_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    reply: str = Field(min_length=1, max_length=12000)
+    questions: list[Annotated[str, Field(min_length=1, max_length=12000)]] = Field(default_factory=list, max_length=10)
+
+
+class CommunicationAssistantV1(StrictContract):
+    version: Literal[1] = 1
+    operation: Literal["start", "status", "turn"]
+    status: Literal["conversation_created", "read", "completed"]
+    conversation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    turn_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    model_invoked: bool | None = None
+    reply: str | None = Field(default=None, min_length=1, max_length=12000)
+    questions: list[Annotated[str, Field(min_length=1, max_length=12000)]] = Field(default_factory=list, max_length=10)
+    proposal_status: Literal["unreviewed"] | None = None
+    conversation_count: int | None = Field(default=None, ge=0, le=20)
+    turn_count: int | None = Field(default=None, ge=0, le=5)
+    turns: list[CommunicationAssistantTurnV1] = Field(default_factory=list, max_length=5)
+    retained_reply: CommunicationAssistantRetainedReplyV1 | None = None
+
+    @model_validator(mode="after")
+    def confirmed_operation(self) -> CommunicationAssistantV1:
+        if self.operation == "start":
+            valid = bool(self.status == "conversation_created" and self.conversation_id and self.model_invoked is False)
+        elif self.operation == "turn":
+            valid = bool(self.status == "completed" and self.conversation_id and self.turn_id and self.reply)
+        else:
+            valid = self.status == "read" and (
+                (self.conversation_id is not None and self.turn_count is not None)
+                or self.conversation_count is not None
+            )
+        if not valid or (
+            self.operation != "turn" and (self.turn_id or self.reply or self.questions or self.proposal_status)
+        ):
+            raise ValueError("Assistant communication requires its confirmed operation outcome")
+        if self.operation != "start" and self.model_invoked is not None:
+            raise ValueError("Only a confirmed model-free start records model invocation facts")
+        if self.operation != "status" and (self.conversation_count is not None or self.turn_count is not None):
+            raise ValueError("Only assistant status communication can summarize retained conversations")
+        if self.operation != "status" and (self.turns or self.retained_reply):
+            raise ValueError("Only a status read can quote a retained completed turn")
+        if self.operation == "status":
+            if self.conversation_id is not None and self.turn_count != len(self.turns):
+                raise ValueError("Assistant status must retain every bounded turn state")
+            if len({turn.turn_id for turn in self.turns}) != len(self.turns):
+                raise ValueError("Assistant status contains duplicate retained turn identities")
+            completed = next((turn for turn in reversed(self.turns) if turn.status == "completed"), None)
+            if (completed is None) != (self.retained_reply is None) or (
+                completed and self.retained_reply and completed.turn_id != self.retained_reply.turn_id
+            ):
+                raise ValueError("Retained assistant output must belong to the last completed turn")
+        return self
+
+
+def assistant_communication(data: Data) -> CommunicationAssistantV1 | None:
+    command = data.get("command") or {}
+    if command.get("action") != "assistant":
+        return None
+    if data.get("status") != "processed" or data.get("action_status") != "completed":
+        raise ValueError("Only a confirmed assistant action can supply communication facts")
+    result = data["action_result"]
+    operation = command.get("operation")
+    values: Data = {"operation": operation, "conversation_id": result.get("conversation_id")}
+    if operation == "start":
+        values.update(status=result.get("status"), model_invoked=result.get("model_invoked"))
+    elif operation == "turn":
+        if result.get("proposal_reviewed") is not False:
+            raise ValueError("Assistant feedback cannot claim product approval")
+        values.update(
+            status=result.get("status"),
+            turn_id=result.get("turn_id"),
+            reply=result.get("reply"),
+            questions=result.get("questions", []),
+            proposal_status=result.get("proposal_status"),
+        )
+    else:
+        values.update(status="read")
+        if "conversation_id" in result:
+            if not isinstance(result.get("turns"), list):
+                raise ValueError("Assistant status requires its retained turn list")
+            if not all(isinstance(turn, dict) for turn in result["turns"]):
+                raise ValueError("Assistant status requires typed retained turn states")
+            values["turn_count"] = len(result["turns"])
+            values["turns"] = [
+                {"turn_id": turn.get("turn_id"), "status": turn.get("status")} for turn in result["turns"]
+            ]
+            completed = next((turn for turn in reversed(result["turns"]) if turn.get("status") == "completed"), None)
+            if completed:
+                if completed.get("proposal_reviewed") is not False:
+                    raise ValueError("Retained assistant output cannot claim product approval")
+                values["retained_reply"] = {
+                    "turn_id": completed.get("turn_id"),
+                    "reply": completed.get("reply"),
+                    "questions": completed.get("questions", []),
+                }
+        else:
+            if not isinstance(result.get("conversations"), list):
+                raise ValueError("Assistant status requires its retained conversation list")
+            values["conversation_count"] = len(result["conversations"])
+    return CommunicationAssistantV1.model_validate(values)
+
+
 def communication_facts(
     run: Data | None,
     *,
     conversation: CommunicationConversationV1 | None = None,
     publication: CommunicationPublicationV1 | None = None,
+    assistant: CommunicationAssistantV1 | None = None,
 ) -> Data:
+    if assistant is not None:
+        if run or conversation or publication:
+            raise ValueError("Assistant feedback is separate from execution and publication facts")
+        assistant_facts = assistant.model_dump(exclude={"version"}, exclude_none=True)
+        if assistant.turns:
+            assistant_facts["latest_turn"] = assistant.turns[-1].model_dump()
+        return {"assistant": assistant_facts}
     conversation_facts = {}
     if conversation is not None:
         if (conversation.selection == "run") != (run is not None):
@@ -223,9 +340,56 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if ({"blocker", "check_batch", "conversation", "publication"} & facts.keys()) - cited:
+    if ({"blocker", "check_batch", "conversation", "publication", "assistant"} & facts.keys()) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
+
+
+def _assistant_content(assistant: Data, safe: Callable[[str], str]) -> str:
+    quotation, references = [], []
+    retained = assistant.get("retained_reply")
+    if assistant.get("turns"):
+        latest = assistant["turns"][-1]
+        notices = {
+            "failed": "The latest turn failed.",
+            "needs_attention": "The latest turn needs attention.",
+            "needs_reconciliation": "The latest turn has an unconfirmed outcome.",
+            "processing": "The latest turn is still processing.",
+            "completed": "The latest recorded turn completed.",
+        }
+        notice = notices[latest["status"]]
+        references.append("Latest turn: `" + latest["turn_id"] + "`")
+        if retained:
+            notice += (
+                " The quote below is an earlier completed reply."
+                if latest["turn_id"] != retained["turn_id"]
+                else " The quote below is that recorded reply."
+            )
+            references.append("Quoted reply: `" + retained["turn_id"] + "`")
+            assistant = retained
+        else:
+            notice += " No completed reply is available in this status snapshot."
+        quotation.append(notice)
+    if assistant.get("reply"):
+        quotation.append(
+            "  \n".join(
+                "> " + _text(line, safe, 12000, preserve_word_slashes=True) for line in assistant["reply"].splitlines()
+            )
+        )
+    quotation.extend(
+        "> - " + _text(question, safe, 12000, preserve_word_slashes=True) for question in assistant["questions"]
+    )
+    if assistant.get("proposal_status") == "unreviewed":
+        quotation.append(json.loads(prompt_text("collaboration/copy", version="1.0.1"))["proposal_description"])
+    content = "\n\n".join(quotation)
+    if references:
+        return prompt_text(
+            "collaboration/conversation-record",
+            message=content,
+            summary="Turn references",
+            evidence=prompt_text("collaboration/facts", facts="\n".join(references)),
+        )
+    return content
 
 
 def _render_card(
@@ -251,6 +415,8 @@ def _render_card(
             context=draft.decision.context,
             choices="\n".join("- " + value for value in draft.decision.choices),
         )
+    if facts.get("assistant"):
+        decision_body = _assistant_content(facts["assistant"], safe)
     body = prompt_text("collaboration/communication-card", title=title, narrative=narrative, decision=decision_body)
     if len(body) > 6000:
         raise ValueError("Communication exceeds its public text bound")
@@ -280,8 +446,9 @@ class CommunicationWriter:
         *,
         conversation: CommunicationConversationV1 | None = None,
         publication: CommunicationPublicationV1 | None = None,
+        assistant: CommunicationAssistantV1 | None = None,
     ) -> Data:
-        facts = communication_facts(run, conversation=conversation, publication=publication)
+        facts = communication_facts(run, conversation=conversation, publication=publication, assistant=assistant)
         if reject := getattr(self.store, "reject_credentials", None):
             if "decision" in facts:
                 assert run is not None
@@ -293,6 +460,28 @@ class CommunicationWriter:
             "facts": facts,
             "facts_sha256": content_digest(facts),
         }
+        if assistant is not None:
+            copy = json.loads(prompt_text("collaboration/copy", version="1.0.1"))
+            assistant_references = [
+                copy["facts"][key] + ": `" + value + "`"
+                for key in ("conversation_id", "turn_id")
+                if (value := facts["assistant"].get(key))
+            ]
+            narrative = prompt_text("collaboration/action", summary=copy["actions"]["other"], status=assistant.status)
+            native_card = prompt_text(
+                "collaboration/communication-card",
+                title=copy["titles"]["recorded"],
+                narrative=narrative,
+                decision="\n\n".join(
+                    [
+                        _assistant_content(facts["assistant"], safe),
+                        prompt_text("collaboration/facts", facts="\n".join(assistant_references)),
+                    ]
+                ),
+            )
+            self.store.reject_credentials(native_card)
+            if len(native_card) > 6000:
+                raise ValueError("Assistant communication exceeds its public text bound")
         result = {"body": native_card, "communication": evidence}
         router = getattr(self.store, "task_router", None)
         if router is None:
