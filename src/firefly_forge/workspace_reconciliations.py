@@ -201,8 +201,16 @@ class WorkspaceReconciliations:
                 k: v for k, v in candidate["cut"].items() if k not in {"metadata_digest", "index_digest"}
             }:
                 raise ValueError("Environment reconciliation changed source, history or execution authority")
+            # Porcelain diff can refresh index stat data and invalidate the sealed source cut.
             patch = _git(
-                workspace, "diff", "--binary", "--no-ext-diff", "--no-color", candidate["plan"]["base_revision"], "--"
+                workspace,
+                "diff-index",
+                "-p",
+                "--binary",
+                "--no-ext-diff",
+                "--no-color",
+                candidate["plan"]["base_revision"],
+                "--",
             ).decode()
         settings = r.store.configuration.load_snapshot(candidate["previous_run"]["config_revision"])
         if redact_secrets(redact(patch), settings) != patch:

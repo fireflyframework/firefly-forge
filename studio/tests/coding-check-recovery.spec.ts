@@ -299,15 +299,23 @@ test("simultaneous legacy and configured-check tabs retain one lifetime reservat
   const second = await setup(other, "lost", true);
   await legacyReview(other);
   await scope(page);
-  await Promise.allSettled([
-    page
-      .getByRole("button", { name: "Grant selected checks", exact: true })
-      .click(),
-    other
-      .getByRole("button", { name: "Reserve final allowance", exact: true })
-      .click(),
+  const configured = page.getByRole("button", {
+    name: "Grant selected checks",
+    exact: true,
+  });
+  const legacy = other.getByRole("button", {
+    name: "Reserve final allowance",
+    exact: true,
+  });
+  await expect(configured).toBeEnabled();
+  await expect(legacy).toBeEnabled();
+  // The losing control becomes disabled; do not wait for it to become enabled again.
+  await Promise.all([
+    configured.evaluate((button: HTMLButtonElement) => button.click()),
+    legacy.evaluate((button: HTMLButtonElement) => button.click()),
   ]);
   await expect.poll(() => first.grantPosts + second.posts).toBe(1);
+  await page.bringToFront();
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
