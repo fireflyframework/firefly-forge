@@ -129,6 +129,9 @@ def poll_case(tmp_path, monkeypatch):
                 )[:201]
 
             async def ticket_context(self, data):
+                return (await self.conversation_context(data))[:201]
+
+            async def conversation_context(self, data):
                 return sorted(
                     [
                         row
@@ -141,7 +144,7 @@ def poll_case(tmp_path, monkeypatch):
                     ],
                     key=lambda row: row.sequence,
                     reverse=True,
-                )[:201]
+                )[:5001]
 
             async def find_pending(self):
                 return [

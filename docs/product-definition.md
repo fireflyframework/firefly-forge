@@ -8,7 +8,11 @@ description: Define customers, journeys, features and integration contracts, the
 
 A brief describes a change. A product definition gives the agent a durable customer contract: who needs it, what problem it solves, how the journey works, and which acceptance and security checks determine success.
 
-Save the definition at `PUT /api/v1/repositories/ID/product`. Every save creates an immutable revision; `GET` returns the latest revision with its digest and creation time.
+Start in Studio or a configured GitHub issue with ordinary language: “@forge, help define a CRM for our support team. Which customer decisions are missing?” The configured coordinator can hand the request to the native ProductAssistant under a separate current model allowance. Its questions and proposed definition stay in the recorded product conversation. You can answer a confirmed pending question later in the same issue without another mention; the server checks its producer, publication and current account access rather than inferring a question from arbitrary prose.
+
+A product reply does not approve or save a definition, create a coding run, run tests or deploy. Review and save the proposal in Studio, then use the available run controls for implementation. If conversation context is ambiguous or an allowance is exhausted, resolve that hold before another model turn or effect. See [natural repository conversations](repository-workflow.md).
+
+For API clients, save the definition at `PUT /api/v1/repositories/ID/product`. Every save creates an immutable revision; `GET` returns the latest revision with its digest and creation time.
 
 ```json
 {
@@ -101,7 +105,7 @@ The frozen architecture includes selected backend/frontend, components with laye
 
 ## From definition to support
 
-Use issues for customer problems and acceptance changes, then use trusted `/forge run`, `/forge test`, or `/forge maintain` comments to request work. The resulting run retains the originating issue and actor, its product revision, verification evidence, isolated branch, and publication result. Queued and completion feedback returns to that conversation through the provider's application grant.
+Use the issue conversation to describe customer problems, answer product questions and discuss acceptance changes. Review the saved definition before starting implementation in Studio. Natural text does not create a new run, start verification or maintenance, or deploy; trusted `/forge run`, `/forge test` and `/forge maintain` comments remain an advanced compatibility interface. A repository-admitted run retains its originating issue and actor, product revision, verification evidence, isolated branch and publication result. Feedback returns through the provider's application grant.
 
 A definition does not turn a passing build into customer acceptance. Review the implemented journey and its evidence before publication or deployment. For a support change, update the contract only when the expected behavior changes; preserve the original revision on previous runs.
 

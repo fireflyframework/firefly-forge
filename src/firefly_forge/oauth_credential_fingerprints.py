@@ -170,6 +170,16 @@ class OAuthCredentialMatcher:
 
     def contains(self, value: Any, packets: list[Data]) -> bool:
         strings = self._strings(value)
+        return self._contains_strings(strings, packets)
+
+    def contains_source_patch(self, patch: Any, packets: list[Data]) -> bool:
+        from firefly_forge.source_patch_admission import SourcePatch
+
+        if type(patch) is not SourcePatch:
+            raise TypeError("Credential admission requires the typed bounded source patch")
+        return self._contains_strings([patch.text], packets)
+
+    def _contains_strings(self, strings: list[str], packets: list[Data]) -> bool:
         if len(packets) > MAX_HISTORY:
             raise ValueError("OAuth credential history exceeds its bound")
         represented = [item for packet in packets for item in self._validated(packet)]

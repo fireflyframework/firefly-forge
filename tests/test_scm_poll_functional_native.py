@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from communication_model_fixture import reviewed_model
+from natural_coordinator_model_fixture import native_coordinator
 from scm_polling_native_fixtures import native_poll  # noqa: F401
 
 from firefly_forge.model_profiles import ModelProfileInput
@@ -132,9 +134,21 @@ def test_native_old_binding_is_not_functional_model_consent(native_poll):  # noq
     assert case.http.portal.call(case.store.get_run, case.run["id"]) == before
 
 
-def test_native_functional_issue_chain_reuses_real_assistant_and_preserves_original_run(native_poll):  # noqa: F811
+def test_native_functional_issue_chain_reuses_real_assistant_and_preserves_original_run(native_poll, monkeypatch):  # noqa: F811
     case = native_poll
-    prepare(case)
+    path, body, _ = prepare(case, consent=False)
+    coordinator_calls = native_coordinator(case, monkeypatch, intent="product")
+    cut = case.http.get(path + "/review", params={"binding_request_id": body["expected_binding_request_id"]}).json()
+    body["expected_routing_digest"] = cut["routing_digest"]
+    admitted = case.http.post(path, json=body)
+    assert admitted.status_code == 201, admitted.text
+    case.collaboration.communication_writer.model = reviewed_model(
+        {
+            "title": {"text": "Product conversation", "fact_ids": ["assistant"]},
+            "paragraphs": [{"text": "The product conversation is ready.", "fact_ids": ["assistant"]}],
+            "decision": None,
+        }
+    )
     before = case.http.portal.call(case.store.get_run, case.run["id"])
     wal = case.http.portal.call(case.journal.entries, case.run["id"])
     started = case.process(observe(case, "start"))
@@ -145,13 +159,18 @@ def test_native_functional_issue_chain_reuses_real_assistant_and_preserves_origi
         delivery = observe(case, natural=f"@forge, Una frase humana sin palabras clave. Detalle {index}")
         result = case.process(delivery)
         assert result["status"] == "processed", result
-        assert result["action_result"]["intent"] == "dialogue"
-        assert result["action_result"]["proposal_reviewed"] is False
-        assert result["action_result"]["conversation_id"] == conversation
+        assert result["natural_turn"]["state"] == "product_completed", result
+        children = [
+            row for row in case.http.portal.call(case.retained)[2] if row["id"] in result["natural_product_effects"]
+        ]
+        assert len(children) == 1 and children[0]["command"]["operation"] == "turn"
+        assert children[0]["action_result"]["intent"] == "dialogue"
+        assert children[0]["action_result"]["proposal_reviewed"] is False
+        assert children[0]["action_result"]["conversation_id"] == conversation
         case.process(delivery)
     fourth = case.process(observe(case, "turn", conversation_id=conversation, request_id=uuid4().hex, message="Fourth"))
     assert fourth["status"] == "denied"
-    assert case.state["model_calls"] == 3
+    assert case.state["model_calls"] == 3 and len(coordinator_calls) == 3
     assert case.http.portal.call(case.store.get_run, case.run["id"]) == before
     assert case.http.portal.call(case.journal.entries, case.run["id"]) == wal
     product = case.http.get(f"/api/v1/repositories/{case.repo['id']}/product")

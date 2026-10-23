@@ -32,6 +32,17 @@ def git_environment(env: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def metadata_digest(workspace: Path) -> str:
+    return _metadata_digest(workspace)
+
+
+def metadata_digest_before_exclude(workspace: Path, original_exclude: bytes) -> str:
+    """Project only the known exclude transition; preserve every other byte and mode fence."""
+    if type(original_exclude) is not bytes or len(original_exclude) > 65536:
+        raise ValueError("Original Git exclude projection requires bounded immutable bytes")
+    return _metadata_digest(workspace, original_exclude=original_exclude)
+
+
+def _metadata_digest(workspace: Path, *, original_exclude: bytes | None = None) -> str:
     metadata = workspace / ".git"
     if workspace.is_symlink() or metadata.is_symlink() or not metadata.is_dir():
         raise ValueError("Git metadata must be an owned directory")
@@ -77,6 +88,7 @@ def metadata_digest(workspace: Path) -> str:
         elif path.exists():
             files.append(path)
     result, size = hashlib.sha256(), 0
+    projected = False
     for path in sorted(files):
         with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
             info = os.fstat(stream.fileno())
@@ -86,6 +98,11 @@ def metadata_digest(workspace: Path) -> str:
         size += len(content)
         if size > 1_000_000:
             raise ValueError("Git metadata exceeds the inspection bound")
+        if original_exclude is not None and path.relative_to(metadata).as_posix() == "info/exclude":
+            content = original_exclude
+            projected = True
         result.update(path.relative_to(metadata).as_posix().encode() + b"\x00")
         result.update(str(stat.S_IMODE(info.st_mode)).encode() + b"\x00" + content + b"\x00")
+    if original_exclude is not None and not projected:
+        raise ValueError("Original Git exclude projection requires the existing protected file")
     return result.hexdigest()

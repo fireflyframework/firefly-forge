@@ -701,7 +701,7 @@ class Collaboration:
                         bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider),
                     )
                     event["command"] = command.model_dump(exclude_none=True)
-                    if getattr(command, "adapter", None) == "addressed_status_v1":
+                    if getattr(command, "adapter", None) in {"addressed_status_v1", "retained_question_reply_v1"}:
                         from firefly_forge.journal import digest as source_digest
                         from firefly_forge.scm_comment_source import github_comment_source
                         from firefly_forge.scm_conversation_models import SignedAddressedSourceV1
@@ -896,7 +896,7 @@ class Collaboration:
     async def process(self, receipt_id: str) -> Data:
         settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
-        if (initial.get("command") or {}).get("adapter") == "addressed_status_v1":
+        if (initial.get("command") or {}).get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             from firefly_forge.scm_conversations import SCMConversations
 
             return await SCMConversations(self).process(receipt_id)
@@ -1582,7 +1582,7 @@ class Collaboration:
         from firefly_forge.scm_actor_authority import SCMActorAuthority
 
         command = data.get("command") or {}
-        if command.get("adapter") == "addressed_status_v1":
+        if command.get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             from firefly_forge.scm_conversations import SCMConversations
 
             await SCMConversations(self).authorize_feedback(data, remote=not local)
@@ -1661,7 +1661,7 @@ class Collaboration:
 
         settings = await self.settings(data["repository_id"])
         actions = settings.get("channel_commands", [])
-        if (data.get("command") or {}).get("adapter") == "addressed_status_v1":
+        if (data.get("command") or {}).get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             return {"_feedback_origin": self.browser_origin, "_feedback_actions": []}
 
         polling = (data.get("verification") or {}).get("transport") == "github_rest_poll_v1"
@@ -1697,6 +1697,12 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        if initial.get("natural_parent") is not None:
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is not None and row.data.get("feedback_status") == "pending":
+                    await self._write_row(row, feedback_status="not_requested")
+            return
         if initial.get("feedback_status") == "held":
             return
         try:
@@ -1753,6 +1759,10 @@ class Collaboration:
             conversation = data.get("conversation")
 
             def native_card(current_run: Data) -> str:
+                if data.get("natural_turn") is not None:
+                    from firefly_forge.scm_natural_feedback import natural_card
+
+                    return natural_card(data, public_text)
                 message = feedback_card(data, current_run, repo, host, public_text)
                 if not conversation or (current_run and data["command"]["language"] != "es"):
                     return message
@@ -1776,7 +1786,12 @@ class Collaboration:
                 return str(copy_text[conversation["selection"]])
 
             message = native_card(run)
-            from firefly_forge.communication import CommunicationConversationV1, assistant_communication
+            from firefly_forge.communication import (
+                CommunicationConversationV1,
+                assistant_communication,
+                communication_facts,
+            )
+            from firefly_forge.product_provenance import content_digest
 
             conversation_input = (
                 CommunicationConversationV1(
@@ -1787,9 +1802,39 @@ class Collaboration:
                 if conversation
                 else None
             )
+            if data.get("natural_turn") is not None:
+                conversation_input = CommunicationConversationV1(
+                    selection="run" if run else "clarify",
+                    language=(data["natural_turn"].get("decision") or {}).get("language")
+                    or data["command"].get("language", "en"),
+                    linked_runs=1 if run else 0,
+                )
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
-            if assistant_input:
+            if data.get("natural_turn") is not None:
+                drafted = {
+                    "body": message,
+                    "communication": {
+                        "mode": "deterministic",
+                        "reason": "natural_recorded_reply",
+                        "facts": communication_facts(run or None, conversation=conversation_input),
+                        "facts_sha256": content_digest(
+                            communication_facts(run or None, conversation=conversation_input)
+                        ),
+                    },
+                }
+            elif assistant_input and data.get("natural_product_parent"):
+                facts = communication_facts(None, assistant=assistant_input)
+                drafted = {
+                    "body": message,
+                    "communication": {
+                        "mode": "deterministic",
+                        "reason": "native_product_reply",
+                        "facts": facts,
+                        "facts_sha256": content_digest(facts),
+                    },
+                }
+            elif assistant_input:
                 drafted = await self.communication_writer.write(
                     run or None, message, public_text, assistant=assistant_input
                 )
@@ -1799,9 +1844,6 @@ class Collaboration:
                 )
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
-            from firefly_forge.communication import communication_facts
-            from firefly_forge.product_provenance import content_digest
-
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
             current_assistant = (
@@ -1853,7 +1895,9 @@ class Collaboration:
                 "body": message,
                 "communication": drafted["communication"],
                 "body_sha256": hashlib.sha256(message.encode()).hexdigest(),
-                "stage": run.get("status", data.get("feedback_stage")),
+                "stage": "action_completed"
+                if data.get("natural_turn") is not None
+                else run.get("status", data.get("feedback_stage")),
                 "request_id": (run.get("worker_request") or {}).get("id"),
                 "review_key": review_key(run),
                 "publication_error": bool(run.get("publication_error")),
@@ -1863,6 +1907,10 @@ class Collaboration:
             }
             if recovery := provider_recovery(run):
                 intent["provider_recovery"] = recovery
+            if data.get("natural_turn") and data["natural_turn"].get("decision"):
+                from firefly_forge.scm_natural_questions import natural_producer
+
+                intent["natural_turn_digest"] = content_digest(natural_producer(data))
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
@@ -1883,7 +1931,8 @@ class Collaboration:
                 await self._feedback_authority(
                     data,
                     local=(data.get("verification") or {}).get("transport") != "github_rest_poll_v1"
-                    and (data.get("command") or {}).get("adapter") != "addressed_status_v1",
+                    and (data.get("command") or {}).get("adapter")
+                    not in {"addressed_status_v1", "retained_question_reply_v1"},
                 )
                 current_context = await self._feedback_context(data, run)
                 if any(data.get(key) != value for key, value in current_context.items()):

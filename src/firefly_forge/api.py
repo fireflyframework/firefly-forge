@@ -205,6 +205,7 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_natural_controllers import SCMNaturalController
 from firefly_forge.scm_poll_controllers import SCMPollController
 from firefly_forge.scm_poll_functional import SCMPollFunctionalAuthority
 from firefly_forge.scm_poll_functional_controllers import SCMPollFunctionalController
@@ -1215,6 +1216,7 @@ def create_runtime(
         SCMResumeAuthorityController,
         SCMPollResumeController,
         SCMPollFunctionalController,
+        SCMNaturalController,
         SCMSourceEditController,
         SCMPollController,
         SCMProductChangeController,

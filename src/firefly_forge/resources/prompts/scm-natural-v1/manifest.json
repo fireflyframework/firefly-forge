@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "id": "scm-natural/system",
+      "version": "1.0.0",
+      "path": "system.yaml",
+      "sha256": "82731476f89032f864cc53745fce24111147b9121871f1a0940176f42db114fc",
+      "field": "system",
+      "variables": {}
+    },
+    {
+      "id": "scm-natural/request",
+      "version": "1.0.0",
+      "path": "request.yaml",
+      "sha256": "a0ad29f939a59c89d49c0ff2bfaead3289f29e797ac4180f0df0cc758ebf9e15",
+      "field": "user",
+      "variables": {
+        "context": "string",
+        "message": "string"
+      }
+    },
+    {
+      "id": "scm-natural/feedback",
+      "version": "1.0.0",
+      "path": "feedback.yaml",
+      "sha256": "f169ee35ea62dec6644f1b45b45100d00625ea9c793681999206b49c2b2cbbba",
+      "field": "user",
+      "variables": {
+        "message": "string",
+        "outcome": "string"
+      }
+    },
+    {
+      "id": "scm-natural/copy",
+      "version": "1.0.0",
+      "path": "copy.yaml",
+      "sha256": "d5890cff38ddb29dec188b0b50389dc569a90dbf9485fb3be37752f8888cc809",
+      "field": "user",
+      "variables": {}
+    }
+  ]
+}

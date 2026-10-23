@@ -8,6 +8,7 @@ import json
 from uuid import uuid4
 
 import pytest
+from natural_coordinator_model_fixture import native_coordinator
 from scm_polling_native_fixtures import native_poll as native_poll
 from worker_reply_fixtures import authenticated_operator
 
@@ -26,11 +27,12 @@ def natural(c, body="@forge how is this going?", number=80, issue=3):
     return next(row for row in c.http.portal.call(c.retained)[2] if row["verification"]["resource_id"] == str(number))
 
 
-def test_native_natural_status_retains_real_ticket_context_and_is_inert_on_restart_replay(native_poll):
+def test_native_natural_status_retains_real_ticket_context_and_is_inert_on_restart_replay(native_poll, monkeypatch):
     c = native_poll
     c.ready()
     c.consent()
     prior = c.process(c.observe("status"))
+    coordinator_calls = native_coordinator(c, monkeypatch)
     before = c.http.portal.call(c.journal.entries, c.run["id"])
     delivery = natural(c)
     result = c.process(delivery)
@@ -44,12 +46,14 @@ def test_native_natural_status_retains_real_ticket_context_and_is_inert_on_resta
     assert c.process(delivery) == result
     c.http.portal.call(c.collaboration.sync_feedback)
     assert len(c.state["posts"]) == 2
+    assert len(coordinator_calls) == 1
 
 
-def test_native_missing_ticket_context_never_selects_the_existing_repository_run(native_poll):
+def test_native_missing_ticket_context_never_selects_the_existing_repository_run(native_poll, monkeypatch):
     c = native_poll
     c.ready()
     c.consent()
+    coordinator_calls = native_coordinator(c, monkeypatch)
     before = c.http.portal.call(c.journal.entries, c.run["id"])
     delivery = natural(c, "@forge ¿cómo va?")
     result = c.process(delivery)
@@ -57,12 +61,14 @@ def test_native_missing_ticket_context_never_selects_the_existing_repository_run
     assert result["conversation"]["selection"] == "missing" and "ejecución" in c.state["posts"][0]["body"]
     assert c.run["id"] not in c.state["posts"][0]["body"]
     assert c.http.portal.call(c.journal.entries, c.run["id"]) == before
+    assert len(coordinator_calls) == 1
 
 
 def test_native_source_edit_during_issue_token_wait_stops_reply_and_preserves_unknown_hold(native_poll, monkeypatch):
     c = native_poll
     c.ready()
     c.consent()
+    native_coordinator(c, monkeypatch)
     delivery = natural(c)
     prepare = c.scm.issue_authentication
 
@@ -139,7 +145,7 @@ def test_native_signed_status_requires_actual_native_status_consent_and_retains_
     assert len(c.state["posts"]) == 1
 
 
-def test_native_multiple_active_ticket_runs_require_clarification_without_run_mutation(native_poll):
+def test_native_multiple_active_ticket_runs_require_clarification_without_run_mutation(native_poll, monkeypatch):
     c = native_poll
     c.ready()
     c.consent()
@@ -162,11 +168,13 @@ def test_native_multiple_active_ticket_runs_require_clarification_without_run_mu
     other = c.http.portal.call(create)
     explicit = natural(c, "/forge status " + json.dumps({"run_id": other["id"]}), number=81)
     c.process(explicit)
+    coordinator_calls = native_coordinator(c, monkeypatch)
     result = c.process(natural(c, number=82))
     assert result["status"] == "processed" and result["run_id"] is None
     assert result["conversation"]["selection"] == "ambiguous"
     assert len(c.state["posts"]) == 3 and "more than one" in c.state["posts"][-1]["body"].lower()
     assert c.http.portal.call(c.store.get_run, other["id"])["status"] == other["status"]
+    assert len(coordinator_calls) == 1
 
 
 @pytest.mark.parametrize("kind_changed", [False, True])

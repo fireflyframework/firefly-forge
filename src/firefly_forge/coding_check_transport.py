@@ -104,7 +104,10 @@ class _Boundary:
                     packet.get("id")
                     if isinstance(packet, dict)
                     and packet.get("jsonrpc") == "2.0"
-                    and packet.get("method") in {"resources/list", "resources/templates/list", "resources/read"}
+                    and (
+                        packet.get("method") in {"resources/list", "resources/templates/list", "resources/read"}
+                        or (self.owner.source_callback is not None and packet.get("method") == "tools/call")
+                    )
                     else None
                 )
                 if type(request_id) not in (int, str):

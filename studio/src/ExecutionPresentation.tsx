@@ -348,6 +348,90 @@ export function EvidenceView({
   omitFields?: string[];
 }) {
   if (
+    kind === "index_sanitation_intent" ||
+    kind === "index_sanitation_receipt" ||
+    kind === "workspace_observed_readmission"
+  ) {
+    const record = asRecord(value);
+    const request = asRecord(record?.request);
+    const readmission = kind === "workspace_observed_readmission";
+    const candidate = asRecord(record?.candidate);
+    const plan = asRecord(candidate?.index_plan);
+    const effect = asRecord(record?.effect);
+    const artifacts =
+      kind === "index_sanitation_receipt" ? effect?.artifacts : plan?.artifacts;
+    const duration = request?.valid_for_seconds;
+    if (
+      !record ||
+      record.version !== 1 ||
+      !request ||
+      request.version !== 1 ||
+      (readmission
+        ? record.no_provider_dispatch !== true
+        : record.no_queue_or_provider_dispatch !== true)
+    )
+      return (
+        <section className="record-evidence">
+          <p role="status">
+            Recovery evidence is incomplete. Review the original record before
+            continuing.
+          </p>
+          {advanced && <AdvancedRecord value={value} />}
+        </section>
+      );
+    return (
+      <section className="record-evidence">
+        <h4>
+          {readmission
+            ? "Observed-effect readmission recorded"
+            : kind === "index_sanitation_intent"
+              ? "Index-only cache sanitation requested"
+              : "Index-only cache sanitation receipt"}
+        </h4>
+        <p>
+          {readmission
+            ? "An administrator recorded fresh, finite consent for a previously observed environment change. The original source-control delivery remains unknown. Task execution has separate receipts."
+            : "This record concerns only reviewed new test-cache entries in Git's index. It does not resume the run or confirm the original SCM delivery. Physical files and original task budgets must remain unchanged."}
+        </p>
+        {!readmission && (
+          <p className="subtle">
+            Inspect the correlated intent and receipt before treating the
+            index-only effect as recorded.
+          </p>
+        )}
+        <dl className="record-fields">
+          <div>
+            <dt>Scope</dt>
+            <dd>
+              {readmission
+                ? "Previously observed change; no repeat"
+                : "Git index only; physical files retained"}
+            </dd>
+          </div>
+          {!readmission &&
+            Array.isArray(artifacts) &&
+            artifacts.length > 0 &&
+            artifacts.length <= 16 && (
+              <div>
+                <dt>Reviewed cache entries</dt>
+                <dd>{artifacts.length}</dd>
+              </div>
+            )}
+          {typeof duration === "number" &&
+            Number.isSafeInteger(duration) &&
+            duration >= 1 &&
+            duration <= 1800 && (
+              <div>
+                <dt>Consent allowance</dt>
+                <dd>{duration} seconds</dd>
+              </div>
+            )}
+        </dl>
+        {advanced && <AdvancedRecord value={value} />}
+      </section>
+    );
+  }
+  if (
     kind?.startsWith("verification_handoff_") ||
     kind === "verification_continuation_intent"
   )
@@ -617,9 +701,119 @@ export function EvidenceView({
 export type JournalIdentity = {
   kind: string;
   task_id: string;
+  digest?: string;
   idempotency_key?: string;
   payload?: unknown;
 };
+
+function sameSanitationEvidence(
+  left: unknown,
+  right: unknown,
+  depth = 0,
+  budget = { remaining: 8192 },
+): boolean {
+  if (--budget.remaining < 0 || depth > 16) return false;
+  if (left === null || right === null) return left === right;
+  if (typeof left !== typeof right) return false;
+  if (typeof left === "string") return left.length <= 16384 && left === right;
+  if (typeof left === "number") return Number.isFinite(left) && left === right;
+  if (typeof left === "boolean") return left === right;
+  if (Array.isArray(left))
+    return (
+      Array.isArray(right) &&
+      left.length <= 256 &&
+      left.length === right.length &&
+      left.every((item, index) =>
+        sameSanitationEvidence(item, right[index], depth + 1, budget),
+      )
+    );
+  const a = asRecord(left),
+    b = asRecord(right);
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length <= 256 &&
+    keys.length === Object.keys(b).length &&
+    keys.every(
+      (key) =>
+        Object.hasOwn(b, key) &&
+        sameSanitationEvidence(a[key], b[key], depth + 1, budget),
+    )
+  );
+}
+
+function sanitationReceiptMatches(
+  intent: JournalIdentity,
+  receipt: JournalIdentity,
+) {
+  const a = asRecord(intent.payload),
+    b = asRecord(receipt.payload);
+  const request = asRecord(a?.request),
+    actor = asRecord(a?.actor),
+    candidate = asRecord(a?.candidate);
+  const identifier = (value: unknown) =>
+    typeof value === "string" && /^[a-f0-9]{32}$/.test(value);
+  const hash = (value: unknown) =>
+    typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+  if (
+    !a ||
+    !b ||
+    !request ||
+    !actor ||
+    !candidate ||
+    intent.kind !== "index_sanitation_intent" ||
+    receipt.kind !== "index_sanitation_receipt" ||
+    intent.task_id !== receipt.task_id ||
+    !identifier(intent.idempotency_key) ||
+    intent.idempotency_key !== receipt.idempotency_key ||
+    request.request_id !== intent.idempotency_key ||
+    request.version !== 1 ||
+    a.version !== 1 ||
+    typeof request.valid_for_seconds !== "number" ||
+    !Number.isSafeInteger(request.valid_for_seconds) ||
+    request.valid_for_seconds < 1 ||
+    request.valid_for_seconds > 1800 ||
+    !hash(intent.digest) ||
+    b.intent_digest !== intent.digest ||
+    !identifier(actor.user_id) ||
+    !identifier(a.original_request_id) ||
+    !hash(a.original_intent_digest) ||
+    request.original_intent_digest !== a.original_intent_digest ||
+    !hash(candidate.digest) ||
+    request.candidate_digest !== candidate.digest ||
+    !hash(a.public_patch_sha256) ||
+    a.no_queue_or_provider_dispatch !== true ||
+    typeof a.expires_at_ms !== "number" ||
+    !Number.isSafeInteger(a.expires_at_ms) ||
+    a.expires_at_ms <= 0
+  )
+    return false;
+  if (
+    ![
+      "acknowledge_index_only_generated_artifacts",
+      "acknowledge_preserve_files_source_and_budgets",
+      "acknowledge_original_scm_outcome_unknown",
+      "acknowledge_no_queue_or_provider_dispatch",
+    ].every((key) => request[key] === true)
+  )
+    return false;
+  return [
+    "version",
+    "request",
+    "actor",
+    "original_request_id",
+    "original_intent_digest",
+    "candidate",
+    "expires_at_ms",
+    "public_patch_sha256",
+    "no_queue_or_provider_dispatch",
+  ].every(
+    (key) =>
+      Object.hasOwn(a, key) &&
+      Object.hasOwn(b, key) &&
+      sameSanitationEvidence(a[key], b[key]),
+  );
+}
 export function ToolEvidence({
   kind,
   value,
@@ -799,6 +993,18 @@ export function journalDisposition(
   entry: JournalIdentity,
   entries: JournalIdentity[],
 ) {
+  if (
+    entry.kind === "index_sanitation_intent" ||
+    entry.kind === "index_sanitation_receipt"
+  ) {
+    const matched =
+      entry.kind === "index_sanitation_intent"
+        ? entries.some((receipt) => sanitationReceiptMatches(entry, receipt))
+        : entries.some((intent) => sanitationReceiptMatches(intent, entry));
+    return matched
+      ? "Index-only receipt recorded; run not resumed"
+      : "Outcome not recorded; review required";
+  }
   if (entry.kind.startsWith("tool_")) {
     const correlation = asRecord(entry.payload)?.correlation_id;
     if (

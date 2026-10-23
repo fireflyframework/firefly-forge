@@ -10,6 +10,7 @@ import json
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from time import time
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -626,17 +627,10 @@ class SCMPolling:
                     from firefly_forge.collaboration import RepositoryCommand
 
                     try:
-                        from firefly_forge.scm_resume_service import grant_state
-
-                        functional = grant_state(row.data, "_scm_poll_functional_v1", 1)
-                        functional_enabled = (
-                            poll_key(policy["project_id"], {**scope, "external_actor_id": source["author_id"]})
-                            in functional["heads"]
-                        )
                         parsed = RepositoryCommand.parse(
                             source["body"],
                             bot_addresses=self.scm.bot_addresses("github"),
-                            functional_dialogue=functional_enabled,
+                            functional_dialogue=False,
                         )
                         version = getattr(parsed, "version", None)
                         natural_status = getattr(parsed, "adapter", None) == "addressed_status_v1"
@@ -657,11 +651,14 @@ class SCMPolling:
                         command = parsed.model_dump(exclude_none=True)
                         reason = "baseline_existing" if not cursor["ready"] else None
                     except (ValueError, TypeError, AttributeError):
-                        reason = (
-                            "unsupported_poll_issue"
-                            if issue is not None and issue["pull_request"]
-                            else "not_an_enabled_poll_command"
-                        )
+                        try:
+                            reply = await self._natural_reply_source(
+                                repository, source, scope, bool(issue and issue["pull_request"])
+                            )
+                            command = reply.model_dump(exclude_none=True) if reply is not None else None
+                        except (AccessDenied, ValueError, KeyError, TypeError):
+                            command = None
+                        reason = None if command else "not_an_enabled_poll_command"
                 proof = GitHubPollReferenceV1.model_validate(
                     {
                         **scope,
@@ -762,7 +759,10 @@ class SCMPolling:
         if response.status_code != 200 or self._source(response.json(), repository) != source:
             raise AccessDenied("The exact GitHub comment or author changed; publish a new comment")
         issue = await self.scm.github_poll_read(repository, "issue", value=str(source["issue_number"]))
-        addressed = (delivery.get("command") or {}).get("adapter") == "addressed_status_v1"
+        addressed = (delivery.get("command") or {}).get("adapter") in {
+            "addressed_status_v1",
+            "retained_question_reply_v1",
+        }
         resource = issue.json() if issue.status_code == 200 else {}
         if (
             issue.status_code != 200
@@ -784,6 +784,90 @@ class SCMPolling:
             or data.get("permission") not in {"read", "write", "admin"}
         ):
             raise AccessDenied("The GitHub author no longer has current repository access")
+        if (delivery.get("command") or {}).get("adapter") == "retained_question_reply_v1":
+            for reference in delivery["command"]["question_refs"]:
+                response = await self.scm.github_poll_read(
+                    repository, "comment", value=reference["publication_comment_id"]
+                )
+                current = self._source(response.json(), repository) if response.status_code == 200 else None
+                if (
+                    current is None
+                    or current["issue_number"] != source["issue_number"]
+                    or hashlib.sha256(current["body"].encode()).hexdigest() != reference["publication_body_sha256"]
+                    or datetime.fromisoformat(current["created_at"].replace("Z", "+00:00"))
+                    >= datetime.fromisoformat(source["created_at"].replace("Z", "+00:00"))
+                ):
+                    raise AccessDenied("The exact published question changed or did not precede this human reply")
+
+    async def _natural_reply_source(
+        self,
+        repository: str,
+        source: Data,
+        reference: Data,
+        pull_request: bool,
+        receipt_id: str | None = None,
+        expected: Any = None,
+    ) -> Any:
+        from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+        if self.collaboration is None or source["author_type"] != "User":
+            return None
+        policy, state = await self._policy(repository)
+        project = policy["project_id"]
+        await self._scope(repository, policy)
+        binding = await self._head(
+            project, repository, poll_key(project, {**reference, "external_actor_id": source["author_id"]})
+        )
+        request = binding["request"]
+        project_cut = await self.authority._project(project, repository, request["component_ids"])
+        async with self.store._unit():
+            row, current = await self._state(repository)
+            user = await self.users.find_by_id(identifier(request["native_user_id"]))
+            memberships = await self.memberships.for_user(user.id) if user is not None else []
+            if (
+                user is None
+                or not user.enabled
+                or not request["active"]
+                or "status" not in request["allowed_actions"]
+                or binding["project_binding_digest"] != digest(project_cut)
+                or current["configuration"] != state["configuration"]
+                or current["heads"] != state["heads"]
+                or not row.data.get("enabled")
+                or source["author_id"] not in row.data.get("trusted_actors", [])
+                or "status" not in row.data.get("allowed_commands", [])
+                or not any(
+                    m.project_id.hex == project and m.active and ProjectAccess.permits(m.role, "read")
+                    for m in memberships
+                )
+            ):
+                raise AccessDenied("A retained reply requires the current exact native read binding")
+        delivery = dict(
+            id=receipt_id or "0" * 32,
+            repository_id=repository,
+            provider="github",
+            actor=source["author_id"],
+            issue=dict(kind="pull_request" if pull_request else "issue", number=source["issue_number"]),
+        )
+        scopes = [
+            dict(
+                project_id=project,
+                repository_id=repository,
+                native_user_id=user.id.hex,
+                binding_digest=binding["digest"],
+                component_ids=request["component_ids"],
+            )
+        ]
+        if expected is not None:
+            historical_bindings = {ref.binding_digest for ref in expected.question_refs}
+            if len(historical_bindings) != 1 or any(
+                ref.native_user_id != user.id.hex for ref in expected.question_refs
+            ):
+                raise AccessDenied("The retained question's original owner mapping changed")
+            # Preserve source provenance under renewal; current read/effect authority is checked separately.
+            scopes[0]["binding_digest"] = next(iter(historical_bindings))
+        return await SCMNaturalTasks(self.collaboration).reply_source(
+            delivery, scopes, source["body"], expected=expected
+        )
 
     async def _observation(self, project: str, repository: str, receipt_id: str) -> Data:
         async with self.store._unit():
@@ -803,6 +887,15 @@ class SCMPolling:
             or proof["resource_updated_at"] != delivery["source_snapshot"]["updated_at"]
         ):
             raise AccessDenied("The retained API observation binding changed")
+        if delivery.get("natural_parent") is not None:
+            from firefly_forge.scm_natural_effects import authorize_projection
+
+            await authorize_projection(self, delivery)
+        if delivery.get("natural_product_parent") is not None:
+            from firefly_forge.scm_natural_product import validate_product_projection
+
+            parent = await self.collaboration.receipt(delivery["natural_product_parent"]["receipt_id"])
+            validate_product_projection(delivery, parent)
         return delivery
 
     async def configure_binding(self, project: str, repository: str, request: SCMPollActorBindingInputV2) -> Data:
@@ -914,8 +1007,14 @@ class SCMPolling:
     async def conversation_scope(self, delivery: Data, *, remote: bool = True) -> Data:
         """Authorize an observed status address without inventing a run or execution principal."""
         from firefly_forge.scm_conversation_models import AddressedStatusV1, ConversationReadScopeV1, addressed_status
+        from firefly_forge.scm_natural_replies import RetainedQuestionReplyV1
 
-        message = AddressedStatusV1.model_validate(delivery.get("command"))
+        retained = (delivery.get("command") or {}).get("adapter") == "retained_question_reply_v1"
+        message = (
+            RetainedQuestionReplyV1.model_validate(delivery["command"])
+            if retained
+            else AddressedStatusV1.model_validate(delivery.get("command"))
+        )
         repository = delivery["repository_id"]
         policy, state = await self._policy(repository)
         project = policy["project_id"]
@@ -923,7 +1022,18 @@ class SCMPolling:
         original = await self._observation(project, repository, delivery["id"])
         if original != delivery or delivery.get("source_conflict") or not state["cursor"]["ready"]:
             raise AccessDenied("The retained status observation or polling baseline changed")
-        parsed = addressed_status(delivery["source_snapshot"]["body"], self.scm.bot_addresses("github"))
+        parsed = (
+            await self._natural_reply_source(
+                repository,
+                delivery["source_snapshot"],
+                delivery["verification"],
+                delivery["issue"]["kind"] == "pull_request",
+                delivery["id"],
+                expected=message,
+            )
+            if retained
+            else addressed_status(delivery["source_snapshot"]["body"], self.scm.bot_addresses("github"))
+        )
         if parsed != message:
             raise AccessDenied("The status address no longer binds its exact original human comment")
         reference = delivery["verification"]

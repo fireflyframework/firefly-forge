@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from test_scm_polling import poll_case  # noqa: F401
+from test_scm_polling import poll_case as poll_case
 
 from firefly_forge.journal import digest
 from firefly_forge.product_provenance import content_digest
@@ -300,7 +300,9 @@ async def test_revocation_after_model_wait_withholds_result_and_feedback(poll_ca
         assert held.get("action_result") is None and held.get("feedback_status") != "pending"
 
 
-async def test_natural_functional_dialogue_uses_only_one_issue_bound_existing_conversation(poll_case, monkeypatch):  # noqa: F811
+async def test_natural_dialogue_does_not_fall_back_to_legacy_allowance_and_typed_turn_stays_bound(
+    poll_case, monkeypatch
+):  # noqa: F811
     async with poll_case() as c:
         module, body = await setup(c, monkeypatch)
         await c.state["functional"].configure(c.project, c.repository, module.SCMPollFunctionalGrantInputV1(**body))
@@ -315,8 +317,26 @@ async def test_natural_functional_dialogue_uses_only_one_issue_bound_existing_co
         delivery = next(
             copy.deepcopy(row.data) for row in c.db["inbox"].values() if row.source_key == f"comment:{number}"
         )
-        assert delivery["command"]["adapter"] == "addressed_functional_v1"
-        result = await c.state["functional"].process(delivery["id"])
+        assert delivery["command"]["adapter"] == "addressed_status_v1"
+        legacy_router = c.store.task_router
+
+        async def no_communication(task):
+            assert task == "communication"
+            return None
+
+        c.store.task_router = SimpleNamespace(resolve=no_communication)
+        natural = await c.collaboration.process(delivery["id"])
+        assert natural["natural_turn"]["state"] == "waiting_configuration"
+        assert set(c.state["sessions"]) == {conversation} and c.state.get("model_calls", 0) == 0
+        c.store.task_router = legacy_router
+        explicit = await command(
+            c,
+            "turn",
+            conversation_id=conversation,
+            request_id=uuid4().hex,
+            message="A retained explicit compatibility turn",
+        )
+        result = await c.state["functional"].process(explicit["id"])
         assert result["action_result"]["conversation_id"] == conversation
         assert result["action_result"]["reply"] == "Fictional functional reply"
         assert c.state["model_calls"] == 1

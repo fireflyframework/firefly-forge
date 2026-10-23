@@ -174,6 +174,7 @@ class Store:
         self.roles = RoleRegistry(self.path.parent)
         self.credential_registry: Callable[[], dict[str, str]] = dict
         self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
+        self.vault_source_patch_admission: Callable[[Any], Awaitable[None]] | None = None
         self.task_router: Any = None
         self.runtime_roles: Any = None
         self.execution_requests: Any = None
@@ -749,6 +750,19 @@ class Store:
                     if await session.scalar(select(entity.id).limit(1)) is not None:
                         raise ValueError("OAuth credential admission service is unavailable")
         self.reject_credentials(value)
+
+    async def admit_source_patch(self, patch: Any) -> None:
+        from firefly_forge.source_patch_admission import SourcePatch
+
+        if type(patch) is not SourcePatch:
+            raise TypeError("Credential admission requires the typed bounded source patch")
+        admission = getattr(self, "vault_source_patch_admission", None)
+        if admission is None:
+            # The generic fallback still refuses any unavailable OAuth history.
+            await self.admit_credentials(patch.text)
+        else:
+            await admission(patch)
+            self.reject_credentials(patch.text)
 
     async def repository_roles(self, value: str) -> Data:
         repo = await self.repository(value)

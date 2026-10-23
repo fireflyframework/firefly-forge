@@ -2057,7 +2057,13 @@ class Engine:
     ) -> tuple[list[str], str, str]:
         self._assert_git_metadata(workspace)
         await checked(["git", "fsck", "--strict", "--no-reflogs"], workspace, 60)
-        await checked(["git", "add", "--all", "--", "."], workspace)
+        from firefly_forge.source_index_sanitation import staging_exclusions
+        from firefly_forge.workspace_reconciliation import _regular
+
+        exclusions = staging_exclusions(workspace, base)
+        await checked(["git", "add", "--all", "--", ".", *exclusions], workspace)
+        staging_exclusions(workspace, base)
+        admitted_index = _regular(workspace / ".git/index", 1048576)
         inventory = await checked(["git", "diff", "--name-only", "-z", base, "--"], workspace)
         files = [path for path in inventory.split("\x00") if path]
         root = self.component_roots.get(workspace.resolve(), ".")
@@ -2075,6 +2081,18 @@ class Engine:
         diff = patch.output
         if redact_secrets(redact(diff), secrets or {}) != diff:
             raise ValueError("Generated source contains a configured credential; remove it before delivery")
+        from firefly_forge.source_patch_admission import SourcePatch
+
+        await Store.admit_source_patch(self.store, SourcePatch(diff))
+        staging_exclusions(workspace, base)
+        current_patch = await execute(["git", "diff", "--binary", "--no-ext-diff", "--no-color", base, "--"], workspace)
+        if (
+            current_patch.exit_code
+            or current_patch.output != diff
+            or _regular(workspace / ".git/index", 1048576) != admitted_index
+        ):
+            raise ValueError("Source patch or staged index changed during credential admission")
+        staging_exclusions(workspace, base)
         tree = await checked(["git", "write-tree"], workspace)
         return files, diff, tree
 

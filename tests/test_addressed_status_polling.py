@@ -13,6 +13,41 @@ from firefly_forge.journal import digest
 from firefly_forge.project_access import AccessDenied
 
 
+async def configured_status(c, monkeypatch):
+    from firefly_forge.model_profiles import ModelProfileInput, ModelProfiles
+    from firefly_forge.scm_natural_models import NaturalDecision
+    from firefly_forge.task_routing import TaskRouting, TaskRoutingInput
+
+    profiles = ModelProfiles(c.store.configuration)
+    profiles.save(
+        "status",
+        ModelProfileInput(
+            name="Public current ticket status",
+            provider="agentic",
+            values={"model": "openai-responses:public-status", "api_key": "owned-status-fixture-key"},
+        ),
+    )
+    c.store.task_router = TaskRouting(profiles)
+    await c.store.task_router.save(TaskRoutingInput(bindings={"communication": "status"}))
+    c.state["status_calls"] = 0
+
+    async def classify(message, context, settings):
+        assert settings["FORGE_AGENTIC_MODEL"] == "openai-responses:public-status"
+        c.state["status_calls"] += 1
+        selection = context["status_context"]["selection"]
+        return NaturalDecision(
+            intent="status",
+            language="es" if "cómo" in message else "en",
+            message="No hay una ejecución vinculada."
+            if selection == "missing"
+            else "There is more than one linked active run; which one do you mean?"
+            if selection == "ambiguous"
+            else "This status comes from the current authenticated ticket reference.",
+        )
+
+    monkeypatch.setattr("firefly_forge.scm_natural_tasks.classify", classify)
+
+
 async def addressed(c, body="@forge how is this going?", number=80, issue_number=3):
     c.state["clock"] += 3600
     comment = c.comment(number, body)
@@ -82,13 +117,14 @@ async def test_addressed_status_never_upgrades_absent_poll_consent(poll_case):
         assert not c.state["posts"]
 
 
-async def test_natural_status_links_api_created_run_through_native_processed_ticket_receipt(poll_case):
+async def test_natural_status_links_api_created_run_through_native_processed_ticket_receipt(poll_case, monkeypatch):
     async with poll_case() as c:
         await c.ready()
         await c.consent()
         explicit = await c.new_command("status")
         await c.collaboration.process(explicit["id"])
         assert "issue_context" not in c.db["runs"][c.run_id].data
+        await configured_status(c, monkeypatch)
         delivery = await addressed(c)
         result = await c.collaboration.process(delivery["id"])
         assert result["status"] == "processed" and result["run_id"] == c.run_id
@@ -103,10 +139,13 @@ async def test_natural_status_links_api_created_run_through_native_processed_tic
         assert len(c.state["posts"]) == 2
 
 
-async def test_natural_status_without_ticket_context_explains_missing_link_without_latest_repo_fallback(poll_case):
+async def test_natural_status_without_ticket_context_explains_missing_link_without_latest_repo_fallback(
+    poll_case, monkeypatch
+):
     async with poll_case() as c:
         await c.ready()
         await c.consent()
+        await configured_status(c, monkeypatch)
         delivery = await addressed(c, "@forge ¿cómo va?")
         result = await c.collaboration.process(delivery["id"])
         assert result["status"] == "processed" and result["run_id"] is None
@@ -117,7 +156,7 @@ async def test_natural_status_without_ticket_context_explains_missing_link_witho
         assert not c.db["journal"]
 
 
-async def test_natural_status_asks_when_two_active_runs_are_authentically_linked_to_ticket(poll_case):
+async def test_natural_status_asks_when_two_active_runs_are_authentically_linked_to_ticket(poll_case, monkeypatch):
     async with poll_case() as c:
         await c.ready()
         await c.consent()
@@ -131,6 +170,7 @@ async def test_natural_status_asks_when_two_active_runs_are_authentically_linked
         )
         second = await addressed(c, "/forge status " + json.dumps({"run_id": other}), 81)
         await c.collaboration.process(second["id"])
+        await configured_status(c, monkeypatch)
         delivery = await addressed(c, number=82)
         result = await c.collaboration.process(delivery["id"])
         assert result["status"] == "processed" and result["run_id"] is None
@@ -140,7 +180,7 @@ async def test_natural_status_asks_when_two_active_runs_are_authentically_linked
         assert not c.db["journal"]
 
 
-async def test_terminal_ticket_context_uses_latest_explicit_receipt_not_run_update_time(poll_case):
+async def test_terminal_ticket_context_uses_latest_explicit_receipt_not_run_update_time(poll_case, monkeypatch):
     async with poll_case() as c:
         await c.ready()
         await c.consent()
@@ -155,6 +195,7 @@ async def test_terminal_ticket_context_uses_latest_explicit_receipt_not_run_upda
         )
         second = await addressed(c, "/forge status " + json.dumps({"run_id": other}), 81)
         await c.collaboration.process(second["id"])
+        await configured_status(c, monkeypatch)
         result = await c.collaboration.process((await addressed(c, number=82))["id"])
         assert result["conversation"]["selection"] == "run" and result["run_id"] == other
         assert result["conversation"]["references"][0]["receipt_id"] == second["id"]
@@ -183,5 +224,25 @@ async def test_new_read_only_pull_request_adapter_does_not_admit_legacy_commands
         await c.consent()
         c.state["extra_issues"] = {"4": {"number": 4, "id": 400, "pull_request": {}}}
         delivery = await addressed(c, "/forge status " + json.dumps({"run_id": c.run_id}), issue_number=4)
-        assert delivery["status"] == "ignored" and delivery["reason"] == "unsupported_poll_issue"
+        assert delivery["status"] == "ignored" and delivery["reason"] == "not_an_enabled_poll_command"
         assert not c.state["posts"]
+
+
+async def test_new_status_reply_holds_when_selected_native_run_changes_before_post(poll_case, monkeypatch):
+    from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+    async with poll_case() as c:
+        await c.ready()
+        await c.consent()
+        explicit = await c.new_command("status")
+        await c.collaboration.process(explicit["id"])
+        await configured_status(c, monkeypatch)
+        delivery = await addressed(c)
+        natural = SCMNaturalTasks(c.collaboration)
+        result = await natural.process(delivery["id"])
+        assert result["natural_turn"]["resolution"]["state"] == "status"
+        c.db["runs"][c.run_id].data["status"] = "cancelled"
+        with pytest.raises(AccessDenied, match="status changed before feedback"):
+            await natural.authorize_feedback(result, remote=True)
+        await c.collaboration.feedback(delivery["id"])
+        assert len(c.state["posts"]) == 1 and c.state["status_calls"] == 1

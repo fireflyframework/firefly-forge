@@ -378,6 +378,7 @@ export async function captureWalkthrough(
     "studio/tests/walkthrough-capture.ts",
     "studio/tests/navigation.ts",
     "studio/tests/auth-fixture.ts",
+    "studio/tests/agent-lifecycle-fixture.ts",
     "studio/tests/learning-record-fixture.ts",
     "studio/tests/campaign-report-fixture.ts",
     "studio/tests/campaign-report-history-fixture.ts",

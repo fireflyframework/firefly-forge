@@ -409,23 +409,138 @@ Product changes accept at most 80,000 UTF-8 input bytes. Saved product revisions
 
 ## Ask about the current ticket
 
-After an administrator configures GitHub conversation access and maps your account to current project read permission, ask in the issue or pull request itself:
+After GitHub issue polling is configured and your account has current project
+read access, write naturally in the issue or pull-request conversation:
 
 - `@forge, how is this going?`
-- `@forge, ¿cómo va el CRM?`
-- `forge, what happened?`
+- `@forge, ¿qué debería ocurrir si cambia el responsable?`
+- `@forge, what still needs my decision?`
 
-`@forge` is Forge's native conversation alias. It does not rename the GitHub App or claim ownership of a GitHub account with that name. The configured technical App slug remains a compatible alias. The same status path accepts direct English and Spanish questions through signed GitHub comments or separately configured REST polling. Existing explicit commands remain available.
+`@forge` is Forge's native alias; the configured App slug also works. It does not
+rename the App. The selected `communication` task profile routes the message
+through Agentic or Bridge with no tools. The pinned Humanizer adaptation guides
+its wording. Forge retains the actual AI reply and typed follow-up questions;
+it does not substitute a canned answer when the provider fails.
 
-Forge finds context within that exact ticket and your current project/component scope. It uses a run's native ticket link or an earlier authenticated ticket receipt. This also supports API-created runs whose ticket association was established by a processed status request. A unique active execution supplies the status. If all linked executions are terminal, the latest explicit ticket-context receipt identifies the conversation. Several active executions, or a missing link, produce a clarification. An identifier pasted into ordinary prose cannot select another run.
+The server resolves the current issue, repository, mapped reader and linked
+work. The model may classify a request or distinguish an offered choice; it
+cannot supply execution identifiers. Several plausible runs or questions produce
+a clarification with question labels or excerpts. There is no newest-run or
+brief-similarity fallback in this polling conversation path. Read-only status can
+use one active linked run, or the latest explicitly authenticated terminal-status
+reference in this exact ticket. This conversational rule never selects a run for
+answer application, continuation or execution. A model-supplied
+choice cannot resolve an ambiguous “yes”. The human may distinguish a question
+with ordinary wording, a displayed number or an ordinal. For semantic references,
+the typed model supplies exact human and question spans; the server requires
+unique grounding in the offered questions. Unclear wording produces clarification,
+not consent.
 
-With a communication profile selected, the AI writes the complete response in English or Spanish for the selected execution or the clarification needed to identify it. Missing or ambiguous context supplies only typed ticket-selection facts; it does not create a run or invent progress. A separate AI classification can request one correction, within the same three-request limit and shared profile deadline described under [AI communication profiles](model-profiles.md#write-project-updates-with-ai). Provider failure or invalid framing holds configured AI delivery without a generic substitute or automatic repeated calls. Explicit recorded mode remains available without an AI profile. Current comment, identity and read permission checks still apply before the reply.
+### Answer a question later
 
-Status questions grant read access only. Requests to change a product, answer a worker or resume execution still use their separately authorized workflows. Unclear or combined requests receive a clarification. Quoted text, code examples, forwarded mentions and bot comments do not invoke this path. The bounded recognizer handles status questions; it does not interpret arbitrary instructions as executable commands.
+Once Forge has confirmed publication of a typed pending question to you, you may
+reply in the same thread without mentioning it. For example:
 
-Forge retains the original comment, current read scope, context references and selected run before preparing the reply. It checks the current comment, author, native user, project membership and consent again before publication. An edited or deleted source, revoked access or changed context stops the reply. The native receipt retains the exact final body and hash. An uncertain remote outcome stays held for reconciliation, without an automatic second comment. The existing [communication profile](model-profiles.md#write-project-updates-with-ai) controls optional AI wording.
+> Sales reviews proposals. Operations may reassign them. Here is the example.
 
-The signed and polling transports keep their own verification and consent records. A record observed through one transport is not silently promoted to the other's authority. Protocol fixtures qualify these boundaries; a live App reply still requires independent author, body and native-receipt readback.
+Both product-design questions and a paused worker's typed questions retain their
+producer identity. A later failed product turn does not replace the earlier
+completed turn's questions. The answer preserves your words and attachment
+references; attachment URLs are not fetched by this classifier. Pending questions
+and answers live in the native database, rather than a browser tab or process.
+There is no conversation-specific elapsed-time cutoff. Current read membership,
+repository access and the exact binding are checked again when you reply.
+
+A bot, another owner or another issue cannot consume your question. Editing the
+published question or the human reply changes its text binding. The API must
+also establish that the question was created before the human reply; an older
+reordered comment, an edit of older prose or equal coarse timestamps do not
+become an answer to a later question. A duplicate
+source delivery does not reserve a second model call, and a consumed answer does
+not reopen the old question. If the context changes, Forge asks for clarification
+rather than approving or replaying the original task.
+
+### Keep conversation separate from execution
+
+A product answer or unreviewed proposal stays in the conversation. It neither
+saves an approved product definition nor launches work. A worker answer is saved
+first, even when current response or continuation consent is absent or expired.
+Applying it uses the existing native response pipeline. A request such as
+`Continue the same task` uses the existing same-run continuation pipeline and
+fresh sealed authorization. Host source-only coding keeps its separate finite
+administrator consent; ordinary read-only discussion does not acquire it.
+
+An administrator can review and re-admit the **same retained answer** against the
+same question and a fresh current cut after renewing permission. No repost or
+new classification is needed. An unknown child intent remains held; renewal is
+not permission to create a replacement or replay an uncertain effect. Current
+question, answer custody, source, owner and project checks still apply immediately
+before the native effect.
+
+Each message durably reserves one model call. A confirmed complete response that
+fails its typed contract can reserve exactly one correction on the same profile
+with structural validation errors and no tools. The complete escaped reply and
+its typed questions must fit a 4,000-character quote; an oversized reply fails
+the typed contract rather than being silently cut. The classifier cap is two calls per message.
+An interrupted or unknown provider outcome is never automatically retried.
+Uncertain GitHub publication also stays held until its exact receipt is reconciled.
+
+### Scope and qualification
+
+This extension covers API-observed GitHub issue comments and read-only
+pull-request discussion on existing project bindings. Pull-request replies grant
+no worker-response or continuation authority. Signed webhooks retain their prior
+status grammar and separate grants. Other SCM providers, GitHub ProjectsV2 board
+synchronization and new project registration are not supplied by this adapter.
+
+Retention remains finite: the repository inbox admits at most 5,000 receipts and
+16 MiB. Question lookup does not silently discard older receipts after the latest
+200 comments; an exceeded bound holds admission. A model context contains at most
+200 server-owned choices and 100 KB, with a short conversation history. Reaching a
+bound requires a scoped clarification or operator review, not a guessed identity.
+
+Focused host tests use controlled GitHub HTTP and model responses to exercise
+polling, durable intake, late replies, authority changes and publication. They do
+not establish a live provider response, native SQL behavior or acceptance of a
+particular generated product. Real GitHub readback and the same-source native
+qualification remain separate gates. No new screenshot is presented as a live
+conversation acceptance result.
+
+### Product requests and answers go to the native architect
+
+Write `@forge, build a CRM with contact imports` or `@forge, add a warehouse approval journey`.
+The communication model selects a typed product handoff; it does not replace the
+product architect or create a reviewed definition in the inbox. With a current,
+separate functional allowance, Forge starts a native ProductAssistant session or
+reuses the one exact conversation bound to this issue, account, project and model.
+Several eligible conversations require clarification; Forge never chooses the newest.
+The native service retains its model request, knowledge evidence, task profile,
+attachments and actual typed reply. The public response quotes that reply without
+another communication-model call. Drafts remain unreviewed: this does not approve
+source changes, create an execution run or authorize publication.
+
+An answer to a confirmed ProductAssistant question continues that exact session
+and typed producer. If the product-model allowance has expired or is exhausted,
+Forge still saves the answer and explains the pending permission. A project editor
+can admit that same retained message against a fresh reviewed allowance, without
+another comment or another classification. Unknown native outcomes are held and
+cannot be replaced with another turn. The communication classifier's two-call cap
+and the separately reserved architect turn are distinct recorded allowances.
+
+For several pending questions, ordinary references such as `Sobre los permisos del
+almacén, solo los administradores pueden cambiarlos` can select a question. The
+model supplies exact spans from the human message and the offered question; the
+server checks their unique grounding. Bare `yes` cannot select one of several
+questions. Execution or same-run continuation still needs separate current authority.
+
+These paths have controlled host coverage. Native PostgreSQL/API, live configured
+provider and real GitHub acceptance remain separate pending gates for this cut.
+
+The [legacy typed commands](repository-workflow.md) remain a compatibility and
+operator reference. They are not the normal conversational UX. The finite
+[functional allowance](#functional-dialogue-through-local-github-polling) remains
+available for its original explicit operations; its expiry is not extended by
+this read-only conversation path.
 
 ## Use GitHub issue comments from a local factory
 
@@ -694,7 +809,8 @@ a separate assistant allowance; it never replenishes the original CRM run,
 command budget, coding-provider allowance, or journal. Missing consumption
 history refuses dispatch rather than replenishing the allowance.
 
-After consent, post a **new** issue comment using the existing typed assistant
+After consent, the natural coordinator can hand a product request to this native service.
+The compatibility path below uses a **new** issue comment with the existing typed assistant
 command. The project and conversation identifiers below are placeholders:
 
 ```text
@@ -717,8 +833,9 @@ use the explicit typed conversation ID rather than guessing.
 
 ### Continue the product discussion in the issue
 
-Start the conversation once using the typed command above, then write a new
-addressed follow-up in the same issue. For example:
+For ordinary discussion, use [natural ticket conversations](#ask-about-the-current-ticket).
+The typed functional command above remains a compatibility path with its own
+finite allowance. A natural message in the same issue can be:
 
 > **Owner:** @forge, ¿Qué debería ocurrir si una oportunidad cambia de
 > responsable cuando ya hay una propuesta pendiente?
@@ -729,10 +846,11 @@ roles may reassign an opportunity and propose a review rule. That proposal is
 an answer for the owner to review; it does not update the product or execute a
 run. This is an illustrative exchange, not a retained provider response.
 
-Use `status` to read the linked conversation without consuming a model turn.
-If several conversations exist in the issue, select the exact conversation ID
-with the typed command. An uncertain AI result consumes its already reserved
-turn and stays held; posting a duplicate is not a recovery mechanism.
+The legacy typed `status` operation reads its linked native conversation without
+consuming a functional model turn. Natural questions use the configured communication
+route and server-owned choices instead of asking a person for a conversation ID.
+An uncertain AI result consumes its reserved call and stays held; posting a
+duplicate is not a recovery mechanism.
 
 When an assistant reply exceeds the public comment limit, forge can show an
 explicit excerpt only after its complete reply and questions have been retained

@@ -71,3 +71,27 @@ visual quality, external service delivery or production readiness.
 
 Local generation does not automatically deliver a pull request. See
 [Git publication](scm.md#publish-a-verified-change) for explicit publication.
+
+
+## 6. Continue the conversation in GitHub
+
+For a connected GitHub project with issue polling and a mapped reader, write:
+
+> @forge, how is this task going? What still needs my decision?
+
+Use the same issue for follow-up questions. If Forge has published a confirmed
+pending question to you, you may answer later without mentioning the bot:
+
+> Sales reviews proposals. Operations may reassign them.
+
+The native record links your exact words to the original typed question, even
+after a factory restart. Several pending questions produce a clarification with
+question excerpts. An edited question, different issue or different owner does
+not authorize an answer to the old context.
+
+Conversation access does not approve work. A worker answer waits for current
+response permission, and `Continue the same task` needs current continuation
+permission. An administrator may explicitly admit the same retained answer after
+renewing the exact permission; you do not need to repost it. An uncertain effect
+is reconciled rather than replayed. See [ticket conversations](scm.md#ask-about-the-current-ticket)
+for the implemented GitHub scope and qualification limits.

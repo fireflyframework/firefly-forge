@@ -74,6 +74,13 @@ Dialogue tasks are model proposals for owner review. They do not change the exis
 
 Task routing produces a frozen provider selection for each implemented invocation. An unbound task returns no override and preserves the existing explicit provider selection. A configured binding that is missing, unsupported or unverified fails; it cannot quietly switch to another provider or model.
 
+Studio starts new implementation runs with **Use configured task routing**. This
+selection lets the server resolve the implementation profile; an unbound task
+uses the server's existing default. Choosing Codex, Claude Code, Firefly Agent
+Bridge or Firefly Agentic sends that explicit choice. A conflict with the saved
+route is refused by the server; Studio does not replace the choice or retry it
+with another provider. Existing unfinished drafts retain their selection.
+
 ## Write project updates with AI
 
 Select an existing `agentic` or `bridge` profile for `communication`. This enables AI wording for subsequent issue and pull-request updates. The implementation profile is independent: a run using the Codex CLI can use an explicitly selected Bridge subscription for its updates. No paid API profile or coding subscription is chosen automatically.

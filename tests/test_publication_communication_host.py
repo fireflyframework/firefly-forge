@@ -219,7 +219,14 @@ async def test_selected_ai_refusal_retains_empty_text_and_never_pushes(publicati
     elif failure == "invalid":
         p.engine.communication_writer.model = reviewed_model(card(title="Notify @everyone"), calls=calls)
     elif failure == "credential_admission":
-        p.state["deny_credentials"] = True
+        original_admission = p.store.admit_credentials
+
+        async def refuse_draft_context(value):
+            if isinstance(value, dict):
+                raise ValueError("Publication context credential admission unavailable")
+            await original_admission(value)
+
+        p.store.admit_credentials = refuse_draft_context
     elif failure == "summary_secret":
         p.run["summary"] = p.state["secret"]
     elif failure == "summary_type":
@@ -233,6 +240,20 @@ async def test_selected_ai_refusal_retains_empty_text_and_never_pushes(publicati
     assert draft["body"] == "" and draft["title"] == ""
     assert p.state["effects"] == []
     assert p.state["secret"] not in json.dumps(draft)
+
+
+async def test_source_patch_credential_refusal_precedes_ai_drafting_and_any_remote_effect(publication):
+    p = publication
+    calls = []
+    p.engine.communication_writer.model = reviewed_model(card(), calls=calls)
+    p.state["deny_credentials"] = True
+    with pytest.raises(ValueError, match="Credential admission unavailable"):
+        await p.engine.publish(p.run["id"])
+    assert calls == []
+    assert "publication_draft" not in p.run
+    assert "publication_status" not in p.run
+    assert p.run["pr_url"] == ""
+    assert p.state["effects"] == [] and p.state["requests"] == []
 
 
 @pytest.mark.parametrize(

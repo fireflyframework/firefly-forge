@@ -51,11 +51,69 @@ Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/s
 
 `Store.event()` retains the sanitized message separately from that bounded projection. Studio renders supported summaries, leaves plain logs readable and offers an explicit verified reader for complete content. Unsupported structured previews receive a generic card. The optional Claude summary fields preserve the existing descriptor version and byte/hash binding; the archive writer, current-authority checks, credential fences and D04 export limits are shared. See [the activity contract](agent-integrations.md#read-complete-retained-provider-activity) and [the operator walkthrough](run-evidence.md#read-complete-provider-activity).
 
+### Durable natural ticket conversations
+
+`SCMNaturalTasks` retains a human message before its configured `communication`
+Agentic/Bridge call. Its separate package-owned YAML catalog and the pinned
+Humanizer adaptation control the typed reply; the qualified source-edit prompt
+manifest is unchanged. `scm_natural_questions.py` projections bind completed typed
+product turns or natural replies to confirmed published comments. Worker
+questions retain their immutable journal identity. No question is extracted from
+untrusted prose.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Natural ticket conversation" aria-describedby="natural-conversation-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    A[Current issue and reader] --> B[Retain exact human message]
+    B --> C[Configured tool-free AI reply]
+    C --> D[Confirm published typed question]
+    D --> E[Retain later owner answer]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="natural-conversation-guide">A confirmed pending question allows an unmentioned owner reply in the same thread, including after a restart. Focus and scroll the diagram on a narrow screen.</p>
+
+The `retained_question_reply` source kind records this provenance without
+manufacturing a bot mention. Server-owned question references include issue,
+repository, actor, binding, producer and exact published text hashes. Parallel
+contexts require a readable clarification. Typed product answers and proposals
+remain discussion; `NaturalEffects` can project worker answers or continuation
+only into the existing current-permission pipelines. Its retained parent/child
+cut, answer custody and compare-and-set checks prevent late results from
+replacing reconciliation or claiming another channel's answer.
+
+`scm_natural_product.py` hands product requests and exact retained product answers
+to `SCMPollFunctionalAuthority`, `ChannelProducts` and the native ProductAssistant.
+The separately bounded functional grant owns the architect turn; the communication
+classifier cannot spend it implicitly. A new request may create a session or use one
+unique issue/account/model-bound session. An answer uses its exact confirmed
+question producer. Current authority is rechecked through the existing native
+service before effects and after model waits. The original human source, native
+request ID, allowance and parent custody are sealed in a separate child receipt.
+Completed native replies are quoted directly; no model rewrite is added.
+
+The communication route is resolved once per message. Correction and delivery
+checks validate that admitted snapshot against the current profile and routing;
+they do not create a new invocation snapshot during each recheck.
+
+One confirmed invalid typed reply may reserve one correction; unknown outcomes
+are never replayed. Retained answers survive execution-consent expiry. Applying
+one later needs an explicit current review of that same receipt, not another
+human comment or silently renewed consent. See [the user journey and exact
+qualification scope](scm.md#ask-about-the-current-ticket).
+
 ### GitHub polling clarification continuation
 
 `SCMPollResumeGrantInputV3` separates REST-polling continuation consent from status/answer bindings and signed-delivery grants. `SCMPollResumeAuthority` owns current binding, project and native-user checks, immutable consent receipts and bounded history. Its registered pyfly controller, `ForgeClient`, CLI and four MCP tools share the same typed contract. Studio's Mapping, Scope and Review wizard retains one input before submission and reads its exact receipt after an uncertain response.
 
-A new `/forge resume` comment carries the existing version 2 continuation input under the distinct `github_rest_poll_v1` grant. `SCMPollResumeAuthority`, extending `SCMResumeAuthority`, rechecks the current account and application outside the database transaction, then native authority and the original clarification cut under the retained locks. Credential admission waits trigger fresh remote and local checks before action and feedback. An unknown intent remains held; queuing the original run records neither provider execution nor final product acceptance.
+A natural request to continue the same task is projected server-side to the existing version 2 continuation input under the distinct `github_rest_poll_v1` grant. The explicit `/forge resume` form remains a compatibility reference. `SCMPollResumeAuthority`, extending `SCMResumeAuthority`, rechecks the current account and application outside the database transaction, then native authority and the original clarification cut under the retained locks. Credential admission waits trigger fresh remote and local checks before action and feedback. An unknown intent remains held; queuing the original run records neither provider execution nor final product acceptance.
 
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="GitHub polling continuation boundaries" tabindex="0" markdown="1">
 

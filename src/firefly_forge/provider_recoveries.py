@@ -187,7 +187,7 @@ class ProviderRecoveries:
             ),
         }
 
-    async def _settled(self, run: Data, *, idle: bool) -> None:
+    async def _settled(self, run: Data, *, idle: bool, index_sanitation_reservation: str | None = None) -> None:
         active = self.engine.active.get(run["id"])
         if idle and active is not None and not active.done():
             raise ValueError("The original run still has active execution")
@@ -211,6 +211,18 @@ class ProviderRecoveries:
         ):
             raise ValueError("An external delivery operation remains unsettled")
         entries = await self._entries(run["id"])
+        from firefly_forge.source_index_sanitation import SANITATION_INTENT, SANITATION_RECEIPT
+
+        sanitation_receipts = {e["idempotency_key"]: e["payload"] for e in entries if e["kind"] == SANITATION_RECEIPT}
+        for intent in entries:
+            if intent["kind"] != SANITATION_INTENT or intent["idempotency_key"] == index_sanitation_reservation:
+                continue
+            completed = sanitation_receipts.get(intent["idempotency_key"], {})
+            if completed.get("intent_digest") != intent["digest"] or any(
+                completed.get(key) != intent["payload"].get(key)
+                for key in ("request", "actor", "original_intent_digest")
+            ):
+                raise ValueError("Unknown native index sanitation requires reconciliation")
         receipts = {e["idempotency_key"] for e in entries if e["kind"] == "receipt"}
         if any(
             e["kind"] == "intent"
