@@ -12,6 +12,7 @@ from test_execution import seed_repository
 from test_operations import release_fixture
 
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.communication import CommunicationPublicationV1
 from firefly_forge.engine import Engine
 from firefly_forge.identity import Principal
 from firefly_forge.journal import Journal
@@ -137,6 +138,11 @@ async def test_publication_uses_distinct_current_releaser_and_rechecks_before_pr
     files, _, _ = await engine._snapshot(engine.workspaces / run["id"], run["base_revision"])
     await store.update(run["id"], changed_files=files)
     await engine._checkpoint_commit(run["id"], engine.workspaces / run["id"])
+    run = await store.get_run(run["id"])
+    publication = CommunicationPublicationV1.model_validate(
+        {key: run[key] for key in ("summary", "source_tree", "checkpoint_revision")}
+    )
+    assert publication.summary == "Verified public fixture change"
     original_repository = store.repository
 
     async def remote_repository(repository_id):
