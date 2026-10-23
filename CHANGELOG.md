@@ -2,6 +2,15 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.34 — 2026-10-22
+
+- Let the selected AI communication profile write the complete proposed pull request title and description, with a separate semantic classification and one final correction within three requests.
+- Commit the exact public draft and evidence before publication intent or push. Recheck the source, checkpoint, profile and current release actor before outbound effects.
+- Hold selected-AI failures without a fallback while ownership and publication state remain current. Fence lost execution owners from overwriting later publication custody, including after a remote response. Preserve uncertain outcomes without automatic replay and retain explicit recorded mode.
+- Verify publication custody, authority and execution-owner takeover with native PostgreSQL cases and controlled model/provider transports; preserve previous prompt bytes in the 289-resource catalog.
+- Correct the factory's documented pyfly dependency to 26.10.7 while preserving the generation profile and manual catalog at their qualified 26.10.6 pin.
+- Refresh the canonical Studio walkthrough captures for the 0.2.34 version stamp.
+
 ## 0.2.33 — 2026-10-22
 
 - Pin Studio's Vitest test tooling and its associated locked packages to 4.1.12, addressing GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp. Preserve all other locked dependencies.

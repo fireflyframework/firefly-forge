@@ -812,6 +812,48 @@ class Store:
             row.status = row.data["status"]
             await self.run_records.save(row)
 
+    @property
+    def execution_ownership_token(self) -> object:
+        connection = self._ownership_connection
+        if connection is None or connection.closed or connection.invalidated or self.execution_stopping:
+            raise RuntimeError("PostgreSQL execution ownership was lost")
+        return connection
+
+    async def update_publication(
+        self, value: str, expected: Data, *, ownership: object | None = None, **fields: Any
+    ) -> None:
+        allowed = {"publication_draft", "publication_status", "publication_actor", "pr_url"}
+        if not fields or not fields.keys() <= allowed:
+            raise ValueError("Publication updates require only publication custody fields")
+
+        async def save(records: ForgeRunRepository) -> None:
+            row = await records.find_by_id(identifier(value), lock=LockMode.PESSIMISTIC_WRITE)
+            if row is None:
+                raise KeyError("Run not found")
+            if any(row.data.get(key) != expected.get(key) for key in allowed):
+                raise ValueError("Publication custody changed; no publication update was recorded")
+            self.reject_credentials(fields)
+            row.data = {**row.data, **fields, "updated_at": now()}
+            await records.save(row)
+
+        if ownership is None:
+            async with self._unit():
+                await save(self.run_records)
+            return
+        if current_unit_of_work() is not None:
+            raise ValueError("Publish outside an active caller transaction")
+        async with self._ownership_lock:
+            if ownership is not self.execution_ownership_token:
+                raise RuntimeError("PostgreSQL execution ownership was lost")
+            await self._assert_ownership()
+            connection = self._ownership_connection
+            assert connection is not None
+            # Losing the lease connection must also roll back its custody transaction.
+            async with AsyncSession(bind=connection, expire_on_commit=False) as session, session.begin():
+                await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                await session.execute(text("SET LOCAL synchronous_commit TO on"))
+                await save(ForgeRunRepository(session=session))
+
     async def claim(self, value: str) -> bool:
         current = await self.get_run(value)
         async with self._unit():

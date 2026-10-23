@@ -2453,6 +2453,33 @@
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.0",
+      "path": "collaboration/publication-system.yaml",
+      "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-request",
+      "version": "1.0.0",
+      "path": "collaboration/publication-request.yaml",
+      "sha256": "5d1b6b84d18ee4f71ce12c6baa2a8aefa65594a4abc72cb2e9d1b88145b51198",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string"
+      }
+    },
+    {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.0",
+      "path": "collaboration/publication-review-system.yaml",
+      "sha256": "9321a8810d15c9b9b1bf6929b1fed8444687c1ed84658583f7c850b8b7a3fee8",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

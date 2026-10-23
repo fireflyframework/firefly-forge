@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.34
+
+When an administrator selects an AI communication profile, the factory asks it to write the proposed pull request's complete title and description before pushing its implementation branch. The writer uses admitted recorded facts, versioned YAML/Jinja prompts and the existing Humanizer instructions. A separate AI request classifies the candidate; unsupported or uncertain wording receives one final correction within the existing three-request ceiling and shared profile deadline. The prompt catalog contains 289 resources, preserving all previous resource bytes.
+
+The exact title, body, hashes, profile and review evidence are saved in PostgreSQL before the publication journal intent or push. Current source, checkpoint, communication profile and release-actor authority are checked again before each outbound effect. The admitted context excludes the brief, source files and raw logs; the bounded worker summary must pass credential admission before it reaches the writer or retained public draft. In both AI and recorded modes, missing or invalid publication facts hold publication before any model call, separately from a selected provider failure. See [AI communication profiles](model-profiles.md#write-project-updates-with-ai).
+
+With AI selected, provider failure, invalid output or failed native checks holds publication without a substitute template. A failure before push records empty public text only while the original execution owner and expected publication state remain current. A stale owner leaves later drafts, actors, status and pull request URLs untouched. Revoked authority after a push prevents creation of the pull request. An uncertain remote response retains the original draft and intent for observation instead of generating another draft or automatically repeating publication. Explicit recorded mode remains available when no AI communication profile is selected.
+
+Controlled model and provider transports verify the existing GitHub, GitLab and Bitbucket adapters. Native PostgreSQL cases verify committed Store/Journal custody, current membership, source changes, credential refusal, execution-owner takeover and unknown-outcome holds. These checks do not establish external model quality, live SCM delivery, native CLI isolation or generated-product acceptance.
+
 ## 0.2.33
 
 Studio's development and test toolchain pins Vitest and its associated locked packages to 4.1.12. This version fixes the manual mock code-injection issue [GHSA-qxg6-89mg-rqv8](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8) and the Windows redirect path-traversal issue [GHSA-xp26-3454-mjgp](https://github.com/vitest-dev/vitest/security/advisories/GHSA-xp26-3454-mjgp) in `@vitest/mocker`. Other locked dependencies retain their existing versions.

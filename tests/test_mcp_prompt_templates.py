@@ -65,7 +65,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 286
+    assert len(catalog.registry) == 289
     assert entries["collaboration/decision-destination"]["variables"] == {"reference": "string"}
     assert entries["collaboration/decision-reply"]["variables"] == {"command": "string"}
     assert entries["collaboration/decision-resume"]["variables"] == {"command": "string"}

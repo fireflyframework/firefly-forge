@@ -80,7 +80,20 @@ class CommunicationConversationV1(StrictContract):
         return self
 
 
-def communication_facts(run: Data | None, *, conversation: CommunicationConversationV1 | None = None) -> Data:
+class CommunicationPublicationV1(StrictContract):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    version: Literal[1] = 1
+    summary: str = Field(min_length=1, max_length=6000)
+    source_tree: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
+    checkpoint_revision: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
+
+
+def communication_facts(
+    run: Data | None,
+    *,
+    conversation: CommunicationConversationV1 | None = None,
+    publication: CommunicationPublicationV1 | None = None,
+) -> Data:
     conversation_facts = {}
     if conversation is not None:
         if (conversation.selection == "run") != (run is not None):
@@ -98,9 +111,17 @@ def communication_facts(run: Data | None, *, conversation: CommunicationConversa
             return {"conversation": conversation_facts}
     if run is None:
         raise ValueError("Communication requires an actual execution or native conversation context")
+    if publication and (conversation or run.get("status") != "succeeded"):
+        raise ValueError("Publication communication requires a successful execution without conversation context")
     status = run.get("status")
     known = TERMINAL | {"queued", "running", "paused", "needs_reconciliation", "developing", "validating"}
     facts: Data = {"state": {"status": status if isinstance(status, str) and status in known else "unknown"}}
+    if publication:
+        facts["publication"] = {
+            **publication.model_dump(exclude={"version"}),
+            "summary_basis": "worker_report",
+            "purpose": "proposed_pull_request",
+        }
     if conversation_facts:
         facts["conversation"] = conversation_facts
     status = facts["state"]["status"]
@@ -202,7 +223,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if ({"blocker", "check_batch", "conversation"} & facts.keys()) - cited:
+    if ({"blocker", "check_batch", "conversation", "publication"} & facts.keys()) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
@@ -258,8 +279,9 @@ class CommunicationWriter:
         safe: Callable[[str], str],
         *,
         conversation: CommunicationConversationV1 | None = None,
+        publication: CommunicationPublicationV1 | None = None,
     ) -> Data:
-        facts = communication_facts(run, conversation=conversation)
+        facts = communication_facts(run, conversation=conversation, publication=publication)
         if reject := getattr(self.store, "reject_credentials", None):
             if "decision" in facts:
                 assert run is not None
@@ -299,13 +321,15 @@ class CommunicationWriter:
             timeout = min(120, int(settings.get("FORGE_PROVIDER_TIMEOUT", "60")))
             evidence["timeout_seconds"] = timeout
             prompt = prompt_text(
-                "collaboration/communication-request",
-                version="1.0.1",
+                "collaboration/publication-request" if publication else "collaboration/communication-request",
+                version="1.0.0" if publication else "1.0.1",
                 facts=json.dumps(facts, sort_keys=True),
                 fact_ids=json.dumps(sorted(facts)),
             )
             instructions = inject_skills(
-                prompt_text("collaboration/communication-system", version="1.0.4" if conversation else "1.0.3"),
+                prompt_text("collaboration/publication-system")
+                if publication
+                else prompt_text("collaboration/communication-system", version="1.0.4" if conversation else "1.0.3"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -365,7 +389,10 @@ class CommunicationWriter:
                     return result
                 evidence["candidate_sha256"] = content_digest(draft.model_dump())
                 review_instructions = prompt_text(
-                    "collaboration/communication-review-system", version="1.0.1" if conversation else "1.0.0"
+                    "collaboration/publication-review-system"
+                    if publication
+                    else "collaboration/communication-review-system",
+                    version="1.0.1" if conversation else "1.0.0",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
