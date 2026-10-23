@@ -17,6 +17,12 @@ import {
   type DeploymentJob,
 } from "./factory";
 
+export type FactorySelection = {
+  project: string;
+  view: "floor" | "board";
+  run: string;
+};
+
 export function FactoryFloor({
   connection,
   connected,
@@ -25,7 +31,8 @@ export function FactoryFloor({
   theme,
   onOpen,
   onCreate,
-  onProjectChange,
+  selection,
+  onSelectionChange,
 }: {
   connection: Connection;
   connected: boolean;
@@ -34,23 +41,16 @@ export function FactoryFloor({
   theme: "light" | "dark";
   onOpen: (run: ForgeRun) => void;
   onCreate: () => void;
-  onProjectChange: (id: string) => void;
+  selection: FactorySelection;
+  onSelectionChange: (selection: FactorySelection) => void;
 }) {
   const projectLabels = repositoryLabels(repositories);
-  const [project, setProject] = useState("");
-  const [view, setView] = useState("floor");
+  const { project, view, run: chosenRun } = selection;
   const activeProject =
     repositories.find((item) => item.id === project)?.id ??
     repositories.find((item) => item.id === runs[0]?.repository_id)?.id ??
     repositories[0]?.id ??
     "";
-  useEffect(() => {
-    if (activeProject) {
-      if (project !== activeProject) setProject(activeProject);
-      onProjectChange(activeProject);
-    }
-  }, [activeProject, project, onProjectChange]);
-  const [chosenRun, setChosenRun] = useState("");
   const [selectedStation, setStation] = useState("prepare");
   const [planRun, setPlanRun] = useState("");
   const [plan, setPlan] = useState<DevelopmentPlan | null>(null);
@@ -68,6 +68,14 @@ export function FactoryFloor({
     projectRuns[0] ??
     null;
   const runId = run?.id;
+  useEffect(() => {
+    if (project !== activeProject || chosenRun !== (runId ?? ""))
+      onSelectionChange({
+        ...selection,
+        project: activeProject,
+        run: runId ?? "",
+      });
+  }, [activeProject, chosenRun, onSelectionChange, project, runId, selection]);
   useEffect(() => {
     if (!connected || !runId) return;
     const controller = new AbortController();
@@ -141,8 +149,11 @@ export function FactoryFloor({
             aria-label="Project"
             value={activeProject}
             onChange={(event) => {
-              setProject(event.target.value);
-              setChosenRun("");
+              onSelectionChange({
+                ...selection,
+                project: event.target.value,
+                run: "",
+              });
               setPlan(null);
               setDeployments([]);
             }}
@@ -165,7 +176,7 @@ export function FactoryFloor({
             value={run?.id ?? ""}
             disabled={!projectRuns.length}
             onChange={(event) => {
-              setChosenRun(event.target.value);
+              onSelectionChange({ ...selection, run: event.target.value });
               setPlan(null);
               setDeployments([]);
             }}
@@ -205,14 +216,14 @@ export function FactoryFloor({
         <button
           className="quiet"
           aria-pressed={view === "floor"}
-          onClick={() => setView("floor")}
+          onClick={() => onSelectionChange({ ...selection, view: "floor" })}
         >
           Floor
         </button>
         <button
           className="quiet"
           aria-pressed={view === "board"}
-          onClick={() => setView("board")}
+          onClick={() => onSelectionChange({ ...selection, view: "board" })}
         >
           Board
         </button>
@@ -223,7 +234,7 @@ export function FactoryFloor({
           selected={run}
           plan={currentPlan}
           onOpen={onOpen}
-          onSelect={setChosenRun}
+          onSelect={(run) => onSelectionChange({ ...selection, run })}
         />
       ) : (
         <>

@@ -7,6 +7,8 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -61,7 +63,7 @@ import { useAppearance, type Appearance } from "./appearance";
 import { Wizard } from "./Wizard";
 import { SourceControl } from "./SourceControl";
 import { KnowledgeExplorer, Knowledge } from "./Knowledge";
-import { FactoryFloor } from "./FactoryFloor";
+import { FactoryFloor, type FactorySelection } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { CommunicationSettings } from "./CommunicationSettings";
 import { linkedRun } from "./RunQuestionLink";
@@ -274,7 +276,6 @@ export default function App() {
   const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
     null,
   );
-  const [floorProject, setFloorProject] = useState("");
   const [accessUser, setAccessUser] = useState<string>();
   const [connection, setConnection] = useState<Connection>({
     base: "/api/v1",
@@ -299,18 +300,90 @@ export default function App() {
       null,
     );
   const restoredGoal = useRef(false);
-  const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [runs, setRuns] = useState<ForgeRun[]>([]);
-  const [providers, setProviders] = useState<unknown>(null);
-  const [profiles, setProfiles] = useState<unknown>(null);
+  const [repositoryData, setRepositories] = useState<Repository[]>([]);
+  const [runData, setRuns] = useState<ForgeRun[]>([]);
+  const [providerData, setProviders] = useState<unknown>(null);
+  const [profileData, setProfiles] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [selected, setSelected] = useState<ForgeRun | null>(null);
+  const [connectionReady, setConnected] = useState(false);
+  const identityScope = identity.session
+    ? JSON.stringify([connection.base, identity.session.user.id])
+    : null;
+  const readScope =
+    !identity.loading && !identity.error && connection.authenticated
+      ? identityScope
+      : null;
+  const [dataScope, setDataScope] = useState<string | null>(null);
+  const currentScope = useRef(readScope);
+  const currentIdentityScope = useRef(identityScope);
+  const refreshVersion = useRef(0);
+  const currentData = readScope !== null && dataScope === readScope;
+  const repositories = currentData ? repositoryData : [];
+  const runs = useMemo(
+    () => (currentData ? runData : []),
+    [currentData, runData],
+  );
+  const providers = currentData ? providerData : null;
+  const profiles = currentData ? profileData : null;
+  const connected = connectionReady && currentData;
+  const floorScope = connectionReady ? identityScope : null;
+  const [floorContext, setFloorContext] = useState<{
+    scope: string | null;
+    selection: FactorySelection;
+  }>({ scope: null, selection: { project: "", view: "floor", run: "" } });
+  const floorSelection: FactorySelection =
+    floorContext.scope === floorScope
+      ? floorContext.selection
+      : { project: "", view: "floor", run: "" };
+  const floorProject = floorSelection.project;
+  useEffect(() => {
+    setFloorContext((current) =>
+      current.scope === floorScope
+        ? current
+        : {
+            scope: floorScope,
+            selection: { project: "", view: "floor", run: "" },
+          },
+    );
+  }, [floorScope]);
+  const selectFloor = useCallback(
+    (selection: FactorySelection) => {
+      if (floorScope) setFloorContext({ scope: floorScope, selection });
+    },
+    [floorScope],
+  );
+
+  const [selectedRecord, setSelectedRecord] = useState<{
+    scope: string | null;
+    run: ForgeRun | null;
+  }>({ scope: null, run: null });
+  const selected =
+    currentData && selectedRecord.scope === readScope
+      ? selectedRecord.run
+      : null;
+  const setSelected = useCallback(
+    (run: ForgeRun | null) => {
+      if (currentIdentityScope.current !== readScope || (!readScope && run))
+        return;
+      setSelectedRecord({ scope: readScope, run });
+    },
+    [readScope],
+  );
   const linkedSelection = useRef<string | null>(null);
   const [detailError, setDetailError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  useLayoutEffect(() => {
+    if (currentIdentityScope.current !== identityScope) {
+      setDetailError("");
+      setBusy(false);
+      setNotice("");
+    }
+    currentScope.current = readScope;
+    currentIdentityScope.current = identityScope;
+    refreshVersion.current++;
+  }, [readScope, identityScope]);
   const [dialog, setDialog] = useState(false);
   const [setupGoal, setSetupGoal] = useState<"overview" | "product">(
     "overview",
@@ -369,10 +442,15 @@ export default function App() {
       )
         setPage("browser-connections");
     }
-  }, [identity.session, identity.loading, connection.base]);
+  }, [identity.session, identity.loading, connection.base, setSelected]);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      if (!connection.authenticated && !connection.token) return;
+      if (!readScope) return;
+      const version = ++refreshVersion.current;
+      const current = () =>
+        currentScope.current === readScope &&
+        refreshVersion.current === version &&
+        !signal?.aborted;
       setLoading(true);
       setError("");
       try {
@@ -395,22 +473,24 @@ export default function App() {
           request<unknown>(connection, "/profiles", { signal }),
           request<ExecutionHealth>(connection, "/health", { signal }),
         ]);
+        if (!current()) return;
         setRepositories(repositoryResult);
         setRuns(runResult);
         setProviders(providerResult);
         setProfiles(profileResult);
         setExecutionHealth(healthResult);
+        setDataScope(readScope);
         setConnected(true);
       } catch (cause) {
-        if (!signal?.aborted) {
+        if (current()) {
           setError(errorText(cause));
           setConnected(false);
         }
       } finally {
-        if (!signal?.aborted) setLoading(false);
+        if (current()) setLoading(false);
       }
     },
-    [connection],
+    [connection, readScope],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -464,7 +544,7 @@ export default function App() {
         if (!controller.signal.aborted) setError(errorText(cause));
       });
     return () => controller.abort();
-  }, [identity.loading, linkedActor, connection]);
+  }, [identity.loading, linkedActor, connection, setSelected]);
   const selectedDeliveryPending = selected ? deliveryPending(selected) : false;
   useEffect(() => {
     if (
@@ -499,8 +579,10 @@ export default function App() {
     selected?.status,
     selectedDeliveryPending,
     connection,
+    setSelected,
   ]);
   async function openRun(run: ForgeRun) {
+    if (!readScope || currentScope.current !== readScope) return;
     setPage("run");
     setSelected(run);
     setDetailError("");
@@ -513,13 +595,17 @@ export default function App() {
         ),
       );
     } catch (cause) {
-      setDetailError(errorText(cause));
+      if (currentIdentityScope.current === readScope)
+        setDetailError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (currentIdentityScope.current === readScope) setBusy(false);
     }
   }
   async function runAction(action: "cancel" | "retry" | "publish") {
-    if (!selected) return;
+    if (!selected || !readScope || currentScope.current !== readScope) return;
+    const current = () =>
+      currentScope.current === readScope &&
+      currentIdentityScope.current === readScope;
     setBusy(true);
     setDetailError("");
     try {
@@ -527,6 +613,7 @@ export default function App() {
         connection,
         "/runs/" + encodeURIComponent(selected.id) + "/" + action,
       );
+      if (!current()) return;
       setSelected(result);
       setNotice(
         action === "cancel"
@@ -539,9 +626,9 @@ export default function App() {
       );
       void refresh();
     } catch (cause) {
-      setDetailError(errorText(cause));
+      if (current()) setDetailError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (currentIdentityScope.current === readScope) setBusy(false);
     }
   }
   function navigate(next: Page) {
@@ -739,7 +826,7 @@ export default function App() {
               <button onClick={() => void refresh()}>Try again</button>
             </div>
           )}
-          {notice && (
+          {notice && currentData && (
             <div className="notice" role="status">
               <Check size={17} />
               {notice}
@@ -777,6 +864,7 @@ export default function App() {
                 </button>
               </div>
               <FactoryFloor
+                key={floorScope}
                 connection={connection}
                 connected={connected}
                 repositories={repositories}
@@ -784,7 +872,8 @@ export default function App() {
                 theme={theme}
                 onOpen={(run) => void openRun(run)}
                 onCreate={() => startStandalone(floorProject)}
-                onProjectChange={setFloorProject}
+                selection={floorSelection}
+                onSelectionChange={selectFloor}
               />
               <div className="metrics">
                 <div>
