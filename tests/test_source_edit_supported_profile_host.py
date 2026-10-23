@@ -54,8 +54,17 @@ def test_historical_loader_and_policy_keep_their_exact_provenance():
         q.source_budget_limits(profile)
 
 
-def test_current_runtime_must_match_measured_profile_before_admission():
+@pytest.fixture
+def measured_runtime(monkeypatch):
     profile = registered_profile("codex-exec-restricted-source/v6")
+    monkeypatch.setattr(q.platform, "system", lambda: profile.system)
+    monkeypatch.setattr(q.platform, "machine", lambda: profile.machine)
+    monkeypatch.setattr(q, "runtime_versions", lambda: profile.runtime_versions)
+    return profile
+
+
+def test_current_runtime_must_match_measured_profile_before_admission(measured_runtime):
+    profile = measured_runtime
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
     assert q.qualified_profile(identity, profile.model) == profile
     assert profile.version == q.REGISTRY_VERSION == 5
@@ -72,6 +81,20 @@ def test_current_runtime_must_match_measured_profile_before_admission():
     assert profile.proof.budget_limits == profile.source_budget_limits
     assert q.source_budget_limits(profile) == {"read_file_lifetime_limit": 20, "activation_ceiling": 5}
     assert q.profile_seal(profile)["proof_sha256"] == profile.proof.artifact_sha256
+
+
+@pytest.mark.parametrize("drift", ["system", "machine", "runtime"])
+def test_measured_profile_refuses_foreign_runtime(measured_runtime, monkeypatch, drift):
+    profile = measured_runtime
+    identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
+    if drift == "system":
+        monkeypatch.setattr(q.platform, "system", lambda: "Linux")
+    elif drift == "machine":
+        monkeypatch.setattr(q.platform, "machine", lambda: "x86_64")
+    else:
+        monkeypatch.setattr(q, "runtime_versions", lambda: (("python", "3.13.17"),))
+    with pytest.raises(ValueError, match="qualified"):
+        q.qualified_profile(identity, profile.model)
 
 
 def test_profile_refuses_runtime_drift_and_unknown_build_model(monkeypatch):

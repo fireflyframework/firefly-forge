@@ -41,6 +41,14 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+@pytest.fixture(autouse=True)
+def measured_witness_directory(tmp_path, monkeypatch):
+    if "NATIVE_SQL_FIXTURE" not in os.environ:
+        root = tmp_path / "native-sql-witnesses"
+        (root / "logs").mkdir(parents=True)
+        monkeypatch.setenv("NATIVE_SQL_FIXTURE", str(root))
+
+
 def measured_witness(kind, values):
     case = os.environ["PYTEST_CURRENT_TEST"].removesuffix(" (call)")
     assert case.startswith("tests/test_source_budget_native.py::")

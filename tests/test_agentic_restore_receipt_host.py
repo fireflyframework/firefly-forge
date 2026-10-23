@@ -67,6 +67,7 @@ async def native_task_schema(env, monkeypatch):
 
     env.store._initialized = True
     env.store.session_provider = Sessions()
+    env.store._source_budget_context = MethodType(Store._source_budget_context, env.store)
     env.store._unit = MethodType(Store._unit, env.store)
     repository = ForgeTaskRepository(datasource=manager.datasource)
     registry = TransactionManagerRegistry()
