@@ -35,6 +35,7 @@ async def verified_run(store, tmp_path):
         run["id"],
         base_revision=base,
         source_tree=tree,
+        summary="Verified public fixture change",
         final_verification=[
             {"argv": [sys.executable, "-c", "from service import status; assert status() == 'ok'"], "exit_code": 0}
         ],
