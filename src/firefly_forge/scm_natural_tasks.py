@@ -13,7 +13,8 @@ from typing import Any
 from pyfly.data.relational.sqlalchemy import LockMode
 
 from firefly_forge.agent_roles import WorkerFeedback
-from firefly_forge.communication import assistant_communication
+from firefly_forge.collaboration_feedback import TERMINAL
+from firefly_forge.communication import assistant_communication, communication_facts
 from firefly_forge.journal import digest
 from firefly_forge.project_access import AccessDenied
 from firefly_forge.scm_conversation_models import AddressedContextV1, AddressedStatusV1
@@ -66,6 +67,58 @@ def natural_policy_digest() -> str:
     return digest(hashes)
 
 
+def _worker_question(original: Data, run: Data, entries: list[Data]) -> Data:
+    request = run.get("worker_request") or {}
+    if (
+        not request.get("id")
+        or run["status"] in TERMINAL
+        or (original.get("feedback_intent") or {}).get("request_id") != request["id"]
+    ):
+        return {}
+    publication = confirmed_publication(original)
+    question, question_digest, response_digest, consumed = None, None, None, False
+    response_answer, response_receipt_id = None, None
+    for entry in entries:
+        payload = entry.get("payload") or {}
+        if entry.get("kind") == "worker_feedback" and (payload.get("request") or {}).get("id") == request["id"]:
+            feedback = WorkerFeedback.model_validate(payload)
+            assert feedback.request is not None
+            expected = {
+                **feedback.request.model_dump(),
+                "status": request.get("status"),
+                "role_id": feedback.role_id,
+                "task_id": feedback.task_id,
+                "attempt": feedback.attempt,
+            }
+            if request != expected or question is not None:
+                raise AccessDenied("The current question does not have one exact immutable journal record")
+            question, question_digest = feedback.request, entry["digest"]
+        if entry.get("kind") == "worker_response" and payload.get("request_id") == request["id"]:
+            if response_digest is not None:
+                raise AccessDenied("The current question has ambiguous immutable answers")
+            response_digest = entry["digest"]
+            response_answer = payload.get("answer")
+            response_receipt_id = (payload.get("responding_actor", {}).get("provenance") or {}).get(
+                "verified_receipt_id"
+            )
+        if (
+            entry.get("kind") in {"resume", "handoff"}
+            and payload.get("human_clarification", {}).get("request_id") == request["id"]
+        ):
+            consumed = True
+    if question is None:
+        return {}
+    return dict(
+        question=question,
+        question_digest=question_digest,
+        response_digest=response_digest,
+        response_answer=response_answer,
+        response_receipt_id=response_receipt_id,
+        consumed=consumed,
+        publication=publication,
+    )
+
+
 class SCMNaturalTasks:
     def __init__(self, collaboration: Any) -> None:
         self.collaboration, self.store = collaboration, collaboration.store
@@ -97,8 +150,6 @@ class SCMNaturalTasks:
             if original["actor"] != delivery["actor"]:
                 continue
             run = await self.store.get_run(reference["run_id"])
-            question, question_digest, response_digest, consumed = None, None, None, False
-            response_answer, response_receipt_id = None, None
             request = run.get("worker_request") or {}
             async with self.store._unit():
                 entries = (
@@ -108,57 +159,29 @@ class SCMNaturalTasks:
                 )
             if len(entries) > 2000 or len(json.dumps(entries).encode()) > 4 * 1024 * 1024:
                 raise AccessDenied("The linked question journal exceeds its bounded native lookup")
-            for entry in entries:
-                payload = entry.get("payload") or {}
-                if entry.get("kind") == "worker_feedback" and (payload.get("request") or {}).get("id") == request.get(
-                    "id"
-                ):
-                    feedback = WorkerFeedback.model_validate(payload)
-                    assert feedback.request is not None
-                    expected = {
-                        **feedback.request.model_dump(),
-                        "status": request.get("status"),
-                        "role_id": feedback.role_id,
-                        "task_id": feedback.task_id,
-                        "attempt": feedback.attempt,
-                    }
-                    if request != expected or question is not None:
-                        raise AccessDenied("The current question does not have one exact immutable journal record")
-                    question, question_digest = feedback.request, entry["digest"]
-                if entry.get("kind") == "worker_response" and payload.get("request_id") == request.get("id"):
-                    if response_digest is not None:
-                        raise AccessDenied("The current question has ambiguous immutable answers")
-                    response_digest = entry["digest"]
-                    response_answer = payload.get("answer")
-                    response_receipt_id = (payload.get("responding_actor", {}).get("provenance") or {}).get(
-                        "verified_receipt_id"
-                    )
-                if entry.get("kind") in {"resume", "handoff"} and payload.get("human_clarification", {}).get(
-                    "request_id"
-                ) == request.get("id"):
-                    consumed = True
+            try:
+                projection = _worker_question(original, run, entries)
+            except (AccessDenied, ValueError):
+                projection = {}
+            question = projection.get("question")
             candidates.append(
                 {
                     **scope,
                     "run_id": run["id"],
                     "run_status": run["status"],
                     "question_id": question.id if question else None,
-                    "question_digest": question_digest,
+                    "question_digest": projection.get("question_digest"),
                     "question": question.question if question else None,
                     "choices": question.choices if question else [],
-                    "question_status": request.get("status"),
-                    "response_digest": response_digest,
-                    "response_answer": response_answer,
-                    "response_receipt_id": response_receipt_id,
-                    "consumed": consumed,
+                    "question_status": request.get("status") if question else None,
+                    "response_digest": projection.get("response_digest"),
+                    "response_answer": projection.get("response_answer"),
+                    "response_receipt_id": projection.get("response_receipt_id"),
+                    "consumed": projection.get("consumed", False),
                 }
             )
-            if (
-                question is not None
-                and original.get("feedback_status") == "sent"
-                and (original.get("feedback_intent") or {}).get("request_id") == question.id
-            ):
-                candidates[-1].update(origin="worker_journal", publication=confirmed_publication(original))
+            if question is not None:
+                candidates[-1].update(origin="worker_journal", publication=projection["publication"])
         manager = getattr(self.collaboration, "product_assistant", None)
         if manager is not None:
             products: dict[str, Data] = {}
@@ -178,6 +201,10 @@ class SCMNaturalTasks:
                     continue
                 published = assistant.retained_reply if assistant.operation == "status" else assistant
                 if published is None or not published.questions or original.get("feedback_status") != "sent":
+                    continue
+                if (original.get("feedback_intent") or {}).get("communication", {}).get("facts") != communication_facts(
+                    None, assistant=assistant
+                ):
                     continue
                 if not assistant.conversation_id or not published.turn_id:
                     raise AccessDenied("The product questions have no exact completed native turn identity")
@@ -242,8 +269,6 @@ class SCMNaturalTasks:
                 ]
                 if answers:
                     candidate.update(consumed=True, question_status="answered")
-        from firefly_forge.collaboration_feedback import TERMINAL
-
         active = [reference for reference in references if linked_runs[reference["run_id"]]["status"] not in TERMINAL]
         eligible = active if active else references[:1]
         status_context = {

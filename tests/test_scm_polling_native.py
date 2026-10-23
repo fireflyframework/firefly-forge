@@ -33,7 +33,11 @@ def test_native_baseline_and_page_failure_keep_inbox_cursor_atomic(native_poll, 
     c.state["comments"].extend([c.comment(11, old), c.comment(12, old, issue=4)])
     c.ready()
     before = c.http.portal.call(c.retained)
-    assert {row["reason"] for row in before[2]} == {"baseline_existing", "unsupported_poll_issue"}
+    assert {row["reason"] for row in before[2]} == {"baseline_existing", "not_an_enabled_poll_command"}
+    unsupported = next(row for row in before[2] if row["reason"] == "not_an_enabled_poll_command")
+    assert unsupported["source_snapshot"]["issue_number"] == 4
+    assert unsupported["command"] is None
+    assert unsupported["status"] == "ignored" and unsupported["run_id"] is None
     assert c.state["posts"] == []
     assert not [row for row in c.http.portal.call(c.journal.entries, c.run["id"]) if row["kind"] == "worker_response"]
     c.state["clock"] += 3600

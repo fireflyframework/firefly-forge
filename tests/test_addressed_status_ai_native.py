@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from communication_model_fixture import communication_phase, reviewed_model
+from natural_coordinator_model_fixture import native_coordinator
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from scm_polling_native_fixtures import native_poll as native_poll
@@ -112,7 +113,7 @@ def card(c, language):
 @pytest.mark.parametrize("transport", ["polling", "signed"])
 @pytest.mark.parametrize("language", ["en", "es"])
 def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_replay_inert(
-    native_poll, transport, language
+    native_poll, monkeypatch, transport, language
 ):
     c = native_poll
     c.ready()
@@ -123,6 +124,7 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     body = "@forge ¿cómo va?" if language == "es" else "@forge how is this going?"
     delivery = natural(c, body) if transport == "polling" else signed_natural(c, body)
     configure_ai(c)
+    coordinator_calls = native_coordinator(c, monkeypatch) if transport == "polling" else []
     calls = []
     c.collaboration.communication_writer.model = reviewed_model(card(c, language), calls=calls)
     result = c.process(delivery)
@@ -131,10 +133,17 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert result["feedback_status"] == "sent" and len(c.state["posts"]) == baseline + 1
     intent = result["feedback_intent"]
     evidence = intent["communication"]
-    assert evidence["mode"] == "ai" and evidence["facts"]["conversation"]["language"] == language
-    assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
-    assert [call[0] for call in calls] == ["draft", "review"]
-    assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
+    assert evidence["facts"]["conversation"]["language"] == language
+    if transport == "signed":
+        assert evidence["mode"] == "ai"
+        assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
+        assert [call[0] for call in calls] == ["draft", "review"]
+        assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
+    else:
+        assert evidence["mode"] == "deterministic" and evidence["reason"] == "natural_recorded_reply"
+        assert len(coordinator_calls) == 1 and not calls
+        assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
+        assert result["natural_turn"]["decision"]["language"] == language
     assert (
         result["source_snapshot"] == delivery["source_snapshot"] and result["verification"] == delivery["verification"]
     )
@@ -142,18 +151,21 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert c.http.portal.call(c.journal.entries, c.run["id"]) == before
     assert c.process(delivery) == result
     c.http.portal.call(c.collaboration.sync_feedback)
-    assert len(calls) == 2 and len(c.state["posts"]) == baseline + 1
+    assert len(calls) == (2 if transport == "signed" else 0) and len(c.state["posts"]) == baseline + 1
+    assert len(coordinator_calls) == (0 if transport == "signed" else 1)
 
 
 @pytest.mark.parametrize("language", ["en", "es"])
-def test_native_configured_current_fact_change_holds_without_template_post_or_model_repeat(native_poll, language):
+def test_native_signed_configured_current_fact_change_holds_without_template_post_or_model_repeat(
+    native_poll, language
+):
     c = native_poll
     c.ready()
     c.consent()
     c.process(c.observe("status"))
     before = c.http.portal.call(c.journal.entries, c.run["id"])
     baseline = len(c.state["posts"])
-    delivery = natural(c, "@forge ¿cómo va?" if language == "es" else "@forge how is this going?")
+    delivery = signed_natural(c, "@forge ¿cómo va?" if language == "es" else "@forge how is this going?")
     draft = card(c, language)
     calls = []
     configure_ai(c)
@@ -185,7 +197,7 @@ def test_native_configured_current_fact_change_holds_without_template_post_or_mo
 
 
 @pytest.mark.parametrize("language,verdict", [("en", "unsupported"), ("es", "uncertain")])
-def test_native_one_semantic_correction_is_published_once_without_second_veto(native_poll, language, verdict):
+def test_native_signed_one_semantic_correction_is_published_once_without_second_veto(native_poll, language, verdict):
     from firefly_forge.product_provenance import content_digest
 
     c = native_poll
@@ -194,7 +206,7 @@ def test_native_one_semantic_correction_is_published_once_without_second_veto(na
     c.process(c.observe("status"))
     before = c.http.portal.call(c.journal.entries, c.run["id"])
     baseline = len(c.state["posts"])
-    delivery = natural(c, "@forge ¿cómo va?" if language == "es" else "@forge how is this going?")
+    delivery = signed_natural(c, "@forge ¿cómo va?" if language == "es" else "@forge how is this going?")
     corrected = card(c, language)
     candidate = {
         **corrected,
@@ -227,3 +239,22 @@ def test_native_one_semantic_correction_is_published_once_without_second_veto(na
     c.process(delivery)
     c.http.portal.call(c.collaboration.sync_feedback)
     assert [call[0] for call in calls] == ["draft", "review", "draft"] and len(c.state["posts"]) == baseline + 1
+
+
+def test_native_polling_unknown_coordinator_outcome_retains_intent_without_writer_or_replay(native_poll, monkeypatch):
+    c = native_poll
+    c.ready()
+    c.consent()
+    calls = native_coordinator(c, monkeypatch)
+    before = c.http.portal.call(c.journal.entries, c.run["id"])
+    delivery = natural(c, "@forge how is this going?")
+    c.state["coordinator_unknown"] = True
+    result = c.process(delivery)
+    assert result["status"] == "needs_reconciliation"
+    assert result["natural_turn"]["classifier_outcome"] == "unknown"
+    assert result["natural_turn"]["reply"] is None and result["feedback_status"] == "held"
+    assert len(calls) == 1 and not c.state["posts"]
+    assert c.process(delivery) == result
+    c.http.portal.call(c.collaboration.sync_feedback)
+    assert len(calls) == 1 and not c.state["posts"]
+    assert c.http.portal.call(c.journal.entries, c.run["id"]) == before

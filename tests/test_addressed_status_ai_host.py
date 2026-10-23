@@ -10,14 +10,22 @@ import pytest
 from communication_model_fixture import reviewed_model
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from test_addressed_status_polling import addressed
+from test_addressed_status_signed import grant, signed_address
 from test_communication_writer import configured_store
 from test_conversation_communication_host import TEXT, output
 from test_scm_polling import poll_case as poll_case
 
 
+async def writer_address(c, body="@forge how is this going?", number=80):
+    delivery, comment = await signed_address(c, body=body, number=number)
+    c.state["comments"].append(comment)
+    await grant(c, delivery)
+    return delivery
+
+
 @pytest.mark.parametrize("language", ["en", "es"])
 @pytest.mark.parametrize("selection", ["run", "missing", "ambiguous", "clarify"])
-async def test_native_status_pipeline_uses_configured_whole_ai_card_for_every_language_and_context(
+async def test_signed_status_pipeline_uses_configured_whole_ai_card_for_every_language_and_context(
     poll_case, tmp_path, language, selection
 ):
     async with poll_case() as c:
@@ -46,7 +54,7 @@ async def test_native_status_pipeline_uses_configured_whole_ai_card_for_every_la
         body = "@forge ¿cómo va?" if language == "es" else "@forge how is this going?"
         if selection == "clarify":
             body = "@forge reanuda este trabajo" if language == "es" else "@forge change the product"
-        delivery = await addressed(c, body, 82)
+        delivery = await writer_address(c, body, 82)
         result = await c.collaboration.process(delivery["id"])
         assert result["conversation"]["selection"] == selection
         assert result["feedback_status"] == "sent" and len(c.state["posts"]) == baseline + 1
@@ -60,13 +68,13 @@ async def test_native_status_pipeline_uses_configured_whole_ai_card_for_every_la
 
 
 @pytest.mark.parametrize("fault", ["source", "membership", "context", "lost_reply"])
-async def test_natural_ai_draft_keeps_native_custody_and_never_repeats_an_unknown_write(poll_case, tmp_path, fault):
+async def test_signed_ai_draft_keeps_native_custody_and_never_repeats_an_unknown_write(poll_case, tmp_path, fault):
     async with poll_case() as c:
         await c.ready()
         await c.consent()
         c.store.task_router = (await configured_store(tmp_path)).task_router
         calls = []
-        delivery = await addressed(c)
+        delivery = await writer_address(c)
 
         def model(messages, info):
             if fault == "source":
@@ -107,7 +115,7 @@ async def test_spanish_run_change_during_generation_holds_without_native_fallbac
             )
 
         c.collaboration.communication_writer.model = reviewed_model(model, calls=calls)
-        result = await c.collaboration.process((await addressed(c, "@forge ¿cómo va?", 82))["id"])
+        result = await c.collaboration.process((await writer_address(c, "@forge ¿cómo va?", 82))["id"])
         assert len(calls) == 2 and len(c.state["posts"]) == 1
         assert result["feedback_intent"]["communication"]["reason"] == "state_changed"
         assert result["feedback_status"] == "held" and result["feedback_intent"]["body"] == ""
@@ -146,7 +154,7 @@ async def test_mutating_request_on_linked_ticket_gets_ai_clarification_without_e
         c.store.task_router = (await configured_store(tmp_path)).task_router
         calls = []
         c.collaboration.communication_writer.model = reviewed_model(output(TEXT["es"]["clarify"]), calls=calls)
-        reply = await c.collaboration.process((await addressed(c, "@forge reanuda este trabajo", 93))["id"])
+        reply = await c.collaboration.process((await writer_address(c, "@forge reanuda este trabajo", 93))["id"])
         assert reply["conversation"]["selection"] == "clarify"
         assert len(reply["conversation"]["candidate_ids"]) == 0 and reply.get("run_id") is None
         assert reply["feedback_status"] == "sent" and TEXT["es"]["clarify"] in c.state["posts"][-1]["body"]
