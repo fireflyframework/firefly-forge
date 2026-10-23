@@ -21,6 +21,7 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `internet_search` | A configured server-mediated search API with bounded citations. |
 | `external_mcp` | An exact reviewed read tool within the project/repository/role grant. |
 | `knowledge_lookup` | Repository-scoped references and eligible local outcomes under the run's frozen learning policy. |
+| `read_run_evidence` | Read-only, bounded retained journal, tool and activity evidence for the current run, with exact cut/filter pagination and record identities. It never executes or retries the recorded work. |
 | `profile_python` | Optional stdlib CPU-profile observation through the same frozen Docker command runner and retained effects. Requires both profiling and command grants. |
 | `trace_python` | Optional best-effort target Python line counts through the same isolated runner. Requires both tracing and command grants. |
 | `profile_php` | Optional PHP runtime metrics or a preinstalled Xdebug profile through the same isolated command runner. Requires both profiling and command grants. |
@@ -31,7 +32,9 @@ Native tool arguments reject known configured credentials before file writes or 
 
 Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. A rejected line edit requires reading the new file before retrying.
 
-Official Codex and Claude Code tools use their own CLI permissions. Role tool lists describe advisory intent for those providers; native Python enforcement applies to Firefly Agentic and bridge execution.
+The table is a conditional native registry, not a promise that every provider receives all sixteen tools. Ordinary Codex and Claude Code execution uses the CLI's own permissions; role tool lists alone do not enforce those providers' tool access. Firefly Agentic and bridge execution use the native Python admission boundary.
+
+The separately qualified source-only Codex route has a different, measured contract: governed source list/read/search and source edits within its exact admitted workspace, plus only the utilities explicitly recorded in its supported profile. It does not inherit `execute_command`, browser tools, internet search or `read_run_evidence` from the ordinary native registry. The current binary, model metadata, package policy and runtime must match that qualified profile before dispatch. A configured provider, an available capability, a qualified source-only profile and a completed invocation are separate states; check the [tool prerequisites](tooling-prerequisites.md) and [source-only recovery requirements](recovery.md) for the applicable route. Owner guidance does not modify a call already in flight or become delivery authority for a sealed source-only invocation.
 
 ## Observe a Python workload
 

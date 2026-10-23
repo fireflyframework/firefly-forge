@@ -153,8 +153,11 @@ class SCMNaturalTasks:
             request = run.get("worker_request") or {}
             async with self.store._unit():
                 entries = (
-                    [copy.deepcopy(row.data) for row in await journal.records.find_for_run(identifier(run["id"]))]
-                    if journal
+                    [
+                        copy.deepcopy(row.data)
+                        for row in await journal.records.find_question_context(identifier(run["id"]), request["id"])
+                    ]
+                    if journal and request.get("id")
                     else []
                 )
             if len(entries) > 2000 or len(json.dumps(entries).encode()) > 4 * 1024 * 1024:

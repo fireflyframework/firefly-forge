@@ -161,6 +161,21 @@ def poll_case(tmp_path, monkeypatch):
             async def find_for_run(self, value):
                 return [r for r in db[self.kind].values() if r.run_id == value]
 
+            async def find_question_context(self, value, request_id):
+                rows = await self.find_for_run(value)
+                return [
+                    r
+                    for r in rows
+                    if (
+                        r.kind == "worker_feedback"
+                        and (r.data["payload"].get("request") or {}).get("id") == request_id
+                        or r.kind == "worker_response"
+                        and r.data["payload"].get("request_id") == request_id
+                        or r.kind in {"resume", "handoff"}
+                        and r.data["payload"].get("human_clarification", {}).get("request_id") == request_id
+                    )
+                ]
+
         records = {name: Records(name) for name in db}
 
         class Session:
