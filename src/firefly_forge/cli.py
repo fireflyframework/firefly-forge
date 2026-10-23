@@ -2012,6 +2012,73 @@ def source_edit_receipt(run_id: str, request_id: str) -> None:
         display(connection.source_edit_continuation(run_id, request_id))
 
 
+@main.group("source-budget")
+def source_budget() -> None:
+    """Review finite source-read and continuation allowances for an existing run."""
+
+
+@source_budget.command("policy")
+def source_budget_policy() -> None:
+    with client() as connection:
+        display(connection.source_budget_policy())
+
+
+@source_budget.command("configure-policy")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_source_budget_policy(document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_source_budget_policy(json_document(document)))
+
+
+@source_budget.command("candidate")
+@click.argument("run_id")
+@click.argument("parent_request_id")
+@click.option("--previous-catalog-path", required=True)
+@click.option("--read-file-lifetime-limit", required=True, type=click.IntRange(11, 30))
+@click.option("--activation-ceiling", required=True, type=click.IntRange(5, 32))
+@click.option("--additional-activations", required=True, type=click.IntRange(1, 1))
+def source_budget_candidate(
+    run_id: str,
+    parent_request_id: str,
+    previous_catalog_path: str,
+    read_file_lifetime_limit: int,
+    activation_ceiling: int,
+    additional_activations: int,
+) -> None:
+    with client() as connection:
+        display(
+            connection.source_budget_candidate(
+                run_id,
+                parent_request_id,
+                previous_catalog_path,
+                {
+                    "version": 1,
+                    "read_file_lifetime_limit": read_file_lifetime_limit,
+                    "activation_ceiling": activation_ceiling,
+                    "additional_activations": additional_activations,
+                },
+            )
+        )
+
+
+@source_budget.command("admit")
+@click.argument("run_id")
+@click.argument("parent_request_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def admit_source_budget(run_id: str, parent_request_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.admit_source_budget(run_id, parent_request_id, json_document(document)))
+
+
+@source_budget.command("get")
+@click.argument("run_id")
+@click.argument("parent_request_id")
+@click.argument("request_id")
+def source_budget_receipt(run_id: str, parent_request_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.source_budget_receipt(run_id, parent_request_id, request_id))
+
+
 @workspace_reconciliations.command("candidate")
 @click.argument("run_id")
 def workspace_reconciliation_candidate(run_id: str) -> None:

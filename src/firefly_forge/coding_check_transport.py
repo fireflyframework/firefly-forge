@@ -23,6 +23,7 @@ from firefly_forge.coding_check_models import CheckIndex, ConfiguredCheckRequest
 from firefly_forge.prompts import prompt_text
 from firefly_forge.secrets import ephemeral_credentials, redact_environment
 from firefly_forge.source_edit_models import READ_TOOLS, SourceReadRequest
+from firefly_forge.source_tool_budget import ToolBudgetRefusal
 
 TOKEN_ENV = "FORGE_CODING_RUNTIME_TOKEN"
 TOOL_NAME = "run_configured_check"
@@ -193,6 +194,10 @@ class CodingCheckServer:
                 return safe
             except asyncio.CancelledError:
                 raise
+            except ToolBudgetRefusal as refusal:
+                if not isinstance(request, SourceReadRequest):
+                    raise ValueError("Configured check not admitted; inspect its original native receipt") from None
+                return refusal.safe_result
             except Exception:
                 raise ValueError("Configured check not admitted; inspect its original native receipt") from None
             finally:

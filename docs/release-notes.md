@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.39
+
+A paused source-only task can continue through separately reviewed human-answer or completed-output admission. The review retains the original run, source, command budget and uncertain effects; it does not replay an old request. Completed-output observation binds the retained stdout descriptors and accepts only the exact pinned pre-turn CLI notice. It does not infer process exit or implementation success from a completed turn.
+
+Pending native worker questions now have their own durable publication outbox. The factory checks current issue, identity, repository and polling authority before the configured AI writer and before posting. Confirmed publications support ordinary human replies in the same issue, including after the original source grant expires. Saving an answer grants no execution or additional budget. Renewing the same account's read consent preserves a confirmed question's exact historical proof; current scope, identity and respond permission are still required. Unknown remote outcomes remain held; a definite local refusal before dispatch can retain the same draft for a later authorized attempt.
+
+An administrator can review an explicit finite source-read allowance through the API, SDK or CLI. The measured v6 Codex 0.163 Darwin arm64 profile supports a lifetime read-file limit of 20 and canonical activation ceiling of 5 for that separately admitted continuation. Existing tool rows and spent counters remain intact, the shared tool ceiling stays 30, and the original command allowance and final verification checks remain unchanged. Ordinary source limits remain 10 reads and four activations. Final allowance writes use the physical execution-lease connection and roll back when ownership is lost before commit.
+
+Natural question selection supports grounded cross-language answers using the exact offered question and human spans. GitHub App reads and feedback share bounded, persistent provider cooldowns. A known local no-dispatch hold retains one intent and draft across restart; an uncertain dispatched write still requires reconciliation.
+
+The prompt catalog adds a versioned source-continuation resource while preserving existing resource bytes. Historical v5 profile evidence remains immutable alongside the new profile. Studio keeps the published 0.2.38 interface and refreshes its controlled walkthrough for the 0.2.39 stamp. Controlled native transport and PostgreSQL evidence cover their stated boundaries; actual model behavior, completed CRM delivery and generated-product acceptance remain separate.
+
 ## 0.2.38
 
 Natural replies to a confirmed pending worker question no longer load unrelated provider and tool output from the whole execution journal. The lookup selects the exact run and question ancestry, enforcing its row and byte limits in one SQL statement snapshot before returning payloads. A large retained diagnostic history therefore cannot hide a small current question; changed or ambiguous question evidence still refuses answer application.

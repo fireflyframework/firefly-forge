@@ -118,7 +118,11 @@ class SCMConversations:
                 )
                 if scope is None or run.get("repository_id") != delivery["repository_id"]:
                     continue
-                if (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+                if previous.get("native_question") is not None:
+                    from firefly_forge.native_question_publications import NativeQuestionPublications
+
+                    await NativeQuestionPublications(self.collaboration).authorize_reference(previous, run)
+                elif (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
                     polling = self.collaboration.polling or getattr(self.store, "scm_polling", None)
                     if polling is None:
                         continue

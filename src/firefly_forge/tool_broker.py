@@ -23,6 +23,7 @@ from firefly_forge.journal import Journal, digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential
+from firefly_forge.source_tool_budget import ToolBudgetRefusal, source_budget_snapshot
 from firefly_forge.store import Store, identifier, now
 from firefly_forge.tool_persistence import ForgeToolInvocationEntity, ForgeToolInvocationRepository
 from firefly_forge.verification_models import AutomaticVerificationPolicy
@@ -239,8 +240,21 @@ class ToolInvocationBroker:
             if run.data.get("learning_snapshot") is not None and tool in {"internet_search", "knowledge_lookup"}:
                 request["learning_snapshot"] = copy.deepcopy(run.data["learning_snapshot"])
                 request["knowledge_snapshot"] = copy.deepcopy(run.data.get("knowledge_snapshot"))
-            request_digest = digest(request)
             rows = await self.records.for_run(run.id)
+            source_limits = None
+            if source_read:
+                if any(row.status in {"pending", "unknown"} for row in rows):
+                    raise ToolReconciliationRequired(
+                        "An unresolved tool outcome requires reconciliation before budget admission"
+                    )
+                from firefly_forge.source_budget_allowances import effective_source_read_limits
+
+                source_limits, budget_authority = await effective_source_read_limits(
+                    self.store, self.journal, run.data, rows
+                )
+                if budget_authority is not None:
+                    request["source_budget_allowance"] = budget_authority
+            request_digest = digest(request)
             previous = next((row for row in rows if row.correlation_id == correlation_id), None)
             if previous is not None:
                 if previous.data["request_digest"] != request_digest:
@@ -274,14 +288,24 @@ class ToolInvocationBroker:
                     >= learning["max_lookup_calls"]
                 ):
                     raise ValueError("The frozen learning lookup budget is exhausted")
+            if source_read and any(row.status in {"pending", "unknown"} for row in rows):
+                raise ToolReconciliationRequired(
+                    "An unresolved tool outcome requires reconciliation before budget admission"
+                )
             limits = policy["settings"]
             if source_read:
                 limits = {
                     **limits,
                     "calls_limit": min(30, limits["calls_limit"]),
-                    "per_tool_limit": min(10, limits["per_tool_limit"]),
+                    "per_tool_limit": source_limits[tool]
+                    if source_limits is not None
+                    else min(10, limits["per_tool_limit"]),
                 }
             if len(rows) >= limits["calls_limit"] or sum(row.tool == tool for row in rows) >= limits["per_tool_limit"]:
+                if source_read:
+                    raise ToolBudgetRefusal(
+                        tool, source_budget_snapshot(rows, policy["settings"], per_tool=source_limits)
+                    )
                 raise ValueError("The frozen run tool-call budget is exhausted")
             if any(row.status in {"pending", "unknown"} for row in rows):
                 raise ToolReconciliationRequired(

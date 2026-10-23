@@ -20,7 +20,7 @@ from typing import Any, cast
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode, SessionProvider
 from pyfly.data.relational.sqlalchemy.transaction_manager import SqlAlchemyTransactionManager
-from pyfly.data.transaction import current_unit_of_work
+from pyfly.data.transaction import UnitOfWork, current_unit_of_work
 from pyfly.data.transaction.registry import TransactionManagerRegistry
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -96,6 +96,21 @@ class PreparedRunAdmission:
                 value = value[key]
             value[path[-1]] = tuple(value[path[-1]])
         return packet
+
+
+@dataclass(frozen=True)
+class _SourceBudgetAdmission:
+    store: Store
+    task: asyncio.Task[Any]
+    unit: UnitOfWork
+    session: AsyncSession
+    connection: AsyncConnection
+    pid: int
+
+
+_source_budget_admission: ContextVar[_SourceBudgetAdmission | None] = ContextVar(
+    "source_budget_admission", default=None
+)
 
 
 @dataclass(frozen=True)
@@ -269,7 +284,91 @@ class Store:
             await connection.close()
             raise
 
+    def _source_budget_context(self) -> _SourceBudgetAdmission | None:
+        cut = _source_budget_admission.get()
+        if cut is not None and (
+            cut.store is not self
+            or cut.task is not asyncio.current_task()
+            or current_unit_of_work() is not cut.unit
+            or cut.unit.owner_task is not cut.task
+            or cut.unit.resource is not cut.session
+            or cut.unit.completed
+        ):
+            raise RuntimeError("Source budget admission cannot share its native session across tasks, stores or units")
+        return cut
+
+    async def _assert_source_budget_ownership(self, cut: _SourceBudgetAdmission) -> None:
+        def current() -> None:
+            if (
+                self._source_budget_context() is not cut
+                or self.execution_stopping
+                or self._ownership_connection is not cut.connection
+                or self._ownership_pid != cut.pid
+                or cut.connection.closed
+                or cut.connection.invalidated
+            ):
+                raise RuntimeError("Source budget admission lost its exact execution lease")
+
+        current()
+        actual = await cut.session.connection()
+        current()
+        if actual.sync_connection is not cut.connection.sync_connection:
+            raise RuntimeError("Source budget admission changed its physical lease connection")
+        held = await cut.session.scalar(
+            text(
+                "SELECT pg_backend_pid() = :pid AND EXISTS ("
+                "SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted "
+                "AND pid = pg_backend_pid() AND objsubid = 1 "
+                "AND classid::bigint = ((hashtextextended(:key, 0) >> 32) & 4294967295) "
+                "AND objid::bigint = (hashtextextended(:key, 0) & 4294967295))"
+            ),
+            {"key": "forge:execution:" + self.schema, "pid": cut.pid},
+        )
+        current()
+        if actual.sync_connection is not cut.connection.sync_connection or not held:
+            raise RuntimeError("Source budget admission lost its PostgreSQL advisory lease")
+
+    @asynccontextmanager
+    async def source_budget_admission_unit(self) -> AsyncIterator[AsyncSession]:
+        from firefly_forge.native_question_owned_unit import QuestionLeaseTransactionManager
+
+        if current_unit_of_work() is not None or _source_budget_admission.get() is not None:
+            raise ValueError("Begin source budget admission outside a caller transaction")
+        token = None
+        # Cancellation waits for PyFly's shielded transaction settlement before releasing the lease lock.
+        async with asyncio.timeout(30), self._ownership_lock:
+            ownership = self.execution_ownership_token
+            await self._assert_ownership()
+            if ownership is not self.execution_ownership_token:
+                raise RuntimeError("Source budget admission changed its execution lease")
+            connection, engine, pid = self._ownership_connection, self._engine, self._ownership_pid
+            assert connection is not None and engine is not None and pid is not None
+            registry = TransactionManagerRegistry()
+            registry.register(QuestionLeaseTransactionManager(engine, connection), default=True)
+            try:
+                async with SessionProvider(registry).unit() as session:
+                    unit = current_unit_of_work()
+                    task = asyncio.current_task()
+                    if unit is None or task is None or unit.resource is not session or unit.owner_task is not task:
+                        raise RuntimeError("The source budget native unit has no exact task/session provenance")
+                    cut = _SourceBudgetAdmission(self, task, unit, session, connection, pid)
+                    token = _source_budget_admission.set(cut)
+                    await session.execute(text("SET LOCAL lock_timeout='1s'"))
+                    await session.execute(text("SET LOCAL statement_timeout='5s'"))
+                    await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                    await session.execute(text("SET LOCAL synchronous_commit TO on"))
+                    await self._assert_source_budget_ownership(cut)
+                    yield session
+                    await self._assert_source_budget_ownership(cut)
+            finally:
+                if token is not None:
+                    _source_budget_admission.reset(token)
+
     async def assert_ownership(self) -> None:
+        cut = self._source_budget_context()
+        if cut is not None:
+            await self._assert_source_budget_ownership(cut)
+            return
         async with self._ownership_lock:
             if self.execution_stopping:
                 raise RuntimeError("Execution dispatch is closed while the owner drains")
@@ -322,9 +421,12 @@ class Store:
 
     @asynccontextmanager
     async def _unit(self, *, autoflush: bool = True) -> AsyncIterator[AsyncSession]:
+        cut = self._source_budget_context()
         if not self._initialized or self.session_provider is None:
             raise RuntimeError("Await Store.initialize() before accessing the ledger")
         async with self.session_provider.unit() as session:
+            if cut is not None and (self._source_budget_context() is not cut or session is not cut.session):
+                raise RuntimeError("The source budget repository escaped its native lease session")
             with nullcontext() if autoflush else session.no_autoflush:
                 await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
                 await session.execute(text("SET LOCAL synchronous_commit TO on"))

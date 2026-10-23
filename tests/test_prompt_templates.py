@@ -191,7 +191,7 @@ def test_every_packaged_resource_matches_its_reviewed_text_vector():
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
-    assert len(catalog.registry) == 301
+    assert len(catalog.registry) == 302
     for vector in fixture["vectors"]:
         assert (
             catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]

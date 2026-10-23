@@ -38,6 +38,14 @@
       "sha256": "d5890cff38ddb29dec188b0b50389dc569a90dbf9485fb3be37752f8888cc809",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "scm-natural/system",
+      "version": "1.0.2",
+      "path": "system-1.0.2.yaml",
+      "sha256": "5d34c7f5f4b1f48f5bf7d74faa1064344a30648c2a386919139c8c6d4c05adf3",
+      "field": "system",
+      "variables": {}
     }
   ]
 }

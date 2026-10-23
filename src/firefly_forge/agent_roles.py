@@ -411,7 +411,22 @@ class NativeAllowanceWorkerFeedback(WorkerFeedback):
         return value
 
 
+class SourceBudgetWorkerFeedback(WorkerFeedback):
+    """Feedback bound to one explicitly amended canonical source activation."""
+
+    protocol: Literal["source-budget-continuation-v1"]
+    attempt: int = Field(ge=5, le=32, strict=True)
+    role_id: Literal["implementer"]
+    task_id: Literal["implement"]
+    allowance_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    allowance_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 def worker_feedback_model(value: Any) -> type[WorkerFeedback]:
+    if isinstance(value, SourceBudgetWorkerFeedback) or (
+        isinstance(value, dict) and value.get("protocol") == "source-budget-continuation-v1"
+    ):
+        return SourceBudgetWorkerFeedback
     if isinstance(value, NativeAllowanceWorkerFeedback) or (
         isinstance(value, dict) and value.get("protocol") == "native-provider-recovery-allowance-v1"
     ):

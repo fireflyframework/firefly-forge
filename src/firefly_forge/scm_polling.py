@@ -475,7 +475,10 @@ class SCMPolling:
             source_conflicts=cursor["conflicts"],
             last_success_at=cursor["last_success_at"],
             retry_at=cursor["retry_at"],
-            instruction="Publish new command comments after ready; old comments are not dispatched.",
+            instruction=(
+                "Post a new message or reply in the connected GitHub issue after the baseline completes; "
+                "older messages are not dispatched."
+            ),
         )
         return await self._return(actor, project, repository, result)
 
@@ -514,10 +517,10 @@ class SCMPolling:
             raise ValueError("Read provider observations outside a caller transaction")
         await self.store.assert_ownership()
         policy, state = await self._policy(repository)
-        repo = await self._scope(repository, policy)
         cursor = copy.deepcopy(state["cursor"])
         if any(cursor[k] is not None and cursor[k] > time() for k in ("retry_at", "next_due_at")):
             return
+        repo = await self._scope(repository, policy)
         response = await self.scm.github_poll_read(repo, cursor["phase"], page=cursor["page"])
         if response.status_code != 200:
             retry = response.headers.get("retry-after")

@@ -8,7 +8,7 @@ import re
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from firefly_forge.agent_roles import WorkerFeedback
+from firefly_forge.agent_roles import worker_feedback_model
 from firefly_forge.journal import Journal, digest
 from firefly_forge.models import RunInput
 from firefly_forge.scm_authority_models import SCMRespondingActorV2
@@ -153,7 +153,7 @@ def _resume_cut(
     if not feedbacks or not responses:
         raise ValueError("Resume needs immutable question and answer records")
     feedback, response = feedbacks[-1], responses[-1]
-    body = WorkerFeedback.model_validate(feedback["payload"])
+    body = worker_feedback_model(feedback["payload"]).model_validate(feedback["payload"])
     request = body.request
     assert request is not None
     expected_question = {

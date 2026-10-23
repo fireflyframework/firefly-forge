@@ -12,7 +12,7 @@ from typing import Any
 
 from pyfly.data.relational.sqlalchemy import LockMode
 
-from firefly_forge.agent_roles import WorkerFeedback
+from firefly_forge.agent_roles import worker_feedback_model
 from firefly_forge.collaboration_feedback import TERMINAL
 from firefly_forge.communication import assistant_communication, communication_facts
 from firefly_forge.journal import digest
@@ -55,6 +55,7 @@ def natural_policy_digest() -> str:
         "data/community-skills.json",
         "resources/prompts/scm-natural-v1/manifest.json",
         "resources/prompts/scm-natural-v1/system.yaml",
+        "resources/prompts/scm-natural-v1/system-1.0.2.yaml",
         "resources/prompts/scm-natural-v1/request.yaml",
         "resources/prompts/scm-natural-v1/feedback.yaml",
         "resources/prompts/scm-natural-v1/copy.yaml",
@@ -81,7 +82,7 @@ def _worker_question(original: Data, run: Data, entries: list[Data]) -> Data:
     for entry in entries:
         payload = entry.get("payload") or {}
         if entry.get("kind") == "worker_feedback" and (payload.get("request") or {}).get("id") == request["id"]:
-            feedback = WorkerFeedback.model_validate(payload)
+            feedback = worker_feedback_model(payload).model_validate(payload)
             assert feedback.request is not None
             expected = {
                 **feedback.request.model_dump(),

@@ -222,6 +222,8 @@ from firefly_forge.scm_source_edit import SCMSourceEditAuthority
 from firefly_forge.scm_source_edit_controllers import SCMSourceEditController
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
+from firefly_forge.source_budget_allowances import SourceBudgetPolicies
+from firefly_forge.source_budget_controllers import SourceBudgetPolicyController
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
@@ -1204,6 +1206,8 @@ def create_runtime(
         ProviderRecoveryAllowanceController,
         WorkspaceReconciliationController,
         SourceEditContinuationController,
+        SourceBudgetPolicies,
+        SourceBudgetPolicyController,
         CodingCheckGrantController,
         BridgeCompletionController,
         RunEvidenceController,

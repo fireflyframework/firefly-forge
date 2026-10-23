@@ -14,9 +14,12 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 4
-LOADER_PROFILE = "codex-exec-restricted-source/v5"
+REGISTRY_VERSION = 5
+LOADER_PROFILE = "codex-exec-restricted-source/v6"
 LOADER_MODULES = (
+    "source_budget_allowances.py",
+    "source_tool_budget.py",
+    "tool_broker.py",
     "providers.py",
     "source_edit_cli_policy.py",
     "coding_cli_channel.py",
@@ -94,6 +97,8 @@ class NativeQualificationProof:
     real_model_calls: int
     filesystem_policy_version: int
     filesystem_checks: tuple[str, ...]
+    budget_checks: tuple[str, ...] = ()
+    budget_limits: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -115,6 +120,7 @@ class CapabilityProfile:
     configuration_features: tuple[tuple[str, bool | None], ...]
     configuration_tools: tuple[tuple[str, bool], ...]
     proof: NativeQualificationProof
+    source_budget_limits: tuple[tuple[str, int], ...] = ()
 
 
 def _profiles() -> tuple[CapabilityProfile, ...]:
@@ -164,8 +170,64 @@ def policy_digest() -> str:
     )
 
 
+SOURCE_BUDGET_CHECKS = (
+    "legacy_read_limit10",
+    "amended_read_limit",
+    "shared_total_limit30",
+    "definite_refusal_no_effect",
+    "remaining_capabilities_exact",
+    "unamended_activation_limit4",
+    "amended_canonical_activation",
+    "unknown_never_replayed",
+)
+
+
+def profile_payload(profile: CapabilityProfile) -> dict[str, Any]:
+    value = asdict(profile)
+    if profile.version == 4 and profile.loader_profile == "codex-exec-restricted-source/v5":
+        if profile.source_budget_limits or profile.proof.budget_checks or profile.proof.budget_limits:
+            raise ValueError("Historical native profiles cannot acquire new budget authority")
+        value.pop("source_budget_limits")
+        value["proof"].pop("budget_checks")
+        value["proof"].pop("budget_limits")
+    return value
+
+
+def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
+    if (
+        profile not in _profiles()
+        or (profile.version, profile.loader_profile)
+        not in {(4, "codex-exec-restricted-source/v5"), (5, "codex-exec-restricted-source/v6")}
+        or profile.proof.contract_digest != profile_contract_digest(profile)
+    ):
+        raise ValueError("The immutable historical native profile is not registered provenance")
+    return {
+        "registry_version": profile.version,
+        "profile_id": profile.profile_id,
+        "profile_digest": digest(profile_payload(profile)),
+        "catalog_digest": digest({"catalog": profile.catalog}),
+        "proof_sha256": profile.proof.artifact_sha256,
+        "loader_profile": profile.loader_profile,
+    }
+
+
+def source_budget_limits(profile: CapabilityProfile) -> dict[str, int]:
+    require_profile(profile)
+    limits = dict(profile.source_budget_limits)
+    if (
+        len(limits) != len(profile.source_budget_limits)
+        or set(limits) != {"read_file_lifetime_limit", "activation_ceiling"}
+        or type(limits["read_file_lifetime_limit"]) is not int
+        or not 10 <= limits["read_file_lifetime_limit"] <= 30
+        or type(limits["activation_ceiling"]) is not int
+        or not 4 <= limits["activation_ceiling"] <= 32
+    ):
+        raise ValueError("The current native profile has no exact finite source budget qualification")
+    return limits
+
+
 def profile_contract_digest(profile: CapabilityProfile) -> str:
-    contract = asdict(profile)
+    contract = profile_payload(profile)
     contract.pop("proof")
     return digest(contract)
 
@@ -218,6 +280,13 @@ def require_profile(profile: CapabilityProfile) -> None:
         or type(proof.filesystem_policy_version) is not int
         or proof.filesystem_policy_version != FILESYSTEM_POLICY_VERSION
         or proof.filesystem_checks != FILESYSTEM_CHECKS
+        or proof.budget_checks != SOURCE_BUDGET_CHECKS
+        or proof.budget_limits != profile.source_budget_limits
+        or set(dict(profile.source_budget_limits)) != {"read_file_lifetime_limit", "activation_ceiling"}
+        or len(profile.source_budget_limits) != 2
+        or any(type(value) is not int for _, value in profile.source_budget_limits)
+        or not 10 <= dict(profile.source_budget_limits).get("read_file_lifetime_limit", 0) <= 30
+        or not 4 <= dict(profile.source_budget_limits).get("activation_ceiling", 0) <= 32
         or len(features) != len(profile.configuration_features)
         or any(features.get(key) is not False for key in DISABLED_FEATURES)
         or features.get("skip_host_skill_discovery") is not True
@@ -230,7 +299,10 @@ def qualified_profile(executable: dict[str, Any], model: str) -> CapabilityProfi
     selected = [
         profile
         for profile in _profiles()
-        if profile.executable_sha256 == executable["sha256"]
+        if profile.version == REGISTRY_VERSION
+        and profile.loader_profile == LOADER_PROFILE
+        and profile.loader_hashes == loader_hashes()
+        and profile.executable_sha256 == executable["sha256"]
         and profile.executable_size == executable["size"]
         and profile.model == model
     ]
@@ -245,7 +317,7 @@ def profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
     return {
         "registry_version": REGISTRY_VERSION,
         "profile_id": profile.profile_id,
-        "profile_digest": digest(asdict(profile)),
+        "profile_digest": digest(profile_payload(profile)),
         "catalog_digest": digest({"catalog": profile.catalog}),
         "proof_sha256": profile.proof.artifact_sha256,
         "loader_profile": profile.loader_profile,

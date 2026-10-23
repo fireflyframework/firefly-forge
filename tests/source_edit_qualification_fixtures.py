@@ -17,6 +17,7 @@ from firefly_forge.source_edit_qualification import (
     NATIVE_CAPABILITIES,
     NATIVE_OUTCOMES,
     REGISTRY_VERSION,
+    SOURCE_BUDGET_CHECKS,
     CapabilityProfile,
     NativeQualificationProof,
     loader_hashes,
@@ -48,6 +49,7 @@ def fixture_profile(executable):
         configuration_features=tuple((name, False) for name in DISABLED_FEATURES)
         + (("skip_host_skill_discovery", True),),
         configuration_tools=(("update_plan", False), ("experimental_request_user_input", False)),
+        source_budget_limits=(("read_file_lifetime_limit", 20), ("activation_ceiling", 5)),
         proof=NativeQualificationProof(
             contract_digest="",
             artifact_sha256=hashlib.sha256(
@@ -62,6 +64,8 @@ def fixture_profile(executable):
             real_model_calls=0,
             filesystem_policy_version=2,
             filesystem_checks=FILESYSTEM_CHECKS,
+            budget_checks=SOURCE_BUDGET_CHECKS,
+            budget_limits=(("read_file_lifetime_limit", 20), ("activation_ceiling", 5)),
         ),
     )
     return replace(profile, proof=replace(profile.proof, contract_digest=profile_contract_digest(profile)))

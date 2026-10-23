@@ -1,7 +1,6 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Only the package-owned measured native boundary profile grants source admission."""
 
-import platform
 from dataclasses import replace
 
 import pytest
@@ -9,10 +8,20 @@ import pytest
 from firefly_forge import source_edit_qualification as q
 
 
+def registered_profile(loader_profile):
+    profiles = [profile for profile in q._profiles() if profile.loader_profile == loader_profile]
+    assert len(profiles) == 1
+    return profiles[0]
+
+
 def test_package_owns_measured_profile():
     profiles = q._profiles()
-    assert len(profiles) == 1
-    profile = profiles[0]
+    assert {profile.loader_profile for profile in profiles} == {
+        "codex-exec-restricted-source/v5",
+        "codex-exec-restricted-source/v6",
+    }
+    assert len(profiles) == 2
+    profile = registered_profile("codex-exec-restricted-source/v5")
     assert profile.profile_id == "codex-0163-darwin-arm64-source-v5"
     assert profile.executable_sha256 == "8813367285524ac798dd96d1b071aea30d58708c7226fd236cd275cf1cfdee31"
     assert profile.executable_size == 249952688
@@ -28,32 +37,51 @@ def test_package_owns_measured_profile():
     assert profile.proof.contract_digest == q.profile_contract_digest(profile)
 
 
-def test_registered_loader_and_policy_are_the_measured_bytes():
-    profile = q._profiles()[0]
+def test_historical_loader_and_policy_keep_their_exact_provenance():
+    profile = registered_profile("codex-exec-restricted-source/v5")
     assert len(profile.loader_hashes) == 17
-    assert profile.loader_hashes == q.loader_hashes()
-    assert profile.loader_profile == q.LOADER_PROFILE
+    assert (
+        q.historical_profile_seal(profile)["profile_digest"]
+        == "17320f82c0f2f9ab4b65c7e3bd8b89741a3716a8896dd5f674f6409ac1490c3c"
+    )
+    assert profile.loader_hashes != q.loader_hashes()
+    assert profile.loader_profile == "codex-exec-restricted-source/v5"
+    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v6"
     assert profile.policy_digest == q.policy_digest()
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(profile)
+    with pytest.raises(ValueError, match="qualified"):
+        q.source_budget_limits(profile)
 
 
 def test_current_runtime_must_match_measured_profile_before_admission():
-    profile = q._profiles()[0]
+    profile = registered_profile("codex-exec-restricted-source/v6")
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
-    if (profile.system, profile.machine, profile.runtime_versions) == (
-        platform.system(),
-        platform.machine(),
-        q.runtime_versions(),
-    ):
-        assert q.qualified_profile(identity, profile.model) == profile
-    else:
-        with pytest.raises(ValueError, match="qualified"):
-            q.qualified_profile(identity, profile.model)
+    assert q.qualified_profile(identity, profile.model) == profile
+    assert profile.version == q.REGISTRY_VERSION == 5
+    assert profile.profile_id == "codex-0163-darwin-arm64-source-v6"
+    assert len(profile.loader_hashes) == 20
+    assert profile.loader_hashes == q.loader_hashes()
+    assert profile.runtime_versions == q.runtime_versions()
+    assert profile.proof.contract_digest == q.profile_contract_digest(profile)
+    assert profile.proof.artifact_sha256 == "e0a21355651f9f0cff58a19e162c85a0d6eb1bc2bc0f52d0575e156ce05ed516"
+    assert profile.proof.requests == 251
+    assert profile.proof.outcome_checks == q.NATIVE_OUTCOMES
+    assert profile.proof.filesystem_checks == q.FILESYSTEM_CHECKS
+    assert profile.proof.budget_checks == q.SOURCE_BUDGET_CHECKS
+    assert profile.proof.budget_limits == profile.source_budget_limits
+    assert q.source_budget_limits(profile) == {"read_file_lifetime_limit": 20, "activation_ceiling": 5}
+    assert q.profile_seal(profile)["proof_sha256"] == profile.proof.artifact_sha256
 
 
 def test_profile_refuses_runtime_drift_and_unknown_build_model(monkeypatch):
-    profile = q._profiles()[0]
+    profile = registered_profile("codex-exec-restricted-source/v6")
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
-    for changed, model in ((identity | {"sha256": "f" * 64}, profile.model), (identity, "other-model")):
+    for changed, model in (
+        (identity | {"sha256": "f" * 64}, profile.model),
+        (identity | {"size": profile.executable_size + 1}, profile.model),
+        (identity, "other-model"),
+    ):
         with pytest.raises(ValueError, match="qualified"):
             q.qualified_profile(changed, model)
     monkeypatch.setattr(q, "runtime_versions", lambda: (("python", "unqualified"),))
@@ -62,7 +90,53 @@ def test_profile_refuses_runtime_drift_and_unknown_build_model(monkeypatch):
 
 
 def test_valid_looking_caller_profile_is_not_registered():
-    profile = q._profiles()[0]
+    profile = registered_profile("codex-exec-restricted-source/v6")
     caller_supplied = replace(profile, profile_id="unregistered-caller-profile")
     with pytest.raises(ValueError, match="registered"):
         q.require_profile(caller_supplied)
+
+
+def test_registered_profile_refuses_loader_drift(monkeypatch):
+    profile = registered_profile("codex-exec-restricted-source/v6")
+    name, _ = profile.loader_hashes[0]
+    changed = ((name, "f" * 64), *profile.loader_hashes[1:])
+    monkeypatch.setattr(q, "loader_hashes", lambda: changed)
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(profile)
+    with pytest.raises(ValueError, match="qualified"):
+        q.source_budget_limits(profile)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("artifact_sha256", "not-a-proof-digest"),
+        ("contract_digest", "f" * 64),
+        ("requests", 0),
+        ("outcome_checks", ()),
+        ("reader_calls", ()),
+        ("filesystem_checks", ()),
+        ("budget_checks", ()),
+        ("budget_limits", (("read_file_lifetime_limit", 21), ("activation_ceiling", 5))),
+    ],
+)
+def test_registered_profile_refuses_proof_drift(monkeypatch, field, value):
+    profile = registered_profile("codex-exec-restricted-source/v6")
+    changed = replace(profile, proof=replace(profile.proof, **{field: value}))
+    profiles = tuple(changed if candidate == profile else candidate for candidate in q._profiles())
+    monkeypatch.setattr(q, "_profiles", lambda: profiles)
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(changed)
+
+
+@pytest.mark.parametrize("limits", [(20, 6), (21, 5), (True, 5)])
+def test_registered_profile_cannot_expand_measured_budget(monkeypatch, limits):
+    profile = registered_profile("codex-exec-restricted-source/v6")
+    changed = replace(
+        profile,
+        source_budget_limits=(("read_file_lifetime_limit", limits[0]), ("activation_ceiling", limits[1])),
+    )
+    profiles = tuple(changed if candidate == profile else candidate for candidate in q._profiles())
+    monkeypatch.setattr(q, "_profiles", lambda: profiles)
+    with pytest.raises(ValueError, match="qualified"):
+        q.source_budget_limits(changed)

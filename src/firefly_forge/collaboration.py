@@ -40,6 +40,7 @@ from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
+from firefly_forge.scm_provider_backoff import DeferredFeedbackChanged, ProviderRequestDeferred, retained_deferred
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
 from firefly_forge.scm_source_edit_models import SCMSourceEditCommandV1
 from firefly_forge.store import Store, identifier, now, prepared_credential_rejection
@@ -1697,6 +1698,11 @@ class Collaboration:
 
     async def feedback(self, receipt_id: str) -> None:
         initial = await self.receipt(receipt_id)
+        if initial.get("native_question") is not None:
+            from firefly_forge.native_question_publications import NativeQuestionPublications
+
+            await NativeQuestionPublications(self).publish(receipt_id)
+            return
         if initial.get("natural_parent") is not None:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -1705,11 +1711,32 @@ class Collaboration:
             return
         if initial.get("feedback_status") == "held":
             return
+        deferred = None
         try:
+            deferred = retained_deferred(initial)
+            if deferred is not None and deferred["retry_at"] > time.time():
+                return
             await self._feedback_authority(initial)
             if not await self._feedback_head(initial, proactive=False):
                 return
+        except ProviderRequestDeferred as error:
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is not None and row.data == initial and row.data.get("feedback_status") == "pending":
+                    await self._write_row(
+                        row,
+                        reason="provider_request_deferred",
+                        feedback_deferred=error.evidence(row.data.get("feedback_intent")),
+                    )
+            return
         except Exception:
+            if initial.get("feedback_deferred") is not None:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    if row is not None and row.data == initial:
+                        await self._write_row(
+                            row, feedback_status="held", reason="deferred_feedback_authority_or_evidence_changed"
+                        )
             return
         from sqlalchemy import text
 
@@ -1738,8 +1765,13 @@ class Collaboration:
             if row is None or row.data.get("feedback_status") != "pending":
                 return
             data = copy.deepcopy(row.data)
-            await self._write_row(row, feedback_status="writing", feedback_intent=None)
+            await self._write_row(
+                row, feedback_status="writing", feedback_intent=data.get("feedback_intent") if deferred else None
+            )
             self._active_writes.add(receipt_id)
+        intent: Data | None = None
+        retained = data.get("feedback_intent") if deferred else None
+        write_started = False
         try:
             repo = await self.store.repository(data["repository_id"])
             run = await self.store.get_run(data["run_id"]) if data.get("run_id") else {}
@@ -1811,7 +1843,19 @@ class Collaboration:
                 )
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
-            if data.get("natural_turn") is not None:
+            if retained is not None:
+                if (
+                    not isinstance(retained, dict)
+                    or not isinstance(retained.get("body"), str)
+                    or hashlib.sha256(retained["body"].encode()).hexdigest() != retained.get("body_sha256")
+                ):
+                    raise DeferredFeedbackChanged("The original deferred feedback body changed")
+                try:
+                    self.communication_writer.assert_current(retained["communication"])
+                except ValueError:
+                    raise DeferredFeedbackChanged("The deferred feedback communication route changed") from None
+                drafted = {"body": retained["body"], "communication": retained["communication"]}
+            elif data.get("natural_turn") is not None:
                 drafted = {
                     "body": message,
                     "communication": {
@@ -1878,10 +1922,13 @@ class Collaboration:
                     },
                 }
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
-            if drafted["communication"]["mode"] == "ai" or (
-                drafted["communication"]["mode"] == "deterministic"
-                and assistant_input
-                and assistant_input.reply_reference_digest
+            if retained is None and (
+                drafted["communication"]["mode"] == "ai"
+                or (
+                    drafted["communication"]["mode"] == "deterministic"
+                    and assistant_input
+                    and assistant_input.reply_reference_digest
+                )
             ):
                 from firefly_forge.collaboration_feedback import communication_controls
 
@@ -1911,6 +1958,12 @@ class Collaboration:
                 from firefly_forge.scm_natural_questions import natural_producer
 
                 intent["natural_turn_digest"] = content_digest(natural_producer(data))
+            if retained is not None and intent != retained:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(row, feedback_status="held", reason="deferred_feedback_context_changed")
+                return
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
@@ -1947,13 +2000,50 @@ class Collaboration:
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])
 
-            remote = await self._remote_write(repo, payload, data["issue"], before_write=before_write)
-        except Exception:
+            async def retained_before_write() -> None:
+                from firefly_forge.project_access import AccessDenied
+
+                try:
+                    await before_write()
+                except ProviderRequestDeferred:
+                    raise
+                except (AccessDenied, ValueError):
+                    raise DeferredFeedbackChanged("The deferred feedback authority or route changed") from None
+
+            write_started = True
+            remote = await self._remote_write(
+                repo,
+                payload,
+                data["issue"],
+                before_write=retained_before_write if retained is not None else before_write,
+            )
+        except DeferredFeedbackChanged:
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(row, feedback_status="held", reason="deferred_feedback_context_changed")
+        except ProviderRequestDeferred as error:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
                 assert row is not None
                 await self._write_row(
-                    row, feedback_status="needs_reconciliation", reason="remote_feedback_outcome_unknown"
+                    row,
+                    feedback_status="pending",
+                    reason="provider_request_deferred",
+                    feedback_deferred=error.evidence(intent),
+                )
+        except Exception as error:
+            from firefly_forge.project_access import AccessDenied
+
+            held = retained is not None and not write_started and isinstance(error, AccessDenied)
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(
+                    row,
+                    feedback_status="held" if held else "needs_reconciliation",
+                    reason="deferred_feedback_authority_changed" if held else "remote_feedback_outcome_unknown",
+                    feedback_deferred=row.data.get("feedback_deferred") if held else None,
                 )
         else:
             async with self.store._unit():
@@ -1962,6 +2052,7 @@ class Collaboration:
                 await self._write_row(
                     row,
                     feedback_status="sent",
+                    feedback_deferred=None,
                     feedback_remote=remote,
                     feedback_stage=intent["stage"],
                     feedback_request_id=intent["request_id"],
@@ -2103,6 +2194,9 @@ class Collaboration:
         return await self.receipt(data["id"])
 
     async def sync_feedback(self) -> None:
+        from firefly_forge.native_question_publications import NativeQuestionPublications
+
+        await NativeQuestionPublications(self).sync()
         async with self.store._unit():
             rows = [copy.deepcopy(row.data) for row in await self.inbox.find_pending()]
         for data in rows:
@@ -2110,6 +2204,8 @@ class Collaboration:
                 await self.process(data["id"])
             elif data.get("feedback_status") == "pending":
                 await self.feedback(data["id"])
+            elif data.get("native_question") is not None and data.get("feedback_status") == "writing":
+                await NativeQuestionPublications(self).interrupted(data)
             elif data.get("feedback_status") == "writing" and data["id"] not in self._active_writes:
                 async with self.store._unit():
                     row = await self.inbox.find_by_id(identifier(str(data["id"])), lock=LockMode.PESSIMISTIC_WRITE)
@@ -2117,16 +2213,20 @@ class Collaboration:
                     await self._write_row(
                         row, feedback_status="needs_reconciliation", reason="remote_feedback_interrupted"
                     )
-            elif data.get("run_id") and data.get("feedback_status") == "sent":
+            elif data.get("run_id") and data.get("feedback_status") == "sent" and not data.get("native_question"):
                 from firefly_forge.collaboration_feedback import feedback_due, sent_history
 
                 try:
-                    await self._feedback_authority(data)
+                    await self._feedback_authority(data, local=True)
                 except Exception:
                     continue
                 run = await self.store.get_run(data["run_id"])
                 if feedback_due(data, run):
                     if not await self._feedback_head(data, proactive=True):
+                        continue
+                    try:
+                        await self._feedback_authority(data)
+                    except Exception:
                         continue
                     async with self.store._unit():
                         row = await self.inbox.find_by_id(identifier(str(data["id"])), lock=LockMode.PESSIMISTIC_WRITE)

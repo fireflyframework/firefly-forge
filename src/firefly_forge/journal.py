@@ -860,7 +860,11 @@ class Journal:
         return [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
 
     async def worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
-        from firefly_forge.agent_roles import NativeAllowanceWorkerFeedback, worker_feedback_model
+        from firefly_forge.agent_roles import (
+            NativeAllowanceWorkerFeedback,
+            SourceBudgetWorkerFeedback,
+            worker_feedback_model,
+        )
 
         feedback = worker_feedback_model(feedback).model_validate(feedback)
         if isinstance(feedback, NativeAllowanceWorkerFeedback):
@@ -872,10 +876,27 @@ class Journal:
                 raise ValueError("Native final feedback requires its original allowance actor")
             async with ProviderRecoveries(self.store, self, None)._locked(run_id, actor):
                 return await self._worker_feedback(run_id, feedback, evidence=evidence)
+        if isinstance(feedback, SourceBudgetWorkerFeedback):
+            from firefly_forge.provider_recoveries import ProviderRecoveries
+            from firefly_forge.source_budget_allowances import current_budget_receipt
+
+            run = await self.store.get_run(run_id)
+            async with self.store._unit():
+                rows = await self.records.find_for_run(identifier(run_id))
+                receipt = current_budget_receipt(self.store, run, [{**row.data, "digest": row.digest} for row in rows])
+                if receipt is None:
+                    raise ValueError("Source budget feedback requires its actual native receipt")
+                async with ProviderRecoveries(self.store, self, None)._locked(run_id, receipt["actor"]):
+                    return await self._worker_feedback(run_id, feedback, evidence=evidence)
         return await self._worker_feedback(run_id, feedback, evidence=evidence)
 
     async def _worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
-        from firefly_forge.agent_roles import BINDINGS, NativeAllowanceWorkerFeedback, worker_feedback_model
+        from firefly_forge.agent_roles import (
+            BINDINGS,
+            NativeAllowanceWorkerFeedback,
+            SourceBudgetWorkerFeedback,
+            worker_feedback_model,
+        )
         from firefly_forge.worker_evidence import WorkerEvidenceManifest
 
         model = worker_feedback_model(feedback)
@@ -909,6 +930,21 @@ class Journal:
                     payload[name] != value for name, value in link.items()
                 ):
                     raise ValueError("Native final feedback does not match its consumed allowance")
+            if isinstance(feedback, SourceBudgetWorkerFeedback):
+                from firefly_forge.source_budget_allowances import feedback_binding
+
+                current_task = await self._task(run_id, "implement")
+                native_entries = [{**copy.deepcopy(e.data), "digest": e.digest} for e in entries]
+                if not self.verify_chain(native_entries):
+                    raise ValueError("Source budget feedback requires an intact native journal")
+                binding = feedback_binding(
+                    run.data,
+                    {**current_task.data, "status": current_task.status, "attempt": current_task.attempt},
+                    native_entries,
+                    self.store,
+                )
+                if binding is None or any(payload.get(name) != value for name, value in binding.items()):
+                    raise ValueError("Worker feedback does not match its exact source budget allowance")
             key = _worker_message_key("worker-feedback", feedback.id)
             existing = next(
                 (entry for entry in entries if entry.kind == "worker_feedback" and entry.idempotency_key == key), None
@@ -928,7 +964,7 @@ class Journal:
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
             task = await self._task(run_id, feedback.task_id)
-            if isinstance(feedback, NativeAllowanceWorkerFeedback) and (
+            if isinstance(feedback, (NativeAllowanceWorkerFeedback, SourceBudgetWorkerFeedback)) and (
                 run.status != "developing" or task.status != "running"
             ):
                 raise ValueError("New final allowance feedback requires its active implementation")
@@ -1708,6 +1744,8 @@ class Journal:
         campaign_action_id: str | None = None,
         verification_handoff_id: str | None = None,
         expected_provider_digest: str | None = None,
+        source_human_readmission: str | None = None,
+        source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
         from firefly_forge.project_access import ProjectAccess
@@ -1739,6 +1777,18 @@ class Journal:
         from firefly_forge.identity_persistence import ForgeIdentityUserRepository
         from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 
+        if current.get("source_edit_continuation") and awaiting_human_resume(current):
+            if (
+                (source_human_readmission is None and source_budget_readmission is None)
+                or (source_human_readmission is not None and source_budget_readmission is not None)
+                or auto
+                or agent is not None
+                or model_profile_id is not None
+                or verification_handoff_id is not None
+            ):
+                raise ValueError("A fresh native source-only human admission is required for the next attempt")
+        elif source_human_readmission is not None or source_budget_readmission is not None:
+            raise ValueError("A source-only human admission requires its answered current question")
         human_candidate = not auto and verification_handoff_id is None and awaiting_human_resume(current)
         actor = CURRENT_PRINCIPAL.get() if human_candidate else None
         if human_candidate and actor is None:
@@ -1808,6 +1858,7 @@ class Journal:
                     raise ValueError("Automatic continuation requires its completed immutable verification handoff")
                 check_verification_cut(self.store, run.data, admitted)
             human_clarification = None
+            source_budget_link = None
             if not auto and verification_handoff_id is None and awaiting_human_resume(run.data):
                 if not human_candidate or actor is None or self._worker_scope(current) != self._worker_scope(run.data):
                     raise AccessDenied("The human clarification scope changed during resume")
@@ -1822,12 +1873,45 @@ class Journal:
                 if not self.verify_chain(human_entries):
                     raise ValueError("Human clarification requires an intact journal")
                 task = await self._task(run_id, "implement")
-                human_clarification = continuation_link(
-                    run.data,
-                    {"status": task.status, "attempt": task.attempt},
-                    human_entries,
-                    {"user_id": actor.id.hex, "authentication_method": actor.authentication_method},
-                )
+                if source_budget_readmission is not None:
+                    from firefly_forge.source_budget_allowances import assert_budget_resume
+
+                    source_budget_link = assert_budget_resume(
+                        run.data,
+                        {
+                            **copy.deepcopy(task.data),
+                            "id": task.task_id,
+                            "status": task.status,
+                            "attempt": task.attempt,
+                        },
+                        human_entries,
+                        snapshot,
+                        source_budget_readmission,
+                        self.store.configuration,
+                    )
+                else:
+                    human_clarification = continuation_link(
+                        run.data,
+                        {"status": task.status, "attempt": task.attempt},
+                        human_entries,
+                        {"user_id": actor.id.hex, "authentication_method": actor.authentication_method},
+                    )
+                    if run.data.get("source_edit_continuation"):
+                        from firefly_forge.source_human_readmission import assert_resume_admission
+
+                        assert_resume_admission(
+                            run.data,
+                            {
+                                **copy.deepcopy(task.data),
+                                "id": task.task_id,
+                                "status": task.status,
+                                "attempt": task.attempt,
+                            },
+                            human_entries,
+                            snapshot,
+                            human_clarification,
+                            source_human_readmission,
+                        )
                 if CURRENT_PRINCIPAL.get() != actor:
                     raise AccessDenied("The clarification resume operator changed")
             old_revision = run.data.get("config_revision")
@@ -1888,6 +1972,13 @@ class Journal:
             for task in await self.tasks.find_for_run(run.id):
                 if task.status == "paused" and (task.task_id in LOCAL_TASKS or task.task_id == "review"):
                     task.status, task.attempt = "queued", task.attempt + 1
+                    if source_budget_link is not None and task.task_id == "implement":
+                        from uuid import NAMESPACE_URL, uuid5
+
+                        task.data = {
+                            **task.data,
+                            "idempotency_key": uuid5(NAMESPACE_URL, f"forge:{run_id}:implement:{task.attempt}").hex,
+                        }
                     await self.tasks.save(task)
             run.status = "queued"
             run.data = {
@@ -1923,6 +2014,7 @@ class Journal:
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
                     **({"human_clarification": human_clarification} if human_clarification else {}),
+                    **({"source_budget_continuation": source_budget_link} if source_budget_link else {}),
                 },
             )
             return await self.store.get_run(run_id)

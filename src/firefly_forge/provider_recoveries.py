@@ -478,6 +478,12 @@ class ProviderRecoveries:
             return copy.deepcopy(receipt)
 
     async def _allowance(self, run: Data) -> Data | None:
+        from firefly_forge.source_budget_allowances import active_feedback_binding
+
+        if run.get("source_edit_continuation"):
+            source_allowance = await active_feedback_binding(self, run)
+            if source_allowance is not None:
+                return source_allowance
         async with self.store._unit():
             task = self._task_view(await self.journal._task(run["id"], "implement"))
             state = run.get("provider_recovery") or {}
@@ -493,6 +499,11 @@ class ProviderRecoveries:
         if not state or state.get("status") == "completed":
             return None
         if state.get("status") != "reserved":
+            if state.get("status") == "consumed" and run.get("source_edit_continuation"):
+                from firefly_forge.source_budget_allowances import queued_paused_provider_successor
+
+                if await queued_paused_provider_successor(self, run, state):
+                    return None
             raise ValueError("The consumed provider dispatch requires reconciliation")
         await self._allowance(run)
         return {"idempotency_key": state["task_key"], "disposition": "execute", "attempt": state["attempt"]}
@@ -621,9 +632,15 @@ class ProviderRecoveries:
             if row.status != "developing" or task.status != "running" or task.data.get("idempotency_key") != key:
                 raise ValueError("The provider dispatch is not the current implementation")
             entries = await self._entries(run_id)
+            from firefly_forge.source_budget_allowances import active_feedback_binding
+
+            allowance = (
+                await active_feedback_binding(self, row.data) if row.data.get("source_edit_continuation") else None
+            )
+            dispatch_limit = allowance["attempt"] if allowance is not None else 4
             if (
                 key not in dispatch_keys(entries)
-                or len(dispatch_keys(entries)) > 4
+                or len(dispatch_keys(entries)) > dispatch_limit
                 or any(e["kind"] == "provider_dispatch_intent" and e["payload"]["task_key"] == key for e in entries)
             ):
                 raise ValueError("The provider dispatch was consumed or its finite budget is exhausted")

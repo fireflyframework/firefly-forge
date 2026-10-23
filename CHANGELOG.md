@@ -2,6 +2,15 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.39 — 2026-10-23
+
+- Continue the same restricted source task through explicit human-answer and completed-output admission, retaining original source, uncertain effects and spent budgets. Bind exact archived stdout evidence without inferring process exit or success.
+- Publish pending native worker questions through a durable, current-authority outbox and accept ordinary replies to confirmed publications without granting execution or renewing expired source consent. Preserve exact historical publication proof when the same account renews current read consent; changed owners, scope or revoked access remain blocked.
+- Add typed API, SDK and CLI review for finite source-read allowances. Qualify the v6 Codex 0.163 Darwin arm64 profile for 20 lifetime file reads and canonical activation ceiling 5; preserve ordinary 10/4 limits, the shared tool ceiling 30, recorded tool rows and original command/final-verification budgets.
+- Bind final allowance admission to the physical execution-lease connection, preserve consumed prior dispatch custody and roll back intent, queue and receipt after lease loss before commit.
+- Ground cross-language question answers in exact offered evidence. Persist scoped provider cooldowns and retain one feedback draft after definite local non-dispatch, while keeping unknown remote outcomes held without automatic replay.
+- Preserve the immutable historical v5 profile, existing prompt bytes and the public interface. Refresh the canonical Studio walkthrough for the 0.2.39 version stamp.
+
 ## 0.2.37 — 2026-10-23
 
 - Continue GitHub conversations in natural language, including later replies to confirmed assistant and worker questions. Keep question, author, issue and original task provenance durable across restarts; clarify ambiguous references without requiring commands or internal IDs.

@@ -191,7 +191,7 @@ def validate_projection(child: Data, parent: Data) -> None:
 
 async def authorize_projection(polling: Any, child: Data) -> None:
     """Repeat parent, read-scope and immutable-question checks inside native effect admission."""
-    from firefly_forge.agent_roles import WorkerFeedback
+    from firefly_forge.agent_roles import worker_feedback_model
 
     marker = child.get("natural_parent")
     if not isinstance(marker, dict) or marker.get("receipt_id") == child["id"]:
@@ -242,7 +242,7 @@ async def authorize_projection(polling: Any, child: Data) -> None:
     ]
     if len(questions) != 1:
         raise AccessDenied("The original natural question journal record changed")
-    feedback = WorkerFeedback.model_validate(questions[0]["payload"])
+    feedback = worker_feedback_model(questions[0]["payload"]).model_validate(questions[0]["payload"])
     request = run.get("worker_request") or {}
     if (
         feedback.request is None

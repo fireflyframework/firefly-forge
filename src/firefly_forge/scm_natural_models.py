@@ -82,6 +82,11 @@ def _question(row: Data) -> Data:
 
 def _human_selection(text: str, rows: list[Data], choice: int, evidence: GroundedSelection | None) -> bool:
     # A typed model number alone cannot resolve ambiguous human consent.
+    if evidence is not None:
+        return evidence.human_span in text and [
+            index for index, row in enumerate(rows, 1) if evidence.question_span in (row.get("question") or "")
+        ] == [choice]
+
     def normalized(value: str) -> str:
         return " ".join(
             "".join(c for c in unicodedata.normalize("NFD", value.casefold()) if not unicodedata.combining(c)).split()
@@ -112,45 +117,33 @@ def _human_selection(text: str, rows: list[Data], choice: int, evidence: Grounde
         for index, row in enumerate(rows, 1)
         if len(normalized(row.get("question") or "")) >= 12 and normalized(row["question"]) in human
     ]
-    if matches == [choice]:
-        return True
-    if (
-        evidence is None
-        or evidence.human_span not in text
-        or evidence.question_span not in rows[choice - 1].get("question", "")
-    ):
-        return False
-    stop = {
-        "about",
-        "with",
-        "that",
-        "this",
-        "which",
-        "what",
-        "does",
-        "only",
-        "sobre",
-        "para",
-        "como",
-        "quien",
-        "cual",
-        "solo",
-        "esta",
-        "este",
-        "puede",
-        "tiene",
-    }
-    human_words = set(re.findall(r"[a-z0-9]{4,}", normalized(evidence.human_span))) - stop
-    question_words = set(re.findall(r"[a-z0-9]{4,}", normalized(evidence.question_span))) - stop
-    anchors = human_words & question_words
-    if not anchors:
-        return False
-    grounded = [
-        index
-        for index, row in enumerate(rows, 1)
-        if anchors <= set(re.findall(r"[a-z0-9]{4,}", normalized(row.get("question") or "")))
+    return matches == [choice]
+
+
+def _offered_rows(scope: Data, candidates: list[Data], *, question_only: bool) -> list[Data]:
+    if len(candidates) > 200:
+        raise ValueError("Natural task context exceeds its bounded lookup")
+    rows = sorted(
+        [
+            row
+            for row in candidates
+            if all(row.get(key) == scope.get(key) for key in SCOPE_FIELDS)
+            and (not question_only or row.get("question_id"))
+        ],
+        key=lambda row: (row.get("run_id") or "", row.get("question_id") or ""),
+    )
+    if len({(row.get("run_id"), row.get("question_id")) for row in rows}) != len(rows):
+        raise ValueError("Natural task references must identify distinct verified questions or runs")
+    return rows
+
+
+def question_choices(context: Data) -> list[Data]:
+    return [
+        {"choice": index, **_question(row)}
+        for index, row in enumerate(
+            _offered_rows(context.get("scope", {}), context.get("candidates", []), question_only=True), 1
+        )
     ]
-    return grounded == [choice]
 
 
 def resolve_task(
@@ -162,19 +155,7 @@ def resolve_task(
     previous: Data | None = None,
 ) -> NaturalResolution:
     """A model selects an offered number; only server evidence supplies task identities."""
-    if len(candidates) > 200:
-        raise ValueError("Natural task context exceeds its bounded lookup")
-    rows = sorted(
-        [
-            row
-            for row in candidates
-            if all(row.get(key) == scope.get(key) for key in SCOPE_FIELDS)
-            and (decision.intent not in {"answer", "resume"} or row.get("question_id"))
-        ],
-        key=lambda row: (row.get("run_id") or "", row.get("question_id") or ""),
-    )
-    if len({(row.get("run_id"), row.get("question_id")) for row in rows}) != len(rows):
-        raise ValueError("Natural task references must identify distinct verified questions or runs")
+    rows = _offered_rows(scope, candidates, question_only=decision.intent in {"answer", "resume"})
     result = NaturalResolution(scope=scope, state="waiting", reason="clarification_required", candidates=rows)
     if previous is not None:
         retained = NaturalResolution.model_validate(previous)
@@ -199,6 +180,10 @@ def resolve_task(
     choice = decision.choice if decision.choice is not None else (1 if len(rows) == 1 else None)
     if choice is None or choice > len(rows):
         return result
+    if decision.selection_evidence is not None and (
+        decision.choice is None or not _human_selection(answer, rows, choice, decision.selection_evidence)
+    ):
+        return result.model_copy(update={"reason": "explicit_human_choice_required"})
     if len(rows) > 1 and (
         (previous is None or retained.state != "waiting")
         and decision.selection_evidence is None
