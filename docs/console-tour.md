@@ -328,6 +328,8 @@ On a real factory, Start building admits the request. The retained source, produ
 
 ## 4. Inspect the run before continuing
 
+Choose the **Project** and **Manufacturing run**, then switch between **Floor** and **Board**. Studio keeps these choices when you inspect a run or visit another page and return to Factory. The selection stays in memory for this session; changing the signed-in user or factory API, or disconnecting, resets it. If a selected project or run is no longer in the accessible list, choose from the current records. On phones, each selector uses a full row.
+
 Factory lists the work. Select the inventory run to open its state, timeline and evidence tabs. In this example, the fixture reports `needs_reconciliation`, a failed verification command and an intent without a completion receipt.
 
 <figure class="forge-shot" markdown="1">

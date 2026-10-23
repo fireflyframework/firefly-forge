@@ -856,7 +856,6 @@ export default function App() {
               <div className="page-heading factory-overview-heading">
                 <div>
                   <h1>Your factory.</h1>
-                  <p>Follow work. Review evidence.</p>
                 </div>
                 <button className="primary" onClick={() => navigate("product")}>
                   <Plus size={17} />

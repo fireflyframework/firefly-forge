@@ -206,7 +206,7 @@ export function FactoryFloor({
         </p>
       </div>
       <p className="production-explanation">
-        Choose a project and run, then select a stage.
+        Select a stage to inspect its work.
       </p>
       <div
         className="production-view-switch feature-tabs"

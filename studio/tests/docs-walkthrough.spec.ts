@@ -585,6 +585,13 @@ for (const device of ["desktop", "mobile"])
             footerTop: footer.top,
           };
         });
+      await test.info().attach("factory-first-screen-geometry", {
+        body: JSON.stringify(floorBounds),
+        contentType: "application/json",
+      });
+      await page.screenshot({
+        path: test.info().outputPath("factory-first-screen.png"),
+      });
       expect(floorBounds.top).toBeGreaterThanOrEqual(floorBounds.mainTop);
       expect(floorBounds.bottom).toBeLessThanOrEqual(floorBounds.footerTop);
       expect(floorBounds.height).toBeGreaterThanOrEqual(180);

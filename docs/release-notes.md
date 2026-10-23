@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.35
+
+Studio keeps your place on the production floor. Choose a project, switch to Board and select a manufacturing run; after Inspect or a visit to another page, returning to Factory restores those choices. The selection stays in memory for the current session. Switching the signed-in user or factory API, or disconnecting, resets it. A project or run that disappears from the accessible list no longer supplies the selected plan.
+
+The Factory view and selected run also keep loaded records bound to the current user and factory API. Retained records remain hidden while the identity check is pending or has failed. A new user triggers a fresh read, and late replies from the previous user or API cannot replace the current records or alter current run feedback. This includes a publication response that finishes after the user changes.
+
+On phones, Project and Manufacturing run each use a full row, keeping the selected run label readable. Shorter guidance leaves room for the production scene above the footer after a run opens. The walkthrough captures carry the 0.2.35 version stamp. Controlled two-project browser cases cover navigation, removed records, delayed identity checks and stale responses. These fixtures do not establish live provider behavior or generated-product acceptance.
+
 ## 0.2.34
 
 When an administrator selects an AI communication profile, the factory asks it to write the proposed pull request's complete title and description before pushing its implementation branch. The writer uses admitted recorded facts, versioned YAML/Jinja prompts and the existing Humanizer instructions. A separate AI request classifies the candidate; unsupported or uncertain wording receives one final correction within the existing three-request ceiling and shared profile deadline. The prompt catalog contains 289 resources, preserving all previous resource bytes.
