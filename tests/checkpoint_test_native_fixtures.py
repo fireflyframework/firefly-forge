@@ -29,8 +29,9 @@ from firefly_forge.store import Store
 
 
 @pytest.fixture
-def checkpoint_native(native_poll, tmp_path, monkeypatch):
+def checkpoint_native(native_poll, tmp_path, monkeypatch, request):
     case = native_poll
+    unpublished = getattr(request, "param", None) == "unpublished"
     origin = tmp_path / "controlled-git-origin"
     origin.mkdir()
     original_checked = scm.checked
@@ -73,6 +74,7 @@ def checkpoint_native(native_poll, tmp_path, monkeypatch):
             state="open",
             draft=True,
             body=body["body"],
+            title=body["title"],
             head=dict(ref=body["head"], sha=revision, repo=dict(id=42, full_name="team/product")),
             base=dict(ref="main", repo=dict(id=42, full_name="team/product")),
         )
@@ -153,7 +155,9 @@ def checkpoint_native(native_poll, tmp_path, monkeypatch):
                     version=1,
                     request_id=uuid4().hex,
                     expected_previous_digest=None,
-                    policy=dict(enabled=True, every_units=1, on_pause=True, remote="draft_pr", max_checkpoints=50),
+                    policy=dict(
+                        enabled=True, every_units=1, on_pause=not unpublished, remote="draft_pr", max_checkpoints=50
+                    ),
                 ),
             )
             parent = await worker.create_run(
@@ -172,8 +176,13 @@ def checkpoint_native(native_poll, tmp_path, monkeypatch):
                 engine.active.pop(parent["id"], None)
             parent = await worker.get_run(parent["id"])
             assert parent["status"] == "paused", parent.get("error")
-            receipt = (await deliveries.view(parent["id"]))["items"][-1]
-            assert receipt["remote_status"] == "draft" and draft_state["posts"] == 1 and len(calls) == 1
+            items = (await deliveries.view(parent["id"]))["items"]
+            if unpublished:
+                assert items == [] and draft_state["posts"] == 0 and len(calls) == 1
+                receipt = None
+            else:
+                receipt = items[-1]
+                assert receipt["remote_status"] == "draft" and draft_state["posts"] == 1 and len(calls) == 1
             prefix = await journal.entries(parent["id"])
         commands = [
             dict(argv=[sys.executable, "-c", f"from product import value; assert value == 2; print({i})"], timeout=30)
@@ -197,7 +206,9 @@ def checkpoint_native(native_poll, tmp_path, monkeypatch):
                     request_id=receipt["request_id"],
                     expected_checkpoint_digest=receipt["checkpoint_digest"],
                     expected_revision=receipt["revision"],
-                ),
+                )
+                if receipt is not None
+                else None,
             ),
         )
         context = case.http.app.state.runtime.context

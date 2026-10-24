@@ -120,7 +120,15 @@ class DraftPullRequests:
         if any(previous.get(key) != current.get(key) for key in ("url", "number", "node_id")):
             raise ValueError("The retained provider reference identity changed")
 
-    async def find(self, branch: str, revision: str, *, draft: bool = True) -> Data | None:
+    async def find(
+        self,
+        branch: str,
+        revision: str,
+        *,
+        draft: bool = True,
+        expected_title: str | None = None,
+        expected_body_sha256: str | None = None,
+    ) -> Data | None:
         params = (
             {
                 "state": "open",
@@ -139,7 +147,15 @@ class DraftPullRequests:
         results = await self._request("GET", self.endpoint, params=params)
         if not isinstance(results, list) or len(results) > 1:
             raise ValueError("Draft discovery is ambiguous or contains multiple references")
-        return self._validate(results[0], branch, revision, draft=draft) if results else None
+        if not results:
+            return None
+        value = self._validate(results[0], branch, revision, draft=draft)
+        title = expected_title if self.provider == "github" else "Draft: " + (expected_title or "")
+        if (expected_title is not None and results[0].get("title") != title) or (
+            expected_body_sha256 is not None and value["body_sha256"] != expected_body_sha256
+        ):
+            raise ValueError("The discovered draft differs from the exact retained title or body")
+        return value
 
     async def create(self, branch: str, revision: str, title: str, body: str) -> Data:
         payload = (

@@ -70,6 +70,7 @@ def remote_case(delivery_case, tmp_path, monkeypatch):
             "state": "open",
             "draft": state["draft"]["draft"],
             "body": state["draft"]["body"],
+            "title": state["draft"]["title"],
             "head": {"ref": "forge/public-unit", "sha": sha, "repo": {"full_name": "team/product"}},
             "base": {"ref": "main", "repo": {"full_name": "team/product"}},
         }

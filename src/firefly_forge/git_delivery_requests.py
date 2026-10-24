@@ -35,6 +35,24 @@ class GitDeliveryRequests:
         adoption_expires = (
             clock_ms() + body.explicit_adoption.valid_for_seconds * 1000 if body.explicit_adoption else None
         )
+        reconciliation = None
+        reconciliation_expires = None
+        if body.explicit_reconciliation is not None:
+            from firefly_forge.git_remote_reconciliation import GitRemoteReconciliations
+
+            async with self.store._unit():
+                retained = await self.requests.records.find_by_id(identifier(body.request_id))
+            if retained is not None:
+                if (
+                    retained.kind != KIND
+                    or retained.run_id.hex != run_id
+                    or retained.data["request"]["input"] != body.model_dump(mode="json")
+                    or retained.data["request"]["actor"] != actor
+                ):
+                    raise ValueError("The reconciliation request belongs to another input or actor")
+                return await self.get(run_id, body.request_id)
+            reconciliation = await GitRemoteReconciliations(self.deliveries).prepare(run_id, body, actor)
+            reconciliation_expires = clock_ms() + body.explicit_reconciliation.valid_for_seconds * 1000
         if body.explicit_adoption is not None:
             async with self.store._unit():
                 retained = await self.requests.records.find_by_id(identifier(body.request_id))
@@ -54,7 +72,7 @@ class GitDeliveryRequests:
                 raise ValueError("The adopted source HEAD differs from the explicit review")
             policy = GitDeliveryPolicyV1.model_validate(candidate["policy"])
         else:
-            if run.get("git_failed_unit_adoption"):
+            if run.get("git_failed_unit_adoption") and reconciliation is None:
                 raise ValueError(
                     "An adopted failed unit has one original checkpoint request; inspect it without replay"
                 )
@@ -65,6 +83,9 @@ class GitDeliveryRequests:
         incoming: Data = {"input": body.model_dump(mode="json"), "actor": actor, "binding": binding(run)}
         if adoption_expires is not None:
             incoming["explicit_adoption_expires_at_ms"] = adoption_expires
+        if reconciliation is not None:
+            incoming["explicit_reconciliation_expires_at_ms"] = reconciliation_expires
+            incoming["reconciliation_tickets"] = await self._reconciliation_tickets(run_id, body)
         await self.store.admit_credentials(incoming)
         async with self.store._unit() as session:
             await session.execute(
@@ -79,13 +100,26 @@ class GitDeliveryRequests:
             if body.explicit_adoption is not None:
                 current_candidate = await GitFailedUnitAdoptions(self.deliveries).candidate(run_id, actor)
                 GitFailedUnitAdoptions.compare(current_candidate, body.explicit_adoption)
+            if reconciliation is not None:
+                from firefly_forge.git_remote_reconciliation import GitRemoteReconciliations
+
+                if (
+                    await self._reconciliation_tickets(run_id, body) != incoming["reconciliation_tickets"]
+                    or (await GitRemoteReconciliations(self.deliveries).entries(run_id))[-1]["digest"]
+                    != reconciliation["journal_head"]
+                ):
+                    raise ValueError("The reviewed unknown ticket or checkpoint history changed during admission")
             old = await self.requests.records.find_by_id(identifier(body.request_id))
             if old is not None:
                 if old.kind != KIND or old.run_id.hex != run_id or old.data["request"] != incoming:
                     raise ValueError("Checkpoint request identity belongs to another input or actor")
             else:
                 rows = await self.requests.records.for_run(identifier(run_id), KIND)
-                if any(r.status in {"queued", "executing", "needs_reconciliation"} for r in rows):
+                if any(
+                    r.status in {"queued", "executing", "needs_reconciliation"}
+                    and r.id.hex not in incoming.get("reconciliation_tickets", {})
+                    for r in rows
+                ):
                     raise ValueError("A prior Git delivery is pending or unknown; inspect its exact receipt")
                 if len(rows) >= 50 or await self.requests.records.pending_count() >= 500:
                     raise ValueError("The finite Git delivery request queue is full")
@@ -113,6 +147,8 @@ class GitDeliveryRequests:
                 await self.requests._event(row, "request_admitted", {"request_digest": data["request_digest"]})
             if adoption_expires is not None and clock_ms() >= adoption_expires:
                 raise ValueError("The explicit failed-unit consent expired before request admission")
+            if reconciliation_expires is not None and clock_ms() >= reconciliation_expires:
+                raise ValueError("The explicit remote-completion consent expired before request admission")
         return await self.get(run_id, body.request_id)
 
     async def get(self, run_id: str, request_id: str) -> Data:
@@ -120,6 +156,9 @@ class GitDeliveryRequests:
         if user is None:
             raise AccessDenied("Sign in to inspect checkpoint requests")
         await self.deliveries._authorize(await self.store.get_run(run_id), ProjectAccess.actor_snapshot(user), "read")
+        return await self._retained_ticket(run_id, request_id)
+
+    async def _retained_ticket(self, run_id: str, request_id: str) -> Data:
         async with self.store._unit():
             row = await self.requests.records.find_by_id(identifier(request_id))
             if row is None or row.kind != KIND or row.run_id.hex != run_id:
@@ -149,6 +188,30 @@ class GitDeliveryRequests:
         elif data["status"] != "executing" or events[-1]["kind"] != "worker_claim":
             raise ValueError("Git checkpoint request has an unknown custody state")
         return {**data, "events": events}
+
+    async def _reconciliation_tickets(self, run_id: str, body: GitDeliveryInputV1) -> Data:
+        command = body.explicit_reconciliation
+        if command is None:
+            raise ValueError("An explicit reconciliation input is required")
+        original = await self._retained_ticket(run_id, command.original_request_id)
+        if original["status"] != "needs_reconciliation":
+            raise ValueError("Only the exact retained unknown checkpoint ticket can be reconciled")
+        async with self.store._unit():
+            rows = await self.requests.records.for_run(identifier(run_id), KIND)
+        values = {}
+        for row in rows:
+            if row.status == "needs_reconciliation":
+                retained = await self._retained_ticket(run_id, row.id.hex)
+                prior = retained["request"]["input"].get("explicit_reconciliation") or {}
+                if (
+                    row.id.hex != command.original_request_id
+                    and prior.get("original_request_id") != command.original_request_id
+                ):
+                    raise ValueError("Another unrelated Git outcome is unknown")
+                values[row.id.hex] = request_digest(retained)
+            elif row.status in {"queued", "executing"} and row.id.hex != body.request_id:
+                raise ValueError("Another Git delivery owner is pending")
+        return values
 
     async def _finish(self, admitted: Data, status: str, result: Data) -> None:
         async with self.store.source_budget_admission_unit():
@@ -185,14 +248,26 @@ class GitDeliveryRequests:
                     body.explicit_adoption,
                     expires=request["explicit_adoption_expires_at_ms"],
                 )
-            result = await self.deliveries.checkpoint(
-                claimed["run_id"],
-                request_id=body.request_id,
-                expected_head=body.expected_head,
-                expected_source_tree=body.expected_source_tree,
-                expected_source_digest=body.expected_source_digest,
-                actor=request["actor"],
-            )
+            if body.explicit_reconciliation is not None:
+                from firefly_forge.git_remote_reconciliation import GitRemoteReconciliations
+
+                if await self._reconciliation_tickets(claimed["run_id"], body) != request["reconciliation_tickets"]:
+                    raise ValueError("Unknown checkpoint custody changed before remote completion")
+                result = await GitRemoteReconciliations(self.deliveries).complete(
+                    claimed["run_id"],
+                    body,
+                    request["actor"],
+                    expires_at_ms=request["explicit_reconciliation_expires_at_ms"],
+                )
+            else:
+                result = await self.deliveries.checkpoint(
+                    claimed["run_id"],
+                    request_id=body.request_id,
+                    expected_head=body.expected_head,
+                    expected_source_tree=body.expected_source_tree,
+                    expected_source_digest=body.expected_source_digest,
+                    actor=request["actor"],
+                )
             await self._finish(claimed, "completed", result)
         except asyncio.CancelledError:
             await asyncio.shield(
@@ -206,7 +281,11 @@ class GitDeliveryRequests:
         except Exception:
             entries = await self.deliveries._entries(claimed["run_id"])
             started = any(
-                e["kind"] == "git_delivery_intent" and e["payload"].get("request_id") == request_id for e in entries
+                e["kind"] == "git_delivery_intent"
+                and e["payload"].get("request_id") == request_id
+                or e["kind"] == "git_delivery_remote_intent"
+                and (e["payload"].get("reconciliation") or {}).get("request_id") == request_id
+                for e in entries
             )
             await self._finish(
                 claimed,

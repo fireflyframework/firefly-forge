@@ -2,6 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.42 — 2026-10-24
+
+- Complete an uncertain remote Git checkpoint only through a new finite native request, preserving the original unknown request, retained review body, current permissions and exact branch checks.
+- Project the latest remote intent and refresh natural status from verified current checkpoint facts. Keep uncertain outcomes visible and execution authority separate.
+- Apply canonical generated-cache exclusions at final checkpoint cleanliness checks and handle Darwin owned-child reap races without suppressing live-process signal denial.
+- Qualify the v9 protected cleanup source with fresh native and SQL evidence while preserving historical v8 proof. See the [release notes](docs/release-notes.md#0242) for scope and evidence boundaries.
+
 ## 0.2.41 — 2026-10-23
 
 - Retain large Git diffs in private hashed chunks with paged file indexes and content windows. Keep complete evidence outside the WAL and expose configurable project storage and time budgets.

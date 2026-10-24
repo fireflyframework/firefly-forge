@@ -22,6 +22,8 @@ from filelock import AsyncFileLock, Timeout
 
 from firefly_forge.configuration import ConfigurationStore
 
+LOCK_WAIT_SECONDS = 25
+
 
 class ProviderRequestDeferred(ValueError):
     """This request was held locally before any HTTP dispatch."""
@@ -78,7 +80,7 @@ class ProviderBackoff:
         self.path = self.directory / (key + ".json")
         if not self.path.exists() and len(list(self.directory.glob("*.json"))) >= 32:
             raise ValueError("Provider cooldown scope limit reached")
-        self.lock = AsyncFileLock(str(self.directory / (key + ".lock")), timeout=0, mode=0o600)
+        self.lock = AsyncFileLock(str(self.directory / (key + ".lock")), timeout=LOCK_WAIT_SECONDS, mode=0o600)
 
     def _read(self) -> dict[str, Any]:
         try:

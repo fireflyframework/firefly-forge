@@ -517,6 +517,66 @@ class GitDeliveries:
 
     @staticmethod
     def _remote_state(entries: list[Data], *, allow_pending: bool = False) -> Data | None:
+        intents = [e for e in entries if e["kind"] == "git_delivery_remote_intent"]
+        confirmed = set()
+        for intent in intents:
+            matches = [
+                e
+                for e in entries
+                if e["kind"] == "git_delivery_remote_receipt" and e["idempotency_key"] == intent["idempotency_key"]
+            ]
+            if len(matches) > 1:
+                raise ValueError("Remote checkpoint has duplicate confirmation receipts")
+            if matches:
+                result = matches[0]
+                if (
+                    result["sequence"] <= intent["sequence"]
+                    or result["payload"].get("intent_digest") != intent["digest"]
+                    or result["payload"].get("request_id") != intent["payload"]["request_id"]
+                    or result["payload"].get("revision") != intent["payload"]["revision"]
+                    or result["payload"].get("remote_status") not in {"draft", "ready"}
+                    or result["payload"].get("reference", {}).get("body_sha256") != intent["payload"]["body_sha256"]
+                    or result["payload"].get("reconciliation") != intent["payload"].get("reconciliation")
+                ):
+                    raise ValueError("Remote checkpoint confirmation provenance differs")
+                confirmed.add(intent["digest"])
+        for intent in reversed(intents):
+            recovery = intent["payload"].get("reconciliation")
+            if recovery is None:
+                continue
+            old = next((e for e in intents if e["digest"] == recovery.get("original_intent_digest")), None)
+            from firefly_forge.git_delivery_models import GitRemoteReconciliationV1
+
+            consent = GitRemoteReconciliationV1.model_validate(recovery.get("consent"))
+            if (
+                old is None
+                or old["sequence"] >= intent["sequence"]
+                or recovery.get("request_id") == intent["payload"]["request_id"]
+                or recovery.get("checkpoint_digest") != old["payload"].get("checkpoint_digest")
+                or recovery.get("original_outcome") != "unknown"
+                or consent.original_request_id != intent["payload"]["request_id"]
+                or consent.remote_intent_digest != recovery.get("original_intent_digest")
+                or consent.checkpoint_digest != recovery.get("checkpoint_digest")
+                or consent.observation_digest != recovery.get("observation_digest")
+                or any(
+                    intent["payload"].get(k) != old["payload"].get(k)
+                    for k in (
+                        "request_id",
+                        "revision",
+                        "checkpoint_digest",
+                        "branch",
+                        "repository_id",
+                        "repository_url",
+                        "title",
+                        "body",
+                        "body_sha256",
+                        "communication",
+                    )
+                )
+            ):
+                raise ValueError("Explicit remote confirmation does not preserve its original intent")
+            if intent["digest"] in confirmed:
+                confirmed.add(old["digest"])
         last = None
         for e in entries:
             if e["kind"] == "git_delivery_remote_intent":
@@ -529,6 +589,8 @@ class GitDeliveries:
                     None,
                 )
                 if match is None:
+                    if e["digest"] in confirmed:
+                        continue
                     if allow_pending:
                         continue
                     raise ValueError(
@@ -569,16 +631,37 @@ class GitDeliveries:
                 if e["kind"] == "git_delivery_remote_receipt"
                 and e["payload"].get("request_id") == receipt["request_id"]
             ]
-            if remote:
-                value.update(
-                    remote_status=remote[-1]["payload"]["remote_status"],
-                    pr_url=remote[-1]["payload"]["reference"]["url"],
-                )
-            elif any(
-                e["kind"] == "git_delivery_remote_intent" and e["payload"].get("request_id") == receipt["request_id"]
+            intents = [
+                e
                 for e in entries
+                if e["kind"] == "git_delivery_remote_intent" and e["payload"].get("request_id") == receipt["request_id"]
+            ]
+            if any(
+                not any(
+                    intent["idempotency_key"] == confirmation["idempotency_key"]
+                    and intent["digest"] == confirmation["payload"].get("intent_digest")
+                    and intent["sequence"] < confirmation["sequence"]
+                    for intent in intents
+                )
+                for confirmation in remote
             ):
+                raise ValueError("Remote checkpoint projection has no exact earlier intent custody")
+            current = [
+                confirmation
+                for confirmation in remote
+                if intents
+                and confirmation["idempotency_key"] == intents[-1]["idempotency_key"]
+                and confirmation["payload"].get("intent_digest") == intents[-1]["digest"]
+            ]
+            if current:
+                value.update(
+                    remote_status=current[-1]["payload"]["remote_status"],
+                    pr_url=current[-1]["payload"]["reference"]["url"],
+                )
+            elif intents:
                 value["remote_status"] = "unknown"
+                if remote:
+                    value["pr_url"] = remote[-1]["payload"]["reference"]["url"]
             items.append(value)
         return GitDeliveriesViewV1(
             version=1,
@@ -589,16 +672,19 @@ class GitDeliveries:
             items=[GitDeliveryViewV1.model_validate(item) for item in items],
         ).model_dump(mode="json")
 
-    async def observations(self, run_id: str, request_id: str) -> Data:
+    async def observations(self, run_id: str, request_id: str, *, actor: Data | None = None) -> Data:
         from firefly_forge.git_delivery_remote import DraftPullRequests
         from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
         from firefly_forge.store import identifier
 
         identifier(request_id)
         user = CURRENT_PRINCIPAL.get()
-        if user is None:
-            raise ValueError("Sign in to inspect an ambiguous Git delivery")
-        actor = ProjectAccess.actor_snapshot(user)
+        if actor is None:
+            if user is None:
+                raise ValueError("Sign in to inspect an ambiguous Git delivery")
+            actor = ProjectAccess.actor_snapshot(user)
+        elif user is not None and ProjectAccess.actor_snapshot(user) != actor:
+            raise ValueError("The observation actor differs from the current authenticated identity")
         run = await self.store.get_run(run_id)
         await self._authorize(run, actor, "read")
         entries = await self._entries(run_id)
@@ -662,6 +748,12 @@ class GitDeliveries:
         await self._authorize(run, actor, "read")
         if CURRENT_PRINCIPAL.get() != user or binding(await self.store.get_run(run_id)) != binding(run):
             raise ValueError("Git delivery scope changed during read-only observation")
+        if remote and result["local_receipt_recorded"]:
+            from firefly_forge.git_remote_reconciliation import reconciliation_candidate
+
+            candidate = reconciliation_candidate(entries, request_id, result)
+            if candidate is not None:
+                result["reconciliation_candidate"] = candidate
         return result
 
     async def _remote_credentials(
@@ -705,14 +797,22 @@ class GitDeliveries:
         return parts[0]
 
     async def _assert_checkpoint_source(self, run: Data, receipt: Data) -> None:
+        from firefly_forge.source_index_sanitation import staging_exclusions
+
         workspace = self.workspace(run)
         if (
             metadata_digest(workspace) != run.get("git_metadata_digest")
             or await checked(["git", "rev-parse", "HEAD"], workspace, 10) != receipt["revision"]
             or await checked(["git", "rev-parse", "HEAD^{tree}"], workspace, 10) != receipt["source_tree"]
-            or await checked(["git", "status", "--porcelain", "--untracked-files=all"], workspace, 10)
         ):
             raise ValueError("Checkpoint source or Git identity changed during remote delivery")
+        exclusions = staging_exclusions(workspace, run["base_revision"])
+        if await checked(
+            ["git", "status", "--porcelain", "--untracked-files=all", "--", ".", *exclusions], workspace, 10
+        ):
+            raise ValueError("Checkpoint source or Git identity changed during remote delivery")
+        # A validated untracked result must not become staged behind its exclusion.
+        staging_exclusions(workspace, run["base_revision"])
 
     async def _publish_checkpoint(
         self, run_id: str, receipt: Data, actor: Data | None, boundary: object | None

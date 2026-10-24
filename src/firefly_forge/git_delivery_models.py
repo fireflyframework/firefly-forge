@@ -5,7 +5,14 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from firefly_forge.git_diff_models import GitDiffBudget, GitDiffRefV1
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
@@ -61,6 +68,30 @@ class GitFailedUnitAdoptionV1(GitDeliveryContract):
     acknowledge_no_execution_grant: Literal[True]
 
 
+class GitRemoteReconciliationV1(GitDeliveryContract):
+    version: Literal[1]
+    original_request_id: NativeID
+    checkpoint_digest: Digest
+    remote_intent_digest: Digest
+    observation_digest: Digest
+    valid_for_seconds: int = Field(ge=60, le=1800)
+    acknowledge_original_outcome_unknown: Literal[True]
+    acknowledge_retained_body_only: Literal[True]
+    acknowledge_no_execution_grant: Literal[True]
+
+    @field_validator(
+        "acknowledge_original_outcome_unknown",
+        "acknowledge_retained_body_only",
+        "acknowledge_no_execution_grant",
+        mode="before",
+    )
+    @classmethod
+    def explicit_acknowledgement(cls, value: Any) -> bool:
+        if value is not True:
+            raise ValueError("Explicit remote-completion acknowledgments must be true")
+        return True
+
+
 class GitDeliveryInputV1(GitDeliveryContract):
     version: Literal[1]
     request_id: NativeID
@@ -68,9 +99,17 @@ class GitDeliveryInputV1(GitDeliveryContract):
     expected_source_tree: GitRevision | None = None
     expected_source_digest: Digest | None = None
     explicit_adoption: GitFailedUnitAdoptionV1 | None = None
+    explicit_reconciliation: GitRemoteReconciliationV1 | None = None
 
     @model_validator(mode="after")
     def reviewed_source(self) -> GitDeliveryInputV1:
+        if self.explicit_reconciliation is not None and (
+            self.explicit_adoption is not None
+            or self.request_id == self.explicit_reconciliation.original_request_id
+            or self.expected_source_tree is None
+            or self.expected_source_digest is not None
+        ):
+            raise ValueError("Remote reconciliation requires a new request and the exact retained checkpoint tree")
         if self.expected_source_tree is None and self.expected_source_digest is None and self.explicit_adoption is None:
             raise ValueError("Review the exact source tree or an explicit failed-unit source candidate")
         return self

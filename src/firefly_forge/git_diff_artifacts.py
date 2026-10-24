@@ -281,16 +281,39 @@ class _Files:
             self._meta_flush()
 
 
+async def _signal_or_reaped(child: asyncio.subprocess.Process, kind: signal.Signals) -> bool:
+    try:
+        os.killpg(child.pid, kind)
+    except ProcessLookupError:
+        return False
+    except PermissionError as denied:
+        # Darwin can report EPERM for a group containing only an unreaped zombie.
+        try:
+            await asyncio.wait_for(child.wait(), 1)
+        except TimeoutError as expired:
+            raise denied from expired
+        if child.returncode is None:
+            raise denied
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError as group_denied:
+            raise denied from group_denied
+        raise denied
+    return False
+
+
 async def _stop(child: asyncio.subprocess.Process | None) -> None:
     if child is None or child.returncode is not None:
         return
-    with suppress(ProcessLookupError):
-        os.killpg(child.pid, signal.SIGTERM)
+    if await _signal_or_reaped(child, signal.SIGTERM):
+        return
     try:
         await asyncio.wait_for(child.wait(), 1)
     except TimeoutError:
-        with suppress(ProcessLookupError):
-            os.killpg(child.pid, signal.SIGKILL)
+        if await _signal_or_reaped(child, signal.SIGKILL):
+            return
         await asyncio.wait_for(child.wait(), 1)
 
 

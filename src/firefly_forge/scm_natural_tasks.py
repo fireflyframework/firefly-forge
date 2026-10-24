@@ -19,7 +19,8 @@ from firefly_forge.journal import digest
 from firefly_forge.project_access import AccessDenied
 from firefly_forge.scm_conversation_models import AddressedContextV1, AddressedStatusV1
 from firefly_forge.scm_conversations import SCMConversations, observation_cut
-from firefly_forge.scm_natural_models import resolve_task
+from firefly_forge.scm_natural_delivery import current_delivery_facts
+from firefly_forge.scm_natural_models import NaturalDecision, resolve_task
 from firefly_forge.scm_natural_questions import confirmed_publication, natural_questions, product_questions
 from firefly_forge.scm_natural_replies import RetainedQuestionReplyV1, human_message, retained_reply
 from firefly_forge.scm_natural_runtime import ConfirmedInvalidReply, classify
@@ -40,6 +41,9 @@ def natural_policy_digest() -> str:
         "product_assistant.py",
         "scm_natural_runtime.py",
         "scm_natural_tasks.py",
+        "scm_natural_delivery.py",
+        "git_deliveries.py",
+        "git_delivery_models.py",
         "scm_natural_effects.py",
         "scm_natural_checkpoints.py",
         "scm_poll_models.py",
@@ -75,6 +79,23 @@ def natural_policy_digest() -> str:
             raise AccessDenied("The package-owned natural conversation policy changed")
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return digest(hashes)
+
+
+def _status_progress_only(previous: Data, current: Data, decision: NaturalDecision) -> bool:
+    if decision.intent != "status":
+        return False
+
+    def stable(context: Data) -> Data:
+        value = copy.deepcopy(context)
+        for candidate in value["candidates"]:
+            candidate.pop("run_status", None)
+        for key in ("selection", "candidate_ids", "selected_run_id"):
+            value["status_context"].pop(key, None)
+        return value
+
+    return stable(previous) == stable(current) and [row.get("run_status") for row in previous["candidates"]] != [
+        row.get("run_status") for row in current["candidates"]
+    ]
 
 
 def _worker_question(original: Data, run: Data, entries: list[Data]) -> Data:
@@ -183,6 +204,7 @@ class SCMNaturalTasks:
                     **scope,
                     "run_id": run["id"],
                     "run_status": run["status"],
+                    "delivery": await current_delivery_facts(self.store, journal, run),
                     "question_id": question.id if question else None,
                     "question_digest": projection.get("question_digest"),
                     "question": question.question if question else None,
@@ -456,115 +478,185 @@ class SCMNaturalTasks:
             reserved: Data = copy.deepcopy(row.data)
         if model is None:
             return reserved
+        repaired, refreshed = False, False
+        repair_errors: list[Data] | None = None
         try:
-            try:
-                decision = await classify(human, context, model[1])
-            except ConfirmedInvalidReply as invalid:
-                turn = {**turn, "classifier_outcome": "confirmed_invalid", "validation_errors": invalid.errors}
+            while True:
+                try:
+                    decision = await classify(
+                        human,
+                        {**context, "repair_contract_errors": repair_errors} if repair_errors else context,
+                        model[1],
+                    )
+                except ConfirmedInvalidReply as invalid:
+                    turn = {
+                        **turn,
+                        "classifier_outcome": "confirmed_invalid",
+                        "validation_errors": invalid.errors,
+                        "classifier_attempts": [
+                            *turn.get("classifier_attempts", []),
+                            {
+                                "request_index": turn["classifier_requests_reserved"],
+                                "context_digest": digest(context),
+                                "outcome": "confirmed_invalid",
+                                "validation_errors": invalid.errors,
+                            },
+                        ],
+                    }
+                    if repaired:
+                        raise
+                    current = await self.collaboration.receipt(receipt_id)
+                    repair_scopes = await self.conversations.scopes(current, remote=True)
+                    repair_model = await self._model(model[0])
+                    if (
+                        observation_cut(current) != observation_cut(initial)
+                        or repair_scopes != scopes
+                        or await self._context(current, repair_scopes) != context
+                        or repair_model is None
+                        or repair_model[0] != model[0]
+                        or natural_policy_digest() != policy
+                    ):
+                        raise AccessDenied(
+                            "The exact natural reply context changed before its one correction"
+                        ) from None
+                    async with self.conversations._locked(scopes, initial["repository_id"]):
+                        row = await self.collaboration.inbox.find_by_id(
+                            identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE
+                        )
+                        if row is None or row.data != reserved:
+                            return dict(await self.collaboration.receipt(receipt_id))
+                        if (
+                            await self.conversations.scopes(row.data, remote=False) != scopes
+                            or await self._context(row.data, scopes) != context
+                        ):
+                            raise AccessDenied(
+                                "The natural reply read scope changed before correction reservation"
+                            ) from None
+                        turn = {
+                            **turn,
+                            "classifier_requests_reserved": turn["classifier_requests_reserved"] + 1,
+                            "classifier_outcome": "pending",
+                            "state": "correcting",
+                        }
+                        await self.collaboration._write_row(
+                            row, natural_turn=turn, reason="natural_correction_reserved"
+                        )
+                        reserved = copy.deepcopy(row.data)
+                    repaired, repair_errors = True, invalid.errors
+                    continue
+                completed = {
+                    **turn,
+                    "classifier_outcome": "confirmed_valid",
+                    "classifier_attempts": [
+                        *turn.get("classifier_attempts", []),
+                        {
+                            "request_index": turn["classifier_requests_reserved"],
+                            "context_digest": digest(context),
+                            "outcome": "confirmed_valid",
+                            "decision": decision.model_dump(mode="json"),
+                        },
+                    ],
+                }
+                self.store.reject_credentials(completed)
+                await self.store.admit_credentials(completed)
+                turn = completed
                 current = await self.collaboration.receipt(receipt_id)
-                repair_scopes = await self.conversations.scopes(current, remote=True)
-                repair_model = await self._model(model[0])
+                current_scopes = await self.conversations.scopes(current, remote=True)
+                current_context = await self._context(current, current_scopes)
+                current_model = await self._model(model[0])
                 if (
-                    repair_scopes != scopes
-                    or await self._context(current, repair_scopes) != context
-                    or repair_model is None
-                    or repair_model[0] != model[0]
+                    observation_cut(current) != observation_cut(initial)
+                    or current_scopes != scopes
+                    or current_model is None
+                    or current_model[0] != model[0]
                     or natural_policy_digest() != policy
+                    or refreshed
+                    and decision.intent != "status"
                 ):
-                    raise AccessDenied("The exact natural reply context changed before its one correction") from None
+                    raise AccessDenied(
+                        "The native source, read permission, model or policy changed during classification"
+                    )
+                if current_context != context and (
+                    refreshed or not _status_progress_only(context, current_context, decision)
+                ):
+                    raise AccessDenied("The exact natural task context changed during classification")
                 async with self.conversations._locked(scopes, initial["repository_id"]):
                     row = await self.collaboration.inbox.find_by_id(
                         identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE
                     )
                     if row is None or row.data != reserved:
                         return dict(await self.collaboration.receipt(receipt_id))
-                    if (
-                        await self.conversations.scopes(row.data, remote=False) != scopes
-                        or await self._context(row.data, scopes) != context
-                    ):
-                        raise AccessDenied(
-                            "The natural reply read scope changed before correction reservation"
-                        ) from None
-                    turn = {
-                        **turn,
-                        "classifier_requests_reserved": 2,
-                        "classifier_outcome": "pending",
-                        "state": "correcting",
-                    }
-                    await self.collaboration._write_row(row, natural_turn=turn, reason="natural_correction_reserved")
-                    reserved = copy.deepcopy(row.data)
-                decision = await classify(human, {**context, "repair_contract_errors": invalid.errors}, model[1])
-            current = await self.collaboration.receipt(receipt_id)
-            current_scopes = await self.conversations.scopes(current, remote=True)
-            current_context = await self._context(current, current_scopes)
-            current_model = await self._model(model[0])
-            if (
-                current_scopes != scopes
-                or current_context != context
-                or current_model is None
-                or current_model[0] != model[0]
-                or natural_policy_digest() != policy
-            ):
-                raise AccessDenied("The native task, read permission, model or policy changed during classification")
-            resolution = resolve_task(
-                context["scope"],
-                context["candidates"],
-                decision,
-                answer=human,
-                previous=context["previous"],
-            )
-            status_context = context["status_context"]
-            if decision.intent in {"status", "checkpoint"}:
-                resolution = resolution.model_copy(
-                    update={
-                        "state": decision.intent if status_context["selection"] == "run" else "waiting",
-                        "reason": (
-                            "authenticated_ticket_status_reference"
-                            if decision.intent == "status"
-                            else "authenticated_ticket_checkpoint_reference"
-                        )
-                        if status_context["selection"] == "run"
-                        else "clarification_required",
-                        "run_id": status_context["selected_run_id"],
-                    }
-                )
-            output = {
-                **turn,
-                "state": "answer_pending_permission" if resolution.state == "answer" else resolution.state,
-                "decision": decision.model_dump(mode="json"),
-                "resolution": resolution.model_dump(mode="json"),
-                "reply": decision.message,
-                "classifier_outcome": "confirmed_valid",
-            }
-            self.store.reject_credentials(output)
-            async with self.conversations._locked(scopes, initial["repository_id"]):
-                row = await self.collaboration.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
-                if row is None or row.data != reserved:
-                    return dict(await self.collaboration.receipt(receipt_id))
-                if (
-                    await self.conversations.scopes(row.data, remote=False) != scopes
-                    or await self._context(row.data, scopes) != context
-                ):
-                    raise AccessDenied("The task or current membership changed before retaining the answer")
-                await self.collaboration._write_row(
-                    row,
-                    status="processed",
-                    action_status="completed",
-                    natural_turn=output,
-                    reason=None,
-                    feedback_status="pending",
-                    run_id=resolution.run_id,
-                    **(
-                        {
-                            "conversation": AddressedContextV1.model_validate(
-                                {**status_context, "digest": digest(status_context)}
-                            ).model_dump(mode="json")
+                    if await self.conversations.scopes(row.data, remote=False) != scopes:
+                        raise AccessDenied("The current membership changed before retaining the answer")
+                    latest = await self._context(row.data, scopes)
+                    if latest != context:
+                        if refreshed or not _status_progress_only(context, latest, decision):
+                            raise AccessDenied("The exact natural task context changed before retaining the answer")
+                        context = latest
+                        turn = {
+                            **turn,
+                            "context": context,
+                            "classifier_requests_reserved": turn["classifier_requests_reserved"] + 1,
+                            "classifier_context_refreshes": 1,
+                            "classifier_outcome": "pending",
+                            "state": "refreshing_status",
                         }
-                        if decision.intent == "status"
-                        else {}
-                    ),
-                )
-                return copy.deepcopy(row.data)
+                        await self.collaboration._write_row(
+                            row, natural_turn=turn, reason="natural_status_refresh_reserved"
+                        )
+                        reserved = copy.deepcopy(row.data)
+                        refreshed, repair_errors = True, None
+                        continue
+                    resolution = resolve_task(
+                        context["scope"],
+                        context["candidates"],
+                        decision,
+                        answer=human,
+                        previous=context["previous"],
+                    )
+                    status_context = context["status_context"]
+                    if decision.intent in {"status", "checkpoint"}:
+                        resolution = resolution.model_copy(
+                            update={
+                                "state": decision.intent if status_context["selection"] == "run" else "waiting",
+                                "reason": (
+                                    "authenticated_ticket_status_reference"
+                                    if decision.intent == "status"
+                                    else "authenticated_ticket_checkpoint_reference"
+                                )
+                                if status_context["selection"] == "run"
+                                else "clarification_required",
+                                "run_id": status_context["selected_run_id"],
+                            }
+                        )
+                    output = {
+                        **turn,
+                        "state": "answer_pending_permission" if resolution.state == "answer" else resolution.state,
+                        "decision": decision.model_dump(mode="json"),
+                        "resolution": resolution.model_dump(mode="json"),
+                        "reply": decision.message,
+                        "classifier_outcome": "confirmed_valid",
+                    }
+                    self.store.reject_credentials(output)
+                    await self.collaboration._write_row(
+                        row,
+                        status="processed",
+                        action_status="completed",
+                        natural_turn=output,
+                        reason=None,
+                        feedback_status="pending",
+                        run_id=resolution.run_id,
+                        **(
+                            {
+                                "conversation": AddressedContextV1.model_validate(
+                                    {**status_context, "digest": digest(status_context)}
+                                ).model_dump(mode="json")
+                            }
+                            if decision.intent == "status"
+                            else {}
+                        ),
+                    )
+                    return copy.deepcopy(row.data)
         except Exception as error:
             async with self.store._unit():
                 row = await self.collaboration.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
@@ -578,13 +670,15 @@ class SCMNaturalTasks:
                             else "needs_reconciliation",
                             "classifier_outcome": "confirmed_invalid"
                             if isinstance(error, ConfirmedInvalidReply)
-                            else "unknown"
-                            if turn.get("classifier_outcome") != "confirmed_invalid"
-                            else "confirmed_invalid",
+                            else turn["classifier_outcome"]
+                            if turn.get("classifier_outcome") in {"confirmed_valid", "confirmed_invalid"}
+                            else "unknown",
                         },
                         action_status="needs_reconciliation",
                         reason="natural_reply_invalid_after_correction"
                         if isinstance(error, ConfirmedInvalidReply)
+                        else "natural_completed_reply_held"
+                        if turn.get("classifier_outcome") == "confirmed_valid"
                         else "natural_outcome_unconfirmed",
                         feedback_status="held",
                     )

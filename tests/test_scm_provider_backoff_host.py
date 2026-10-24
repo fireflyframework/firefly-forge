@@ -136,13 +136,16 @@ async def test_concurrent_requests_do_not_queue_after_provider_failure(tmp_path)
     scm = connection(tmp_path, handler)
     first = asyncio.create_task(scm._request("GET", "https://api.github.com/installation/repositories"))
     await entered.wait()
+    waiting = asyncio.create_task(scm._request("GET", "https://api.github.com/repos/team/product"))
     try:
-        with pytest.raises(ValueError, match="in progress"):
-            await asyncio.wait_for(scm._request("GET", "https://api.github.com/repos/team/product"), 1)
+        done, _ = await asyncio.wait({waiting}, timeout=0.08)
+        assert not done and len(calls) == 1
     finally:
         release.set()
     with pytest.raises(ValueError, match="HTTP 403"):
         await first
+    with pytest.raises(ValueError, match="cooldown"):
+        await waiting
     assert len(calls) == 1
     await scm._client.aclose()
 

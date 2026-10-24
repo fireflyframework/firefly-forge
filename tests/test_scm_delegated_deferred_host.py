@@ -44,6 +44,7 @@ async def test_local_provider_wait_retains_original_received_action(delegated_fe
 async def test_actual_provider_lock_contention_has_zero_http_and_retains_action(
     delegated_feedback, monkeypatch, tmp_path
 ):
+    monkeypatch.setattr("firefly_forge.scm_provider_backoff.LOCK_WAIT_SECONDS", 0.1)
     service, row, run, _, _ = delegated_feedback
     received(row, "respond")
     calls = []

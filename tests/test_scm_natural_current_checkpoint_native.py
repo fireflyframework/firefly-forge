@@ -195,6 +195,24 @@ def test_native_natural_checkpoint_captures_current_source_when_automatic_pause_
             current = case.http.portal.call(worker.get_run, env.run["id"])
             assert current["status"] == "paused" and current["worker_request"] == env.run["worker_request"]
             assert len(env.calls) == 1
+
+            status_message = observe(case, "@forge, what progress is saved now?")
+
+            async def current_status_facts():
+                from pyfly.data.transaction import current_unit_of_work
+
+                natural = SCMNaturalTasks(case.collaboration)
+                scopes = await natural.conversations.scopes(status_message, remote=False)
+                async with case.store.source_budget_admission_unit():
+                    unit = current_unit_of_work()
+                    context = await natural._context(status_message, scopes)
+                    assert current_unit_of_work() is unit
+                    return next(c["delivery"] for c in context["candidates"] if c["run_id"] == env.run["id"])
+
+            facts = case.http.portal.call(current_status_facts)
+            assert facts["checkpoint"]["revision"] == revision
+            assert facts["remote"] == {"status": "not_requested", "pr_url": None}
+            assert facts["product_acceptance"] == "not_established_by_checkpoint"
             repeated = case.process(message)
             assert repeated["natural_checkpoint"] == marker
             assert case.state["natural_calls"] == classified_before + 1
