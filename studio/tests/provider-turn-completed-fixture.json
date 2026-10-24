@@ -1,0 +1,105 @@
+{
+  "copyright": "Copyright 2026 Firefly Software Foundation.",
+  "license": "Apache-2.0",
+  "scope": "Redacted real App19 turn.completed/usage shape; actual public project_activity with fictional IDs/counters; presentation fixture only, not provider/product acceptance.",
+  "run_id": "11111111111111111111111111111111",
+  "event": {
+    "id": "22222222222222222222222222222222",
+    "stage": "stdout",
+    "created_at": "2026-10-23T22:33:00Z",
+    "message": "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1234,\"cached_input_tokens\":1000,\"cache_write_input_tokens\":0,\"output_tokens\":56,\"reasoning_output_tokens\":7}}",
+    "activity_content": {
+      "version": 1,
+      "status": "available",
+      "run_id": "11111111111111111111111111111111",
+      "event_id": "22222222222222222222222222222222",
+      "stage": "stdout",
+      "encoding": "utf-8",
+      "sanitized_message_bytes": 158,
+      "sanitized_message_sha256": "d8680f48b8386905ce72550df45458f50112c60550040e28ee6d39f5e8e4dadd",
+      "descriptor_sha256": "c1ad311519e2e3a78d1274e8867a585f6328ed83df36ad9c515ae6d3257ea3bb"
+    },
+    "activity_summary": {
+      "version": 1,
+      "event_type": "turn.completed",
+      "preview_omitted": false,
+      "sanitized_message_bytes": 158,
+      "sanitized_message_sha256": "d8680f48b8386905ce72550df45458f50112c60550040e28ee6d39f5e8e4dadd",
+      "item_type": null
+    }
+  },
+  "worker_report": {
+    "report": {
+      "summary": "Migration preserves existing records. Final verification remains outstanding.",
+      "feedback": {
+        "id": "implementation-6",
+        "role_id": "implementer",
+        "task_id": "implement",
+        "attempt": 6,
+        "disposition": "failed",
+        "summary": "Independent browser, SQL and restart checks remain outstanding.",
+        "evidence_paths": ["src/crm/migrations.py", "tests/test_migrations.py"],
+        "request": null,
+        "protocol": "source-budget-continuation-v1",
+        "allowance_id": "33333333333333333333333333333333",
+        "allowance_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    },
+    "event": {
+      "id": "33333333333333333333333333333333",
+      "stage": "stdout",
+      "created_at": "2026-10-23T22:33:01Z",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"report6\",\"type\":\"agent_message\",\"text\":\"{\\\"summary\\\":\\\"Migration preserves existing records. Final verification remains outstanding.\\\",\\\"feedback\\\":{\\\"id\\\":\\\"implementation-6\\\",\\\"role_id\\\":\\\"implementer\\\",\\\"task_id\\\":\\\"implement\\\",\\\"attempt\\\":6,\\\"disposition\\\":\\\"failed\\\",\\\"summary\\\":\\\"Independent browser, SQL and restart checks remain outstanding.\\\",\\\"evidence_paths\\\":[\\\"src/crm/migrations.py\\\",\\\"tests/test_migrations.py\\\"],\\\"request\\\":null,\\\"protocol\\\":\\\"source-budget-continuation-v1\\\",\\\"allowance_id\\\":\\\"33333333333333333333333333333333\\\",\\\"allowance_digest\\\":\\\"4444444444444444444444444444444444444444444444444444444444444444\\\"}}\"}}",
+      "activity_content": {
+        "version": 1,
+        "status": "available",
+        "run_id": "11111111111111111111111111111111",
+        "event_id": "33333333333333333333333333333333",
+        "stage": "stdout",
+        "encoding": "utf-8",
+        "sanitized_message_bytes": 679,
+        "sanitized_message_sha256": "2e48dd78bf04630cb71ae969da485d813cbbc311fd3fb7fdc6df85126da4cc4c",
+        "descriptor_sha256": "73576354333306c523a08404862175498637b8c898ec4ddb1a47ab3841b6489b"
+      },
+      "activity_summary": {
+        "version": 1,
+        "event_type": "item.completed",
+        "item_type": "agent_message",
+        "item_id": "report6",
+        "output_preview": "{\"summary\":\"Migration preserves existing records. Final verification remains outstanding.\",\"feedback\":{\"id\":\"implementation-6\",\"role_id\":\"implementer\",\"task_id\":\"implement\",\"attempt\":6,\"disposition\":\"failed\",\"summary\":\"Independent browser, SQL and restart checks remain outstanding.\",\"evidence_paths\":[\"src/crm/migrations.py\",\"tests/test_migrations.py\"],\"request\":null,\"protocol\":\"source-budget-continuation-v1\",\"allowance_id\":\"33333333333333333333333333333333\",\"allowance_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}}",
+        "preview_omitted": false,
+        "sanitized_message_bytes": 679,
+        "sanitized_message_sha256": "2e48dd78bf04630cb71ae969da485d813cbbc311fd3fb7fdc6df85126da4cc4c"
+      }
+    }
+  },
+  "unknown_report": {
+    "event": {
+      "id": "44444444444444444444444444444444",
+      "stage": "stdout",
+      "created_at": "2026-10-23T22:33:02Z",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"unknown-report\",\"type\":\"agent_message\",\"text\":\"{\\\"future\\\":{\\\"raw\\\":\\\"Public fixture retained details\\\"}}\"}}",
+      "activity_content": {
+        "version": 1,
+        "status": "available",
+        "run_id": "11111111111111111111111111111111",
+        "event_id": "44444444444444444444444444444444",
+        "stage": "stdout",
+        "encoding": "utf-8",
+        "sanitized_message_bytes": 147,
+        "sanitized_message_sha256": "4cc6ec8445a595f2173edc7029ba1d81136f8b7a2d4375c83d2cc5cc3437b8a2",
+        "descriptor_sha256": "e6689f1a7065f718524936697c68eb486e55c5f344b47ff5cbd4c9c00d1aab28"
+      },
+      "activity_summary": {
+        "version": 1,
+        "event_type": "item.completed",
+        "item_type": "agent_message",
+        "item_id": "unknown-report",
+        "output_preview": "{\"future\":{\"raw\":\"Public fixture retained details\"}}",
+        "preview_omitted": false,
+        "sanitized_message_bytes": 147,
+        "sanitized_message_sha256": "4cc6ec8445a595f2173edc7029ba1d81136f8b7a2d4375c83d2cc5cc3437b8a2"
+      }
+    }
+  }
+}

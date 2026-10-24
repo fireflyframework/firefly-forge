@@ -77,3 +77,14 @@ def test_malformed_checkpoint_summary_cannot_become_model_facts():
         }
     )
     assert "git_checkpoint" not in facts
+
+
+def test_large_checkpoint_file_count_reaches_communication_facts_without_changing_verification():
+    facts = c.communication_facts(
+        {"status": "paused"},
+        git_delivery=c.CommunicationGitDeliveryV1(
+            checkpoint_revision="a" * 40, source_tree="b" * 40, sequence=1, changed_file_count=20000
+        ),
+    )
+    assert facts["git_delivery"]["changed_file_count"] == 20000
+    assert facts["git_delivery"]["verification"] == "pending"

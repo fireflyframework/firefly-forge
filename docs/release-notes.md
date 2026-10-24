@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.41
+
+Large source changes use private chunked artifacts, hash-backed file indexes and bounded content pages. Project storage and time budgets are separate from response and preview sizes. Studio, the API, the typed Python SDK, the operator CLI and read-only MCP tools can inspect the exact retained run or checkpoint diff. See [Inspect large source changes](git-diff-archive.md) for configuration, integrity checks and remaining whole-repository scaling boundaries.
+
+A natural GitHub checkpoint request can review current source, including untracked files, without requiring an automatic pause checkpoint. The read-only candidate preserves the index and HEAD. The native execution owner later checks that exact source and current permissions before saving a commit. A failed legacy unit has a separate one-use administrator adoption flow that retains its failed status and marks its checkpoint as unverified partial work. These operations do not add coding budget or declare QA complete.
+
+A separately authorized [test or maintain run can select an exact saved checkpoint](checkpoint-verification.md) while preserving its original repository, project and component. Both require publication to be disabled, a fresh native creation request and a confirmed remote receipt. Admission observes the branch reference without fetching the repository; execution checks the selected commit and tree after cloning. Maintain mode is included in the resolved source digest and starts an ordinary work unit with current configuration, its own session and counters. The original failed run, spent budgets, questions and grants remain unchanged. Existing test-source digests retain their default representation. Selection is refused if the checkpoint branch has advanced; read-only issue lineage grants no answer, resume or new launch authority.
+
+Automatic worker verification prepares source identity through a streamed catalog outside database writer units. Hashing and sorting run off the runtime loop, with current-authority callbacks and cancellation cleanup. Command and subsequent provider admissions retain that source cut under exclusive workspace ownership. Explicit adoption, review archives and other transports retain separate [scaling boundaries](large-products.md).
+
+Provider activity presents completed native summaries and usage as readable records, with retained structured details available for inspection. The updated walkthrough uses controlled desktop/mobile light/dark fixtures. Native budget readmission accepts the exact currently qualified parent seal or strict older profile provenance; fresh dependency closure and v8 measurements remain required before adoption, and spent counters and prior grants remain unchanged. Host and visual checks do not establish completed CRM delivery or a live remote draft review.
+
 ## 0.2.40
 
 Projects can configure development checkpoints for completed implementation rounds and safe worker pauses. A run records its schedule and original Git baseline; each checkpoint extends its last confirmed factory commit. GitHub and GitLab adapters can update one retained draft review, then mark that same review ready after final verification and approval. Remote updates compare the exact expected branch revision and preserve fast-forward ancestry. Changed review identity and unknown outcomes stop further writes. Checkpoints remain disabled until configured, and disabling the project policy stops further checkpoints for existing runs without removing saved commits.

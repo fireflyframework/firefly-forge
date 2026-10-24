@@ -1592,6 +1592,22 @@
       "variables": {}
     },
     {
+      "id": "mcp/get_run_diff_file",
+      "version": "1.0.0",
+      "path": "mcp/get_run_diff_file.yaml",
+      "sha256": "58d2baa04c9bd2a5274bf20f8d363555a43df1762bcb5325e270b28d30d4eed2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_run_diff_index",
+      "version": "1.0.0",
+      "path": "mcp/get_run_diff_index.yaml",
+      "sha256": "c5cf2dd3692384d99c98281f6271722d6328a57324a8f6876aba39f70505c4f2",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/get_run_tool_invocations",
       "version": "1.0.0",
       "path": "mcp/get_run_tool_invocations.yaml",

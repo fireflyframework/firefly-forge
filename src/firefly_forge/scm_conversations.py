@@ -15,7 +15,7 @@ from sqlalchemy import text
 from firefly_forge.collaboration_feedback import TERMINAL
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import digest
-from firefly_forge.project_access import AccessDenied
+from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_conversation_models import AddressedContextV1, AddressedStatusV1, TicketContextReferenceV1
@@ -153,7 +153,85 @@ class SCMConversations:
                     ),
                 ).model_dump(mode="json")
             )
+        await self._checkpoint_tests(delivery, scopes, references, runs)
         return references, runs
+
+    async def _checkpoint_tests(self, delivery: Data, scopes: list[Data], references: list[Data], runs: Data) -> None:
+        from firefly_forge.checkpoint_test_models import frozen_checkpoint_source
+        from firefly_forge.run_creation_requests import RunCreationRequests
+
+        records = getattr(self.store, "run_creation_records", None)
+        if not runs or records is None:
+            return
+        parents = {reference["run_id"]: reference for reference in references}
+        async with self.store._unit():
+            children = await records.checkpoint_children(
+                sorted(identifier(run_id) for run_id in parents),
+                identifier(delivery["repository_id"]),
+            )
+        if len(children) > 200:
+            raise AccessDenied("The current ticket has too many native checkpoint test references")
+        creations = RunCreationRequests(self.store, records=records)
+        for child_id in children:
+            try:
+                async with self.store._unit():
+                    receipt = await creations._load(child_id.hex)
+                if receipt is None or receipt.get("source_checkpoint") is None:
+                    continue
+                source = receipt["source_checkpoint"]
+                parent = parents.get(source["reference"]["run_id"])
+                scope = next(
+                    (
+                        item
+                        for item in scopes
+                        if (
+                            item["project_id"] == receipt["project_id"]
+                            and receipt["component_id"] in item["component_ids"]
+                        )
+                    ),
+                    None,
+                )
+                if parent is None or scope is None or receipt["repository_id"] != delivery["repository_id"]:
+                    continue
+                await ProjectAccess(self.store).authorize_actor(
+                    {"user_id": scope["native_user_id"], "authentication_method": "oidc_bearer"},
+                    receipt["project_id"],
+                    "read",
+                )
+                child = await self.store.get_run(receipt["run_id"])
+                if (
+                    child["id"] in runs
+                    or child.get("source_checkpoint_snapshot") != source
+                    or any(child.get(key) != receipt[key] for key in ("repository_id", "project_id", "component_id"))
+                ):
+                    continue
+                frozen_checkpoint_source(child, {"id": delivery["repository_id"]})
+                reference = TicketContextReferenceV1(
+                    kind="native_checkpoint_maintain"
+                    if source.get("operation", "test") == "maintain"
+                    else "native_checkpoint_test",
+                    receipt_id=receipt["request_id"],
+                    parent_receipt_id=parent["receipt_id"],
+                    creator_user_id=receipt["original_actor"]["user_id"],
+                    sequence=parent["sequence"],
+                    run_id=child["id"],
+                    project_id=receipt["project_id"],
+                    component_id=receipt["component_id"],
+                    context_digest=digest(
+                        {
+                            "parent": parent,
+                            "creation_digest": receipt["digest"],
+                            "source_digest": source["digest"],
+                            "run_id": child["id"],
+                        }
+                    ),
+                ).model_dump(mode="json")
+            except (AccessDenied, KeyError, TypeError, ValueError):
+                continue
+            if len(runs) >= 200:
+                raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
+            runs[child["id"]] = child
+            references.append(reference)
 
     async def selection(self, delivery: Data, scopes: list[Data]) -> Data:
         message = AddressedStatusV1.model_validate(delivery["command"])
@@ -221,6 +299,13 @@ class SCMConversations:
                 from firefly_forge.scm_natural_product import NaturalProductContinuation
 
                 result = await NaturalProductContinuation(natural).apply(receipt_id)
+            if (
+                result["status"] == "processed"
+                and (result["natural_turn"].get("resolution") or {}).get("state") == "checkpoint"
+            ):
+                from firefly_forge.scm_natural_checkpoints import SCMNaturalCheckpoints
+
+                result = await SCMNaturalCheckpoints(natural).apply(receipt_id)
             await self.collaboration.feedback(receipt_id)
             return await self.collaboration.receipt(receipt_id)
         try:

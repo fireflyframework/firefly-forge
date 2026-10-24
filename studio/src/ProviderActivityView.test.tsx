@@ -246,3 +246,170 @@ it("does not direct readers to unavailable full content after an archive refusal
   expect(html).toContain("full event was not recorded");
   expect(html).not.toContain("Open the full recorded event");
 });
+
+it("summarizes the retained completed turn without exposing default JSON or claiming implementation success", async () => {
+  const { default: completed } =
+    await import("../tests/provider-turn-completed-fixture.json");
+  const html = renderToStaticMarkup(
+    <ProviderActivityView {...props} event={completed.event} />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).toContain("Input tokens");
+  expect(initial).toContain("1,234");
+  expect(initial).toContain("Output tokens");
+  expect(initial).toContain("56");
+  expect(initial).toContain("Cached input tokens");
+  expect(initial).toContain("1,000");
+  expect(initial).not.toContain("input_tokens");
+  expect(initial).not.toContain("&quot;usage&quot;");
+  expect(initial).not.toContain("<pre");
+  expect(html).toMatch(
+    /<details class="record-advanced"><summary>Advanced details<\/summary>/,
+  );
+  expect(html).toContain("&quot;input_tokens&quot;");
+  expect(html).not.toContain("<details open");
+  expect(html).toContain("Factory verification is tracked separately");
+  expect(initial).not.toContain(">Passed<");
+});
+
+it("keeps invalid token counts and untrusted JSON text inside closed advanced details", async () => {
+  const { default: completed } =
+    await import("../tests/provider-turn-completed-fixture.json");
+  const html = renderToStaticMarkup(
+    <ProviderActivityView
+      {...props}
+      event={{
+        ...completed.event,
+        message:
+          '{"type":"turn.completed","usage":{"input_tokens":"<img src=x onerror=alert(1)>","output_tokens":-1}}',
+      }}
+    />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).not.toContain("input_tokens");
+  expect(initial).not.toContain("Input tokens");
+  expect(initial).not.toContain("Output tokens");
+  expect(initial).not.toContain("<pre");
+  expect(html).toContain("Advanced details");
+  expect(html).not.toContain("<img");
+  expect(html).toContain("&lt;img");
+  expect(html).not.toContain("<details open");
+});
+
+it("presents the actual amended-attempt worker report shape as readable reported evidence", async () => {
+  const { default: fixture } =
+    await import("../tests/provider-turn-completed-fixture.json");
+  const html = renderToStaticMarkup(
+    <ProviderActivityView {...props} event={fixture.worker_report.event} />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).toContain("Migration preserves existing records");
+  expect(initial).toContain(
+    "Independent browser, SQL and restart checks remain outstanding",
+  );
+  expect(initial).toContain("Reported result");
+  expect(initial).toContain("Failed");
+  expect(initial).toContain("Attempt");
+  expect(initial).toContain("6");
+  expect(initial).toContain("src/crm/migrations.py");
+  expect(initial).not.toContain("&quot;feedback&quot;");
+  expect(initial).not.toContain("<pre");
+  expect(html).toContain("Advanced details");
+  expect(html).not.toContain("<details open");
+  expect(initial).not.toContain("Verified");
+});
+
+it.each(['{"future":{"raw":"<img src=x>"}}', '{"summary":"incomplete'])(
+  "retains unsupported or incomplete structured agent output only behind closed details: %s",
+  async (message) => {
+    const { default: fixture } =
+      await import("../tests/provider-turn-completed-fixture.json");
+    const row = fixture.worker_report.event;
+    const html = renderToStaticMarkup(
+      <ProviderActivityView
+        {...props}
+        event={{
+          ...row,
+          activity_summary: {
+            ...row.activity_summary,
+            output_preview: message,
+          },
+        }}
+      />,
+    );
+    const initial = html.split("<details")[0];
+    expect(initial).toContain("structured");
+    expect(initial).not.toContain("<pre");
+    expect(initial).not.toContain("&quot;future&quot;");
+    expect(initial).not.toContain("&quot;summary&quot;");
+    expect(html).toContain("Advanced details");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<details open");
+  },
+);
+
+it("does not project an amended-attempt report with an unknown allowance protocol", async () => {
+  const { default: fixture } =
+    await import("../tests/provider-turn-completed-fixture.json");
+  const row = fixture.worker_report.event;
+  const report = {
+    ...fixture.worker_report.report,
+    feedback: {
+      ...fixture.worker_report.report.feedback,
+      protocol: "unknown-protocol",
+    },
+  };
+  const html = renderToStaticMarkup(
+    <ProviderActivityView
+      {...props}
+      event={{
+        ...row,
+        activity_summary: {
+          ...row.activity_summary,
+          output_preview: JSON.stringify(report),
+        },
+      }}
+    />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).not.toContain("Reported result");
+  expect(initial).not.toContain("Migration preserves existing records");
+  expect(initial).not.toContain("<pre");
+  expect(html).toContain("Advanced details");
+});
+
+it.each(["protocol", "disposition"])(
+  "refuses array-coerced %s in a structured worker report",
+  async (field) => {
+    const { default: fixture } =
+      await import("../tests/provider-turn-completed-fixture.json");
+    const row = fixture.worker_report.event;
+    const feedback = {
+      ...fixture.worker_report.report.feedback,
+      [field]: [
+        fixture.worker_report.report.feedback[
+          field as "protocol" | "disposition"
+        ],
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ProviderActivityView
+        {...props}
+        event={{
+          ...row,
+          activity_summary: {
+            ...row.activity_summary,
+            output_preview: JSON.stringify({
+              ...fixture.worker_report.report,
+              feedback,
+            }),
+          },
+        }}
+      />,
+    );
+    const initial = html.split("<details")[0];
+    expect(initial).not.toContain("Reported result");
+    expect(initial).not.toContain("Migration preserves existing records");
+    expect(html).toContain("Advanced details");
+  },
+);

@@ -68,6 +68,9 @@ class Journal:
         self.records = records or ForgeJournalRepository()
         self.sandboxes = sandboxes or ForgeSandboxRepository()
         self.credential_registry: Callable[[], dict[str, str]] = dict
+        from firefly_forge.source_catalog import SourceCatalogBudget
+
+        self.source_catalog_budget = SourceCatalogBudget()
 
     async def start(self) -> None:
         # Recovery belongs to the engine after it owns the execution lease.
@@ -141,6 +144,7 @@ class Journal:
             "git_delivery_observation",
             "git_delivery_draft",
             "git_delivery_hold",
+            "git_failed_unit_adoption",
         }:
             raise ValueError("Unsupported factory Git delivery journal event")
         await self.store.assert_ownership()
@@ -1386,6 +1390,9 @@ class Journal:
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
+            await self.store.assert_ownership()
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current(run.data)
             return copy.deepcopy(state)
 
     async def verification_effect_authority(self, run_id: str, task_id: str, payload: Data) -> None:
@@ -1480,6 +1487,9 @@ class Journal:
             }
             run.data = {**run.data, "verification_handoff": state, "updated_at": now()}
             await self.store.run_records.save(run)
+            await self.store.assert_ownership()
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current(run.data)
             return copy.deepcopy(state)
 
     async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[Data], None]) -> Data:
@@ -1572,9 +1582,22 @@ class Journal:
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
+            await self.store.assert_ownership()
+            await ProjectAccess(self.store).authorize_execution(run.data)
+            check_current(run.data)
             return copy.deepcopy(state)
 
     async def verification_assert_current(self, run_id: str) -> None:
+        from firefly_forge.verification_handoffs import prepare_journal_verification_source
+        from firefly_forge.verification_source_preparation import verification_source_scope
+
+        prepared = await prepare_journal_verification_source(self, run_id, provider=False)
+        if prepared is None:
+            return await self._verification_assert_current(run_id)
+        with verification_source_scope(prepared):
+            await self._verification_assert_current(run_id)
+
+    async def _verification_assert_current(self, run_id: str) -> None:
         from firefly_forge.project_access import ProjectAccess
         from firefly_forge.verification_models import check_verification_cut
 
@@ -1589,10 +1612,21 @@ class Journal:
                 for item in entries
                 if item.kind == "verification_handoff_intent" and item.idempotency_key == state["id"]
             )
+            await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
             check_verification_cut(self.store, run.data, intent)
 
     async def verification_provider_admission(self, run_id: str) -> None:
+        from firefly_forge.verification_handoffs import prepare_journal_verification_source
+        from firefly_forge.verification_source_preparation import verification_source_scope
+
+        prepared = await prepare_journal_verification_source(self, run_id, provider=True)
+        if prepared is None:
+            return await self._verification_provider_admission(run_id)
+        with verification_source_scope(prepared):
+            await self._verification_provider_admission(run_id)
+
+    async def _verification_provider_admission(self, run_id: str) -> None:
         from firefly_forge.project_access import ProjectAccess
         from firefly_forge.verification_models import check_verification_cut
 
@@ -1621,6 +1655,7 @@ class Journal:
                 for item in entries
             ):
                 raise ValueError("The original verification continuation outcome requires reconciliation")
+            await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
             check_verification_cut(self.store, run.data, intent)
             await self._append(
@@ -1637,6 +1672,8 @@ class Journal:
                     "provider_digest": intent["provider_digest"],
                 },
             )
+            await self.store.assert_ownership()
+            await ProjectAccess(self.store).authorize_execution(run.data)
             check_verification_cut(self.store, run.data, intent)
 
     async def verification_hold(self, run_id: str, handoff_id: str) -> None:
@@ -2080,7 +2117,13 @@ class Journal:
                     **({"source_budget_continuation": source_budget_link} if source_budget_link else {}),
                 },
             )
-            return await self.store.get_run(run_id)
+            result = await self.store.get_run(run_id)
+            if verification_handoff_id is not None:
+                assert admitted is not None
+                await self.store.assert_ownership()
+                await ProjectAccess(self.store).authorize_execution(run.data)
+                check_verification_cut(self.store, run.data, admitted)
+            return result
 
     async def queue_environment_reconciled(
         self, run_id: str, request_id: str, *, scm_source_admission: SealedSourceEditAdmission | None = None

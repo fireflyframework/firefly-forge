@@ -22,7 +22,7 @@ export type PollingBindingReceipt = {
     expected_reference_digest: string;
     native_user_id: string;
     component_ids: string[];
-    allowed_actions: ("respond" | "status")[];
+    allowed_actions: ("respond" | "status" | "checkpoint")[];
     active: boolean;
     acknowledge_api_observed_identity: true;
   };
@@ -175,7 +175,7 @@ export async function readPollingBindingReceipt(
       request.expected_project_binding_digest === row.project_binding_digest,
   );
   strings(request.component_ids, /^[a-z][a-z0-9-]{0,63}$/, 50);
-  strings(request.allowed_actions, /^(respond|status)$/, 2);
+  strings(request.allowed_actions, /^(respond|status|checkpoint)$/, 3);
   const reference = object(row.verified_reference, [
     "version",
     "transport",

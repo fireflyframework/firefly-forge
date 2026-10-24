@@ -15,7 +15,7 @@ from firefly_forge.scm_natural_runtime import catalog
 def natural_card(data: dict[str, Any], safe: Callable[[str], str]) -> str:
     turn = data["natural_turn"]
     language = (turn.get("decision") or {}).get("language") or data["command"].get("language", "en")
-    copy = json.loads(catalog().text("scm-natural/copy"))[language]
+    copy = json.loads(catalog().text("scm-natural/copy", version="1.0.1"))[language]
     state = turn["state"]
     if state == "needs_reconciliation":
         raise ValueError("An unknown natural outcome cannot produce a successful reply")

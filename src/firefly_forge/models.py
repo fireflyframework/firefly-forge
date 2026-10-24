@@ -4,12 +4,21 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from firefly_forge.agent_roles import ProjectRoles
+from firefly_forge.checkpoint_test_models import SourceCheckpointV1
 from firefly_forge.runner_factory_models import FactoryPoolSelection
 from firefly_forge.sandbox_models import SandboxInput
 
@@ -92,7 +101,15 @@ class RunInput(BaseModel):
     sandbox: FactoryPoolSelection | SandboxInput | None = None
     product_definition: dict[str, object] | None = None
     issue_context: dict[str, object] | None = None
+    source_checkpoint: SourceCheckpointV1 | None = None
     skills: list[str] = Field(default_factory=lambda: ["implementation", "verification", "security"], max_length=100)
+
+    @model_serializer(mode="wrap")
+    def retained_source_input(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        value: dict[str, Any] = handler(self)
+        if value.get("source_checkpoint") is None:
+            value.pop("source_checkpoint", None)
+        return value
 
     @field_validator("skills")
     @classmethod
@@ -117,6 +134,12 @@ class RunInput(BaseModel):
 
         if bool(self.project_id) != bool(self.component_id):
             raise ValueError("Choose both a product project and one of its components")
+        if self.source_checkpoint is not None and (
+            self.operation not in {"test", "maintain"} or self.publish or not self.project_id or not self.component_id
+        ):
+            raise ValueError(
+                "A checkpoint source requires test or maintain with publication disabled in its original component"
+            )
         if self.backend == self.frontend == "none":
             raise ValueError("Choose a backend or frontend for this component")
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import hmac
 import json
@@ -53,6 +54,7 @@ from firefly_forge.oauth_authority import require_oauth_administrator
 from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, MAX_REPRESENTATIONS, OAuthCredentialMatcher
 from firefly_forge.project_persistence import ForgeProjectEntity
 from firefly_forge.secrets import contains_known_credential
+from firefly_forge.source_diff_admission import CredentialHistorySnapshot
 from firefly_forge.store import Store
 
 Data = dict[str, Any]
@@ -84,6 +86,7 @@ class ConnectionOAuth:
         self.matcher = OAuthCredentialMatcher(encryption_key, store.schema)
         self.store.vault_credential_admission = self.admit_credentials
         self.store.vault_source_patch_admission = self.admit_source_patch
+        self.store.vault_source_diff_history = self.source_diff_history
         self.records = records or OAuthConnectionRepository()
         self.browser_origin = browser_origin
         self.catalog = dict(catalog or {})
@@ -271,6 +274,26 @@ class ConnectionOAuth:
         await self._admit_credentials(patch, source_patch=True)
 
     async def _admit_credentials(self, value: Any, *, source_patch: bool = False) -> None:
+        async with self._credential_packet_snapshot() as packets:
+            matched = (
+                self.matcher.contains_source_patch(value, packets)
+                if source_patch
+                else self.matcher.contains(value, packets)
+            )
+            if matched or contains_known_credential(value.text if source_patch else value, self._secrets):
+                raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
+
+    async def source_diff_history(self) -> CredentialHistorySnapshot:
+        async with self._credential_packet_snapshot() as packets:
+            self.matcher.contains("", packets)
+            return CredentialHistorySnapshot(
+                matcher=self.matcher,
+                packets=tuple(copy.deepcopy(packets)),
+                credentials=tuple(sorted(self._secrets.values())),
+            )
+
+    @asynccontextmanager
+    async def _credential_packet_snapshot(self) -> AsyncIterator[list[Data]]:
         # One statement sees evidence and source coverage at the same committed
         # snapshot, including inside an ambient unit. It acquires no advisory lock.
         evidence = OAuthCredentialEvidenceEntity
@@ -335,13 +358,7 @@ class ConnectionOAuth:
                 }
                 if not 1 <= row["revision"] <= MAX_HISTORY or history != set(range(1, row["revision"] + 1)):
                     raise ValueError("Retired OAuth credential history is incomplete; reviewed recovery is required")
-            matched = (
-                self.matcher.contains_source_patch(value, packets)
-                if source_patch
-                else self.matcher.contains(value, packets)
-            )
-            if matched or contains_known_credential(value.text if source_patch else value, self._secrets):
-                raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
+            yield packets
 
     async def stop(self) -> None:
         self._secrets.clear()

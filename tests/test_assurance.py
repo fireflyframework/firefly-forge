@@ -201,7 +201,12 @@ async def test_source_tamper_after_approved_review_blocks_checkpoint(store, tmp_
 
 
 async def test_artifacts_use_immutable_verified_tree_not_live_working_files(store, tmp_path):
+    import base64
     import zipfile
+
+    from firefly_forge.git_diff_artifacts import read_diff_page
+    from firefly_forge.git_diff_models import GitDiffRefV1
+    from firefly_forge.source_snapshot import SourceDiffSnapshotV1, diff_artifact_root
 
     run = await generated_run(store, tmp_path, review_agent=None)
     engine = Engine(store, tmp_path / "jobs", lambda _: Builder())
@@ -210,8 +215,22 @@ async def test_artifacts_use_immutable_verified_tree_not_live_working_files(stor
     assert saved["status"] == "succeeded", saved.get("error")
     workspace = engine.workspaces / run["id"]
     (workspace / "product.py").write_text("value = 99\n")
-    await engine._artifact(run["id"], workspace, saved["changed_files"], saved["diff"])
-    with zipfile.ZipFile(engine.workspaces / (run["id"] + ".zip")) as archive:
+    ref = GitDiffRefV1.model_validate(saved["diff_artifact"])
+    page = read_diff_page(diff_artifact_root(engine.workspaces, run["id"]), ref, 0, saved["diff_preview_bytes"])
+    source = SourceDiffSnapshotV1(
+        artifact=ref,
+        preview=base64.b64decode(page.content_base64).decode(),
+        preview_bytes=saved["diff_preview_bytes"],
+        preview_truncated=saved["diff_preview_truncated"],
+    )
+    target = engine.workspaces / (run["id"] + ".zip")
+    retained = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        await engine._artifact(run["id"], workspace, saved["changed_files"], source)
+    assert target.read_bytes() == retained
+    target.unlink()
+    await engine._artifact(run["id"], workspace, saved["changed_files"], source)
+    with zipfile.ZipFile(target) as archive:
         assert archive.read("product.py") == b"value = 7\n"
 
 

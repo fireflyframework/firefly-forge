@@ -8,6 +8,10 @@ const { test, expect } = createRequire(
 
 const flows = [
   {
+    path: "git-diff-archive/",
+    nodes: ["A", "B", "C", "D", "E", "F"],
+  },
+  {
     path: "as-is-handoff/",
     nodes: ["Source", "Review", "Context", "Proposal", "Confirm"],
   },

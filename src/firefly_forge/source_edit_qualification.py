@@ -14,8 +14,8 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 6
-LOADER_PROFILE = "codex-exec-restricted-source/v7"
+REGISTRY_VERSION = 7
+LOADER_PROFILE = "codex-exec-restricted-source/v8"
 LOADER_MODULES = (
     "source_budget_allowances.py",
     "source_budget_output.py",

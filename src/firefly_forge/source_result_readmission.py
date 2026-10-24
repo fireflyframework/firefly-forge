@@ -284,26 +284,27 @@ class SourceCompletedOutputReadmissions:
         self.r = reconciliations.recoveries
 
     async def _observation(self, run: Data, dispatch: Data) -> Data:
-        records = await self.r.store.event_records.provider_budget_events(identifier(run["id"]))
-        events = [copy.deepcopy(row.data) for row in records]
-        boundary = datetime.fromisoformat(dispatch["created_at"])
-        selected = [
-            e for e in events if e.get("stage") == "stdout" and datetime.fromisoformat(e["created_at"]) > boundary
-        ]
-        if not 1 <= len(selected) <= 256:
-            raise ValueError("Completed output requires a bounded native activity interval")
-        contents, total = {}, 0
-        for event in selected:
-            descriptor = validate_descriptor(event.get("activity_content"))
-            size = descriptor["sanitized_message_bytes"]
-            if type(size) is not int or size < 0:
-                raise ValueError("Completed output activity size is not exact")
-            total += size
-            if total > 4 * 1024 * 1024:
-                raise ValueError("Completed output activity exceeds its aggregate bound")
-            contents[event["id"]] = await self.r.store.event_content_records.payload(
-                identifier(run["id"]), identifier(event["id"]), size, descriptor["sanitized_message_sha256"]
-            )
+        async with self.r.store._unit():
+            records = await self.r.store.event_records.provider_budget_events(identifier(run["id"]))
+            events = [copy.deepcopy(row.data) for row in records]
+            boundary = datetime.fromisoformat(dispatch["created_at"])
+            selected = [
+                e for e in events if e.get("stage") == "stdout" and datetime.fromisoformat(e["created_at"]) > boundary
+            ]
+            if not 1 <= len(selected) <= 256:
+                raise ValueError("Completed output requires a bounded native activity interval")
+            contents, total = {}, 0
+            for event in selected:
+                descriptor = validate_descriptor(event.get("activity_content"))
+                size = descriptor["sanitized_message_bytes"]
+                if type(size) is not int or size < 0:
+                    raise ValueError("Completed output activity size is not exact")
+                total += size
+                if total > 4 * 1024 * 1024:
+                    raise ValueError("Completed output activity exceeds its aggregate bound")
+                contents[event["id"]] = await self.r.store.event_content_records.payload(
+                    identifier(run["id"]), identifier(event["id"]), size, descriptor["sanitized_message_sha256"]
+                )
         return completed_output_observation({**run, "events": selected}, dispatch, contents)
 
     async def _review(self, run: Data, parent_request: str, actor: Data, previous_path: str) -> Data:

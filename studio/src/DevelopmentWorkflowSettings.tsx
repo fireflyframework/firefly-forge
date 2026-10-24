@@ -7,6 +7,7 @@ import {
   policyRequest,
   policyView,
   readPolicy,
+  defaultDiffBudget,
   type GitDeliveryPolicy,
   type GitDeliveryPolicyView,
 } from "./GitDeliveryData";
@@ -234,6 +235,111 @@ export function DevelopmentWorkflowSettings({
                 Includes the final verified checkpoint. Choose at least 2 for
                 intermediate progress.
               </small>
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="delivery-diff-storage">Diff storage</label>
+            <select
+              id="delivery-diff-storage"
+              value={
+                draft?.diff_budget?.max_bytes == null ? "auto" : "configured"
+              }
+              onChange={(event) =>
+                draft &&
+                setDraft({
+                  ...draft,
+                  diff_budget: {
+                    ...(draft.diff_budget ?? defaultDiffBudget()),
+                    max_bytes:
+                      event.target.value === "auto"
+                        ? null
+                        : (draft.diff_budget?.max_bytes ?? 1073741824),
+                  },
+                })
+              }
+            >
+              <option value="auto">Auto · use available runner storage</option>
+              <option value="configured">Configured storage budget</option>
+            </select>
+            <small className="subtle">
+              Changes are retained in small chunks. Auto scales with available
+              storage while keeping a free-space reserve.
+            </small>
+          </div>
+          <div className="git-delivery-fields">
+            {draft?.diff_budget?.max_bytes != null && (
+              <div className="field">
+                <label htmlFor="delivery-diff-volume">
+                  Storage budget (MiB)
+                </label>
+                <input
+                  id="delivery-diff-volume"
+                  type="number"
+                  min="0.001"
+                  step="any"
+                  value={draft.diff_budget.max_bytes / 1048576}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      diff_budget: {
+                        ...draft.diff_budget!,
+                        max_bytes: Math.round(
+                          Number(event.target.value) * 1048576,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor="delivery-diff-reserve">Keep free (MiB)</label>
+              <input
+                id="delivery-diff-reserve"
+                type="number"
+                min="0"
+                step="any"
+                value={
+                  (draft?.diff_budget ?? defaultDiffBudget()).min_free_bytes /
+                  1048576
+                }
+                onChange={(event) =>
+                  draft &&
+                  setDraft({
+                    ...draft,
+                    diff_budget: {
+                      ...(draft.diff_budget ?? defaultDiffBudget()),
+                      min_free_bytes: Math.round(
+                        Number(event.target.value) * 1048576,
+                      ),
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="delivery-diff-timeout">
+                Diff capture timeout (seconds)
+              </label>
+              <input
+                id="delivery-diff-timeout"
+                type="number"
+                min="1"
+                step="1"
+                value={
+                  (draft?.diff_budget ?? defaultDiffBudget()).timeout_seconds
+                }
+                onChange={(event) =>
+                  draft &&
+                  setDraft({
+                    ...draft,
+                    diff_budget: {
+                      ...(draft.diff_budget ?? defaultDiffBudget()),
+                      timeout_seconds: Number(event.target.value),
+                    },
+                  })
+                }
+              />
             </div>
           </div>
           <label className="git-delivery-check">

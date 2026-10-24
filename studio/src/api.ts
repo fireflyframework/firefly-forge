@@ -15,7 +15,11 @@ export type Repository = {
   connection_provider?: string;
   remote_repository_id?: string;
 };
+import type { DiffReference } from "./GitDiffData";
 export type ForgeRun = {
+  diff_artifact?: DiffReference | null;
+  diff_preview_bytes?: number;
+  diff_preview_truncated?: boolean;
   git_delivery_policy?: GitDeliveryPolicy;
   git_delivery_summary?: Pick<
     GitDelivery,

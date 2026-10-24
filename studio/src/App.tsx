@@ -74,6 +74,7 @@ import {
   OutputView,
   TimelineEventView,
 } from "./ExecutionPresentation";
+import { GitDiffBrowser } from "./GitDiffBrowser";
 import { RunVerification } from "./RunVerification";
 import { ProviderActivityView } from "./ProviderActivityView";
 import { DeliverySetup, RunDelivery } from "./Delivery";
@@ -2990,29 +2991,36 @@ function RunDetail({
               body="The server records progress as the isolated run advances."
             />
           ))}
-        {tab === "diff" && (
-          <>
-            <div className="changed-files">
-              <h3>
-                Changed files <span>{run.changed_files?.length ?? 0}</span>
-              </h3>
-              {run.changed_files?.map((file) => (
-                <div key={file}>
-                  <FileDiff size={14} />
-                  {file}
-                </div>
-              ))}
-            </div>
-            {run.diff ? (
-              <UnifiedDiff value={run.diff} />
-            ) : (
-              <Empty
-                title="No diff reported yet"
-                body="Generated file changes appear here after the agent finishes."
-              />
-            )}
-          </>
-        )}
+        {tab === "diff" &&
+          (run.diff_artifact ? (
+            <GitDiffBrowser
+              connection={connection}
+              runId={run.id}
+              artifact={run.diff_artifact}
+            />
+          ) : (
+            <>
+              <div className="changed-files">
+                <h3>
+                  Changed files <span>{run.changed_files?.length ?? 0}</span>
+                </h3>
+                {run.changed_files?.map((file) => (
+                  <div key={file}>
+                    <FileDiff size={14} />
+                    {file}
+                  </div>
+                ))}
+              </div>
+              {run.diff ? (
+                <UnifiedDiff value={run.diff} />
+              ) : (
+                <Empty
+                  title="No diff reported yet"
+                  body="Generated file changes appear here after the agent finishes."
+                />
+              )}
+            </>
+          ))}
         {tab === "verification" && (
           <RunVerification
             key={JSON.stringify([

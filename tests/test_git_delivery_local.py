@@ -126,10 +126,51 @@ def delivery_case(tmp_path):
         workspace_lock=lock,
     )
 
+    class ControlledScanner:
+        async def __call__(self, chunk, final):
+            from firefly_forge.source_patch_admission import SourcePatch
+
+            await ownership()
+            if chunk:
+                await store.admit_source_patch(SourcePatch(chunk.decode("utf-8", errors="replace")))
+
+        def finish_document(self):
+            return None
+
+    async def scanner(**_kwargs):
+        return ControlledScanner()
+
+    store.source_patch_scanner = scanner
+
     async def snapshot(workspace, base, **kwargs):
+        from firefly_forge.git_diff_artifacts import read_diff_page, retain_git_diff
+        from firefly_forge.git_diff_models import GitDiffBudget
+        from firefly_forge.source_snapshot import SourceDiffSnapshotV1, diff_artifact_root, scan_changed_source
+
         git(workspace, "add", "--all", "--", ".")
-        files = git(workspace, "diff", "--name-only", base, "--").splitlines()
-        return files, git(workspace, "diff", "--cached", base, "--"), git(workspace, "write-tree")
+        budget = kwargs.get("budget") or GitDiffBudget.model_validate(
+            (run.get("git_delivery_policy") or {}).get("diff_budget") or {}
+        )
+        scan = await store.source_patch_scanner(settings=kwargs.get("secrets"))
+        files, _ = await scan_changed_source(workspace, base, None, scan, budget=budget, validate_path=lambda _: None)
+        folder = diff_artifact_root(engine.workspaces.resolve(), run["id"])
+        ref = await retain_git_diff(workspace, base, folder, budget=budget, scan_chunk=scan)
+        preview = read_diff_page(folder, ref, 0, budget.preview_bytes) if budget.preview_bytes else None
+        import base64
+
+        text = base64.b64decode(preview.content_base64).decode("utf-8", errors="replace") if preview else ""
+        preview_bytes = preview.byte_count if preview else 0
+        tree = git(workspace, "write-tree")
+        return (
+            files,
+            SourceDiffSnapshotV1(
+                artifact=ref,
+                preview=text,
+                preview_bytes=preview_bytes,
+                preview_truncated=preview_bytes < ref.byte_count,
+            ),
+            tree,
+        )
 
     engine._snapshot = snapshot
 

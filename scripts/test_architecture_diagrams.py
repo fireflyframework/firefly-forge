@@ -64,7 +64,10 @@ class ArchitectureDiagramTests(unittest.TestCase):
         documented = re.search(r"\| Factory MCP \| (\d+) authenticated operator tools", architecture)
         self.assertIsNotNone(documented, "Document the authenticated factory MCP surface")
         self.assertEqual(len(tools), int(documented.group(1)), "Update the documented factory MCP surface")
-        self.assertIn(f"{len(tools)} factory MCP tools", diagrams.DIAGRAMS["architecture-components"]["cards"][0][1])
+        self.assertEqual(
+            diagrams.DIAGRAMS["architecture-components"]["cards"][0][1],
+            "Studio, CLI, ForgeClient and factory MCP tools use authenticated contracts.",
+        )
         prerequisites = (diagrams.ROOT / "docs/tooling-prerequisites.md").read_text()
         self.assertIn(f"has {len(tools)} operator tools", prerequisites)
 

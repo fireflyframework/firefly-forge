@@ -46,6 +46,22 @@
       "sha256": "5d34c7f5f4b1f48f5bf7d74faa1064344a30648c2a386919139c8c6d4c05adf3",
       "field": "system",
       "variables": {}
+    },
+    {
+      "id": "scm-natural/system",
+      "version": "1.0.3",
+      "path": "system-1.0.3.yaml",
+      "sha256": "959e468494e67cd67f3f1074dfec7b11b550f4937f122e040554bc7b123e9214",
+      "field": "system",
+      "variables": {}
+    },
+    {
+      "id": "scm-natural/copy",
+      "version": "1.0.1",
+      "path": "copy-1.0.1.yaml",
+      "sha256": "3025e0d3f6074fe016fad83a13c8062ba9b2ff075cf291fb1ed585c341d66fdd",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

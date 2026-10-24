@@ -74,6 +74,13 @@ AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
 GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
 GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
+DiffManifest = Annotated[Any, WithJsonSchema({"type": "string", "pattern": r"^[a-f0-9]{64}$"})]
+DiffPosition = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 0})]
+DiffWindowLimit = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 1, "maximum": 1048576})]
+DiffCheckpointRequest = Annotated[
+    Any,
+    WithJsonSchema({"anyOf": [{"type": "string", "pattern": r"^[a-f0-9]{32}$"}, {"type": "null"}]}),
+]
 
 
 def create_server() -> MCPServer:
@@ -645,6 +652,46 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.git_delivery_observations(run_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_run_diff_index"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_run_diff_index(
+        run_id: RecoveryIdentifier,
+        expected_manifest: DiffManifest,
+        page: DiffPosition = 0,
+        request_id: DiffCheckpointRequest = None,
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_diff_index(run_id, expected_manifest, page=page, request_id=request_id).model_dump(
+                mode="json"
+            )
+
+    @server.tool(
+        description=prompt_text("mcp/get_run_diff_file"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_run_diff_file(
+        run_id: RecoveryIdentifier,
+        expected_manifest: DiffManifest,
+        file_index: DiffPosition,
+        offset: DiffPosition = 0,
+        limit: DiffWindowLimit = 32768,
+        request_id: DiffCheckpointRequest = None,
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.run_diff_file(
+                run_id, expected_manifest, file_index=file_index, offset=offset, limit=limit, request_id=request_id
+            ).model_dump(mode="json")
 
     @server.tool(description=prompt_text("mcp/get_project_revision"))
     def get_project_revision(project_id: str, revision: int) -> dict[str, Any]:

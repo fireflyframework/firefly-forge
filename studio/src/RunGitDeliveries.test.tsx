@@ -5,6 +5,15 @@ import fixture from "../tests/git-delivery-contract-fixture.json";
 import { deliveryList } from "./GitDeliveryData";
 import { GitDeliveryHistory } from "./RunGitDeliveries";
 
+it("labels a saved failed unit as partial and unverified beside its delivery receipt", () => {
+  const value = deliveryList(fixture.deliveries.draft, fixture.run_id);
+  Object.assign(value.items[0], { verification_status: "partial_unverified" });
+  const html = renderToStaticMarkup(<GitDeliveryHistory value={value} />);
+  expect(html).toContain("Partial work · unverified");
+  expect(html).toContain("The implementation remains failed");
+  expect(html).not.toContain("Review marked ready");
+});
+
 it("shows actual commit and tree identity while keeping a draft distinct from final readiness", () => {
   const html = renderToStaticMarkup(
     <GitDeliveryHistory

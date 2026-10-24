@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
+    from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
@@ -923,6 +925,80 @@ class ForgeClient:
 
     def git_delivery_request(self, run_id: str, request_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries/requests/{self._id(request_id)}"))
+
+    def _diff_path(self, run_id: str, expected_manifest: str, request_id: str | None) -> str:
+        if not isinstance(expected_manifest, str) or re.fullmatch(r"[a-f0-9]{64}", expected_manifest) is None:
+            raise ValueError("Use an exact diff manifest SHA-256")
+        path = f"runs/{self._id(run_id)}"
+        if request_id is not None:
+            path += f"/git-deliveries/requests/{self._id(request_id)}"
+        return path + "/diff"
+
+    def run_diff_index(
+        self, run_id: str, expected_manifest: str, *, page: int = 0, request_id: str | None = None
+    ) -> GitDiffIndexPageV1:
+        from firefly_forge.git_diff_models import GitDiffIndexPageV1
+
+        if type(page) is not int or page < 0:
+            raise ValueError("Use a nonnegative diff index page")
+        path = self._diff_path(run_id, expected_manifest, request_id)
+        if request_id is None:
+            path += "/index"
+        result = GitDiffIndexPageV1.model_validate(
+            self.request("GET", path, params={"expected_manifest": expected_manifest, "page": page})
+        )
+        if (
+            result.manifest_sha256 != expected_manifest
+            or result.page != page
+            or re.fullmatch(r"[a-f0-9]{32}", result.artifact_id) is None
+            or result.next_page not in (None, page + 1)
+        ):
+            raise ValueError("The returned diff index differs from the requested page")
+        return result
+
+    def run_diff_file(
+        self,
+        run_id: str,
+        expected_manifest: str,
+        *,
+        file_index: int,
+        offset: int = 0,
+        limit: int = 32768,
+        request_id: str | None = None,
+    ) -> GitDiffPageV1:
+        from firefly_forge.git_diff_models import GitDiffPageV1
+
+        if (
+            type(file_index) is not int
+            or file_index < 0
+            or type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 1048576
+        ):
+            raise ValueError("Use a bounded nonnegative diff file window")
+        path = self._diff_path(run_id, expected_manifest, request_id) + f"/files/{file_index}"
+        result = GitDiffPageV1.model_validate(
+            self.request("GET", path, params={"expected_manifest": expected_manifest, "offset": offset, "limit": limit})
+        )
+        if len(result.content_base64) != 4 * ((result.byte_count + 2) // 3):
+            raise ValueError("The returned diff content encoding exceeds its declared window")
+        content = base64.b64decode(result.content_base64, validate=True)
+        if (
+            result.manifest_sha256 != expected_manifest
+            or re.fullmatch(r"[a-f0-9]{32}", result.artifact_id) is None
+            or result.file_index != file_index
+            or result.offset != offset
+            or result.byte_count > limit
+            or (result.byte_count == 0 and offset < result.total_bytes)
+            or offset + result.byte_count > result.total_bytes
+            or result.next_offset
+            != (offset + result.byte_count if offset + result.byte_count < result.total_bytes else None)
+            or len(content) != result.byte_count
+            or hashlib.sha256(content).hexdigest() != result.content_sha256
+        ):
+            raise ValueError("The returned diff content differs from the requested verified window")
+        return result
 
     def analytics_configuration(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/configuration"))

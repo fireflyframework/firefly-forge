@@ -87,8 +87,8 @@ def test_selected_prompt_or_renderer_drift_revokes_profile_before_admission(chan
 
 
 def test_reader_bound_proof_uses_a_new_registry_and_loader_contract():
-    assert qualification.REGISTRY_VERSION == 6
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v7"
+    assert qualification.REGISTRY_VERSION == 7
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v8"
     historical = [
         profile for profile in qualification._profiles() if profile.loader_profile == "codex-exec-restricted-source/v5"
     ]
