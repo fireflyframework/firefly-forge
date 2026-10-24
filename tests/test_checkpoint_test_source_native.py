@@ -15,6 +15,7 @@ from worker_reply_fixtures import authenticated_operator
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.project_access import ProjectAccess
 from firefly_forge.run_creation_requests import RunCreationRequests
+from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.scm_conversations import SCMConversations
 
 
@@ -72,7 +73,9 @@ def test_native_checkpoint_fresh_same_project_test_seven_checks_and_teammate_rea
         assert child["execution_actor"]["user_id"] == receipt["original_actor"]["user_id"]
         assert not child.get("provider_recovery") and not child.get("worker_response")
         assert child["publish"] is False and child["operation"] == "test"
-        assert child["commands"] == c.commands and child["sandbox_snapshot"]["command_limit"] == 7
+        assert (
+            child["commands"] == c.commands and validate_sandbox_snapshot(child["sandbox_snapshot"]).command_limit == 7
+        )
         c.engine.active[child["id"]] = asyncio.current_task()
         try:
             await c.engine.execute_run(child["id"])
@@ -85,6 +88,16 @@ def test_native_checkpoint_fresh_same_project_test_seven_checks_and_teammate_rea
         assert len(final["final_verification"]) == 7
         assert [check["argv"] for check in final["final_verification"]] == [cmd["argv"] for cmd in c.commands]
         assert all(check["exit_code"] == 0 for check in final["final_verification"])
+        executions = await c.journal.sandbox_executions(child["id"])
+        assert len(executions) == 7 and sorted(row["ordinal"] for row in executions) == list(range(1, 8))
+        assert all(
+            row["task_id"] == "verify" and row["snapshot_digest"] == final["sandbox_snapshot"]["digest"]
+            for row in executions
+        )
+        assert all(
+            row["effects"]["start"]["status"] == "done" and row["effects"]["start"]["evidence"]["exit_code"] == 0
+            for row in executions
+        )
         assert (await c.store.repository(c.case.repo["id"]))["default_branch"] == "main"
         assert await c.store.get_run(c.parent["id"]) == c.parent
         assert await c.journal.entries(c.parent["id"]) == c.prefix
