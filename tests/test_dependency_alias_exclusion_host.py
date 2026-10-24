@@ -55,7 +55,8 @@ async def test_native_preparation_excludes_runtime_aliases_but_refuses_tracked_p
             else:
                 files, patch, _ = await engine._snapshot(workspace, baselines[-1])
                 observed.append(files)
-                assert "Retained dependency" not in patch
+                assert patch.artifact.file_count == 1
+                assert "Retained dependency" not in patch.preview
             raise ProviderError("Controlled stop after real Git source admission")
 
     monkeypatch.setattr("firefly_forge.engine.clone", clone)

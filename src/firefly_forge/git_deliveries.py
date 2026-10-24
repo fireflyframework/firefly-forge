@@ -20,7 +20,6 @@ from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.scm import checked
 
 Data = dict[str, Any]
-MAX_PATCH = 131072
 KIND = "git_delivery"
 
 
@@ -46,6 +45,7 @@ def binding(run: Data) -> str:
                 "execution_actor",
                 "git_delivery_policy",
                 "git_delivery_policy_digest",
+                "git_failed_unit_adoption",
                 "git_metadata_digest",
                 "status",
                 "active_task",
@@ -57,6 +57,7 @@ def binding(run: Data) -> str:
                 "cancel_request",
                 "checkpoint_revision",
             )
+            if key != "git_failed_unit_adoption" or run.get(key) is not None
         }
     )
 
@@ -70,6 +71,61 @@ class GitDeliveries:
         if not hasattr(engine, "git_delivery_locks"):
             engine.git_delivery_locks = {}
         self.locks: dict[str, asyncio.Lock] = engine.git_delivery_locks
+
+    async def _effective_policy(self, run: Data) -> GitDeliveryPolicyV1:
+        from firefly_forge.git_failed_unit_adoption import effective_policy
+
+        return await effective_policy(self, run)
+
+    async def candidate(self, run_id: str, *, actor: Data | None = None) -> Data:
+        from firefly_forge.git_delivery_models import GitDeliveryCandidateV1
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
+        from firefly_forge.verification_models import verification_source
+
+        if actor is None:
+            user = CURRENT_PRINCIPAL.get()
+            if user is None:
+                raise ValueError("Sign in before reviewing current checkpoint source")
+            actor = ProjectAccess.actor_snapshot(user)
+        run = await self.store.get_run(run_id)
+        policy = GitDeliveryPolicyV1.model_validate(run.get("git_delivery_policy") or {})
+        if not policy.enabled or run["status"] not in {"paused", "failed"} or run.get("git_failed_unit_adoption"):
+            raise ValueError("Review a quiescent run with its original enabled checkpoint policy")
+        await self._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
+        active = self.engine.active.get(run_id)
+        if (
+            active is not None
+            and not active.done()
+            or run.get("implementation_pending")
+            or run.get("bridge_completion_hold")
+        ):
+            raise ValueError("Wait for the current source owner to settle before reviewing a checkpoint")
+        if self.authorization is None:
+            from firefly_forge.git_delivery_policy import GitDeliveryPolicies
+
+            saved = await GitDeliveryPolicies(self.store).snapshot(run.get("project_id"))
+            tasks = (await self.journal.plan(run_id))["tasks"]
+            if (
+                not saved
+                or not saved["policy"]["enabled"]
+                or not any(task["id"] == "implement" and task["status"] in {"done", "paused"} for task in tasks)
+            ):
+                raise ValueError("The current checkpoint policy or closed implementation unit is unavailable")
+        view = await self.view(run_id, actor=actor)
+        root = self.workspace(run)
+        head = view["latest_checkpoint"] or view["original_base_revision"]
+        source = verification_source(root)
+        if (
+            await checked(["git", "rev-parse", "HEAD"], root, 10) != head
+            or metadata_digest(root) != run.get("git_metadata_digest")
+            or await self.store.get_run(run_id) != run
+            or verification_source(root) != source
+        ):
+            raise ValueError("The current checkpoint source or Git identity changed during review")
+        await self._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
+        return GitDeliveryCandidateV1(run_id=run_id, expected_head=head, expected_source_digest=source).model_dump(
+            mode="json"
+        )
 
     async def _authorize(
         self, run: Data, actor: Data | None, permission: Literal["read", "execute", "release"]
@@ -89,7 +145,9 @@ class GitDeliveries:
     async def _guard(self, run_id: str, expected: Data, actor: Data | None, *, boundary: object | None = None) -> Data:
         await self.store.assert_ownership()
         current = await self.store.get_run(run_id)
-        policy = GitDeliveryPolicyV1.model_validate(current.get("git_delivery_policy") or {})
+        from firefly_forge.git_failed_unit_adoption import effective_policy
+
+        policy = await effective_policy(self, current, actor=actor, writing=True)
         if not policy.enabled or self.engine.stopping:
             raise ValueError("Intermediate Git delivery is disabled or the execution owner is draining")
         if self.authorization is None:
@@ -100,9 +158,11 @@ class GitDeliveries:
                 raise ValueError("Current project Git delivery consent is disabled")
             tasks = (await self.journal.plan(run_id))["tasks"]
             implementation = next((task for task in tasks if task["id"] == "implement"), None)
-            if implementation is None or implementation["status"] not in {"done", "paused"}:
+            if not current.get("git_failed_unit_adoption") and (
+                implementation is None or implementation["status"] not in {"done", "paused"}
+            ):
                 raise ValueError("Git delivery requires a recorded closed implementation unit")
-            if implementation["status"] == "paused":
+            if implementation is not None and implementation["status"] == "paused":
                 pending = current.get("worker_request") or {}
                 from pyfly.data.transaction import current_unit_of_work
 
@@ -154,6 +214,8 @@ class GitDeliveries:
             raise ValueError("Run ownership, policy or source binding changed during Git admission")
         if self.engine.stopping:
             raise ValueError("The execution owner started draining before Git delivery")
+        if final.get("git_failed_unit_adoption"):
+            await effective_policy(self, final, actor=actor, writing=True)
         return dict(final)
 
     async def _entries(self, run_id: str) -> list[Data]:
@@ -175,7 +237,9 @@ class GitDeliveries:
             if entry["kind"] != "git_delivery_receipt":
                 continue
             payload = entry["payload"]
-            GitDeliveryViewV1.model_validate({key: payload[key] for key in GitDeliveryViewV1.model_fields})
+            GitDeliveryViewV1.model_validate(
+                {key: payload[key] for key in GitDeliveryViewV1.model_fields if key in payload}
+            )
             expected = delivery_digest({k: v for k, v in payload.items() if k != "checkpoint_digest"})
             if payload["checkpoint_digest"] != expected or payload["sequence"] != len(receipts) + 1:
                 raise ValueError("Checkpoint receipt digest or sequence differs")
@@ -208,6 +272,13 @@ class GitDeliveries:
                 )
             ):
                 raise ValueError("Checkpoint receipt has no exact earlier admitted intent")
+            if (
+                payload.get("source_evidence") is not None or intent["payload"].get("source_evidence") is not None
+            ) and any(
+                payload.get(key) != intent["payload"].get(key)
+                for key in ("source_evidence", "changed_file_count", "changed_files_preview_truncated")
+            ):
+                raise ValueError("Checkpoint artifact receipt differs from its exact admitted intent")
             receipts.append(copy.deepcopy(payload))
         return receipts
 
@@ -252,6 +323,7 @@ class GitDeliveries:
         expected_head: str,
         actor: Data | None,
         expected_source_tree: str | None = None,
+        expected_source_digest: str | None = None,
         boundary: object | None = None,
         final: bool = False,
     ) -> Data:
@@ -259,7 +331,9 @@ class GitDeliveries:
             raise ValueError("Keep a canonical checkpoint request identity before admission")
         async with self.locks.setdefault(run_id, asyncio.Lock()):
             run = await self.store.get_run(run_id)
-            policy = GitDeliveryPolicyV1.model_validate(run.get("git_delivery_policy") or {})
+            from firefly_forge.git_failed_unit_adoption import effective_policy
+
+            policy = await effective_policy(self, run, actor=actor, writing=True)
             entries = await self._entries(run_id)
             receipts = self._records(entries)
             self._remote_state(entries)
@@ -269,6 +343,8 @@ class GitDeliveries:
                 "expected_source_tree": expected_source_tree,
                 "actor": actor,
             }
+            if expected_source_digest is not None:
+                request_cut["expected_source_digest"] = expected_source_digest
             request_digest = delivery_digest(request_cut)
             prior = next(
                 (e for e in entries if e["kind"] == "git_delivery_intent" and e["payload"]["request_id"] == request_id),
@@ -312,33 +388,46 @@ class GitDeliveries:
             settings = (
                 self.store.configuration.load_snapshot(run["config_revision"]) if run.get("config_revision") else {}
             )
-            files, _cumulative_diff, tree = await self.engine._snapshot(
-                workspace, base, secrets=settings, expected_head=parent
+            from firefly_forge.verification_models import verification_source
+
+            if expected_source_digest is not None and verification_source(workspace) != expected_source_digest:
+                raise ValueError("The reviewed current source changed before checkpointing")
+            from firefly_forge.git_diff_artifacts import read_diff_index_page
+            from firefly_forge.git_diff_models import GitDiffBudget
+            from firefly_forge.source_snapshot import SourceDiffSnapshotV1, diff_artifact_root
+
+            budget = policy.diff_budget or GitDiffBudget()
+            _, snapshot, tree = await self.engine._snapshot(
+                workspace, parent, secrets=settings, expected_head=parent, budget=budget
             )
-            component = (run.get("component_snapshot") or {}).get("path", ".")
-            if component != "." and any(not p.startswith(component + "/") for p in files):
-                raise ValueError("Checkpoint source leaves the selected component")
-            if not files or len(files) > 200:
-                raise ValueError("Checkpointing requires a bounded nonempty source change")
+            if not isinstance(snapshot, SourceDiffSnapshotV1):
+                raise ValueError("Checkpointing requires retained typed source diff evidence")
+            artifact = snapshot.artifact
+            if artifact.file_count == 0 or artifact.byte_count == 0:
+                raise ValueError("Checkpointing requires a nonempty source change")
             if expected_source_tree is not None and tree != expected_source_tree:
                 raise ValueError("The reviewed checkpoint source tree changed")
-            patch = await checked(
-                ["git", "diff", "--cached", "--binary", "--no-ext-diff", "--no-color", parent, "--"], workspace, 10
-            )
-            files = [
-                p
-                for p in (
-                    await checked(["git", "diff", "--cached", "--name-only", "-z", parent, "--"], workspace, 10)
-                ).split("\x00")
-                if p
-            ]
-            if not patch or len(patch.encode()) > MAX_PATCH:
-                raise ValueError("The checkpoint patch is empty or exceeds128KiB")
+            if expected_source_digest is not None and verification_source(workspace) != expected_source_digest:
+                raise ValueError("The reviewed current source changed while preparing its checkpoint tree")
+            component = (run.get("component_snapshot") or {}).get("path", ".")
+            artifactroot = diff_artifact_root(self.engine.workspaces.resolve(), run_id)
+            files: list[str] = []
+            count = 0
+            async with asyncio.timeout(budget.timeout_seconds):
+                for page in range(artifact.index_page_count):
+                    index = await asyncio.to_thread(read_diff_index_page, artifactroot, artifact, page)
+                    for item in index.files:
+                        if component != "." and not item.path.startswith(component + "/"):
+                            raise ValueError("Checkpoint source leaves the selected component")
+                        if len(files) < 100:
+                            files.append(item.path)
+                        count += 1
+            if count != artifact.file_count:
+                raise ValueError("Checkpoint file evidence differs from its retained manifest")
             await self.store.admit_credentials(request_cut)
-            from firefly_forge.source_patch_admission import SourcePatch
-
-            await self.store.admit_source_patch(SourcePatch(patch))
             await self._guard(run_id, run, actor, boundary=boundary)
+            evidence = {"version": 2, "diff_artifact": artifact.model_dump(mode="json")}
+            preview_truncated = len(files) < count
             intent = {
                 **request_cut,
                 "request_digest": request_digest,
@@ -346,9 +435,11 @@ class GitDeliveries:
                 "original_base_revision": base,
                 "parent_revision": parent,
                 "source_tree": tree,
-                "patch_sha256": hashlib.sha256(patch.encode()).hexdigest(),
-                "patch": patch,
+                "patch_sha256": artifact.sha256,
+                "source_evidence": evidence,
+                "changed_file_count": count,
                 "changed_files": files,
+                "changed_files_preview_truncated": preview_truncated,
                 "binding": binding(run),
             }
             key = "git:" + request_id
@@ -368,6 +459,8 @@ class GitDeliveries:
                     f"Checkpoint {run.get('active_task', 'implement')} unit {run.get('implementation_rounds', 1)} "
                     f"for forge run {run_id}"
                 )
+                if run.get("git_failed_unit_adoption"):
+                    message = "[UNVERIFIED] " + message
                 await checked(
                     [
                         "git",
@@ -400,8 +493,10 @@ class GitDeliveries:
                     "source_tree": tree,
                     "task_id": run.get("active_task") or "implement",
                     "attempt": max(1, run.get("implementation_rounds", 1)),
-                    "changed_file_count": len(files),
+                    "changed_file_count": count,
                     "changed_files": files,
+                    "changed_files_preview_truncated": preview_truncated,
+                    "source_evidence": evidence,
                     "patch_sha256": intent["patch_sha256"],
                     "branch": run["branch"],
                     "local_status": "checkpointed",
@@ -409,6 +504,8 @@ class GitDeliveries:
                     "pr_url": None,
                     "created_at": datetime.now(UTC).isoformat(),
                 }
+                if run.get("git_failed_unit_adoption"):
+                    receipt["verification_status"] = "partial_unverified"
                 receipt["checkpoint_digest"] = delivery_digest(receipt)
                 await self._append(run_id, "git_delivery_receipt", key, receipt)
                 await self.store.update(run_id, checkpoint_revision=revision, git_delivery_head=revision)
@@ -465,7 +562,7 @@ class GitDeliveries:
         self._remote_state(entries, allow_pending=True)
         items = []
         for receipt in receipts:
-            value = {key: receipt[key] for key in GitDeliveryViewV1.model_fields}
+            value = {key: receipt[key] for key in GitDeliveryViewV1.model_fields if key in receipt}
             remote = [
                 e
                 for e in entries
@@ -486,7 +583,7 @@ class GitDeliveries:
         return GitDeliveriesViewV1(
             version=1,
             run_id=run_id,
-            policy=GitDeliveryPolicyV1.model_validate(run.get("git_delivery_policy") or {}),
+            policy=await self._effective_policy(run),
             original_base_revision=run.get("base_revision") or None,
             latest_checkpoint=receipts[-1]["revision"] if receipts else None,
             items=[GitDeliveryViewV1.model_validate(item) for item in items],
@@ -607,6 +704,16 @@ class GitDeliveries:
             raise ValueError("Remote branch observation is ambiguous")
         return parts[0]
 
+    async def _assert_checkpoint_source(self, run: Data, receipt: Data) -> None:
+        workspace = self.workspace(run)
+        if (
+            metadata_digest(workspace) != run.get("git_metadata_digest")
+            or await checked(["git", "rev-parse", "HEAD"], workspace, 10) != receipt["revision"]
+            or await checked(["git", "rev-parse", "HEAD^{tree}"], workspace, 10) != receipt["source_tree"]
+            or await checked(["git", "status", "--porcelain", "--untracked-files=all"], workspace, 10)
+        ):
+            raise ValueError("Checkpoint source or Git identity changed during remote delivery")
+
     async def _publish_checkpoint(
         self, run_id: str, receipt: Data, actor: Data | None, boundary: object | None
     ) -> None:
@@ -623,6 +730,7 @@ class GitDeliveries:
             source_tree=receipt["source_tree"],
             sequence=receipt["sequence"],
             changed_file_count=receipt["changed_file_count"],
+            implementation_disposition="failed" if run.get("git_failed_unit_adoption") else None,
         )
         await self.store.admit_credentials(context.model_dump())
         native = (
@@ -647,6 +755,8 @@ class GitDeliveries:
             raise ValueError("Selected checkpoint communication is held; no branch or draft PR was published")
         body = drafted["body"] + f"\n\n<!-- forge-git-delivery:{run_id} -->"
         title = drafted["body"].splitlines()[0].removeprefix("### ")[:100]
+        if run.get("git_failed_unit_adoption"):
+            title = "[UNVERIFIED] " + title[:87]
         await self.store.admit_credentials({"title": title, "body": body, "communication": evidence})
         await self._guard(run_id, run, actor, boundary=boundary)
         self.engine.communication_writer.assert_current(evidence)
@@ -684,40 +794,42 @@ class GitDeliveries:
                     "pr_url": previous["reference"]["url"] if previous else None,
                 },
             )
-        # The durable intent remains unresolved on cancellation, transport loss or malformed success.
-        async with self._owned(run_id, actor):
-            await self._guard(run_id, run, actor, boundary=boundary)
-            self.engine.communication_writer.assert_current(evidence)
-            await push(
-                self.workspace(run),
-                run["branch"],
-                env=environment,
-                repository_url=repository["url"],
-                revision=receipt["revision"],
-                expected_remote_revision=expected,
-            )
-            if await self._remote_revision(repository, run["branch"], environment) != receipt["revision"]:
-                raise ValueError("The pushed branch has an unconfirmed revision")
 
-            async def guard() -> None:
+        # The durable intent remains unresolved on cancellation, transport loss or malformed success.
+        async def guard() -> None:
+            await self._assert_checkpoint_source(run, receipt)
+            async with self._owned(run_id, actor):
                 await self._guard(run_id, run, actor, boundary=boundary)
                 self.engine.communication_writer.assert_current(evidence)
 
-            async with self.http_client(follow_redirects=False) as client:
-                provider = DraftPullRequests(client, repository, authentication, guard=guard)
-                if previous:
-                    reference = await provider.update(
-                        previous["reference"], run["branch"], receipt["revision"], title, body
-                    )
-                else:
-                    if await provider.find(run["branch"], receipt["revision"]) is not None:
-                        raise ValueError(
-                            "An unowned draft already exists for this branch; do not create or update another"
-                        )
-                    reference = await provider.create(run["branch"], receipt["revision"], title, body)
-            if reference["body_sha256"] != payload["body_sha256"]:
-                raise ValueError("Draft response does not confirm the exact admitted body")
-            await guard()
+        await guard()
+        await push(
+            self.workspace(run),
+            run["branch"],
+            env=environment,
+            repository_url=repository["url"],
+            revision=receipt["revision"],
+            expected_remote_revision=expected,
+        )
+        if await self._remote_revision(repository, run["branch"], environment) != receipt["revision"]:
+            raise ValueError("The pushed branch has an unconfirmed revision")
+
+        async with self.http_client(follow_redirects=False) as client:
+            provider = DraftPullRequests(client, repository, authentication, guard=guard)
+            if previous:
+                reference = await provider.update(
+                    previous["reference"], run["branch"], receipt["revision"], title, body
+                )
+            else:
+                if await provider.find(run["branch"], receipt["revision"]) is not None:
+                    raise ValueError("An unowned draft already exists for this branch; do not create or update another")
+                reference = await provider.create(run["branch"], receipt["revision"], title, body)
+        if reference["body_sha256"] != payload["body_sha256"]:
+            raise ValueError("Draft response does not confirm the exact admitted body")
+        await guard()
+        async with self._owned(run_id, actor):
+            await self._guard(run_id, run, actor, boundary=boundary)
+            self.engine.communication_writer.assert_current(evidence)
             result = {
                 "request_id": receipt["request_id"],
                 "revision": receipt["revision"],
@@ -785,8 +897,14 @@ class GitDeliveries:
         parent = receipts[-1]["revision"] if receipts else run["base_revision"]
         # A closed unit with no new staged tree does not create an empty checkpoint.
         await self._guard(run_id, run, run.get("execution_actor"), boundary=self)
+        from firefly_forge.git_diff_models import GitDiffBudget
+
         _files, _diff, tree = await self.engine._snapshot(
-            self.workspace(run), run["base_revision"], allow_unchanged=True, expected_head=parent
+            self.workspace(run),
+            parent,
+            allow_unchanged=True,
+            expected_head=parent,
+            budget=policy.diff_budget or GitDiffBudget(),
         )
         if tree == await checked(["git", "rev-parse", "HEAD^{tree}"], self.workspace(run), 10):
             return None
@@ -818,6 +936,8 @@ class GitDeliveries:
             raise ValueError("An unrecorded checkpoint head cannot become this run's factory baseline")
 
     async def final_start(self, run: Data, actor: Data | None, draft: Data) -> Data:
+        if run.get("git_failed_unit_adoption"):
+            raise ValueError("An adopted failed checkpoint remains unverified; it cannot be promoted to final delivery")
         from firefly_forge.git_delivery_remote import DraftPullRequests
 
         await self.engine._assert_delivery_tree(run["id"], self.workspace(run))
@@ -866,34 +986,48 @@ class GitDeliveries:
             "checkpoint": receipt,
         }
 
+    async def _assert_publication_binding(self, run: Data, draft: Data) -> None:
+        repository = await self.store.repository(run["repository_id"])
+        current = await self.store.get_run(run["id"])
+        if self.engine._publication_binding(current, repository) != draft["binding_sha256"]:
+            raise ValueError("Publication facts or destination changed after drafting")
+        self.engine.communication_writer.assert_current(draft["communication"])
+
     async def final_ready(self, prepared: Data, draft: Data) -> str:
         from firefly_forge.git_delivery_remote import DraftPullRequests
 
         run, actor = prepared["run"], prepared["actor"]
+        if run.get("git_failed_unit_adoption"):
+            raise ValueError("An adopted failed checkpoint remains unverified; it cannot be marked ready")
         intent = prepared["intent"]
 
         async def guard() -> None:
-            await self._guard(run["id"], run, actor, boundary=self)
+            await self._assert_checkpoint_source(run, prepared["checkpoint"])
             await self.engine._assert_publication_current(run["id"], draft, actor)
+            async with self._owned(run["id"], actor):
+                await self._guard(run["id"], run, actor, boundary=self)
+                await self._assert_publication_binding(run, draft)
 
+        await guard()
+        async with self.http_client(follow_redirects=False) as client:
+            provider = DraftPullRequests(client, prepared["repository"], prepared["authentication"], guard=guard)
+            if prepared["reference"]:
+                reference = await provider.update(
+                    prepared["reference"], run["branch"], run["checkpoint_revision"], draft["title"], draft["body"]
+                )
+            else:
+                if await provider.find(run["branch"], run["checkpoint_revision"]) is not None:
+                    raise ValueError("An unowned draft exists; final publication cannot adopt or duplicate it")
+                reference = await provider.create(
+                    run["branch"], run["checkpoint_revision"], draft["title"], draft["body"]
+                )
+            if reference["body_sha256"] != draft["body_sha256"]:
+                raise ValueError("The final draft body has an unknown provider outcome")
+            reference = await provider.ready(reference, run["branch"], run["checkpoint_revision"])
+        await guard()
         async with self._owned(run["id"], actor):
-            await guard()
-            async with self.http_client(follow_redirects=False) as client:
-                provider = DraftPullRequests(client, prepared["repository"], prepared["authentication"], guard=guard)
-                if prepared["reference"]:
-                    reference = await provider.update(
-                        prepared["reference"], run["branch"], run["checkpoint_revision"], draft["title"], draft["body"]
-                    )
-                else:
-                    if await provider.find(run["branch"], run["checkpoint_revision"]) is not None:
-                        raise ValueError("An unowned draft exists; final publication cannot adopt or duplicate it")
-                    reference = await provider.create(
-                        run["branch"], run["checkpoint_revision"], draft["title"], draft["body"]
-                    )
-                if reference["body_sha256"] != draft["body_sha256"]:
-                    raise ValueError("The final draft body has an unknown provider outcome")
-                reference = await provider.ready(reference, run["branch"], run["checkpoint_revision"])
-            await guard()
+            await self._guard(run["id"], run, actor, boundary=self)
+            await self._assert_publication_binding(run, draft)
             result = {
                 "request_id": intent["payload"]["request_id"],
                 "revision": run["checkpoint_revision"],

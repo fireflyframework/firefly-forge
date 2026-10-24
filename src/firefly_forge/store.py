@@ -48,6 +48,11 @@ from firefly_forge.project_campaign_persistence import ForgeCampaignChildReposit
 from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
+from firefly_forge.source_diff_admission import (
+    CredentialHistorySnapshot,
+    SourceDiffAdmission,
+    prepare_source_diff_admission,
+)
 
 Data = dict[str, Any]
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
@@ -190,11 +195,16 @@ class Store:
         self.credential_registry: Callable[[], dict[str, str]] = dict
         self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
         self.vault_source_patch_admission: Callable[[Any], Awaitable[None]] | None = None
+        self.vault_source_diff_history: Callable[[], Awaitable[CredentialHistorySnapshot]] | None = None
         self.task_router: Any = None
         self.runtime_roles: Any = None
         self.execution_requests: Any = None
         self.runners: Any = None
         self.connections: Any = None
+        self.checkpoint_sources: Any = None
+        from firefly_forge.run_creation_persistence import ForgeRunCreationRequestRepository
+
+        self.run_creation_records = ForgeRunCreationRequestRepository()
         self.scm_polling: Any = None
         self.scm_poll_functional: Any = None
         self.scm_resume_authorities: dict[str, Any] = {}
@@ -456,6 +466,10 @@ class Store:
         prepared_runner: Data | None = None,
         prepared_tools: list[Data] | None = None,
     ) -> Data:
+        if request.source_checkpoint is not None:
+            raise ValueError(
+                "Use request_run_creation at /run-creation-requests with a fresh checkpoint source identity"
+            )
         prepared = await self.prepare_run(request, prepared_runner=prepared_runner, prepared_tools=prepared_tools)
         with prepared_credential_rejection(self):
             async with self._unit():
@@ -582,6 +596,12 @@ class Store:
         policy_selection = request.skills if "skills" in request.model_fields_set else repo.get("skills")
         snapshot = self.policies.selection(policy_selection)
         component = await Projects(self).component_snapshot(request)
+        source_checkpoint = None
+        if request.source_checkpoint is not None:
+            sources = getattr(self, "checkpoint_sources", None)
+            if sources is None or sources.store is not self:
+                raise ValueError("Checkpoint source admission is unavailable")
+            source_checkpoint = await sources.prepare(request)
         role_defaults = (component or {}).get("project_definition", {}).get("roles") or repo.get("roles")
         role_selection = (
             request.roles
@@ -694,6 +714,8 @@ class Store:
         }
         from firefly_forge.git_delivery_policy import GitDeliveryPolicies
 
+        if source_checkpoint is not None:
+            data["source_checkpoint_snapshot"] = copy.deepcopy(source_checkpoint)
         delivery = await GitDeliveryPolicies(self).snapshot(request.project_id)
         if delivery is not None:
             if delivery["policy"]["enabled"] and actor_snapshot is None:
@@ -803,6 +825,11 @@ class Store:
             raise ValueError("Run repository changed after preparation")
         if await Projects(self).component_snapshot(request) != data["component_snapshot"]:
             raise ValueError("Run component changed after preparation")
+        if request.source_checkpoint is not None:
+            sources = getattr(self, "checkpoint_sources", None)
+            if sources is None or sources.store is not self:
+                raise ValueError("Checkpoint source admission is unavailable")
+            await sources.revalidate_locked(request, data["source_checkpoint_snapshot"])
         product_repository = (data["component_snapshot"] or {}).get("product_repository_id", request.repository_id)
         if request.product_definition is None:
             current = await self.product_records.find_current(identifier(product_repository))
@@ -873,6 +900,32 @@ class Store:
         else:
             await admission(patch)
             self.reject_credentials(patch.text)
+
+    async def source_diff_history(self) -> CredentialHistorySnapshot:
+        admission = cast(
+            Callable[[], Awaitable[CredentialHistorySnapshot]] | None,
+            getattr(self, "vault_source_diff_history", None),
+        )
+        if admission is not None:
+            return await admission()
+        if (
+            getattr(self, "vault_credential_admission", None) is not None
+            or getattr(self, "vault_source_patch_admission", None) is not None
+        ):
+            raise ValueError("Streaming OAuth credential history admission is unavailable")
+        # The existing native fallback refuses any OAuth rows without coverage.
+        await self.admit_credentials("")
+        return CredentialHistorySnapshot(matcher=None, packets=(), credentials=())
+
+    async def source_patch_scanner(
+        self,
+        *,
+        settings: dict[str, str] | None = None,
+        assert_current: Callable[[], Awaitable[None]] | None = None,
+    ) -> SourceDiffAdmission:
+        return await prepare_source_diff_admission(
+            self, settings=settings or {}, assert_current=assert_current or self.assert_ownership
+        )
 
     async def repository_roles(self, value: str) -> Data:
         repo = await self.repository(value)

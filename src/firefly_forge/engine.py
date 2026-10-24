@@ -8,10 +8,7 @@ import hashlib
 import json
 import os
 import re
-import stat
-import tempfile
 import uuid
-import zipfile
 from collections.abc import Callable
 from contextlib import AsyncExitStack, ExitStack
 from pathlib import Path
@@ -22,6 +19,7 @@ from filelock import FileLock, Timeout
 from pyfly.container import service
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 
+from firefly_forge.checkpoint_test_models import frozen_checkpoint_source
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.diagnostic_recipes import (
     PythonProfileRequest,
@@ -33,6 +31,7 @@ from firefly_forge.diagnostic_recipes import (
     profile_observation,
     trace_observation,
 )
+from firefly_forge.git_diff_models import GitDiffBudget
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command
 from firefly_forge.php_diagnostics import PHPProfileRequest, build_php_profile_argv, php_profile_observation
@@ -45,6 +44,7 @@ from firefly_forge.qa import BrowserJourney, EvidenceImage, QAReference
 from firefly_forge.scm import PullRequests, clone, push, source_revision
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
+from firefly_forge.source_snapshot import SourceDiffSnapshotV1, snapshot_run_fields
 from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
 
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
@@ -518,13 +518,19 @@ class Engine:
                     await emit("preparing", "Continuing the retained authorized workspace")
                 else:
                     await emit("preparing", "Creating isolated repository workspace")
+                    source_repository, frozen_revision, source_tree = frozen_checkpoint_source(run, repository)
                     base = await clone(
-                        repository,
+                        source_repository,
                         workspace,
                         branch,
                         env=git_env,
-                        revision=run.get("campaign_context", {}).get("source_base"),
+                        revision=frozen_revision or run.get("campaign_context", {}).get("source_base"),
                     )
+                    if source_tree is not None and (
+                        base != frozen_revision
+                        or await checked(["git", "rev-parse", "HEAD^{tree}"], workspace) != source_tree
+                    ):
+                        raise ValueError("The cloned source differs from the admitted checkpoint")
                 if not run.get("git_metadata_digest"):
                     exclusions = workspace / ".git" / "info" / "exclude"
                     existing = exclusions.read_text() if exclusions.exists() else ""
@@ -1286,7 +1292,14 @@ class Engine:
                 files, diff, tree = await self._snapshot(
                     workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
                 )
-                evidence = {"source_tree": tree, "changed_files": files, "implementation_round": attempt}
+                evidence = {
+                    "source_tree": tree,
+                    "changed_files": files,
+                    "implementation_round": attempt,
+                    "changed_file_count": diff.artifact.file_count,
+                    "changed_files_preview_truncated": len(files) < diff.artifact.file_count,
+                    "diff_artifact": diff.artifact.model_dump(mode="json"),
+                }
                 source_checkpoint = {"base_revision": base, "source_tree": tree}
                 if restored_receipt is not None:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
@@ -1299,11 +1312,7 @@ class Engine:
                 if self.git_deliveries is not None:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
-                (
-                    await self.store.update(
-                        identifier, changed_files=files, diff=safe(diff[:1_000_000]), status="validating"
-                    )
-                )
+                (await self.store.update(identifier, **snapshot_run_fields(files, diff), status="validating"))
                 commands = [Command.model_validate(command) for command in run["commands"]] or default_commands(
                     self.component_directory(run, workspace)
                 )
@@ -1406,8 +1415,7 @@ class Engine:
                             identifier,
                             final_verification=final,
                             source_tree=final_tree,
-                            changed_files=files,
-                            diff=safe(final_diff[:1_000_000]),
+                            **snapshot_run_fields(files, final_diff),
                         )
                     )
                     break
@@ -1595,10 +1603,19 @@ class Engine:
             ):
                 raise ReconciliationRequired("Retained workspace HEAD changed outside the recorded checkpoint")
             await self.store.update(identifier, checkpoint_revision=head)
-        files, _, tree = await self._snapshot(
+        files, source, tree = await self._snapshot(
             workspace, base, allow_unchanged=True, secrets=secrets, expected_head=head
         )
-        return {"base_revision": base, "head": head, "source_tree": tree, "origin": origin, "changed_files": files}
+        return {
+            "base_revision": base,
+            "head": head,
+            "source_tree": tree,
+            "origin": origin,
+            "changed_files": files,
+            "changed_file_count": source.artifact.file_count,
+            "changed_files_preview_truncated": len(files) < source.artifact.file_count,
+            "diff_artifact": source.artifact.model_dump(mode="json"),
+        }
 
     async def _repair_proposal(
         self, identifier: str, workspace: Path, secrets: dict[str, str], next_attempt: int
@@ -1844,7 +1861,11 @@ class Engine:
             and await checked(["git", "rev-parse", "HEAD^{tree}"], workspace) == run["source_tree"]
         ):
             return
-        if self.git_deliveries is not None and run.get("git_delivery_policy", {}).get("enabled"):
+        if (
+            self.git_deliveries is not None
+            and run.get("git_delivery_policy", {}).get("enabled")
+            and run.get("operation", "build") != "test"
+        ):
             parent = run.get("checkpoint_revision") or run["base_revision"]
             await self.git_deliveries.checkpoint(
                 identifier,
@@ -2143,47 +2164,107 @@ class Engine:
         allow_unchanged: bool = False,
         secrets: dict[str, str] | None = None,
         expected_head: str | None = None,
-    ) -> tuple[list[str], str, str]:
+        budget: GitDiffBudget | None = None,
+    ) -> tuple[list[str], SourceDiffSnapshotV1, str]:
+        import base64
+
+        from firefly_forge.git_diff_artifacts import read_diff_page, retain_git_diff
+        from firefly_forge.source_snapshot import (
+            diff_artifact_root,
+            diff_budget_for_run,
+            git_index_identity,
+            scan_changed_source,
+        )
+
         self._assert_git_metadata(workspace)
         await checked(["git", "fsck", "--strict", "--no-reflogs"], workspace, 60)
         from firefly_forge.source_index_sanitation import staging_exclusions
-        from firefly_forge.workspace_reconciliation import _regular
 
         exclusions = staging_exclusions(workspace, base)
         await checked(["git", "add", "--all", "--", ".", *exclusions], workspace)
         staging_exclusions(workspace, base)
-        admitted_index = _regular(workspace / ".git/index", 1048576)
-        inventory = await checked(["git", "diff", "--name-only", "-z", base, "--"], workspace)
-        files = [path for path in inventory.split("\x00") if path]
+        admitted_index = git_index_identity(workspace)
+        tree = ""
+        run = await self.store.get_run(workspace.name)
+        effective = budget if budget is not None else diff_budget_for_run(run)
+        if not isinstance(effective, GitDiffBudget):
+            raise ValueError("Source snapshots require an explicit typed artifact budget")
         root = self.component_roots.get(workspace.resolve(), ".")
-        if root != "." and any(not path.startswith(root + "/") for path in files):
-            raise ValueError("Source changes leave the selected project component; delivery is blocked")
-        if not files and not allow_unchanged:
-            raise ValueError("Worker produced no source changes")
-        if any(private_path(path) for path in files):
-            raise ValueError("Generated changes contain private credentials or worker metadata; inspect the workspace")
-        if await checked(["git", "rev-parse", "HEAD"], workspace) != (expected_head or base):
-            raise ValueError("Worker changed Git history; source must remain on the isolated baseline")
-        patch = await execute(["git", "diff", "--binary", "--no-ext-diff", "--no-color", base, "--"], workspace)
-        if patch.exit_code:
-            raise ValueError("Cannot create source patch")
-        diff = patch.output
-        if redact_secrets(redact(diff), secrets or {}) != diff:
-            raise ValueError("Generated source contains a configured credential; remove it before delivery")
-        from firefly_forge.source_patch_admission import SourcePatch
 
-        await Store.admit_source_patch(self.store, SourcePatch(diff))
-        staging_exclusions(workspace, base)
-        current_patch = await execute(["git", "diff", "--binary", "--no-ext-diff", "--no-color", base, "--"], workspace)
-        if (
-            current_patch.exit_code
-            or current_patch.output != diff
-            or _regular(workspace / ".git/index", 1048576) != admitted_index
-        ):
-            raise ValueError("Source patch or staged index changed during credential admission")
-        staging_exclusions(workspace, base)
-        tree = await checked(["git", "write-tree"], workspace)
-        return files, diff, tree
+        def validate_path(path: str) -> None:
+            if root != "." and not path.startswith(root + "/"):
+                raise ValueError("Source changes leave the selected project component; delivery is blocked")
+            if private_path(path):
+                raise ValueError(
+                    "Generated changes contain private credentials or worker metadata; inspect the workspace"
+                )
+
+        async def current() -> None:
+            staging_exclusions(workspace, base)
+            self._assert_git_metadata(workspace)
+            if await checked(["git", "rev-parse", "HEAD"], workspace) != (expected_head or base):
+                raise ValueError("Worker changed Git history; source must remain on the isolated baseline")
+            await checked(
+                ["git", "diff", "--quiet", "--no-ext-diff", "--no-textconv", "--", ".", *exclusions], workspace
+            )
+            await self.assert_ownership()
+            if git_index_identity(workspace) != admitted_index:
+                raise ValueError("Source patch or staged index changed during credential admission")
+
+        async with asyncio.timeout(effective.timeout_seconds):
+            scanner = await self.store.source_patch_scanner(settings=secrets or {}, assert_current=current)
+            files, count = await scan_changed_source(
+                workspace,
+                base,
+                None,
+                scanner,
+                budget=effective,
+                validate_path=validate_path,
+            )
+            if not count and not allow_unchanged:
+                raise ValueError("Worker produced no source changes")
+
+            async def admit(chunk: bytes, final: bool) -> None:
+                nonlocal tree, admitted_index
+                if final:
+                    await current()
+                await scanner(chunk, final)
+                if final:
+                    await current()
+                    tree = await checked(["git", "write-tree"], workspace)
+                    written_index = git_index_identity(workspace)
+                    await checked(
+                        ["git", "diff", "--cached", "--quiet", "--no-ext-diff", "--no-textconv", tree, "--"], workspace
+                    )
+                    await self.assert_ownership()
+                    if git_index_identity(workspace) != written_index:
+                        raise ValueError("Staged source changed while retaining its admitted tree")
+                    admitted_index = written_index
+                    await scanner.revalidate()
+                    if git_index_identity(workspace) != written_index:
+                        raise ValueError("Staged source changed during final credential revalidation")
+
+            artifactroot = diff_artifact_root(self.workspaces, workspace.name)
+            artifact = await retain_git_diff(workspace, base, artifactroot, budget=effective, scan_chunk=admit)
+            if artifact.file_count != count:
+                raise ValueError("Source artifact differs from its complete admitted path inventory")
+            preview_bytes = min(effective.preview_bytes, artifact.byte_count)
+            preview = read_diff_page(artifactroot, artifact, 0, preview_bytes) if preview_bytes else None
+            text = ""
+            if preview is not None:
+                raw = base64.b64decode(preview.content_base64, validate=True)
+                import codecs
+
+                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+                text = decoder.decode(raw, final=preview_bytes == artifact.byte_count)
+                preview_bytes -= len(decoder.getstate()[0])
+            source = SourceDiffSnapshotV1(
+                artifact=artifact,
+                preview=text,
+                preview_bytes=preview_bytes,
+                preview_truncated=preview_bytes < artifact.byte_count,
+            )
+            return files, source, tree
 
     def _assert_git_metadata(self, workspace: Path) -> None:
         baseline = self.git_metadata.get(workspace.resolve())
@@ -2217,40 +2298,29 @@ class Engine:
         await self._assert_delivery_tree(identifier, workspace, settings)
         return workspace
 
-    async def _artifact(self, identifier: str, workspace: Path, files: list[str], patch: str) -> None:
+    async def _artifact(self, identifier: str, workspace: Path, files: list[str], patch: SourceDiffSnapshotV1) -> None:
+        from firefly_forge.source_snapshot import archive_source_diff, diff_artifact_root, diff_budget_for_run
+
+        if not isinstance(patch, SourceDiffSnapshotV1):
+            raise ValueError("Changed-source archives require complete typed diff evidence")
         target = self.workspaces / f"{identifier}.zip"
         run = await self.store.get_run(identifier)
-        tracked = await checked(["git", "ls-tree", "-r", "--name-only", "-z", run["source_tree"]], workspace)
-        selected = [name for name in files if name in tracked.split("\x00") and not private_path(name)]
-        total = 0
-        with tempfile.TemporaryDirectory(dir=self.workspaces) as temporary:
-            source_archive = Path(temporary) / "source.zip"
-            if selected:
-                await checked(
-                    [
-                        "git",
-                        "archive",
-                        "--format=zip",
-                        f"--output={source_archive}",
-                        run["source_tree"],
-                        "--",
-                        *selected,
-                    ],
-                    workspace,
-                )
-            with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("forge-changes.patch", patch)
-                if selected:
-                    with zipfile.ZipFile(source_archive) as source:
-                        for entry in source.infolist():
-                            if entry.is_dir() or entry.filename not in selected:
-                                continue
-                            if stat.S_ISLNK(entry.external_attr >> 16):
-                                raise ValueError("Changed-file artifacts cannot contain symbolic links")
-                            total += entry.file_size
-                            if total > 50_000_000:
-                                raise ValueError("Changed-file artifact exceeds 50 MB")
-                            archive.writestr(entry.filename, source.read(entry))
+        root = self.component_roots.get(workspace.resolve(), ".")
+
+        def validate_path(path: str) -> None:
+            if private_path(path) or (root != "." and not path.startswith(root + "/")):
+                raise ValueError("Changed-file artifacts contain private or out-of-component source")
+
+        await archive_source_diff(
+            workspace,
+            run["source_tree"],
+            diff_artifact_root(self.workspaces, identifier),
+            patch,
+            target,
+            budget=diff_budget_for_run(run),
+            validate_path=validate_path,
+            assert_current=self.assert_ownership,
+        )
         (
             await self.store.update(
                 identifier,

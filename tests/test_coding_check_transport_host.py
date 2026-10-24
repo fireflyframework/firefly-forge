@@ -100,8 +100,7 @@ async def test_ephemeral_tokens_are_isolated_between_concurrent_invocations():
 
 @pytest.mark.asyncio
 async def test_actual_source_snapshot_holds_an_ephemeral_token_written_into_project_source(tmp_path):
-    from types import SimpleNamespace
-
+    from test_bridge_inflight_cancel import MemoryStore
     from test_execution import seed_repository
 
     from firefly_forge.engine import Engine
@@ -110,12 +109,12 @@ async def test_actual_source_snapshot_holds_an_ephemeral_token_written_into_proj
 
     workspace = await seed_repository(tmp_path / "public-replica")
     base = await checked(["git", "rev-parse", "HEAD"], workspace)
-    engine = Engine(SimpleNamespace(path=tmp_path / "fixture.db"), tmp_path / "workspaces")
+    engine = Engine(MemoryStore(tmp_path / "fixture.db"), tmp_path / "workspaces")
     token = "fixture-MCP-source-token-d796c48b"
     (workspace / "implementation.py").write_text("value = " + repr(token) + "\n")
     with (
         ephemeral_credentials({"FORGE_CODING_RUNTIME_TOKEN": token}),
-        pytest.raises(ValueError, match="configured credential"),
+        pytest.raises(ValueError, match="configured or historical credential"),
     ):
         await engine._snapshot(workspace, base)
     assert await checked(["git", "rev-parse", "HEAD"], workspace) == base

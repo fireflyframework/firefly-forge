@@ -151,6 +151,12 @@ class LearningLedger:
         return selected
 
     async def capture_outcome(self, run_id: str) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare learning outcome outside the native transaction")
+        actor = CURRENT_PRINCIPAL.get()
+        generation = self.store.configuration.write_generation
         async with self.store._unit():
             run_row = await self.journal._run(run_id)
             run = copy.deepcopy(run_row.data)
@@ -160,20 +166,60 @@ class LearningLedger:
                 raise ValueError("Only a completed verified source outcome can become learning evidence")
             if self.engine is None:
                 raise ValueError("Verified learning requires an actual native workspace inspector")
-            workspace = await self.engine.validated_workspace(run_id)
-            source = await self.engine._inspect_workspace(run_id, workspace, {})
-            expected = {
-                "base_revision": run["base_revision"],
-                "head": run["checkpoint_revision"],
-                "source_tree": run["source_tree"],
+
+        workspace = await self.engine.validated_workspace(run_id)
+        source = await self.engine._inspect_workspace(run_id, workspace, {})
+        expected = {
+            "base_revision": run["base_revision"],
+            "head": run["checkpoint_revision"],
+            "source_tree": run["source_tree"],
+        }
+        if any(source.get(key) != value for key, value in expected.items()):
+            raise ValueError("Learning source changed since its immutable verification receipts")
+        context = await observe_context(run, source, workspace, run["brief"], immutable_source=True)
+        retained = await self.engine._inspect_workspace(run_id, workspace, {})
+        if any(retained.get(key) != value for key, value in expected.items()):
+            raise ValueError("Learning source changed during declaration observation")
+        correlation = uuid.uuid5(uuid.NAMESPACE_URL, "forge-local-outcome:" + run_id + ":" + run["source_tree"]).hex
+        checks = run["final_verification"]
+        statement = (
+            "Observed local verification at source tree "
+            + run["source_tree"]
+            + ": "
+            + "; ".join(" ".join(item["argv"])[:500] + " returned exit code 0" for item in checks[:8])
+            + ". This records a local procedure outcome; external references remain unverified."
+        )
+        envelope = LearningEnvelope.model_validate(
+            {
+                "version": 1,
+                "type": "local_outcome",
+                "correlation_id": correlation,
+                "run_id": run_id,
+                "task_id": "verify",
+                "role": "qa",
+                "context": context.model_dump(),
+                "source": {key: source[key] for key in ("base_revision", "head", "source_tree")},
+                "purpose": "verification",
+                "question": run["brief"],
+                "statement": statement,
+                "receipts": [
+                    {
+                        "kind": item["kind"],
+                        "key": item["idempotency_key"],
+                        "sequence": item["sequence"],
+                        "digest": item["digest"],
+                    }
+                    for item in receipts
+                ],
             }
-            if any(source.get(key) != value for key, value in expected.items()):
-                raise ValueError("Learning source changed since its immutable verification receipts")
-            context = await observe_context(run, source, workspace, run["brief"], immutable_source=True)
-            retained = await self.engine._inspect_workspace(run_id, workspace, {})
-            if any(retained.get(key) != value for key, value in expected.items()):
-                raise ValueError("Learning source changed during declaration observation")
-            correlation = uuid.uuid5(uuid.NAMESPACE_URL, "forge-local-outcome:" + run_id + ":" + run["source_tree"]).hex
+        )
+        await self.store.admit_credentials(envelope.model_dump())
+        policy = LearningPolicy.model_validate(frozen_learning(run.get("learning_snapshot"))["settings"])
+        if not policy.enabled:
+            raise ValueError("Learning requires an enabled policy captured by this run")
+
+        async with self.store._unit():
+            run_row = await self.journal._run(run_id)
             existing = next(
                 (
                     item
@@ -182,45 +228,22 @@ class LearningLedger:
                 ),
                 None,
             )
+            at = await self.records_repository.database_time()
+            if CURRENT_PRINCIPAL.get() != actor:
+                raise ValueError("Learning outcome actor changed during preparation")
+            await ProjectAccess(self.store).authorize_execution(run_row.data)
+            current_receipts = await self._outcome_evidence(run_row.data)
+            await self.engine.assert_ownership()
+            if (
+                CURRENT_PRINCIPAL.get() != actor
+                or self.store.configuration.write_generation is not generation
+                or run_row.data != run
+                or current_receipts != receipts
+            ):
+                raise ValueError("Learning outcome source, receipts or authority changed during preparation")
+            self.store.reject_credentials(envelope.model_dump())
             if existing:
                 return self._view(existing)
-            checks = run["final_verification"]
-            statement = (
-                "Observed local verification at source tree "
-                + run["source_tree"]
-                + ": "
-                + "; ".join(" ".join(item["argv"])[:500] + " returned exit code 0" for item in checks[:8])
-                + ". This records a local procedure outcome; external references remain unverified."
-            )
-            envelope = LearningEnvelope.model_validate(
-                {
-                    "version": 1,
-                    "type": "local_outcome",
-                    "correlation_id": correlation,
-                    "run_id": run_id,
-                    "task_id": "verify",
-                    "role": "qa",
-                    "context": context.model_dump(),
-                    "source": {key: source[key] for key in ("base_revision", "head", "source_tree")},
-                    "purpose": "verification",
-                    "question": run["brief"],
-                    "statement": statement,
-                    "receipts": [
-                        {
-                            "kind": item["kind"],
-                            "key": item["idempotency_key"],
-                            "sequence": item["sequence"],
-                            "digest": item["digest"],
-                        }
-                        for item in receipts
-                    ],
-                }
-            )
-            await self.store.admit_credentials(envelope.model_dump())
-            policy = LearningPolicy.model_validate(frozen_learning(run.get("learning_snapshot"))["settings"])
-            if not policy.enabled:
-                raise ValueError("Learning requires an enabled policy captured by this run")
-            at = await self.records_repository.database_time()
             row = ForgeLearningRecordEntity(
                 id=uuid.uuid4(),
                 repository_id=run_row.repository_id,

@@ -54,6 +54,14 @@ export function GitDeliveryHistory({ value }: { value: GitDeliveries }) {
                     {labels[item.remote_status]}
                   </span>
                 </div>
+                {item.verification_status === "partial_unverified" && (
+                  <p role="note">
+                    <strong>Partial work · unverified.</strong> The
+                    implementation remains failed; this checkpoint saves its
+                    partial output. Verification and the remaining requirements
+                    are still pending.
+                  </p>
+                )}
                 <p>
                   {item.changed_file_count} changed{" "}
                   {item.changed_file_count === 1 ? "file" : "files"} ·{" "}

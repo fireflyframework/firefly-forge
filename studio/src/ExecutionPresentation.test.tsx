@@ -671,3 +671,55 @@ describe("unified code changes", () => {
     expect(renamed[0].path).toBe("new file.txt");
   });
 });
+
+it("keeps a failed run explanation readable without turning it into a console block", () => {
+  const html = renderToStaticMarkup(
+    <TimelineEventView
+      event={{
+        stage: "failed",
+        message:
+          "The implementation worker reported failure: Migration preserves records.\nIndependent acceptance remains outstanding. <img src=x>",
+      }}
+    />,
+  );
+  expect(html).toContain("Migration preserves records");
+  expect(html).toContain("Independent acceptance remains outstanding");
+  expect(html).not.toContain("<pre");
+  expect(html).not.toContain("<img");
+  expect(html).toContain("&lt;img");
+});
+
+it("summarizes structured worker evidence in WAL strings without exposing default JSON", async () => {
+  const { default: fixture } =
+    await import("../tests/provider-turn-completed-fixture.json");
+  const html = renderToStaticMarkup(
+    <EvidenceView
+      value={{ retained_report: JSON.stringify(fixture.worker_report.report) }}
+      advanced={false}
+    />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).toContain("Migration preserves existing records");
+  expect(initial).toContain("Failed");
+  expect(initial).not.toContain("<pre");
+  expect(initial).not.toContain("&quot;feedback&quot;");
+  expect(html).toContain("Advanced details");
+  expect(html).not.toContain("<details open");
+});
+
+it("retains an unknown legacy structured event in closed accessible details", () => {
+  const html = renderToStaticMarkup(
+    <TimelineEventView
+      event={{
+        stage: "stdout",
+        message: '{"type":"future.event","raw":"<script>untrusted</script>"}',
+      }}
+    />,
+  );
+  const initial = html.split("<details")[0];
+  expect(initial).not.toContain("<pre");
+  expect(html).toContain("Advanced details");
+  expect(html).toContain("&lt;script&gt;");
+  expect(html).not.toContain("<script>");
+  expect(html).not.toContain("<details open");
+});

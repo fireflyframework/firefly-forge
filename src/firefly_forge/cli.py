@@ -88,6 +88,40 @@ def git_delivery_observations(run_id: str, request_id: str) -> None:
         display(connection.git_delivery_observations(run_id, request_id))
 
 
+@git_deliveries.command("diff-index")
+@click.argument("run_id")
+@click.argument("expected_manifest")
+@click.option("--page", type=click.IntRange(min=0), default=0, show_default=True)
+@click.option("--request-id", default=None, help="Read the exact checkpoint request instead of the current run diff.")
+def git_diff_index(run_id: str, expected_manifest: str, page: int, request_id: str | None) -> None:
+    """Read one manifest-pinned file-index page; this performs no Git operation."""
+    with client() as connection:
+        display(
+            connection.run_diff_index(run_id, expected_manifest, page=page, request_id=request_id).model_dump(
+                mode="json"
+            )
+        )
+
+
+@git_deliveries.command("diff-file")
+@click.argument("run_id")
+@click.argument("expected_manifest")
+@click.argument("file_index", type=click.IntRange(min=0))
+@click.option("--offset", type=click.IntRange(min=0), default=0, show_default=True)
+@click.option("--limit", type=click.IntRange(1, 1048576), default=32768, show_default=True)
+@click.option("--request-id", default=None, help="Read the exact checkpoint request instead of the current run diff.")
+def git_diff_file(
+    run_id: str, expected_manifest: str, file_index: int, offset: int, limit: int, request_id: str | None
+) -> None:
+    """Read one verified file window as an operator JSON envelope with base64 content."""
+    with client() as connection:
+        display(
+            connection.run_diff_file(
+                run_id, expected_manifest, file_index=file_index, offset=offset, limit=limit, request_id=request_id
+            ).model_dump(mode="json")
+        )
+
+
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8787, type=click.IntRange(1, 65535), show_default=True)

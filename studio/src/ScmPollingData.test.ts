@@ -64,6 +64,20 @@ it("validates the exact model-built REST polling receipt", async () => {
     fixture.receipt,
   );
 });
+it("reads separately granted checkpoint consent without treating it as answer authority", async () => {
+  const value = structuredClone(fixture.receipt);
+  value.request.allowed_actions = ["status", "checkpoint"];
+  value.request_digest = await attemptDigest(value.request);
+  const { digest: _digest, ...body } = value;
+  void _digest;
+  const sealed = await seal(body);
+  const result = await readPollingBindingReceipt(sealed, {
+    ...scope,
+    receiptDigest: sealed.digest,
+  });
+  expect(result.request.allowed_actions).toEqual(["status", "checkpoint"]);
+  expect(result.request.allowed_actions).not.toContain("respond");
+});
 it("renders historical REST attribution with an exact historical read and no current-head requirement", async () => {
   const history = await events();
   const reads: string[] = [];

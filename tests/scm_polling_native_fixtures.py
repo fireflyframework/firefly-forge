@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from communication_model_fixture import recorded_communication_models
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.testclient import TestClient
@@ -108,6 +109,7 @@ def native_poll(tmp_path, postgres_schema, monkeypatch, request):
         raise AssertionError("Unexpected recorded App route: " + request.method + " " + path)
 
     with (
+        recorded_communication_models() as install_communication,
         TestClient(
             create_application(tmp_path / "api", token, role="api"),
             base_url="http://testserver",
@@ -126,6 +128,7 @@ def native_poll(tmp_path, postgres_schema, monkeypatch, request):
         assert context.get_bean(SCMPollController).polling is service
         assert collaboration.polling is service and store.scm_polling is service
         assert collaboration.deployments.engine.journal is journal
+        install_communication(collaboration, http.app.state.engine)
         assert service.collaboration is collaboration and service.poller is None
         client = httpx.AsyncClient(transport=httpx.MockTransport(provider))
         service.scm._client = client

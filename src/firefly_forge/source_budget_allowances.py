@@ -213,6 +213,23 @@ def admission_contract_digest() -> str:
                 "tool_broker.py",
                 "engine.py",
                 "source_edit_qualification.py",
+                "source_snapshot.py",
+                "source_diff_admission.py",
+                "git_diff_artifacts.py",
+                "git_diff_models.py",
+                "connection_oauth.py",
+                "oauth_credential_fingerprints.py",
+                "secrets.py",
+                "git_workspace.py",
+                "sandbox.py",
+                "source_index_sanitation.py",
+                "workspace_reconciliation.py",
+                "checkpoint_test_models.py",
+                "checkpoint_test_sources.py",
+                "source_catalog.py",
+                "verification_source_preparation.py",
+                "verification_models.py",
+                "verification_handoffs.py",
             )
         }
     )
@@ -565,6 +582,7 @@ def qualified_scope_transition(
     from firefly_forge.source_edit_qualification import (
         _profiles,
         historical_profile_seal,
+        profile_seal,
         qualified_profile,
         source_budget_limits,
     )
@@ -575,9 +593,17 @@ def qualified_scope_transition(
     limits = source_budget_limits(profile)
     if any(review["parameters"][k] > limits[k] for k in ("read_file_lifetime_limit", "activation_ceiling")):
         raise ValueError("The source allowance exceeds its newly qualified native profile")
-    legacy = next(
-        (p for p in _profiles() if historical_profile_seal(p) == old["qualification"]),
-        None,
+    legacy = (
+        profile
+        if profile_seal(profile) == old["qualification"]
+        else next(
+            (
+                p
+                for p in _profiles()
+                if p.version < profile.version and historical_profile_seal(p) == old["qualification"]
+            ),
+            None,
+        )
     )
     if legacy is None:
         raise ValueError("The source parent has no exact package-owned historical profile provenance")

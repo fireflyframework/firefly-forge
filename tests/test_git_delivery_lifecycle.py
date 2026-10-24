@@ -11,6 +11,7 @@ from test_git_delivery_local import delivery_case as delivery_case
 from test_git_delivery_local import git
 
 from firefly_forge import scm
+from firefly_forge.engine import Engine
 from firefly_forge.git_workspace import metadata_digest
 
 
@@ -118,14 +119,17 @@ async def test_two_early_pushes_update_one_draft_and_verified_final_promotes_it(
     async def exact(*args):
         pass
 
+    c.service.engine._publication_binding = Engine._publication_binding
     c.service.engine._assert_delivery_tree = exact
     c.service.engine._assert_publication_current = exact
     run = await c.service.store.get_run("1" * 32)
     draft = {
         "title": "Verified public unit",
+        "communication": {"mode": "deterministic", "reason": "unconfigured"},
         "body": "The public counter passed the recorded checks.",
         "body_sha256": hashlib.sha256(b"The public counter passed the recorded checks.").hexdigest(),
     }
+    draft["binding_sha256"] = Engine._publication_binding(run, await c.service.store.repository(run["repository_id"]))
     prepared = await c.service.final_start(run, actor, draft)
     url = await c.service.final_ready(prepared, draft)
     assert url == first["pr_url"] and c.remote_state["draft"]["draft"] is False

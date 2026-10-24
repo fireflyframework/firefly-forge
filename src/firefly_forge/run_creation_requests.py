@@ -13,6 +13,7 @@ from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.data.transaction import current_unit_of_work
 from sqlalchemy import text
 
+from firefly_forge.checkpoint_test_sources import CheckpointTestSources
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
 from firefly_forge.journal import digest
@@ -65,8 +66,13 @@ class RunCreationRequests:
         records: ForgeRunCreationRequestRepository | None = None,
         reservations: ForgeRunCreationReservationRepository | None = None,
         cancellations: ForgeRunCreationCancellationRepository | None = None,
+        checkpoint_sources: CheckpointTestSources | None = None,
     ) -> None:
         self.store = store
+        if checkpoint_sources is not None:
+            if checkpoint_sources.store is not store:
+                raise ValueError("Checkpoint source admission belongs to another native store")
+            self.store.checkpoint_sources = checkpoint_sources
         self.records = records or ForgeRunCreationRequestRepository()
         self.controls = RunCreationControls(
             self,
@@ -194,6 +200,12 @@ class RunCreationRequests:
                     run.data.get(key) != receipt[key] for key in ("repository_id", "project_id", "component_id")
                 ):
                     raise ValueError("Original run scope differs from the retained creation receipt")
+                if receipt.get("source_checkpoint") is not None:
+                    from firefly_forge.checkpoint_test_models import frozen_checkpoint_source
+
+                    if run.data.get("source_checkpoint_snapshot") != receipt["source_checkpoint"]:
+                        raise ValueError("Original run source differs from its retained checkpoint creation receipt")
+                    frozen_checkpoint_source(run.data, {"id": receipt["repository_id"]})
                 await self.store.admit_credentials(receipt)
                 await self._scope(actor, receipt["input"], write=write)
                 _context(actor)
@@ -262,6 +274,8 @@ class RunCreationRequests:
                         "admitted_at": run["created_at"],
                         "admission_digest": digest(admission),
                     }
+                    if run.get("source_checkpoint_snapshot") is not None:
+                        receipt["source_checkpoint"] = copy.deepcopy(run["source_checkpoint_snapshot"])
                     receipt["digest"] = digest(receipt)
                     receipt = RunCreationReceipt.model_validate(receipt).model_dump(mode="json")
                     _bounded(receipt)

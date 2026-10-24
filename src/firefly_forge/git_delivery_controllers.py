@@ -37,9 +37,23 @@ class GitDeliveryController:
     async def list(self, run_id: PathVar[str]) -> dict[str, Any]:
         return await self.deliveries.view(run_id)
 
+    @get_mapping("/adoption-candidate")
+    async def adoption_candidate(self, run_id: PathVar[str]) -> dict[str, Any]:
+        from firefly_forge.git_failed_unit_adoption import GitFailedUnitAdoptions
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+        user = CURRENT_PRINCIPAL.get()
+        if user is None:
+            raise AccessDenied("Sign in before reviewing a failed-unit checkpoint")
+        return await GitFailedUnitAdoptions(self.deliveries).candidate(run_id, ProjectAccess.actor_snapshot(user))
+
     @post_mapping("", status_code=202)
     async def request(self, run_id: PathVar[str], body: Body[GitDeliveryInputV1]) -> dict[str, Any]:
         return await self.tickets.request(run_id, body)
+
+    @get_mapping("/candidate")
+    async def candidate(self, run_id: PathVar[str]) -> dict[str, Any]:
+        return await self.deliveries.candidate(run_id)
 
     @get_mapping("/requests/{request_id}")
     async def ticket(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:

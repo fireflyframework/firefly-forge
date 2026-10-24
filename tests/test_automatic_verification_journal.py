@@ -33,6 +33,10 @@ class Memory:
         self.rows = []
         self.effects = []
         self.run_records = self
+        self.ownership_checks = 0
+
+    async def assert_ownership(self):
+        self.ownership_checks += 1
 
     @asynccontextmanager
     async def _unit(self):
@@ -97,6 +101,7 @@ async def test_paused_request_has_explicit_narrow_native_stage_admission(setup):
     expected = intent(memory)
     state = await journal.verification_begin(memory.id.hex, expected, check_current=lambda current: None)
     assert memory.run.status == "paused"
+    assert memory.ownership_checks == 1
     assert memory.task.status == "running"
     assert memory.task.attempt == 1
     assert memory.task.data["verification_handoff"] == expected["id"]

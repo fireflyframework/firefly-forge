@@ -23,7 +23,7 @@ class GroundedSelection(BaseModel):
 
 class NaturalDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    intent: Literal["status", "answer", "resume", "clarify", "dialogue", "product"]
+    intent: Literal["status", "answer", "resume", "clarify", "dialogue", "product", "checkpoint"]
     message: str = Field(min_length=1, max_length=12000)
     choice: StrictInt | None = Field(default=None, ge=1, le=200)
     language: Literal["en", "es"] | None = None
@@ -63,7 +63,15 @@ class NaturalResolution(BaseModel):
     version: Literal[1] = 1
     scope: Data
     state: Literal[
-        "status", "answer", "resume", "waiting", "dialogue", "product_answer", "conversation_answer", "product_request"
+        "status",
+        "answer",
+        "resume",
+        "waiting",
+        "dialogue",
+        "product_answer",
+        "conversation_answer",
+        "product_request",
+        "checkpoint",
     ]
     reason: str
     candidates: list[Data] = Field(max_length=200)
@@ -128,7 +136,7 @@ def _offered_rows(scope: Data, candidates: list[Data], *, question_only: bool) -
             row
             for row in candidates
             if all(row.get(key) == scope.get(key) for key in SCOPE_FIELDS)
-            and (not question_only or row.get("question_id"))
+            and (not question_only or row.get("question_id") and row.get("read_only") is not True)
         ],
         key=lambda row: (row.get("run_id") or "", row.get("question_id") or ""),
     )
@@ -191,6 +199,8 @@ def resolve_task(
     ):
         return result.model_copy(update={"reason": "explicit_human_choice_required"})
     row = rows[choice - 1]
+    if row.get("read_only") is True and decision.intent != "status":
+        return result.model_copy(update={"reason": "read_only_reference"})
     if row.get("origin") in {"product_assistant_turn", "natural_turn"}:
         if decision.intent == "resume":
             return result.model_copy(update={"reason": "product_answer_has_no_execution_authority"})
@@ -209,8 +219,10 @@ def resolve_task(
                 }
             )
         return result.model_copy(update={"reason": "question_not_pending"})
-    if decision.intent == "status":
-        return result.model_copy(update={"state": "status", "reason": "current_verified_task", "run_id": row["run_id"]})
+    if decision.intent in {"status", "checkpoint"}:
+        return result.model_copy(
+            update={"state": decision.intent, "reason": "current_verified_task", "run_id": row["run_id"]}
+        )
     if (
         row.get("run_status") != "paused"
         or row.get("consumed") is not False

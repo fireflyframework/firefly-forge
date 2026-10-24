@@ -66,7 +66,7 @@ class SCMPollActorBindingInputV2(PollContract):
     expected_reference_digest: Digest
     native_user_id: NativeID
     component_ids: list[Component] = Field(min_length=1, max_length=50)
-    allowed_actions: list[Literal["respond", "status"]] = Field(min_length=1, max_length=2)
+    allowed_actions: list[Literal["respond", "status", "checkpoint"]] = Field(min_length=1, max_length=3)
     active: bool
     acknowledge_api_observed_identity: Literal[True]
 

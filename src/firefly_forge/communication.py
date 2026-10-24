@@ -94,7 +94,8 @@ class CommunicationGitDeliveryV1(StrictContract):
     checkpoint_revision: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
     source_tree: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
     sequence: int = Field(ge=1, le=50)
-    changed_file_count: int = Field(ge=1, le=200)
+    changed_file_count: int = Field(ge=1)
+    implementation_disposition: Literal["failed"] | None = None
 
 
 class CommunicationAssistantTurnV1(StrictContract):
@@ -266,9 +267,11 @@ def communication_facts(
         }
     if git_delivery is not None:
         facts["git_delivery"] = {
-            **git_delivery.model_dump(exclude={"version"}),
-            "verification": "pending",
-            "purpose": "intermediate_draft_pull_request",
+            **git_delivery.model_dump(exclude={"version"}, exclude_none=True),
+            "verification": "not_run" if git_delivery.implementation_disposition == "failed" else "pending",
+            "purpose": "unverified_failed_checkpoint"
+            if git_delivery.implementation_disposition == "failed"
+            else "intermediate_draft_pull_request",
         }
     checkpoint = run.get("git_delivery_summary")
     if (

@@ -94,6 +94,8 @@ Compare the receipt with the retained request identity and reason. A record inva
 
 ## Decide whether a search is needed
 
+A verified local outcome is captured outside a caller transaction. The factory first reads the verified run and receipts in a short unit, then inspects Git, scans source, observes declarations and admits credentials outside the writer unit. Under the final run lock, it rechecks the actor, execution permission, run, receipts, configuration and ownership. The record, learning event, run event and pending projection commit together; refusal, cancellation or a failed write cannot leave a partial learning record.
+
 <figure class="forge-shot forge-architecture-diagram" markdown="1">
 <picture>
   <source media="(max-width: 640px)" srcset="../diagrams/learning-lookup-narrow.svg">

@@ -41,12 +41,19 @@ def natural_policy_digest() -> str:
         "scm_natural_runtime.py",
         "scm_natural_tasks.py",
         "scm_natural_effects.py",
+        "scm_natural_checkpoints.py",
+        "scm_poll_models.py",
         "scm_natural_feedback.py",
         "scm_natural_render.py",
         "scm_natural_questions.py",
         "scm_natural_replies.py",
         "scm_natural_controllers.py",
         "scm_conversations.py",
+        "scm_conversation_models.py",
+        "checkpoint_test_models.py",
+        "run_creation_models.py",
+        "run_creation_requests.py",
+        "run_creation_persistence.py",
         "scm_polling.py",
         "collaboration.py",
         "collaboration_persistence.py",
@@ -56,9 +63,11 @@ def natural_policy_digest() -> str:
         "resources/prompts/scm-natural-v1/manifest.json",
         "resources/prompts/scm-natural-v1/system.yaml",
         "resources/prompts/scm-natural-v1/system-1.0.2.yaml",
+        "resources/prompts/scm-natural-v1/system-1.0.3.yaml",
         "resources/prompts/scm-natural-v1/request.yaml",
         "resources/prompts/scm-natural-v1/feedback.yaml",
         "resources/prompts/scm-natural-v1/copy.yaml",
+        "resources/prompts/scm-natural-v1/copy-1.0.1.yaml",
     ):
         path = root / name
         metadata = path.lstat()
@@ -147,11 +156,12 @@ class SCMNaturalTasks:
         candidates = []
         journal = self.collaboration.deployments.engine.journal if self.collaboration.deployments else None
         for reference in references:
-            original = by_id[reference["receipt_id"]]
-            if original["actor"] != delivery["actor"]:
+            checkpoint_source = reference.get("kind") in {"native_checkpoint_test", "native_checkpoint_maintain"}
+            original = by_id[reference["parent_receipt_id"] if checkpoint_source else reference["receipt_id"]]
+            if not checkpoint_source and original["actor"] != delivery["actor"]:
                 continue
             run = await self.store.get_run(reference["run_id"])
-            request = run.get("worker_request") or {}
+            request = (run.get("worker_request") or {}) if not checkpoint_source else {}
             async with self.store._unit():
                 entries = (
                     [
@@ -164,7 +174,7 @@ class SCMNaturalTasks:
             if len(entries) > 2000 or len(json.dumps(entries).encode()) > 4 * 1024 * 1024:
                 raise AccessDenied("The linked question journal exceeds its bounded native lookup")
             try:
-                projection = _worker_question(original, run, entries)
+                projection = _worker_question(original, run, entries) if not checkpoint_source else {}
             except (AccessDenied, ValueError):
                 projection = {}
             question = projection.get("question")
@@ -186,6 +196,15 @@ class SCMNaturalTasks:
             )
             if question is not None:
                 candidates[-1].update(origin="worker_journal", publication=projection["publication"])
+            elif checkpoint_source:
+                source = run["source_checkpoint_snapshot"]
+                candidates[-1].update(
+                    origin=reference["kind"],
+                    read_only=True,
+                    operation=source.get("operation", "test"),
+                    source_parent_run_id=source["reference"]["run_id"],
+                    source_revision=source["revision"],
+                )
         manager = getattr(self.collaboration, "product_assistant", None)
         if manager is not None:
             products: dict[str, Data] = {}
@@ -495,11 +514,15 @@ class SCMNaturalTasks:
                 previous=context["previous"],
             )
             status_context = context["status_context"]
-            if decision.intent == "status":
+            if decision.intent in {"status", "checkpoint"}:
                 resolution = resolution.model_copy(
                     update={
-                        "state": "status" if status_context["selection"] == "run" else "waiting",
-                        "reason": "authenticated_ticket_status_reference"
+                        "state": decision.intent if status_context["selection"] == "run" else "waiting",
+                        "reason": (
+                            "authenticated_ticket_status_reference"
+                            if decision.intent == "status"
+                            else "authenticated_ticket_checkpoint_reference"
+                        )
                         if status_context["selection"] == "run"
                         else "clarification_required",
                         "run_id": status_context["selected_run_id"],

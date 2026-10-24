@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from firefly_forge.journal import digest
+
+if TYPE_CHECKING:
+    from firefly_forge.verification_source_preparation import PreparedVerificationSource
 
 
 class AutomaticVerificationPolicy(BaseModel):
@@ -53,7 +56,18 @@ def verification_provider(store: Any, run: dict[str, Any], agent: str | None = N
     return digest({"agent": agent or run["agent"], "settings": settings})
 
 
-def verification_source(workspace: Path) -> str:
+def verification_source(workspace: Path, *, prepared: PreparedVerificationSource | None = None) -> str:
+    if prepared is None:
+        from firefly_forge.verification_source_preparation import current_verification_source
+
+        prepared = current_verification_source(workspace)
+    if prepared is not None:
+        from firefly_forge.verification_source_preparation import PreparedVerificationSource
+
+        if not isinstance(prepared, PreparedVerificationSource) or prepared.workspace != workspace:
+            raise ValueError("Prepared verification source belongs to another workspace")
+        prepared.fence()
+        return prepared.source_digest
     from firefly_forge.assurance import _manifest
 
     if workspace.is_symlink() or not workspace.is_dir():
@@ -66,7 +80,7 @@ def verification_source(workspace: Path) -> str:
     )
 
 
-def check_verification_cut(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> None:
+def check_verification_authority(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> None:
     from firefly_forge.tool_broker import tool_policy_snapshot
 
     if (
@@ -87,7 +101,13 @@ def check_verification_cut(store: Any, run: dict[str, Any], intent: dict[str, An
         )
     ):
         raise ValueError("Automatic verification request changed")
-    actual = verification_source(Path(intent["workspace"]))
+
+
+def check_verification_cut(
+    store: Any, run: dict[str, Any], intent: dict[str, Any], *, prepared: PreparedVerificationSource | None = None
+) -> None:
+    check_verification_authority(store, run, intent)
+    actual = verification_source(Path(intent["workspace"]), prepared=prepared)
     if actual != intent["source_digest"]:
         raise ValueError("Automatic verification source changed")
 

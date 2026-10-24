@@ -30,11 +30,41 @@ class GitDeliveryRequests:
             raise AccessDenied("Sign in before requesting a Git checkpoint")
         actor = ProjectAccess.actor_snapshot(user)
         run = await self.store.get_run(run_id)
-        policy = GitDeliveryPolicyV1.model_validate(run.get("git_delivery_policy") or {})
+        from firefly_forge.git_failed_unit_adoption import GitFailedUnitAdoptions, clock_ms, effective_policy
+
+        adoption_expires = (
+            clock_ms() + body.explicit_adoption.valid_for_seconds * 1000 if body.explicit_adoption else None
+        )
+        if body.explicit_adoption is not None:
+            async with self.store._unit():
+                retained = await self.requests.records.find_by_id(identifier(body.request_id))
+                if retained is not None:
+                    if (
+                        retained.kind != KIND
+                        or retained.run_id.hex != run_id
+                        or retained.data["request"]["input"] != body.model_dump(mode="json")
+                        or retained.data["request"]["actor"] != actor
+                    ):
+                        raise ValueError("The original failed-unit request belongs to another input or actor")
+                    return await self.get(run_id, body.request_id)
+            adoptions = GitFailedUnitAdoptions(self.deliveries)
+            candidate = await adoptions.candidate(run_id, actor)
+            adoptions.compare(candidate, body.explicit_adoption)
+            if body.expected_head != candidate["expected_head"]:
+                raise ValueError("The adopted source HEAD differs from the explicit review")
+            policy = GitDeliveryPolicyV1.model_validate(candidate["policy"])
+        else:
+            if run.get("git_failed_unit_adoption"):
+                raise ValueError(
+                    "An adopted failed unit has one original checkpoint request; inspect it without replay"
+                )
+            policy = await effective_policy(self.deliveries, run)
         if not policy.enabled or run["status"] not in {"paused", "failed"}:
             raise ValueError("Checkpointing requires an enabled policy and a quiescent paused or failed run")
         await self.deliveries._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
-        incoming = {"input": body.model_dump(mode="json"), "actor": actor, "binding": binding(run)}
+        incoming: Data = {"input": body.model_dump(mode="json"), "actor": actor, "binding": binding(run)}
+        if adoption_expires is not None:
+            incoming["explicit_adoption_expires_at_ms"] = adoption_expires
         await self.store.admit_credentials(incoming)
         async with self.store._unit() as session:
             await session.execute(
@@ -46,6 +76,9 @@ class GitDeliveryRequests:
             if binding(current) != binding(run) or CURRENT_PRINCIPAL.get() != user:
                 raise ValueError("The checkpoint run or caller changed during admission")
             await self.deliveries._authorize(current, actor, "release" if policy.remote == "draft_pr" else "execute")
+            if body.explicit_adoption is not None:
+                current_candidate = await GitFailedUnitAdoptions(self.deliveries).candidate(run_id, actor)
+                GitFailedUnitAdoptions.compare(current_candidate, body.explicit_adoption)
             old = await self.requests.records.find_by_id(identifier(body.request_id))
             if old is not None:
                 if old.kind != KIND or old.run_id.hex != run_id or old.data["request"] != incoming:
@@ -78,6 +111,8 @@ class GitDeliveryRequests:
                 )
                 await self.requests.records.save(row)
                 await self.requests._event(row, "request_admitted", {"request_digest": data["request_digest"]})
+            if adoption_expires is not None and clock_ms() >= adoption_expires:
+                raise ValueError("The explicit failed-unit consent expired before request admission")
         return await self.get(run_id, body.request_id)
 
     async def get(self, run_id: str, request_id: str) -> Data:
@@ -140,11 +175,22 @@ class GitDeliveryRequests:
             if binding(run) != request["binding"]:
                 raise ValueError("The admitted checkpoint run changed before worker dispatch")
             body = GitDeliveryInputV1.model_validate(request["input"])
+            if body.explicit_adoption is not None:
+                from firefly_forge.git_failed_unit_adoption import GitFailedUnitAdoptions
+
+                await GitFailedUnitAdoptions(self.deliveries).adopt(
+                    claimed["run_id"],
+                    body.request_id,
+                    request["actor"],
+                    body.explicit_adoption,
+                    expires=request["explicit_adoption_expires_at_ms"],
+                )
             result = await self.deliveries.checkpoint(
                 claimed["run_id"],
                 request_id=body.request_id,
                 expected_head=body.expected_head,
                 expected_source_tree=body.expected_source_tree,
+                expected_source_digest=body.expected_source_digest,
                 actor=request["actor"],
             )
             await self._finish(claimed, "completed", result)
