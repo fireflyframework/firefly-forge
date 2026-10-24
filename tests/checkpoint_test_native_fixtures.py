@@ -24,6 +24,7 @@ from firefly_forge.models import RunInput
 from firefly_forge.providers import AgentResult
 from firefly_forge.run_creation_requests import RunCreationRequests
 from firefly_forge.runtime_roles import RuntimeRoles
+from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.store import Store
 
 
@@ -137,6 +138,8 @@ def checkpoint_native(native_poll, tmp_path, monkeypatch):
         journal = Journal(worker)
         engine = Engine(worker, case.http.app.state.engine.workspaces, lambda _: Worker(), journal=journal)
         engine.enforce_ownership = True
+        engine.sandbox = SandboxExecutor(worker, journal)
+        assert engine.sandbox.store is worker and engine.sandbox.journal is journal
         engine.connections = case.scm
         engine.communication_writer = case.http.app.state.engine.communication_writer
         deliveries = GitDeliveries(worker, engine, journal)

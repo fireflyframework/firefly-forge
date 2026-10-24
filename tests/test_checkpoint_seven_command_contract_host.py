@@ -12,6 +12,7 @@ from test_run_admission_prepared_host import REPOSITORY
 from test_run_admission_prepared_host import admission as admission
 from test_runner_configuration import service
 
+from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal
 from firefly_forge.models import RunInput
 from firefly_forge.process import ProcessResult
@@ -20,7 +21,9 @@ from firefly_forge.sandbox_models import SandboxInput, validate_sandbox_snapshot
 from firefly_forge.store import Store
 
 
-async def test_creation_capture_persists_seven_and_executor_refuses_eighth_or_reset_attempt(admission, tmp_path):
+async def test_creation_capture_persists_seven_and_executor_refuses_eighth_or_reset_attempt(
+    admission, tmp_path, monkeypatch
+):
     store, state, _, _ = admission
     store.runners = await service(store, tmp_path)
     capture = store.runners.capture_run
@@ -80,12 +83,26 @@ async def test_creation_capture_persists_seven_and_executor_refuses_eighth_or_re
         def select(self, config):
             return Backend()
 
-    executor = SandboxExecutor(memory, journal, backends=Backends())
+    engine = Engine(memory, tmp_path / "worker-workspaces", journal=journal)
+    engine.enforce_ownership = True
+    engine.sandbox = SandboxExecutor(memory, journal, backends=Backends())
+    assert engine.sandbox.store is memory and engine.sandbox.journal is journal
+
+    async def forbidden_fallback(*args, **kwargs):
+        raise AssertionError("The native worker fixture must use its governed SandboxExecutor")
+
+    monkeypatch.setattr("firefly_forge.engine.execute", forbidden_fallback)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     for ordinal, command in enumerate(commands, 1):
-        result = await executor.execute(
-            child["id"], workspace, workspace, command["argv"], command["timeout"], "verify", ordinal=ordinal
+        result = await engine._project_command(
+            child["id"],
+            await memory.get_run(child["id"]),
+            workspace,
+            command["argv"],
+            command["timeout"],
+            "verify",
+            ordinal=ordinal,
         )
         assert result.exit_code == 0
     receipts = await journal.sandbox_executions(child["id"])
@@ -93,14 +110,17 @@ async def test_creation_capture_persists_seven_and_executor_refuses_eighth_or_re
     assert sorted(row["ordinal"] for row in receipts) == list(range(1, 8))
     assert all(row["effects"]["start"]["status"] == "done" for row in receipts)
     with pytest.raises(ValueError, match="command budget is exhausted"):
-        await executor.execute(child["id"], workspace, workspace, ["public-check", "8"], 30, "verify", ordinal=8)
+        await engine._project_command(
+            child["id"], await memory.get_run(child["id"]), workspace, ["public-check", "8"], 30, "verify", ordinal=8
+        )
     await journal.fail(child["id"], stage["idempotency_key"], "quota", "Public exhausted command budget")
     await journal.resume(child["id"])
     resumed = await journal.intent(child["id"], "verify", attempt=2)
     assert resumed["disposition"] == "execute"
     assert next(t for t in (await journal.plan(child["id"]))["tasks"] if t["id"] == "verify")["attempt"] == 2
+    engine.sandbox = SandboxExecutor(memory, journal, backends=Backends())
     with pytest.raises(ValueError, match="total command budget is exhausted"):
-        await SandboxExecutor(memory, journal, backends=Backends()).execute(
-            child["id"], workspace, workspace, commands[0]["argv"], 30, "verify", ordinal=1
+        await engine._project_command(
+            child["id"], await memory.get_run(child["id"]), workspace, commands[0]["argv"], 30, "verify", ordinal=1
         )
     assert len(calls) == 7 and await journal.sandbox_executions(child["id"]) == receipts and ownership
