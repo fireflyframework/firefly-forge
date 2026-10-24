@@ -25,6 +25,24 @@ class ForgeRunCreationRequestEntity(BaseEntity):
 
 @repository
 class ForgeRunCreationRequestRepository(Repository[ForgeRunCreationRequestEntity, UUID]):
+    async def checkpoint_children(self, parent_ids: list[UUID], repository_id: UUID) -> list[UUID]:
+        if not parent_ids or len(parent_ids) > 200:
+            raise ValueError("Checkpoint lineage requires a bounded authenticated parent scope")
+        entity = ForgeRunCreationRequestEntity
+        return list(
+            await self._require_session().scalars(
+                select(entity.id)
+                .where(
+                    entity.repository_id == repository_id,
+                    entity.data["source_checkpoint"]["reference"]["run_id"]
+                    .as_string()
+                    .in_([value.hex for value in parent_ids]),
+                )
+                .order_by(entity.id)
+                .limit(201)
+            )
+        )
+
     async def envelope_bytes(self, request_id: UUID) -> int | None:
         result = await self._require_session().scalar(
             select(func.octet_length(cast(ForgeRunCreationRequestEntity.data, Text))).where(

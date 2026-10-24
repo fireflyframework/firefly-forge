@@ -320,7 +320,7 @@ class SCMPolling:
             connection_revision=scope["connection_revision"],
             expected_previous_digest=previous[0]["digest"] if previous else None,
             collaboration_enabled=enabled,
-            supported_actions=["respond", "status"],
+            supported_actions=["respond", "status", "checkpoint"],
             minimum_interval_seconds=60,
             provider_grant="not_observed",
         )
@@ -949,7 +949,9 @@ class SCMPolling:
                 raise AccessDenied("The reviewed API observation changed")
             memberships = await self.memberships.for_user(identifier(request.native_user_id))
             for action in request.allowed_actions:
-                permission: Permission = "read" if action == "status" else "execute"
+                permission: Permission = (
+                    "read" if action == "status" else "release" if action == "checkpoint" else "execute"
+                )
                 if not any(
                     r.project_id.hex == project and r.active and ProjectAccess.permits(r.role, permission)
                     for r in memberships
@@ -1199,13 +1201,71 @@ class SCMPolling:
             await self.authorize_snapshot(ProjectAccess.actor_snapshot(actor), project, "release")
         return actor
 
+    async def resolve_checkpoint(self, delivery: Data, *, remote: bool = True) -> Principal:
+        from firefly_forge.scm_natural_effects import intake_digest
+        from firefly_forge.scm_natural_tasks import natural_policy_digest
+
+        turn = delivery.get("natural_turn") or {}
+        resolution = turn.get("resolution") or {}
+        if (
+            delivery.get("status") != "processed"
+            or turn.get("state") not in {"checkpoint", "checkpoint_pending_permission", "checkpoint_queued"}
+            or (turn.get("decision") or {}).get("intent") != "checkpoint"
+            or resolution.get("state") != "checkpoint"
+            or not resolution.get("run_id")
+            or turn.get("policy_digest") != natural_policy_digest()
+            or delivery.get("issue", {}).get("kind") != "issue"
+        ):
+            raise AccessDenied("Checkpoint authority requires one known ticket-bound natural request")
+        scopes = await self.conversation_scope(delivery, remote=remote)
+        if any(
+            scopes[key] != turn["context"]["scope"][key]
+            for key in ("project_id", "repository_id", "native_user_id", "binding_digest")
+        ):
+            raise AccessDenied("The checkpoint interpretation belongs to an older native consent")
+        from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+        latest = await SCMNaturalTasks(self.collaboration)._context(delivery, [scopes])
+        selection = latest["status_context"]
+        if selection["selection"] != "run" or selection["selected_run_id"] != resolution["run_id"]:
+            raise AccessDenied("The authenticated ticket no longer selects the same unambiguous checkpoint run")
+        run = await self.store.get_run(resolution["run_id"])
+        if run.get("project_id") != scopes["project_id"] or run.get("component_id") not in scopes["component_ids"]:
+            raise AccessDenied("The checkpoint leaves the current project components")
+        async with self.store._unit():
+            user = await self.users.find_by_id(identifier(scopes["native_user_id"]))
+        if user is None or not user.enabled:
+            raise AccessDenied("The mapped checkpoint identity is unavailable")
+        actor = Principal(
+            user.id,
+            user.issuer,
+            user.subject,
+            authentication_method="scm_mapping",
+            scm_delegation={
+                "transport": TRANSPORT,
+                "project_id": scopes["project_id"],
+                "repository_id": delivery["repository_id"],
+                "component_id": run["component_id"],
+                "run_id": run["id"],
+                "action": "checkpoint",
+                "binding_key": scopes["binding_key"],
+                "binding_digest": scopes["binding_digest"],
+                "binding_request_id": scopes["binding_request_id"],
+                "verified_receipt_id": delivery["id"],
+                "verified_reference": delivery["verification"],
+                "natural_intake_digest": intake_digest(delivery),
+            },
+        )
+        await self.authorize_snapshot(ProjectAccess.actor_snapshot(actor), scopes["project_id"], "release")
+        return actor
+
     async def authorize_snapshot(self, actor: Data, project: str | None, permission: Permission) -> None:
         context = actor.get("scm_delegation") or {}
         if (
             not isinstance(project, str)
             or context.get("transport") != TRANSPORT
             or context.get("project_id") != project
-            or context.get("action") not in {"respond", "status"}
+            or context.get("action") not in {"respond", "status", "checkpoint"}
             or permission not in ({"read"} if context["action"] == "status" else {"read", "execute", "release"})
         ):
             raise AccessDenied("The polling principal cannot exercise this authority")
@@ -1231,6 +1291,23 @@ class SCMPolling:
             "connection_revision",
             "connection_scope_digest",
         ]
+        if context["action"] == "checkpoint":
+            from firefly_forge.scm_natural_effects import intake_digest
+            from firefly_forge.scm_natural_tasks import natural_policy_digest
+
+            turn = delivery.get("natural_turn") or {}
+            resolution = turn.get("resolution") or {}
+            if (
+                delivery.get("status") != "processed"
+                or (turn.get("decision") or {}).get("intent") != "checkpoint"
+                or resolution.get("state") != "checkpoint"
+                or resolution.get("run_id") != context["run_id"]
+                or delivery.get("run_id") != context["run_id"]
+                or delivery.get("issue", {}).get("kind") != "issue"
+                or turn.get("policy_digest") != natural_policy_digest()
+                or context.get("natural_intake_digest") != intake_digest(delivery)
+            ):
+                raise AccessDenied("The exact natural checkpoint source or interpretation changed")
         if (
             delivery.get("source_conflict")
             or not request["active"]
@@ -1242,8 +1319,11 @@ class SCMPolling:
             or context["verified_reference"] != reference
             or poll_key(project, reference) != context["binding_key"]
             or any(receipt["verified_reference"][k] != reference[k] for k in identity_fields)
-            or (delivery.get("command") or {}).get("action") != context["action"]
-            or (delivery.get("command") or {}).get("run_id") != context["run_id"]
+            or context["action"] != "checkpoint"
+            and (
+                (delivery.get("command") or {}).get("action") != context["action"]
+                or (delivery.get("command") or {}).get("run_id") != context["run_id"]
+            )
         ):
             raise AccessDenied("Polling authority is revoked, changed or outside its exact reviewed scope")
         async with self.store._unit():
@@ -1267,7 +1347,7 @@ class SCMPolling:
             if (
                 not row.data.get("enabled")
                 or delivery["actor"] not in row.data.get("trusted_actors", [])
-                or context["action"] not in allowed
+                or ("publish" if context["action"] == "checkpoint" else context["action"]) not in allowed
             ):
                 raise AccessDenied("The current repository actor or action is not enabled")
             run = await self.store.get_run(context["run_id"])

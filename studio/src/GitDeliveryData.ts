@@ -1,5 +1,15 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { diffReference, type DiffReference } from "./GitDiffData";
+export type GitDiffBudget = {
+  max_bytes: number | null;
+  min_free_bytes: number;
+  timeout_seconds: number;
+  chunk_bytes: number;
+  index_page_files: number;
+  preview_bytes: number;
+};
 export type GitDeliveryPolicy = {
+  diff_budget?: GitDiffBudget;
   version: 1;
   enabled: boolean;
   every_units: number;
@@ -40,6 +50,8 @@ export type GitDelivery = {
   pr_url: string | null;
   created_at: string;
   checkpoint_digest: string;
+  verification_status?: "pending" | "partial_unverified";
+  source_evidence?: { version: 2; diff_artifact: DiffReference };
 };
 export type GitDeliveries = {
   version: 1;
@@ -85,7 +97,7 @@ function bool(value: unknown): boolean {
 }
 function integer(value: unknown, min: number, max: number): number {
   return typeof value === "number" &&
-    Number.isInteger(value) &&
+    Number.isSafeInteger(value) &&
     value >= min &&
     value <= max
     ? value
@@ -103,7 +115,11 @@ function optionalDisplayText(value: unknown, max: number): string | null {
 }
 export function readPolicy(value: unknown): GitDeliveryPolicy {
   const v = object(value);
-  fields(v, "version enabled every_units on_pause remote max_checkpoints");
+  fields(
+    v,
+    "version enabled every_units on_pause remote max_checkpoints" +
+      ("diff_budget" in v ? " diff_budget" : ""),
+  );
   if (v.version !== 1 || (v.remote !== "local" && v.remote !== "draft_pr"))
     return fail();
   return {
@@ -113,6 +129,9 @@ export function readPolicy(value: unknown): GitDeliveryPolicy {
     on_pause: bool(v.on_pause),
     remote: v.remote,
     max_checkpoints: integer(v.max_checkpoints, 1, 50),
+    ...("diff_budget" in v
+      ? { diff_budget: readDiffBudget(v.diff_budget) }
+      : {}),
   };
 }
 export function policyView(
@@ -216,13 +235,21 @@ export function deliveryList(value: unknown, runId: string): GitDeliveries {
     const r = object(raw);
     fields(
       r,
-      "version run_id request_id sequence original_base_revision parent_revision revision source_tree task_id attempt changed_file_count patch_sha256 branch local_status remote_status pr_url created_at checkpoint_digest",
+      "version run_id request_id sequence original_base_revision parent_revision revision source_tree task_id attempt changed_file_count patch_sha256 branch local_status remote_status pr_url created_at checkpoint_digest" +
+        ("verification_status" in r ? " verification_status" : "") +
+        ("source_evidence" in r ? " source_evidence" : ""),
     );
     if (
       r.version !== 1 ||
       r.run_id !== runId ||
       r.original_base_revision !== base ||
       r.local_status !== "checkpointed" ||
+      ("verification_status" in r &&
+        !["pending", "partial_unverified"].includes(
+          String(r.verification_status),
+        )) ||
+      (r.verification_status === "partial_unverified" &&
+        r.remote_status === "ready") ||
       !["not_requested", "publishing", "draft", "unknown", "ready"].includes(
         String(r.remote_status),
       )
@@ -241,7 +268,20 @@ export function deliveryList(value: unknown, runId: string): GitDeliveries {
       source_tree: text(r.source_tree, 64, revision),
       task_id: text(r.task_id, 64),
       attempt: integer(r.attempt, 1, 100),
-      changed_file_count: integer(r.changed_file_count, 1, 200),
+      changed_file_count: integer(
+        r.changed_file_count,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      ...("source_evidence" in r
+        ? {
+            source_evidence: readSourceEvidence(
+              r.source_evidence,
+              r.changed_file_count,
+              r.patch_sha256,
+            ),
+          }
+        : {}),
       patch_sha256: text(r.patch_sha256, 64, digest),
       branch: text(r.branch, 200),
       local_status: "checkpointed",
@@ -249,6 +289,10 @@ export function deliveryList(value: unknown, runId: string): GitDeliveries {
       pr_url: optionalDisplayText(r.pr_url, 2048),
       created_at: created,
       checkpoint_digest: text(r.checkpoint_digest, 64, digest),
+      verification_status:
+        r.verification_status === "partial_unverified"
+          ? "partial_unverified"
+          : "pending",
     };
   });
   if (
@@ -269,5 +313,46 @@ export function deliveryList(value: unknown, runId: string): GitDeliveries {
     original_base_revision: base,
     latest_checkpoint: latest,
     items,
+  };
+}
+
+export function readDiffBudget(value: unknown): GitDiffBudget {
+  const b = object(value);
+  fields(
+    b,
+    "max_bytes min_free_bytes timeout_seconds chunk_bytes index_page_files preview_bytes",
+  );
+  return {
+    max_bytes:
+      b.max_bytes === null
+        ? null
+        : integer(b.max_bytes, 1, Number.MAX_SAFE_INTEGER),
+    min_free_bytes: integer(b.min_free_bytes, 0, Number.MAX_SAFE_INTEGER),
+    timeout_seconds: integer(b.timeout_seconds, 1, Number.MAX_SAFE_INTEGER),
+    chunk_bytes: integer(b.chunk_bytes, 1024, 1048576),
+    index_page_files: integer(b.index_page_files, 1, 1000),
+    preview_bytes: integer(b.preview_bytes, 0, 1048576),
+  };
+}
+function readSourceEvidence(
+  value: unknown,
+  count: unknown,
+  sha: unknown,
+): { version: 2; diff_artifact: DiffReference } {
+  const e = object(value);
+  fields(e, "version diff_artifact");
+  if (e.version !== 2) return fail();
+  const ref = diffReference(e.diff_artifact);
+  if (ref.file_count !== count || ref.sha256 !== sha) return fail();
+  return { version: 2, diff_artifact: ref };
+}
+export function defaultDiffBudget(): GitDiffBudget {
+  return {
+    max_bytes: null,
+    min_free_bytes: 1073741824,
+    timeout_seconds: 120,
+    chunk_bytes: 65536,
+    index_page_files: 100,
+    preview_bytes: 65536,
   };
 }

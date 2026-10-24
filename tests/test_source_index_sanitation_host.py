@@ -5,6 +5,7 @@
 from types import SimpleNamespace
 
 import pytest
+from test_engine_diff_artifacts import snapshot_case
 from test_execution import seed_repository
 from test_source_edit_continuations_host import controlled_metadata
 from test_workspace_dependency_reconciliation import git, legacy_workspace
@@ -19,11 +20,12 @@ CACHE = "frontend/.cache/vite/vitest/" + "a" * 40 + "/results.json"
 @pytest.mark.parametrize(
     "fault", ["cache_before_add", "cache_after_add", "staged_during_admission", "source_during_admission"]
 )
-async def test_snapshot_refuses_unreviewed_index_or_source_before_write_tree(tmp_path, monkeypatch, fault):
+async def test_snapshot_refuses_unreviewed_index_or_source_before_write_tree(
+    tmp_path, monkeypatch, fault, snapshot_case
+):
     from firefly_forge import engine as module
 
-    root = await seed_repository(tmp_path / "source")
-    base = git(root, "rev-parse", "HEAD")
+    root, base = snapshot_case.root, snapshot_case.base
     (root / "implementation.py").write_text("VALUE = 2\n")
     writes = []
     checked = module.checked
@@ -54,33 +56,36 @@ async def test_snapshot_refuses_unreviewed_index_or_source_before_write_tree(tmp
             (root / "implementation.py").write_text("UNREVIEWED = 3\n")
 
     monkeypatch.setattr(module, "checked", inspect)
-    store = SimpleNamespace(
-        path=tmp_path / "fixture.db", vault_source_patch_admission=admitted, reject_credentials=lambda _value: None
-    )
-    with pytest.raises(ValueError):
-        await Engine(store, tmp_path / "workspaces")._snapshot(root, base)
+    original = snapshot_case.store.source_patch_scanner
+
+    async def scanner(**kwargs):
+        result = await original(**kwargs)
+        verify = result._verify_current
+
+        async def current():
+            await admitted(None)
+            await verify()
+
+        result._verify_current = current
+        return result
+
+    monkeypatch.setattr(snapshot_case.store, "source_patch_scanner", scanner)
+    with pytest.raises((ValueError, RuntimeError)):
+        await snapshot_case.engine._snapshot(root, base)
     assert writes == []
 
 
-async def test_snapshot_never_newly_stages_known_untracked_vitest_cache(tmp_path):
-    root = await seed_repository(tmp_path / "source")
-    base = git(root, "rev-parse", "HEAD")
+async def test_snapshot_never_newly_stages_known_untracked_vitest_cache(tmp_path, snapshot_case):
+    root, base = snapshot_case.root, snapshot_case.base
     cache = root / CACHE
     cache.parent.mkdir(parents=True)
     cache.write_text('{"public":"known-generated-result"}\n')
     before = cache.read_bytes()
     (root / "implementation.py").write_text("VALUE = 2\n")
 
-    async def admitted(_patch):
-        pass
-
-    store = SimpleNamespace(
-        path=tmp_path / "fixture.db", vault_source_patch_admission=admitted, reject_credentials=lambda _value: None
-    )
-    engine = Engine(store, tmp_path / "workspaces")
-    files, patch, _tree = await engine._snapshot(root, base)
+    files, patch, _tree = await snapshot_case.engine._snapshot(root, base)
     assert "implementation.py" in files
-    assert CACHE not in files and CACHE not in patch
+    assert CACHE not in files and CACHE not in patch.preview and patch.artifact.file_count == 1
     assert git(root, "ls-files", "--", CACHE) == ""
     assert cache.read_bytes() == before
 
@@ -190,8 +195,10 @@ def test_changed_public_source_refuses_before_index_effect(indexed_cache):
 
 
 @pytest.mark.parametrize("baseline_asset", [False, True])
-async def test_snapshot_preserves_baseline_assets_and_never_auto_removes_staged_cache(tmp_path, baseline_asset):
-    root = await seed_repository(tmp_path / "source")
+async def test_snapshot_preserves_baseline_assets_and_never_auto_removes_staged_cache(
+    tmp_path, baseline_asset, snapshot_case
+):
+    root = snapshot_case.root
     cache = root / CACHE
     cache.parent.mkdir(parents=True)
     cache.write_text("public-baseline\n")
@@ -202,13 +209,7 @@ async def test_snapshot_preserves_baseline_assets_and_never_auto_removes_staged_
     cache.write_text("public-current\n")
     (root / "implementation.py").write_text("VALUE = 2\n")
 
-    async def admitted(_patch):
-        pass
-
-    store = SimpleNamespace(
-        path=tmp_path / "fixture.db", vault_source_patch_admission=admitted, reject_credentials=lambda _value: None
-    )
-    engine = Engine(store, tmp_path / "workspaces")
+    engine = snapshot_case.engine
     before = (root / ".git/index").read_bytes()
     if baseline_asset:
         files, _patch, _tree = await engine._snapshot(root, base)

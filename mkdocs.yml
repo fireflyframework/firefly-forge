@@ -91,7 +91,10 @@ nav:
       - Choose a stack: profiles.md
       - Build, maintain and test: workflows.md
       - Coordinate project campaigns: project-campaigns.md
+      - Work on a large product: large-products.md
       - Save development progress: development-workflow.md
+      - Verify a saved checkpoint: checkpoint-verification.md
+      - Inspect large source changes: git-diff-archive.md
       - Delivery assurance: assurance.md
   - Agents:
       - Choose an agent: agents.md
@@ -134,6 +137,7 @@ nav:
       - Add and manage users: user-administration.md
   - Reference:
       - Architecture: architecture.md
+      - Large-source verification: source-catalog-preparation.md
       - HTTP API: api.md
       - Release notes: release-notes.md
       - Contribute: contributing.md

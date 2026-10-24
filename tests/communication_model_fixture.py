@@ -3,8 +3,10 @@
 
 import copy
 import json
+from contextlib import contextmanager
 
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models import override_allow_model_requests
 from pydantic_ai.models.function import FunctionModel
 
 
@@ -66,3 +68,38 @@ def reviewed_model(draft, *, verdict="supported", issues=None, fact_ids=None, ca
         return ModelResponse(parts=[part])
 
     return FunctionModel(model)
+
+
+@contextmanager
+def recorded_communication_models():
+    def install(collaboration, engine, *, calls=None):
+        def draft(messages, info):
+            from pydantic_ai.messages import UserPromptPart
+
+            prompt = next(
+                part.content
+                for message in reversed(messages)
+                for part in message.parts
+                if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+            )
+            prefix = "Draft the project update using only this recorded fact packet:\n"
+            assert prompt.startswith(prefix), "Unknown controlled communication request"
+            facts, _ = json.JSONDecoder().raw_decode(prompt.removeprefix(prefix))
+            references = sorted(facts)
+            payload = {
+                "title": {"text": "Recorded project update", "fact_ids": references},
+                "paragraphs": [{"text": "The factory recorded this project interaction.", "fact_ids": references}],
+                "decision": {key: facts["decision"][key] for key in ("question", "context", "choices")}
+                if "decision" in facts
+                else None,
+            }
+            part = (
+                ToolCallPart(info.output_tools[0].name, payload) if info.output_tools else TextPart(json.dumps(payload))
+            )
+            return ModelResponse(parts=[part])
+
+        for writer in (collaboration.communication_writer, engine.communication_writer):
+            writer.model = reviewed_model(draft, calls=calls)
+
+    with override_allow_model_requests(False):
+        yield install

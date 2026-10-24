@@ -2,6 +2,18 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.41 — 2026-10-23
+
+- Retain large Git diffs in private hashed chunks with paged file indexes and content windows. Keep complete evidence outside the WAL and expose configurable project storage and time budgets.
+- Add authenticated Studio, API, typed SDK and CLI inspection of exact run or checkpoint evidence. Label partial windows and retain complete file counts beyond the bounded name preview.
+- Review current working source for natural GitHub checkpoint requests without requiring an earlier automatic source tree. Retain separate checkpoint consent and current project permission checks before native owner execution.
+- Add explicit one-use native administrator adoption of a known failed unit as unverified partial progress. Preserve its failed implementation, original policy and uncertain outcomes.
+- Show readable completed provider activity and refresh the guided documentation. The new v8 native loader requires its own measurements; completed CRM and live remote draft acceptance remain separate.
+
+- Add read-only MCP file-index and content-window tools through the authenticated SDK, preserving old tool schemas and callbacks.
+- Select an exact confirmed checkpoint for a fresh test or maintain unit with publication disabled in the same repository/project/component. Bind maintain mode to its independent creation/source receipts and current permissions; preserve test digests, the original failed run and its spent budgets. Read-only child lineage grants no answer, resume or new launch authority.
+- Prepare automatic worker verification through an off-loop streamed catalog. Keep explicit adoption/review and distributed transport limits documented.
+
 ## 0.2.40 — 2026-10-23
 
 - Add project-configured factory Git checkpoints, chained commit receipts and retained draft reviews. Preserve the original baseline, current permissions, unknown outcomes and final verification requirements.

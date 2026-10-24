@@ -65,6 +65,7 @@ from firefly_forge.campaign_report_history_persistence import ForgeCampaignRepor
 from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
+from firefly_forge.checkpoint_test_sources import CheckpointTestSources
 from firefly_forge.cloud import CloudRecipes
 from firefly_forge.cloud_controllers import CloudController
 from firefly_forge.coding_check_controllers import CodingCheckGrantController
@@ -106,6 +107,8 @@ from firefly_forge.git_deliveries import GitDeliveries
 from firefly_forge.git_delivery_controllers import GitDeliveryController, GitDeliveryPolicyController
 from firefly_forge.git_delivery_policy import GitDeliveryPolicies
 from firefly_forge.git_delivery_requests import GitDeliveryRequests
+from firefly_forge.git_diff_archive import GitDiffArchive
+from firefly_forge.git_diff_controllers import GitDiffController
 from firefly_forge.identity import AUTH_PREFIX, SESSION_COOKIE, IdentityConfiguration, IdentityService
 from firefly_forge.identity_controllers import IdentityController
 from firefly_forge.identity_persistence import (
@@ -490,6 +493,12 @@ class FactoryConfiguration:
         deliveries = GitDeliveries(store, engine, journal)
         engine.git_deliveries = deliveries
         return deliveries
+
+    @bean
+    def checkpoint_test_sources(self, deliveries: GitDeliveries) -> CheckpointTestSources:
+        sources = CheckpointTestSources(deliveries)
+        deliveries.store.checkpoint_sources = sources
+        return sources
 
     @bean
     def git_delivery_requests(self, deliveries: GitDeliveries, requests: ExecutionRequests) -> GitDeliveryRequests:
@@ -1222,6 +1231,8 @@ def create_runtime(
         AgentCheckpointCandidateController,
         GitDeliveryPolicyController,
         GitDeliveryController,
+        GitDiffArchive,
+        GitDiffController,
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,

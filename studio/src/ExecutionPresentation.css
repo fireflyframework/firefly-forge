@@ -17,6 +17,10 @@
   margin: 12px 0;
   font-size: 14px;
 }
+.record-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .verification-handoff > progress {
   width: 100%;
   accent-color: var(--accent);

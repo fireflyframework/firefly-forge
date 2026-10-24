@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, Terminal, Wrench } from "lucide-react";
 import { request, type Connection } from "./api";
-import { OutputView } from "./ExecutionPresentation";
-import { boundedText } from "./ExecutionFormat";
+import { OutputView, RecordedMessage } from "./ExecutionPresentation";
+import { asRecord, boundedText } from "./ExecutionFormat";
 import {
   activityRecord,
   readActivityContent,
@@ -193,7 +193,7 @@ function ArchivedActivity({
             )}
           </p>
           {s.output_preview !== undefined && (
-            <OutputView
+            <ProviderPreview
               value={s.output_preview}
               label="Provider-reported output preview"
               copyLabel="Copy output preview"
@@ -225,7 +225,7 @@ function ArchivedActivity({
             </details>
           )}
           {typeof s.output_preview === "string" && (
-            <OutputView
+            <ProviderPreview
               value={s.output_preview}
               label="Output preview"
               copyLabel="Copy output preview"
@@ -248,12 +248,21 @@ function ArchivedActivity({
         </>
       ) : s?.item_type === "tool_use" || s?.item_type === "tool_result" ? (
         <ClaudeBlock block={s as ActivityContentBlock} />
+      ) : s?.event_type === "turn.completed" ? (
+        <CompletedTurn preview={s.output_preview ?? preview} />
       ) : structured ? (
         <p className="subtle">
           This event uses a structured format without a supported display.
           {d.status === "available" &&
             " Open the full recorded event to inspect its contents."}
         </p>
+      ) : s?.item_type === "agent_message" ||
+        s?.item_type === "reasoning" ||
+        /^\s*(?:\{|\[)/.test(s?.output_preview ?? preview) ? (
+        <RecordedMessage
+          value={s?.output_preview ?? preview}
+          label="Recorded preview"
+        />
       ) : (
         <OutputView
           value={s?.output_preview ?? preview}
@@ -326,6 +335,65 @@ function ArchivedActivity({
   );
 }
 
+function CompletedTurn({ preview }: { preview: string }) {
+  let usage: Record<string, unknown> | undefined;
+  try {
+    if (preview.length <= 1024) {
+      const event = asRecord(JSON.parse(preview));
+      if (event?.type === "turn.completed") usage = asRecord(event.usage);
+    }
+  } catch {
+    // A retained preview may end before the complete event does.
+  }
+  const counters = [
+    ["input_tokens", "Input tokens"],
+    ["cached_input_tokens", "Cached input tokens"],
+    ["cache_write_input_tokens", "Cache write input tokens"],
+    ["output_tokens", "Output tokens"],
+    ["reasoning_output_tokens", "Reasoning output tokens"],
+  ].flatMap(([key, label]) => {
+    const value = usage?.[key];
+    return typeof value === "number" &&
+      Number.isSafeInteger(value) &&
+      value >= 0
+      ? [{ label, value }]
+      : [];
+  });
+  return (
+    <>
+      <p>
+        The coding provider reported that this turn ended. This does not confirm
+        that the implementation succeeded.
+      </p>
+      {counters.length > 0 ? (
+        <dl
+          className="record-fields"
+          aria-label="Provider-reported token usage"
+        >
+          {counters.map(({ label, value }) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value.toLocaleString()}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="subtle">
+          Token usage was not recorded in a supported format.
+        </p>
+      )}
+      <details className="record-advanced">
+        <summary>Advanced details</summary>
+        <OutputView
+          value={preview}
+          label="Recorded preview"
+          copyLabel="Copy preview"
+        />
+      </details>
+    </>
+  );
+}
+
 function ClaudeBlock({ block }: { block: ActivityContentBlock }) {
   return (
     <section
@@ -378,12 +446,24 @@ function ClaudeBlock({ block }: { block: ActivityContentBlock }) {
         />
       )}
       {block.output_preview !== undefined && (
-        <OutputView
+        <ProviderPreview
           value={block.output_preview}
           label="Recorded preview"
           copyLabel="Copy preview"
         />
       )}
     </section>
+  );
+}
+
+function ProviderPreview(props: {
+  value: string;
+  label: string;
+  copyLabel: string;
+}) {
+  return /^\s*(?:\{|\[)/.test(props.value) ? (
+    <RecordedMessage value={props.value} label={props.label} />
+  ) : (
+    <OutputView {...props} />
   );
 }

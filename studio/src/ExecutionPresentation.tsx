@@ -75,7 +75,7 @@ export function TimelineEventView({
       return (
         <>
           <h3>{label}</h3>
-          <OutputView value={item.text} label={label} />
+          <RecordedMessage value={item.text} label={label} />
         </>
       );
     }
@@ -120,12 +120,9 @@ export function TimelineEventView({
       <>
         <h3>{title}</h3>
         {typeof error?.message === "string" ? (
-          <OutputView value={error.message} label="Provider error" />
+          <RecordedMessage value={error.message} label="Provider error" />
         ) : (
-          <p className="subtle">
-            The original provider event is retained in the run record. Provider
-            progress does not establish final verification.
-          </p>
+          <RecordedMessage value={message} label="Recorded provider event" />
         )}
       </>
     );
@@ -145,7 +142,11 @@ export function TimelineEventView({
         <BoundedLabel value={heading} limit={180} />
       </h3>
       {providerOutput || longMessage ? (
-        <OutputView value={message} label={heading} />
+        providerOutput && !/^\s*(?:\{|\[)/.test(message) ? (
+          <OutputView value={message} label={heading} />
+        ) : (
+          <RecordedMessage value={message} label={heading} />
+        )
       ) : (
         <EvidenceView
           value={event}
@@ -296,10 +297,236 @@ export function AdvancedRecord({ value }: { value: unknown }) {
     </details>
   );
 }
+
+function reportedWorker(value: Record<string, unknown> | undefined) {
+  const feedback = asRecord(value?.feedback);
+  const text = (value: unknown, maximum: number): value is string =>
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= maximum;
+  const identifier = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
+  const protocol = feedback?.protocol;
+  const allowance = protocol !== undefined;
+  const fields = [
+    "id",
+    "role_id",
+    "task_id",
+    "attempt",
+    "disposition",
+    "summary",
+    "evidence_paths",
+    "request",
+  ];
+  if (allowance) fields.push("protocol", "allowance_id", "allowance_digest");
+  if (
+    !value ||
+    Object.keys(value).sort().join(",") !== "feedback,summary" ||
+    !text(value.summary, 8000) ||
+    !feedback ||
+    Object.keys(feedback).some((key) => !fields.includes(key)) ||
+    !text(feedback.id, 80) ||
+    !identifier.test(feedback.id) ||
+    typeof feedback.role_id !== "string" ||
+    ![
+      "product-manager",
+      "tech-lead",
+      "architect",
+      "implementer",
+      "qa",
+      "security",
+      "docs",
+    ].includes(String(feedback.role_id)) ||
+    typeof feedback.task_id !== "string" ||
+    ![
+      "prepare",
+      "implement",
+      "verify",
+      "checkpoint",
+      "review",
+      "publication",
+    ].includes(String(feedback.task_id)) ||
+    typeof feedback.disposition !== "string" ||
+    !["completed", "failed", "blocked", "clarification"].includes(
+      String(feedback.disposition),
+    ) ||
+    !text(feedback.summary, 8000) ||
+    !Number.isSafeInteger(feedback.attempt) ||
+    (feedback.attempt as number) < 1 ||
+    (!allowance && (feedback.attempt as number) > 4) ||
+    (allowance &&
+      (typeof protocol !== "string" ||
+        ![
+          "native-provider-recovery-allowance-v1",
+          "source-budget-continuation-v1",
+        ].includes(String(protocol)) ||
+        feedback.role_id !== "implementer" ||
+        feedback.task_id !== "implement" ||
+        (protocol === "native-provider-recovery-allowance-v1"
+          ? feedback.attempt !== 5
+          : (feedback.attempt as number) < 5 ||
+            (feedback.attempt as number) > 32) ||
+        typeof feedback.allowance_id !== "string" ||
+        !/^[a-f0-9]{32}$/.test(feedback.allowance_id) ||
+        typeof feedback.allowance_digest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(feedback.allowance_digest))) ||
+    !Array.isArray(feedback.evidence_paths) ||
+    feedback.evidence_paths.length > 100 ||
+    !feedback.evidence_paths.every(
+      (path) =>
+        text(path, 300) &&
+        !path.startsWith("/") &&
+        !path.includes("\\") &&
+        path
+          .split("/")
+          .every(
+            (part) =>
+              part.length > 0 &&
+              !part.startsWith(".") &&
+              !["node_modules", "__pycache__"].includes(part),
+          ),
+    )
+  )
+    return undefined;
+  const request = asRecord(feedback.request);
+  const needsAnswer = ["blocked", "clarification"].includes(
+    String(feedback.disposition),
+  );
+  if (needsAnswer) {
+    if (
+      !request ||
+      Object.keys(request).some(
+        (key) =>
+          !["id", "kind", "question", "context", "choices"].includes(key),
+      ) ||
+      !text(request.id, 80) ||
+      !identifier.test(request.id) ||
+      typeof request.kind !== "string" ||
+      ![
+        "product_definition",
+        "architecture",
+        "design",
+        "provider",
+        "verification",
+        "approval",
+        "other",
+      ].includes(String(request.kind)) ||
+      !text(request.question, 4000) ||
+      !text(request.context, 4000) ||
+      (request.choices !== undefined &&
+        (!Array.isArray(request.choices) ||
+          request.choices.length > 6 ||
+          !request.choices.every((choice) => text(choice, 1000))))
+    )
+      return undefined;
+  } else if (feedback.request !== undefined && feedback.request !== null)
+    return undefined;
+  return {
+    summary: value.summary,
+    detail: feedback.summary,
+    disposition: String(feedback.disposition),
+    task: String(feedback.task_id),
+    attempt: feedback.attempt as number,
+    paths: feedback.evidence_paths as string[],
+    question: request?.question as string | undefined,
+  };
+}
+
+export function RecordedMessage({
+  value,
+  label = "Recorded message",
+}: {
+  value: string;
+  label?: string;
+}) {
+  const structured = /^\s*(?:\{|\[)/.test(value);
+  let report: ReturnType<typeof reportedWorker>;
+  if (structured && value.length <= 65536) {
+    try {
+      report = reportedWorker(asRecord(JSON.parse(value)));
+    } catch {
+      /* Incomplete previews remain available in details. */
+    }
+  }
+  const preview = boundedText(value);
+  return (
+    <>
+      {report ? (
+        <>
+          <p className="record-message">{report.summary}</p>
+          {report.detail !== report.summary && (
+            <p className="record-message">{report.detail}</p>
+          )}
+          <dl
+            className="record-fields"
+            aria-label="Provider-reported worker result"
+          >
+            <div>
+              <dt>Reported result</dt>
+              <dd>{fieldLabel(report.disposition)}</dd>
+            </div>
+            <div>
+              <dt>Task</dt>
+              <dd>{fieldLabel(report.task)}</dd>
+            </div>
+            <div>
+              <dt>Attempt</dt>
+              <dd>{report.attempt}</dd>
+            </div>
+          </dl>
+          {report.paths.length > 0 && (
+            <>
+              <h4>Reported evidence paths</h4>
+              <div
+                className="record-list"
+                role="list"
+                aria-label="Reported evidence paths"
+              >
+                {report.paths.map((path, index) => (
+                  <div key={index} role="listitem">
+                    <code>{path}</code>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {report.question && (
+            <p className="record-message">{report.question}</p>
+          )}
+          <p className="subtle">
+            This is the provider's report. Factory receipts and final checks
+            determine the actual outcome.
+          </p>
+        </>
+      ) : structured ? (
+        <p>
+          A structured recorded message is retained. Open advanced details to
+          inspect its contents; it does not establish a successful result.
+        </p>
+      ) : (
+        <p className="record-message">{preview.text}</p>
+      )}
+      {!structured && preview.omitted > 0 && (
+        <p className="subtle">
+          Only a bounded preview is shown. The full recorded text remains in
+          advanced details.
+        </p>
+      )}
+      {(structured || preview.omitted > 0) && (
+        <details className="record-advanced">
+          <summary>Advanced details</summary>
+          <OutputView value={value} label={label} />
+        </details>
+      )}
+    </>
+  );
+}
+
 function ValueView({ value, depth }: { value: unknown; depth: number }) {
   if (value === null) return <code>null</code>;
   if (typeof value === "string")
-    return value.length > 350 || value.includes("\n") ? (
+    return /^\s*(?:\{|\[)/.test(value) ? (
+      <RecordedMessage value={value} />
+    ) : value.length > 350 || value.includes("\n") ? (
       <OutputView value={value} />
     ) : (
       <span className="record-value">{value}</span>

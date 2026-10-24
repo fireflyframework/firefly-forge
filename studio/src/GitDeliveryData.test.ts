@@ -99,6 +99,28 @@ it("reads each real remote-state serialization without treating a draft as ready
   }
 });
 
+it("retains partial unverified provenance and refuses promotion to a ready review", () => {
+  const list = fixture.deliveries.draft;
+  const record = {
+    ...list.items[0],
+    verification_status: "partial_unverified",
+  };
+  const value = deliveryList({ ...list, items: [record] }, fixture.run_id);
+  expect(value.items[0].verification_status).toBe("partial_unverified");
+  expect(() =>
+    deliveryList(
+      { ...list, items: [{ ...record, remote_status: "ready" }] },
+      fixture.run_id,
+    ),
+  ).toThrow();
+  expect(() =>
+    deliveryList(
+      { ...list, items: [{ ...record, verification_status: "passed" }] },
+      fixture.run_id,
+    ),
+  ).toThrow();
+});
+
 it("refuses receipts or policy envelopes outside their exact requested scope", () => {
   expect(() => policyView(fixture.policy_default, "8".repeat(32))).toThrow();
   expect(() =>
@@ -177,5 +199,72 @@ it("allows a current configuration administrator to stop existing remote checkpo
   );
   expect(() =>
     policyRequest(current, { ...desired, enabled: true }, "6".repeat(32)),
+  ).toThrow();
+});
+
+it("keeps elastic storage explicit while preserving legacy six-field policies", () => {
+  const budget = {
+    max_bytes: null,
+    min_free_bytes: 1073741824,
+    timeout_seconds: 120,
+    chunk_bytes: 65536,
+    index_page_files: 100,
+    preview_bytes: 65536,
+  };
+  const current = policyView(
+    {
+      ...fixture.policy_default,
+      policy: { ...fixture.policy_default.policy, diff_budget: budget },
+    },
+    fixture.project_id,
+  );
+  expect(current.policy.diff_budget).toEqual(budget);
+  expect(
+    policyView(fixture.policy_default, fixture.project_id).policy,
+  ).not.toHaveProperty("diff_budget");
+  for (const max_bytes of [0, -1, 1.2, Number.MAX_SAFE_INTEGER + 1])
+    expect(() =>
+      policyView(
+        {
+          ...fixture.policy_default,
+          policy: { ...current.policy, diff_budget: { ...budget, max_bytes } },
+        },
+        fixture.project_id,
+      ),
+    ).toThrow();
+});
+
+it("binds large-count receipt evidence to its exact artifact hash and file count", () => {
+  const ref = {
+    version: 1,
+    artifact_id: "a".repeat(32),
+    manifest_sha256: "b".repeat(64),
+    sha256: "c".repeat(64),
+    byte_count: 50_000_000,
+    file_count: 20_000,
+    index_page_count: 200,
+  };
+  const list = fixture.deliveries.draft;
+  const record = {
+    ...list.items[0],
+    changed_file_count: 20_000,
+    patch_sha256: ref.sha256,
+    source_evidence: { version: 2, diff_artifact: ref },
+  };
+  expect(
+    deliveryList({ ...list, items: [record] }, fixture.run_id).items[0]
+      .source_evidence?.diff_artifact.file_count,
+  ).toBe(20_000);
+  expect(() =>
+    deliveryList(
+      { ...list, items: [{ ...record, changed_file_count: 19_999 }] },
+      fixture.run_id,
+    ),
+  ).toThrow();
+  expect(() =>
+    deliveryList(
+      { ...list, items: [{ ...record, patch_sha256: "f".repeat(64) }] },
+      fixture.run_id,
+    ),
   ).toThrow();
 });

@@ -5,8 +5,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
+from firefly_forge.checkpoint_test_models import ResolvedCheckpointV1
 from firefly_forge.models import RunInput
 
 ID = r"^[a-f0-9]{32}$"
@@ -48,6 +49,36 @@ class RunCreationReceipt(VersionOne):
     admitted_at: str = Field(min_length=1, max_length=80)
     admission_digest: str = Field(pattern=HASH)
     digest: str = Field(pattern=HASH)
+    source_checkpoint: ResolvedCheckpointV1 | None = None
+
+    @model_serializer(mode="wrap")
+    def retained_creation(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        value: dict[str, Any] = handler(self)
+        if value.get("source_checkpoint") is None:
+            value.pop("source_checkpoint", None)
+        return value
+
+    @model_validator(mode="after")
+    def source_provenance(self) -> RunCreationReceipt:
+        from firefly_forge.git_deliveries import delivery_digest
+
+        requested = self.input.get("source_checkpoint")
+        if self.source_checkpoint is None:
+            if requested is not None:
+                raise ValueError("Checkpoint creation receipt has no resolved source")
+            return self
+        source = self.source_checkpoint.model_dump(mode="json")
+        if (
+            requested != source["reference"]
+            or self.input.get("operation") != source.get("operation", "test")
+            or self.input.get("publish", False) is not False
+            or any(getattr(self, key) != source[key] for key in ("repository_id", "project_id", "component_id"))
+            or source["revision"] != source["reference"]["expected_revision"]
+            or source["digest"] != delivery_digest({key: value for key, value in source.items() if key != "digest"})
+            or self.run_id == source["reference"]["run_id"]
+        ):
+            raise ValueError("Checkpoint creation source differs from its original request and scope")
+        return self
 
 
 MAX_CONTROL_BYTES = 4096

@@ -25,6 +25,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 from firefly_forge import __version__
+from firefly_forge.checkpoint_test_sources import CheckpointTestSources
 from firefly_forge.configuration import ConfigurationStore, ProviderConfiguration, normalize_provider
 from firefly_forge.engine import Engine
 from firefly_forge.execution_requests import ExecutionRequestReconciliation
@@ -84,9 +85,13 @@ class ProviderService:
 
 @service
 class RunService:
-    def __init__(self, store: Store, engine: Engine) -> None:
+    def __init__(self, store: Store, engine: Engine, checkpoint_sources: CheckpointTestSources | None = None) -> None:
         self.store = store
         self.engine = engine
+        if checkpoint_sources is not None:
+            if checkpoint_sources.store is not store:
+                raise ValueError("Checkpoint source admission belongs to another native store")
+            store.checkpoint_sources = checkpoint_sources
 
     async def retry(self, identifier: str) -> dict[str, Any]:
         run = await self.store.get_run(identifier)

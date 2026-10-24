@@ -19,10 +19,18 @@ from firefly_forge.tool_broker import tool_policy_snapshot
 from firefly_forge.verification_models import (
     VerificationAdoption,
     automatic_verification_grant,
+    check_verification_authority,
     check_verification_cut,
     verification_provider,
     verification_scope,
     verification_source,
+)
+from firefly_forge.verification_source_preparation import (
+    PreparedVerificationSource,
+    current_verification_source,
+    prepare_verification_source,
+    verification_catalog_root,
+    verification_source_scope,
 )
 
 Data = dict[str, Any]
@@ -239,6 +247,11 @@ class VerificationHandoffs:
             return result
 
     async def execute(self, run_id: str) -> None:
+        # The active repository slot owns implementation; this existing lock excludes checkpoint writes.
+        async with self.engine.publication_lock:
+            await self._execute(run_id)
+
+    async def _execute(self, run_id: str) -> None:
         intent: Data | None = None
         run: Data | None = None
         try:
@@ -257,56 +270,157 @@ class VerificationHandoffs:
                 None,
             )
             workspace = self.engine.workspaces / run_id
-            intent = existing or verification_intent(
-                self.store, run, workspace, entries, await self.journal.sandbox_executions(run_id)
-            )
-            if existing is None or retained.get("status") != "completed":
-                await self._authorize(run_id, intent)
-                await self.journal.verification_begin(
-                    run_id, intent, check_current=lambda current: check_verification_cut(self.store, current, intent)
+
+            def scope(current: Data) -> str:
+                return digest(
+                    {
+                        "scope": verification_scope(current),
+                        "request": current.get("worker_request"),
+                        "commands": current.get("commands"),
+                        "adoption": current.get("verification_adoption"),
+                        "handoff": current.get("verification_handoff"),
+                        "configuration": current.get("config_revision"),
+                    }
                 )
-                for index, command in enumerate(run["commands"]):
+
+            initial = scope(run)
+
+            async def initial_current() -> None:
+                await self.engine.assert_ownership()
+                current = await self.store.get_run(run_id)
+                await ProjectAccess(self.store).authorize_execution(current)
+                await self.store.assert_campaign_current(current)
+                if (current.get("cancel_request") or {}).get("status") == "requested":
+                    raise asyncio.CancelledError
+                if scope(current) != initial:
+                    raise ValueError("Verification scope changed during source preparation")
+
+            prepared = await prepare_verification_source(
+                workspace,
+                verification_catalog_root(self.store.path, run_id),
+                budget=self.journal.source_catalog_budget,
+                assert_current=initial_current,
+            )
+            with verification_source_scope(prepared):
+                intent = existing or verification_intent(
+                    self.store, run, workspace, entries, await self.journal.sandbox_executions(run_id)
+                )
+                if existing is None or retained.get("status") != "completed":
                     await self._authorize(run_id, intent)
-                    directory = self.engine.component_directory(run, workspace)
-                    await self.engine.sandbox.execute(
-                        run_id,
-                        workspace,
-                        directory,
-                        command["argv"],
-                        command["timeout"],
-                        "implement",
-                        ordinal=intent["ordinals"][index],
-                        git_root=workspace,
-                    )
-                    await self._authorize(run_id, intent)
-                    await self.journal.verification_command(
+                    await self.journal.verification_begin(
                         run_id,
                         intent,
-                        index,
+                        check_current=lambda current: check_verification_cut(self.store, current, intent),
+                    )
+                    for index, command in enumerate(run["commands"]):
+                        await self._authorize(run_id, intent)
+                        directory = self.engine.component_directory(run, workspace)
+                        await self.engine.sandbox.execute(
+                            run_id,
+                            workspace,
+                            directory,
+                            command["argv"],
+                            command["timeout"],
+                            "implement",
+                            ordinal=intent["ordinals"][index],
+                            git_root=workspace,
+                        )
+                        await self._authorize(run_id, intent)
+                        await self.journal.verification_command(
+                            run_id,
+                            intent,
+                            index,
+                            check_current=lambda current: check_verification_cut(self.store, current, intent),
+                        )
+                    await self._authorize(run_id, intent)
+                    await self.journal.verification_finish(
+                        run_id,
+                        intent,
                         check_current=lambda current: check_verification_cut(self.store, current, intent),
                     )
                 await self._authorize(run_id, intent)
-                await self.journal.verification_finish(
-                    run_id, intent, check_current=lambda current: check_verification_cut(self.store, current, intent)
+                await self.journal.resume(
+                    run_id,
+                    agent=intent.get("agent"),
+                    verification_handoff_id=intent["id"],
+                    expected_provider_digest=intent["provider_digest"],
                 )
-            await self._authorize(run_id, intent)
-            await self.journal.resume(
-                run_id,
-                agent=intent.get("agent"),
-                verification_handoff_id=intent["id"],
-                expected_provider_digest=intent["provider_digest"],
-            )
         except asyncio.CancelledError:
             raise
         except Exception:
+            await self.engine.assert_ownership()
             if intent:
                 await self.journal.verification_hold(run_id, intent["id"])
             elif run:
                 await self.journal.verification_refuse(run_id, digest(run.get("worker_request", {})))
 
     async def _authorize(self, run_id: str, intent: Data) -> None:
-        await self.engine.assert_ownership()
-        run = await self.store.get_run(run_id)
-        await ProjectAccess(self.store).authorize_execution(run)
-        await self.store.assert_campaign_current(run)
-        check_verification_cut(self.store, run, intent)
+        async def current() -> None:
+            await self.engine.assert_ownership()
+            run = await self.store.get_run(run_id)
+            await ProjectAccess(self.store).authorize_execution(run)
+            await self.store.assert_campaign_current(run)
+            check_verification_authority(self.store, run, intent)
+
+        prepared = current_verification_source(Path(intent["workspace"]))
+        if prepared is not None:
+            await prepared.revalidate(assert_current=current)
+        await current()
+        check_verification_cut(self.store, await self.store.get_run(run_id), intent)
+
+
+async def prepare_journal_verification_source(
+    journal: Journal, run_id: str, *, provider: bool
+) -> PreparedVerificationSource | None:
+    """Prepare outside the final native writer unit, including a later provider task."""
+    from pyfly.data.transaction import current_unit_of_work
+
+    if current_unit_of_work() is not None:
+        raise ValueError("Verification source preparation must run outside a caller transaction")
+    store = journal.store
+    async with store._unit():
+        run = await store.get_run(run_id)
+        state = run.get("verification_handoff", {})
+        if provider:
+            response = run.get("worker_response", {})
+            if response.get("source") != "factory_verification":
+                return None
+            wanted = response.get("verification_handoff_id")
+        else:
+            if state.get("status") != "running":
+                return None
+            wanted = state.get("id")
+        rows = await journal.records.find_for_run(uuid.UUID(run_id))
+        intent = next(
+            (
+                row.data["payload"]
+                for row in rows
+                if row.kind == "verification_handoff_intent" and row.idempotency_key == wanted
+            ),
+            None,
+        )
+        if intent is None:
+            raise ValueError("Verification source requires its immutable native intent")
+        if provider and int(run.get("implementation_rounds", 0)) > intent["parent_round"]:
+            return None
+    workspace = Path(intent["workspace"])
+
+    async def current() -> None:
+        await store.assert_ownership()
+        current_run = await store.get_run(run_id)
+        await ProjectAccess(store).authorize_execution(current_run)
+        await store.assert_campaign_current(current_run)
+        check_verification_authority(store, current_run, intent)
+
+    prepared = current_verification_source(workspace)
+    if prepared is None:
+        prepared = await prepare_verification_source(
+            workspace,
+            verification_catalog_root(store.path, run_id),
+            budget=journal.source_catalog_budget,
+            assert_current=current,
+        )
+    else:
+        await prepared.revalidate(assert_current=current)
+    check_verification_cut(store, await store.get_run(run_id), intent, prepared=prepared)
+    return prepared

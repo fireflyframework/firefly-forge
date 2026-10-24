@@ -6,9 +6,9 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
 
@@ -59,6 +59,29 @@ class TicketContextReferenceV1(StrictContract):
     project_id: NativeID
     component_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     context_digest: Digest
+    kind: Literal["scm_receipt", "native_checkpoint_test", "native_checkpoint_maintain"] = "scm_receipt"
+    parent_receipt_id: NativeID | None = None
+    creator_user_id: NativeID | None = None
+
+    @model_validator(mode="after")
+    def typed_lineage(self) -> TicketContextReferenceV1:
+        checkpoint = self.kind in {"native_checkpoint_test", "native_checkpoint_maintain"}
+        if checkpoint != (self.parent_receipt_id is not None):
+            raise ValueError("A checkpoint source reference requires its distinct authenticated parent")
+        if self.parent_receipt_id == self.receipt_id:
+            raise ValueError("A test creation must retain its own native receipt identity")
+        if checkpoint != (self.creator_user_id is not None):
+            raise ValueError("Checkpoint source lineage must retain its original creator as provenance")
+        return self
+
+    @model_serializer(mode="wrap")
+    def retained_reference(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        value: dict[str, Any] = handler(self)
+        if value["kind"] == "scm_receipt":
+            value.pop("kind")
+            value.pop("parent_receipt_id")
+            value.pop("creator_user_id")
+        return value
 
 
 class AddressedContextV1(StrictContract):
