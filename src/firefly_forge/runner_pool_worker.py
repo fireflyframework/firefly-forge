@@ -9,7 +9,7 @@ from collections import defaultdict
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 
 import httpx
 from pyfly.container import service
@@ -224,8 +224,11 @@ class RunnerPoolWorker:
         timeout: int,
         task_id: str,
         *,
-        ordinal: int,
+        ordinal: int | None = None,
     ) -> ProcessResult:
+        from firefly_forge.sandbox_command_slots import assert_command_boundary
+
+        assert_command_boundary()
         bounded_argv(argv)
         if type(timeout) is not int or timeout < 1:
             raise ValueError("Command timeout must be a positive integer")
@@ -236,10 +239,9 @@ class RunnerPoolWorker:
             run, attempt = scope["run"], scope["attempt"]
             snapshot = run.get("sandbox_snapshot")
             policy = validate_factory_pool(snapshot or {})
-            if type(ordinal) is not int or not 1 <= ordinal <= policy.command_limit:
+            if ordinal is not None and (type(ordinal) is not int or not 1 <= ordinal <= policy.command_limit):
                 raise ValueError("Frozen command budget is exhausted")
             relative = self._workspace(run, workspace, cwd)
-            execution_id = uuid5(NAMESPACE_URL, f"forge:sandbox:{run_id}:{task_id}:{attempt}:{ordinal}").hex
             command = {
                 "argv": argv,
                 "cwd": relative,
@@ -247,18 +249,25 @@ class RunnerPoolWorker:
                 "workspace": str(workspace),
                 "snapshot_digest": snapshot["digest"],
             }
-            records = await self.journal.sandbox_executions(run_id)
-            previous = next((row for row in records if row["execution_id"] == execution_id), None)
-            if previous is not None:
-                if previous["request"]["command"] != command:
+
+            def retained_command(number: int, identity: str, previous: dict[str, Any] | None) -> dict[str, Any]:
+                assert previous is not None
+                retained = previous["request"]
+                if retained["command"] != command:
                     raise ValueError("Frozen Factory invocation command changed")
-                evidence = previous["effects"].get("start", {}).get("evidence", {})
-                if previous["status"] == "removed" and evidence.get("workspace_import") == "complete":
-                    await self._current(run_id, task_id, scope)
-                    return self._result(argv, evidence["exit_code"], evidence["output"])
-                raise RuntimeError("Existing Factory invocation requires reconciliation; it cannot be resubmitted")
-            if len(records) >= policy.command_limit:
-                raise ValueError("Frozen total command budget is exhausted")
+                return dict(retained)
+
+            if ordinal is not None:
+                replay = await self.journal.sandbox_command_replay(
+                    run_id, task_id, attempt, snapshot, retained_command, ordinal=ordinal
+                )
+                if replay["disposition"] != "absent":
+                    previous = replay["execution"]
+                    evidence = previous["effects"].get("start", {}).get("evidence", {})
+                    if previous["status"] == "removed" and evidence.get("workspace_import") == "complete":
+                        await self._current(run_id, task_id, scope)
+                        return self._result(argv, evidence["exit_code"], evidence["output"])
+                    raise RuntimeError("Existing Factory invocation requires reconciliation; it cannot be resubmitted")
             await self.probe(snapshot)
             await self._current(run_id, task_id, scope)
             source, _ = pack_workspace(
@@ -266,43 +275,65 @@ class RunnerPoolWorker:
             )
             metadata = await self.git_snapshot.build(source, self.artifacts.directory, policy.workspace_max_bytes)
             archive, bundle = frame_project_archives(source, metadata, policy.workspace_max_bytes)
-            invocation = RunnerProjectInvocation(
-                execution_id=execution_id,
-                profile_id=policy.profile.profile_id,
-                profile_revision=policy.profile.revision,
-                project_id=run.get("project_id"),
-                repository_id=run["repository_id"],
-                run_id=UUID(run_id),
-                image=policy.image,
-                argv=tuple(argv),
-                cwd=relative,
-                source_digest=bundle.source_digest,
-                archive_digest=bundle.archive_digest,
-                source_bytes=len(archive),
-                bundle=bundle,
-                cpus=policy.cpus,
-                memory_mb=policy.memory_mb,
-                pids_limit=policy.pids_limit,
-                timeout=min(timeout, policy.timeout),
-                max_output_bytes=policy.max_output_bytes,
-            )
-            self.artifacts.retain(policy.profile, invocation, "source", archive)
-            payload = {
-                "parent_attempt": attempt,
-                "factory_fence": scope["fence"].model_dump(mode="json"),
-                "ordinal": ordinal,
-                "container_name": "pool-" + execution_id,
-                "snapshot_digest": snapshot["digest"],
-                "command": command,
-                "request_digest": pool_digest(invocation.model_dump(mode="json")),
-                "request": invocation.model_dump(mode="json"),
-            }
+
+            def prepare(number: int, identity: str, previous: dict[str, Any] | None) -> dict[str, Any]:
+                if previous is not None:
+                    retained = previous["request"]
+                    if retained["command"] != command:
+                        raise ValueError("Frozen Factory invocation command changed")
+                    return dict(retained)
+                invocation = RunnerProjectInvocation(
+                    execution_id=identity,
+                    profile_id=policy.profile.profile_id,
+                    profile_revision=policy.profile.revision,
+                    project_id=run.get("project_id"),
+                    repository_id=run["repository_id"],
+                    run_id=UUID(run_id),
+                    image=policy.image,
+                    argv=tuple(argv),
+                    cwd=relative,
+                    source_digest=bundle.source_digest,
+                    archive_digest=bundle.archive_digest,
+                    source_bytes=len(archive),
+                    bundle=bundle,
+                    cpus=policy.cpus,
+                    memory_mb=policy.memory_mb,
+                    pids_limit=policy.pids_limit,
+                    timeout=min(timeout, policy.timeout),
+                    max_output_bytes=policy.max_output_bytes,
+                )
+                payload = {
+                    "parent_attempt": attempt,
+                    "factory_fence": scope["fence"].model_dump(mode="json"),
+                    "ordinal": number,
+                    "container_name": "pool-" + identity,
+                    "snapshot_digest": snapshot["digest"],
+                    "command": command,
+                    "request_digest": pool_digest(invocation.model_dump(mode="json")),
+                    "request": invocation.model_dump(mode="json"),
+                }
+                return payload
+
             await self._current(run_id, task_id, scope)
-            created = await self.journal.sandbox_effect_intent(
-                run_id, task_id, execution_id, effect="create", payload=payload
+            current_source, _ = pack_workspace(
+                workspace, policy.workspace_max_bytes, registry=self.artifacts.credential_registry()
             )
-            if created["disposition"] != "execute":
-                raise RuntimeError("Factory preparation already exists; reconciliation required")
+            if hashlib.sha256(current_source).hexdigest() != bundle.source_archive_digest:
+                raise ValueError("Command source changed during pool preparation")
+            created = await self.journal.sandbox_command_intent(
+                run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
+            )
+            execution_id = created["execution"]["execution_id"]
+            payload = created["execution"]["request"]
+            invocation = RunnerProjectInvocation.model_validate(payload["request"])
+            if not created["fresh"]:
+                previous = created["execution"]
+                evidence = previous["effects"].get("start", {}).get("evidence", {})
+                if previous["status"] == "removed" and evidence.get("workspace_import") == "complete":
+                    await self._current(run_id, task_id, scope)
+                    return self._result(argv, evidence["exit_code"], evidence["output"])
+                raise RuntimeError("Existing Factory invocation requires reconciliation; it cannot be resubmitted")
+            self.artifacts.retain(policy.profile, invocation, "source", archive)
             await self.journal.sandbox_effect_receipt(
                 run_id,
                 task_id,

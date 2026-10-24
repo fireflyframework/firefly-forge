@@ -22,8 +22,8 @@ def previous_profile():
 
 
 def test_protected_cleanup_has_a_distinct_current_profile():
-    assert qualification.REGISTRY_VERSION == 8
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v9"
+    assert qualification.REGISTRY_VERSION == 10
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v11"
 
 
 def test_registered_v8_remains_exact_historical_provenance_only():

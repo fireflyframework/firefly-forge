@@ -44,7 +44,9 @@ from firefly_forge.store import identifier
 
 
 @asynccontextmanager
-async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outcome="success"):
+async def native_restoration(
+    store, tmp_path, monkeypatch, *, repair=False, outcome="success", grants=None, next_tool=False
+):
     async with prepared(store, tmp_path) as (_, actor, seeded, _, _, _, _, _):
         store.configuration.update("bridge", ProviderConfiguration(values={"checkpoints": "required"}))
         run = await store.create_run(
@@ -58,11 +60,17 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
         )
         run_id = run["id"]
         roles = RoleRegistry(tmp_path / "native-roles")
+        catalog = roles.tools()
+        if grants is not None:
+            for tool in catalog:
+                if tool["id"] in grants:
+                    tool["availability"] = "worker_unverified"
         await store.update(
             run_id,
             **store.configuration.snapshot("bridge"),
             role_snapshot=roles.snapshot(
-                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": ["write_file"]})
+                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": grants or ["write_file"]}),
+                tool_catalog=catalog,
             ),
             repair_budget=int(repair),
             resume_existing=True,
@@ -160,6 +168,8 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
             if len(posts) == 1:
                 return httpx2.Response(200, json=result(tool=True))
             if len(posts) == 2:
+                return httpx2.Response(200, json=next_result(next_tool))
+            if next_tool and not repair:
                 return httpx2.Response(200, json=next_result(False))
             assert repair, "Original native result attempted a replacement POST"
             if outcome == "crash":

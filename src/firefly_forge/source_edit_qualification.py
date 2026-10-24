@@ -14,8 +14,8 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 8
-LOADER_PROFILE = "codex-exec-restricted-source/v9"
+REGISTRY_VERSION = 10
+LOADER_PROFILE = "codex-exec-restricted-source/v11"
 LOADER_MODULES = (
     "source_budget_allowances.py",
     "source_budget_output.py",
@@ -122,6 +122,7 @@ class CapabilityProfile:
     configuration_tools: tuple[tuple[str, bool], ...]
     proof: NativeQualificationProof
     source_budget_limits: tuple[tuple[str, int], ...] = ()
+    admission_contract_digest: str = ""
 
 
 def _profiles() -> tuple[CapabilityProfile, ...]:
@@ -186,6 +187,10 @@ SOURCE_BUDGET_CHECKS = (
 
 def profile_payload(profile: CapabilityProfile) -> dict[str, Any]:
     value = asdict(profile)
+    if profile.version < 9:
+        if profile.admission_contract_digest:
+            raise ValueError("Historical native profiles cannot acquire a new admission closure")
+        value.pop("admission_contract_digest")
     if profile.version == 4 and profile.loader_profile == "codex-exec-restricted-source/v5":
         if profile.source_budget_limits or profile.proof.budget_checks or profile.proof.budget_limits:
             raise ValueError("Historical native profiles cannot acquire new budget authority")
@@ -204,6 +209,8 @@ def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
             (5, "codex-exec-restricted-source/v6"),
             (6, "codex-exec-restricted-source/v7"),
             (7, "codex-exec-restricted-source/v8"),
+            (8, "codex-exec-restricted-source/v9"),
+            (9, "codex-exec-restricted-source/v10"),
         }
         or profile.proof.contract_digest != profile_contract_digest(profile)
     ):
@@ -247,6 +254,7 @@ def require_profile(profile: CapabilityProfile) -> None:
         or not isinstance(profile.proof, NativeQualificationProof)
     ):
         raise ValueError("Source-only execution requires a registered qualified native profile")
+    from firefly_forge.source_budget_allowances import admission_contract_digest
     from firefly_forge.source_edit_cli_policy import DISABLED_FEATURES
     from firefly_forge.source_edit_filesystem_policy import FILESYSTEM_POLICY_VERSION
     from firefly_forge.source_edit_model_catalog import model_catalog_sha256
@@ -261,6 +269,9 @@ def require_profile(profile: CapabilityProfile) -> None:
     hashes = (profile.executable_sha256, proof.artifact_sha256, *(row[2] for row in profile.catalog))
     if (
         profile.version != REGISTRY_VERSION
+        or not isinstance(profile.admission_contract_digest, str)
+        or re.fullmatch(r"[a-f0-9]{64}", profile.admission_contract_digest) is None
+        or profile.admission_contract_digest != admission_contract_digest()
         or proof.contract_digest != profile_contract_digest(profile)
         or not re.fullmatch(r"[a-z0-9_-]{1,100}", profile.profile_id)
         or any(re.fullmatch(r"[a-f0-9]{64}", value) is None for value in hashes)

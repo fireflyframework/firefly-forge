@@ -471,7 +471,6 @@ class SandboxExecutor:
         self.transfer_image = pinned_image(transfer_image) if transfer_image else None
         self._capacity = asyncio.Semaphore(2)
         self._run_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-        self._ordinals: dict[tuple[str, str, int], int] = defaultdict(int)
 
     def _safe_result(self, result: ProcessResult, *, browser: bool = False) -> ProcessResult:
         if browser and contains_known_credential(result.output, self.credential_registry()):
@@ -835,6 +834,9 @@ class SandboxExecutor:
         _receipt_sink: Callable[[dict[str, Any]], None] | None = None,
         _invocation_guard: Callable[[], Awaitable[None]] | None = None,
     ) -> ProcessResult:
+        from firefly_forge.sandbox_command_slots import assert_command_boundary
+
+        assert_command_boundary()
         if task_id not in {"implement", "verify"}:
             raise ValueError("Runner commands must belong to an implementation or verification stage")
         if not argv or len(argv) > 64 or type(timeout) is not int or timeout < 1:
@@ -880,11 +882,6 @@ class SandboxExecutor:
                     raise RuntimeError("Factory pool worker is not configured; execution cannot fall back")
                 if _browser or _browser_input is not None:
                     raise ValueError("Pool browser execution requires a separately qualified browser profile")
-                stage = next(item for item in (await self.journal.plan(run_id))["tasks"] if item["id"] == task_id)
-                if ordinal is None:
-                    slot = (run_id, task_id, stage["attempt"])
-                    self._ordinals[slot] += 1
-                    ordinal = self._ordinals[slot]
                 return await self.pool_worker.execute(
                     run_id, workspace, directory, argv, timeout, task_id, ordinal=ordinal
                 )
@@ -897,33 +894,15 @@ class SandboxExecutor:
             output_limit = 8_300_000 if _browser else config.max_output_bytes
             planned = next(item for item in (await self.journal.plan(run_id))["tasks"] if item["id"] == task_id)
             attempt = planned["attempt"]
-            slot = (run_id, task_id, attempt)
-            if ordinal is None:
-                self._ordinals[slot] += 1
-                ordinal = self._ordinals[slot]
-            if type(ordinal) is not int or not 1 <= ordinal <= config.command_limit:
-                raise ValueError("Frozen command budget is exhausted")
-            execution_id = uuid.uuid5(uuid.NAMESPACE_URL, f"forge:sandbox:{run_id}:{task_id}:{attempt}:{ordinal}").hex
-            execution_identity = execution_id
-            records = await self.journal.sandbox_executions(run_id)
-            existing = next((record for record in records if record["execution_id"] == execution_id), None)
-            if run.get("source_edit_continuation"):
-                from firefly_forge.source_edit_continuations import assert_source_final_budget
-
-                await assert_source_final_budget(self.store, self.journal, run, task_id, execution_id)
-            if existing is None and len(records) >= config.command_limit:
-                raise ValueError("Frozen total command budget is exhausted; resume and handoff do not reset it")
-            if _browser and existing is None:
-                assert config.browser is not None
-                browser_calls = sum(bool(row["request"]["request"].get("browser", False)) for row in records)
-                if browser_calls >= config.browser.max_calls:
-                    raise ValueError("Frozen browser call budget is exhausted; resume and handoff do not reset it")
-            labels = {
-                "org.firefly.forge.owner": self.owner,
-                "org.firefly.forge.execution": execution_id,
-                "org.firefly.forge.run": run_id,
-                "org.firefly.forge.snapshot": snapshot["digest"],
-            }
+            explicit_id = (
+                uuid.uuid5(uuid.NAMESPACE_URL, f"forge:sandbox:{run_id}:{task_id}:{attempt}:{ordinal}").hex
+                if ordinal is not None
+                else None
+            )
+            retained = next(
+                (row for row in await self.journal.sandbox_executions(run_id) if row["execution_id"] == explicit_id),
+                None,
+            )
             request: dict[str, Any] = {
                 "browser": _browser,
                 "output_limit": output_limit,
@@ -940,21 +919,47 @@ class SandboxExecutor:
                     raise ValueError("Archive execution requires an administrator-configured pinned transfer image")
                 request["transfer_image"] = self.transfer_image
                 request["workspace_digest"] = (
-                    existing["request"]["request"]["workspace_digest"]
-                    if existing
+                    retained["request"]["request"]["workspace_digest"]
+                    if retained
                     else pack_workspace(workspace, config.workspace_max_bytes, registry=self.credential_registry())[1]
                 )
-            payload = {
-                "parent_attempt": attempt,
-                "ordinal": ordinal,
-                "container_name": "forge-sandbox-" + execution_id,
-                "snapshot_digest": snapshot["digest"],
-                "request_digest": digest(request),
-                "request": request,
+
+            def prepare(number: int, identity: str, previous: dict[str, Any] | None) -> dict[str, Any]:
+                frozen_request = dict(request)
+                if previous and SandboxInput.model_validate(previous["request"]["request"]["configuration"]) == config:
+                    frozen_request["configuration"] = previous["request"]["request"]["configuration"]
+                value = {
+                    "parent_attempt": attempt,
+                    "ordinal": number,
+                    "container_name": "forge-sandbox-" + identity,
+                    "snapshot_digest": snapshot["digest"],
+                    "request_digest": digest(frozen_request),
+                    "request": frozen_request,
+                }
+                if previous and "executor_contract" in previous["request"]:
+                    value["executor_contract"] = previous["request"]["executor_contract"]
+                return value
+
+            await admit()
+            if config.workspace_transport == "archive" and retained is None:
+                current_digest = pack_workspace(
+                    workspace, config.workspace_max_bytes, registry=self.credential_registry()
+                )[1]
+                if current_digest != request["workspace_digest"]:
+                    raise ValueError("Command source changed during archive preparation")
+            created = await self.journal.sandbox_command_intent(
+                run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
+            )
+            payload = created["execution"]["request"]
+            execution_id = created["execution"]["execution_id"]
+            execution_identity = execution_id
+            labels = {
+                "org.firefly.forge.owner": self.owner,
+                "org.firefly.forge.execution": execution_id,
+                "org.firefly.forge.run": run_id,
+                "org.firefly.forge.snapshot": snapshot["digest"],
             }
-            if existing and SandboxInput.model_validate(existing["request"]["request"]["configuration"]) == config:
-                request["configuration"] = existing["request"]["request"]["configuration"]
-                payload["request_digest"] = digest(request)
+            existing = None if created["fresh"] else created["execution"]
             if existing is not None:
                 if existing["request"] != payload:
                     raise SandboxReconciliationRequired("Durable runner invocation differs from the requested command")
@@ -983,9 +988,6 @@ class SandboxExecutor:
                         "Interrupted runner invocation requires explicit stage recovery"
                     )
             await admit()
-            created = await self.journal.sandbox_effect_intent(
-                run_id, task_id, execution_id, effect="create", payload=payload
-            )
             if config.mode == "host":
                 if created["disposition"] == "needs_reconciliation":
                     raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")

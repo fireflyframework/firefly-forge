@@ -396,6 +396,7 @@ class Collaboration:
             data.pop("_scm_source_edit_used_v1", None)
             data.pop("_scm_product_change_authority_v1", None)
             data.pop("_scm_product_intake_v1", None)
+            data.pop("_maintain_ticket_v1", None)
             return {
                 **data,
                 "repository_id": repository_id,
@@ -451,6 +452,7 @@ class Collaboration:
                 "_scm_product_change_authority_v1",
                 "_scm_product_intake_v1",
                 "_github_poll_v1",
+                "_maintain_ticket_v1",
             ):
                 if row is not None and key in row.data:
                     data[key] = copy.deepcopy(row.data[key])
@@ -1647,6 +1649,7 @@ class Collaboration:
         issue: Data | None = None,
         *,
         before_write: Callable[[], Awaitable[None]] | None = None,
+        before_dispatch: Callable[[], Awaitable[None]] | None = None,
     ) -> Data:
         provider = str(repo["connection_provider"])
         ownership_required = self.store.execution_ownership_acquired or (
@@ -1673,11 +1676,13 @@ class Collaboration:
         ):
             await self.store.assert_ownership()
         self.store.reject_credentials(payload)
+        dispatch = {"before_dispatch": before_dispatch} if before_dispatch is not None else {}
         response = await self.scm._request(
             "POST",
             api + self._issue_path(provider, repo, issue),
             headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
             json=payload,
+            **dispatch,
         )
         result: Data = response.json()
         return {
@@ -1700,9 +1705,16 @@ class Collaboration:
             for peer in peers
         ):
             return False
+        if data.get("maintain_ticket") is not None:
+            peers = [peer for peer in peers if peer.get("maintain_ticket") is not None]
         return not proactive or not peers or peers[0]["id"] == data["id"]
 
     async def _feedback_authority(self, data: Data, *, local: bool = False) -> None:
+        if data.get("maintain_ticket") is not None:
+            from firefly_forge.scm_maintain_tickets import MaintainTickets
+
+            await MaintainTickets(self).authorize_feedback(data, remote=not local)
+            return
         from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
         from firefly_forge.scm_actor_authority import SCMActorAuthority
 
@@ -1781,6 +1793,11 @@ class Collaboration:
             raise AccessDenied("Current repository collaboration permission is required for feedback")
 
     async def _feedback_context(self, data: Data, run: Data) -> Data:
+        if data.get("maintain_ticket") is not None:
+            from firefly_forge.scm_maintain_tickets import MaintainTickets
+
+            await MaintainTickets(self).authorize_feedback(data)
+            return {"_feedback_origin": self.browser_origin, "_feedback_actions": []}
         from firefly_forge.project_access import ProjectAccess
         from firefly_forge.scm_actor_authority import SCMActorAuthority
 
@@ -1821,6 +1838,9 @@ class Collaboration:
         return {"_feedback_origin": self.browser_origin, "_feedback_actions": actions}
 
     async def feedback(self, receipt_id: str) -> None:
+        from firefly_forge.scm_connections import ProviderDispatchRefused
+        from firefly_forge.scm_maintain_tickets import MaintainNotificationNotDispatched, MaintainTickets
+
         initial = await self.receipt(receipt_id)
         if initial.get("native_question") is not None:
             from firefly_forge.native_question_publications import NativeQuestionPublications
@@ -1918,7 +1938,7 @@ class Collaboration:
                 if data.get("natural_turn") is not None:
                     from firefly_forge.scm_natural_feedback import natural_card
 
-                    return natural_card(data, public_text)
+                    return natural_card(data, public_text, repository=repo, host=host)
                 message = feedback_card(data, current_run, repo, host, public_text)
                 if not conversation or (current_run and data["command"]["language"] != "es"):
                     return message
@@ -2135,12 +2155,52 @@ class Collaboration:
                     raise DeferredFeedbackChanged("The deferred feedback authority or route changed") from None
 
             write_started = True
+            dispatch_check: Callable[[], Awaitable[None]] | None = None
+            if data.get("maintain_ticket") is not None:
+
+                async def maintain_dispatch_check() -> None:
+                    from pyfly.data.transaction import current_unit_of_work
+
+                    from firefly_forge.project_access import AccessDenied
+
+                    if current_unit_of_work() is not None:
+                        raise ValueError("Admit maintain notifications outside a writer transaction")
+                    await self.store.assert_ownership()
+                    tickets = MaintainTickets(self)
+                    try:
+                        context = await tickets.authorize_feedback(data)
+                        if (
+                            milestone_key(context["run"]) != intent["key"]
+                            or content_digest(communication_facts(context["run"]))
+                            != intent["communication"]["facts_sha256"]
+                        ):
+                            raise MaintainNotificationNotDispatched("The exact maintain notification facts changed")
+                        self.store.reject_credentials(public_values)
+                        self.communication_writer.assert_current(intent["communication"])
+                        tickets.confirm_local_cut(context)
+                    except (AccessDenied, KeyError, ValueError) as error:
+                        raise MaintainNotificationNotDispatched(
+                            "Current native maintain publication was refused before HTTP"
+                        ) from error
+
+                dispatch_check = maintain_dispatch_check
+
             remote = await self._remote_write(
                 repo,
                 payload,
                 data["issue"],
                 before_write=retained_before_write if retained is not None else before_write,
+                before_dispatch=dispatch_check,
             )
+            if data.get("maintain_ticket") is not None:
+                from firefly_forge.scm_maintain_ticket_models import confirmed_remote
+
+                confirmed_remote(remote, self._ticket_url(repo, data["issue"]))
+        except (MaintainNotificationNotDispatched, ProviderDispatchRefused):
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                assert row is not None
+                await self._write_row(row, feedback_status="held", reason="native_maintain_authority_changed")
         except DeferredFeedbackChanged:
             async with self.store._unit():
                 row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)

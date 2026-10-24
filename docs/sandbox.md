@@ -25,6 +25,14 @@ After acquiring its run lock and execution capacity, the runner rechecks coordin
 
 Cleanup can still remove the invocation's owned containers and volumes after revocation or cancellation, with the existing ownership-label and coordinator checks. Removing execution permission must not prevent those resources from draining. Effects a command already performed remain part of its retained history and recovery process.
 
+## Preserve command identity across service restarts
+
+An omitted command ordinal represents a new invocation, even when its arguments match an earlier command. The factory allocates the next slot from canonical persisted run/task/attempt records and writes the create intent under the same database run lock. A fresh executor instance cannot restart that cursor or reset the total run budget. An explicit ordinal retains exact replay semantics: a matching completed result can be returned without executing the command again, while changed arguments are refused.
+
+Allocation checks the retained scalar identities, request payloads, effect receipts, and intact journal together. Missing or inconsistent projections, unknown creation/start/cleanup, interrupted effects, and uncertain workspace publication prevent fresh dispatch. An explicitly reconciled interruption or closed preparation can advance only after all command effects have known receipts and the original native task has a later explicit retry reconciliation. Merely increasing an attempt or restarting the service does not authorize another effect. Allocation and dispatch reject an ambient caller transaction; process and controller effects start after the factory's own intent transaction commits.
+
+Implementation checkpoint runtime contracts include the command allocator, executor, pool worker, and their policy/persistence modules. A checkpoint captured under different executor semantics cannot be restored silently. The conservative restore restriction and native source qualification gates still apply; this command identity contract does not by itself authorize command-enabled restoration.
+
 ## Keep Python verification tied to current source
 
 Factory commands receive a fresh execution-owned Python cache namespace and `PYTHONDONTWRITEBYTECODE=1`. The namespace replaces inherited or caller-supplied `PYTHONPYCACHEPREFIX` values. This prevents normal Python imports from accepting an earlier timestamp-and-size cache after a same-size source edit. Disabling bytecode writes alone would still allow an existing stale cache to be read.

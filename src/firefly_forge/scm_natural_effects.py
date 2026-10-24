@@ -309,9 +309,11 @@ class NaturalEffects:
         resume = self.collaboration.poll_resume_authority
         grant = (
             await resume._grant(context["scope"]["project_id"], parent["repository_id"], key=scopes[0]["binding_key"])
-            if resume
+            if resume and current.get("answer_only") is not True
             else None
         )
+        if current.get("answer_only") is True and resolution["state"] != "answer":
+            raise AccessDenied("Native maintain communication authorizes answers without continuation")
         native_cut = None
         if grant and grant["request"]["active"] and current["question_status"] == "answered":
             binding = await resume._binding(

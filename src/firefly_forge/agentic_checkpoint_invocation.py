@@ -25,6 +25,7 @@ from firefly_forge.prompts import prompt_catalog
 from firefly_forge.sandbox import pack_workspace
 
 FILE_TOOLS = frozenset({"list_files", "read_file", "write_file", "search_text", "edit_lines", "git_diff"})
+STATIC_TOOLS = FILE_TOOLS | {"execute_command", "knowledge_lookup", "read_run_evidence"}
 _current: ContextVar[CheckpointInvocation | None] = ContextVar("agentic_checkpoint_invocation", default=None)
 
 
@@ -54,9 +55,21 @@ def runtime_contract() -> str:
                 name: hashlib.sha256((root / name).read_bytes()).hexdigest()
                 for name in (
                     "agentic_runtime.py",
+                    "agent_restores.py",
+                    "agent_checkpoints.py",
                     "agentic_checkpoint_boundary.py",
                     "agentic_checkpoint_invocation.py",
                     "providers.py",
+                    "sandbox.py",
+                    "sandbox_command_slots.py",
+                    "journal.py",
+                    "runner_pool_worker.py",
+                    "sandbox_models.py",
+                    "sandbox_persistence.py",
+                    "runner_backends.py",
+                    "runner_factory_models.py",
+                    "runner_pool_models.py",
+                    "engine.py",
                 )
             },
         }
@@ -127,8 +140,18 @@ class CheckpointInvocation:
         self, boundary: AgenticBoundary, brief: str, backend: str, frontend: str, context: Any, settings: Any
     ) -> Any:
         grants = context.allowed_tools
-        if grants is None or not grants or not set(grants) <= FILE_TOOLS or context.qa_references:
-            raise ValueError("Required checkpoints support only explicit static file-tool grants without QA state")
+        if grants is None or not grants or not set(grants) <= STATIC_TOOLS:
+            raise ValueError("Required checkpoints support only explicit static text-tool grants without QA state")
+        from firefly_forge.engine import Engine
+
+        try:
+            references_match = digest({"references": context.qa_references}) == digest(
+                {"references": Engine._qa_reference_descriptors(self.run)}
+            )
+        except (TypeError, ValueError):
+            references_match = False
+        if not references_match:
+            raise ValueError("Required checkpoints need the exact frozen textual QA reference descriptors")
         self.boundary = boundary
         if self.restored is not None:
             binding = self.restored.binding

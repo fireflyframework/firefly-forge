@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import dataclasses
 import hashlib
 import json
 import math
+import zlib
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -16,7 +19,7 @@ from pathlib import PurePosixPath
 from typing import Any, Literal, cast
 
 from fireflyframework_agentic.model_utils import deserialize_model_messages, serialize_model_messages
-from pydantic import BaseModel, ConfigDict, TypeAdapter, field_validator
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import (
     ModelMessage,
@@ -33,6 +36,8 @@ from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 MAX_PAYLOAD = 192 * 1024
+MAX_RAW_PAYLOAD = 8 * 1024 * 1024
+COMPRESSION_THRESHOLD = 64 * 1024
 MAX_COUNTER = 2**53 - 1
 USAGE = TypeAdapter(RunUsage)
 LIMITS = TypeAdapter(UsageLimits)
@@ -47,7 +52,10 @@ def _compatibility() -> dict[str, str]:
 
 
 def _native_round_trip(adapter: TypeAdapter[Any], value: dict[str, Any]) -> None:
-    restored = adapter.validate_json(_encoded(value))
+    try:
+        restored = adapter.validate_json(_encoded(value))
+    except ValidationError:
+        raise ValueError("Checkpoint usage or limits contain unsupported fields") from None
     if _encoded(adapter.dump_python(restored, mode="json")) != _encoded(value):
         raise ValueError("Checkpoint usage or limits contain unsupported fields")
 
@@ -169,6 +177,79 @@ class _Record(BaseModel):
         return value
 
 
+class _CompressedRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    version: Literal[2]
+    codec: Literal["zlib-base64"]
+    raw_bytes: int
+    raw_sha256: str
+    data: str
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: Any) -> Any:
+        if type(value) is not int:
+            raise ValueError("Checkpoint envelope version must be an integer")
+        return value
+
+
+def _checkpoint_payload(raw: bytes) -> bytes:
+    if not 1 <= len(raw) <= MAX_RAW_PAYLOAD:
+        raise ValueError("Checkpoint raw record exceeds 8 MiB")
+    if len(raw) <= COMPRESSION_THRESHOLD:
+        return raw
+    return _encoded(
+        {
+            "version": 2,
+            "codec": "zlib-base64",
+            "raw_bytes": len(raw),
+            "raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "data": base64.b64encode(zlib.compress(raw, level=9)).decode("ascii"),
+        }
+    )
+
+
+def _checkpoint_record(payload: bytes) -> bytes:
+    if not 1 <= len(payload) <= MAX_PAYLOAD:
+        raise ValueError("Checkpoint size differs")
+    try:
+        value = json.loads(payload)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        raise ValueError("Checkpoint JSON encoding differs") from None
+    if type(value) is not dict or value.get("version") != 2:
+        return payload
+    try:
+        envelope = _CompressedRecord.model_validate_json(payload)
+    except ValidationError:
+        raise ValueError("Checkpoint compression envelope schema differs") from None
+    if not 1 <= envelope.raw_bytes <= MAX_RAW_PAYLOAD:
+        raise ValueError("Checkpoint raw record exceeds 8 MiB")
+    try:
+        compressed = base64.b64decode(envelope.data, validate=True)
+        inflater = zlib.decompressobj()
+        raw = inflater.decompress(compressed, envelope.raw_bytes + 1)
+    except (binascii.Error, ValueError, zlib.error):
+        raise ValueError("Checkpoint compression encoding differs") from None
+    if (
+        len(raw) != envelope.raw_bytes
+        or not inflater.eof
+        or inflater.unused_data
+        or inflater.unconsumed_tail
+        or hashlib.sha256(raw).hexdigest() != envelope.raw_sha256
+        or base64.b64encode(compressed).decode("ascii") != envelope.data
+        or _encoded(envelope.model_dump(mode="json")) != payload
+    ):
+        raise ValueError("Checkpoint compression size, digest or canonical encoding differs")
+    return raw
+
+
+def _record(raw: bytes) -> _Record:
+    try:
+        return _Record.model_validate_json(raw)
+    except ValidationError:
+        raise ValueError("Checkpoint record schema differs") from None
+
+
 @dataclasses.dataclass(frozen=True)
 class BoundaryCheckpoint:
     payload: bytes
@@ -184,10 +265,14 @@ class BoundaryCheckpoint:
             raise ValueError("Checkpoint payload must be immutable bytes")
         if not 1 <= len(payload) <= MAX_PAYLOAD or hashlib.sha256(payload).hexdigest() != digest:
             raise ValueError("Checkpoint size or digest differs")
-        record = _Record.model_validate_json(payload)
-        if record.compatibility != _compatibility() or _encoded(record.model_dump(mode="json")) != payload:
+        raw = _checkpoint_record(payload)
+        record = _record(raw)
+        if record.compatibility != _compatibility() or _encoded(record.model_dump(mode="json")) != raw:
             raise ValueError("Checkpoint runtime or canonical encoding differs")
-        messages = deserialize_model_messages(record.history)
+        try:
+            messages = deserialize_model_messages(record.history)
+        except ValidationError:
+            raise ValueError("Checkpoint native history schema differs") from None
         _history(messages)
         if record.request_history != record.history:
             raise ValueError("Request-only history cannot restore the agent graph")
@@ -205,7 +290,12 @@ class BoundaryCheckpoint:
 
     @property
     def record(self) -> _Record:
-        return _Record.model_validate_json(self.payload)
+        return _record(_checkpoint_record(self.payload))
+
+    @property
+    def canonical_payload(self) -> bytes:
+        BoundaryCheckpoint.decode(self.payload, self.digest)
+        return _checkpoint_record(self.payload)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -335,13 +425,19 @@ class AgenticBoundary(AbstractCapability[Any]):
             wire_sha256=hashlib.sha256(wire).hexdigest(),
             wire_bytes=len(wire),
         )
-        if self.restore is not None and not invocation.restored:
+        retained = self.restore is not None and not invocation.restored
+        if retained:
+            assert self.restore is not None
             expected = self.restore.record.model_dump(mode="json")
             actual = record.model_dump(mode="json")
             changed = [field for field in expected if _encoded(actual[field]) != _encoded(expected[field])]
             if changed:
                 raise ValueError("Restored model state differs from the checkpoint: " + ", ".join(changed))
-        payload = _encoded(record.model_dump(mode="json"))
+        payload = (
+            self.restore.payload
+            if retained and self.restore is not None
+            else _checkpoint_payload(_encoded(record.model_dump(mode="json")))
+        )
         checkpoint = BoundaryCheckpoint.decode(payload, hashlib.sha256(payload).hexdigest())
         contract_bytes = _encoded(record.contract)
         if invocation.contract is not None and invocation.contract != contract_bytes:

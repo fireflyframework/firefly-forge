@@ -858,9 +858,8 @@ class Engine:
 
                     source_brief += customer_instruction(run["product_definition"])
                 if run.get("branding_snapshot"):
-                    branding = run["branding_snapshot"]
                     source_brief += prompt_text(
-                        "implementation/brand", files=json.dumps(branding["files"], ensure_ascii=False)
+                        "implementation/brand", files=json.dumps(self._branding_manifest(run["branding_snapshot"]))
                     )
                 if run.get("design_snapshot"):
                     if run["design_snapshot"]["method"] == "process_map" or run["frontend"] == "none":
@@ -973,6 +972,7 @@ class Engine:
                     await self.store.update(identifier, implementation_pending=True)
                     if restoration is None:
                         await self._materialize_design(identifier, workspace)
+                        await self._materialize_branding(identifier, workspace, settings)
                     if contains_known_credential(brief, {**settings, **self.credential_registry()}):
                         raise ValueError(
                             "The composed worker context contains a configured credential; execution blocked"
@@ -1790,6 +1790,97 @@ class Engine:
             },
         )
         return approved, evidence
+
+    @staticmethod
+    def _branding_manifest(branding: dict[str, Any]) -> dict[str, Any]:
+        files = branding.get("files")
+        if (
+            not isinstance(files, dict)
+            or not files
+            or any(
+                type(name) is not str
+                or not name
+                or name.startswith(".")
+                or any(character in name for character in ("/", "\\", "\x00"))
+                or type(content) is not str
+                for name, content in files.items()
+            )
+        ):
+            raise ValueError("Frozen product branding needs complete named text files")
+        expected = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+        if branding.get("digest") != expected:
+            raise ValueError("Frozen product branding failed its content digest")
+        return {
+            "revision": branding["revision"],
+            "digest": expected,
+            "scope": "component",
+            "files": [
+                {
+                    "path": "docs/brand/" + expected + "/" + name,
+                    "bytes": len(files[name].encode("utf-8")),
+                    "sha256": hashlib.sha256(files[name].encode("utf-8")).hexdigest(),
+                }
+                for name in sorted(files)
+            ],
+        }
+
+    async def _materialize_branding(self, identifier: str, workspace: Path, settings: dict[str, str]) -> None:
+        run = await self.store.get_run(identifier)
+        branding = run.get("branding_snapshot")
+        if not branding:
+            return
+        from firefly_forge.agentic_runtime import WorkspaceTools
+        from firefly_forge.project_access import ProjectAccess
+
+        manifest = self._branding_manifest(branding)
+        await self.store.admit_credentials(branding)
+        if contains_known_credential(branding, {**settings, **self.credential_registry()}):
+            raise ValueError("Frozen product branding contains a configured credential")
+
+        async def guard() -> dict[str, Any]:
+            await self.assert_ownership()
+            current = await self.store.get_run(identifier)
+            if current.get("cancel_request", {}).get("status") == "requested":
+                raise asyncio.CancelledError()
+            if current.get("branding_snapshot") != branding:
+                raise ValueError("Frozen product branding changed before materialization")
+            await ProjectAccess(self.store).authorize_execution(current)
+            self.store.reject_credentials(branding)
+            return current
+
+        await guard()
+        tools = WorkspaceTools(self.component_directory(run, workspace, create=True))
+        missing = []
+        for item in manifest["files"]:
+            content = branding["files"][item["path"].rsplit("/", 1)[1]]
+            try:
+                existing = await tools.read_file(item["path"])
+            except FileNotFoundError:
+                existing = None
+            except ValueError as error:
+                if not isinstance(error.__cause__, FileNotFoundError):
+                    raise
+                existing = None
+            if existing is not None and existing != content:
+                raise ValueError("Materialized product branding conflicts with existing source")
+            if existing is None:
+                missing.append((item["path"], content))
+        for path, content in missing:
+            await guard()
+            # A late nonempty file must not be overwritten after the absence check.
+            await tools.write_file(path, content, expected_sha256=hashlib.sha256(b"").hexdigest())
+            if await tools.read_file(path) != content:
+                raise ValueError("Materialized product branding differs from its manifest")
+        prefix = run.get("component_snapshot", {}).get("path", ".") if run.get("component_snapshot") else "."
+        paths = [item["path"] if prefix == "." else prefix + "/" + item["path"] for item in manifest["files"]]
+        current = await guard()
+        if (
+            current.get("branding_materialized_digest") != manifest["digest"]
+            or current.get("branding_materialized_paths") != paths
+        ):
+            await self.store.update(
+                identifier, branding_materialized_digest=manifest["digest"], branding_materialized_paths=paths
+            )
 
     async def _materialize_design(self, identifier: str, workspace: Path) -> None:
         run = await self.store.get_run(identifier)

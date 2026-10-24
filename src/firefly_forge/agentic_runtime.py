@@ -432,7 +432,7 @@ async def execute_agentic(
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
-        instructions=build_instruction(brief, backend, frontend)
+        instructions=build_instruction("", backend, frontend)
         + ("\n" + qa_instructions() if "browser_journey" in handlers else "")
         + (
             prompt_text(
