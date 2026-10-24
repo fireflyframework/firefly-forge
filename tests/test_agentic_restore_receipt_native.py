@@ -17,7 +17,7 @@ from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.data.transaction import current_unit_of_work
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from test_agentic_checkpoint_activation_host import CutAfterPost, next_result, result
+from test_agentic_checkpoint_activation_host import CutAfterPost, controlled_source_snapshot, next_result, result
 from test_bridge_completion_callbacks import CAPABILITY
 from test_bridge_completion_native import mock_model_requests, prepared
 
@@ -101,7 +101,7 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
             return {"base_revision": "b" * 40, "head": "b" * 40, "source_tree": "c" * 40}
 
         async def snapshot(*args, **kwargs):
-            return ["service.py"], "Fictional native SQL control patch", "c" * 40
+            return ["service.py"], controlled_source_snapshot("Fictional native SQL control patch"), "c" * 40
 
         checks, posts, schemas = [], [], []
 

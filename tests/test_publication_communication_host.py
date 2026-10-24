@@ -18,6 +18,7 @@ from firefly_forge.communication import CommunicationWriter
 from firefly_forge.engine import Engine
 from firefly_forge.process import checked
 from firefly_forge.secrets import contains_known_credential
+from firefly_forge.store import Store as NativeStore
 
 
 def card(title="Add health checks", text="The worker reports bounded health checks. One saved check passed."):
@@ -69,6 +70,9 @@ async def publication(tmp_path, monkeypatch):
         path = tmp_path / "factory.db"
         runtime_roles = None
         task_router = configured.task_router
+        configuration = configured.task_router.profiles.private
+        source_patch_scanner = NativeStore.source_patch_scanner
+        source_diff_history = NativeStore.source_diff_history
 
         async def get_run(self, identifier):
             assert identifier == run_id
@@ -102,6 +106,7 @@ async def publication(tmp_path, monkeypatch):
             self.reject_credentials(value)
 
     store = Store()
+    store.credential_registry = lambda: {"TOKEN": state["secret"]}
     engine = Engine(store, jobs)
     engine.communication_writer = CommunicationWriter(store, model=reviewed_model(card()))
 

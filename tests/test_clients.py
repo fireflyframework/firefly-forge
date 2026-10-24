@@ -45,6 +45,8 @@ async def test_mcp_tools_have_real_input_contracts():
         "request_agent_checkpoint_restore",
         "get_agent_checkpoint_restore",
         "get_run",
+        "get_run_diff_index",
+        "get_run_diff_file",
         "cancel_run",
         "publish_run",
         "get_development_plan",
@@ -206,6 +208,11 @@ async def test_mcp_tools_have_real_input_contracts():
     activity = tools["get_run_activity_content"]
     assert activity.input_schema["required"] == ["identifier", "event_id", "query"]
     assert activity.annotations.read_only_hint is True and activity.annotations.open_world_hint is False
+    assert tools["get_run_diff_index"].input_schema["required"] == ["run_id", "expected_manifest"]
+    assert tools["get_run_diff_file"].input_schema["required"] == ["run_id", "expected_manifest", "file_index"]
+    for name in ("get_run_diff_index", "get_run_diff_file"):
+        assert tools[name].annotations.read_only_hint is True
+        assert tools[name].annotations.open_world_hint is False
     assert tools["create_run"].input_schema["required"] == ["repository_id", "brief"]
     assert "publish" not in tools["create_run"].input_schema["properties"]
     assert tools["request_incident_maintenance"].input_schema["required"] == ["identifier", "brief", "checks"]

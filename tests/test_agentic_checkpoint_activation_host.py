@@ -18,11 +18,48 @@ from test_bridge_completion_native import mock_model_requests
 from test_bridge_inflight_cancel import RUN
 
 from firefly_forge.bridge_completion_scope import bridge_completion_scope
+from firefly_forge.git_diff_models import GitDiffRefV1
 from firefly_forge.providers import BridgeProvider
+from firefly_forge.source_snapshot import SourceDiffSnapshotV1
 
 
 class CutAfterPost(BaseException):
     pass
+
+
+def controlled_source_snapshot(patch: str) -> SourceDiffSnapshotV1:
+    """Typed evidence for the controlled Git-inspection seam, not a stored archive."""
+    raw = patch.encode("utf-8")
+    digest = hashlib.sha256(raw).hexdigest()
+    manifest = json.dumps(
+        {"fixture": "agentic-restoration", "sha256": digest, "byte_count": len(raw), "file_count": 1},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return SourceDiffSnapshotV1(
+        artifact=GitDiffRefV1(
+            artifact_id=digest[:32],
+            manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+            sha256=digest,
+            byte_count=len(raw),
+            file_count=1,
+            index_page_count=1,
+        ),
+        preview=patch,
+        preview_bytes=len(raw),
+        preview_truncated=False,
+    )
+
+
+def test_controlled_source_snapshot_retains_exact_utf8_preview_scope():
+    patch = "Fictional retained patch — café\n"
+    source = controlled_source_snapshot(patch)
+    raw = patch.encode("utf-8")
+    assert SourceDiffSnapshotV1.model_validate_json(source.model_dump_json()) == source
+    assert source.artifact.sha256 == hashlib.sha256(raw).hexdigest()
+    assert source.artifact.byte_count == source.preview_bytes == len(raw)
+    assert source.artifact.file_count == source.artifact.index_page_count == 1
+    assert source.preview == patch and source.preview_truncated is False
 
 
 async def activated(tmp_path, monkeypatch):
@@ -566,7 +603,7 @@ async def test_explicit_ticket_restores_actual_agent_without_prior_tool_or_post_
         posts, intent, _, body, request = await queue_original(env, monkeypatch, source=source, next_tool=next_tool)
 
         async def snapshot(*args, **kwargs):
-            return ["service.py"], "Fictional retained patch", "c" * 40
+            return ["service.py"], controlled_source_snapshot("Fictional retained patch"), "c" * 40
 
         def transport(request):
             if request.method == "GET":

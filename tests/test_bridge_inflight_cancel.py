@@ -13,6 +13,7 @@ from pydantic_ai.messages import ModelRequest, UserPromptPart
 from pydantic_ai.models import ModelRequestParameters
 
 from firefly_forge import engine as engine_module
+from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.controllers import RunService
 from firefly_forge.engine import Engine
 from firefly_forge.journal import Journal
@@ -54,9 +55,13 @@ class Rows:
 
 class MemoryStore:
     runtime_roles = None
+    source_patch_scanner = Store.source_patch_scanner
+    source_diff_history = Store.source_diff_history
 
     def __init__(self, path):
         self.path = path
+        self.configuration = ConfigurationStore(path.parent / "configuration")
+        self.credential_registry = lambda: {}
         request = RunInput(
             repository_id=REPOSITORY, brief="Offline cancellation boundary", agent="bridge", frontend="none", skills=[]
         )

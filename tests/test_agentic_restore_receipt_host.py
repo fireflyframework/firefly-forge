@@ -11,7 +11,13 @@ from pydantic_ai import models
 from pyfly.data.transaction import TransactionTemplate
 from pyfly.data.transaction.definition import TransactionDefinition
 from pyfly.data.transaction.registry import TransactionManagerRegistry
-from test_agentic_checkpoint_activation_host import CutAfterPost, activated, next_result, queue_original
+from test_agentic_checkpoint_activation_host import (
+    CutAfterPost,
+    activated,
+    controlled_source_snapshot,
+    next_result,
+    queue_original,
+)
 from test_bridge_completion_callbacks import CAPABILITY
 from test_bridge_completion_native import mock_model_requests
 from test_bridge_inflight_cancel import RUN
@@ -109,7 +115,7 @@ async def test_restored_original_receipt_survives_native_schema_and_later_allowe
             return await checked(argv, cwd, **kwargs)
 
         async def snapshot(*args, **kwargs):
-            return ["service.py"], "Fictional retained patch", "c" * 40
+            return ["service.py"], controlled_source_snapshot("Fictional retained patch"), "c" * 40
 
         async def command(*args, **kwargs):
             checks.append(1)
