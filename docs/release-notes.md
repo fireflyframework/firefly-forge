@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.40
+
+Projects can configure development checkpoints for completed implementation rounds and safe worker pauses. A run records its schedule and original Git baseline; each checkpoint extends its last confirmed factory commit. GitHub and GitLab adapters can update one retained draft review, then mark that same review ready after final verification and approval. Remote updates compare the exact expected branch revision and preserve fast-forward ancestry. Changed review identity and unknown outcomes stop further writes. Checkpoints remain disabled until configured, and disabling the project policy stops further checkpoints for existing runs without removing saved commits.
+
+Studio adds a workflow form and saved-progress history, with complete commit and source-tree identifiers on desktop and mobile. Six API, SDK, CLI and MCP operations expose configuration, checkpoint requests, receipts and read-only observation under current project permissions. The [development workflow guide](development-workflow.md) illustrates the portal with controlled fixtures and explains what a draft checkpoint establishes.
+
+Implementation handoffs now read bounded, authenticated question-and-answer history rather than only the latest answer. Historical diagnostics remain labeled and confer no authority. The report schema also expresses the existing requirement that a blocked or clarification response include a typed question; invalid reports retain a fixed error without echoing their contents. GitHub polling projects a bounded candidate descriptor before credential admission, keeping full conversation content in its original inbox records.
+
+An explicit known-completed-output review can admit the next finite source-only activation after a completed native turn returned an invalid implementation report. It binds the retained dispatch, output, tool history, unchanged Git index and freshly reviewed source. It does not fabricate a question, treat output as successful implementation, reset budgets or replay the failed dispatch. This path requires its separately measured v7 native profile; historical profiles remain unchanged. See [source-budget recovery](recovery.md).
+
+Controlled host, browser and native qualification have separate evidence boundaries. These features do not establish completed CRM delivery, live remote draft acceptance or a successful external deployment.
+
 ## 0.2.39
 
 A paused source-only task can continue through separately reviewed human-answer or completed-output admission. The review retains the original run, source, command budget and uncertain effects; it does not replay an old request. Completed-output observation binds the retained stdout descriptors and accepts only the exact pinned pre-turn CLI notice. It does not infer process exit or implementation success from a completed turn.

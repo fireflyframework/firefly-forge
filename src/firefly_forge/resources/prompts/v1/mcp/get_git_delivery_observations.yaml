@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_git_delivery_observations
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Observe the retained Git delivery intent and current local or remote state under current authority. This read does not retry, settle custody, commit, push or change a review."
+required_variables: []
+metadata:
+  defaults: {}

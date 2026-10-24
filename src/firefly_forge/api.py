@@ -102,6 +102,10 @@ from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestRepository,
 )
 from firefly_forge.execution_requests import ExecutionRequests
+from firefly_forge.git_deliveries import GitDeliveries
+from firefly_forge.git_delivery_controllers import GitDeliveryController, GitDeliveryPolicyController
+from firefly_forge.git_delivery_policy import GitDeliveryPolicies
+from firefly_forge.git_delivery_requests import GitDeliveryRequests
 from firefly_forge.identity import AUTH_PREFIX, SESSION_COOKIE, IdentityConfiguration, IdentityService
 from firefly_forge.identity_controllers import IdentityController
 from firefly_forge.identity_persistence import (
@@ -476,6 +480,22 @@ class FactoryConfiguration:
         restores = AgentRestores(store, requests, engine)
         requests.agent_restores = restores
         return restores
+
+    @bean
+    def git_delivery_policies(self, store: Store) -> GitDeliveryPolicies:
+        return GitDeliveryPolicies(store)
+
+    @bean
+    def git_deliveries(self, store: Store, engine: Engine, journal: Journal) -> GitDeliveries:
+        deliveries = GitDeliveries(store, engine, journal)
+        engine.git_deliveries = deliveries
+        return deliveries
+
+    @bean
+    def git_delivery_requests(self, deliveries: GitDeliveries, requests: ExecutionRequests) -> GitDeliveryRequests:
+        tickets = GitDeliveryRequests(deliveries, requests)
+        requests.git_deliveries = tickets
+        return tickets
 
     @bean
     def runner_continuations(
@@ -1200,6 +1220,8 @@ def create_runtime(
         AgentCheckpoints,
         AgentRestoreController,
         AgentCheckpointCandidateController,
+        GitDeliveryPolicyController,
+        GitDeliveryController,
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,

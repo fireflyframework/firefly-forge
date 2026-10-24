@@ -40,6 +40,7 @@ from firefly_forge.project_persistence import ForgeProjectRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_poll_models import (
+    GitHubPollCandidateV1,
     GitHubPollReferenceV1,
     PollConfigurationV1,
     PollState,
@@ -736,10 +737,10 @@ class SCMPolling:
         await self.authority._reader(actor, project, repository, admin=True)
         async with self.store._unit():
             rows = await self.inbox.find_latest(identifier(repository))
+        observations = [r for r in rows if (r.data.get("verification") or {}).get("transport") == TRANSPORT][:50]
         items = [
-            {**copy.deepcopy(r.data), "reference_digest": digest(r.data["verification"])}
-            for r in rows
-            if (r.data.get("verification") or {}).get("transport") == TRANSPORT
+            GitHubPollCandidateV1.from_observation(r.data, digest(r.data["verification"])).model_dump(mode="json")
+            for r in observations
         ]
         return await self._return(
             actor,
@@ -749,7 +750,7 @@ class SCMPolling:
                 "project_id": project,
                 "repository_id": repository,
                 "project_binding_digest": digest(await self.authority._project(project, repository)),
-                "items": items[:50],
+                "items": items,
             },
             admin=True,
         )

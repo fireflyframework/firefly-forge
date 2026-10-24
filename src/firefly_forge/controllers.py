@@ -90,6 +90,11 @@ class RunService:
 
     async def retry(self, identifier: str) -> dict[str, Any]:
         run = await self.store.get_run(identifier)
+        if run.get("git_delivery_policy", {}).get("enabled"):
+            deliveries = getattr(self.engine, "git_deliveries", None)
+            if deliveries is None:
+                raise ValueError("Git delivery history must be inspected before retrying this run")
+            await deliveries.assert_continuable(run)
         if run.get("bridge_completion_hold"):
             raise ValueError("Bridge completion history needs a graph checkpoint before retrying")
         if run.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:

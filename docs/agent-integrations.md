@@ -36,6 +36,34 @@ forge run --repository REPOSITORY_ID --project PROJECT_ID --component stock \
 
 A standalone frontend can select `--backend none`. Explicit stack choices must match a configured component. `--roles-file role-selection.json` applies validated role overrides; a run retains the resulting snapshot.
 
+## Save and inspect Git development checkpoints
+
+The project workflow in [Save development progress](development-workflow.md) has matching SDK, CLI and MCP operations. Configure it before starting a run; the run retains its own policy snapshot. The operator API can queue an explicit checkpoint only at a known quiescent boundary. An accepted request is followed by a separate worker receipt.
+
+```sh
+forge git-deliveries policy PROJECT_ID
+forge git-deliveries configure PROJECT_ID reviewed-policy.json
+forge git-deliveries list RUN_ID
+forge git-deliveries request RUN_ID reviewed-checkpoint.json
+forge git-deliveries receipt RUN_ID ORIGINAL_REQUEST_ID
+forge git-deliveries observe RUN_ID ORIGINAL_REQUEST_ID
+```
+
+`reviewed-policy.json` follows `GitDeliveryPolicyInputV1`: a request ID, the exact previous policy digest and the desired policy. `reviewed-checkpoint.json` follows `GitDeliveryInputV1`: a request ID, expected head and expected source tree. Read the current policy or source evidence before preparing either request. A missing response requires inspection of that same request, with no automatic retry.
+
+| Python `ForgeClient` method | Factory MCP tool |
+| --- | --- |
+| `git_delivery_policy(project_id)` | `get_git_delivery_policy` |
+| `configure_git_deliveries(project_id, request)` | `configure_git_delivery_policy` |
+| `git_deliveries(run_id)` | `get_git_deliveries` |
+| `request_git_delivery(run_id, request)` | `request_git_delivery` |
+| `git_delivery_request(run_id, request_id)` | `get_git_delivery_request` |
+| `git_delivery_observations(run_id, request_id)` | `get_git_delivery_observations` |
+
+The MCP tools use the SDK's versioned validation and current factory authority. Descriptions live in the native YAML catalog. Policy changes and checkpoint requests are writes; history, ticket and observation tools are reads. Observation can contact the selected SCM service to inspect the exact retained branch or review. It does not repeat a commit or push, resolve an uncertain receipt or mark a review ready.
+
+These six operator tools do not become workspace capabilities for a coding model. A source-only invocation retains its separately granted readers and command limits.
+
 ## Continue an answered clarification through local GitHub polling
 
 `ForgeClient.configure_scm_polling_resume_grant`, `scm_polling_resume_grant` and `current_scm_polling_resume_grant` save or read the separate version 3 transport-bound consent. `review_scm_polling_resume(project_id, repository_id, binding_request_id, run_id)` reads the current answered-clarification cut without dispatching it. MCP exposes `configure_scm_polling_resume_grant`, `get_scm_polling_resume_grant`, `get_current_scm_polling_resume_grant` and `review_scm_polling_resume` with the same strict request contract.
@@ -285,7 +313,7 @@ Python exposes `model_profiles`, `save_model_profile`, `test_model_profile`, `ta
 
 ## Grant check access to a coding recovery
 
-The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 166 operator tools to that coding process.
+The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 172 operator tools to that coding process.
 
 Use the native SDK methods `coding_check_candidate`, `grant_coding_checks`, `coding_check_receipt`, `coding_check_current` and `revoke_coding_checks`, or the matching CLI commands:
 

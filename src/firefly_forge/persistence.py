@@ -523,6 +523,51 @@ class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
             raise ValueError("The selected question ancestry exceeds its bounded native lookup")
         return [row[2] for row in rows if row[2] is not None]
 
+    async def find_implementation_context(self, run_id: UUID) -> dict[str, Any]:
+        """One bounded snapshot of message payloads and payload-free journal links."""
+        from sqlalchemy.dialects.postgresql import aggregate_order_by
+
+        from firefly_forge.worker_context import MAX_BYTES, MAX_JOURNAL_ROWS, MAX_MESSAGES, MESSAGE_KINDS
+
+        event = ForgeJournalEntity
+        matching = and_(event.run_id == run_id, event.kind.in_(MESSAGE_KINDS))
+        total = select(func.count().label("rows")).where(event.run_id == run_id).cte("worker_journal_budget")
+        budget = (
+            select(
+                func.count().label("rows"),
+                func.coalesce(func.sum(func.octet_length(cast(event.data, Text))), 0).label("bytes"),
+            )
+            .where(matching)
+            .cte("worker_message_budget")
+        )
+        within = and_(total.c.rows <= MAX_JOURNAL_ROWS, budget.c.rows <= MAX_MESSAGES, budget.c.bytes <= MAX_BYTES)
+        headers = (
+            select(
+                func.coalesce(
+                    func.jsonb_agg(
+                        aggregate_order_by(
+                            func.jsonb_build_array(event.sequence, event.previous_hash, event.digest, event.kind),
+                            event.sequence,
+                        )
+                    ),
+                    text("'[]'::jsonb"),
+                )
+            )
+            .where(event.run_id == run_id, within)
+            .scalar_subquery()
+        )
+        entries = (
+            select(func.coalesce(func.jsonb_agg(aggregate_order_by(event.data, event.sequence)), text("'[]'::jsonb")))
+            .where(matching, within)
+            .scalar_subquery()
+        )
+        row = (
+            await self._require_session().execute(select(total.c.rows, budget.c.rows, budget.c.bytes, headers, entries))
+        ).one()
+        if int(row[0]) > MAX_JOURNAL_ROWS or int(row[1]) > MAX_MESSAGES or int(row[2]) > MAX_BYTES:
+            raise ValueError("Retained worker messages exceed their bounded native context")
+        return {"journal_rows": int(row[0]), "message_rows": int(row[1]), "headers": row[3], "entries": row[4]}
+
     async def find_for_run(self, run_id: UUID) -> list[ForgeJournalEntity]:
         return list(
             await self._require_session().scalars(

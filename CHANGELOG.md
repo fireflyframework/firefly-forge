@@ -2,6 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.40 — 2026-10-23
+
+- Add project-configured factory Git checkpoints, chained commit receipts and retained draft reviews. Preserve the original baseline, current permissions, unknown outcomes and final verification requirements.
+- Retain bounded, authenticated worker question-and-answer history for subsequent implementation turns. Admit compact polling candidates before retrieving full conversation content.
+- Add explicit finite review of known completed native output without claiming implementation success, resetting spent budgets or replaying the failed dispatch. The separately measured v7 profile supports the admitted 20-read/activation-6 scope.
+- Refresh the Studio walkthrough and workflow guide. See the [0.2.40 release notes](docs/release-notes.md#0240) for changes and verification boundaries; completed CRM and live remote draft acceptance remain separate.
+
 ## 0.2.39 — 2026-10-23
 
 - Continue the same restricted source task through explicit human-answer and completed-output admission, retaining original source, uncertain effects and spent budgets. Bind exact archived stdout evidence without inferring process exit or success.

@@ -15,7 +15,7 @@ import zipfile
 from collections.abc import Callable
 from contextlib import AsyncExitStack, ExitStack
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from filelock import FileLock, Timeout
@@ -48,6 +48,9 @@ from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
 from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
 
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
+
+if TYPE_CHECKING:
+    from firefly_forge.git_deliveries import GitDeliveries
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
@@ -129,6 +132,7 @@ class Engine:
         from firefly_forge.communication import CommunicationWriter
 
         self.communication_writer = CommunicationWriter(store)
+        self.git_deliveries: GitDeliveries | None = None
         self.knowledge: Any = None
         self.assurance: Any = None
         self.workspaces = workspaces
@@ -800,9 +804,15 @@ class Engine:
                             ]
                         ),
                     )
-                if run.get("worker_response") and run["worker_response"].get("source") != "factory_verification":
+                if run.get("worker_response"):
+                    response_context = (
+                        await self.journal.implementation_context(identifier)
+                        if self.journal
+                        else run["worker_response"]
+                    )
                     source_brief += prompt_text(
-                        "implementation/operator-response", response=safe(json.dumps(run["worker_response"]))
+                        "implementation/operator-response",
+                        response=safe(json.dumps(response_context, ensure_ascii=False)),
                     )
                 from firefly_forge.verification_models import automatic_verification_grant
 
@@ -933,6 +943,7 @@ class Engine:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, implementation_limit + 1):
+                run = await self.store.get_run(identifier)
                 restored_receipt = restoration
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
@@ -1150,7 +1161,7 @@ class Engine:
                                 channel,
                                 prompt_text(
                                     "implementation/source-edit-only",
-                                    version="1.0.2",
+                                    version="1.0.3",
                                     capabilities=json.dumps(
                                         await source_runtime.capabilities(
                                             before_dispatch=recovery is not None and dispatch_pending["value"]
@@ -1285,6 +1296,9 @@ class Engine:
                     await self.provider_recoveries.complete(identifier, active_key)
                     recovery = None
                 active_key = None
+                if self.git_deliveries is not None:
+                    await self.git_deliveries.automatic(identifier)
+                    run = await self.store.get_run(identifier)
                 (
                     await self.store.update(
                         identifier, changed_files=files, diff=safe(diff[:1_000_000]), status="validating"
@@ -1489,6 +1503,8 @@ class Engine:
     async def _worker_feedback(
         self, identifier: str, workspace: Path, result: Any, attempt: int, safe_data: Callable[[Any], Any]
     ) -> None:
+        from pydantic import ValidationError
+
         from firefly_forge.agent_roles import worker_feedback_model
 
         payload = getattr(result, "worker_feedback", None) or getattr(result, "usage", {}).get("worker_feedback")
@@ -1501,7 +1517,12 @@ class Engine:
                 payload = report.get("feedback")
         if payload is None:
             return
-        feedback = worker_feedback_model(payload).model_validate(safe_data(payload))
+        try:
+            feedback = worker_feedback_model(payload).model_validate(safe_data(payload))
+        except ValidationError:
+            raise ValueError(
+                "The implementation report violates its typed feedback contract; inspect the retained provider report"
+            ) from None
         if feedback.role_id != "implementer" or feedback.task_id != "implement" or feedback.attempt != attempt:
             raise ValueError("Worker feedback must identify its actual implementation role, stage and attempt")
         run = await self.store.get_run(identifier)
@@ -1529,12 +1550,20 @@ class Engine:
         else:
             await self.journal.worker_feedback(identifier, feedback)
         if feedback.request:
+            if self.git_deliveries is not None:
+                pending = await self.store.get_run(identifier)
+                try:
+                    await self.git_deliveries.automatic(identifier, paused=True)
+                except Exception as error:
+                    await self.git_deliveries.hold_paused(pending, type(error).__name__)
             raise WorkerAttention(feedback.request.id)
         if feedback.disposition == "failed":
             raise ValueError("The implementation worker reported failure: " + feedback.summary)
 
     async def _inspect_workspace(self, identifier: str, workspace: Path, secrets: dict[str, str]) -> dict[str, Any]:
         run = await self.store.get_run(identifier)
+        if self.git_deliveries is not None:
+            await self.git_deliveries.assert_continuable(run)
         repository = await self.store.repository(run["repository_id"])
         if not run.get("git_metadata_digest"):
             raise ReconciliationRequired("Retained workspace has no trusted Git metadata baseline")
@@ -1554,6 +1583,8 @@ class Engine:
         base = run.get("base_revision") or run.get("checkpoint", {}).get("base_revision") or head
         expected = run.get("checkpoint_revision") or base
         if head != expected:
+            if run.get("git_delivery_policy", {}).get("enabled"):
+                raise ReconciliationRequired("Retained HEAD is outside the immutable factory checkpoint chain")
             tree = await checked(["git", "rev-parse", "HEAD^{tree}"], workspace)
             subject = await checked(["git", "show", "-s", "--format=%s", "HEAD"], workspace)
             parent = await checked(["git", "rev-parse", "HEAD^"], workspace)
@@ -1808,7 +1839,22 @@ class Engine:
     async def _checkpoint_commit(self, identifier: str, workspace: Path) -> None:
         await self._assert_delivery_tree(identifier, workspace)
         run = await self.store.get_run(identifier)
-        if run.get("checkpoint_revision"):
+        if (
+            run.get("checkpoint_revision")
+            and await checked(["git", "rev-parse", "HEAD^{tree}"], workspace) == run["source_tree"]
+        ):
+            return
+        if self.git_deliveries is not None and run.get("git_delivery_policy", {}).get("enabled"):
+            parent = run.get("checkpoint_revision") or run["base_revision"]
+            await self.git_deliveries.checkpoint(
+                identifier,
+                request_id=uuid.uuid5(uuid.NAMESPACE_URL, f"forge:git-final:{identifier}:{run['source_tree']}").hex,
+                expected_head=parent,
+                expected_source_tree=run["source_tree"],
+                actor=run.get("execution_actor"),
+                boundary=self.git_deliveries,
+                final=True,
+            )
             return
         if run["changed_files"]:
             await checked(
@@ -2450,12 +2496,31 @@ class Engine:
                     identifier, "publication_boundary_changed", publishing_run, ownership
                 )
                 raise
-            await push(workspace, run["branch"], env=git_env, repository_url=repo["url"], revision=revision)
-            async with httpx.AsyncClient(follow_redirects=False) as client:
+            intermediate = (
+                self.git_deliveries
+                if run.get("git_delivery_policy", {}).get("enabled")
+                and run["git_delivery_policy"].get("remote") == "draft_pr"
+                else None
+            )
+            if intermediate is not None:
+                prepared = await intermediate.final_start(publishing_run, releaser, draft)
                 await self._assert_publication_current(identifier, draft, releaser)
-                url = await PullRequests(client).create(
-                    repo, run["branch"], draft["title"], draft["body"], authentication=authentication
+                await push(
+                    workspace,
+                    run["branch"],
+                    env=prepared["environment"],
+                    repository_url=repo["url"],
+                    revision=revision,
+                    expected_remote_revision=prepared["reference"]["revision"] if prepared["reference"] else None,
                 )
+                url = await intermediate.final_ready(prepared, draft)
+            else:
+                await push(workspace, run["branch"], env=git_env, repository_url=repo["url"], revision=revision)
+                async with httpx.AsyncClient(follow_redirects=False) as client:
+                    await self._assert_publication_current(identifier, draft, releaser)
+                    url = await PullRequests(client).create(
+                        repo, run["branch"], draft["title"], draft["body"], authentication=authentication
+                    )
             await self.store.update_publication(
                 identifier, publishing_run, ownership=ownership, pr_url=url, publication_status="published"
             )

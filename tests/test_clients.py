@@ -196,6 +196,12 @@ async def test_mcp_tools_have_real_input_contracts():
         "prepare_connection_oauth",
         "refresh_connection_oauth",
         "disconnect_connection_oauth",
+        "get_git_delivery_policy",
+        "configure_git_delivery_policy",
+        "get_git_deliveries",
+        "request_git_delivery",
+        "get_git_delivery_request",
+        "get_git_delivery_observations",
     }
     activity = tools["get_run_activity_content"]
     assert activity.input_schema["required"] == ["identifier", "event_id", "query"]

@@ -56,6 +56,8 @@ class Projects:
                 "updated_at": now(),
                 "created_at": row.data["created_at"] if row else now(),
             }
+            if row and row.data.get("git_delivery_policy"):
+                data["git_delivery_policy"] = copy.deepcopy(row.data["git_delivery_policy"])
             data["digest"] = hashlib.sha256(json.dumps(data["definition"], sort_keys=True).encode()).hexdigest()
             if row:
                 row.data = data

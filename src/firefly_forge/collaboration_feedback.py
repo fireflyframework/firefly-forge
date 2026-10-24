@@ -299,6 +299,20 @@ def feedback_card(data: Data, run: Data, repository: Data, host: str, safe: Call
     if action == "assistant" and isinstance(result.get("reply"), str):
         sections.append(prompt_text("collaboration/reply", reply=_text(result["reply"], safe)))
     facts = []
+    checkpoint = run.get("git_delivery_summary") or {}
+    if isinstance(checkpoint, dict) and all(
+        isinstance(checkpoint.get(key), str) and re.fullmatch(r"(?:[a-f0-9]{40}|[a-f0-9]{64})", checkpoint[key])
+        for key in ("revision", "source_tree")
+    ):
+        facts.append("Factory checkpoint: `" + checkpoint["revision"] + "`")
+        facts.append("Source tree: `" + checkpoint["source_tree"] + "`")
+        draft = _link(checkpoint.get("pr_url"), host, repository)
+        if (
+            draft
+            and draft != _link(run.get("pr_url"), host, repository)
+            and checkpoint.get("remote_status") in {"draft", "ready"}
+        ):
+            sections.append(prompt_text("collaboration/review", url=draft))
     for field, label in copy["facts"].items():
         value = result.get(field)
         if type(value) is int and value >= 0 or isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", value):

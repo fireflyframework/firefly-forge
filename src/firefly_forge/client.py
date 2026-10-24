@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
+    from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
@@ -900,6 +901,29 @@ class ForgeClient:
     def project(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}"))
 
+    def git_delivery_policy(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/git-delivery-policy"))
+
+    def configure_git_deliveries(
+        self, project_id: str, request: GitDeliveryPolicyInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.git_delivery_models import GitDeliveryPolicyInputV1
+
+        body = GitDeliveryPolicyInputV1.model_validate(request).model_dump(mode="json")
+        return dict(self.request("PUT", f"projects/{self._id(project_id)}/git-delivery-policy", json=body))
+
+    def git_deliveries(self, run_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries"))
+
+    def request_git_delivery(self, run_id: str, request: GitDeliveryInputV1 | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.git_delivery_models import GitDeliveryInputV1
+
+        body = GitDeliveryInputV1.model_validate(request).model_dump(mode="json")
+        return dict(self.request("POST", f"runs/{self._id(run_id)}/git-deliveries", json=body))
+
+    def git_delivery_request(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries/requests/{self._id(request_id)}"))
+
     def analytics_configuration(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}/analytics/configuration"))
 
@@ -925,6 +949,9 @@ class ForgeClient:
                 "GET", f"projects/{self._id(project_id)}/analytics/tables/{UUID(table_id)}/objects/{UUID(object_id)}"
             )
         )
+
+    def git_delivery_observations(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries/observations/{self._id(request_id)}"))
 
     def project_revision(self, project_id: str, revision: int) -> dict[str, Any]:
         if isinstance(revision, bool) or revision < 1:

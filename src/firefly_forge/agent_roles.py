@@ -364,7 +364,28 @@ class WorkerRequest(BaseModel):
 
 
 class WorkerFeedback(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "description": (
+                "For blocked or clarification disposition, supply exactly one real typed request naming the "
+                "unresolved question and its context; do not invent a question to satisfy this schema. "
+                "For completed or failed disposition, request must be null or omitted. "
+                "A failed report is not successful implementation or permission to retry."
+            ),
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {"disposition": {"enum": ["blocked", "clarification"]}},
+                        "required": ["disposition"],
+                    },
+                    "then": {"required": ["request"], "properties": {"request": {"type": "object"}}},
+                    "else": {"properties": {"request": {"type": "null"}}},
+                }
+            ],
+        },
+    )
     id: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$")
     role_id: str
     task_id: Literal["prepare", "implement", "verify", "checkpoint", "review", "publication"]

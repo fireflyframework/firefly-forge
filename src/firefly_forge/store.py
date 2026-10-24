@@ -692,6 +692,14 @@ class Store:
             "branch": "",
             "base_revision": "",
         }
+        from firefly_forge.git_delivery_policy import GitDeliveryPolicies
+
+        delivery = await GitDeliveryPolicies(self).snapshot(request.project_id)
+        if delivery is not None:
+            if delivery["policy"]["enabled"] and actor_snapshot is None:
+                raise ValueError("Enabled project Git delivery requires an authenticated execution actor")
+            data["git_delivery_policy"] = copy.deepcopy(delivery["policy"])
+            data["git_delivery_policy_digest"] = delivery["digest"]
         current_actor = CURRENT_PRINCIPAL.get()
         if (
             current_actor != actor

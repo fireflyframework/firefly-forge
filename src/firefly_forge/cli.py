@@ -36,6 +36,58 @@ def main() -> None:
     """Firefly Forge: turn product briefs into verified implementations."""
 
 
+@main.group("git-deliveries")
+def git_deliveries() -> None:
+    """Inspect factory checkpoints and request a quiescent intermediate delivery."""
+
+
+@git_deliveries.command("policy")
+@click.argument("project_id")
+def git_delivery_policy(project_id: str) -> None:
+    with client() as connection:
+        display(connection.git_delivery_policy(project_id))
+
+
+@git_deliveries.command("configure")
+@click.argument("project_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def configure_git_deliveries(project_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.configure_git_deliveries(project_id, json_document(document)))
+
+
+@git_deliveries.command("list")
+@click.argument("run_id")
+def list_git_deliveries(run_id: str) -> None:
+    with client() as connection:
+        display(connection.git_deliveries(run_id))
+
+
+@git_deliveries.command("request")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def request_git_delivery(run_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.request_git_delivery(run_id, json_document(document)))
+
+
+@git_deliveries.command("receipt")
+@click.argument("run_id")
+@click.argument("request_id")
+def git_delivery_request(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.git_delivery_request(run_id, request_id))
+
+
+@git_deliveries.command("observe")
+@click.argument("run_id")
+@click.argument("request_id")
+def git_delivery_observations(run_id: str, request_id: str) -> None:
+    """Observe exact local/remote state without repeating any Git delivery effect."""
+    with client() as connection:
+        display(connection.git_delivery_observations(run_id, request_id))
+
+
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8787, type=click.IntRange(1, 65535), show_default=True)
@@ -2031,6 +2083,7 @@ def configure_source_budget_policy(document: Path) -> None:
 
 
 @source_budget.command("candidate")
+@click.option("--basis", type=click.Choice(["known_completed_output"]))
 @click.argument("run_id")
 @click.argument("parent_request_id")
 @click.option("--previous-catalog-path", required=True)
@@ -2044,6 +2097,7 @@ def source_budget_candidate(
     read_file_lifetime_limit: int,
     activation_ceiling: int,
     additional_activations: int,
+    basis: str | None = None,
 ) -> None:
     with client() as connection:
         display(
@@ -2056,6 +2110,7 @@ def source_budget_candidate(
                     "read_file_lifetime_limit": read_file_lifetime_limit,
                     "activation_ceiling": activation_ceiling,
                     "additional_activations": additional_activations,
+                    **({"basis": basis} if basis is not None else {}),
                 },
             )
         )

@@ -89,6 +89,14 @@ class CommunicationPublicationV1(StrictContract):
     checkpoint_revision: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
 
 
+class CommunicationGitDeliveryV1(StrictContract):
+    version: Literal[1] = 1
+    checkpoint_revision: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
+    source_tree: str = Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")
+    sequence: int = Field(ge=1, le=50)
+    changed_file_count: int = Field(ge=1, le=200)
+
+
 class CommunicationAssistantTurnV1(StrictContract):
     turn_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     status: Literal["processing", "completed", "failed", "needs_attention", "needs_reconciliation"]
@@ -217,9 +225,10 @@ def communication_facts(
     conversation: CommunicationConversationV1 | None = None,
     publication: CommunicationPublicationV1 | None = None,
     assistant: CommunicationAssistantV1 | None = None,
+    git_delivery: CommunicationGitDeliveryV1 | None = None,
 ) -> Data:
     if assistant is not None:
-        if run or conversation or publication:
+        if run or conversation or publication or git_delivery:
             raise ValueError("Assistant feedback is separate from execution and publication facts")
         assistant_facts = assistant.model_dump(exclude={"version"}, exclude_none=True)
         if assistant.turns:
@@ -244,6 +253,8 @@ def communication_facts(
         raise ValueError("Communication requires an actual execution or native conversation context")
     if publication and (conversation or run.get("status") != "succeeded"):
         raise ValueError("Publication communication requires a successful execution without conversation context")
+    if git_delivery is not None and (publication or conversation):
+        raise ValueError("Intermediate Git delivery is separate from final publication and conversation facts")
     status = run.get("status")
     known = TERMINAL | {"queued", "running", "paused", "needs_reconciliation", "developing", "validating"}
     facts: Data = {"state": {"status": status if isinstance(status, str) and status in known else "unknown"}}
@@ -252,6 +263,26 @@ def communication_facts(
             **publication.model_dump(exclude={"version"}),
             "summary_basis": "worker_report",
             "purpose": "proposed_pull_request",
+        }
+    if git_delivery is not None:
+        facts["git_delivery"] = {
+            **git_delivery.model_dump(exclude={"version"}),
+            "verification": "pending",
+            "purpose": "intermediate_draft_pull_request",
+        }
+    checkpoint = run.get("git_delivery_summary")
+    if (
+        isinstance(checkpoint, dict)
+        and type(checkpoint.get("sequence")) is int
+        and 1 <= checkpoint["sequence"] <= 50
+        and all(
+            isinstance(checkpoint.get(key), str) and re.fullmatch(r"(?:[a-f0-9]{40}|[a-f0-9]{64})", checkpoint[key])
+            for key in ("revision", "source_tree")
+        )
+        and checkpoint.get("remote_status") in {"not_requested", "publishing", "draft", "unknown", "ready"}
+    ):
+        facts["git_checkpoint"] = {
+            key: checkpoint[key] for key in ("sequence", "revision", "source_tree", "remote_status")
         }
     if conversation_facts:
         facts["conversation"] = conversation_facts
@@ -354,7 +385,10 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if ({"blocker", "check_batch", "conversation", "publication", "assistant"} & facts.keys()) - cited:
+    if (
+        {"blocker", "check_batch", "conversation", "publication", "assistant", "git_delivery", "git_checkpoint"}
+        & facts.keys()
+    ) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
@@ -449,6 +483,11 @@ def _render_card(
     if facts.get("assistant"):
         decision_body = _assistant_content(facts["assistant"], safe)
     body = prompt_text("collaboration/communication-card", title=title, narrative=narrative, decision=decision_body)
+    if checkpoint := facts.get("git_checkpoint"):
+        body += "\n\n" + prompt_text(
+            "collaboration/facts",
+            facts=f"Factory checkpoint: `{checkpoint['revision']}`\nSource tree: `{checkpoint['source_tree']}`",
+        )
     # Native reference controls are appended outside model-authored prose.
     if len(body) > 5000 and (facts.get("assistant") or {}).get("reply_reference_digest"):
         body = prompt_text(
@@ -486,8 +525,11 @@ class CommunicationWriter:
         conversation: CommunicationConversationV1 | None = None,
         publication: CommunicationPublicationV1 | None = None,
         assistant: CommunicationAssistantV1 | None = None,
+        git_delivery: CommunicationGitDeliveryV1 | None = None,
     ) -> Data:
-        facts = communication_facts(run, conversation=conversation, publication=publication, assistant=assistant)
+        facts = communication_facts(
+            run, conversation=conversation, publication=publication, assistant=assistant, git_delivery=git_delivery
+        )
         if reject := getattr(self.store, "reject_credentials", None):
             if "decision" in facts:
                 assert run is not None

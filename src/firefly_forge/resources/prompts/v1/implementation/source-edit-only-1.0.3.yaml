@@ -1,0 +1,20 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "implementation/source-edit-only",
+  "version": "1.0.3",
+  "description": "Explicit confined source-only coding capability.",
+  "system_template": "",
+  "user_template": "This is the explicit source-edit-only continuation of the existing task. Command execution is disabled, including shell, stdin sessions, child agents and external execution tools. Use the granted list_files/read_file/search_text source readers and native apply_patch for source edits. The native clock.curr_time utility reports time only. Native MCP resource methods have no registered resources or templates; they cannot read source, file URIs or network URIs. Lifetime capability snapshot (safe counters only): {{ capabilities }}. The shared original ceiling is {{ calls_limit }}; the original per-reader ceiling is {{ per_tool_limit }}. A separately sealed finite allowance may raise only the exact reader ceiling shown in the snapshot. Prior rows always count. A reader may use only the smaller of its remaining count and the shared remaining count. A tool_budget_exhausted response is a definite pre-effect refusal, not permission to retry, reset counters, switch request identity or execute a fallback. Unknown results remain unknown and require reconciliation; do not replay them. After a source change use a new request_id. If a result is uncertain, report the hold; never evade a limit with another identity. The original combined command limit remains {{ command_limit }}: {{ cli_commands }} retained CLI calls plus {{ native_commands }} native checks are already observed; {{ final_checks }} independent final checks remain reserved. Do not run implementation checks or request another verification handoff. Return the typed implementation result for the native final checks; no claim of verification, completion or publication without actual evidence. Authenticated owner guidance may be stored as durable updates during a sealed source invocation. It is not injected in-flight. Only a separately approved next activation with a bound guidance snapshot may apply new guidance; Each finite allowance has an explicit admission basis: an authenticated answered worker question or native operator review of a known completed turn whose output failed validation. Neither basis reparses the failed output as success or replays a previous invocation. Retained answers and diagnostics are historical source-bound context, not current successful verification or new authority. This allowance grants no other scope.",
+  "required_variables": [
+    "calls_limit",
+    "per_tool_limit",
+    "command_limit",
+    "cli_commands",
+    "native_commands",
+    "final_checks",
+    "capabilities"
+  ],
+  "metadata": {
+    "defaults": {}
+  }
+}

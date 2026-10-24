@@ -460,6 +460,23 @@ returned source ID and indexed content, then checks the retained admission
 identity again before recording the event. It does not claim that remote
 indexing and the local transaction are atomic.
 
+## Git development checkpoint endpoints
+
+Use the [development workflow guide](development-workflow.md) for the project settings and receipt states. All routes require the authenticated factory actor and current project access.
+
+| Method and route | Contract and effect |
+| --- | --- |
+| `GET /api/v1/projects/{project_id}/git-delivery-policy` | Read the saved policy, permissions and adapter capabilities. |
+| `PUT /api/v1/projects/{project_id}/git-delivery-policy` | Validate `GitDeliveryPolicyInputV1` and save the default using its expected previous digest. |
+| `GET /api/v1/runs/{run_id}/git-deliveries` | Read `GitDeliveriesViewV1` and its checkpoint receipts. |
+| `POST /api/v1/runs/{run_id}/git-deliveries` | Validate `GitDeliveryInputV1` and return `202` with a durable owning-worker ticket. |
+| `GET /api/v1/runs/{run_id}/git-deliveries/requests/{request_id}` | Read the original ticket, result and event chain. |
+| `GET /api/v1/runs/{run_id}/git-deliveries/observations/{request_id}` | Observe the exact retained intent and current state without repeating its effect. |
+
+Configuration requires a current administrator with project membership-management authority. Remote delivery also requires release authority and an explicit draft-capable repository connection. The worker repeats the current run, lease, source and permission checks before Git effects. A request against an active worker or an unsettled earlier effect is refused. A new request ID cannot bypass an uncertain operation.
+
+The `202` response acknowledges queue admission. Read the exact original ticket to establish whether the worker committed or published anything. Local commit, draft update, final verification and final publication remain separately recorded outcomes.
+
 ## Read optional structured analytics
 
 Flyquery is optional. Flycanon remains the required knowledge and memory service.

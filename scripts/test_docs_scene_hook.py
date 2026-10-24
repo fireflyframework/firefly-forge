@@ -77,10 +77,12 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/provider-recovery-allowance-browser-fixture.ts": "fixture allowance routes",
                 "studio/tests/coding-check-grant-fixture.json": "fixture coding grant",
                 "studio/tests/coding-check-recovery-browser-fixture.ts": "fixture coding routes",
+                "studio/tests/git-delivery-contract-fixture.json": "fixture Git delivery contract",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
                 "studio/tests/docs-coding-check-recovery.spec.ts": "fixture coding producer",
+                "studio/tests/development-workflow.spec.ts": "fixture development workflow producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -130,6 +132,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/provider-recovery-allowance-browser-fixture.ts",
                     "studio/tests/coding-check-grant-fixture.json",
                     "studio/tests/coding-check-recovery-browser-fixture.ts",
+                    "studio/tests/git-delivery-contract-fixture.json",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -182,6 +185,8 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/run-creation-cancellation-fixture.ts", "capture helper"),
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/tests/docs-provider-allowance.spec.ts", "capture producer"),
+                ("studio/tests/development-workflow.spec.ts", "capture producer"),
+                ("studio/tests/git-delivery-contract-fixture.json", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-fixture.ts", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-browser-fixture.ts", "capture helper"),
                 ("studio/playwright.docs.config.ts", "capture config"),
@@ -286,6 +291,35 @@ class WalkthroughTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "stage.*producer"):
                 hook._load_walkthrough({"docs_dir": str(docs)}, root)
             del manifest["captures"][coding_name]
+            workflow_name = "development-workflow-settings-mobile-light.png"
+            (asset.parent / workflow_name).write_bytes(asset.read_bytes())
+            workflow_record = {
+                **record,
+                "stage": "development-workflow-settings",
+                "path": "assets/screenshots/" + workflow_name,
+                "producer": "studio/tests/development-workflow.spec.ts",
+            }
+            workflow_record["producer_sha256"] = producers[workflow_record["producer"]]
+            manifest["captures"][workflow_name] = workflow_record
+            save()
+            hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            workflow_record["producer"] = "studio/tests/docs-walkthrough.spec.ts"
+            workflow_record["producer_sha256"] = producers[workflow_record["producer"]]
+            save()
+            with self.assertRaisesRegex(ValueError, "stage.*producer"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][workflow_name]
+            unknown_name = "development-workflow-unknown-mobile-light.png"
+            unknown_record = {
+                **workflow_record,
+                "stage": "development-workflow-unknown",
+                "path": "assets/screenshots/" + unknown_name,
+            }
+            manifest["captures"][unknown_name] = unknown_record
+            save()
+            with self.assertRaisesRegex(ValueError, "Unknown development workflow"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][unknown_name]
             save()
             extra = root / "studio/src/New.tsx"
             extra.write_text("new frontend input")
@@ -397,6 +431,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/provider-recovery-allowance-browser-fixture.ts",
                 "studio/tests/coding-check-grant-fixture.json",
                 "studio/tests/coding-check-recovery-browser-fixture.ts",
+                "studio/tests/git-delivery-contract-fixture.json",
             ]
             for name in operator_inputs:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
@@ -407,6 +442,8 @@ class WalkthroughTests(unittest.TestCase):
             allowance_capture.write_text("fixture allowance producer")
             coding_capture = root / "studio/tests/docs-coding-check-recovery.spec.ts"
             coding_capture.write_text("fixture coding producer")
+            workflow_capture = root / "studio/tests/development-workflow.spec.ts"
+            workflow_capture.write_text("fixture development workflow producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -427,6 +464,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/external-tools.spec.ts": sha(mcp_capture),
                     "studio/tests/docs-provider-allowance.spec.ts": sha(allowance_capture),
                     "studio/tests/docs-coding-check-recovery.spec.ts": sha(coding_capture),
+                    "studio/tests/development-workflow.spec.ts": sha(workflow_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

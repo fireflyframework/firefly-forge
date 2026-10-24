@@ -26,6 +26,7 @@ import { Wizard } from "./Wizard";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
 import { CampaignReports } from "./CampaignReports";
+import { DevelopmentWorkflowSettings } from "./DevelopmentWorkflowSettings";
 import type { IdentitySession } from "./Identity";
 type ComponentOverview = ProjectComponent & {
   latest_status: string;
@@ -259,6 +260,20 @@ export function Projects({
                   </button>
                 </div>
               </header>
+              {session && (
+                <DevelopmentWorkflowSettings
+                  key={JSON.stringify([
+                    connection.base,
+                    connection.token,
+                    session.user.id,
+                    session.global_admin,
+                    session.memberships,
+                    current.id,
+                  ])}
+                  connection={connection}
+                  projectId={current.id}
+                />
+              )}
               <p className="integration-status">
                 One shared product definition, brand and grid come from{" "}
                 {repositories.find(

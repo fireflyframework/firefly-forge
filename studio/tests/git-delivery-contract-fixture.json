@@ -1,0 +1,243 @@
+{
+  "provenance": {
+    "kind": "controlled fixtures serialized by real backend Pydantic models; no Git, provider or model calls",
+    "model_sha256": "31add2aec563ae63d6af2a9ee47d1bbc52e641cc8cdc5155185e274bed279ae0"
+  },
+  "project_id": "11111111111111111111111111111111",
+  "repository_id": "22222222222222222222222222222222",
+  "run_id": "33333333333333333333333333333333",
+  "policy_default": {
+    "version": 1,
+    "project_id": "11111111111111111111111111111111",
+    "policy": {
+      "version": 1,
+      "enabled": false,
+      "every_units": 1,
+      "on_pause": true,
+      "remote": "local",
+      "max_checkpoints": 50
+    },
+    "digest": null,
+    "request_id": null,
+    "permissions": {
+      "configure": true,
+      "publish": true
+    },
+    "remote_capabilities": [
+      {
+        "repository_id": "22222222222222222222222222222222",
+        "provider": "gitlab",
+        "draft_updates": true,
+        "reason": null
+      }
+    ]
+  },
+  "policy_enabled": {
+    "version": 1,
+    "project_id": "11111111111111111111111111111111",
+    "policy": {
+      "version": 1,
+      "enabled": true,
+      "every_units": 1,
+      "on_pause": true,
+      "remote": "draft_pr",
+      "max_checkpoints": 50
+    },
+    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "request_id": "44444444444444444444444444444444",
+    "permissions": {
+      "configure": true,
+      "publish": true
+    },
+    "remote_capabilities": [
+      {
+        "repository_id": "22222222222222222222222222222222",
+        "provider": "gitlab",
+        "draft_updates": true,
+        "reason": null
+      }
+    ]
+  },
+  "deliveries": {
+    "not_requested": {
+      "version": 1,
+      "run_id": "33333333333333333333333333333333",
+      "policy": {
+        "version": 1,
+        "enabled": true,
+        "every_units": 1,
+        "on_pause": true,
+        "remote": "draft_pr",
+        "max_checkpoints": 50
+      },
+      "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "latest_checkpoint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "items": [
+        {
+          "version": 1,
+          "run_id": "33333333333333333333333333333333",
+          "request_id": "55555555555555555555555555555555",
+          "sequence": 1,
+          "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parent_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_tree": "cccccccccccccccccccccccccccccccccccccccc",
+          "task_id": "implement",
+          "attempt": 1,
+          "changed_file_count": 7,
+          "patch_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "branch": "forge/inventory-progress",
+          "local_status": "checkpointed",
+          "remote_status": "not_requested",
+          "pr_url": null,
+          "created_at": "2026-10-23T18:00:00Z",
+          "checkpoint_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    },
+    "publishing": {
+      "version": 1,
+      "run_id": "33333333333333333333333333333333",
+      "policy": {
+        "version": 1,
+        "enabled": true,
+        "every_units": 1,
+        "on_pause": true,
+        "remote": "draft_pr",
+        "max_checkpoints": 50
+      },
+      "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "latest_checkpoint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "items": [
+        {
+          "version": 1,
+          "run_id": "33333333333333333333333333333333",
+          "request_id": "55555555555555555555555555555555",
+          "sequence": 1,
+          "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parent_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_tree": "cccccccccccccccccccccccccccccccccccccccc",
+          "task_id": "implement",
+          "attempt": 1,
+          "changed_file_count": 7,
+          "patch_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "branch": "forge/inventory-progress",
+          "local_status": "checkpointed",
+          "remote_status": "publishing",
+          "pr_url": "https://gitlab.example.test/warehouse/inventory/-/merge_requests/7",
+          "created_at": "2026-10-23T18:00:00Z",
+          "checkpoint_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    },
+    "draft": {
+      "version": 1,
+      "run_id": "33333333333333333333333333333333",
+      "policy": {
+        "version": 1,
+        "enabled": true,
+        "every_units": 1,
+        "on_pause": true,
+        "remote": "draft_pr",
+        "max_checkpoints": 50
+      },
+      "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "latest_checkpoint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "items": [
+        {
+          "version": 1,
+          "run_id": "33333333333333333333333333333333",
+          "request_id": "55555555555555555555555555555555",
+          "sequence": 1,
+          "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parent_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_tree": "cccccccccccccccccccccccccccccccccccccccc",
+          "task_id": "implement",
+          "attempt": 1,
+          "changed_file_count": 7,
+          "patch_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "branch": "forge/inventory-progress",
+          "local_status": "checkpointed",
+          "remote_status": "draft",
+          "pr_url": "https://gitlab.example.test/warehouse/inventory/-/merge_requests/7",
+          "created_at": "2026-10-23T18:00:00Z",
+          "checkpoint_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    },
+    "unknown": {
+      "version": 1,
+      "run_id": "33333333333333333333333333333333",
+      "policy": {
+        "version": 1,
+        "enabled": true,
+        "every_units": 1,
+        "on_pause": true,
+        "remote": "draft_pr",
+        "max_checkpoints": 50
+      },
+      "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "latest_checkpoint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "items": [
+        {
+          "version": 1,
+          "run_id": "33333333333333333333333333333333",
+          "request_id": "55555555555555555555555555555555",
+          "sequence": 1,
+          "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parent_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_tree": "cccccccccccccccccccccccccccccccccccccccc",
+          "task_id": "implement",
+          "attempt": 1,
+          "changed_file_count": 7,
+          "patch_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "branch": "forge/inventory-progress",
+          "local_status": "checkpointed",
+          "remote_status": "unknown",
+          "pr_url": "https://gitlab.example.test/warehouse/inventory/-/merge_requests/7",
+          "created_at": "2026-10-23T18:00:00Z",
+          "checkpoint_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    },
+    "ready": {
+      "version": 1,
+      "run_id": "33333333333333333333333333333333",
+      "policy": {
+        "version": 1,
+        "enabled": true,
+        "every_units": 1,
+        "on_pause": true,
+        "remote": "draft_pr",
+        "max_checkpoints": 50
+      },
+      "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "latest_checkpoint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "items": [
+        {
+          "version": 1,
+          "run_id": "33333333333333333333333333333333",
+          "request_id": "55555555555555555555555555555555",
+          "sequence": 1,
+          "original_base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parent_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_tree": "cccccccccccccccccccccccccccccccccccccccc",
+          "task_id": "implement",
+          "attempt": 1,
+          "changed_file_count": 7,
+          "patch_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "branch": "forge/inventory-progress",
+          "local_status": "checkpointed",
+          "remote_status": "ready",
+          "pr_url": "https://gitlab.example.test/warehouse/inventory/-/merge_requests/7",
+          "created_at": "2026-10-23T18:00:00Z",
+          "checkpoint_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    }
+  }
+}

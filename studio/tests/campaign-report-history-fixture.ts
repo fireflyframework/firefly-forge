@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import gitDelivery from "./git-delivery-contract-fixture.json" with { type: "json" };
 import native from "./campaign-report-archive-fixture.json" with { type: "json" };
 const verifiedReport = native.receipt.report;
 // These controlled API fixtures qualify read presentation, not native campaign execution.
@@ -107,6 +108,28 @@ async function setup(page: Page, readOnly = false, apiRoot = false) {
         });
       if (await mockIdentity(route)) return;
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith(`/projects/${projectId}/git-delivery-policy`)) {
+        if (route.request().method() !== "GET")
+          return route.fulfill({
+            status: 405,
+            json: { detail: "This fixture exposes policy reads only" },
+          });
+        return route.fulfill({
+          json: {
+            ...gitDelivery.policy_default,
+            project_id: projectId,
+            permissions: { configure: !readOnly, publish: !readOnly },
+            remote_capabilities: [
+              {
+                repository_id: repositoryId,
+                provider: "git",
+                draft_updates: false,
+                reason: "This provider supports local checkpoints only.",
+              },
+            ],
+          },
+        });
+      }
       if (path.includes("/report-archives")) {
         if (route.request().method() === "POST") {
           state.archivePosts++;

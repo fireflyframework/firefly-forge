@@ -2,6 +2,7 @@
 """Offline SDK cancellation in the actual Engine implementation stage; no sockets."""
 
 import asyncio
+import copy
 from contextlib import asynccontextmanager
 from types import MethodType, SimpleNamespace
 from uuid import UUID
@@ -32,6 +33,16 @@ class Rows:
 
     async def find_for_run(self, identifier):
         return self.rows
+
+    async def find_implementation_context(self, identifier):
+        entries = [copy.deepcopy(row.data) for row in self.rows]
+        messages = [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
+        return {
+            "journal_rows": len(entries),
+            "message_rows": len(messages),
+            "headers": [[entry[key] for key in ("sequence", "previous_hash", "digest", "kind")] for entry in entries],
+            "entries": messages,
+        }
 
     async def find_current(self, identifier):
         return self.rows[0] if self.rows else None

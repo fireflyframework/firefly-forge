@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_git_deliveries
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Read a run's typed Git checkpoint history, original baseline, latest saved head and remote delivery status. Saved progress remains separate from final verification, review and publication."
+required_variables: []
+metadata:
+  defaults: {}

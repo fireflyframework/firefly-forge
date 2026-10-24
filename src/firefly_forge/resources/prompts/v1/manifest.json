@@ -862,6 +862,38 @@
       }
     },
     {
+      "id": "implementation/source-edit-only",
+      "version": "1.0.2",
+      "path": "implementation/source-edit-only-1.0.2.yaml",
+      "sha256": "bfddfa409f23c8db488c3322c4fa2e6ea939fe66af094c7cbbbed1b833644bfd",
+      "field": "user",
+      "variables": {
+        "calls_limit": "string",
+        "per_tool_limit": "string",
+        "command_limit": "string",
+        "cli_commands": "string",
+        "native_commands": "string",
+        "final_checks": "string",
+        "capabilities": "string"
+      }
+    },
+    {
+      "id": "implementation/source-edit-only",
+      "version": "1.0.3",
+      "path": "implementation/source-edit-only-1.0.3.yaml",
+      "sha256": "35e5a741d2cc7175c81d3f3a62d6df843181c987c94820dfeb1d692f42e0741d",
+      "field": "user",
+      "variables": {
+        "calls_limit": "string",
+        "per_tool_limit": "string",
+        "command_limit": "string",
+        "cli_commands": "string",
+        "native_commands": "string",
+        "final_checks": "string",
+        "capabilities": "string"
+      }
+    },
+    {
       "id": "implementation/tool-rules",
       "version": "1.0.0",
       "path": "implementation/tool-rules.yaml",
@@ -996,6 +1028,14 @@
       "version": "1.0.0",
       "path": "mcp/configure_external_mcp.yaml",
       "sha256": "0b83784edb9636a59174d849981def220c9cf35373a524fea2778fe7715beac6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_git_delivery_policy",
+      "version": "1.0.0",
+      "path": "mcp/configure_git_delivery_policy.yaml",
+      "sha256": "095670b73b73a30c70910197b835b3fb4ecb94960cea10a003fe26dbf6fa9cfb",
       "field": "user",
       "variables": {}
     },
@@ -1284,6 +1324,38 @@
       "version": "1.0.0",
       "path": "mcp/get_external_mcp_grants.yaml",
       "sha256": "6e72a5de2316b58ecd22575cb76966b3d3042d5e03e69c7c2bac6bfdadf0e09e",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_git_deliveries",
+      "version": "1.0.0",
+      "path": "mcp/get_git_deliveries.yaml",
+      "sha256": "567bb60fbaeadec9f6a1d09f312de2c8a6b9654f493bf4f559d94931d87105fb",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_git_delivery_observations",
+      "version": "1.0.0",
+      "path": "mcp/get_git_delivery_observations.yaml",
+      "sha256": "e4ad20a025d539b633545d9b425bb533a46811eaaaa5554e1927b66da7906f73",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_git_delivery_policy",
+      "version": "1.0.0",
+      "path": "mcp/get_git_delivery_policy.yaml",
+      "sha256": "d5eb00a0668eaae70d939e0f7326b519f1365c3248c8d0c05d95083eec6058bf",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_git_delivery_request",
+      "version": "1.0.0",
+      "path": "mcp/get_git_delivery_request.yaml",
+      "sha256": "2a2c369b91527def9ad75de33494a1750943949ed5ae04d533941fa7f138a3ce",
       "field": "user",
       "variables": {}
     },
@@ -1992,6 +2064,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/request_git_delivery",
+      "version": "1.0.0",
+      "path": "mcp/request_git_delivery.yaml",
+      "sha256": "284f11fdd30ade21a64d67fdae86943f390cff04b06a0d2edf7d7be98505f23a",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/request_incident_maintenance",
       "version": "1.0.0",
       "path": "mcp/request_incident_maintenance.yaml",
@@ -2583,22 +2663,6 @@
       "sha256": "90d8cc3a086274b7ff631f0428124356b713dee00f32a4f5a8eb7506f0c96b1a",
       "field": "user",
       "variables": {}
-    },
-    {
-      "id": "implementation/source-edit-only",
-      "version": "1.0.2",
-      "path": "implementation/source-edit-only-1.0.2.yaml",
-      "sha256": "bfddfa409f23c8db488c3322c4fa2e6ea939fe66af094c7cbbbed1b833644bfd",
-      "field": "user",
-      "variables": {
-        "calls_limit": "string",
-        "per_tool_limit": "string",
-        "command_limit": "string",
-        "cli_commands": "string",
-        "native_commands": "string",
-        "final_checks": "string",
-        "capabilities": "string"
-      }
     }
   ]
 }

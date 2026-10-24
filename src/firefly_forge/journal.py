@@ -132,6 +132,22 @@ class Journal:
         )
         return data
 
+    async def git_delivery_append(self, run_id: str, kind: str, key: str, payload: Data) -> Data:
+        if kind not in {
+            "git_delivery_intent",
+            "git_delivery_receipt",
+            "git_delivery_remote_intent",
+            "git_delivery_remote_receipt",
+            "git_delivery_observation",
+            "git_delivery_draft",
+            "git_delivery_hold",
+        }:
+            raise ValueError("Unsupported factory Git delivery journal event")
+        await self.store.assert_ownership()
+        async with self.store._unit():
+            await self._run(run_id)
+            return await self._append(run_id, "checkpoint", key, kind, payload)
+
     async def ensure_plan(self, run_id: str) -> Data:
         async with self.store._unit():
             run = await self._run(run_id)
@@ -858,6 +874,53 @@ class Journal:
     async def worker_messages(self, run_id: str) -> list[Data]:
         entries = await self.entries(run_id)
         return [entry for entry in entries if entry["kind"] in {"worker_feedback", "worker_response"}]
+
+    async def implementation_context(self, run_id: str) -> Data:
+        from pyfly.data.transaction import Propagation, TransactionTemplate, current_unit_of_work
+
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+        from firefly_forge.worker_context import implementation_context
+
+        reader, caller = CURRENT_PRINCIPAL.get(), current_unit_of_work()
+
+        def scope(run: Data) -> tuple[Any, ...]:
+            return (
+                self._worker_scope(run),
+                run.get("component_id"),
+                digest(run.get("role_snapshot") or {}),
+                digest(run.get("worker_response") or {}),
+                digest(run.get("execution_actor") or {}),
+            )
+
+        async with self.store._unit():
+            initial = await self.store.get_run(run_id)
+            frozen = scope(initial)
+            await self._diagnostic_reader(initial, reader)
+            await ProjectAccess(self.store).authorize_execution(initial)
+            snapshot = await self.records.find_implementation_context(identifier(run_id))
+            context = implementation_context(initial, snapshot)
+
+        async def admitted() -> None:
+            await self.store.admit_credentials(context)
+            async with self.store._unit():
+                current = await self.store.get_run(run_id)
+                await self._diagnostic_reader(current, reader)
+                await ProjectAccess(self.store).authorize_execution(current)
+                if (current.get("cancel_request") or {}).get("status") == "requested":
+                    raise AccessDenied("Cancelled work cannot receive retained implementation context")
+                if scope(current) != frozen:
+                    raise AccessDenied("Worker context scope or current answer changed during admission")
+                latest = await self.records.find_implementation_context(identifier(run_id))
+                if implementation_context(current, latest) != context:
+                    raise ValueError("Retained worker context changed during credential admission")
+                self.store.reject_credentials(context)
+
+        if caller is None:
+            await admitted()
+        else:
+            async with TransactionTemplate(caller.manager, propagation=Propagation.NOT_SUPPORTED).transaction():
+                await admitted()
+        return context
 
     async def worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
         from firefly_forge.agent_roles import (
