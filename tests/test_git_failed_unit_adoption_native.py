@@ -1,8 +1,10 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Real PostgreSQL/owner/Git custody; native provider frames are controlled fixture input."""
 
+import asyncio
 import copy
 import json
+from contextvars import Context
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -108,6 +110,10 @@ async def failed_native(store, root):
     )
 
 
+async def execute_as_background_owner(tickets, request_id):
+    await asyncio.create_task(tickets.execute(request_id), context=Context())
+
+
 async def witness(env):
     async with env.store._unit():
         row = await env.store.run_records.find_by_id(identifier(env.run_id))
@@ -135,7 +141,7 @@ async def test_native_failed_unit_adoption_preserves_failed_run_and_effect_custo
             body = request_from(candidate).model_copy(update={"request_id": uuid4().hex})
             before = await witness(env)
             head = await checked(["git", "rev-parse", "HEAD"], env.workspace)
-            await env.controller.request(env.run_id, body)
+            admitted = await env.controller.request(env.run_id, body)
             if outcome == "source_drift":
                 (env.workspace / "product.py").write_text("value = 99\n")
             elif outcome == "revoked":
@@ -167,7 +173,7 @@ async def test_native_failed_unit_adoption_preserves_failed_run_and_effect_custo
                     return value
 
                 monkeypatch.setattr(module, "checked", lost)
-            await env.tickets.execute(body.request_id)
+            await execute_as_background_owner(env.tickets, body.request_id)
             after = await witness(env)
             current_head = await checked(["git", "rev-parse", "HEAD"], env.workspace)
             if outcome == "completed":
@@ -193,6 +199,13 @@ async def test_native_failed_unit_adoption_preserves_failed_run_and_effect_custo
                 assert (await env.controller.request(env.run_id, body))["status"] == "needs_reconciliation"
             else:
                 assert current_head == head and after == before
+                if outcome == "revoked":
+                    async with store._unit():
+                        ticket = await env.tickets.requests.records.find_by_id(identifier(body.request_id))
+                        assert ticket.status == "failed"
+                        assert ticket.data["request"]["actor"] == admitted["request"]["actor"]
+                    events = await env.tickets.requests.events(body.request_id)
+                    assert events[-1]["kind"] == "worker_failed"
         finally:
             await runtime.stop()
             await store.close()

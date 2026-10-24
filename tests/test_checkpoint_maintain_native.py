@@ -9,6 +9,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from checkpoint_test_native_fixtures import checkpoint_native as checkpoint_native  # noqa: F401
 from scm_polling_native_fixtures import native_poll as native_poll  # noqa: F401
+from test_addressed_status_native import natural
 from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.git_deliveries import delivery_digest
@@ -158,12 +159,15 @@ def test_native_maintain_checkpoint_uses_fresh_unit_without_recycling_failed_par
     c.case.run.clear()
     c.case.run.update(c.parent)
     status = c.case.process(c.case.observe("status"))
+    assert status["status"] == "processed" and status["run_id"] == c.parent["id"]
+    observation = natural(c.case)
+    assert observation["id"] != status["id"] and observation["command"]["adapter"] == "addressed_status_v1"
 
     async def lineage():
         try:
             conversations = SCMConversations(c.case.collaboration)
-            scopes = await conversations.scopes(status, remote=False)
-            references, runs = await conversations.references({**status, "id": uuid4().hex}, scopes)
+            scopes = await conversations.scopes(observation, remote=False)
+            references, runs = await conversations.references(observation, scopes)
             reference = next(row for row in references if row["run_id"] == receipt["run_id"])
             assert reference["kind"] == "native_checkpoint_maintain"
             assert runs[receipt["run_id"]]["operation"] == "maintain"
@@ -171,7 +175,7 @@ def test_native_maintain_checkpoint_uses_fresh_unit_without_recycling_failed_par
             assert reference["creator_user_id"] == receipt["original_actor"]["user_id"]
             async with authenticated_operator(c.store):
                 await ProjectAccess(c.store).set_membership(c.case.project["id"], c.case.mapped, None)
-            references, _ = await conversations.references({**status, "id": uuid4().hex}, scopes)
+            references, _ = await conversations.references(observation, scopes)
             assert not any(row["run_id"] == receipt["run_id"] for row in references)
         finally:
             await c.case.store.release_ownership()

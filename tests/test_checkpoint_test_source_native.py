@@ -9,6 +9,7 @@ import pytest
 from checkpoint_test_native_fixtures import checkpoint_native as checkpoint_native  # noqa: F401
 from pyfly.data.relational.sqlalchemy import LockMode
 from scm_polling_native_fixtures import native_poll as native_poll  # noqa: F401
+from test_addressed_status_native import natural
 from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
@@ -43,11 +44,12 @@ def test_native_checkpoint_fresh_same_project_test_seven_checks_and_teammate_rea
     parent_status = c.case.process(c.case.observe("status"))
     assert parent_status["status"] == "processed" and parent_status["run_id"] == c.parent["id"]
 
+    observation = natural(c.case)
+    assert observation["id"] != parent_status["id"] and observation["command"]["adapter"] == "addressed_status_v1"
+
     async def lineage():
         service = SCMConversations(c.case.collaboration)
-        scopes = await service.scopes(parent_status, remote=False)
-        # This fresh observation has the same ticket and actor but its own identity.
-        observation = {**parent_status, "id": uuid4().hex}
+        scopes = await service.scopes(observation, remote=False)
         refs, runs = await service.references(observation, scopes)
         child_ref = next(ref for ref in refs if ref["run_id"] == receipt["run_id"])
         assert child_ref["receipt_id"] == request_id
@@ -130,7 +132,7 @@ def test_native_checkpoint_source_revocation_stale_revision_and_remote_move_neve
             await users.save(user)
 
     c.case.http.portal.call(disable)
-    assert c.case.http.post("/api/v1/run-creation-requests/" + uuid4().hex, json=original).status_code == 403
+    assert c.case.http.post("/api/v1/run-creation-requests/" + uuid4().hex, json=original).status_code == 401
     assert all(run["id"] in {c.parent["id"], c.case.run["id"]} for run in c.case.http.portal.call(c.store.runs))
 
 
