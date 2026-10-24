@@ -287,6 +287,12 @@ class LearningLedger:
             return self._view(row)
 
     async def capture_failure(self, run_id: str) -> Data | None:
+        from pyfly.data.transaction import current_unit_of_work
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare learning failure outside the native transaction")
+        actor = CURRENT_PRINCIPAL.get()
+        generation = self.store.configuration.write_generation
         async with self.store._unit():
             run_row = await self.journal._run(run_id)
             run = copy.deepcopy(run_row.data)
@@ -311,16 +317,47 @@ class LearningLedger:
                 return None
             if self.engine is None:
                 raise ValueError("Observed learning requires an actual workspace inspector")
-            await self.engine.assert_ownership()
-            workspace = self.engine.workspaces / run_id
-            secrets = (
-                self.store.configuration.load_snapshot(run["config_revision"]) if run.get("config_revision") else {}
-            )
-            source = await self.engine._inspect_workspace(run_id, workspace, secrets)
-            if source["source_tree"] != receipt["payload"].get("source_tree"):
-                raise ValueError("Observed check receipt differs from the current source")
-            context = await observe_context(run, source, workspace, run["brief"])
-            correlation = uuid.uuid5(uuid.NAMESPACE_URL, "forge-observed-check:" + receipt["digest"]).hex
+
+        await self.engine.assert_ownership()
+        workspace = self.engine.workspaces / run_id
+        secrets = self.store.configuration.load_snapshot(run["config_revision"]) if run.get("config_revision") else {}
+        source = await self.engine._inspect_workspace(run_id, workspace, secrets)
+        if source["source_tree"] != receipt["payload"].get("source_tree"):
+            raise ValueError("Observed check receipt differs from the current source")
+        context = await observe_context(run, source, workspace, run["brief"])
+        retained = await self.engine._inspect_workspace(run_id, workspace, secrets)
+        if any(retained.get(key) != source[key] for key in ("base_revision", "head", "source_tree")):
+            raise ValueError("Observed learning source changed during declaration observation")
+        correlation = uuid.uuid5(uuid.NAMESPACE_URL, "forge-observed-check:" + receipt["digest"]).hex
+        envelope = LearningEnvelope.model_validate(
+            {
+                "type": "observed_failure",
+                "correlation_id": correlation,
+                "run_id": run_id,
+                "task_id": "verify",
+                "role": "qa",
+                "context": context.model_dump(),
+                "source": {key: source[key] for key in ("base_revision", "head", "source_tree")},
+                "purpose": "verification",
+                "question": run["brief"],
+                "statement": "Observed check returned exit code 1 at source tree "
+                + source["source_tree"]
+                + ": "
+                + "; ".join(" ".join(item["argv"])[:500] for item in failures[:8])
+                + ". Its cause has not been classified; this observation cannot authorize repair suppression.",
+                "receipts": [
+                    {
+                        "kind": "receipt",
+                        "key": receipt["idempotency_key"],
+                        "sequence": receipt["sequence"],
+                        "digest": receipt["digest"],
+                    }
+                ],
+            }
+        )
+        await self.store.admit_credentials(envelope.model_dump())
+        async with self.store._unit():
+            run_row = await self.journal._run(run_id)
             existing = next(
                 (
                     item
@@ -329,36 +366,32 @@ class LearningLedger:
                 ),
                 None,
             )
+            at = await self.records_repository.database_time()
+            if CURRENT_PRINCIPAL.get() != actor:
+                raise ValueError("Learning failure actor changed during preparation")
+            await ProjectAccess(self.store).authorize_execution(run_row.data)
+            current_entries = await self.journal.entries(run_id)
+            if not Journal.verify_chain(current_entries):
+                raise ValueError("Observed learning requires an intact native receipt chain")
+            current_receipt = next(
+                (
+                    item
+                    for item in reversed(current_entries)
+                    if item["kind"] == "receipt" and item["task_id"] == "verify"
+                ),
+                None,
+            )
+            await self.engine.assert_ownership()
+            if (
+                CURRENT_PRINCIPAL.get() != actor
+                or self.store.configuration.write_generation is not generation
+                or run_row.data != run
+                or current_receipt != receipt
+            ):
+                raise ValueError("Learning failure source, receipt or authority changed during preparation")
+            self.store.reject_credentials(envelope.model_dump())
             if existing:
                 return self._view(existing)
-            envelope = LearningEnvelope.model_validate(
-                {
-                    "type": "observed_failure",
-                    "correlation_id": correlation,
-                    "run_id": run_id,
-                    "task_id": "verify",
-                    "role": "qa",
-                    "context": context.model_dump(),
-                    "source": {key: source[key] for key in ("base_revision", "head", "source_tree")},
-                    "purpose": "verification",
-                    "question": run["brief"],
-                    "statement": "Observed check returned exit code 1 at source tree "
-                    + source["source_tree"]
-                    + ": "
-                    + "; ".join(" ".join(item["argv"])[:500] for item in failures[:8])
-                    + ". Its cause has not been classified; this observation cannot authorize repair suppression.",
-                    "receipts": [
-                        {
-                            "kind": "receipt",
-                            "key": receipt["idempotency_key"],
-                            "sequence": receipt["sequence"],
-                            "digest": receipt["digest"],
-                        }
-                    ],
-                }
-            )
-            await self.store.admit_credentials(envelope.model_dump())
-            at = await self.records_repository.database_time()
             row = ForgeLearningRecordEntity(
                 id=uuid.uuid4(),
                 repository_id=run_row.repository_id,

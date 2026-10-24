@@ -223,8 +223,14 @@ async def test_artifacts_use_immutable_verified_tree_not_live_working_files(stor
         preview_bytes=saved["diff_preview_bytes"],
         preview_truncated=saved["diff_preview_truncated"],
     )
+    target = engine.workspaces / (run["id"] + ".zip")
+    retained = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        await engine._artifact(run["id"], workspace, saved["changed_files"], source)
+    assert target.read_bytes() == retained
+    target.unlink()
     await engine._artifact(run["id"], workspace, saved["changed_files"], source)
-    with zipfile.ZipFile(engine.workspaces / (run["id"] + ".zip")) as archive:
+    with zipfile.ZipFile(target) as archive:
         assert archive.read("product.py") == b"value = 7\n"
 
 
