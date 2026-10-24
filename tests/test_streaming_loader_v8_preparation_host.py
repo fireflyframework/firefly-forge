@@ -11,13 +11,13 @@ from firefly_forge import source_edit_qualification as qualification
 from firefly_forge import source_edit_supported_profiles as supported
 
 
-def test_current_streaming_loader_requires_a_new_v8_measurement():
-    assert qualification.REGISTRY_VERSION == 7
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v8"
+def test_current_streaming_loader_requires_a_new_v9_measurement():
+    assert qualification.REGISTRY_VERSION == 8
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v9"
     assert len(qualification.LOADER_MODULES) == 21
 
 
-def test_three_historical_literals_and_provenance_remain_exact():
+def test_three_historical_literals_and_provenance_remain_exact(monkeypatch):
     source = Path(supported.__file__).read_text()
     module = ast.parse(source)
     node = next(
@@ -37,10 +37,13 @@ def test_three_historical_literals_and_provenance_remain_exact():
         assert qualification.historical_profile_seal(profile)["proof_sha256"] == profile.proof.artifact_sha256
         with pytest.raises(ValueError):
             qualification.require_profile(profile)
-        with pytest.raises(ValueError):
-            qualification.qualified_profile(
-                {"sha256": profile.executable_sha256, "size": profile.executable_size}, profile.model
-            )
+        # One executable can also have a separately qualified current profile.
+        with monkeypatch.context() as historical_catalog:
+            historical_catalog.setattr(qualification, "_profiles", lambda: tuple(old))
+            with pytest.raises(ValueError):
+                qualification.qualified_profile(
+                    {"sha256": profile.executable_sha256, "size": profile.executable_size}, profile.model
+                )
 
 
 EXPECTED_LITERAL_HASHES = [

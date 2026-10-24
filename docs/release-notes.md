@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.42
+
+An explicitly reviewed remote-completion request can confirm a saved local checkpoint after an uncertain push or draft-review outcome. It retains the original unknown request, exact AI-written review text and local checkpoint; a new finite consent grants remote completion only. The execution owner checks current authority, source, credentials and the exact expected branch before any write. A newly confirmed receipt records recovery provenance rather than claiming the original write succeeded. A later unmatched intent remains visible as uncertain even when an earlier draft was confirmed.
+
+Final checkpoint cleanliness uses the same generated-path exclusions as source staging and rechecks them afterward. Natural status reads verified checkpoint and remote facts and refreshes them when execution state changes during the provider response or final lock wait. These observations grant no execution or additional budget.
+
+On Darwin, diff cleanup distinguishes an exited, unreaped owned child from a live process whose signal was denied. A bounded reap is accepted only after the process group is proven absent; genuine denial and surviving groups remain errors. The separately qualified v9 source-only profile pairs fresh native tool-boundary evidence with same-source SQL budget and lease measurements. Its admitted lifetime read-file limit is 20 and canonical activation ceiling is 6; shared tool, command and final-check limits remain unchanged. Historical v8 evidence remains unchanged. These controlled proofs do not establish completed CRM delivery or general live-provider acceptance.
+
 ## 0.2.41
 
 Large source changes use private chunked artifacts, hash-backed file indexes and bounded content pages. Project storage and time budgets are separate from response and preview sizes. Studio, the API, the typed Python SDK, the operator CLI and read-only MCP tools can inspect the exact retained run or checkpoint diff. See [Inspect large source changes](git-diff-archive.md) for configuration, integrity checks and remaining whole-repository scaling boundaries.

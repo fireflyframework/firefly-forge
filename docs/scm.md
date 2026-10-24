@@ -450,6 +450,15 @@ the typed model supplies exact human and question spans; the server requires
 unique grounding in the offered questions. Unclear wording produces clarification,
 not consent.
 
+Status replies include the selected run's recorded Git checkpoint when its native
+journal and receipt chain verify. They distinguish saved source, a confirmed draft
+or review link, and an uncertain remote effect. A later unconfirmed publication
+step remains unknown even when an earlier draft was confirmed. These facts do not
+establish product acceptance or current provider state. Raw diffs, commands and
+conversation payloads are not copied into this checkpoint summary. The context is
+checked again before the reply is retained, so a newer checkpoint cannot silently
+replace the evidence used to draft it.
+
 ### Answer a question later
 
 Once Forge has confirmed publication of a typed pending question to you, you may
@@ -495,7 +504,14 @@ Each message durably reserves one model call. A confirmed complete response that
 fails its typed contract can reserve exactly one correction on the same profile
 with structural validation errors and no tools. The complete escaped reply and
 its typed questions must fit a 4,000-character quote; an oversized reply fails
-the typed contract rather than being silently cut. The classifier cap is two calls per message.
+the typed contract rather than being silently cut. A completed read-only status
+classification may reserve one fresh classification if linked runs progress
+while it is being written. Only run lifecycle status and its derived selection
+may change: source, permissions, questions, delivery/checkpoint facts, model and
+policy bindings must stay exact. Forge generates new prose from the fresh facts
+and retains each completed attempt. The correction and status refresh are each
+limited to one, for at most three reserved classifier calls per message. Further
+progress holds the completed reply for review; it does not publish stale prose.
 An interrupted or unknown provider outcome is never automatically retried.
 Uncertain GitHub publication also stays held until its exact receipt is reconciled.
 
@@ -580,7 +596,7 @@ flowchart LR
 
 Connect the selected repository through the [GitHub App](#github-app). The installation needs **Issues: read** for polling and current collaborator checks, and **Issues: write** to send feedback. Repository discovery uses the installation's metadata grant. forge requests a separate issue-read token for scans and an issue-write token for replies; it does not use an owner token or increase publication permissions.
 
-Provider requests share a persistent cooldown for the same application and installation, across repository scans, grant checks and replies. A 403 or 429 response starts a hold of at least 60 seconds. Valid `Retry-After` or exhausted-quota reset metadata can extend it, up to the explicit 24-hour cap; without usable metadata, repeated refusals use a bounded exponential delay of up to one hour. A 403 alone does not establish that a rate limit was exhausted. There is no immediate retry. Private operational metadata retains only bounded status, numeric rate headers, request identifiers and request/credential hashes, never response bodies or credentials. It is separate from approved connection configuration. Concurrent requests for that scope fail locally instead of queuing behind a request; provider I/O has a 20-second total deadline. Unchanged sent feedback and polling cursors that are not due avoid remote authorization work, while current local authority remains required before reading run details and fresh provider authority remains required before a new reply.
+Provider requests share a persistent cooldown for the same application and installation, across repository scans, grant checks and replies. A 403 or 429 response starts a hold of at least 60 seconds. Valid `Retry-After` or exhausted-quota reset metadata can extend it, up to the explicit 24-hour cap; without usable metadata, repeated refusals use a bounded exponential delay of up to one hour. A 403 alone does not establish that a rate limit was exhausted. There is no immediate retry. Private operational metadata retains only bounded status, numeric rate headers, request identifiers and request/credential hashes, never response bodies or credentials. It is separate from approved connection configuration. Concurrent requests for that scope wait locally for the same file lock for at most 25 seconds before any HTTP dispatch. After acquiring it, Forge rechecks the persistent cooldown and captured application settings; a denial from the preceding request holds queued callers without another HTTP call. A cancelled or exhausted lock wait remains a known nondispatch. Provider I/O keeps its separate 20-second total deadline; waiting does not retry a dispatched request or clear an unknown refresh or publication outcome. Unchanged sent feedback and polling cursors that are not due avoid remote authorization work, while current local authority remains required before reading run details and fresh provider authority remains required before a new reply.
 
 A reply held locally before HTTP dispatch retains its original body and model receipt, with explicit no-dispatch evidence and a retry deadline. After that deadline, Forge rechecks current identity, permissions, channel, task facts and communication route before sending that same draft. It does not ask the model to replace it. A changed cut holds the draft for review. Native worker questions additionally bind this wait to an immutable journal event and their original publication intent. This applies only to a typed local hold: a dispatched write with an uncertain result still requires observation and reconciliation, and is never automatically replayed.
 

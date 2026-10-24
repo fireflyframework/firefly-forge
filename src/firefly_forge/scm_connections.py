@@ -332,7 +332,8 @@ class SCMConnections:
         )
         if provider is None:
             raise ValueError("Provider request does not match a configured API or token endpoint")
-        values = self._values(provider)
+        record = self._record(provider)
+        values = {**self._definition(provider)["defaults"], **record.get("values", {})}
         scope = [provider, self._api(provider), values.get("app_id", values.get("client_id", ""))]
         scope.extend([values.get("installation_id", ""), values.get("workspace", "")])
         guard = ProviderBackoff(self.private.directory.parent, scope)
@@ -356,6 +357,8 @@ class SCMConnections:
                 )
 
         async with guard:
+            if self._record(provider) != record:
+                raise ValueError("Application settings changed before provider dispatch; repeat with the current grant")
             try:
                 async with asyncio.timeout(20):
                     if self._client is not None:
