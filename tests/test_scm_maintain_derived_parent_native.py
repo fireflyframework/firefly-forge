@@ -45,7 +45,7 @@ def test_native_derived_parent_resolves_canonical_creation_and_distinct_scm_rece
     assert c.case.state["posts"] == before
 
 
-def test_native_derived_parent_rejects_changed_creation_envelope(maintain_ticket):
+def test_native_derived_parent_rejects_forged_creation_reference(maintain_ticket):
     c, child, _, observed, _, _ = maintain_ticket
     before = copy.deepcopy(c.case.state["posts"])
 
@@ -53,11 +53,14 @@ def test_native_derived_parent_rejects_changed_creation_envelope(maintain_ticket
         conversations, scopes, reference = await retained_lineage(maintain_ticket)
         async with c.case.store._unit():
             records = ForgeRunCreationRequestRepository()
-            row = await records.find_by_id(UUID(reference["receipt_id"]))
-            row.data = {**copy.deepcopy(row.data), "digest": "f" * 64}
-            await records.save(row)
-        with pytest.raises(AccessDenied, match="provenance changed"):
-            await conversations.resolve_reference(reference, observed, scopes)
+            original = copy.deepcopy((await records.find_by_id(UUID(reference["receipt_id"]))).data)
+        for field, changed in (("context_digest", "f" * 64), ("creator_user_id", "f" * 32)):
+            assert reference[field] != changed
+            forged = {**reference, field: changed}
+            with pytest.raises(AccessDenied, match="provenance changed"):
+                await conversations.resolve_reference(forged, observed, scopes)
+        async with c.case.store._unit():
+            assert (await records.find_by_id(UUID(reference["receipt_id"]))).data == original
         assert await c.case.store.get_run(child["id"]) == child
 
     c.case.http.portal.call(verify)
