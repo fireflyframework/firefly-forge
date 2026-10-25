@@ -72,6 +72,26 @@ class GitDeliveryRequests:
                 raise ValueError("The adopted source HEAD differs from the explicit review")
             policy = GitDeliveryPolicyV1.model_validate(candidate["policy"])
         else:
+            if body.explicit_partial_source is not None:
+                from firefly_forge.git_partial_source_checkpoints import GitPartialSourceCheckpoints
+
+                async with self.store._unit():
+                    retained = await self.requests.records.find_by_id(identifier(body.request_id))
+                if retained is not None:
+                    if (
+                        retained.kind != KIND
+                        or retained.run_id.hex != run_id
+                        or retained.data["request"]["input"] != body.model_dump(mode="json")
+                        or retained.data["request"]["actor"] != actor
+                    ):
+                        raise ValueError("The original partial-source request belongs to another input or actor")
+                    return await self.get(run_id, body.request_id)
+                candidate = await GitPartialSourceCheckpoints(self.deliveries).candidate(run_id, actor)
+                GitPartialSourceCheckpoints.compare(candidate, body.explicit_partial_source)
+                if body.expected_head != candidate["expected_head"]:
+                    raise ValueError("The reviewed partial-source HEAD changed")
+            elif run.get("git_partial_source_checkpoint") and reconciliation is None:
+                raise ValueError("Inspect the original partial-source request without replay")
             if run.get("git_failed_unit_adoption") and reconciliation is None:
                 raise ValueError(
                     "An adopted failed unit has one original checkpoint request; inspect it without replay"
@@ -100,6 +120,10 @@ class GitDeliveryRequests:
             if body.explicit_adoption is not None:
                 current_candidate = await GitFailedUnitAdoptions(self.deliveries).candidate(run_id, actor)
                 GitFailedUnitAdoptions.compare(current_candidate, body.explicit_adoption)
+            if body.explicit_partial_source is not None:
+                await GitPartialSourceCheckpoints(self.deliveries).revalidate(
+                    run_id, actor, candidate, staged_tree=None
+                )
             if reconciliation is not None:
                 from firefly_forge.git_remote_reconciliation import GitRemoteReconciliations
 
@@ -238,6 +262,12 @@ class GitDeliveryRequests:
             if binding(run) != request["binding"]:
                 raise ValueError("The admitted checkpoint run changed before worker dispatch")
             body = GitDeliveryInputV1.model_validate(request["input"])
+            if body.explicit_partial_source is not None:
+                from firefly_forge.git_partial_source_checkpoints import GitPartialSourceCheckpoints
+
+                await GitPartialSourceCheckpoints(self.deliveries).admit(
+                    claimed["run_id"], body.request_id, request["actor"], body.explicit_partial_source
+                )
             if body.explicit_adoption is not None:
                 from firefly_forge.git_failed_unit_adoption import GitFailedUnitAdoptions
 

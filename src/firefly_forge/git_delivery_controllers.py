@@ -55,6 +55,22 @@ class GitDeliveryController:
     async def candidate(self, run_id: PathVar[str]) -> dict[str, Any]:
         return await self.deliveries.candidate(run_id)
 
+    @get_mapping("/partial-source-candidate")
+    async def partial_source_candidate(self, run_id: PathVar[str]) -> dict[str, Any]:
+        from firefly_forge.git_partial_source_checkpoints import GitPartialSourceCheckpoints
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+        user = CURRENT_PRINCIPAL.get()
+        if user is None:
+            raise AccessDenied("Sign in before reviewing partial source")
+        return await GitPartialSourceCheckpoints(self.deliveries).candidate(run_id, ProjectAccess.actor_snapshot(user))
+
+    @post_mapping("/partial-source-requests", status_code=202)
+    async def partial_source_request(self, run_id: PathVar[str], body: Body[GitDeliveryInputV1]) -> dict[str, Any]:
+        if body.explicit_partial_source is None:
+            raise ValueError("Partial source requires explicit source-only consent")
+        return await self.tickets.request(run_id, body)
+
     @get_mapping("/requests/{request_id}")
     async def ticket(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self.tickets.get(run_id, request_id)

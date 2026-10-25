@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from firefly_forge.git_diff_models import GitDiffBudget, GitDiffRefV1
+from firefly_forge.git_partial_source_models import GitPartialSourceConsentV1
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
 
 GitRevision = Annotated[str, Field(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")]
@@ -100,9 +101,17 @@ class GitDeliveryInputV1(GitDeliveryContract):
     expected_source_digest: Digest | None = None
     explicit_adoption: GitFailedUnitAdoptionV1 | None = None
     explicit_reconciliation: GitRemoteReconciliationV1 | None = None
+    explicit_partial_source: GitPartialSourceConsentV1 | None = None
 
     @model_validator(mode="after")
     def reviewed_source(self) -> GitDeliveryInputV1:
+        if self.explicit_partial_source is not None and (
+            self.explicit_adoption is not None
+            or self.explicit_reconciliation is not None
+            or self.expected_source_digest != self.explicit_partial_source.source_digest
+            or self.expected_source_tree is not None
+        ):
+            raise ValueError("Partial source requires its exclusive exact source-frontier consent")
         if self.explicit_reconciliation is not None and (
             self.explicit_adoption is not None
             or self.request_id == self.explicit_reconciliation.original_request_id

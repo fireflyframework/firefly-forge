@@ -926,6 +926,25 @@ class ForgeClient:
     def git_delivery_request(self, run_id: str, request_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries/requests/{self._id(request_id)}"))
 
+    def partial_source_candidate(self, run_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/git-deliveries/partial-source-candidate"))
+
+    def request_partial_source_checkpoint(
+        self, run_id: str, request: GitDeliveryInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.git_delivery_models import GitDeliveryInputV1
+
+        body = GitDeliveryInputV1.model_validate(request)
+        if body.explicit_partial_source is None:
+            raise ValueError("Partial source requires explicit source-only consent")
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._id(run_id)}/git-deliveries/partial-source-requests",
+                json=body.model_dump(mode="json"),
+            )
+        )
+
     def _diff_path(self, run_id: str, expected_manifest: str, request_id: str | None) -> str:
         if not isinstance(expected_manifest, str) or re.fullmatch(r"[a-f0-9]{64}", expected_manifest) is None:
             raise ValueError("Use an exact diff manifest SHA-256")

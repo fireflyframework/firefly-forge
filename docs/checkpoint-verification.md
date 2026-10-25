@@ -65,3 +65,55 @@ For an issue already linked through an authenticated parent receipt, teammates w
 This entry point requires a confirmed remote checkpoint whose factory branch still points to the selected revision. Local-only checkpoints, uncertain publications, changed remote heads, and unavailable source-control grants are refused. An older checkpoint is not silently replaced by the latest commit. Existing creation inputs without `source_checkpoint` keep their previous wire representation and request digest.
 
 Verification commands follow the selected runner policy. Cloning uses the existing controller-side Git command timeout and output bounds; this feature does not add clone disk-growth supervision. Ref-only admission adds no whole-project payload cap and does not download blobs as a preflight. It does not introduce distributed cloning, partial-clone fallback, automatic dependency provisioning, or a new natural-language permission to create test runs.
+
+## Retain source when a graph checkpoint cannot be stored
+
+A failed model session may have already written useful source. A **partial-source checkpoint** can retain that source without resuming the failed session. It stays marked `partial_unverified`: it does not mean the implementation finished or that its tests passed.
+
+This route is deliberately narrow. The latest stored native checkpoint must describe the complete current source. Every later consumed response must contain only supported source readers, and all earlier command and tool effects must have known, closed receipts. A pending response, a later write, changed source, unknown runner outcome, unsupported runtime contract, or revoked access makes the candidate unavailable. The error message alone cannot authorize recovery. This initial implementation refuses older runtime contracts. The API accepts no legacy override.
+
+```mermaid
+flowchart LR
+    A["Failed implementation"] --> B["Review stored source and receipts"]
+    B --> C["Unverified Git checkpoint"]
+    C --> D["Confirmed draft"]
+    D --> E["New test or maintain run"]
+    B -->|"Unknown or changed"| H["Keep source held"]
+```
+
+Review `GET /api/v1/runs/{run_id}/git-deliveries/partial-source-candidate` while signed in with current project and repository execution access. Draft publication also requires release access and the run's original enabled Git-delivery consent to remain current. The response contains evidence hashes and source identifiers, without returning the model prompt or source contents.
+
+Use the exact candidate to submit one source-only request:
+
+```python
+from uuid import uuid4
+
+candidate = client.partial_source_candidate(failed_run_id)
+consent_fields = (
+    "policy_digest", "expected_run_digest", "journal_digest",
+    "source_digest", "frontier_record_digest",
+)
+request = {
+    "version": 1,
+    "request_id": uuid4().hex,
+    "expected_head": candidate["expected_head"],
+    "expected_source_digest": candidate["source_digest"],
+    "explicit_partial_source": {
+        "version": 1,
+        "candidate_digest": candidate["digest"],
+        **{name: candidate[name] for name in consent_fields},
+        "acknowledge_partial_unverified": True,
+        "acknowledge_preserve_failed_graph": True,
+        "acknowledge_no_execution_grant": True,
+    },
+}
+receipt = client.request_partial_source_checkpoint(failed_run_id, request)
+```
+
+The API queues this through `POST /api/v1/runs/{run_id}/git-deliveries/partial-source-requests`. The execution owner rechecks the source, current user, policy, journal and effect receipts before committing. The commit is labeled `[UNVERIFIED]`; the retained diff artifact and checkpoint receipt identify its exact source. When the original policy permits draft delivery, the ordinary source-control integration publishes that checkpoint as a draft.
+
+Read `client.git_delivery_request(failed_run_id, request["request_id"])` to follow the outcome. After a lost response, inspect that same request ID. Neither the SDK nor the worker automatically repeats an unknown Git or remote effect. In this initial partial-source route, an unknown local or remote result stays held for inspection. The existing remote-reconciliation route is not yet supported for this partial-source marker; do not submit a second request or treat the retained local commit as confirmed remote delivery.
+
+The original run remains failed, with its task, pending graph markers, consumed responses, tool receipts, command ordinals and spent budgets intact. Only its source-delivery history advances. After a confirmed remote checkpoint, select that exact `source_checkpoint` in a new test or maintain admission as described above. The child gets a new identity and independently admitted settings; it never receives the failed session's consumed results as execution authority.
+
+This first slice does not settle a write or command made after the latest stored source frontier. Such source remains quarantined until a supported native recovery path can prove its effects. It does not add a button to bypass a hold, reset a budget or declare the product complete.
