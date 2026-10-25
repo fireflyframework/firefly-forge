@@ -2,7 +2,7 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
-## 0.2.45 — Unreleased
+## 0.2.45 — 2026-10-25
 
 - Page project and campaign data without a fixed project-count ceiling, retain revision-bound references, and configure finite campaign execution windows with durable usage accounting.
 - Stream credential fingerprint preparation and checkpoint source admission outside database writer units while retaining current credential, source and ownership checks.
