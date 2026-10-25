@@ -355,10 +355,13 @@ async def test_cached_completion_rechecks_current_authority_after_journal_read(s
     entries = await journal.entries(run["id"])
     artifacts = {path.name: path.read_bytes() for path in worker.artifacts.directory.iterdir() if path.is_file()}
     changed = False
+    original_replay = journal.sandbox_command_replay
 
-    async def read_then_lose_authority(run_id):
+    async def replay_then_lose_authority(run_id, task_id, attempt, snapshot, payload, *, ordinal):
         nonlocal changed
-        rows = await original_read(run_id)
+        replay = await original_replay(run_id, task_id, attempt, snapshot, payload, ordinal=ordinal)
+        assert replay["execution"]["status"] == "removed"
+        assert replay["execution"]["effects"]["start"]["evidence"]["workspace_import"] == "complete"
         if not changed:
             if loss == "owner":
                 await store.release_ownership()
@@ -371,9 +374,9 @@ async def test_cached_completion_rechecks_current_authority_after_journal_read(s
                     user.enabled = False
                     await users.save(user)
             changed = True
-        return rows
+        return replay
 
-    journal.sandbox_executions = read_then_lose_authority
+    journal.sandbox_command_replay = replay_then_lose_authority
     with pytest.raises((RuntimeError, AccessDenied), match="owner|cancel|suspended"):
         await worker.execute(run["id"], workspace, workspace, ["git", "diff"], 5, "verify", ordinal=1)
     assert changed and controller.submissions == 1

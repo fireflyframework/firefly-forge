@@ -389,7 +389,15 @@ async def test_native_late_distinct_identity_revocation_prevents_original_result
         async def revoke(value):
             assert current_unit_of_work() is None
             await admit(value)
-            if not changed and isinstance(value, tuple) and len(value) == 3:
+            source = value[0] if isinstance(value, tuple) and len(value) == 2 else None
+            original_bundle = (
+                isinstance(source, tuple)
+                and len(source) == 3
+                and [record.get("kind") for record in source]
+                == ["bridge_request_intent", "agent_checkpoint", "bridge_request_response"]
+                and all(record.get("idempotency_key") == env.intent["idempotency_key"] for record in source)
+            )
+            if not changed and original_bundle:
                 async with store._unit():
                     users = ForgeIdentityUserRepository()
                     user = await users.find_by_id(revoked.id, lock=LockMode.PESSIMISTIC_WRITE)

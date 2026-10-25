@@ -84,6 +84,8 @@ def measured_candidate(monkeypatch):
     candidate = replace(
         previous,
         version=qualification.REGISTRY_VERSION,
+        system=qualification.platform.system(),
+        machine=qualification.platform.machine(),
         profile_id="controlled-v10-profile",
         loader_profile=qualification.LOADER_PROFILE,
         loader_hashes=qualification.loader_hashes(),
@@ -153,3 +155,14 @@ def test_a_profile_with_an_invalid_admission_digest_shape_is_refused(monkeypatch
     monkeypatch.setattr(qualification, "_profiles", lambda: (*historical, candidate))
     with pytest.raises(ValueError):
         qualification.require_profile(candidate)
+
+
+def test_controlled_candidate_uses_the_current_host_without_mutating_historical_provenance(monkeypatch):
+    original = qualification._profiles()[4]
+    platform_before = original.system, original.machine
+    monkeypatch.setattr(qualification.platform, "system", lambda: "ControlledOS")
+    monkeypatch.setattr(qualification.platform, "machine", lambda: "controlled-machine")
+    candidate = measured_candidate(monkeypatch)
+    assert (candidate.system, candidate.machine) == ("ControlledOS", "controlled-machine")
+    assert (original.system, original.machine) == platform_before
+    qualification.require_profile(candidate)
