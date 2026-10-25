@@ -98,67 +98,99 @@ class SCMConversations:
                 raise AccessDenied("Ticket context exceeds the bounded lookup; review its exact native receipts")
             candidates = [(copy.deepcopy(row.data), row.sequence) for row in rows]
         for previous, sequence in candidates:
-            run_id = previous.get("run_id")
-            if (
-                not run_id
-                or previous["id"] == delivery["id"]
-                or previous.get("natural_parent")
-                or (previous.get("command") or {}).get("adapter")
-            ):
-                continue
             try:
-                run = await self.store.get_run(run_id)
-                scope = next(
-                    (
-                        s
-                        for s in scopes
-                        if s["project_id"] == run.get("project_id") and run.get("component_id") in s["component_ids"]
-                    ),
-                    None,
-                )
-                if scope is None or run.get("repository_id") != delivery["repository_id"]:
-                    continue
-                if previous.get("maintain_ticket") is not None:
-                    from firefly_forge.scm_maintain_tickets import MaintainTickets
-
-                    await MaintainTickets(self.collaboration).authorize_reference(previous, run, delivery, scopes)
-                elif previous.get("native_question") is not None:
-                    from firefly_forge.native_question_publications import NativeQuestionPublications
-
-                    await NativeQuestionPublications(self.collaboration).authorize_reference(previous, run)
-                elif (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
-                    polling = self.collaboration.polling or getattr(self.store, "scm_polling", None)
-                    if polling is None:
-                        continue
-                    await polling.ticket_reference(previous, run)
-                else:
-                    await SCMActorAuthority(self.store, self.collaboration.scm).ticket_reference(previous, run)
+                reference, run = await self._receipt_reference(previous, sequence, delivery, scopes)
             except (AccessDenied, KeyError, ValueError, TypeError):
                 continue
+            run_id = run["id"]
             if run_id in runs:
                 continue
             runs[run_id] = run
             if len(runs) > 200:
                 raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
-            references.append(
-                TicketContextReferenceV1(
-                    receipt_id=previous["id"],
-                    sequence=sequence,
-                    run_id=run_id,
-                    project_id=run["project_id"],
-                    component_id=run["component_id"],
-                    context_digest=digest(
-                        {
-                            "observation": observation_cut(previous),
-                            "actor": previous.get("scm_execution_actor"),
-                            "run_id": run_id,
-                            "action_status": previous.get("action_status"),
-                        }
-                    ),
-                ).model_dump(mode="json")
-            )
+            references.append(reference)
         await self._checkpoint_tests(delivery, scopes, references, runs)
         return references, runs
+
+    async def _receipt_reference(
+        self, previous: Data, sequence: int, delivery: Data, scopes: list[Data]
+    ) -> tuple[Data, Data]:
+        run_id = previous.get("run_id")
+        if (
+            not run_id
+            or previous["id"] == delivery["id"]
+            or previous.get("natural_parent")
+            or (previous.get("command") or {}).get("adapter")
+            or any(previous.get(key) != delivery.get(key) for key in ("repository_id", "provider"))
+            or any(
+                (previous.get("issue") or {}).get(key) != (delivery.get("issue") or {}).get(key)
+                for key in ("kind", "number")
+            )
+        ):
+            raise AccessDenied("The retained ticket reference has no exact SCM parent")
+        run = await self.store.get_run(run_id)
+        scope = next(
+            (
+                s
+                for s in scopes
+                if s["project_id"] == run.get("project_id") and run.get("component_id") in s["component_ids"]
+            ),
+            None,
+        )
+        if scope is None or run.get("repository_id") != delivery["repository_id"]:
+            raise AccessDenied("The retained ticket polling authority is unavailable")
+        if previous.get("maintain_ticket") is not None:
+            from firefly_forge.scm_maintain_tickets import MaintainTickets
+
+            await MaintainTickets(self.collaboration).authorize_reference(previous, run, delivery, scopes)
+        elif previous.get("native_question") is not None:
+            from firefly_forge.native_question_publications import NativeQuestionPublications
+
+            await NativeQuestionPublications(self.collaboration).authorize_reference(previous, run)
+        elif (previous.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+            polling = self.collaboration.polling or getattr(self.store, "scm_polling", None)
+            if polling is None:
+                raise AccessDenied("The retained ticket reference is outside current native scope")
+            await polling.ticket_reference(previous, run)
+        else:
+            await SCMActorAuthority(self.store, self.collaboration.scm).ticket_reference(previous, run)
+        reference = TicketContextReferenceV1(
+            receipt_id=previous["id"],
+            sequence=sequence,
+            run_id=run_id,
+            project_id=run["project_id"],
+            component_id=run["component_id"],
+            context_digest=digest(
+                {
+                    "observation": observation_cut(previous),
+                    "actor": previous.get("scm_execution_actor"),
+                    "run_id": run_id,
+                    "action_status": previous.get("action_status"),
+                }
+            ),
+        ).model_dump(mode="json")
+        return reference, run
+
+    async def resolve_reference(self, reference: Data, delivery: Data, scopes: list[Data]) -> Data:
+        """Resolve stable typed lineage through its SCM receipt and native creation stores."""
+        retained = TicketContextReferenceV1.model_validate(reference).model_dump(mode="json")
+        receipt_id = (
+            retained["receipt_id"]
+            if retained.get("kind", "scm_receipt") == "scm_receipt"
+            else retained["parent_receipt_id"]
+        )
+        async with self.store._unit():
+            row = await self.collaboration.inbox.find_by_id(identifier(receipt_id))
+            if row is None:
+                raise AccessDenied("The authenticated SCM parent receipt is unavailable")
+            previous, sequence = copy.deepcopy(row.data), row.sequence
+        parent, run = await self._receipt_reference(previous, sequence, delivery, scopes)
+        references = [parent]
+        if retained.get("kind", "scm_receipt") != "scm_receipt":
+            await self._checkpoint_tests(delivery, scopes, references, {run["id"]: run})
+        if sum(item == retained for item in references) != 1:
+            raise AccessDenied("The native creation or authenticated ticket parent provenance changed")
+        return previous
 
     async def _checkpoint_tests(self, delivery: Data, scopes: list[Data], references: list[Data], runs: Data) -> None:
         from firefly_forge.checkpoint_test_models import frozen_checkpoint_source

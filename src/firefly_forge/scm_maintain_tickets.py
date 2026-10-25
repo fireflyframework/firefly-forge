@@ -138,7 +138,7 @@ class MaintainTickets:
         parents = [value for value in references if value["run_id"] == parent_id]
         if len(parents) != 1 or run["component_id"] not in scope["component_ids"]:
             raise AccessDenied("The observed ticket has no exact authenticated checkpoint parent")
-        parent = await self.c.receipt(parents[0]["receipt_id"])
+        parent = await SCMConversations(self.c).resolve_reference(parents[0], source, [scope])
         parent_cut = observation_cut(parent)
         await self.store.admit_credentials({"request": incoming, "source": observation_cut(source)})
         async with self.polling._locked(project, repository, [actor.id.hex, owner["user_id"]]):
@@ -149,7 +149,8 @@ class MaintainTickets:
             current_receipt = await self._creation(request.creation_request_id)
             current_run = await self.store.get_run(request.run_id)
             creation_scope(current_run, current_receipt)
-            if current_receipt != receipt or observation_cut(await self.c.receipt(parent["id"])) != parent_cut:
+            current_parent = await SCMConversations(self.c).resolve_reference(parents[0], source, [current_scope])
+            if current_receipt != receipt or observation_cut(current_parent) != parent_cut:
                 raise AccessDenied("The retained maintain creation or ticket parent changed")
             row, _ = await self.polling._state(repository)
             state = state_of(row.data)
@@ -329,10 +330,10 @@ class MaintainTickets:
                 raise AccessDenied("The maintain question changed from its native feedback")
         if creation["digest"] != value["creation_digest"]:
             raise AccessDenied("The maintain child creation changed")
-        parent = await self.c.receipt(value["parent_reference"]["receipt_id"])
+        scope, _, owner = await self._target(source, project, repository, remote=remote)
+        parent = await SCMConversations(self.c).resolve_reference(value["parent_reference"], source, [scope])
         if observation_cut(parent) != value["parent_observation"]:
             raise AccessDenied("The exact native parent ticket provenance changed")
-        scope, _, owner = await self._target(source, project, repository, remote=remote)
         if (
             scope != value["polling_scope"]
             or owner != value["owner"]
