@@ -72,7 +72,15 @@ A failed model session may have already written useful source. A **partial-sourc
 
 This route is deliberately narrow. The latest stored native checkpoint must describe the complete current source. Every later consumed response must contain only supported source readers, and all earlier command and tool effects must have known, closed receipts. A pending response, a later write, changed source, unknown runner outcome, unsupported runtime contract, or revoked access makes the candidate unavailable. The error message alone cannot authorize recovery. This initial implementation refuses older runtime contracts. The API accepts no legacy override.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Partial source checkpoint lifecycle" aria-describedby="partial-source-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 24
+---
 flowchart LR
     A["Failed implementation"] --> B["Review stored source and receipts"]
     B --> C["Unverified Git checkpoint"]
@@ -80,6 +88,10 @@ flowchart LR
     D --> E["New test or maintain run"]
     B -->|"Unknown or changed"| H["Keep source held"]
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="partial-source-flow-guide">Follow the recorded source into a checkpoint and a new run. Focus and scroll the diagram on a narrow screen.</p>
 
 Review `GET /api/v1/runs/{run_id}/git-deliveries/partial-source-candidate` while signed in with current project and repository execution access. Draft publication also requires release access and the run's original enabled Git-delivery consent to remain current. The response contains evidence hashes and source identifiers, without returning the model prompt or source contents.
 
