@@ -205,9 +205,21 @@ class CodingCheckServer:
 
         if self.source_callback is not None:
 
-            @server.tool(description=prompt_text("coding-runtime/source-list", version="1.0.1"))
-            async def list_files(request_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]) -> dict[str, Any]:
-                return await invoke(SourceReadRequest(tool="list_files", request_id=request_id))
+            @server.tool(description=prompt_text("coding-runtime/source-list", version="1.0.2"))
+            async def list_files(
+                request_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")],
+                path: Annotated[str, Field(max_length=1000)] = "",
+                cursor: Annotated[str | None, Field(max_length=2048)] = None,
+                page_size: Annotated[int, Field(ge=1, le=1000)] = 100,
+            ) -> dict[str, Any]:
+                options: dict[str, Any] = {}
+                if path:
+                    options["path"] = path
+                if cursor is not None:
+                    options["cursor"] = cursor
+                if page_size != 100:
+                    options["page_size"] = page_size
+                return await invoke(SourceReadRequest(tool="list_files", request_id=request_id, **options))
 
             @server.tool(description=prompt_text("coding-runtime/source-read", version="1.0.1"))
             async def read_file(
@@ -216,16 +228,23 @@ class CodingCheckServer:
             ) -> dict[str, Any]:
                 return await invoke(SourceReadRequest(tool="read_file", path=path, request_id=request_id))
 
-            @server.tool(description=prompt_text("coding-runtime/source-search", version="1.0.1"))
+            @server.tool(description=prompt_text("coding-runtime/source-search", version="1.0.2"))
             async def search_text(
                 text: Annotated[str, Field(min_length=1, max_length=500)],
                 request_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")],
                 path: Annotated[str, Field(max_length=1000)] = "",
                 max_results: Annotated[int, Field(ge=1, le=100)] = 50,
+                cursor: Annotated[str | None, Field(max_length=2048)] = None,
             ) -> dict[str, Any]:
+                options: dict[str, Any] = {"cursor": cursor} if cursor is not None else {}
                 return await invoke(
                     SourceReadRequest(
-                        tool="search_text", text=text, path=path, max_results=max_results, request_id=request_id
+                        tool="search_text",
+                        text=text,
+                        path=path,
+                        max_results=max_results,
+                        request_id=request_id,
+                        **options,
                     )
                 )
         else:

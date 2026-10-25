@@ -9,7 +9,9 @@
 - Compress accumulated native checkpoint history losslessly within an explicit 8 MiB raw bound while preserving the 192 KiB snapshot and 256 KiB WAL limits. Scan decoded records against current credential custody, including generic journal reads.
 - Stage complete branding files with a compact manifest, send the composed brief once, and retain the nine granted static checkpoint tools and exact frozen wireframe descriptors.
 - Preserve verified GitHub delivery links and bind finite maintenance communication to the exact new native creation receipt. Lifecycle notices and owner answers grant no resume or new execution authority.
-- Qualify the V11 source profile with an explicit 34-module closure and fresh native/SQL evidence, retaining all six historical profiles. Studio remains on its unchanged 0.2.42 assets and captures; see the [release notes](docs/release-notes.md#0243) for verification boundaries.
+- Stream checkpoint identity from tracked Git source, including ignored tracked assets, and nonignored untracked source. Generated ignored dependencies no longer turn a host checkpoint into a transport-archive failure; runner archive transfer remains separately guarded.
+- Page source listing and text search explicitly, classify binary source, and hash every eligible file completely for manifests without the old 2,000-path or 1 MiB manifest cutoff.
+- Bind the V12 source profile to an explicit 35-module admission closure and 22 loader inputs with fresh same-source native/SQL measurements, retaining all seven historical profiles. Studio remains on its unchanged 0.2.42 assets and captures; see the [release notes](docs/release-notes.md#0243) for verification boundaries.
 
 ## 0.2.42 — 2026-10-24
 

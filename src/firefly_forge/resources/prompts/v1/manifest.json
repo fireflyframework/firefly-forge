@@ -78,6 +78,14 @@
       "variables": {}
     },
     {
+      "id": "coding-runtime/source-list",
+      "version": "1.0.2",
+      "path": "coding-runtime/source-list-1.0.2.yaml",
+      "sha256": "85376d131679dd2220b1556fac1caba1d45fead764c6f87319b185f33a99e107",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "coding-runtime/source-read",
       "version": "1.0.0",
       "path": "coding-runtime/source-read.yaml",
@@ -106,6 +114,14 @@
       "version": "1.0.1",
       "path": "coding-runtime/source-search-1.0.1.yaml",
       "sha256": "c50ae29419f7aeb72fd39dcfccd2ec779bdebdc7a80ec47a3f316b714a0b5084",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "coding-runtime/source-search",
+      "version": "1.0.2",
+      "path": "coding-runtime/source-search-1.0.2.yaml",
+      "sha256": "83bbd8df12bfd4414803601e0c97005c97216d97a8f9468f7518b738a2dc9544",
       "field": "user",
       "variables": {}
     },
@@ -2617,6 +2633,14 @@
       "variables": {}
     },
     {
+      "id": "tools/list_files",
+      "version": "1.0.1",
+      "path": "tools/list_files-1.0.1.yaml",
+      "sha256": "d795c6b4b4126571dade971a40708ba5099a0c570a0e4bacb393b8f5aa2be843",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "tools/profile_php",
       "version": "1.0.0",
       "path": "tools/profile_php.yaml",
@@ -2661,6 +2685,14 @@
       "version": "1.0.0",
       "path": "tools/search_text.yaml",
       "sha256": "a1d7cf25467d99124e56b3ebc18555800e54ef7db813c1f0efb235248e7fae1b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/search_text",
+      "version": "1.0.1",
+      "path": "tools/search_text-1.0.1.yaml",
+      "sha256": "e4b5b619960bd8737791b9775620d6856e830678857bbdcd258d1c6b670089c0",
       "field": "user",
       "variables": {}
     },

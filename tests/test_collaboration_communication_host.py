@@ -41,13 +41,13 @@ async def test_exact_deterministic_body_is_retained_before_comment_transport(del
     received(row, "status")
     original_write = service._remote_write
 
-    async def checked_write(repo, payload, issue, *, before_write=None):
+    async def checked_write(repo, payload, issue, *, before_write=None, before_dispatch=None):
         retained = row.data["feedback_intent"]
         assert retained["body"] == payload["body"]
         assert retained["body_sha256"] == hashlib.sha256(retained["body"].encode()).hexdigest()
         assert retained["communication"]["mode"] == "deterministic"
         assert retained["communication"]["reason"] == "unconfigured"
-        return await original_write(repo, payload, issue, before_write=before_write)
+        return await original_write(repo, payload, issue, before_write=before_write, before_dispatch=before_dispatch)
 
     service._remote_write = checked_write
     await service.process(RECEIPT)
@@ -84,7 +84,7 @@ async def test_ai_body_and_native_fact_profile_evidence_are_retained_before_tran
     service.communication_writer.model = reviewed_model(model)
     original_write = service._remote_write
 
-    async def checked_write(repo, payload, issue, *, before_write=None):
+    async def checked_write(repo, payload, issue, *, before_write=None, before_dispatch=None):
         intent = row.data["feedback_intent"]
         assert intent["body"] == payload["body"]
         assert intent["communication"]["mode"] == "ai"
@@ -92,7 +92,7 @@ async def test_ai_body_and_native_fact_profile_evidence_are_retained_before_tran
         assert intent["communication"]["profile"]["task"] == "communication"
         assert len(intent["communication"]["facts_sha256"]) == 64
         assert len(intent["communication"]["prompt_sha256"]) == 64
-        return await original_write(repo, payload, issue, before_write=before_write)
+        return await original_write(repo, payload, issue, before_write=before_write, before_dispatch=before_dispatch)
 
     service._remote_write = checked_write
     received(row, "status")

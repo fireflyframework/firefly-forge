@@ -232,6 +232,7 @@ def admission_contract_digest() -> str:
                 "verification_handoffs.py",
                 "sandbox_command_slots.py",
                 "agentic_checkpoint_boundary.py",
+                "checkpoint_source_identity.py",
             )
         }
     )

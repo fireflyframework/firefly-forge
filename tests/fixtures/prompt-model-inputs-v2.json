@@ -2,7 +2,7 @@
   "license": "Apache-2.0",
   "observed": {
     "builder_all": {
-      "instructions": "You are implementing a real software product inside an isolated factory workspace. Read existing files and repository AGENTS.md before editing; reuse existing patterns. Implement the arbitrary product brief fully as real runnable source code. A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. Do not commit, push, publish, deploy, alter git metadata, read credentials or edit outside this workspace. Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, a runnable entry point, a README with exact launch/verification instructions and .env.example where needed. Use environment configuration for secrets; never hardcode credentials. Install only declared project dependencies if the environment permits, then run actual build/tests/lint/type checks. Report failed checks and environmental limitations honestly. Do not turn live integrations into mock claims.\n\nUse pyfly 26.10.6 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApplication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly.web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexagonal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a type checker. Keep business logic in services and typed domain contracts. Depend directly on pyfly[web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl in the manifest; this release URL is verified. Honor its dependency floors: Pydantic>=2.13.5, Starlette>=1.7.0, Uvicorn>=0.54.0. Do not pin incompatible older dependencies. PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan. For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses.\n\nDo not generate a browser frontend. Deliver the requested service or library with runnable entry points and documented API contracts.\n\nPRODUCT BRIEF:\nFictional Café {{ never_evaluate }}\n{% opaque owner data %}\nBrowser QA requires a declared journey plan before execution: name the user goal, initial route, expected states, bounded DOM locators and assertions. Exercise navigation and real JavaScript interactions, keyboard focus, validation errors, loading behavior, mobile layouts, both themes and zoom when applicable. Capture the actual DOM, focus and screenshots for observed states. Compare only a matching approved reference with its SHA256, state, viewport, theme and zoom; report reference_not_reviewed otherwise. When actual images are attached, inspect their visual content and tie every finding to an evidence ID, severity, path, expected result and observed result. DOM-only evidence must remain labeled dom_only. Record states not reviewed and remaining uncertainty. A visual judgment cannot override failing tests, source boundaries, independent review or delivery guards. Do not assert pixel perfection or universal approval.\nApproved reference descriptors (source hashes are not raster hashes): [{\"reference_id\":\"fictional-reference\",\"source_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"note\":\"{{ opaque reference }}\"}]\nUse only the available granted tools to implement the product. Write actual source and tests before returning the summary; the factory runs independent verification afterwards. If blocked or requiring a product decision, return typed worker_feedback with disposition blocked or clarification and an explicit request; do not claim that implementation is complete.",
+      "instructions": "You are implementing a real software product inside an isolated factory workspace. Read existing files and repository AGENTS.md before editing; reuse existing patterns. Implement the arbitrary product brief fully as real runnable source code. A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. Do not commit, push, publish, deploy, alter git metadata, read credentials or edit outside this workspace. Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, a runnable entry point, a README with exact launch/verification instructions and .env.example where needed. Use environment configuration for secrets; never hardcode credentials. Install only declared project dependencies if the environment permits, then run actual build/tests/lint/type checks. Report failed checks and environmental limitations honestly. Do not turn live integrations into mock claims.\n\nUse pyfly 26.10.6 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApplication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly.web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexagonal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a type checker. Keep business logic in services and typed domain contracts. Depend directly on pyfly[web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl in the manifest; this release URL is verified. Honor its dependency floors: Pydantic>=2.13.5, Starlette>=1.7.0, Uvicorn>=0.54.0. Do not pin incompatible older dependencies. PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan. For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses.\n\nDo not generate a browser frontend. Deliver the requested service or library with runnable entry points and documented API contracts.\n\nPRODUCT BRIEF:\n\nBrowser QA requires a declared journey plan before execution: name the user goal, initial route, expected states, bounded DOM locators and assertions. Exercise navigation and real JavaScript interactions, keyboard focus, validation errors, loading behavior, mobile layouts, both themes and zoom when applicable. Capture the actual DOM, focus and screenshots for observed states. Compare only a matching approved reference with its SHA256, state, viewport, theme and zoom; report reference_not_reviewed otherwise. When actual images are attached, inspect their visual content and tie every finding to an evidence ID, severity, path, expected result and observed result. DOM-only evidence must remain labeled dom_only. Record states not reviewed and remaining uncertainty. A visual judgment cannot override failing tests, source boundaries, independent review or delivery guards. Do not assert pixel perfection or universal approval.\nApproved reference descriptors (source hashes are not raster hashes): [{\"reference_id\":\"fictional-reference\",\"source_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"note\":\"{{ opaque reference }}\"}]\nUse only the available granted tools to implement the product. Write actual source and tests before returning the summary; the factory runs independent verification afterwards. If blocked or requiring a product decision, return typed worker_feedback with disposition blocked or clarification and an explicit request; do not claim that implementation is complete.",
       "messages": [
         {
           "kind": "request",
@@ -17,10 +17,30 @@
       "tools": [
         {
           "name": "list_files",
-          "description": "List at most 2000 project source paths; exclude dependencies, credentials and symlinks.",
+          "description": "List a bounded version 1 page of project source paths. Use path_prefix to select a component-relative subtree and page_size from 1 to 1000 (default 100). The response includes files, view_sha256, next_cursor and complete. Continue next_cursor with the same options until complete=true; never call a partial page the whole project. A changed source view or cursor scope is refused. Source is selected by the native Git inventory, including tracked ignored files; credentials, unsafe links and aliases remain unavailable. No new tool or execution authority.",
           "schema": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "path_prefix": {
+                "default": "",
+                "type": "string"
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "page_size": {
+                "default": 100,
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -62,7 +82,7 @@
         },
         {
           "name": "search_text",
-          "description": "Search literal text, returning bounded source lines and content hashes.",
+          "description": "Search the complete selected source within path_prefix, including large valid UTF-8 files. max_results bounds one page from 1 to 100 (default 50), not total project matches. Continue next_cursor using the same query/options until complete=true. Snippets disclose snippet_truncated and full-file SHA256; binary and invalid-UTF8 classifications are explicit. Unreadable, changed or unsafe source refuses. No commands or new authority.",
           "schema": {
             "additionalProperties": false,
             "properties": {
@@ -76,6 +96,17 @@
               "max_results": {
                 "default": 50,
                 "type": "integer"
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -640,7 +671,7 @@
       ]
     },
     "builder": {
-      "instructions": "You are implementing a real software product inside an isolated factory workspace. Read existing files and repository AGENTS.md before editing; reuse existing patterns. Implement the arbitrary product brief fully as real runnable source code. A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. Do not commit, push, publish, deploy, alter git metadata, read credentials or edit outside this workspace. Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, a runnable entry point, a README with exact launch/verification instructions and .env.example where needed. Use environment configuration for secrets; never hardcode credentials. Install only declared project dependencies if the environment permits, then run actual build/tests/lint/type checks. Report failed checks and environmental limitations honestly. Do not turn live integrations into mock claims.\n\nUse pyfly 26.10.6 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApplication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly.web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexagonal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a type checker. Keep business logic in services and typed domain contracts. Depend directly on pyfly[web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl in the manifest; this release URL is verified. Honor its dependency floors: Pydantic>=2.13.5, Starlette>=1.7.0, Uvicorn>=0.54.0. Do not pin incompatible older dependencies. PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan. For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses.\n\nDo not generate a browser frontend. Deliver the requested service or library with runnable entry points and documented API contracts.\n\nPRODUCT BRIEF:\nFictional Café {{ never_evaluate }}\n{% opaque owner data %}\nUse only the available granted tools to implement the product. Write actual source and tests before returning the summary; the factory runs independent verification afterwards. If blocked or requiring a product decision, return typed worker_feedback with disposition blocked or clarification and an explicit request; do not claim that implementation is complete.",
+      "instructions": "You are implementing a real software product inside an isolated factory workspace. Read existing files and repository AGENTS.md before editing; reuse existing patterns. Implement the arbitrary product brief fully as real runnable source code. A plan, architecture narrative, placeholder, canned recipe or assumed test success is insufficient. Do not commit, push, publish, deploy, alter git metadata, read credentials or edit outside this workspace. Do not delete unrelated work. Write meaningful behavioral tests, dependency manifests, a runnable entry point, a README with exact launch/verification instructions and .env.example where needed. Use environment configuration for secrets; never hardcode credentials. Install only declared project dependencies if the environment permits, then run actual build/tests/lint/type checks. Report failed checks and environmental limitations honestly. Do not turn live integrations into mock claims.\n\nUse pyfly 26.10.6 with Python >=3.13. Use pyfly.core.pyfly_application, PyFlyApplication, pyfly.container.rest_controller/service, pyfly.web mappings, and pyfly.web.adapters.starlette.create_app. Reuse PyFly CLI templates (web-api or hexagonal) where suitable. Obtain PyFly from its official GitHub Release wheel, not an assumed PyPI distribution. Write meaningful pytest tests; configure ruff and a type checker. Keep business logic in services and typed domain contracts. Depend directly on pyfly[web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.06/pyfly-26.10.6-py3-none-any.whl in the manifest; this release URL is verified. Honor its dependency floors: Pydantic>=2.13.5, Starlette>=1.7.0, Uvicorn>=0.54.0. Do not pin incompatible older dependencies. PyFly lifecycle methods are await runtime.startup() and await runtime.shutdown(), not start()/close(). Pass runtime.context to create_app and wire lifecycle through ASGI lifespan. For browser mutations, forward the XSRF-TOKEN cookie as X-XSRF-TOKEN in the same-origin API client. Keep CSRF protection enabled and verify the real cookie/header flow, not just mocked fetch responses.\n\nDo not generate a browser frontend. Deliver the requested service or library with runnable entry points and documented API contracts.\n\nPRODUCT BRIEF:\n\nUse only the available granted tools to implement the product. Write actual source and tests before returning the summary; the factory runs independent verification afterwards. If blocked or requiring a product decision, return typed worker_feedback with disposition blocked or clarification and an explicit request; do not claim that implementation is complete.",
       "messages": [
         {
           "kind": "request",
@@ -655,10 +686,30 @@
       "tools": [
         {
           "name": "list_files",
-          "description": "List at most 2000 project source paths; exclude dependencies, credentials and symlinks.",
+          "description": "List a bounded version 1 page of project source paths. Use path_prefix to select a component-relative subtree and page_size from 1 to 1000 (default 100). The response includes files, view_sha256, next_cursor and complete. Continue next_cursor with the same options until complete=true; never call a partial page the whole project. A changed source view or cursor scope is refused. Source is selected by the native Git inventory, including tracked ignored files; credentials, unsafe links and aliases remain unavailable. No new tool or execution authority.",
           "schema": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "path_prefix": {
+                "default": "",
+                "type": "string"
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "page_size": {
+                "default": 100,
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -700,7 +751,7 @@
         },
         {
           "name": "search_text",
-          "description": "Search literal text, returning bounded source lines and content hashes.",
+          "description": "Search the complete selected source within path_prefix, including large valid UTF-8 files. max_results bounds one page from 1 to 100 (default 50), not total project matches. Continue next_cursor using the same query/options until complete=true. Snippets disclose snippet_truncated and full-file SHA256; binary and invalid-UTF8 classifications are explicit. Unreadable, changed or unsafe source refuses. No commands or new authority.",
           "schema": {
             "additionalProperties": false,
             "properties": {
@@ -714,6 +765,17 @@
               "max_results": {
                 "default": 50,
                 "type": "integer"
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -785,6 +847,10 @@
   "reviewed_update": {
     "pyfly_release": "v26.10.06",
     "revision": "d5ebb028e785477025055e468a64291601837fc1",
-    "scope": "pyfly release instruction/dependency floors and pyfly/larafly display casing only; original v1 fixture retained"
+    "scope": "pyfly release instruction/dependency floors and pyfly/larafly display casing only; original v1 fixture retained",
+    "source_contract_followup": {
+      "source_freeze_sha256": "f9ff3e38da2748b0162e0d024dd4d4e66d0f0154c3a683638f0b9007bd33c7bf",
+      "scope": "Actual existing builder instructions and complete paged source-tool schemas; controlled FunctionModel inputs; original v1 fixture and prior release metadata retained"
+    }
   }
 }

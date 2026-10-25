@@ -6,6 +6,7 @@ DB fixture. Git inspection, verification commands and delivery are owned seams;
 Agentic, SDK parsing, real file tools, native SQL/transactions/ACLs are not mocked.
 """
 
+import subprocess
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import uuid4
@@ -31,7 +32,7 @@ from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.configuration import ProviderConfiguration
 from firefly_forge.engine import Engine
 from firefly_forge.execution_requests import ExecutionRequests
-from firefly_forge.git_workspace import metadata_digest
+from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
 from firefly_forge.journal import Journal
@@ -41,6 +42,32 @@ from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.providers import BridgeProvider
 from firefly_forge.runtime_roles import RuntimeRoles
 from firefly_forge.store import identifier
+
+
+def seed_restore_workspace(workspace):
+    workspace.mkdir(parents=True)
+    environment = git_environment({"PATH": "/usr/bin:/bin"})
+    for argv in (
+        ["git", "init", "-q"],
+        [
+            "git",
+            "-c",
+            "user.name=Controlled Source",
+            "-c",
+            "user.email=source@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Seed source",
+        ],
+        ["git", "read-tree", "HEAD"],
+    ):
+        subprocess.run(trusted_git(argv), cwd=workspace, env=environment, check=True, capture_output=True, timeout=10)
+    return (
+        subprocess.check_output(trusted_git(["git", "rev-parse", "HEAD"]), cwd=workspace, env=environment, timeout=10)
+        .decode()
+        .strip()
+    )
 
 
 @asynccontextmanager
@@ -86,14 +113,13 @@ async def native_restoration(
         monkeypatch.setattr(provider, "model", lambda **kwargs: model)
         engine = Engine(store, tmp_path / "native-owned", lambda _: provider, journal=journal)
         workspace = engine.workspaces / run_id
-        (workspace / ".git").mkdir(parents=True)
-        (workspace / ".git/HEAD").write_text("b" * 40)
+        revision = seed_restore_workspace(workspace)
         await store.update(run_id, git_metadata_digest=metadata_digest(workspace))
 
         async def head(argv, cwd, **kwargs):
             assert current_unit_of_work() is None
             assert argv[-2:] == ["rev-parse", "HEAD"]
-            return "b" * 40
+            return revision
 
         async def engine_git(argv, cwd, **kwargs):
             assert current_unit_of_work() is None
@@ -106,7 +132,7 @@ async def native_restoration(
             return ""
 
         async def inspect(*args, **kwargs):
-            return {"base_revision": "b" * 40, "head": "b" * 40, "source_tree": "c" * 40}
+            return {"base_revision": revision, "head": revision, "source_tree": "c" * 40}
 
         async def snapshot(*args, **kwargs):
             return ["service.py"], controlled_source_snapshot("Fictional native SQL control patch"), "c" * 40

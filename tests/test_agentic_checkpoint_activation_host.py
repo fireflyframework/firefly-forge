@@ -4,6 +4,7 @@
 import asyncio
 import hashlib
 import json
+import subprocess
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import UUID
@@ -19,6 +20,7 @@ from test_bridge_inflight_cancel import RUN
 
 from firefly_forge.bridge_completion_scope import bridge_completion_scope
 from firefly_forge.git_diff_models import GitDiffRefV1
+from firefly_forge.git_workspace import metadata_digest
 from firefly_forge.providers import BridgeProvider
 from firefly_forge.source_snapshot import SourceDiffSnapshotV1
 
@@ -66,7 +68,6 @@ async def activated(tmp_path, monkeypatch):
     from test_bridge_inflight_cancel import Rows
 
     from firefly_forge import agentic_checkpoint_invocation as invocation_module
-    from firefly_forge import engine as engine_module
     from firefly_forge.agent_restores import AgentRestores
     from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
     from firefly_forge.configuration import ProviderConfiguration
@@ -135,25 +136,37 @@ async def activated(tmp_path, monkeypatch):
     engine = Engine(store, tmp_path / "owned", lambda _: provider, journal=journal)
     workspace = engine.workspaces / RUN
     workspace.mkdir()
-    (workspace / ".git").mkdir()
-    (workspace / ".git/HEAD").write_text("b" * 40)
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Controlled Source",
+            "-c",
+            "user.email=source@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Seed source",
+        ],
+        cwd=workspace,
+        check=True,
+    )
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=workspace, check=True)
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=workspace).decode().strip()
+    store.run.data["git_metadata_digest"] = metadata_digest(workspace)
 
     async def head(argv, cwd, **kwargs):
         assert current_unit_of_work() is None
         assert argv[-2:] == ["rev-parse", "HEAD"]
-        return (cwd / ".git/HEAD").read_text()
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd).decode().strip()
 
     monkeypatch.setattr(invocation_module, "checked", head)
 
     async def inspect(*args):
-        return {"base_revision": "b" * 40, "head": "b" * 40, "source_tree": "c" * 40}
-
-    async def checked(argv, *args, **kwargs):
-        assert current_unit_of_work() is None and argv == ["git", "ls-files", "-z"]
-        return ""
+        return {"base_revision": revision, "head": revision, "source_tree": "c" * 40}
 
     monkeypatch.setattr(engine, "_inspect_workspace", inspect)
-    monkeypatch.setattr(engine_module, "checked", checked)
     runtime = SimpleNamespace(require_execution=lambda: None)
     requests = ExecutionRequests(store, runtime, Requests(), Events())
     restores = AgentRestores(store, requests, engine)
@@ -391,7 +404,7 @@ async def test_restore_refuses_late_admission_drift_before_result_exposure(tmp_p
 
         async def late_change(value):
             await admit(value)
-            if not changed and isinstance(value, tuple) and len(value) == 3:
+            if not changed and value == "" and any(row.status == "executing" for row in env.requests.records.rows):
                 assert current_unit_of_work() is None
                 changed.append(drift)
                 if drift == "operator":
@@ -409,7 +422,7 @@ async def test_restore_refuses_late_admission_drift_before_result_exposure(tmp_p
         env.store.admit_credentials = late_change
         with models.override_allow_model_requests(False), mock_model_requests(env.model):
             await env.restores.execute(request.request_id)
-        assert changed == [drift]
+        assert changed == [drift], (await env.requests.get(request.request_id)).get("result")
         assert len(posts) == 2
         assert not any(
             r.kind == "agent_consume" and r.data["payload"]["version"] == 2 for r in env.journal.records.rows

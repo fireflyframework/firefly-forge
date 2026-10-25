@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "tools/list_files",
+  "version": "1.0.1",
+  "description": "Versioned complete source traversal with bounded reader pages.",
+  "system_template": "",
+  "user_template": "List a bounded version 1 page of project source paths. Use path_prefix to select a component-relative subtree and page_size from 1 to 1000 (default 100). The response includes files, view_sha256, next_cursor and complete. Continue next_cursor with the same options until complete=true; never call a partial page the whole project. A changed source view or cursor scope is refused. Source is selected by the native Git inventory, including tracked ignored files; credentials, unsafe links and aliases remain unavailable. No new tool or execution authority.",
+  "required_variables": [],
+  "metadata": {
+    "defaults": {}
+  }
+}
