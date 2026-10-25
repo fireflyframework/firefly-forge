@@ -19,7 +19,7 @@ PROJECT = "b" * 32
 
 @pytest.fixture
 def admission(tmp_path, monkeypatch):
-    state = {"depth": 0, "rows": {}, "events": [], "writes": [], "guard": False, "reads": []}
+    state = {"depth": 0, "rows": {}, "events": [], "writes": [], "guard": False, "reads": [], "unit_identity": object()}
     repo = dict(id=REPOSITORY, name="Fictional stock", url=str(tmp_path), provider="git", skills=["security"])
     component = dict(
         project_id=PROJECT,
@@ -42,6 +42,8 @@ def admission(tmp_path, monkeypatch):
     @asynccontextmanager
     async def unit(*, autoflush=True):
         before = copy.deepcopy((state["rows"], state["events"], state["writes"]))
+        if state["depth"] == 0:
+            state["unit_identity"] = object()
         state["depth"] += 1
         try:
             yield SimpleNamespace(execute=execute)
@@ -99,18 +101,25 @@ def admission(tmp_path, monkeypatch):
     monkeypatch.setattr(ConfigurationStore, "_write", guarded_write)
     monkeypatch.setattr(ConfigurationStore, "_read", guarded_read)
     monkeypatch.setattr(Projects, "component_snapshot", project_snapshot)
-    from firefly_forge.project_persistence import ForgeProjectRepository
+    from firefly_forge.project_persistence import ForgeProjectRepository, ForgeProjectRevisionRepository
 
     async def project_row(records, value, **kwargs):
         assert value == UUID(PROJECT)
-        return SimpleNamespace(data={})
+        return state.get("project_rows", {}).get(PROJECT, SimpleNamespace(data={}))
 
+    async def project_revision(records, value, revision):
+        row = state.get("project_rows", {}).get(value.hex)
+        return SimpleNamespace(data=copy.deepcopy(row.data)) if row and row.data["revision"] == revision else None
+
+    monkeypatch.setattr(ForgeProjectRevisionRepository, "revision", project_revision)
     monkeypatch.setattr(ForgeProjectRepository, "find_by_id", project_row)
     monkeypatch.setattr(store, "_unit", unit)
     store.vault_credential_admission = admit
     import firefly_forge.store as store_module
 
-    monkeypatch.setattr(store_module, "current_unit_of_work", lambda: object() if state["depth"] else None)
+    monkeypatch.setattr(
+        store_module, "current_unit_of_work", lambda: state["unit_identity"] if state["depth"] else None
+    )
     store.repository_records = SimpleNamespace(find_by_id=repository)
     store.product_records = SimpleNamespace(find_current=current)
     store.run_records = SimpleNamespace(save=save, find_by_id=find)
@@ -366,6 +375,24 @@ async def test_campaign_prepares_all_children_before_one_native_admission(admiss
             "components": [{"id": "api", "name": "API", "repository_id": REPOSITORY, "responsibility": "Serve stock"}],
         },
     }
+    import hashlib
+    import json
+
+    from firefly_forge.project_models import ProjectDefinition
+    from firefly_forge.project_snapshot import PreparedProjectRevision
+
+    project["definition"]["components"][0].update(
+        kind="fullstack", frontend=component["frontend"], verification=copy.deepcopy(component["verification"])
+    )
+    project["definition"] = ProjectDefinition.model_validate(project["definition"]).model_dump()
+    project["digest"] = hashlib.sha256(json.dumps(project["definition"], sort_keys=True).encode()).hexdigest()
+    component.clear()
+    component.update(
+        PreparedProjectRevision.capture(project).component(
+            RunInput(repository_id=REPOSITORY, project_id=PROJECT, component_id="api", brief="Deliver fictional stock")
+        )
+    )
+    state["project_rows"] = {PROJECT: SimpleNamespace(data=project)}
     headers, children, entries = [], [], []
 
     async def ownership():

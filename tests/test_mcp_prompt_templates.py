@@ -58,12 +58,17 @@ async def test_actual_mcp_wire_metadata_stays_byte_exact():
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     baseline = _baseline()["wire_json"]
-    # The eighth task is the only routing wire change.
     expected = json.loads(baseline)
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
     assert bindings["maxProperties"] == 7
     bindings["maxProperties"] = 8
+    launch = next(tool for tool in expected["tools"] if tool["name"] == "launch_project_campaign")
+    selection = launch["inputSchema"]["$defs"]["CampaignLaunch"]["properties"]["component_ids"]["anyOf"][0]
+    assert selection.pop("maxItems") == 50
+    retry = next(tool for tool in expected["tools"] if tool["name"] == "retry_project_campaign")
+    selection = retry["inputSchema"]["$defs"]["CampaignRetry"]["properties"]["component_ids"]
+    assert selection.pop("maxItems") == 50
     assert actual == json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -77,7 +82,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 315
+    assert len(catalog.registry) == 321
     assert entries["collaboration/decision-destination"]["variables"] == {"reference": "string"}
     assert entries["collaboration/decision-reply"]["variables"] == {"command": "string"}
     assert entries["collaboration/decision-resume"]["variables"] == {"command": "string"}

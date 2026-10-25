@@ -53,7 +53,7 @@ class AccessRoutes:
                 permission = "members"
             elif len(parts) > 2 and parts[2] == "campaigns" and not safe:
                 permission = "release" if body.get("publish") else "execute"
-                if len(parts) >= 5 and parts[4] in {"resume", "retry"}:
+                if len(parts) >= 5 and parts[4] in {"resume", "retry", "renew-budget"}:
                     from firefly_forge.project_campaign_persistence import ForgeCampaignRepository
                     from firefly_forge.store import identifier
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,8 +31,7 @@ from firefly_forge.activity_persistence import ForgeEventContentRepository
 from firefly_forge.journal import digest
 from firefly_forge.persistence import ForgeEventEntity, ForgePlanEntity, ForgeRunEntity
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
-from firefly_forge.project_models import ProjectDefinition
-from firefly_forge.project_persistence import ForgeProjectRevisionEntity
+from firefly_forge.project_snapshot import project_revision_reference, snapshot_definition
 from firefly_forge.run_evidence import RunEvidence
 from firefly_forge.store import Store, identifier
 
@@ -46,6 +44,7 @@ class ActivityObservation:
     repositories: frozenset[str]
     event: Data
     scope_digest: str
+    project_revision_reference: Data | None = None
 
 
 @service
@@ -107,6 +106,7 @@ class ActivityArchive:
                 )
                 repositories = {header["repository_id"]}
                 plan_digest = None
+                project_reference = None
                 if plans:
                     plan = plans[0]
                     if (
@@ -122,30 +122,24 @@ class ActivityArchive:
                     if not plans:
                         raise ActivityUnavailable("activity_scope_unavailable")
                     component = plans[0].data.get("component_snapshot") or {}
-                    definition = component.get("project_definition") or {}
-                    ProjectDefinition.model_validate(definition)
-                    revisions = await self.evidence._rows(
-                        session,
-                        select(ForgeProjectRevisionEntity)
-                        .where(
-                            ForgeProjectRevisionEntity.project_id == identifier(header["project_id"]),
-                            ForgeProjectRevisionEntity.revision == component.get("project_revision"),
+                    from firefly_forge.projects import Projects
+
+                    if type(component.get("project_revision")) is not int or component["project_revision"] < 1:
+                        raise ActivityUnavailable("activity_scope_unavailable")
+                    try:
+                        historical = await Projects(self.store).revision(
+                            header["project_id"], component["project_revision"]
                         )
-                        .limit(1),
-                        1,
-                        remaining,
-                    )
-                    expected = hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
-                    selected = next((c for c in definition["components"] if c["id"] == header["component_id"]), None)
-                    if (
-                        len(revisions) != 1
-                        or revisions[0].data.get("definition") != definition
-                        or revisions[0].data.get("digest") != expected
-                        or component.get("project_digest") != expected
-                        or not selected
-                        or selected["repository_id"] != header["repository_id"]
-                    ):
-                        raise ActivityUnavailable("activity_integrity")
+                        definition = snapshot_definition(
+                            component,
+                            historical,
+                            project_id=header["project_id"],
+                            component_id=header["component_id"],
+                            repository_id=header["repository_id"],
+                        )
+                    except (KeyError, ValueError):
+                        raise ActivityUnavailable("activity_scope_unavailable") from None
+                    project_reference = project_revision_reference(historical)
                     repositories.update(identifier(c["repository_id"]).hex for c in definition["components"])
                     repositories.add(identifier(definition["product_repository_id"]).hex)
                 rows = await self.evidence._rows(
@@ -180,10 +174,15 @@ class ActivityArchive:
                     "run": header,
                     "repositories": sorted(repositories),
                     "plan_digest": plan_digest,
+                    "project_revision_ref": project_reference,
                     "event": event,
                 }
                 return ActivityObservation(
-                    header, frozenset(repositories), event, hashlib.sha256(canonical(scope)).hexdigest()
+                    header,
+                    frozenset(repositories),
+                    event,
+                    hashlib.sha256(canonical(scope)).hexdigest(),
+                    project_reference,
                 )
         except ActivityUnavailable:
             raise

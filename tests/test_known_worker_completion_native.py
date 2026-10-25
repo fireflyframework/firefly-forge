@@ -30,7 +30,7 @@ from firefly_forge.runtime_roles import RuntimeRoles
 
 
 @asynccontextmanager
-async def known_native(store, tmp_path, monkeypatch, *, unknown=False):
+async def known_native(store, tmp_path, monkeypatch, *, unknown=False, automatic=False, normal=False):
     async with prepared(store, tmp_path) as (_, actor, seeded, *_):
         store.configuration.update("bridge", ProviderConfiguration(values={"checkpoints": "required"}))
         run = await store.create_run(
@@ -88,6 +88,17 @@ async def known_native(store, tmp_path, monkeypatch, *, unknown=False):
             ),
         )
         posts = []
+        if not automatic:
+            accept_feedback = journal.worker_feedback
+
+            async def historical_feedback(*args, **kwargs):
+                current = await store.get_run(run_id)
+                usage = current.get("usage", {})
+                usage.pop("runtime_report", None)
+                await store.update(run_id, usage=usage)
+                return await accept_feedback(*args, **kwargs)
+
+            monkeypatch.setattr(journal, "worker_feedback", historical_feedback)
 
         def transport(request):
             if request.method == "GET":
@@ -101,7 +112,13 @@ async def known_native(store, tmp_path, monkeypatch, *, unknown=False):
                 json=result(tool=True)
                 if len(posts) == 1
                 else result(
-                    json.dumps({"summary": "Known worker output", "worker_feedback": feedback, "qa_report": None})
+                    json.dumps(
+                        {
+                            "summary": "Known worker output",
+                            "worker_feedback": None if normal else feedback,
+                            "qa_report": None,
+                        }
+                    )
                 ),
             )
 
@@ -113,8 +130,10 @@ async def known_native(store, tmp_path, monkeypatch, *, unknown=False):
             with models.override_allow_model_requests(False), mock_model_requests(model):
                 await engine.execute_run(run_id)
             current = await store.get_run(run_id)
-            assert current["status"] == ("needs_reconciliation" if unknown else "paused"), current.get("error")
-            assert len(posts) == 2 and current["bridge_completion_hold"]
+            if not automatic:
+                assert current["status"] == ("needs_reconciliation" if unknown else "paused"), current.get("error")
+                assert current["bridge_completion_hold"]
+            assert len(posts) == 2
             yield SimpleNamespace(
                 store=store,
                 journal=journal,

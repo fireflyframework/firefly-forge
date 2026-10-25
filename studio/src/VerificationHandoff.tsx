@@ -37,7 +37,6 @@ function limited(value: Record<string, unknown>) {
   return (
     integer(value.continuation, 1) &&
     integer(value.max_continuations, 1) &&
-    value.max_continuations <= 3 &&
     value.continuation <= value.max_continuations
   );
 }

@@ -59,7 +59,7 @@ def _schema(schema: Data, value: Any) -> None:
     Draft202012Validator(schema).validate(value)
 
 
-def _final_feedback(completion: ChatCompletion, captured: BoundaryCheckpoint) -> Data:
+def _final_report(completion: ChatCompletion, captured: BoundaryCheckpoint) -> Data:
     parameters = captured.record.contract["parameters"]
     choice = completion.choices[0]
     if parameters.get("output_mode") == "prompted":
@@ -80,10 +80,14 @@ def _final_feedback(completion: ChatCompletion, captured: BoundaryCheckpoint) ->
         _schema(definitions[call.function.name]["parameters_json_schema"], value)
     else:
         raise ValueError("Worker output has no supported declared final contract")
-    report = RuntimeReport.model_validate(value)
+    return RuntimeReport.model_validate(value).model_dump(mode="json")
+
+
+def _final_feedback(completion: ChatCompletion, captured: BoundaryCheckpoint) -> Data:
+    report = RuntimeReport.model_validate(_final_report(completion, captured))
     if report.worker_feedback is None:
         raise ValueError("Known worker outcome has no typed final feedback")
-    raw = value.get("worker_feedback")
+    raw = report.worker_feedback.model_dump(mode="json")
     return worker_feedback_model(raw).model_validate(raw).model_dump(mode="json")
 
 
@@ -99,24 +103,36 @@ def _scope(run: Data, task: Data) -> str:
     )
 
 
-def _eligible(run: Data, task: Data, feedback: Data) -> None:
+def _eligible(run: Data, task: Data, feedback: Data | None, *, accepted: bool = False) -> None:
     if (
         run.get("agent") != "bridge"
         or run.get("active_task") != "implement"
         or task.get("id") != "implement"
         or task.get("attempt") != run.get("attempt")
         or not task.get("idempotency_key")
-        or task.get("status") not in {"running", "paused", "needs_reconciliation"}
+        or task.get("status")
+        not in (
+            {"running", "paused", "needs_reconciliation", "done"}
+            if accepted
+            else {"running", "paused", "needs_reconciliation"}
+        )
         or run.get("status") in {"cancelled", "succeeded"}
         or (run.get("cancel_request") or {}).get("status") == "requested"
         or not run.get("bridge_completion_hold")
-        or feedback.get("task_id") != task["id"]
-        or feedback.get("attempt") != task["attempt"]
-        or feedback.get("task_id") not in BINDINGS[feedback["role_id"]][1]
+        or feedback is not None
+        and (
+            feedback.get("task_id") != task["id"]
+            or feedback.get("attempt") != task["attempt"]
+            or feedback.get("task_id") not in BINDINGS[feedback["role_id"]][1]
+        )
     ):
         raise ValueError("Known worker outcome requires its original current held task attempt")
     roles = (run.get("role_snapshot") or {}).get("roles", [])
-    if roles and not any(item["id"] == feedback["role_id"] and item["enabled"] for item in roles):
+    if (
+        feedback is not None
+        and roles
+        and not any(item["id"] == feedback["role_id"] and item["enabled"] for item in roles)
+    ):
         raise ValueError("Final worker role is not enabled in the frozen scope")
 
 
@@ -131,18 +147,27 @@ class PreparedWorkerCompletion:
     runtime_contract: str
     existing_feedback_digest: str | None
     seal: str
+    report: Data | None = None
 
 
-def _unsettled(entries: list[Data], run_id: str) -> dict[str, list[Data]]:
+def _unsettled(entries: list[Data], run_id: str, *, restored: bool = False) -> dict[str, list[Data]]:
     closed: set[str] = set()
     for entry in entries:
-        if entry["kind"] != SETTLEMENT:
+        if entry["kind"] not in {SETTLEMENT, "terminal_completion_receipt"}:
             continue
+        if entry["kind"] == "terminal_completion_receipt":
+            from firefly_forge.native_terminal_completion_models import validate_native_receipt
+
+            validate_native_receipt(entry, entries)
+        else:
+            from firefly_forge.known_worker_completion_models import WorkerCompletionReceiptV1
+
+            WorkerCompletionReceiptV1.model_validate(entry["payload"])
         proof = entry["payload"].get("proof") or {}
         if (
             proof.get("version") != 1
             or proof.get("run_id") != run_id
-            or proof.get("verification") != "worker_output_known_only"
+            or proof.get("verification") not in {"worker_output_known_only", "native_terminal_output_known_only"}
         ):
             raise ValueError("Prior completion receipt has invalid scope")
         if digest({k: v for k, v in proof.items() if k != "digest"}) != proof.get("digest"):
@@ -155,10 +180,17 @@ def _unsettled(entries: list[Data], run_id: str) -> dict[str, list[Data]]:
                 ("intent_digest", "checkpoint_record_digest", "response_record_digest", "consume_record_digest"),
                 strict=True,
             ):
+                if kind == "bridge_request_response" and item.get("source_kind") == "bridge_observation":
+                    kind = "bridge_request_observation"
                 matches = [
                     record
                     for record in entries
-                    if record["kind"] == kind and record["idempotency_key"] == item["request_id"]
+                    if record["kind"] == kind
+                    and (
+                        record["digest"] == item[field]
+                        if kind == "bridge_request_observation"
+                        else record["idempotency_key"] == item["request_id"]
+                    )
                 ]
                 if (
                     len(matches) != 1
@@ -172,28 +204,77 @@ def _unsettled(entries: list[Data], run_id: str) -> dict[str, list[Data]]:
         for kind in CUSTODY
     }
     keys = [entry["idempotency_key"] for entry in grouped[CUSTODY[0]]]
+    if restored:
+        selected = []
+        for consume in grouped["agent_consume"]:
+            if consume["payload"].get("version") == 2:
+                source = consume["payload"]["source"]
+                kind = (
+                    "bridge_request_observation"
+                    if source["kind"] == "bridge_observation"
+                    else "bridge_request_response"
+                )
+                matches = [
+                    entry for entry in entries if entry["kind"] == kind and entry["digest"] == source["record_digest"]
+                ]
+            else:
+                matches = [
+                    entry
+                    for entry in grouped["bridge_request_response"]
+                    if entry["idempotency_key"] == consume["idempotency_key"]
+                ]
+            if len(matches) != 1:
+                raise ValueError("Native terminal consumption lacks one exact original result")
+            selected.append(matches[0])
+        if any(entry not in selected for entry in grouped["bridge_request_response"]):
+            raise ValueError("Native terminal closure has an unselected original response")
+        grouped["bridge_request_response"] = selected
     if (
         not keys
         or len(set(keys)) != len(keys)
-        or any([entry["idempotency_key"] for entry in grouped[kind]] != keys for kind in CUSTODY[1:])
+        or any(
+            [entry["idempotency_key"] for entry in grouped[kind]] != keys
+            for kind in CUSTODY[1:]
+            if not restored or kind != "bridge_request_response"
+        )
+        or len(grouped["bridge_request_response"]) != len(keys)
     ):
         raise ValueError("Original completion closure is incomplete, duplicated or unknown")
     return grouped
 
 
 def prepare_worker_completion(
-    run: Data, task: Data, entries: list[Data], *, feedback: Data | None = None
+    run: Data,
+    task: Data,
+    entries: list[Data],
+    *,
+    feedback: Data | None = None,
+    terminal_report: Data | None = None,
+    restored: Any = None,
 ) -> PreparedWorkerCompletion:
     _outside_unit()
     if not entries or not Journal.verify_chain(entries):
         raise ValueError("Known worker completion requires an intact native journal")
-    selected = (
-        worker_feedback_model(feedback or run.get("worker_feedback") or {})
-        .model_validate(feedback or run.get("worker_feedback") or {})
-        .model_dump(mode="json")
+    report = (
+        RuntimeReport.model_validate(terminal_report).model_dump(mode="json") if terminal_report is not None else None
     )
-    _eligible(run, task, selected)
-    grouped = _unsettled(entries, run["id"])
+    selected = (
+        (
+            worker_feedback_model(feedback or run.get("worker_feedback") or {})
+            .model_validate(feedback or run.get("worker_feedback") or {})
+            .model_dump(mode="json")
+        )
+        if report is None or report.get("worker_feedback") is not None
+        else {}
+    )
+    if report is not None and report.get("worker_feedback") is not None:
+        selected = (
+            worker_feedback_model(report["worker_feedback"])
+            .model_validate(report["worker_feedback"])
+            .model_dump(mode="json")
+        )
+    _eligible(run, task, selected or None, accepted=report is not None)
+    grouped = _unsettled(entries, run["id"], restored=restored is not None)
     keys = [entry["idempotency_key"] for entry in grouped[CUSTODY[0]]]
     if run["bridge_completion_hold"] != {
         "version": 1,
@@ -256,24 +337,30 @@ def prepare_worker_completion(
             raise ValueError("Completion custody differs from its current runtime, provider, model or task scope")
         AgentCheckpoints._validate_checkpoint(checkpoint, intent)
         captured = BoundaryCheckpoint.decode(payload.snapshot.encode(), payload.checkpoint_digest)
-        body = CompletionResponsePayload.model_validate(response["payload"])
+        restore_custody: Data = {}
         if consume["payload"].get("version") != 1:
-            raise ValueError("Restored completion custody requires its original restore-ticket proof")
-        consumed = ConsumePayload.model_validate(consume["payload"])
-        raw = body.response.encode()
-        if (
-            body.request_id != intent["idempotency_key"]
-            or body.intent_digest != intent["digest"]
-            or body.response_sha256 != hashlib.sha256(raw).hexdigest()
-            or body.response_bytes != len(raw)
-            or consumed.request_id != body.request_id
-            or consumed.intent_digest != intent["digest"]
-            or consumed.checkpoint_record_digest != checkpoint["digest"]
-            or consumed.response_record_digest != response["digest"]
-            or consumed.response_sha256 != body.response_sha256
-            or consumed.response_bytes != body.response_bytes
-        ):
-            raise ValueError("Known completion response and consume custody differ")
+            if report is None or restored is None:
+                raise ValueError("Restored completion custody requires its original restore-ticket proof")
+            from firefly_forge.native_terminal_restore_proof import restored_result
+
+            raw, restore_custody = restored_result(restored, intent, checkpoint, response, consume)
+        else:
+            body = CompletionResponsePayload.model_validate(response["payload"])
+            consumed = ConsumePayload.model_validate(consume["payload"])
+            raw = body.response.encode()
+            if (
+                body.request_id != intent["idempotency_key"]
+                or body.intent_digest != intent["digest"]
+                or body.response_sha256 != hashlib.sha256(raw).hexdigest()
+                or body.response_bytes != len(raw)
+                or consumed.request_id != body.request_id
+                or consumed.intent_digest != intent["digest"]
+                or consumed.checkpoint_record_digest != checkpoint["digest"]
+                or consumed.response_record_digest != response["digest"]
+                or consumed.response_sha256 != body.response_sha256
+                or consumed.response_bytes != body.response_bytes
+            ):
+                raise ValueError("Known completion response and consume custody differ")
         final = ChatCompletion.model_validate_json(raw, strict=True)
         if (
             final.model != original.descriptor.model
@@ -295,23 +382,26 @@ def prepare_worker_completion(
                 _schema(schemas[call.function.name], _json(call.function.arguments))
         closures.append(
             {
-                "request_id": body.request_id,
+                "request_id": intent["idempotency_key"],
                 "intent_digest": intent["digest"],
                 "checkpoint_record_digest": checkpoint["digest"],
                 "response_record_digest": response["digest"],
                 "consume_record_digest": consume["digest"],
+                **restore_custody,
             }
         )
         previous, previous_digest, invocation_id = binding, payload.checkpoint_digest, binding.invocation_id
     assert final is not None and captured is not None
-    if _final_feedback(final, captured) != selected:
+    if report is not None and _final_report(final, captured) != report:
+        raise ValueError("Final model output differs from exact normalized RuntimeReport")
+    if report is None and _final_feedback(final, captured) != selected:
         raise ValueError("Final model output differs from exact typed worker feedback")
     active_feedbacks = [
         entry
         for entry in entries
         if entry["kind"] == "worker_feedback" and entry["sequence"] > grouped[CUSTODY[0]][0]["sequence"]
     ]
-    feedbacks = [entry for entry in active_feedbacks if entry["payload"].get("id") == selected["id"]]
+    feedbacks = [entry for entry in active_feedbacks if entry["payload"].get("id") == selected.get("id")]
     if (
         len(active_feedbacks) != len(feedbacks)
         or len(feedbacks) > 1
@@ -321,7 +411,7 @@ def prepare_worker_completion(
                 feedbacks[0]["payload"] != selected or feedbacks[0]["sequence"] <= grouped[CUSTODY[-1]][-1]["sequence"]
             )
         )
-        or (feedback is None and not feedbacks)
+        or (report is None and feedback is None and not feedbacks)
     ):
         raise ValueError("Known worker feedback has no unique consume-before-feedback custody")
     prepared = PreparedWorkerCompletion(
@@ -330,10 +420,11 @@ def prepare_worker_completion(
         _scope(run, task),
         copy.deepcopy(selected),
         tuple(closures),
-        hashlib.sha256(grouped[CUSTODY[2]][-1]["payload"]["response"].encode()).hexdigest(),
+        hashlib.sha256(raw).hexdigest(),
         contract,
         feedbacks[0]["digest"] if feedbacks else None,
         "",
+        copy.deepcopy(report),
     )
     from dataclasses import replace
 

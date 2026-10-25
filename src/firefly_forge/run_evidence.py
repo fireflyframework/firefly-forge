@@ -119,17 +119,24 @@ def build_evidence(
     )
     repositories = {identifier(plan["repository_id"]).hex}
     if plan.get("project_id"):
-        from firefly_forge.project_models import ProjectDefinition
+        from firefly_forge.project_snapshot import snapshot_definition
 
         component = plan.get("component_snapshot") or {}
         require(project_revision is not None)
         revision = project_revision or {}
-        definition = revision.get("definition", {})
-        ProjectDefinition.model_validate(definition)
+        try:
+            definition = snapshot_definition(
+                component,
+                revision,
+                project_id=plan["project_id"],
+                component_id=plan.get("component_id"),
+                repository_id=plan["repository_id"],
+            )
+        except (KeyError, ValueError):
+            raise EvidenceUnavailable("evidence_integrity") from None
         require(
             revision.get("id") == plan["project_id"] and revision.get("revision") == component.get("project_revision")
         )
-        require(component.get("project_definition") == definition)
         project_digest = hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
         require(component.get("project_digest") == revision.get("digest") == project_digest)
         selected = next((c for c in definition["components"] if c["id"] == plan.get("component_id")), None)

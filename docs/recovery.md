@@ -310,7 +310,7 @@ These controlled HTTP fixtures illustrate the five visible states. They do not i
 
 A pending implementation request with typed `kind: "verification"` can use the run's frozen automatic-verification grant. forge executes all explicit approved commands through the existing authorized runner. It records each intent and known result before supplying protected factory feedback and admitting a bounded continuation. Question text and request IDs never choose commands or expand permissions.
 
-New runs default to `automatic_verification: {enabled: true, max_continuations: 1}` in their frozen tool-policy settings. Administrators can set a strict maximum of three. Each completed handoff grants one additional coding task separately from `repair_budget`; it preserves attempt history and the existing four-attempt ceiling. A snapshot without that explicit setting remains manual. Older SDK/MCP policy writes that omit the setting preserve its current value.
+New runs default to `automatic_verification: {enabled: true, max_continuations: 1}` in their frozen tool-policy settings. Administrators can configure a positive finite continuation window and explicitly renew it through the current policy and a fresh exact adoption. Every prior handoff remains spent; changing the window does not reset history or command slots. Each completed handoff grants one additional coding task separately from `repair_budget`, within the existing four-attempt coding-stage ceiling. A snapshot without that explicit setting remains manual. Older SDK/MCP policy writes that omit the setting preserve its current value.
 
 Read `verification_handoff` on the run and its matching journal entries:
 
@@ -330,6 +330,63 @@ An authenticated native operator can explicitly adopt an older pending verificat
 Retain a new 32-character hexadecimal `request_id`, then POST `/api/v1/runs/{run_id}/verification-handoffs/adoptions` with that ID, `agent`, and the exact `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest` and `provider_digest` from the candidate read. The receipt binds only this pending question and partial source. Explicit provider selection captures its current configuration through the normal native handoff; earlier snapshots stay immutable. Host coding still requires current administrator authority.
 
 After a lost response, GET `/api/v1/runs/{run_id}/verification-handoffs/adoptions/{request_id}`. Preserve the original identity while the result is missing or uncertain. Do not create a replacement ID, retry a command or assume that admission failed. Reusing an ID with changed content is refused. HTTP admission records the adoption for the normal execution owner; it does not execute commands inline. See the [HTTP contract](api.md#automatic-verification-handoffs) for SDK methods and authority boundaries.
+
+### Acknowledge an unknown command for follow-up verification
+
+A cleanup receipt can coexist with a missing start result. Cleanup does not prove
+that a host command never ran, completed successfully, or left no effects. Startup
+must not infer host-process absence from a missing Docker container observation.
+Use the original runner's native stop, drain and custody controls before reviewing
+follow-up work; an operator acknowledgement itself is not process-absence proof.
+
+For a paused implementation with a held verification request, the native operator
+can review one canonical execution whose create and cleanup have receipts while
+its start remains unknown, or whose complete native WAL has no start intent.
+These are separate classifications, `start_unknown` and `closed_before_start`.
+This contract covers the native host runner under its
+original frozen sandbox policy; it does not adopt Docker or pool custody. Select a fresh **future verification adoption ID** and
+request the unknown-command candidate. It binds the current operator, full WAL,
+run, task, original command identity, current source, approved commands, policy,
+provider, next continuation and exact new command ordinals.
+
+Review the candidate and use its exact classification. An unknown start requires
+acknowledging an unknown result and possible effects. A closed-before-start
+record instead requires acknowledging the absence of a native start intent;
+this is not an operating-system process-absence attestation. The acknowledgement is restricted to
+the reviewed verification and its bound native continuation, and prohibits replay
+of the original execution identity. The strict consent field is
+`acknowledge_bound_verification_and_continuation: true`.
+Submit its strict version 1 body once, retaining the acknowledgement request ID.
+If the response is lost, read that same receipt; an uncertain write never permits
+a replacement POST or a new command identity by itself.
+
+This appends `unknown_command_acknowledgement` with disposition
+`unknown_abandoned_for_verification` or
+`closed_before_start_retired_for_verification`. The original effect records and
+spent command slot stay unchanged. Nothing is marked completed, interrupted or not run, and the
+run remains held. No supplied JSON document can attest an original exit or runner
+absence through this interface.
+If more than one eligible record blocks the handoff, review and acknowledge each
+separately against the same future adoption ID. Their original classifications
+and all consumed ordinals remain retained.
+
+Separately review and submit the ordinary verification adoption using the exact
+future adoption ID and bound source, command, policy and provider digests. Only
+its later running native handoff can allocate the reviewed new ordinals. The
+acknowledging operator and original execution identity must still have current
+permission. A changed source, request, configuration, lease, task or policy keeps
+execution held. Once all reviewed verification results are known, including RED
+results, the actual factory response, completed handoff, native resume and coding
+continuation intent can carry that consent into the same run's coding, normal QA
+and Git. The original frozen repair and provider grants still bound any descendant
+repair; the acknowledgement grants no extra round or budget. Current acknowledging
+actor permission is checked again at dispatch and Git boundaries. Publication
+communication retains an explicit original-custody risk note. Unrelated runs,
+resumes, grants and unreviewed unknown effects remain held.
+
+If prior handoffs exhausted the policy, explicitly renew the finite policy before
+requesting a candidate. A policy window of 17 retains all earlier spent handoffs;
+it does not grant 17 additional handoffs or raise the separate coding-stage limit.
 
 ## Resume the same run
 
@@ -510,6 +567,10 @@ The full canonical record retains its explicit **8 MiB** limit. Bounded decompre
 
 Capture, consumption, restoration and authenticated generic journal reads inspect the full decoded canonical record against current credential custody. Generic reads check one record at a time outside native database units and return the original encoded WAL. A restored request must first match native model state and original wire bytes; it then reuses the original encoded snapshot and digest. Valid zlib streams do not require byte-identical recompression across library versions. This codec does not grant restoration authority to an outer version-1 WAL checkpoint or re-arm consumed results. Source admission explicitly binds the Journal/decoder dependency. The changed version-3 decoder requires fresh qualification before runtime adoption; earlier profiles retain their exact provenance.
 
+
+Checkpoint source identity covers tracked source, including force-tracked ignored files, and nonignored new files. Git-ignored untracked dependencies, caches and private runner results are outside that identity. A final directory timestamp change alone therefore cannot establish that selected source changed. Forge retains exact file stamps and deletion witnesses, plus directory device/inode/owner/mode guards. Canonical Git supplies ignored directory roots; their paths are streamed into an owned temporary disk index, without reading dependency contents or introducing a source-file count limit.
+
+If a remaining directory namespace changes during final admission, Forge rechecks the exact canonical selection and the original credential/Git authority within the existing inspection deadline. Selected additions, deletion/reappearance, file changes, index/ignore-policy changes and directory replacement or permission changes still refuse. Git metadata keeps strict identity and timestamp witnesses across the entire inspection, so a temporary ignore-policy change cannot hide new source and then restore identical policy bytes before the final check. This bounded local read revalidation does not repeat a model request, command, consume or remote effect. Persistent namespace churn may still exhaust the inspection deadline. The updated source-identity helper changes retained runtime and source-admission contracts and requires fresh qualification before adoption.
 
 An authorized operator first selects an immutable original HTTP result or retains a successful original-result observation through the existing `POST /api/v1/runs/{run_id}/bridge-requests/{completion_request_id}/observations` route. Then POST `/api/v1/runs/{run_id}/agent-checkpoints/{completion_request_id}/restores` with a retained 32-character hexadecimal `request_id`, `expected_checkpoint_digest`, `expected_intent_digest` and a tagged `source`. An `http_response` source has its `record_digest`; a `bridge_observation` source also has `observation_id` and the original `terminal_digest`. The server does not accept an arbitrary response body. GET the same route with `/{request_id}` for exact readback; a missing or uncertain response never authorizes another admission. Each checkpoint permits one ticket, within a maximum of 50 restore tickets per run and the shared bounded worker queue.
 

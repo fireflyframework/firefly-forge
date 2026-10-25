@@ -4,10 +4,26 @@
 from typing import Any
 
 from pyfly.container import rest_controller
-from pyfly.web import Body, PathVar, get_mapping, post_mapping, request_mapping
+from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 
+from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, CampaignExecutionPolicyInputV1
 from firefly_forge.campaign_reports import CampaignReport, CampaignReports
 from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry, ProjectCampaigns
+
+
+@rest_controller
+@request_mapping("/api/v1/projects/{project_id}/campaign-execution-policy")
+class CampaignExecutionPolicyController:
+    def __init__(self, campaigns: ProjectCampaigns) -> None:
+        self.manager = campaigns
+
+    @get_mapping("")
+    async def get(self, project_id: PathVar[str]) -> dict[str, Any]:
+        return await self.manager.execution_policies.view(project_id)
+
+    @put_mapping("")
+    async def configure(self, project_id: PathVar[str], body: Body[CampaignExecutionPolicyInputV1]) -> dict[str, Any]:
+        return await self.manager.execution_policies.configure(project_id, body)
 
 
 @rest_controller
@@ -49,3 +65,9 @@ class ProjectCampaignController:
         self, project_id: PathVar[str], campaign_id: PathVar[str], body: Body[CampaignRetry]
     ) -> dict[str, Any]:
         return await self.manager.retry(project_id, campaign_id, body)
+
+    @post_mapping("/{campaign_id}/renew-budget")
+    async def renew_budget(
+        self, project_id: PathVar[str], campaign_id: PathVar[str], body: Body[CampaignBudgetRenewalV1]
+    ) -> dict[str, Any]:
+        return await self.manager.renew_budget(project_id, campaign_id, body)

@@ -87,8 +87,12 @@ def recorded_communication_models():
             facts, _ = json.JSONDecoder().raw_decode(prompt.removeprefix(prefix))
             references = sorted(facts)
             payload = {
-                "title": {"text": "Recorded project update", "fact_ids": references},
-                "paragraphs": [{"text": "The factory recorded this project interaction.", "fact_ids": references}],
+                "title": {"text": "Recorded project update", "fact_ids": references[:4]},
+                "paragraphs": [
+                    {"text": "The factory recorded this project interaction.", "fact_ids": group}
+                    for group in [references[start : start + 4] for start in range(4, len(references), 4)]
+                    or [references[:4]]
+                ],
                 "decision": {key: facts["decision"][key] for key in ("question", "context", "choices")}
                 if "decision" in facts
                 else None,

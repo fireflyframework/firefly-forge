@@ -20,6 +20,7 @@ from firefly_forge.project_persistence import (
     ForgeProjectRevisionEntity,
     ForgeProjectRevisionRepository,
 )
+from firefly_forge.project_snapshot import PreparedProjectRevision
 from firefly_forge.store import Store, identifier, now
 
 Data = dict[str, Any]
@@ -58,6 +59,8 @@ class Projects:
             }
             if row and row.data.get("git_delivery_policy"):
                 data["git_delivery_policy"] = copy.deepcopy(row.data["git_delivery_policy"])
+            if row and row.data.get("campaign_execution_policy"):
+                data["campaign_execution_policy"] = copy.deepcopy(row.data["campaign_execution_policy"])
             data["digest"] = hashlib.sha256(json.dumps(data["definition"], sort_keys=True).encode()).hexdigest()
             if row:
                 row.data = data
@@ -91,25 +94,31 @@ class Projects:
         if not request.project_id:
             return None
         project = await self.project(request.project_id)
-        definition = ProjectDefinition.model_validate(project["definition"])
-        component = next(
-            (component for component in definition.components if component.id == request.component_id), None
+        return (await self.prepared_revision(project)).component(request)
+
+    async def prepared_revision(self, project: Data) -> PreparedProjectRevision:
+        from firefly_forge.project_snapshot import prepared_revision
+
+        historical = await self.revision(project["id"], project["revision"])
+        return prepared_revision(project, historical)
+
+    async def snapshot_definition(
+        self,
+        component: Data,
+        *,
+        project_id: str | None = None,
+        component_id: str | None = None,
+        repository_id: str | None = None,
+    ) -> Data:
+        from firefly_forge.project_snapshot import snapshot_definition
+
+        scope_project = project_id or component.get("project_id")
+        if not isinstance(scope_project, str) or component.get("project_id", scope_project) != scope_project:
+            raise ValueError("Project snapshot belongs to another execution project")
+        project = await self.revision(scope_project, component["project_revision"])
+        return snapshot_definition(
+            component, project, project_id=project_id, component_id=component_id, repository_id=repository_id
         )
-        if component is None or component.repository_id != request.repository_id:
-            raise ValueError("The run's repository must belong to the selected product component")
-        for key in ("backend", "frontend"):
-            if key in request.model_fields_set and getattr(request, key) != getattr(component, key):
-                raise ValueError("The run's stack must match its configured component")
-        return {
-            "project_id": project["id"],
-            "project_name": definition.name,
-            "project_revision": project["revision"],
-            "project_digest": project["digest"],
-            "topology": definition.topology,
-            "product_repository_id": definition.product_repository_id,
-            "project_definition": copy.deepcopy(project["definition"]),
-            **component.model_dump(),
-        }
 
     async def overview(self, project_id: str) -> Data:
         project = await self.project(project_id)

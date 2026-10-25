@@ -1,0 +1,98 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+"""Native acceptance of known terminal output; no operator or execution grant."""
+
+from typing import Any, Literal
+
+from pydantic import ConfigDict, Field, model_validator
+
+from firefly_forge.journal import digest
+from firefly_forge.known_worker_completion_models import CompletionCustodyV1, CompletionHoldV1
+from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
+
+
+class RestoredCompletionCustodyV2(CompletionCustodyV1):
+    consume_version: Literal[2]
+    source_kind: Literal["http_response", "bridge_observation"]
+    restore_request_id: NativeID
+    generation: NativeID
+    restore_ticket_digest: Digest
+    restore_events_digest: Digest
+
+
+class NativeTerminalProofV1(StrictContract):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    version: Literal[1]
+    run_id: NativeID
+    task_id: Literal["implement"]
+    task_attempt: int = Field(ge=1)
+    task_key: str = Field(min_length=1, max_length=64)
+    runtime_contract: Digest
+    completion_count: int = Field(ge=1)
+    completions: list[CompletionCustodyV1 | RestoredCompletionCustodyV2]
+    terminal_report_sha256: Digest
+    final_response_sha256: Digest
+    observed_hold_digest: Digest
+    acceptance_kind: Literal["receipt", "worker_feedback"]
+    acceptance_record_digest: Digest
+    accepted_payload_sha256: Digest
+    source_checkpoint: dict[str, Any] | None
+    verification: Literal["native_terminal_output_known_only"]
+    digest: Digest
+
+    @model_validator(mode="after")
+    def exact_proof(self) -> "NativeTerminalProofV1":
+        if (
+            len(self.completions) != self.completion_count
+            or len({item.request_id for item in self.completions}) != self.completion_count
+            or (self.acceptance_kind == "receipt") != (self.source_checkpoint is not None)
+            or digest(self.model_dump(exclude={"digest"})) != self.digest
+        ):
+            raise ValueError("Native terminal proof differs from accepted immutable custody")
+        return self
+
+
+class NativeTerminalReceiptV1(StrictContract):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    version: Literal[1]
+    run_id: NativeID
+    producer: Literal["native_implementation_receipt", "native_worker_feedback"]
+    actor_digest: Digest
+    proof: NativeTerminalProofV1
+    observed_hold: CompletionHoldV1
+
+    @model_validator(mode="after")
+    def exact_receipt(self) -> "NativeTerminalReceiptV1":
+        if (
+            self.proof.run_id != self.run_id
+            or self.producer
+            != (
+                "native_implementation_receipt" if self.proof.acceptance_kind == "receipt" else "native_worker_feedback"
+            )
+            or digest(self.observed_hold.model_dump(mode="json")) != self.proof.observed_hold_digest
+        ):
+            raise ValueError("Native terminal receipt differs from its actual acceptance")
+        return self
+
+
+def validate_native_receipt(entry: dict[str, Any], entries: list[dict[str, Any]]) -> NativeTerminalReceiptV1:
+    value = NativeTerminalReceiptV1.model_validate(entry["payload"])
+    matches = [record for record in entries if record["digest"] == value.proof.acceptance_record_digest]
+    if (
+        entry["kind"] != "terminal_completion_receipt"
+        or entry["run_id"] != value.run_id
+        or entry["task_id"] != "implement"
+        or entry["idempotency_key"] != "terminal-completion:" + value.proof.acceptance_record_digest[:40]
+        or len(matches) != 1
+        or matches[0]["run_id"] != value.run_id
+        or matches[0]["task_id"] != "implement"
+        or matches[0]["kind"] != value.proof.acceptance_kind
+        or matches[0]["sequence"] >= entry["sequence"]
+        or digest(matches[0]["payload"]) != value.proof.accepted_payload_sha256
+        or matches[0]["kind"] == "receipt"
+        and (
+            matches[0]["idempotency_key"] != value.proof.task_key
+            or matches[0]["payload"].get("source_tree") != (value.proof.source_checkpoint or {}).get("source_tree")
+        )
+    ):
+        raise ValueError("Native terminal receipt lost its exact accepted journal row")
+    return value

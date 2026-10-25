@@ -1963,11 +1963,23 @@ class Collaboration:
 
             message = native_card(run)
             from firefly_forge.communication import (
+                CommunicationAudienceV1,
                 CommunicationConversationV1,
                 assistant_communication,
                 communication_facts,
             )
             from firefly_forge.product_provenance import content_digest
+
+            audience_input = None
+            if data.get("maintain_ticket") is not None:
+                quotation = (data.get("source_snapshot") or {}).get("body")
+                if not isinstance(quotation, str) or not quotation.strip():
+                    raise ValueError("The verified maintain owner quotation is unavailable")
+                audience_input = CommunicationAudienceV1(
+                    source="verified_maintain_owner",
+                    quotation=quotation,
+                    source_sha256=hashlib.sha256(quotation.encode()).hexdigest(),
+                )
 
             conversation_input = (
                 CommunicationConversationV1(
@@ -2027,9 +2039,16 @@ class Collaboration:
                     run or None, message, public_text, assistant=assistant_input
                 )
             elif conversation_input:
-                drafted = await self.communication_writer.write(
-                    run or None, message, public_text, conversation=conversation_input
-                )
+                if audience_input is not None:
+                    drafted = await self.communication_writer.write(
+                        run or None, message, public_text, conversation=conversation_input, audience=audience_input
+                    )
+                else:
+                    drafted = await self.communication_writer.write(
+                        run or None, message, public_text, conversation=conversation_input
+                    )
+            elif audience_input is not None:
+                drafted = await self.communication_writer.write(run, message, public_text, audience=audience_input)
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
@@ -2042,9 +2061,9 @@ class Collaboration:
             facts = (
                 communication_facts(current_run or None, assistant=current_assistant)
                 if assistant_input
-                else communication_facts(current_run or None, conversation=conversation_input)
+                else communication_facts(current_run or None, conversation=conversation_input, audience=audience_input)
                 if conversation_input
-                else communication_facts(current_run)
+                else communication_facts(current_run, audience=audience_input)
             )
             state_changed = (
                 milestone_key(current_run) != milestone_key(run)
@@ -2171,7 +2190,7 @@ class Collaboration:
                         context = await tickets.authorize_feedback(data)
                         if (
                             milestone_key(context["run"]) != intent["key"]
-                            or content_digest(communication_facts(context["run"]))
+                            or content_digest(communication_facts(context["run"], audience=audience_input))
                             != intent["communication"]["facts_sha256"]
                         ):
                             raise MaintainNotificationNotDispatched("The exact maintain notification facts changed")

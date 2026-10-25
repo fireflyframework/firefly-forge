@@ -106,7 +106,12 @@ async def fixture(store, *, wrong=None, uncertain=False, initial_iat=None):
     from firefly_forge.identity_persistence import ForgeIdentityAttemptEntity
 
     async with store._unit() as unit:
-        row = await unit.scalar(select(ForgeIdentityAttemptEntity))
+        row = await unit.scalar(
+            select(ForgeIdentityAttemptEntity).where(
+                ForgeIdentityAttemptEntity.state_hash == mod.digest(params["state"][0])
+            )
+        )
+        assert row is not None
         native = json.loads(service.cipher.decrypt(row.encrypted_data.encode()))
         pending.update(nonce=params["nonce"][0], verifier=native["oauth2_pkce_verifier"])
     return service, challenge, params, calls, token

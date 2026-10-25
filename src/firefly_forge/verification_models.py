@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class AutomaticVerificationPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = Field(default=True, strict=True)
-    max_continuations: int = Field(default=1, ge=1, le=3, strict=True)
+    max_continuations: int = Field(default=1, ge=1, strict=True)
 
 
 class VerificationAdoption(BaseModel):

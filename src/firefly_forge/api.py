@@ -168,7 +168,7 @@ from firefly_forge.product_design_controllers import ProductDesignController
 from firefly_forge.product_lifecycle import ProductLifecycle
 from firefly_forge.product_lifecycle_controllers import ProductLifecycleController
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
-from firefly_forge.project_campaign_controllers import ProjectCampaignController
+from firefly_forge.project_campaign_controllers import CampaignExecutionPolicyController, ProjectCampaignController
 from firefly_forge.project_campaign_persistence import (
     ForgeCampaignChildRepository,
     ForgeCampaignEventRepository,
@@ -239,6 +239,8 @@ from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
 from firefly_forge.tool_controllers import ToolController
 from firefly_forge.tool_persistence import ForgeToolInvocationRepository
+from firefly_forge.unknown_command_acknowledgements import UnknownCommandAcknowledgements
+from firefly_forge.unknown_command_controllers import UnknownCommandAcknowledgementController
 from firefly_forge.user_administration import UserAdministration
 from firefly_forge.user_administration_controllers import UserAdministrationController
 from firefly_forge.user_administration_persistence import (
@@ -872,6 +874,12 @@ class FactoryConfiguration:
         return KnownWorkerCompletions(store, journal)
 
     @bean
+    def unknown_command_acknowledgements(
+        self, store: Store, journal: Journal, handoffs: VerificationHandoffs
+    ) -> UnknownCommandAcknowledgements:
+        return UnknownCommandAcknowledgements(store, journal, handoffs)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -1239,6 +1247,7 @@ def create_runtime(
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
+        UnknownCommandAcknowledgementController,
         GitDiffArchive,
         GitDiffController,
         JournalController,
@@ -1311,6 +1320,7 @@ def create_runtime(
         ForgeCampaignDeliveryPlanRepository,
         CampaignDeliveryPlanController,
         ProjectCampaignController,
+        CampaignExecutionPolicyController,
     ]:
         container.register(component)
 

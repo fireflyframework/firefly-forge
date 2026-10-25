@@ -13,7 +13,7 @@ def test_new_tool_policy_explicitly_grants_bounded_automatic_verification():
     assert policy.get("automatic_verification") == {"enabled": True, "max_continuations": 1}
 
 
-@pytest.mark.parametrize("limit", [True, 0, 4, "2"])
+@pytest.mark.parametrize("limit", [True, 0, -1, "2"])
 def test_automatic_verification_limit_is_strict_and_bounded(limit):
     with pytest.raises(ValidationError):
         ToolPolicyInput.model_validate({"automatic_verification": {"enabled": True, "max_continuations": limit}})

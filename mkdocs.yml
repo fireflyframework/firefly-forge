@@ -91,6 +91,7 @@ nav:
       - Choose a stack: profiles.md
       - Build, maintain and test: workflows.md
       - Coordinate project campaigns: project-campaigns.md
+      - Configure campaign execution windows: campaign-execution-budgets.md
       - Work on a large product: large-products.md
       - Save development progress: development-workflow.md
       - Verify a saved checkpoint: checkpoint-verification.md

@@ -2,6 +2,16 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.45 — Unreleased
+
+- Page project and campaign data without a fixed project-count ceiling, retain revision-bound references, and configure finite campaign execution windows with durable usage accounting.
+- Stream credential fingerprint preparation and checkpoint source admission outside database writer units while retaining current credential, source and ownership checks.
+- Ground AI-written status in current verification facts, recorded reasons and next factory actions. Preserve historical checks as historical context and keep pending factory work separate from questions requiring a person.
+- Accept normal and blocked worker outcomes through atomic native completion custody, including restored checkpoints. Keep QA and Git delivery behind the exact accepted outcome and current authority.
+- Add explicit administrator acknowledgement of an unknown command for one separately bound verification continuation and its following coding/QA/Git lineage. Preserve the unknown row, spent ordinals, frozen command and repair budgets, and repeated current-actor checks.
+- Bind retained source-catalog manifests to their immutable hash and stable identity across checks. Keep full timestamp checks during bounded reads and reject changed payloads, paths, ownership, modes or links.
+- Register the measured V15 profile with 64 admission dependencies and 22 loader inputs, preserve all ten historical profile literals, and build fresh Studio 0.2.45 assets. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
+
 ## 0.2.44 — 2026-10-25
 
 - Store equal native history arrays once in the version-3 lossless checkpoint codec, then reconstruct and hash the complete canonical record before restoration. Preserve version-1 raw and version-2 compressed snapshot readability and original encoded identities.

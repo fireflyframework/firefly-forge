@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.45 (unreleased)
+
+Project and campaign views use complete pages and revision-bound references instead of a fixed project-count ceiling. Campaign execution windows are finite, configurable and checked against retained usage. Credential fingerprint preparation and checkpoint source identity stream outside database writer units, with current source, credential and ownership checks retained. See [large-product boundaries](large-products.md) and [project campaigns](project-campaigns.md).
+
+Contextual communication supplies the AI writer with the current recorded verification reason, source, check state and next factory action. A pending verification request remains factory work; earlier completed checks remain labeled as historical context. Six additional versioned templates extend the catalog to 321 entries without changing the original 315. Recorded facts do not invent a root cause or grant execution authority.
+
+Normal and blocked worker outcomes enter atomic native completion custody, including restored checkpoints, before QA or Git delivery proceeds. An administrator can separately acknowledge an exact unknown command and bind a fresh verification continuation to its current source, commands, policy, provider and next command ordinals. Its completed known result can authorize only the corresponding factory-response, coding, QA and Git lineage. The original unknown record and spent slots remain unchanged. Current acknowledging-actor authority is checked again before dispatch and local or remote Git effects. The existing command and repair budgets remain in force; see [verification recovery](recovery.md#inspect-a-factory-verification-handoff).
+
+The measured V15 profile binds 64 admission dependencies, 38 checkpoint runtime dependencies and 22 loader inputs. All ten historical profile literals remain unchanged. Fresh controlled native tool-boundary, PostgreSQL budget/command/paging and terminal-completion measurements precede registration; the real native configuration RPC is checked again after registration without a model call. Studio 0.2.45 has a fresh build and fixture captures. These proofs do not establish completed CRM delivery, live external-provider quality or a remote deployment. Version 0.2.45 remains unreleased until its publication gates are complete.
+
+A retained source-catalog manifest now binds its complete immutable hash and stable identity across checks. This addresses an observed `ctime`-only metadata change on a macOS Documents-backed catalog without refreshing its reference or accepting changed content. The bounded descriptor read and surrounding path checks still compare full timestamps during I/O and enforce the original inode, owner, mode and link guards. Current source, authority and live recovery acceptance remain required.
+
 ## 0.2.44
 
 The version-3 checkpoint codec stores identical native `history` and `request_history` arrays once before compression. Decoding reconstructs the complete canonical record, checks the expanded size before allocating the mirrored record, and verifies its full SHA-256. Version-1 raw records and version-2 compressed records remain readable with their original encoded identities. Restored model requests must still reproduce exact wire bytes, usage, limits and file-tool state; consumed results and completed tools are never replayed.
@@ -237,7 +249,7 @@ This admission identifies the entrypoint file. Its dependencies and installation
 
 ## 0.2.23
 
-Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. The configurable maximum is three, within the existing four-attempt ceiling and separate from the repair budget. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person. See [verification recovery](recovery.md#inspect-a-factory-verification-handoff).
+Typed verification requests can use a frozen grant to run the approved checks through forge's authorized runner. Known results enter the WAL before factory-attributed feedback permits one default coding continuation. At introduction, the configurable maximum was three, within the existing four-attempt ceiling and separate from the repair budget; [current verification recovery](recovery.md#inspect-a-factory-verification-handoff) describes the later finite policy and renewal contract. Unknown effects stay held. Older paused runs require explicit adoption of their current source, commands, policy and selected provider. Studio distinguishes these checks from questions requiring a person.
 
 Source-control conversations receive milestone updates from recorded run facts, with known checks and a confirmed pull-request link reported separately. Fourteen centralized Agentic templates format the messages without another model call. Current access checks, retained delivery identities and unresolved-write holds still apply. See [factory verification and feedback](agent-lifecycle.md#factory-owned-verification).
 

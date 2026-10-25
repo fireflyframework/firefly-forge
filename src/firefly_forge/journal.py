@@ -669,7 +669,17 @@ class Journal:
         return found
 
     async def receipt(self, run_id: str, key: str, evidence: Data, *, checkpoint: Data | None = None) -> Data:
+        from firefly_forge.native_terminal_completions import native_terminal_acceptance
+
+        async with native_terminal_acceptance(self, run_id, "receipt", key, evidence, checkpoint) as terminal:
+            return await self._receipt(run_id, key, evidence, checkpoint=checkpoint, terminal=terminal)
+
+    async def _receipt(
+        self, run_id: str, key: str, evidence: Data, *, checkpoint: Data | None = None, terminal: Any = None
+    ) -> Data:
         async with self.store._unit():
+            if terminal is not None:
+                await terminal.before()
             run = await self._run(run_id)
             existing = next(
                 (
@@ -680,6 +690,8 @@ class Journal:
                 None,
             )
             if existing is not None:
+                if terminal is not None:
+                    await terminal.commit(copy.deepcopy(existing.data))
                 return copy.deepcopy(existing.data)
             task = await self._effect_task(run_id, key)
             if task.status == "done":
@@ -696,6 +708,8 @@ class Journal:
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
+            if terminal is not None:
+                await terminal.commit(record)
             return record
 
     async def fail(
@@ -943,7 +957,9 @@ class Journal:
                 await admitted()
         return context
 
-    async def worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
+    async def worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, restoration: Any = None
+    ) -> Data:
         from firefly_forge.agent_roles import (
             NativeAllowanceWorkerFeedback,
             SourceBudgetWorkerFeedback,
@@ -959,7 +975,7 @@ class Journal:
             if not actor:
                 raise ValueError("Native final feedback requires its original allowance actor")
             async with ProviderRecoveries(self.store, self, None)._locked(run_id, actor):
-                return await self._worker_feedback(run_id, feedback, evidence=evidence)
+                return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
         if isinstance(feedback, SourceBudgetWorkerFeedback):
             from firefly_forge.provider_recoveries import ProviderRecoveries
             from firefly_forge.source_budget_allowances import current_budget_receipt
@@ -971,10 +987,28 @@ class Journal:
                 if receipt is None:
                     raise ValueError("Source budget feedback requires its actual native receipt")
                 async with ProviderRecoveries(self.store, self, None)._locked(run_id, receipt["actor"]):
-                    return await self._worker_feedback(run_id, feedback, evidence=evidence)
-        return await self._worker_feedback(run_id, feedback, evidence=evidence)
+                    return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
+        return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
 
-    async def _worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
+    async def _worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, restoration: Any = None
+    ) -> Data:
+        from firefly_forge.native_terminal_completions import native_terminal_acceptance
+
+        payload = feedback.model_dump(mode="json")
+        async with native_terminal_acceptance(
+            self,
+            run_id,
+            "worker_feedback",
+            _worker_message_key("worker-feedback", feedback.id),
+            payload,
+            restoration=restoration,
+        ) as terminal:
+            return await self._accept_worker_feedback(run_id, feedback, evidence=evidence, terminal=terminal)
+
+    async def _accept_worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, terminal: Any = None
+    ) -> Data:
         from firefly_forge.agent_roles import (
             BINDINGS,
             NativeAllowanceWorkerFeedback,
@@ -997,6 +1031,8 @@ class Journal:
                 raise ValueError("Worker evidence must identify this exact native feedback and question")
             manifest.check_feedback(feedback.model_dump(mode="json"), feedback.task_id)
         async with self.store._unit():
+            if terminal is not None:
+                await terminal.before()
             run = await self._run(run_id)
             payload = model.model_validate_json(self._worker_payload(run, feedback.model_dump_json())).model_dump(
                 mode="json"
@@ -1044,6 +1080,8 @@ class Journal:
                     ]
                     if retained != [evidence]:
                         raise ValueError("Worker evidence replay differs from its immutable receipt")
+                if terminal is not None:
+                    await terminal.commit(copy.deepcopy(existing.data))
                 return copy.deepcopy(existing.data)
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
@@ -1112,6 +1150,8 @@ class Journal:
                     "verification_adoption": {},
                 }
             await self.store.run_records.save(run)
+            if terminal is not None:
+                await terminal.commit(record)
             return record
 
     async def worker_response(self, run_id: str, request_id: str, response: Any) -> Data:
@@ -1368,7 +1408,9 @@ class Journal:
                 if (
                     task.status != "paused"
                     or used + 1 != intent["continuation"]
-                    or not 1 <= used + 1 <= intent["max_continuations"] <= 3
+                    or type(intent.get("continuation")) is not int
+                    or type(intent.get("max_continuations")) is not int
+                    or not 1 <= used + 1 <= intent["max_continuations"]
                 ):
                     raise ValueError("Automatic verification continuation budget exhausted")
             await ProjectAccess(self.store).authorize_execution(run.data)
@@ -1605,16 +1647,18 @@ class Journal:
             return copy.deepcopy(state)
 
     async def verification_assert_current(self, run_id: str) -> None:
+        from firefly_forge.unknown_command_acknowledgements import policy_digest as acknowledgement_policy_digest
         from firefly_forge.verification_handoffs import prepare_journal_verification_source
         from firefly_forge.verification_source_preparation import verification_source_scope
 
+        acknowledgement_policy = acknowledgement_policy_digest()
         prepared = await prepare_journal_verification_source(self, run_id, provider=False)
         if prepared is None:
-            return await self._verification_assert_current(run_id)
+            return await self._verification_assert_current(run_id, acknowledgement_policy=acknowledgement_policy)
         with verification_source_scope(prepared):
-            await self._verification_assert_current(run_id)
+            await self._verification_assert_current(run_id, acknowledgement_policy=acknowledgement_policy)
 
-    async def _verification_assert_current(self, run_id: str) -> None:
+    async def _verification_assert_current(self, run_id: str, *, acknowledgement_policy: str | None = None) -> None:
         from firefly_forge.project_access import ProjectAccess
         from firefly_forge.verification_models import check_verification_cut
 
@@ -1631,6 +1675,9 @@ class Journal:
             )
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
+            from firefly_forge.unknown_command_proof import assert_followup_actors
+
+            await assert_followup_actors(self, run.data, entries, intent, acknowledgement_policy)
             check_verification_cut(self.store, run.data, intent)
 
     async def verification_provider_admission(self, run_id: str) -> None:
@@ -1775,7 +1822,9 @@ class Journal:
                     3,
                     sum(
                         handoff in completed & responses & resumed
-                        and 1 <= payload["continuation"] <= payload["max_continuations"] <= 3
+                        and type(payload.get("continuation")) is int
+                        and type(payload.get("max_continuations")) is int
+                        and 1 <= payload["continuation"] <= payload["max_continuations"]
                         for handoff, payload in admitted.items()
                     ),
                 )

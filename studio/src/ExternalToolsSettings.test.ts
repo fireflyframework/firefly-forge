@@ -6,6 +6,7 @@ import {
   grantPayload,
   readConnector,
   readGrants,
+  readProjects,
   toolFields,
 } from "./ExternalToolsSettings";
 const connector = {
@@ -255,4 +256,28 @@ describe("external tools preserve actual API authority", () => {
     expect(fields[0].required).toBe(false);
     expect("attacked" in globalThis).toBe(false);
   });
+});
+
+it("keeps every repository binding in large server-valid project definitions", () => {
+  const components = Array.from({ length: 5000 }, (_, index) => ({
+    repository_id: index === 4999 ? "c".repeat(32) : repo.id,
+  }));
+  const parsed = readProjects([
+    { ...project, definition: { ...project.definition, components } },
+  ]);
+  expect(parsed[0].definition.components).toHaveLength(5000);
+  expect(parsed[0].definition.components[4999].repository_id).toBe(
+    "c".repeat(32),
+  );
+  expect(() =>
+    readProjects([
+      {
+        ...project,
+        definition: {
+          ...project.definition,
+          components: [...components, { repository_id: "invalid" }],
+        },
+      },
+    ]),
+  ).toThrow(/binding/);
 });

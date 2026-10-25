@@ -343,8 +343,16 @@ class ChannelProducts:
             if run.get("project_id") != project["id"]:
                 continue
             component = run.get("component_snapshot") or {}
-            graph = component.get("project_definition")
-            if not graph:
+            if not isinstance(run.get("component_id"), str) or not isinstance(run.get("repository_id"), str):
+                continue
+            try:
+                graph = await self.projects.snapshot_definition(
+                    component,
+                    project_id=run["project_id"],
+                    component_id=run["component_id"],
+                    repository_id=run["repository_id"],
+                )
+            except (KeyError, ValueError):
                 continue
             try:
                 await self._members(

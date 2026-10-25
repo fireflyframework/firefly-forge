@@ -55,11 +55,10 @@ def test_different_key_or_schema_cannot_silently_admit_history():
         OAuthCredentialMatcher(key, "forge_test_other").contains("A public statement.", [history])
 
 
-def test_no_secret_positive_and_bounded_oversized_admission():
+def test_no_secret_positive_and_complete_large_admission():
     svc = matcher()
     assert not svc.contains({"instructions": "Use atomic design and explain the customer journey."}, [])
-    with pytest.raises(ValueError, match="bound"):
-        svc.contains("x" * (1_048_576 + 1), [])
+    assert not svc.contains("x" * (1_048_576 + 1), [])
 
 
 def test_deep_or_cyclic_inputs_fail_closed():
@@ -75,14 +74,13 @@ def test_surrogate_text_returns_a_bounded_admission_error():
         matcher().contains("\ud800", [])
 
 
-def test_history_and_scan_work_are_bounded_before_matching():
+def test_authenticated_history_bound_does_not_impose_a_project_work_limit():
     svc = matcher()
     history = packet(svc, "one-credential-value")
     with pytest.raises(ValueError, match="history.*bound"):
         svc.contains("A public customer journey.", [history] * 1025)
     histories = [packet(svc, "a"), packet(svc, "bb"), packet(svc, "ccc")]
-    with pytest.raises(ValueError, match="work bound"):
-        svc.contains("x" * 1_000_000, histories)
+    assert not svc.contains("x" * 1_000_000, histories)
 
 
 @pytest.mark.parametrize(

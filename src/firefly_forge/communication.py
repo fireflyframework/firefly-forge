@@ -81,6 +81,19 @@ class CommunicationConversationV1(StrictContract):
         return self
 
 
+class CommunicationAudienceV1(StrictContract):
+    version: Literal[1] = 1
+    source: Literal["verified_maintain_owner"]
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    quotation: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def exact_source(self) -> CommunicationAudienceV1:
+        if hashlib.sha256(self.quotation.encode()).hexdigest() != self.source_sha256:
+            raise ValueError("Communication audience requires its exact verified owner quotation")
+        return self
+
+
 class CommunicationPublicationV1(StrictContract):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     version: Literal[1] = 1
@@ -96,6 +109,33 @@ class CommunicationGitDeliveryV1(StrictContract):
     sequence: int = Field(ge=1, le=50)
     changed_file_count: int = Field(ge=1)
     implementation_disposition: Literal["failed"] | None = None
+    changed_files: list[str] = Field(default_factory=list)
+    changed_files_preview_truncated: bool = True
+
+    @model_validator(mode="after")
+    def exact_source_preview(self) -> CommunicationGitDeliveryV1:
+        from pathlib import PurePosixPath
+
+        from firefly_forge.workspace_tools import _private_name
+
+        if len(set(self.changed_files)) != len(self.changed_files) or len(self.changed_files) > self.changed_file_count:
+            raise ValueError("Source path preview differs from the native checkpoint count")
+        if not self.changed_files_preview_truncated and len(self.changed_files) != self.changed_file_count:
+            raise ValueError("Complete source preview requires every checkpoint path")
+        for name in self.changed_files:
+            path = PurePosixPath(name)
+            if (
+                not name
+                or not path.parts
+                or any(ord(c) < 32 for c in name)
+                or "\\" in name
+                or ":" in name
+                or path.is_absolute()
+                or path.as_posix() != name
+                or any(part in {".", ".."} or _private_name(part) for part in path.parts)
+            ):
+                raise ValueError("Communication source paths must be exact public repository paths")
+        return self
 
 
 class CommunicationAssistantTurnV1(StrictContract):
@@ -220,6 +260,69 @@ def assistant_communication(
     return CommunicationAssistantV1.model_validate(values)
 
 
+def _factory_verification(run: Data, handoff: Data) -> Data:
+    from firefly_forge.agent_roles import WorkerRequest
+
+    request = run.get("worker_request") or {}
+    if (
+        request.get("kind") != "verification"
+        or request.get("status") not in {"pending", "answered"}
+        or (not handoff and run.get("status") != "paused")
+    ):
+        return {}
+    try:
+        requested = WorkerRequest.model_validate(
+            {key: request[key] for key in ("id", "kind", "question", "context", "choices") if key in request}
+        )
+    except ValueError:
+        return {}
+    state = handoff.get("status", "not_recorded")
+    raw = run["verification_handoff"] if handoff else {}
+    total = raw.get("commands_count")
+    total = total if type(total) is int and 1 <= total <= 20 else None
+    completed, failed = raw.get("completed_commands"), raw.get("failed_commands")
+    counts = (
+        state in {"held", "completed"}
+        and total is not None
+        and type(completed) is int
+        and type(failed) is int
+        and 0 <= failed <= completed <= total
+    )
+    result: Data = {
+        "responsibility": "factory",
+        "requires_human_answer": False,
+        "execution_grant": False,
+        "source": "recorded_worker_request",
+        "request_id": requested.id,
+        "reason": requested.question,
+        "context": requested.context,
+        "handoff_status": state,
+        "checks": {
+            "source": "recorded_handoff" if handoff else "not_recorded",
+            "result": "completed" if counts and state == "completed" and completed == total else "not_completed",
+            "total": total,
+            "recorded": completed if counts else None,
+            "failed": failed if counts else None,
+        },
+        "next_native_action": {
+            "not_recorded": "review_factory_verification_candidate",
+            "pending": "review_pending_factory_verification",
+            "running": "await_or_reconcile_recorded_verification",
+            "held": "review_reconciliation_or_renewed_authority",
+            "completed": "review_recorded_verification_results",
+        }[state],
+    }
+    source_digest = raw.get("source_digest")
+    if isinstance(source_digest, str) and re.fullmatch(r"[a-f0-9]{64}", source_digest):
+        result["retained_source"] = {"source": "recorded_handoff", "digest": source_digest}
+    error = raw.get("error")
+    if state == "held" and error == (
+        "Verification needs explicit reconciliation or renewed authority before continuation."
+    ):
+        result["hold"] = {"source": "recorded_handoff_error", "reason": error}
+    return result
+
+
 def communication_facts(
     run: Data | None,
     *,
@@ -227,9 +330,10 @@ def communication_facts(
     publication: CommunicationPublicationV1 | None = None,
     assistant: CommunicationAssistantV1 | None = None,
     git_delivery: CommunicationGitDeliveryV1 | None = None,
+    audience: CommunicationAudienceV1 | None = None,
 ) -> Data:
     if assistant is not None:
-        if run or conversation or publication or git_delivery:
+        if run or conversation or publication or git_delivery or audience:
             raise ValueError("Assistant feedback is separate from execution and publication facts")
         assistant_facts = assistant.model_dump(exclude={"version"}, exclude_none=True)
         if assistant.turns:
@@ -259,6 +363,55 @@ def communication_facts(
     status = run.get("status")
     known = TERMINAL | {"queued", "running", "paused", "needs_reconciliation", "developing", "validating"}
     facts: Data = {"state": {"status": status if isinstance(status, str) and status in known else "unknown"}}
+    if (publication or git_delivery) and audience:
+        raise ValueError("Owner language context belongs to execution notifications")
+    if publication is None:
+        component = run.get("component_snapshot") or {}
+        if (
+            isinstance(component, dict)
+            and isinstance(component.get("name"), str)
+            and 1 <= len(component["name"]) <= 120
+            and isinstance(component.get("responsibility"), str)
+            and 1 <= len(component["responsibility"]) <= 2000
+        ):
+            facts["work"] = {
+                "component": component["name"],
+                "responsibility": component["responsibility"],
+                "basis": "frozen_component",
+            }
+        operation = run.get("operation")
+        if operation in {"develop", "test", "maintain"}:
+            facts["execution_scope"] = {"operation": operation}
+            revision = (run.get("source_checkpoint_snapshot") or {}).get("revision")
+            if isinstance(revision, str) and re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", revision):
+                facts["execution_scope"]["source_revision"] = revision
+        product = run.get("product_definition") or {}
+        definition = product.get("definition") if isinstance(product, dict) else None
+        if (
+            isinstance(definition, dict)
+            and isinstance(definition.get("customer"), str)
+            and 1 <= len(definition["customer"]) <= 4000
+            and isinstance(definition.get("problem"), str)
+            and 1 <= len(definition["problem"]) <= 8000
+        ):
+            facts["product"] = {
+                "customer": definition["customer"],
+                "problem": definition["problem"],
+                "basis": "frozen_requested_product_definition",
+            }
+        brief = run.get("brief")
+        if isinstance(brief, str) and brief.strip() and ("work" in facts or "product" in facts or audience):
+            facts["requested_work"] = {
+                "basis": "requested_not_verified",
+                "source": "frozen_run_brief",
+                "source_sha256": hashlib.sha256(brief.encode()).hexdigest(),
+            }
+        if audience:
+            facts["audience"] = {
+                "source": audience.source,
+                "source_sha256": audience.source_sha256,
+                "language_basis": "verified_owner_quotation",
+            }
     if publication:
         facts["publication"] = {
             **publication.model_dump(exclude={"version"}),
@@ -268,13 +421,15 @@ def communication_facts(
     if git_delivery is not None:
         facts["git_delivery"] = {
             **git_delivery.model_dump(exclude={"version"}, exclude_none=True),
-            "verification": "not_run" if git_delivery.implementation_disposition == "failed" else "pending",
+            "verification": "unverified" if git_delivery.implementation_disposition == "failed" else "pending",
             "purpose": "unverified_failed_checkpoint"
             if git_delivery.implementation_disposition == "failed"
             else "intermediate_draft_pull_request",
+            "intent": {"target": "draft_pull_request", "status": "requested_not_confirmed"},
+            "source_basis": "native_checkpoint_receipt",
         }
     checkpoint = run.get("git_delivery_summary")
-    if (
+    if git_delivery is None and (
         isinstance(checkpoint, dict)
         and type(checkpoint.get("sequence")) is int
         and 1 <= checkpoint["sequence"] <= 50
@@ -299,11 +454,25 @@ def communication_facts(
             "credential_exposure": "not_established",
             "next_step": "inspect_workspace_and_recorded_checks",
         }
+    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+        "Checkpoint source changed during final admission",
+        "Checkpoint source selection changed during final admission",
+        "Checkpoint source directory identity changed during final admission",
+        "Checkpoint Git metadata changed during final admission",
+    }:
+        facts["blocker"] = {
+            "kind": "checkpoint_source_admission_guard",
+            "basis": "recorded_error",
+            "cause": "not_established",
+            "next_step": "inspect_source_and_checkpoint_evidence",
+        }
     handoff = (
         verification_handoff(run)
         if isinstance(run.get("verification_handoff"), dict) and isinstance(run.get("worker_request"), dict)
         else {}
     )
+    if factory_verification := _factory_verification(run, handoff):
+        facts["factory_verification"] = factory_verification
     if (
         handoff.get("status") == "completed"
         and 1 <= handoff["commands_count"] <= 20
@@ -319,9 +488,18 @@ def communication_facts(
     if isinstance(run.get("id"), str) and re.fullmatch(r"[a-f0-9]{32}", run["id"]) and status in TERMINAL:
         facts["delivery"] = {
             "factory_result": "accepted" if status == "succeeded" else "not_accepted",
-            "review_link": "recorded"
-            if isinstance(run.get("pr_url"), str) and run["pr_url"].strip()
-            else "not_recorded",
+            "scope": "execution_unit",
+            "operation": run.get("operation") if run.get("operation") in {"develop", "test", "maintain"} else "unknown",
+            "product_completion": "not_established",
+            **(
+                {
+                    "review_link": "recorded"
+                    if isinstance(run.get("pr_url"), str) and run["pr_url"].strip()
+                    else "not_recorded"
+                }
+                if git_delivery is None
+                else {}
+            ),
         }
     stage = run.get("active_task")
     if isinstance(stage, str) and stage in STAGES and status in {"running", "developing", "validating"}:
@@ -332,6 +510,7 @@ def communication_facts(
     request = run.get("worker_request")
     if (
         isinstance(request, dict)
+        and request.get("kind") != "verification"
         and request.get("status") == "pending"
         and status == "paused"
         and not verification_handoff(run)
@@ -357,7 +536,7 @@ def communication_facts(
     checks = run.get("final_verification")
     if (
         isinstance(checks, list)
-        and 1 <= len(checks) <= 20
+        and checks
         and all(isinstance(check, dict) and type(check.get("exit_code")) is int for check in checks)
     ):
         attempt = recovery["attempt"] if recovery else run.get("attempt")
@@ -374,7 +553,24 @@ def communication_facts(
         facts["verification"] = {
             "recorded": len(checks),
             "passed": sum(check["exit_code"] == 0 for check in checks),
+            "failed": sum(check["exit_code"] != 0 for check in checks),
             "provenance": provenance,
+        }
+    current_attempt = recovery["attempt"] if recovery else run.get("attempt")
+    if "work" in facts and type(current_attempt) is int and 1 <= current_attempt <= 100:
+        recorded = checks if isinstance(checks, list) else []
+        known_attempts = (checks is None or isinstance(checks, list)) and all(
+            isinstance(check, dict)
+            and type(check.get("attempt")) is int
+            and 1 <= check["attempt"] <= 100
+            and type(check.get("exit_code")) is int
+            for check in recorded
+        )
+        current = sum(check["attempt"] == current_attempt for check in recorded) if known_attempts else None
+        facts["check_status"] = {
+            "current_attempt": current_attempt,
+            "recorded": current,
+            "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
     return facts
 
@@ -385,11 +581,29 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     for paragraph in paragraphs:
         if len(set(paragraph.fact_ids)) != len(paragraph.fact_ids) or set(paragraph.fact_ids) - facts.keys():
             raise ValueError("Communication contains an unknown fact reference")
-        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", paragraph.text):
+        prose = paragraph.text
+        for path in sorted((facts.get("git_delivery") or {}).get("changed_files", []), key=len, reverse=True):
+            if re.fullmatch(r"[\w./ -]+", path):
+                prose = prose.replace(path, "SOURCEPATH")
+        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", prose):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
     if (
-        {"blocker", "check_batch", "conversation", "publication", "assistant", "git_delivery", "git_checkpoint"}
+        {
+            "blocker",
+            "check_batch",
+            "factory_verification",
+            "conversation",
+            "publication",
+            "assistant",
+            "git_delivery",
+            "git_checkpoint",
+            "work",
+            "requested_work",
+            "product",
+            "audience",
+            "check_status",
+        }
         & facts.keys()
     ) - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
@@ -529,20 +743,34 @@ class CommunicationWriter:
         publication: CommunicationPublicationV1 | None = None,
         assistant: CommunicationAssistantV1 | None = None,
         git_delivery: CommunicationGitDeliveryV1 | None = None,
+        audience: CommunicationAudienceV1 | None = None,
     ) -> Data:
         facts = communication_facts(
-            run, conversation=conversation, publication=publication, assistant=assistant, git_delivery=git_delivery
+            run,
+            conversation=conversation,
+            publication=publication,
+            assistant=assistant,
+            git_delivery=git_delivery,
+            audience=audience,
         )
+        context: Data = {}
+        if "requested_work" in facts:
+            assert run is not None
+            context["requested_work"] = {**facts["requested_work"], "quotation": run["brief"]}
+        if audience:
+            context["audience"] = {**facts["audience"], "quotation": audience.quotation}
         if reject := getattr(self.store, "reject_credentials", None):
             if "decision" in facts:
                 assert run is not None
                 reject({key: run["worker_request"].get(key) for key in ("question", "context", "choices")})
             reject(facts)
+            reject(context)
         evidence: Data = {
             "mode": "deterministic",
             "reason": "unconfigured",
             "facts": facts,
             "facts_sha256": content_digest(facts),
+            "context_sha256": content_digest(context),
         }
         if assistant is not None:
             copy = json.loads(prompt_text("collaboration/copy", version="1.0.1"))
@@ -601,19 +829,22 @@ class CommunicationWriter:
             evidence["timeout_seconds"] = timeout
             prompt = prompt_text(
                 "collaboration/publication-request" if publication else "collaboration/communication-request",
-                version="1.0.0" if publication else "1.0.1",
+                version="1.0.0" if publication else "1.0.2",
                 facts=json.dumps(facts, sort_keys=True),
                 fact_ids=json.dumps(sorted(facts)),
+                **({"context": json.dumps(context, sort_keys=True, ensure_ascii=False)} if not publication else {}),
             )
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.4" if conversation else "1.0.3"),
+                else prompt_text("collaboration/communication-system", version="1.0.5"),
                 ["humanizer"],
             )
             language_instructions = (
-                json.loads(prompt_text("collaboration/communication-language"))[conversation.language]
-                if conversation
+                json.loads(prompt_text("collaboration/communication-language", version="1.0.1"))[
+                    conversation.language if conversation else "owner"
+                ]
+                if conversation or audience
                 else {}
             )
             if language_instructions:
@@ -671,15 +902,17 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.1" if conversation else "1.0.0",
+                    version="1.0.0" if publication else "1.0.2",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
                 review_prompt = prompt_text(
                     "collaboration/communication-review-request",
+                    version="1.0.1",
                     facts=json.dumps(facts, sort_keys=True),
                     candidate=draft.model_dump_json(),
                     fact_ids=json.dumps(sorted(facts)),
+                    context=json.dumps(context, sort_keys=True, ensure_ascii=False),
                 )
                 self.store.reject_credentials([review_instructions, review_prompt])
                 evidence["review_prompt_sha256"] = hashlib.sha256(
@@ -729,10 +962,12 @@ class CommunicationWriter:
                 if review.verdict != "supported":
                     repair_prompt = prompt_text(
                         "collaboration/communication-repair-request",
+                        version="1.0.1",
                         facts=json.dumps(facts, sort_keys=True),
                         candidate=draft.model_dump_json(),
                         review=review.model_dump_json(),
                         fact_ids=json.dumps(sorted(facts)),
+                        context=json.dumps(context, sort_keys=True, ensure_ascii=False),
                     )
                     self.store.reject_credentials(repair_prompt)
                     evidence["repair_attempted"] = True

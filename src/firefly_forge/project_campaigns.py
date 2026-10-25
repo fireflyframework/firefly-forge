@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Any, Literal
+from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pyfly.container import service
@@ -17,13 +18,17 @@ from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.kernel.lifecycle import CONSUMER_PHASE
 from sqlalchemy import text
 
+from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, derive_budget, freeze_budget
+from firefly_forge.campaign_execution_policy import CampaignExecutionPolicies
 from firefly_forge.engine import Engine
+from firefly_forge.identity import Principal
 from firefly_forge.journal import Journal, digest
 from firefly_forge.knowledge import _current, snapshot_knowledge
 from firefly_forge.learning_configuration import learning_snapshot
 from firefly_forge.mcp_registry import mcp_snapshot
 from firefly_forge.models import AssuranceInput, RunInput
 from firefly_forge.persistence import ForgeRunEntity
+from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.project_campaign_persistence import (
     ForgeCampaignChildEntity,
     ForgeCampaignChildRepository,
@@ -47,7 +52,7 @@ class CampaignLaunch(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     brief: str = Field(min_length=1, max_length=40000)
-    component_ids: list[str] | None = Field(default=None, min_length=1, max_length=50)
+    component_ids: list[str] | None = Field(default=None, min_length=1)
     agent: Literal["codex", "claude", "bridge", "agentic"] = "codex"
     operation: Literal["build", "maintain", "test"] = "build"
     assurance: AssuranceInput = Field(default_factory=AssuranceInput)
@@ -69,7 +74,7 @@ class CampaignAction(BaseModel):
 
 
 class CampaignRetry(CampaignAction):
-    component_ids: list[str] = Field(min_length=1, max_length=50)
+    component_ids: list[str] = Field(min_length=1)
 
 
 @service
@@ -96,6 +101,8 @@ class ProjectCampaigns:
         self.source_resolver = source_resolver
         self.projects = projects or Projects(store)
         self.project_records = project_records or ForgeProjectRepository()
+        self.execution_policies = CampaignExecutionPolicies(store, records=self.project_records)
+        self._launch_locks: WeakValueDictionary[tuple[str, str, str], asyncio.Lock] = WeakValueDictionary()
         self.poller: asyncio.Task[None] | None = None
         self.last_error: str | None = None
 
@@ -181,10 +188,33 @@ class ProjectCampaigns:
         return [item.id for item in definition.components if item.id in selected]
 
     async def _locked(self, project_id: str, campaign_id: str) -> ForgeCampaignEntity:
+        project = await self.project_records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
+        if project is None:
+            raise KeyError("Product project not found")
         row = await self.records.find_by_id(identifier(campaign_id), lock=LockMode.PESSIMISTIC_WRITE)
         if row is None or row.project_id != identifier(project_id):
             raise KeyError("Delivery campaign not found")
         return row
+
+    async def _budget_actor(self, project_id: str, *, publish: bool = False) -> Data:
+        from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+        user = CURRENT_PRINCIPAL.get()
+        if user is None:
+            raise AccessDenied("Sign in to renew a campaign execution budget")
+        access = ProjectAccess(self.store)
+        actor = access.actor_snapshot(user)
+        async with self.store._unit():
+            identity = await ForgeIdentityUserRepository().find_by_id(user.id, lock=LockMode.PESSIMISTIC_WRITE)
+            if identity is None or not identity.enabled:
+                raise AccessDenied("The campaign execution identity is unavailable")
+            await access.require_project(user, project_id, "execute")
+            if publish:
+                await access.require_project(user, project_id, "release")
+        if CURRENT_PRINCIPAL.get() != user or access.actor_snapshot(user) != actor:
+            raise AccessDenied("The campaign execution identity changed")
+        return actor
 
     async def _append(self, row: ForgeCampaignEntity, key: str, kind: str, payload: Data) -> Data:
         entries = await self.events.events(row.id)
@@ -225,6 +255,45 @@ class ProjectCampaigns:
         return True
 
     async def launch(self, project_id: str, request: CampaignLaunch) -> Data:
+        from pyfly.data.transaction import current_unit_of_work
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Prepare campaign admission outside the native transaction")
+        frozen = CampaignLaunch.model_validate(request.model_dump(mode="json"))
+        actor = CURRENT_PRINCIPAL.get()
+        actor_snapshot = ProjectAccess.actor_snapshot(actor) if actor is not None else None
+        key = project_id, frozen.request_id, digest({"actor": actor_snapshot, "input": frozen.model_dump()})
+        lock = self._launch_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._launch_locks[key] = lock
+        async with lock:
+            await self._launch_authority(project_id, frozen, actor, actor_snapshot)
+            result = await self._launch(project_id, frozen)
+            await self._launch_authority(project_id, frozen, actor, actor_snapshot)
+            return result
+
+    async def _launch_authority(
+        self, project_id: str, request: CampaignLaunch, actor: Principal | None, expected: Data | None
+    ) -> None:
+        def current() -> bool:
+            principal = CURRENT_PRINCIPAL.get()
+            return (
+                principal == actor
+                and (ProjectAccess.actor_snapshot(principal) if principal is not None else None) == expected
+            )
+
+        if not current():
+            raise AccessDenied("The campaign launch identity changed while waiting")
+        if actor is not None:
+            access = ProjectAccess(self.store)
+            await access.require_project(actor, project_id, "execute")
+            if request.publish:
+                await access.require_project(actor, project_id, "release")
+        if not current():
+            raise AccessDenied("The campaign launch identity changed during authorization")
+
+    async def _launch(self, project_id: str, request: CampaignLaunch) -> Data:
         settings_generation = self.store.configuration.settings_generation
         await self.store.admit_credentials(request.model_dump())
         if not self.store.runtime_roles or self.store.runtime_roles.executes_jobs:
@@ -237,9 +306,13 @@ class ProjectCampaigns:
                     raise ValueError("Campaign request identity already has another launch definition")
                 return await self.campaign(project_id, existing.id.hex)
         project = await self.projects.project(project_id)
+        execution_policy = self.execution_policies._snapshot(project)
+        execution_budget = freeze_budget(execution_policy["policy"], execution_policy["effective_digest"])
         definition = ProjectDefinition.model_validate(project["definition"])
+        shared_project = await self.projects.prepared_revision(project)
         selected = self._scope(definition, request.component_ids)
-        repositories = {item.repository_id for item in definition.components if item.id in selected}
+        selected_ids = set(selected)
+        repositories = {item.repository_id for item in definition.components if item.id in selected_ids}
         agents: set[str] = {request.agent}
         if request.assurance.review_agent:
             agents.add(request.assurance.review_agent)
@@ -261,7 +334,7 @@ class ProjectCampaigns:
         }
         admissions: dict[str, PreparedRunAdmission] = {}
         for component in definition.components:
-            if component.id not in selected:
+            if component.id not in selected_ids:
                 continue
             input_run = RunInput(
                 repository_id=component.repository_id,
@@ -275,7 +348,10 @@ class ProjectCampaigns:
             )
             runner, tools = prepared.get(component.repository_id, (None, None))
             admission = await self.store.prepare_run(
-                input_run, prepared_runner=copy.deepcopy(runner), prepared_tools=copy.deepcopy(tools)
+                input_run,
+                prepared_runner=copy.deepcopy(runner),
+                prepared_tools=copy.deepcopy(tools),
+                prepared_project=shared_project,
             )
             self._validate_admission_snapshots(admission.unpack()["run"], configuration)
             admissions[component.id] = admission
@@ -287,7 +363,7 @@ class ProjectCampaigns:
         admissions = {key: replace(value, generation=generation) for key, value in admissions.items()}
         with prepared_credential_rejection(self.store):
             async with self.store._unit() as session:
-                await self.store.fence_prepared_runs(list(admissions.values()))
+                fence = await self.store.fence_prepared_runs(list(admissions.values()))
                 await session.execute(
                     text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
                     {"key": f"forge:campaign:{self.store.schema}:{project_id}:{request.request_id}"},
@@ -300,6 +376,8 @@ class ProjectCampaigns:
                 current = await self.project_records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
                 if current is None or current.data["digest"] != project["digest"]:
                     raise ValueError("The project changed during campaign admission; launch again with a new request")
+                if self.execution_policies._snapshot(current.data) != execution_policy:
+                    raise ValueError("The project campaign execution policy changed during admission")
                 for repo_id in sorted(repositories | {str(definition.product_repository_id)}):
                     await self.store.repository_records.find_by_id(identifier(repo_id), lock=LockMode.PESSIMISTIC_WRITE)
                 if self.store.configuration.write_generation is not generation:
@@ -313,6 +391,7 @@ class ProjectCampaigns:
                         "request_digest": request_digest,
                         "launch": request.model_dump(),
                         "project_snapshot": copy.deepcopy(project),
+                        "execution_budget": execution_budget,
                         "current_attempts": {item: 1 for item in selected},
                         "created_at": now(),
                         "updated_at": now(),
@@ -321,9 +400,9 @@ class ProjectCampaigns:
                 await self.records.save(row)
                 first: Data | None = None
                 for component in definition.components:
-                    if component.id not in selected:
+                    if component.id not in selected_ids:
                         continue
-                    run = await self.store.insert_prepared_run_locked(admissions[component.id])
+                    run = await self.store.insert_prepared_run_locked(admissions[component.id], fence=fence)
                     if first is not None:
                         for field in ("product_definition", "branding_snapshot", "design_snapshot"):
                             if run.get(field) != first.get(field):
@@ -377,6 +456,7 @@ class ProjectCampaigns:
                         "project_digest": project["digest"],
                         "component_ids": selected,
                         "source_bases": source_bases,
+                        "execution_budget": execution_budget,
                     },
                 )
                 await self._release(row)
@@ -421,12 +501,14 @@ class ProjectCampaigns:
                     }
                 )
             events = [copy.deepcopy(item.data) for item in await self.events.events(row.id)]
+            budget = derive_budget(row.data.get("execution_budget"), events) if self._verify(events) else None
             return {
                 "id": row.id.hex,
                 "project_id": row.project_id.hex,
                 "status": row.status,
                 **copy.deepcopy(row.data),
                 "children": children,
+                **({"execution_budget_state": budget} if budget is not None else {}),
                 "journal": {
                     "verified": self._verify(events),
                     "head": events[-1]["digest"] if events else ZERO,
@@ -543,6 +625,24 @@ class ProjectCampaigns:
         if any([await self._unknown(run) for run in runs.values()]):
             await self._set_state(row, "needs_reconciliation")
             return
+        entries = [item.data for item in await self.events.events(row.id)]
+        if not self._verify(entries):
+            raise ValueError("Campaign journal integrity verification failed")
+        budget = derive_budget(row.data.get("execution_budget"), entries)
+        dispatch_enabled = True
+        if budget is not None:
+            launch = next((entry for entry in entries if entry["kind"] == "launch"), None)
+            if launch is None or launch["payload"].get("execution_budget") != row.data["execution_budget"]:
+                raise ValueError("The campaign execution budget does not match its immutable launch")
+            project = await self.project_records.find_by_id(row.project_id)
+            if project is None:
+                raise KeyError("Product project not found")
+            current_policy = self.execution_policies._snapshot(project.data)["policy"]
+            dispatch_enabled = current_policy["enabled"]
+            budget["max_parallel_runs"] = min(budget["max_parallel_runs"], current_policy["max_parallel_runs"])
+        active = sum(
+            run["status"] not in {"campaign_blocked", "succeeded", "failed", "cancelled"} for run in runs.values()
+        )
         for child in children:
             run = runs[child.component_id]
             if run["status"] != "campaign_blocked":
@@ -552,6 +652,13 @@ class ProjectCampaigns:
                 reason = await self._gate(runs[component_id], row.data["launch"]["dependency_gate"])
                 if reason:
                     reasons.append(f"{component_id}: {reason}")
+            if budget is not None:
+                if not dispatch_enabled:
+                    reasons.append("The current project campaign execution budget policy is disabled")
+                elif not budget["remaining_dispatches"]:
+                    reasons.append("The campaign execution budget is exhausted; review an explicit renewal")
+                elif active >= budget["max_parallel_runs"]:
+                    reasons.append("The campaign execution budget has no available parallel dispatch slot")
             if reasons:
                 context = {**run["campaign_context"], "blocked_reason": "; ".join(reasons)}
                 if context != run["campaign_context"]:
@@ -566,6 +673,9 @@ class ProjectCampaigns:
             await self._append(
                 row, "release:" + run["id"], "released", {"run_id": run["id"], "upstream_receipts": receipts}
             )
+            if budget is not None:
+                budget["remaining_dispatches"] -= 1
+                active += 1
         statuses = {run["status"] for run in runs.values()}
         if statuses == {"succeeded"}:
             status = "succeeded" if all([await self._gate(run) is None for run in runs.values()]) else "paused"
@@ -620,7 +730,9 @@ class ProjectCampaigns:
                 return
             await asyncio.sleep(0.5)
 
-    async def _action_existing(self, row: ForgeCampaignEntity, action: CampaignAction, kind: str) -> bool:
+    async def _action_existing(
+        self, row: ForgeCampaignEntity, action: CampaignAction | CampaignBudgetRenewalV1, kind: str
+    ) -> bool:
         payload = {"action": kind, "request": action.model_dump()}
         entries = await self.events.events(row.id)
         event = next((item for item in entries if item.key == "action:" + action.request_id), None)
@@ -634,7 +746,9 @@ class ProjectCampaigns:
             raise ValueError("The previous campaign action requires reconciliation before another action")
         return False
 
-    async def _action_begin(self, row: ForgeCampaignEntity, action: CampaignAction, kind: str) -> None:
+    async def _action_begin(
+        self, row: ForgeCampaignEntity, action: CampaignAction | CampaignBudgetRenewalV1, kind: str
+    ) -> None:
         await self._append(
             row, "action:" + action.request_id, "action_intent", {"action": kind, "request": action.model_dump()}
         )
@@ -645,10 +759,74 @@ class ProjectCampaigns:
         }
         await self.records.save(row)
 
-    async def _action_finish(self, row: ForgeCampaignEntity, action: CampaignAction, evidence: Data) -> None:
+    async def _action_finish(
+        self, row: ForgeCampaignEntity, action: CampaignAction | CampaignBudgetRenewalV1, evidence: Data
+    ) -> None:
         await self._append(row, "receipt:" + action.request_id, "action_receipt", evidence)
         row.data = {**row.data, "pending_action": None, "updated_at": now()}
         await self.records.save(row)
+
+    async def renew_budget(self, project_id: str, campaign_id: str, body: CampaignBudgetRenewalV1) -> Data:
+        await self.store.admit_credentials(body.model_dump())
+        actor = await self._budget_actor(project_id)
+        if not self.store.runtime_roles or self.store.runtime_roles.executes_jobs:
+            await self.engine.assert_ownership()
+        async with self.store._unit() as session:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                {"key": self.store.schema + ":members:" + project_id},
+            )
+            row = await self._locked(project_id, campaign_id)
+            if await self._budget_actor(project_id, publish=bool(row.data["launch"].get("publish"))) != actor:
+                raise ValueError("The campaign budget renewal actor changed")
+            if await self._action_existing(row, body, "renew_budget"):
+                return await self.campaign(project_id, campaign_id)
+            entries = [item.data for item in await self.events.events(row.id)]
+            if not self._verify(entries):
+                raise ValueError("Campaign journal integrity verification failed")
+            budget = derive_budget(row.data.get("execution_budget"), entries)
+            if budget is None:
+                raise ValueError("This legacy campaign has no renewable execution budget")
+            if row.data.get("control") == "cancelled":
+                raise ValueError("Resume the cancelled campaign explicitly before renewing execution")
+            if any([await self._unknown(run) for _, run in (await self._current(row)).values()]):
+                raise ValueError("Child execution requires reconciliation before a campaign budget renewal")
+            if body.expected_journal_head != (entries[-1]["digest"] if entries else ZERO):
+                raise ValueError("The campaign journal changed; review it before renewing execution")
+            project = await self.project_records.find_by_id(identifier(project_id))
+            if project is None:
+                raise KeyError("Product project not found")
+            current = self.execution_policies._snapshot(project.data)
+            policy = current["policy"]
+            if current["effective_digest"] != body.expected_policy_digest or not policy["enabled"]:
+                raise ValueError("The campaign execution policy changed or is disabled")
+            if (
+                body.additional_dispatches > policy["dispatch_window"]
+                or body.max_parallel_runs > policy["max_parallel_runs"]
+            ):
+                raise ValueError("The requested execution window exceeds the current project policy")
+            await self._action_begin(row, body, "renew_budget")
+            await self._append(
+                row,
+                "budget:" + body.request_id,
+                "budget_renewal",
+                {
+                    "additional_dispatches": body.additional_dispatches,
+                    "previous_granted_dispatches": budget["granted_dispatches"],
+                    "granted_dispatches": budget["granted_dispatches"] + body.additional_dispatches,
+                    "max_parallel_runs": body.max_parallel_runs,
+                    "policy": policy,
+                    "policy_digest": current["effective_digest"],
+                    "actor": actor,
+                },
+            )
+            await self._action_finish(row, body, {"additional_dispatches": body.additional_dispatches, "actor": actor})
+            await self._release(row)
+            if await self._budget_actor(project_id, publish=bool(row.data["launch"].get("publish"))) != actor:
+                raise ValueError("The campaign budget renewal actor changed")
+            result = await self.campaign(project_id, campaign_id)
+        await self.store.admit_credentials(result)
+        return result
 
     async def _current(self, row: ForgeCampaignEntity) -> dict[str, tuple[ForgeCampaignChildEntity, Data]]:
         return {
@@ -753,7 +931,7 @@ class ProjectCampaigns:
                     raise ValueError("Child execution requires reconciliation; retry would duplicate an unknown effect")
                 if run["status"] not in {"failed", "cancelled", "interrupted"}:
                     raise ValueError("Only failed, cancelled or interrupted campaign children can retry")
-                if child.attempt >= 4:
+                if child.attempt >= 4 and row.data.get("execution_budget") is None:
                     raise ValueError("The campaign component has exhausted its three explicit retries")
                 descendants: set[str] = set()
                 pending = [component_id]

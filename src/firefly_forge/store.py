@@ -9,12 +9,13 @@ import json
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 
 from pyfly.container import service
@@ -45,6 +46,7 @@ from firefly_forge.persistence import (
 )
 from firefly_forge.policies import PolicyCatalog
 from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
+from firefly_forge.project_snapshot import PreparedProjectRevision, prepared_revision, snapshot_roles
 from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
 from firefly_forge.sandbox_models import capture_sandbox
 from firefly_forge.secrets import contains_known_credential
@@ -101,6 +103,41 @@ class PreparedRunAdmission:
                 value = value[key]
             value[path[-1]] = tuple(value[path[-1]])
         return packet
+
+
+@dataclass(frozen=True)
+class PreparedAdmissionFence:
+    store: Store
+    unit: object
+    task: asyncio.Task[Any] | None
+    packets: frozenset[bytes]
+    projects: Mapping[str, tuple[Any, PreparedProjectRevision]]
+
+    def project(
+        self, store: Store, prepared: PreparedRunAdmission, project_id: str | None
+    ) -> PreparedProjectRevision | None:
+        if (
+            self.store is not store
+            or current_unit_of_work() is not self.unit
+            or asyncio.current_task() is not self.task
+            or prepared.packet not in self.packets
+        ):
+            raise ValueError("Prepared admission fence is not this exact native transaction and packet")
+        if project_id is None or project_id not in self.projects:
+            return None
+        row, revision = self.projects[project_id]
+        metadata = json.loads(revision.metadata)
+        # Repository refreshes may replace JSON objects without changing the locked revision.
+        current = row.data
+        if (
+            not isinstance(current, dict)
+            or current.get("id") != metadata["project_id"]
+            or type(current.get("revision")) is not int
+            or current["revision"] != metadata["project_revision"]
+            or current.get("digest") != metadata["project_digest"]
+        ):
+            raise ValueError("The locked project changed inside the prepared admission fence")
+        return revision
 
 
 @dataclass(frozen=True)
@@ -473,8 +510,8 @@ class Store:
         prepared = await self.prepare_run(request, prepared_runner=prepared_runner, prepared_tools=prepared_tools)
         with prepared_credential_rejection(self):
             async with self._unit():
-                await self.fence_prepared_runs([prepared])
-                result = await self.insert_prepared_run_locked(prepared)
+                fence = await self.fence_prepared_runs([prepared])
+                result = await self.insert_prepared_run_locked(prepared, fence=fence)
         await self.admit_credentials(result)
         await self._prepared_run_actor(prepared)
         self.assert_prepared_run_settings(prepared)
@@ -490,6 +527,7 @@ class Store:
         *,
         prepared_runner: Data | None = None,
         prepared_tools: list[Data] | None = None,
+        prepared_project: PreparedProjectRevision | None = None,
     ) -> PreparedRunAdmission:
         from firefly_forge.collaboration import ProductDefinition
         from firefly_forge.knowledge import snapshot_knowledge
@@ -595,14 +633,19 @@ class Store:
         repo = await self.repository(request.repository_id)
         policy_selection = request.skills if "skills" in request.model_fields_set else repo.get("skills")
         snapshot = self.policies.selection(policy_selection)
-        component = await Projects(self).component_snapshot(request)
+        component = (
+            prepared_project.component(request)
+            if prepared_project is not None
+            else await Projects(self).component_snapshot(request)
+        )
         source_checkpoint = None
         if request.source_checkpoint is not None:
             sources = getattr(self, "checkpoint_sources", None)
             if sources is None or sources.store is not self:
                 raise ValueError("Checkpoint source admission is unavailable")
             source_checkpoint = await sources.prepare(request)
-        role_defaults = (component or {}).get("project_definition", {}).get("roles") or repo.get("roles")
+        project_roles = snapshot_roles(component)
+        role_defaults = project_roles or repo.get("roles")
         role_selection = (
             request.roles
             if request.roles is not None
@@ -614,7 +657,7 @@ class Store:
             "run"
             if request.roles is not None
             else "project"
-            if (component or {}).get("project_definition", {}).get("roles")
+            if project_roles
             else "repository"
             if repo.get("roles")
             else "global"
@@ -765,11 +808,12 @@ class Store:
         if CURRENT_PRINCIPAL.get() != actor:
             raise ValueError("The run admission actor changed during authorization")
 
-    async def fence_prepared_runs(self, prepared: list[PreparedRunAdmission]) -> None:
+    async def fence_prepared_runs(self, prepared: list[PreparedRunAdmission]) -> PreparedAdmissionFence:
         from firefly_forge.identity_persistence import ForgeIdentityUserRepository
-        from firefly_forge.project_persistence import ForgeProjectRepository
+        from firefly_forge.project_persistence import ForgeProjectRepository, ForgeProjectRevisionRepository
 
-        if current_unit_of_work() is None:
+        unit = current_unit_of_work()
+        if unit is None:
             raise ValueError("Fence prepared admissions in the native caller transaction")
         packets = [item.unpack() for item in prepared]
         runs = [packet["run"] for packet in packets]
@@ -793,8 +837,26 @@ class Store:
                 or any(identity != {"issuer": row.issuer, "subject": row.subject} for identity in identities)
             ):
                 raise ValueError("Run admission requires a current enabled native user")
+        compact_projects = {
+            run["project_id"]
+            for run in runs
+            if run.get("project_id") and "project_revision_ref" in (run.get("component_snapshot") or {})
+        }
+        revisions: dict[str, tuple[Any, PreparedProjectRevision]] = {}
         for project in projects:
-            await ForgeProjectRepository().find_by_id(identifier(project), lock=LockMode.PESSIMISTIC_WRITE)
+            project_row = await ForgeProjectRepository().find_by_id(
+                identifier(project), lock=LockMode.PESSIMISTIC_WRITE
+            )
+            if project in compact_projects:
+                if project_row is None:
+                    raise ValueError("The prepared project no longer exists")
+                historical = await ForgeProjectRevisionRepository().revision(
+                    identifier(project), project_row.data["revision"]
+                )
+                revisions[project] = (
+                    project_row,
+                    prepared_revision(project_row.data, historical.data if historical else None),
+                )
         repositories = {
             repository
             for run in runs
@@ -805,8 +867,13 @@ class Store:
             await self.repository_records.find_by_id(identifier(repository), lock=LockMode.PESSIMISTIC_WRITE)
         for item in prepared:
             await self._prepared_run_actor(item)
+        return PreparedAdmissionFence(
+            self, unit, asyncio.current_task(), frozenset(item.packet for item in prepared), MappingProxyType(revisions)
+        )
 
-    async def insert_prepared_run_locked(self, prepared: PreparedRunAdmission) -> Data:
+    async def insert_prepared_run_locked(
+        self, prepared: PreparedRunAdmission, *, fence: PreparedAdmissionFence | None = None
+    ) -> Data:
         from firefly_forge.projects import Projects
 
         if current_unit_of_work() is None:
@@ -815,6 +882,7 @@ class Store:
         packet = prepared.unpack()
         data = packet["run"]
         request = RunInput.model_validate(packet["request"])
+        project = fence.project(self, prepared, request.project_id) if fence is not None else None
         if prepared.generation is not self.configuration.write_generation:
             raise ValueError("Run settings changed after preparation")
         await self._prepared_run_actor(prepared)
@@ -823,7 +891,10 @@ class Store:
         )
         if repo is None or repo.data != packet["repository"]:
             raise ValueError("Run repository changed after preparation")
-        if await Projects(self).component_snapshot(request) != data["component_snapshot"]:
+        current_component = (
+            project.component(request) if project is not None else await Projects(self).component_snapshot(request)
+        )
+        if current_component != data["component_snapshot"]:
             raise ValueError("Run component changed after preparation")
         if request.source_checkpoint is not None:
             sources = getattr(self, "checkpoint_sources", None)
@@ -838,6 +909,8 @@ class Store:
         await self.admit_credentials(data)
         await self._prepared_run_actor(prepared)
         self.reject_credentials(data)
+        if fence is not None:
+            fence.project(self, prepared, request.project_id)
         await self.run_records.save(
             ForgeRunEntity(
                 id=identifier(data["id"]), repository_id=identifier(request.repository_id), status="queued", data=data
@@ -851,6 +924,8 @@ class Store:
         self.assert_prepared_run_settings(prepared)
         if prepared.generation is not self.configuration.write_generation:
             raise ValueError("Run settings changed during insertion")
+        if fence is not None:
+            fence.project(self, prepared, request.project_id)
         return result
 
     def reject_credentials(self, value: Any) -> None:

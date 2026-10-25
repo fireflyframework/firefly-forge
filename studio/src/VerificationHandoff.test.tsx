@@ -105,7 +105,10 @@ describe("automatic verification evidence", () => {
     expect(verificationInProgress({ ...handoff, id: "unrecognized" })).toBe(
       false,
     );
-    expect(verificationInProgress({ ...handoff, max_continuations: 4 })).toBe(
+    expect(verificationInProgress({ ...handoff, max_continuations: 17 })).toBe(
+      true,
+    );
+    expect(verificationInProgress({ ...handoff, max_continuations: 0 })).toBe(
       false,
     );
     expect(verificationInProgress({ ...handoff, status: "held" })).toBe(false);

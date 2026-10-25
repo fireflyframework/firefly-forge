@@ -88,8 +88,8 @@ async def test_campaign_snapshot_drift_rolls_back_every_child_and_header(store, 
     )
     original = store.insert_prepared_run_locked
 
-    async def changing_settings(request):
-        run = await original(request)
+    async def changing_settings(request, *, fence=None):
+        run = await original(request, fence=fence)
         store.configuration.update("codex", ProviderConfiguration(values={"model": "changed-during-admission"}))
         return run
 

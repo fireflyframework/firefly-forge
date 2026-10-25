@@ -1280,8 +1280,12 @@ class Engine:
                         identifier, implementation_rounds=completed_rounds, implementation_pending=False
                     )
                     usage = safe_data(getattr(result, "usage", {}))
+                    if native_invocation is not None and not usage.get("runtime_report"):
+                        raise ReconciliationRequired("Native checkpoint output requires its normalized RuntimeReport")
                     (await self.store.update(identifier, summary=safe(result.summary), usage=usage))
-                    await self._worker_feedback(identifier, workspace, result, attempt, safe_data)
+                    await self._worker_feedback(
+                        identifier, workspace, result, attempt, safe_data, restoration=restored_receipt
+                    )
                 qa_report = (await self.store.get_run(identifier)).get("usage", {}).get("qa_report")
                 if qa_report is not None:
                     from firefly_forge.qa import QAReport
@@ -1309,6 +1313,10 @@ class Engine:
                     await self.provider_recoveries.complete(identifier, active_key)
                     recovery = None
                 active_key = None
+                if (await self.store.get_run(identifier)).get("bridge_completion_hold"):
+                    raise ReconciliationRequired(
+                        "Terminal output requires native settlement before Git or verification"
+                    )
                 if self.git_deliveries is not None:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
@@ -1509,7 +1517,14 @@ class Engine:
             credential_scopes.close()
 
     async def _worker_feedback(
-        self, identifier: str, workspace: Path, result: Any, attempt: int, safe_data: Callable[[Any], Any]
+        self,
+        identifier: str,
+        workspace: Path,
+        result: Any,
+        attempt: int,
+        safe_data: Callable[[Any], Any],
+        *,
+        restoration: Any = None,
     ) -> None:
         from pydantic import ValidationError
 
@@ -1553,7 +1568,9 @@ class Engine:
             retained_images = await archive.freeze(run, feedback, workspace, root)
         else:
             retained_images = None
-        if retained_images is not None:
+        if restoration is not None:
+            await self.journal.worker_feedback(identifier, feedback, evidence=retained_images, restoration=restoration)
+        elif retained_images is not None:
             await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
         else:
             await self.journal.worker_feedback(identifier, feedback)
@@ -1686,10 +1703,20 @@ class Engine:
         return await self._begin_task(identifier, task_id, workspace, secrets, failed_checks)
 
     async def _receipt(
-        self, identifier: str, key: str | None, evidence: dict[str, Any], *, checkpoint: dict[str, Any] | None = None
+        self,
+        identifier: str,
+        key: str | None,
+        evidence: dict[str, Any],
+        *,
+        checkpoint: dict[str, Any] | None = None,
+        terminal: Any = None,
+        prepared: bool = False,
     ) -> None:
         if self.journal and key:
-            await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
+            if prepared:
+                await self.journal._receipt(identifier, key, evidence, checkpoint=checkpoint, terminal=terminal)
+            else:
+                await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
 
     @staticmethod
     def component_directory(run: dict[str, Any], workspace: Path, *, create: bool = False) -> Path:
@@ -1927,6 +1954,10 @@ class Engine:
     async def _assert_delivery_tree(
         self, identifier: str, workspace: Path, settings: dict[str, str] | None = None
     ) -> None:
+        if self.journal:
+            from firefly_forge.unknown_command_proof import assert_continuation_current
+
+            await assert_continuation_current(self.journal, identifier)
         run = await self.store.get_run(identifier)
         if run.get("component_snapshot"):
             self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
@@ -1969,6 +2000,10 @@ class Engine:
             )
             return
         if run["changed_files"]:
+            if self.journal:
+                from firefly_forge.unknown_command_proof import assert_continuation_current
+
+                await assert_continuation_current(self.journal, identifier)
             await checked(
                 [
                     "git",
@@ -2466,6 +2501,10 @@ class Engine:
         await self.assert_ownership()
         await self.store.admit_credentials(draft)
         await self.validated_workspace(identifier)
+        if self.journal:
+            from firefly_forge.unknown_command_proof import assert_continuation_current
+
+            await assert_continuation_current(self.journal, identifier)
         current = await self.store.get_run(identifier)
         await ProjectAccess(self.store).authorize_actor(actor, current.get("project_id"), "release")
         repository = await self.store.repository(current["repository_id"])
@@ -2533,6 +2572,18 @@ class Engine:
             if evidence["mode"] == "held":
                 raise ValueError("Selected publication communication is held")
             body = public_text(drafted["body"])
+            if self.journal:
+                from firefly_forge.unknown_command_proof import assert_continuation_current
+
+                risks = await assert_continuation_current(self.journal, identifier)
+                if risks:
+                    body += (
+                        "\n\nCommand custody: an operator explicitly acknowledged retained command custody "
+                        "for this bound continuation. Original command outcomes remain unchanged; "
+                        "this verification does not prove the original unknown command passed. Execution references: "
+                        + ", ".join(risks)
+                        + "."
+                    )
             title = (
                 body.splitlines()[0].removeprefix("### ")
                 if evidence["mode"] == "ai"

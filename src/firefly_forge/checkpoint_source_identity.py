@@ -7,10 +7,12 @@ import asyncio
 import hashlib
 import json
 import os
+import sqlite3
 import stat
 import tempfile
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -61,34 +63,111 @@ def _parents(root: int, parts: tuple[str, ...], records: BinaryIO) -> int:
         raise
 
 
-def _revalidate(root: int, records: BinaryIO, deadline: float) -> None:
+def _revalidate(
+    root: int, records: BinaryIO, deadline: float, *, namespace: bool = False, strict_directories: bool = False
+) -> bool:
+    changed = False
     records.seek(0)
     for record in records:
         if time.monotonic() >= deadline:
             raise TimeoutError("Checkpoint source inspection exceeded its finite time budget")
         name, expected = json.loads(record)
         parts = tuple(name.split("/")) if name else ()
-        parent = _parent_fd(root, parts) if parts else os.dup(root)
+        parent = None
         try:
+            parent = _parent_fd(root, parts) if parts else os.dup(root)
             actual = os.stat(parts[-1], dir_fd=parent, follow_symlinks=False) if parts else os.fstat(parent)
-            if _stamp(actual) != expected:
+            if expected is None:
+                raise ValueError("Checkpoint deleted source changed during final admission")
+            observed = _stamp(actual)
+            if stat.S_ISDIR(expected[3]):
+                if observed[:4] != expected[:4]:
+                    raise ValueError("Checkpoint source directory identity changed during final admission")
+                if strict_directories and observed != expected:
+                    raise ValueError("Checkpoint Git metadata changed during final admission")
+                changed = changed or (namespace and observed != expected)
+            elif observed != expected:
                 raise ValueError("Checkpoint source changed during final admission")
+        except FileNotFoundError:
+            if expected is not None:
+                raise ValueError("Checkpoint source changed during final admission") from None
         except OSError:
             raise ValueError("Checkpoint source changed during final admission") from None
         finally:
-            os.close(parent)
+            if parent is not None:
+                os.close(parent)
+    return changed
 
 
-async def _directory_witnesses(directory: int, prefix: tuple[str, ...], records: BinaryIO) -> None:
+async def _git_metadata_witnesses(directory: int, prefix: tuple[str, ...], records: BinaryIO) -> None:
     _remember(records, "/".join(prefix), os.fstat(directory))
     with os.scandir(directory) as entries:
         for entry in entries:
-            if _private_component(entry.name):
+            info = entry.stat(follow_symlinks=False)
+            if info.st_uid != os.geteuid():
+                raise ValueError("Checkpoint Git metadata requires current ownership")
+            if stat.S_ISDIR(info.st_mode):
+                child = _directory_fd(entry.name, parent=directory)
+                try:
+                    await _git_metadata_witnesses(child, (*prefix, entry.name), records)
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                _remember(records, "/".join((*prefix, entry.name)), info)
+            else:
+                raise ValueError("Checkpoint Git metadata requires unaliased regular files and directories")
+            await asyncio.sleep(0)
+
+
+async def _ignored_directories(workspace: Path, ignored: sqlite3.Connection, timeout_seconds: int) -> None:
+    ignored.execute("DELETE FROM roots")
+    tail = b""
+
+    async def receive(chunk: bytes) -> None:
+        nonlocal tail
+        values = (tail + chunk).split(b"\0")
+        tail = values.pop()
+        if len(tail) > 65536:
+            raise ValueError("Checkpoint ignored directory exceeds the Git name window")
+        for value in values:
+            if not value.endswith(b"/"):
+                continue
+            try:
+                name = value[:-1].decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                raise ValueError("Checkpoint ignored directories require exact UTF-8 paths") from None
+            if any(_private_component(part) for part in name.split("/")):
+                continue
+            _parts(name)
+            ignored.execute("INSERT OR IGNORE INTO roots VALUES (?)", (name,))
+
+    await stream_git_bytes(
+        workspace,
+        ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--"],
+        receive,
+        timeout_seconds=timeout_seconds,
+    )
+    if tail:
+        raise ValueError("Checkpoint ignored directories ended without an exact path boundary")
+    ignored.commit()
+
+
+async def _directory_witnesses(
+    directory: int, prefix: tuple[str, ...], records: BinaryIO, ignored: sqlite3.Connection
+) -> None:
+    _remember(records, "/".join(prefix), os.fstat(directory))
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            relative = "/".join((*prefix, entry.name))
+            if (
+                _private_component(entry.name)
+                or ignored.execute("SELECT 1 FROM roots WHERE path = ?", (relative,)).fetchone()
+            ):
                 continue
             if entry.is_dir(follow_symlinks=False):
                 child = _directory_fd(entry.name, parent=directory)
                 try:
-                    await _directory_witnesses(child, (*prefix, entry.name), records)
+                    await _directory_witnesses(child, (*prefix, entry.name), records, ignored)
                 finally:
                     os.close(child)
             await asyncio.sleep(0)
@@ -176,29 +255,56 @@ async def source_identity(
         if os.fstat(root).st_uid != os.geteuid():
             raise ValueError("Checkpoint source requires current workspace ownership")
         canonical = _descriptor_path(root)
-        with tempfile.TemporaryFile(mode="w+b") as records:
+        with (
+            tempfile.TemporaryFile(mode="w+b") as records,
+            tempfile.TemporaryFile(mode="w+b") as directories,
+            tempfile.TemporaryFile(mode="w+b") as metadata,
+            tempfile.TemporaryDirectory(prefix="forge-source-ignored-") as ignored_root,
+            closing(sqlite3.connect(str(Path(ignored_root) / "roots.sqlite3"))) as ignored,
+        ):
+            ignored.execute("PRAGMA cache_size = -1024")
+            ignored.execute("CREATE TABLE roots (path TEXT PRIMARY KEY) WITHOUT ROWID")
             async with asyncio.timeout(timeout_seconds):
+                git_directory = _directory_fd(".git", parent=root)
+                try:
+                    await _git_metadata_witnesses(git_directory, (".git",), metadata)
+                finally:
+                    os.close(git_directory)
                 first = await _capture(canonical, root, scanner, records, timeout_seconds)
                 records.seek(0)
                 records.truncate()
-                await _directory_witnesses(root, (), records)
+                await _ignored_directories(canonical, ignored, timeout_seconds)
+                await _directory_witnesses(root, (), directories, ignored)
                 second = await _capture(canonical, root, scanner, records, timeout_seconds)
                 if first != second:
                     raise ValueError("Checkpoint source selection or contents changed during capture")
                 await scanner(b"", True)
-                await finalize()
-                _revalidate(root, records, deadline)
-                if _stamp(os.stat(workspace, follow_symlinks=False)) != _stamp(os.fstat(root)):
-                    raise ValueError("Checkpoint source root changed during capture")
-                return "git-source-v1:" + second
+                while True:
+                    await finalize()
+                    _revalidate(root, metadata, deadline, strict_directories=True)
+                    _revalidate(root, records, deadline)
+                    if not _revalidate(root, directories, deadline, namespace=True):
+                        named, opened = os.stat(workspace, follow_symlinks=False), os.fstat(root)
+                        if _stamp(named)[:4] != _stamp(opened)[:4]:
+                            raise ValueError("Checkpoint source root changed during capture")
+                        return "git-source-v1:" + second[0]
+                    # Only canonical Git can distinguish new ignored output from selected source.
+                    directories.seek(0)
+                    directories.truncate()
+                    await _ignored_directories(canonical, ignored, timeout_seconds)
+                    await _directory_witnesses(root, (), directories, ignored)
+                    if await _inventory_identity(canonical, timeout_seconds) != second[1]:
+                        raise ValueError("Checkpoint source selection changed during final admission")
+                    await scanner.revalidate()
     finally:
         os.close(root)
 
 
 async def _capture(
     workspace: Path, root: int, scanner: SourceDiffAdmission, records: BinaryIO, timeout_seconds: int
-) -> str:
+) -> tuple[str, str]:
     result = hashlib.sha256(b"forge-checkpoint-git-source-v1\0")
+    inventory = hashlib.sha256()
     _remember(records, "", os.fstat(root))
 
     async def consume(entry: SourceEntry) -> None:
@@ -207,6 +313,7 @@ async def _capture(
         await scanner(entry.path.encode(), False)
         scanner.finish_document()
         result.update(len(raw).to_bytes(8, "big") + raw)
+        inventory.update(len(raw).to_bytes(8, "big") + raw)
         parent = descriptor = None
         try:
             parent = _parents(root, parts, records)
@@ -234,6 +341,7 @@ async def _capture(
         except FileNotFoundError:
             if entry.mode is None:
                 raise ValueError("Checkpoint source changed during inventory") from None
+            records.write(json.dumps([entry.path, None], separators=(",", ":")).encode() + b"\n")
             result.update(b"deleted\0")
         except OSError:
             raise ValueError("Checkpoint source requires regular files and directories without links") from None
@@ -241,6 +349,17 @@ async def _capture(
             for fd in (descriptor, parent):
                 if fd is not None:
                     os.close(fd)
+
+    await stream_source_entries(workspace, consume, timeout_seconds=timeout_seconds)
+    return result.hexdigest(), inventory.hexdigest()
+
+
+async def _inventory_identity(workspace: Path, timeout_seconds: int) -> str:
+    result = hashlib.sha256()
+
+    async def consume(entry: SourceEntry) -> None:
+        raw = json.dumps([entry.path, entry.mode, entry.object_id], ensure_ascii=False, separators=(",", ":")).encode()
+        result.update(len(raw).to_bytes(8, "big") + raw)
 
     await stream_source_entries(workspace, consume, timeout_seconds=timeout_seconds)
     return result.hexdigest()

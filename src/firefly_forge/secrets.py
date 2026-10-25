@@ -12,6 +12,8 @@ from contextvars import ContextVar
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from firefly_forge.credential_text_stream import raw_documents
+
 _ephemeral: ContextVar[tuple[str, ...]] = ContextVar("forge_ephemeral_credentials", default=())
 
 
@@ -73,24 +75,46 @@ def redact_environment(value: str) -> str:
     return re.sub(r"(?i)(authorization: ?bearer )[^\s]+", r"\1[redacted]", value)
 
 
-def contains_known_credential(value: Any, registry: dict[str, str] | None = None) -> bool:
-    if isinstance(value, str):
-        if redact_environment(value) != value:
+def credential_values(registry: dict[str, str] | None = None) -> tuple[str, ...]:
+    values = set(_ephemeral.get())
+    for name, item in os.environ.items():
+        if item and sensitive_name(name):
+            values.add(item)
+        if "://" in item:
+            try:
+                password = urlsplit(item).password
+            except ValueError:
+                password = None
+            if password:
+                values.update((password, unquote(password)))
+    values.update(value for name, value in (registry or {}).items() if value and sensitive_name(name))
+    return tuple(sorted(values))
+
+
+class KnownCredentialScan:
+    def __init__(self, credentials: tuple[str, ...], *, bearer: bool = True) -> None:
+        self.bearer = bearer
+        self.represented = {item for value in credentials for item in credential_representations(value)}
+        self.overlap = max((len("authorization: bearer [redacted]") + 1, *(len(item) for item in self.represented))) - 1
+        self.tail = ""
+
+    def feed(self, chunk: str | None) -> bool:
+        value = self.tail + (chunk or "")
+        if any(item in value for item in self.represented):
             return True
-        return any(
-            secret
-            and sensitive_name(name)
-            and any(representation in value for representation in credential_representations(secret))
-            for name, secret in (registry or {}).items()
-        )
-    if isinstance(value, dict):
-        return any(
-            contains_known_credential(key, registry) or contains_known_credential(item, registry)
-            for key, item in value.items()
-        )
-    if isinstance(value, (list, tuple)):
-        return any(contains_known_credential(item, registry) for item in value)
-    return False
+        for match in re.finditer(r"(?i)(authorization: ?bearer )([^\s]+)", value) if self.bearer else ():
+            token = match.group(2)
+            if token != "[redacted]" and not (
+                chunk is not None and match.end() == len(value) and "[redacted]".startswith(token)
+            ):
+                return True
+        self.tail = "" if chunk is None else value[-self.overlap :]
+        return False
+
+
+def contains_known_credential(value: Any, registry: dict[str, str] | None = None) -> bool:
+    scanner = KnownCredentialScan(credential_values(registry))
+    return any(scanner.feed(chunk) for chunk in raw_documents(value, strict=False))
 
 
 def runtime_environment(overrides: dict[str, str] | None = None) -> dict[str, str]:

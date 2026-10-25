@@ -1,9 +1,17 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { repositoryLabels } from "./RepositoryLabels";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   ArrowRight,
   Box,
+  ChevronLeft,
+  ChevronRight,
   GitBranch,
   Layers3,
   Plus,
@@ -27,6 +35,7 @@ import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
 import { CampaignReports } from "./CampaignReports";
 import { DevelopmentWorkflowSettings } from "./DevelopmentWorkflowSettings";
+import { CampaignExecutionSettings } from "./CampaignExecutionSettings";
 import type { IdentitySession } from "./Identity";
 type ComponentOverview = ProjectComponent & {
   latest_status: string;
@@ -53,6 +62,108 @@ const lines = (value: string) =>
     .map((line) => line.trim())
     .filter(Boolean);
 const label = (value: string) => value.replaceAll("_", " ");
+function ComponentCollection<
+  T extends { id: string; name: string; path?: string },
+>({
+  items,
+  label: collectionLabel,
+  children,
+  ordered = false,
+  focusId,
+}: {
+  items: T[];
+  label: string;
+  children: (item: T, index: number) => ReactNode;
+  ordered?: boolean;
+  focusId?: string;
+}) {
+  const inputId = useId(),
+    pageSize = 25;
+  const [query, setQuery] = useState(""),
+    [page, setPage] = useState(() =>
+      Math.max(
+        0,
+        Math.floor(items.findIndex((item) => item.id === focusId) / pageSize),
+      ),
+    );
+  const filtered = items.filter((item) =>
+    `${item.id} ${item.name} ${item.path ?? ""}`
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase()),
+  );
+  const lastPage = Math.max(0, Math.ceil(filtered.length / pageSize) - 1),
+    currentPage = Math.min(page, lastPage),
+    start = currentPage * pageSize,
+    visible = filtered.slice(start, start + pageSize),
+    content = visible.map((item) => children(item, items.indexOf(item)));
+  const countLabel = !filtered.length
+    ? "No matches"
+    : query && filtered.length === 1
+      ? "1 match"
+      : `${(start + 1).toLocaleString("en-US")}${visible.length > 1 ? `–${(start + visible.length).toLocaleString("en-US")}` : ""} of ${filtered.length.toLocaleString("en-US")} ${query ? "matches" : "components"}`;
+  return (
+    <>
+      {(items.length > pageSize || query !== "") && (
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label htmlFor={inputId}>
+            Search {collectionLabel.toLocaleLowerCase()}
+          </label>
+          <input
+            id={inputId}
+            type="search"
+            value={query}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.preventDefault();
+            }}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
+          />
+          <small role="status">
+            {countLabel}
+            {query &&
+              ` · ${items.length.toLocaleString("en-US")} ${collectionLabel === "Available dependencies" ? "available" : "components"}`}
+          </small>
+        </div>
+      )}
+      {ordered ? <ol>{content}</ol> : content}
+      {filtered.length > pageSize && (
+        <nav
+          className="campaign-history-actions"
+          style={{ gridColumn: "1 / -1", alignItems: "center" }}
+          aria-label={`${collectionLabel} pages`}
+        >
+          <button
+            type="button"
+            className="secondary"
+            disabled={currentPage === 0}
+            aria-label={`Previous ${collectionLabel.toLocaleLowerCase()}`}
+            title={`Previous ${collectionLabel.toLocaleLowerCase()}`}
+            style={{ width: "auto" }}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+          </button>
+          <span>
+            Page {currentPage + 1} of {lastPage + 1}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={currentPage === lastPage}
+            aria-label={`Next ${collectionLabel.toLocaleLowerCase()}`}
+            title={`Next ${collectionLabel.toLocaleLowerCase()}`}
+            style={{ width: "auto" }}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </nav>
+      )}
+    </>
+  );
+}
 export function Projects({
   connection,
   connected,
@@ -274,6 +385,22 @@ export function Projects({
                   projectId={current.id}
                 />
               )}
+              {session && (
+                <CampaignExecutionSettings
+                  key={JSON.stringify([
+                    "campaign-execution",
+                    connection.base,
+                    connection.token,
+                    session.user.id,
+                    session.global_admin,
+                    session.memberships,
+                    current.id,
+                  ])}
+                  connection={connection}
+                  projectId={current.id}
+                  session={session}
+                />
+              )}
               <p className="integration-status">
                 One shared product definition, brand and grid come from{" "}
                 {repositories.find(
@@ -286,6 +413,7 @@ export function Projects({
                 checks.
               </p>
               <ProjectMap
+                key={`${current.id}/${current.revision}`}
                 components={current.definition.components}
                 repositories={repositories}
                 activities={Object.fromEntries(
@@ -317,101 +445,107 @@ export function Projects({
                 project={current}
               />
               <div className="project-components">
-                {current.components.map((component) => (
-                  <article className="feature-record" key={component.id}>
-                    <header>
-                      <div>
-                        <h3>
-                          <Box size={20} />
-                          {component.name}
-                        </h3>
-                        <p>{component.responsibility}</p>
-                      </div>
-                      <span className="feature-status">
-                        {label(component.latest_status)}
-                      </span>
-                    </header>
-                    <dl className="project-component-facts">
-                      <div>
-                        <dt>Repository / root</dt>
-                        <dd>
-                          {repositories.find(
-                            (item) => item.id === component.repository_id,
-                          )?.name || component.repository_id}
-                          <code>
-                            {component.path === "."
-                              ? "Repository root"
-                              : component.path}
-                          </code>
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Component stack</dt>
-                        <dd>
-                          {component.backend} / {component.frontend}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Dependencies</dt>
-                        <dd>
-                          {component.depends_on
-                            .map(
-                              (dependency) =>
-                                current.definition.components.find(
-                                  (item) => item.id === dependency,
-                                )?.name || dependency,
-                            )
-                            .join(", ") || "None configured"}
-                        </dd>
-                      </div>
-                    </dl>
-                    <button
-                      className="primary"
-                      onClick={() => onStart({ project: current, component })}
-                    >
-                      Start component run
-                      <ArrowRight size={18} />
-                    </button>
-                    <section
-                      className="project-run-history"
-                      aria-label={`${component.name} recorded runs`}
-                    >
-                      {component.runs.length ? (
-                        component.runs.slice(0, 10).map((run) => (
-                          <article key={run.id}>
-                            <button
-                              className="text-button"
-                              onClick={() => void open(run.id)}
-                            >
-                              {run.id.slice(0, 8)} · {label(run.status)}
-                            </button>
-                            {run.branch && (
-                              <span>
-                                <GitBranch size={15} />
-                                {run.branch}
-                              </span>
-                            )}
-                            {safeExternalLink(run.pr_url) && (
-                              <a
-                                href={safeExternalLink(run.pr_url)!}
-                                target="_blank"
-                                rel="noreferrer noopener"
+                <ComponentCollection
+                  key={`${current.id}/${current.revision}`}
+                  items={current.components}
+                  label="Component activity"
+                >
+                  {(component) => (
+                    <article className="feature-record" key={component.id}>
+                      <header>
+                        <div>
+                          <h3>
+                            <Box size={20} />
+                            {component.name}
+                          </h3>
+                          <p>{component.responsibility}</p>
+                        </div>
+                        <span className="feature-status">
+                          {label(component.latest_status)}
+                        </span>
+                      </header>
+                      <dl className="project-component-facts">
+                        <div>
+                          <dt>Repository / root</dt>
+                          <dd>
+                            {repositories.find(
+                              (item) => item.id === component.repository_id,
+                            )?.name || component.repository_id}
+                            <code>
+                              {component.path === "."
+                                ? "Repository root"
+                                : component.path}
+                            </code>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Component stack</dt>
+                          <dd>
+                            {component.backend} / {component.frontend}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Dependencies</dt>
+                          <dd>
+                            {component.depends_on
+                              .map(
+                                (dependency) =>
+                                  current.definition.components.find(
+                                    (item) => item.id === dependency,
+                                  )?.name || dependency,
+                              )
+                              .join(", ") || "None configured"}
+                          </dd>
+                        </div>
+                      </dl>
+                      <button
+                        className="primary"
+                        onClick={() => onStart({ project: current, component })}
+                      >
+                        Start component run
+                        <ArrowRight size={18} />
+                      </button>
+                      <section
+                        className="project-run-history"
+                        aria-label={`${component.name} recorded runs`}
+                      >
+                        {component.runs.length ? (
+                          component.runs.slice(0, 10).map((run) => (
+                            <article key={run.id}>
+                              <button
+                                className="text-button"
+                                onClick={() => void open(run.id)}
                               >
-                                Pull request
-                              </a>
-                            )}
-                          </article>
-                        ))
-                      ) : (
-                        <p>
-                          No component-scoped run has been recorded.{" "}
-                          {component.repository_run_count > 0 &&
-                            `${component.repository_run_count} standalone repository runs are not attributed to this component.`}
-                        </p>
-                      )}
-                    </section>
-                  </article>
-                ))}
+                                {run.id.slice(0, 8)} · {label(run.status)}
+                              </button>
+                              {run.branch && (
+                                <span>
+                                  <GitBranch size={15} />
+                                  {run.branch}
+                                </span>
+                              )}
+                              {safeExternalLink(run.pr_url) && (
+                                <a
+                                  href={safeExternalLink(run.pr_url)!}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                >
+                                  Pull request
+                                </a>
+                              )}
+                            </article>
+                          ))
+                        ) : (
+                          <p>
+                            No component-scoped run has been recorded.{" "}
+                            {component.repository_run_count > 0 &&
+                              `${component.repository_run_count} standalone repository runs are not attributed to this component.`}
+                          </p>
+                        )}
+                      </section>
+                    </article>
+                  )}
+                </ComponentCollection>
               </div>
             </>
           ) : (
@@ -489,30 +623,33 @@ function ProjectMap({
         Source topology
       </h3>
       <div>
-        {components.map((component) => (
-          <article key={component.id}>
-            <Box size={20} />
-            <strong>{component.name}</strong>
-            <span>
-              {repositories.find((item) => item.id === component.repository_id)
-                ?.name || component.repository_id}
-            </span>
-            <code>
-              {component.path === "." ? "Repository root" : component.path}
-            </code>
-            {component.depends_on.length > 0 && (
-              <small>
-                After{" "}
-                {component.depends_on
-                  .map(
-                    (id) =>
-                      components.find((item) => item.id === id)?.name || id,
-                  )
-                  .join(", ")}
-              </small>
-            )}
-          </article>
-        ))}
+        <ComponentCollection items={components} label="Source topology">
+          {(component) => (
+            <article key={component.id}>
+              <Box size={20} />
+              <strong>{component.name}</strong>
+              <span>
+                {repositories.find(
+                  (item) => item.id === component.repository_id,
+                )?.name || component.repository_id}
+              </span>
+              <code>
+                {component.path === "." ? "Repository root" : component.path}
+              </code>
+              {component.depends_on.length > 0 && (
+                <small>
+                  After{" "}
+                  {component.depends_on
+                    .map(
+                      (id) =>
+                        components.find((item) => item.id === id)?.name || id,
+                    )
+                    .join(", ")}
+                </small>
+              )}
+            </article>
+          )}
+        </ComponentCollection>
       </div>
     </section>
   );
@@ -758,8 +895,14 @@ function ProjectEditor({
         {step === 1 && (
           <div className="component-editor-layout">
             <nav aria-label="Configured components">
-              <ol>
-                {components.map((item, index) => (
+              <ComponentCollection
+                key={selected}
+                items={components}
+                label="Configured components"
+                ordered
+                focusId={selected}
+              >
+                {(item, index) => (
                   <li key={item.id}>
                     <button
                       type="button"
@@ -769,14 +912,9 @@ function ProjectEditor({
                       {index + 1}. {item.name || item.id}
                     </button>
                   </li>
-                ))}
-              </ol>
-              <button
-                type="button"
-                className="secondary"
-                disabled={components.length >= 50}
-                onClick={add}
-              >
+                )}
+              </ComponentCollection>
+              <button type="button" className="secondary" onClick={add}>
                 <Plus size={16} />
                 Add component
               </button>
@@ -1010,42 +1148,64 @@ function ProjectEditor({
                 product brand, typography and grid.
               </small>
             </div>
-            {components.map((item) => (
-              <fieldset key={item.id}>
-                <legend>{item.name} depends on</legend>
-                {components
-                  .filter((other) => other.id !== item.id)
-                  .map((other) => (
+            <div className="component-editor-layout">
+              <nav aria-label="Dependency component selection">
+                <ComponentCollection
+                  key={selected}
+                  items={components}
+                  label="Dependency components"
+                  ordered
+                  focusId={selected}
+                >
+                  {(item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        aria-pressed={component.id === item.id}
+                        onClick={() => setSelected(item.id)}
+                      >
+                        {item.name || item.id}
+                      </button>
+                    </li>
+                  )}
+                </ComponentCollection>
+              </nav>
+              <fieldset
+                className="feature-record"
+                style={{ margin: 0, minWidth: 0, alignSelf: "start" }}
+              >
+                <legend>{component.name || component.id} depends on</legend>
+                <ComponentCollection
+                  key={component.id}
+                  items={components.filter(
+                    (other) => other.id !== component.id,
+                  )}
+                  label="Available dependencies"
+                >
+                  {(other) => (
                     <label className="check-choice" key={other.id}>
                       <input
                         type="checkbox"
-                        checked={item.depends_on.includes(other.id)}
+                        checked={component.depends_on.includes(other.id)}
                         onChange={(event) =>
-                          setComponents((items) =>
-                            items.map((entry) =>
-                              entry.id === item.id
-                                ? {
-                                    ...entry,
-                                    depends_on: event.target.checked
-                                      ? [...entry.depends_on, other.id]
-                                      : entry.depends_on.filter(
-                                          (id) => id !== other.id,
-                                        ),
-                                  }
-                                : entry,
-                            ),
-                          )
+                          update({
+                            depends_on: event.target.checked
+                              ? [...component.depends_on, other.id]
+                              : component.depends_on.filter(
+                                  (id) => id !== other.id,
+                                ),
+                          })
                         }
                       />
-                      {other.name}
+                      {other.name || other.id}
                     </label>
-                  ))}
+                  )}
+                </ComponentCollection>
                 {components.length === 1 && (
                   <p>No sibling components are configured.</p>
                 )}
               </fieldset>
-            ))}
-            <ProjectMap components={components} repositories={repositories} />
+            </div>
           </>
         )}
         {step === 3 && (
@@ -1072,7 +1232,13 @@ function ProjectEditor({
                 </dd>
               </div>
             </dl>
-            <ProjectMap components={components} repositories={repositories} />
+            <details>
+              <summary>
+                Review source topology (
+                {components.length.toLocaleString("en-US")} components)
+              </summary>
+              <ProjectMap components={components} repositories={repositories} />
+            </details>
             <p>
               Saving configuration does not run components or complete
               dependencies. Component activity appears only after actual

@@ -103,6 +103,8 @@ Review the rationale and proposed domain, application, data, HTTP, operations, a
 
 The frozen architecture includes selected backend/frontend, components with layer and responsibility, decisions, nonfunctional requirements, and its review state. Frontend guidance calls for atomic design, shared tokens, an owned generated or imported brand kit, and accessible focus, loading, empty, and error states. The proposal identifies module boundaries; it does not establish that the generated implementation or a third-party framework meets your workload.
 
+Architecture component, decision and nonfunctional-requirement lists have no fixed item count. Each entry still has its own validation, and the surrounding product definition retains its separate size and collection limits. See [large-product capacity](large-products.md#current-capacity-boundaries) before assuming an architecture description can be admitted or executed as one campaign.
+
 ## From definition to support
 
 Use the issue conversation to describe customer problems, answer product questions and discuss acceptance changes. Review the saved definition before starting implementation in Studio. Natural text does not create a new run, start verification or maintenance, or deploy; trusted `/forge run`, `/forge test` and `/forge maintain` comments remain an advanced compatibility interface. A repository-admitted run retains its originating issue and actor, product revision, verification evidence, isolated branch and publication result. Feedback returns through the provider's application grant.

@@ -163,3 +163,35 @@ This path inherits the existing whole-journal and completion retention guards,
 including the legacy 10000-row/16MiB aggregate journal read boundary. It is not
 elastic storage or a scalable pinned-head reducer. It introduces no new
 project-sized count or aggregate ceiling and never admits a truncated closure.
+
+## Automatic terminal output acceptance
+
+The native producer retains the complete normalized `RuntimeReport` after the
+runtime's existing credential, invocation, source-write and QA checks. A normal
+report can omit worker feedback. Its successful implementation receipt and a
+typed terminal-completion receipt commit together with resolution of the exact
+observed graph hold. Typed feedback uses the same boundary in its actual feedback
+writer, including a blocked worker's paused state. Git and verification cannot
+start while a terminal completion remains unsettled.
+
+Preparation decodes the original declared output and complete immutable custody
+outside the writer. The transaction rechecks the current execution identity,
+lease, task attempt, source binding, journal prefix and credential admission.
+Native receipts identify their actual acceptance row; they do not invent worker
+feedback or operator acknowledgments. A snapshot or acceptance failure leaves
+the hold intact. Duplicate acceptance reads the exact original result and cannot
+replace it with a changed payload. A committed acceptance can be reused after a
+crash without another model call or another consumption.
+
+Restored consume-v2 has a distinct proof of its original admitted restore ticket,
+current generation and claim, selected HTTP result or Bridge observation, and
+immutable request-event chain. That proof is prepared at the restore boundary
+before its writer and rechecked inside the acceptance transaction. The separate
+operator settlement API above still supports direct consume-v1 only. Neither
+path grants a new graph execution, command allowance or verification admission.
+Unknown HTTP, source, tool, claim or authority changes refuse without replay.
+
+The automatic producer changes the protected runtime and admission closure.
+Historical registered profiles remain unchanged; a fresh source-qualified
+profile and native transaction proof are required before adopting this source.
+The existing bulk-journal retention boundaries remain unchanged.

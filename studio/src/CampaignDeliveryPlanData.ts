@@ -155,16 +155,24 @@ function number(v: unknown, min = 1, max = 1_000_000): number {
   );
   return v;
 }
-function list(v: unknown, max: number): unknown[] {
-  requireValue(Array.isArray(v) && v.length <= max);
+function list(v: unknown, max?: number): unknown[] {
+  requireValue(Array.isArray(v) && (max === undefined || v.length <= max));
   return v;
 }
-function strings(v: unknown, max: number, regex?: RegExp): string[] {
+function strings(v: unknown, max?: number, regex?: RegExp): string[] {
   const a = list(v, max).map((x) =>
     regex ? matching(x, regex) : text(x, 4000),
   );
   requireValue(new Set(a).size === a.length);
   return a;
+}
+export function readProjectDependencies(
+  value: unknown,
+  projectIds: ReadonlySet<string>,
+): string[] {
+  const dependencies = strings(value, undefined, slug);
+  requireValue(dependencies.every((component) => projectIds.has(component)));
+  return dependencies;
 }
 function hashOrNull(v: unknown) {
   return v === null ? null : matching(v, hash);
@@ -697,7 +705,7 @@ export async function readDeliveryGraph(
   matching(project.digest, hash);
   matching(v.request_digest, hash);
   requireValue((await attemptDigest(launch)) === v.request_digest);
-  const frozen = list(definition.components, 50).map(row),
+  const frozen = list(definition.components).map(row),
     children = list(v.children, 250)
       .map(row)
       .filter((c) => c.current === true);
@@ -705,6 +713,10 @@ export async function readDeliveryGraph(
     children.length === report.components.length &&
       new Set(children.map((c) => c.component_id)).size === children.length,
   );
+  const projectIds = new Set(
+    frozen.map((component) => matching(component.id, slug)),
+  );
+  requireValue(projectIds.size === frozen.length);
   const components = report.components.map((c) => {
     const f = frozen.find((f) => f.id === c.component_id),
       child = children.find((x) => x.component_id === c.component_id);
@@ -715,7 +727,7 @@ export async function readDeliveryGraph(
         child.attempt === c.attempt &&
         f.repository_id === c.repository_id,
     );
-    const dependencies = strings(f.depends_on, 50, slug);
+    const dependencies = readProjectDependencies(f.depends_on, projectIds);
     requireValue(
       [...dependencies].sort().join() === [...c.depends_on].sort().join(),
     );
