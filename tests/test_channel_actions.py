@@ -549,9 +549,11 @@ async def product_channel(store, monkeypatch):
     )
     posted = []
 
-    async def write(repo, payload, issue, *, before_write=None):
+    async def write(repo, payload, issue, *, before_write=None, before_dispatch=None):
         if before_write is not None:
             await before_write()
+        if before_dispatch is not None:
+            await before_dispatch()
         posted.append(payload)
         return {"id": "comment-1"}
 

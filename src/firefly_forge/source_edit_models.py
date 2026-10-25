@@ -39,13 +39,15 @@ class SourceReadRequest(BaseModel):
     path: str = Field(default="", max_length=1000)
     text: str = Field(default="", max_length=500)
     max_results: int = Field(default=50, ge=1, le=100)
+    cursor: str | None = Field(default=None, max_length=2048)
+    page_size: int = Field(default=100, ge=1, le=1000)
 
     @model_validator(mode="after")
     def exact_tool_arguments(self) -> "SourceReadRequest":
         allowed = {"request_id", "tool"} | {
-            "list_files": set(),
+            "list_files": {"path", "cursor", "page_size"},
             "read_file": {"path"},
-            "search_text": {"text", "path", "max_results"},
+            "search_text": {"text", "path", "max_results", "cursor"},
         }[self.tool]
         if self.model_fields_set - allowed or (self.tool == "read_file" and not self.path):
             raise ValueError("Select only the exact source reader arguments")

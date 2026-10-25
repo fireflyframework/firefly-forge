@@ -6,10 +6,11 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 from pyfly.data.relational.sqlalchemy import LockMode
 from sqlalchemy import text
@@ -75,7 +76,9 @@ class RestoreExecution:
         if body != self.body:
             raise ValueError("Consumed result changed before exposure")
         await self.guard_source()
-        self.service.store.reject_credentials([self.record, self.body.decode("utf-8")])
+        self.service.store.reject_credentials(
+            [self.service.checkpoints.credential_payload(self.record), self.body.decode("utf-8")]
+        )
 
     async def receipt(self, engine: Any, key: str, evidence: dict[str, Any], checkpoint: dict[str, Any]) -> None:
         _outside_unit()
@@ -151,6 +154,103 @@ class AgentRestores:
             or task.status not in ({"running"} if active else {"needs_reconciliation"})
         ):
             raise ValueError("Only the same unfinished implementation task attempt can restore")
+        await self._command_restore(run, context)
+
+    async def _command_restore(
+        self, run: dict[str, Any], context: InvocationBinding, *, ticket: dict[str, Any] | None = None
+    ) -> None:
+        if "execute_command" not in context.grants:
+            return
+        from firefly_forge.agent_checkpoint_models import ConsumePayloadV2
+        from firefly_forge.runner_factory_models import validate_factory_pool
+        from firefly_forge.sandbox import SandboxReconciliationRequired
+        from firefly_forge.sandbox_command_slots import COMMAND_CONTRACT, _canonical, _complete
+        from firefly_forge.sandbox_models import capture_sandbox, validate_sandbox_snapshot
+
+        def refuse() -> NoReturn:
+            raise ValueError("Prior runner custody or pending effects prevent command-enabled checkpoint restore")
+
+        async with self.store._unit():
+            entries = [
+                {**copy.deepcopy(row.data), "digest": row.digest}
+                for row in await self.journal.records.find_for_run(identifier(run["id"]))
+            ]
+            rows = await self.journal.sandboxes.for_run(identifier(run["id"]))
+            if len(entries) > 10000 or len(json.dumps(entries)) > 16 * 1024 * 1024 or len(rows) > 100:
+                refuse()
+            if not self.journal.verify_chain(entries):
+                refuse()
+            retained = {
+                entry["payload"].get("execution_id")
+                for entry in entries
+                if entry["kind"] in {"sandbox_intent", "sandbox_receipt", "sandbox_reconcile"}
+            }
+            if retained != {row.id.hex for row in rows} or len({row.id for row in rows}) != len(rows):
+                refuse()
+            if not rows:
+                return
+            checkpoints = [
+                entry
+                for entry in entries
+                if entry["kind"] == "agent_checkpoint"
+                and entry["payload"].get("invocation") == context.model_dump(mode="json")
+            ]
+            if len(checkpoints) != 1:
+                refuse()
+            checkpoint = checkpoints[0]
+            consumes = [
+                entry
+                for entry in entries
+                if entry["kind"] == "agent_consume" and entry["idempotency_key"] == checkpoint["idempotency_key"]
+            ]
+            consumed_at = None
+            if consumes:
+                if ticket is None or len(consumes) != 1:
+                    refuse()
+                consumed = ConsumePayloadV2.model_validate(consumes[0]["payload"])
+                if (
+                    consumed.restore_request_id != ticket["id"]
+                    or consumed.generation != ticket["generation"]
+                    or consumed.checkpoint_record_digest != checkpoint["digest"]
+                    or consumed.intent_digest != checkpoint["payload"].get("intent_digest")
+                    or consumes[0]["sequence"] <= checkpoint["sequence"]
+                ):
+                    refuse()
+                consumed_at = consumes[0]["sequence"]
+            snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
+            policy = (
+                validate_factory_pool(snapshot)
+                if snapshot.get("mode") == "pool"
+                else validate_sandbox_snapshot(snapshot)
+            )
+            if len(rows) > policy.command_limit:
+                refuse()
+            browser_calls = 0
+            for row in rows:
+                try:
+                    value = _canonical(row, entries, run["id"])
+                except (SandboxReconciliationRequired, KeyError, TypeError, ValueError):
+                    refuse()
+                if (
+                    value["request"].get("executor_contract") != COMMAND_CONTRACT
+                    or row.snapshot_digest != snapshot["digest"]
+                    or row.ordinal > policy.command_limit
+                    or not _complete(row, value)
+                ):
+                    refuse()
+                browser_calls += bool(value["request"]["request"].get("browser"))
+                effects = [
+                    entry["sequence"]
+                    for entry in entries
+                    if entry["kind"] in {"sandbox_intent", "sandbox_receipt", "sandbox_reconcile"}
+                    and entry["payload"].get("execution_id") == row.id.hex
+                ]
+                # Before exposure, every effect must already belong to the selected checkpoint cut.
+                if max(effects) >= checkpoint["sequence"] and (consumed_at is None or min(effects) <= consumed_at):
+                    refuse()
+            browser = getattr(policy, "browser", None)
+            if browser_calls and (browser is None or browser_calls > browser.max_calls):
+                refuse()
 
     async def request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
         with prepared_credential_rejection(self.store):
@@ -183,7 +283,8 @@ class AgentRestores:
             raise ValueError("Original checkpoint contract changed or deadline expired")
         if await workspace_cut(self.store, self.workspace(run_id)) != context.workspace:
             raise ValueError("Retained workspace drifted; no restore ticket admitted")
-        await self.store.admit_credentials([incoming, bundle[:3]])
+        credentials = [incoming, bundle[:3], self.checkpoints.credential_payload(bundle[1])]
+        await self.store.admit_credentials(credentials)
         if CURRENT_PRINCIPAL.get() != reader:
             raise AccessDenied("Restore caller changed during admission")
         async with self.store._unit() as session:
@@ -229,9 +330,9 @@ class AgentRestores:
                 await self.requests.records.save(row)
                 await self.requests._event(row, "request_admitted", {"request_digest": data["request_digest"]})
             await self.access(current, actor)
-            self.store.reject_credentials([incoming, bundle[:3]])
+            self.store.reject_credentials(credentials)
         await self.access(await self.store.get_run(run_id), actor)
-        self.store.reject_credentials([incoming, bundle[:3]])
+        self.store.reject_credentials(credentials)
         return await self.get(run_id, completion_id, body.request_id)
 
     async def get(self, run_id: str, completion_id: str, request_id: str) -> dict[str, Any]:
@@ -328,6 +429,7 @@ class AgentRestores:
             task = await self.journal._effect_task(run["id"], intent["payload"]["task_key"])
             if task.status != "running" or task.attempt != intent["payload"]["task_attempt"]:
                 raise ValueError("Restore original task attempt changed")
+            await self._command_restore(run, context, ticket=ticket)
 
     async def execute(self, request_id: str) -> None:
         self.requests.runtime.require_execution()

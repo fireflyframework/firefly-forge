@@ -49,11 +49,16 @@ def natural_policy_digest() -> str:
         "scm_poll_models.py",
         "scm_natural_feedback.py",
         "scm_natural_render.py",
+        "scm_natural_links.py",
+        "collaboration_feedback.py",
         "scm_natural_questions.py",
         "scm_natural_replies.py",
         "scm_natural_controllers.py",
         "scm_conversations.py",
         "scm_conversation_models.py",
+        "scm_maintain_ticket_models.py",
+        "scm_maintain_tickets.py",
+        "scm_maintain_ticket_controllers.py",
         "checkpoint_test_models.py",
         "run_creation_models.py",
         "run_creation_requests.py",
@@ -218,6 +223,8 @@ class SCMNaturalTasks:
             )
             if question is not None:
                 candidates[-1].update(origin="worker_journal", publication=projection["publication"])
+                if original.get("maintain_ticket") is not None:
+                    candidates[-1]["answer_only"] = True
             elif checkpoint_source:
                 source = run["source_checkpoint_snapshot"]
                 candidates[-1].update(
@@ -285,6 +292,7 @@ class SCMNaturalTasks:
         for original in previous:
             if (
                 original.get("natural_turn")
+                and original["natural_turn"].get("classifier_outcome") == "confirmed_valid"
                 and original.get("feedback_status") == "sent"
                 and original.get("actor") == delivery["actor"]
                 and original["natural_turn"]["context"]["scope"] == scope

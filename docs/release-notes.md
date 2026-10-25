@@ -5,6 +5,22 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.43
+
+Command slots now come from a durable, atomic run/task/attempt cursor. Fresh service instances allocate a new invocation; an explicit ordinal retains exact replay semantics. Pending, unknown, interrupted or unowned effects hold further dispatch. Command-enabled graph restoration accepts canonical, fully completed durable v2 records only, checks their position before the selected checkpoint or after the matching consume, and preserves lifetime command and browser budgets.
+
+Accumulated native history uses a lossless, versioned canonical zlib/base64 envelope above 64 KiB. The raw record is limited to 8 MiB, the encoded snapshot to 192 KiB, and the complete WAL envelope and reserve to 256 KiB. Bounded decoding verifies the raw size and hash, canonical encoding, complete stream and absence of trailing data. Capture, consume, restore and generic journal reads scan the full decoded record against current credentials. A restored request retains its original encoded bytes and must match native history, usage, limits, state and wire identity. Unknown or consumed results are never re-armed.
+
+Complete branding assets are staged through ordinary workspace tools while the model receives their compact path/hash manifest and one composed brief. Checkpointed execution retains the nine explicitly granted static tools and exact frozen wireframe descriptors. GitHub status cards can preserve only verified native PR/commit links for the current repository; the existing path, credential, image, mention and length guards remain active.
+
+A native API configuration can bind finite maintenance communication to one exact server-owned creation receipt and checkpoint lineage. The configured issue can receive lifecycle and worker-question notices, and its mapped owner can answer through the existing native worker-response path. An answer does not resume execution, inherit a prior run's grants, reset a budget or launch another unit. Natural issue text does not create this maintenance binding or a new maintenance run. See [SCM setup](scm.md#bind-a-fresh-maintenance-unit-to-its-owners-issue).
+
+Checkpoint source identity streams tracked Git files, including ignored tracked assets, and nonignored untracked files through the current credential scanner. It binds source bytes, index, HEAD and the selected namespace without loading dependency trees into a TAR archive. Ignored generated output is outside this source fingerprint; it is not evidence of dependency integrity or successful installation. Docker and pool archive transport retain their independent byte limits, link rejection and publication checks.
+
+Source listing and search return explicit complete/continuation pages bound to the source view, scope and query. Internal manifests hash every eligible file completely, including binary and large files. Search scans complete UTF-8 source with bounded excerpts and explicit binary/invalid-UTF-8 classification. The exhaustive Python inventory remains available; response windows do not silently drop the rest of a repository.
+
+The V12 source profile binds an explicit 35-module admission closure and 22 loader inputs. It requires fresh same-source controlled native tool-boundary and PostgreSQL measurements, including the source-identity and paging cases. All seven historical profile literals and seals remain unchanged. Standard distribution payload checks, controlled transport tests and these qualifications remain separate from live model quality, completed generated-product delivery and GitHub acceptance. Backend 0.2.43 keeps the unchanged Studio 0.2.42 bundle and controlled captures; no screenshot version is relabeled.
+
 ## 0.2.42
 
 An explicitly reviewed remote-completion request can confirm a saved local checkpoint after an uncertain push or draft-review outcome. It retains the original unknown request, exact AI-written review text and local checkpoint; a new finite consent grants remote completion only. The execution owner checks current authority, source, credentials and the exact expected branch before any write. A newly confirmed receipt records recovery provenance rather than claiming the original write succeeded. A later unmatched intent remains visible as uncertain even when an earlier draft was confirmed.

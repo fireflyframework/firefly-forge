@@ -118,7 +118,11 @@ class SCMConversations:
                 )
                 if scope is None or run.get("repository_id") != delivery["repository_id"]:
                     continue
-                if previous.get("native_question") is not None:
+                if previous.get("maintain_ticket") is not None:
+                    from firefly_forge.scm_maintain_tickets import MaintainTickets
+
+                    await MaintainTickets(self.collaboration).authorize_reference(previous, run, delivery, scopes)
+                elif previous.get("native_question") is not None:
                     from firefly_forge.native_question_publications import NativeQuestionPublications
 
                     await NativeQuestionPublications(self.collaboration).authorize_reference(previous, run)

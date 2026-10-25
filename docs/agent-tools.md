@@ -9,10 +9,10 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 
 | Tool | Scope and evidence |
 | --- | --- |
-| `list_files` | Up to 2,000 component source paths; skips dependency trees, credentials and symlinks. |
+| `list_files` | Versioned pages of component source paths, with a source-view digest and continuation cursor. A page is never the whole project unless its scope is complete. |
 | `read_file` | Bounded UTF-8 source with its SHA256 hash. |
 | `write_file` | Complete bounded source content in a relative component path. |
-| `search_text` | Literal text search with line numbers, file hashes and an explicit truncation flag. |
+| `search_text` | Complete selected text search with finite result pages, full-file hashes, explicit snippet truncation and binary/UTF-8 classification. |
 | `edit_lines` | Inclusive line replacement requiring the current file hash, rechecked on the open write descriptor. |
 | `git_diff` | A bounded component diff with external drivers, text conversion, filesystem monitors and hooks disabled. |
 | `execute_command` | Bounded argv execution through the frozen host or Docker policy. |
@@ -35,6 +35,20 @@ Paths cannot traverse outside the component. Source read and write operations re
 The table is a conditional native registry, not a promise that every provider receives all sixteen tools. Ordinary Codex and Claude Code execution uses the CLI's own permissions; role tool lists alone do not enforce those providers' tool access. Firefly Agentic and bridge execution use the native Python admission boundary.
 
 The separately qualified source-only Codex route has a different, measured contract: governed source list/read/search and source edits within its exact admitted workspace, plus only the utilities explicitly recorded in its supported profile. It does not inherit `execute_command`, browser tools, internet search or `read_run_evidence` from the ordinary native registry. The current binary, model metadata, package policy and runtime must match that qualified profile before dispatch. A configured provider, an available capability, a qualified source-only profile and a completed invocation are separate states; check the [tool prerequisites](tooling-prerequisites.md) and [source-only recovery requirements](recovery.md) for the applicable route. Owner guidance does not modify a call already in flight or become delivery authority for a sealed source-only invocation.
+
+## Continue through a large source tree
+
+The native `list_files` tool returns a version-one page with `files`, `view_sha256`, `next_cursor` and `complete`. Start without a cursor. If `complete` is false, send the returned cursor with the same prefix and page size. Keep going until the final page. The default page size is 100; up to 1,000 paths can be requested in one response. The admitted byte window can shorten a page further. These are response windows, not project file-count limits.
+
+Firefly Agentic uses `path_prefix`; the source-only CLI reader uses its existing `path` argument as the prefix. Both accept an optional `cursor`. The CLI also accepts `page_size` and requires a new unique `request_id` for each page. Reusing an ID reads its exact stored result; changing that ID's cursor or arguments is refused. Old requests without paging arguments remain valid and receive an explicit first page. Internal Python callers of `WorkspaceTools.list_files()` receive the complete eligible path list.
+
+A cursor binds the repository/component, prefix or search query, response options and complete filename/metadata view. A changed view is refused: start a new listing instead of combining pages from different source states. Cursor contents are navigation data, not execution or permission grants.
+
+Git workspaces select tracked files, including tracked files covered by ignore rules, plus nonignored untracked files. Ignored installed dependencies are not treated as product source. Selected private paths, unsafe links, aliases and conflicts refuse; they are not silently counted as inspected. Standalone non-Git callers keep confined source traversal. Present but malformed Git metadata never triggers a filesystem fallback.
+
+`search_text` applies the prefix before scanning and can find text in files larger than the ordinary whole-file read window. Its pages retain the full-file SHA256 and report `snippet_truncated` separately from result-page continuation. Binary and invalid-UTF8 files are counted explicitly; unreadable or changed source refuses the operation. `complete` means the selected text-search page sequence has reached its end, not that binary content was searched as text.
+
+Before and after a native command, the internal manifest streams all selected file bytes, including large and binary files, without using a reader page or a fixed aggregate byte cutoff. Source identity is rechecked before returning. This complete accounting does not remove the separate role, command, provider or host budgets. It also does not expand the existing whole-file write/edit window; large-file editing needs its own supported interface.
 
 ## Observe a Python workload
 

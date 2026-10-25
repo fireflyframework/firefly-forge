@@ -16,7 +16,10 @@ from firefly_forge.prompts import prompt_catalog
 PROMPT_INPUTS = (
     "prompts.py",
     "resources/prompts/v1/manifest.json",
-    *(f"resources/prompts/v1/coding-runtime/source-{name}-1.0.1.yaml" for name in ("list", "read", "search")),
+    *(
+        f"resources/prompts/v1/coding-runtime/source-{name}-{'1.0.1' if name == 'read' else '1.0.2'}.yaml"
+        for name in ("list", "read", "search")
+    ),
 )
 
 
@@ -37,7 +40,7 @@ async def test_native_reader_descriptions_explain_strict_server_bounds_and_keep_
     for tool, resource in (("list_files", "list"), ("read_file", "read"), ("search_text", "search")):
         name = "coding-runtime/source-" + resource
         description = tools[tool]["description"]
-        assert description == catalog.text(name, version="1.0.1")
+        assert description == catalog.text(name, version="1.0.1" if resource == "read" else "1.0.2")
         assert description != catalog.text(name, version="1.0.0")
         assert "32 lowercase hexadecimal" in description
         assert "Only declared fields" in description
@@ -87,8 +90,8 @@ def test_selected_prompt_or_renderer_drift_revokes_profile_before_admission(chan
 
 
 def test_reader_bound_proof_uses_a_new_registry_and_loader_contract():
-    assert qualification.REGISTRY_VERSION == 8
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v9"
+    assert qualification.REGISTRY_VERSION == 11
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v12"
     historical = [
         profile for profile in qualification._profiles() if profile.loader_profile == "codex-exec-restricted-source/v5"
     ]

@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "coding-runtime/source-list",
+  "version": "1.0.2",
+  "description": "Versioned complete source traversal with bounded reader pages.",
+  "system_template": "",
+  "user_template": "List one version 1 page of confined component source paths. Optional path is a component-relative prefix of 0 to 1000 characters; page_size is an integer from 1 to 1000, default 100. Supply next_cursor unchanged on the next page using the same prefix and page size until complete=true. A page is not the entire project. A changed source view or cursor scope is refused; start a fresh listing. Response windows are bounded independently of project size. No credentials, Git metadata, commands or new authority. Supply a unique request_id of exactly 32 lowercase hexadecimal characters (0-9 and a-f); repeated IDs read exact source-bound receipts. Only declared fields are accepted.",
+  "required_variables": [],
+  "metadata": {
+    "defaults": {}
+  }
+}

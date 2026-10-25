@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from firefly_forge.provider_executable_adoption import executable_identity
+from firefly_forge.source_budget_allowances import admission_contract_digest
 from firefly_forge.source_edit_cli_policy import DISABLED_FEATURES, configuration_projection
 from firefly_forge.source_edit_model_catalog import model_catalog_sha256
 from firefly_forge.source_edit_models import READ_TOOLS
@@ -50,6 +51,7 @@ def fixture_profile(executable):
         + (("skip_host_skill_discovery", True),),
         configuration_tools=(("update_plan", False), ("experimental_request_user_input", False)),
         source_budget_limits=(("read_file_lifetime_limit", 20), ("activation_ceiling", 5)),
+        admission_contract_digest=admission_contract_digest(),
         proof=NativeQualificationProof(
             contract_digest="",
             artifact_sha256=hashlib.sha256(

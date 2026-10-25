@@ -4,6 +4,7 @@
 import json
 
 import pytest
+from pydantic_ai.messages import ModelRequest, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
 
 from firefly_forge import providers
@@ -37,7 +38,15 @@ async def test_initial_and_resumed_providers_receive_frozen_verification_contrac
         raise providers.ProviderError("Controlled prompt capture; no CLI launched")
 
     def stop_model(messages, info):
-        captured.append(info.instructions)
+        user_parts = [
+            part.content
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+        ]
+        assert user_parts
+        captured.append("\n".join([info.instructions or "", *user_parts]))
         assert "run_configured_check" not in {tool.name for tool in info.function_tools}
         raise providers.ProviderError("Controlled prompt capture; no model contacted")
 

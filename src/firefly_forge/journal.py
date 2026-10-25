@@ -27,7 +27,7 @@ from firefly_forge.persistence import (
 from firefly_forge.profiles import build_instruction
 from firefly_forge.prompts import prompt_text
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
-from firefly_forge.store import TERMINAL, Store, identifier, now
+from firefly_forge.store import TERMINAL, Store, identifier, now, prepared_credential_rejection
 
 if TYPE_CHECKING:
     from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
@@ -364,14 +364,31 @@ class Journal:
         if not protected:
             return entries
 
-        async def admitted() -> None:
-            await self.store.admit_credentials(protected)
+        checkpoint_payloads = [entry["payload"] for entry in entries if entry["kind"] == "agent_checkpoint"]
+        if len(checkpoint_payloads) > 100:
+            raise ValueError("Journal checkpoint history exceeds its retained bound")
+
+        async def checked(value: Any) -> None:
             async with self.store._unit():
                 current = await self.store.get_run(run_id)
                 if self._worker_scope(current) != scope:
                     raise AccessDenied("Journal run scope changed during credential admission")
                 await self._diagnostic_reader(current, reader)
-                self.store.reject_credentials(protected)
+                self.store.reject_credentials(value)
+
+        async def admitted() -> None:
+            from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
+
+            with prepared_credential_rejection(self.store):
+                await self.store.admit_credentials(protected)
+                await checked(protected)
+                for payload in checkpoint_payloads:
+                    checkpoint = BoundaryCheckpoint.decode(
+                        payload["snapshot"].encode("utf-8"), payload["checkpoint_digest"]
+                    )
+                    canonical = checkpoint.canonical_payload.decode("utf-8")
+                    await self.store.admit_credentials(canonical)
+                    await checked(canonical)
 
         if caller is None:
             await admitted()
@@ -2283,6 +2300,36 @@ class Journal:
     async def ready_retries(self) -> list[str]:
         async with self.store._unit():
             return [row.id.hex for row in await self.store.run_records.find_ready_retries(time.time())]
+
+    async def sandbox_command_intent(
+        self,
+        run_id: str,
+        task_id: str,
+        attempt: int,
+        snapshot: Data,
+        payload: Callable[[int, str, Data | None], Data],
+        *,
+        ordinal: int | None = None,
+    ) -> Data:
+        from firefly_forge.sandbox_command_slots import command_intent
+
+        return await command_intent(self, run_id, task_id, attempt, snapshot, payload, ordinal=ordinal)
+
+    async def sandbox_command_replay(
+        self,
+        run_id: str,
+        task_id: str,
+        attempt: int,
+        snapshot: Data,
+        payload: Callable[[int, str, Data | None], Data],
+        *,
+        ordinal: int,
+    ) -> Data:
+        from firefly_forge.sandbox_command_slots import command_intent
+
+        return await command_intent(
+            self, run_id, task_id, attempt, snapshot, payload, ordinal=ordinal, replay_only=True
+        )
 
     async def sandbox_effect_intent(
         self, run_id: str, task_id: str, execution_id: str, *, effect: str, payload: Data

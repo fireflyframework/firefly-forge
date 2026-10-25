@@ -35,7 +35,7 @@ class InvocationBinding(StrictRecord):
     frontend: str = Field(min_length=1, max_length=32)
     round: int = Field(ge=1, le=1000000)
     deadline_ms: int = Field(ge=1, le=2**53 - 1)
-    grants: list[str] = Field(max_length=6)
+    grants: list[str] = Field(max_length=9)
     contract: Digest
     run_cut: Digest
     workspace: dict[str, str] = Field(min_length=4, max_length=4)

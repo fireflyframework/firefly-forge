@@ -6,6 +6,7 @@ DB fixture. Git inspection, verification commands and delivery are owned seams;
 Agentic, SDK parsing, real file tools, native SQL/transactions/ACLs are not mocked.
 """
 
+import subprocess
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import uuid4
@@ -31,7 +32,7 @@ from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.configuration import ProviderConfiguration
 from firefly_forge.engine import Engine
 from firefly_forge.execution_requests import ExecutionRequests
-from firefly_forge.git_workspace import metadata_digest
+from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
 from firefly_forge.journal import Journal
@@ -43,8 +44,36 @@ from firefly_forge.runtime_roles import RuntimeRoles
 from firefly_forge.store import identifier
 
 
+def seed_restore_workspace(workspace):
+    workspace.mkdir(parents=True)
+    environment = git_environment({"PATH": "/usr/bin:/bin"})
+    for argv in (
+        ["git", "init", "-q"],
+        [
+            "git",
+            "-c",
+            "user.name=Controlled Source",
+            "-c",
+            "user.email=source@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Seed source",
+        ],
+        ["git", "read-tree", "HEAD"],
+    ):
+        subprocess.run(trusted_git(argv), cwd=workspace, env=environment, check=True, capture_output=True, timeout=10)
+    return (
+        subprocess.check_output(trusted_git(["git", "rev-parse", "HEAD"]), cwd=workspace, env=environment, timeout=10)
+        .decode()
+        .strip()
+    )
+
+
 @asynccontextmanager
-async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outcome="success"):
+async def native_restoration(
+    store, tmp_path, monkeypatch, *, repair=False, outcome="success", grants=None, next_tool=False
+):
     async with prepared(store, tmp_path) as (_, actor, seeded, _, _, _, _, _):
         store.configuration.update("bridge", ProviderConfiguration(values={"checkpoints": "required"}))
         run = await store.create_run(
@@ -58,11 +87,17 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
         )
         run_id = run["id"]
         roles = RoleRegistry(tmp_path / "native-roles")
+        catalog = roles.tools()
+        if grants is not None:
+            for tool in catalog:
+                if tool["id"] in grants:
+                    tool["availability"] = "worker_unverified"
         await store.update(
             run_id,
             **store.configuration.snapshot("bridge"),
             role_snapshot=roles.snapshot(
-                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": ["write_file"]})
+                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": grants or ["write_file"]}),
+                tool_catalog=catalog,
             ),
             repair_budget=int(repair),
             resume_existing=True,
@@ -78,14 +113,13 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
         monkeypatch.setattr(provider, "model", lambda **kwargs: model)
         engine = Engine(store, tmp_path / "native-owned", lambda _: provider, journal=journal)
         workspace = engine.workspaces / run_id
-        (workspace / ".git").mkdir(parents=True)
-        (workspace / ".git/HEAD").write_text("b" * 40)
+        revision = seed_restore_workspace(workspace)
         await store.update(run_id, git_metadata_digest=metadata_digest(workspace))
 
         async def head(argv, cwd, **kwargs):
             assert current_unit_of_work() is None
             assert argv[-2:] == ["rev-parse", "HEAD"]
-            return "b" * 40
+            return revision
 
         async def engine_git(argv, cwd, **kwargs):
             assert current_unit_of_work() is None
@@ -98,7 +132,7 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
             return ""
 
         async def inspect(*args, **kwargs):
-            return {"base_revision": "b" * 40, "head": "b" * 40, "source_tree": "c" * 40}
+            return {"base_revision": revision, "head": revision, "source_tree": "c" * 40}
 
         async def snapshot(*args, **kwargs):
             return ["service.py"], controlled_source_snapshot("Fictional native SQL control patch"), "c" * 40
@@ -160,6 +194,8 @@ async def native_restoration(store, tmp_path, monkeypatch, *, repair=False, outc
             if len(posts) == 1:
                 return httpx2.Response(200, json=result(tool=True))
             if len(posts) == 2:
+                return httpx2.Response(200, json=next_result(next_tool))
+            if next_tool and not repair:
                 return httpx2.Response(200, json=next_result(False))
             assert repair, "Original native result attempted a replacement POST"
             if outcome == "crash":
@@ -353,7 +389,15 @@ async def test_native_late_distinct_identity_revocation_prevents_original_result
         async def revoke(value):
             assert current_unit_of_work() is None
             await admit(value)
-            if not changed and isinstance(value, tuple) and len(value) == 3:
+            source = value[0] if isinstance(value, tuple) and len(value) == 2 else None
+            original_bundle = (
+                isinstance(source, tuple)
+                and len(source) == 3
+                and [record.get("kind") for record in source]
+                == ["bridge_request_intent", "agent_checkpoint", "bridge_request_response"]
+                and all(record.get("idempotency_key") == env.intent["idempotency_key"] for record in source)
+            )
+            if not changed and original_bundle:
                 async with store._unit():
                     users = ForgeIdentityUserRepository()
                     user = await users.find_by_id(revoked.id, lock=LockMode.PESSIMISTIC_WRITE)

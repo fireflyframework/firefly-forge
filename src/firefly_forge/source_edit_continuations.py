@@ -316,14 +316,15 @@ class SourceEditInvocation:
                 scope,
                 repository_root=workspace,
                 max_file_bytes=max(1, receipt["candidate"]["source_edit"]["max_result_bytes"] - 2048),
+                max_page_bytes=min(64000, max(1, receipt["candidate"]["source_edit"]["max_result_bytes"] - 2048)),
             )
             value: Data
             if request.tool == "list_files":
-                value = {"files": await tools.list_files()}
+                value = await tools.list_files_page(request.path, request.cursor, request.page_size)
             elif request.tool == "read_file":
                 value = {"path": request.path, "content": await tools.read_file(request.path)}
             else:
-                value = await tools.search_text(request.text, request.path, request.max_results)
+                value = await tools.search_text(request.text, request.path, request.max_results, request.cursor)
             await guard()
             return {**value, "source_digest": cut["source_digest"]}
 

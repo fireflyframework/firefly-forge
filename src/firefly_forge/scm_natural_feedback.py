@@ -8,11 +8,14 @@ from collections.abc import Callable
 from typing import Any
 
 from firefly_forge.collaboration_feedback import _text
+from firefly_forge.scm_natural_links import delivery_links
 from firefly_forge.scm_natural_render import reply_quote
 from firefly_forge.scm_natural_runtime import catalog
 
 
-def natural_card(data: dict[str, Any], safe: Callable[[str], str]) -> str:
+def natural_card(
+    data: dict[str, Any], safe: Callable[[str], str], *, repository: dict[str, Any] | None = None, host: str = ""
+) -> str:
     turn = data["natural_turn"]
     language = (turn.get("decision") or {}).get("language") or data["command"].get("language", "en")
     copy = json.loads(catalog().text("scm-natural/copy", version="1.0.1"))[language]
@@ -22,7 +25,9 @@ def natural_card(data: dict[str, Any], safe: Callable[[str], str]) -> str:
     outcome = copy.get(state, copy["waiting"])
     message = str(turn.get("reply") or "")
     questions = (turn.get("decision") or {}).get("questions", [])
-    quote = reply_quote(message, questions, safe) if message else ""
+    quote = (
+        reply_quote(message, questions, safe, trusted_links=delivery_links(data, repository, host)) if message else ""
+    )
     resolution = turn.get("resolution") or {}
     if resolution.get("state") == "waiting" and len(resolution.get("candidates", [])) > 1:
         options = [

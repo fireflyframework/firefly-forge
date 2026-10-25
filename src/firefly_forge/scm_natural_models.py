@@ -33,13 +33,13 @@ class NaturalDecision(BaseModel):
 
     @model_validator(mode="after")
     def unreviewed_dialogue(self) -> NaturalDecision:
-        from firefly_forge.scm_natural_render import reply_quote
+        from firefly_forge.scm_natural_render import validate_reply_quote
 
         if self.intent == "product" and self.questions:
             raise ValueError("A product handoff leaves architectural follow-up questions to the native product service")
         if any(not question.strip() for question in self.questions):
             raise ValueError("Typed questions cannot be empty")
-        reply_quote(self.message, self.questions, lambda text: text)
+        validate_reply_quote(self.message, self.questions)
         if self.proposal is not None:
             from firefly_forge.collaboration import ProductDefinition
 
@@ -201,6 +201,8 @@ def resolve_task(
     row = rows[choice - 1]
     if row.get("read_only") is True and decision.intent != "status":
         return result.model_copy(update={"reason": "read_only_reference"})
+    if row.get("answer_only") is True and decision.intent == "resume":
+        return result.model_copy(update={"reason": "answer_only_reference"})
     if row.get("origin") in {"product_assistant_turn", "natural_turn"}:
         if decision.intent == "resume":
             return result.model_copy(update={"reason": "product_answer_has_no_execution_authority"})

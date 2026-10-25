@@ -46,6 +46,13 @@ class AgentCheckpoints:
         self.completions = completions
         self.store, self.journal = completions.store, completions.journal
 
+    @staticmethod
+    def credential_payload(checkpoint: Data) -> list[Any]:
+        _outside_unit()
+        payload = checkpoint["payload"]
+        captured = BoundaryCheckpoint.decode(payload["snapshot"].encode("utf-8"), payload["checkpoint_digest"])
+        return [checkpoint, captured.canonical_payload.decode("utf-8")]
+
     async def _budget(self, run_id: str, *, extra: int = 0, reserve: bool = False, consume: bool = False) -> None:
         budget = await self.journal.records.checkpoint_budget(identifier(run_id))
         if (
@@ -131,7 +138,11 @@ class AgentCheckpoints:
                 raise ValueError("Checkpoint differs from the original wire request")
             snapshot = checkpoint.payload.decode("utf-8")
             invocation = await capture_context() if capture_context is not None else None
-            credential_payload = snapshot if invocation is None else {"snapshot": snapshot, "invocation": invocation}
+            credential_payload = {
+                "snapshot": snapshot,
+                "canonical_record": checkpoint.canonical_payload.decode("utf-8"),
+                "invocation": invocation,
+            }
             await self.store.admit_credentials(credential_payload)
             await current()
             self.store.reject_credentials(credential_payload)
@@ -226,7 +237,11 @@ class AgentCheckpoints:
                 raise ValueError("Checkpoint consume receipt has different immutable bindings")
             result = {"checkpoint": checkpoint, "consume": consumed}
         self._validate_checkpoint(checkpoint, intent)
-        return await self.completions._admitted_read(run_id, result, reader, scope)
+        credentials = self.credential_payload(checkpoint)
+        await self.store.admit_credentials(credentials)
+        value = await self.completions._admitted_read(run_id, result, reader, scope)
+        self.store.reject_credentials(credentials)
+        return value
 
     @staticmethod
     def _validate_checkpoint(checkpoint: Data, intent: Data) -> None:
@@ -276,7 +291,8 @@ class AgentCheckpoints:
         async with self.store._unit():
             bundle = await self._bundle(run, intent, body)
         self._validate_checkpoint(bundle[1], bundle[0])
-        await self.store.admit_credentials(bundle)
+        credentials = (bundle, self.credential_payload(bundle[1]))
+        await self.store.admit_credentials(credentials)
         await current()
         async with self.store._unit():
             await self.completions._writer(run, reader)
@@ -305,9 +321,9 @@ class AgentCheckpoints:
             if _size(consumed) > CONSUME_RESERVE:
                 raise ValueError("Checkpoint consumption exceeds its reserved envelope")
             await current()
-            self.store.reject_credentials(bundle)
+            self.store.reject_credentials(credentials)
         await current()
-        self.store.reject_credentials(bundle)
+        self.store.reject_credentials(credentials)
 
     async def restore_bundle(
         self, run_id: str, request_id: str, request: RestoreInput
@@ -364,7 +380,7 @@ class AgentCheckpoints:
             or any(c.finish_reason not in {"stop", "tool_calls"} for c in completion.choices)
         ):
             raise ValueError("Original result is not a supported successful completion")
-        self.store.reject_credentials([intent, checkpoint, record])
+        self.store.reject_credentials([intent, self.credential_payload(checkpoint), record])
         return intent, checkpoint, record, body
 
     async def consume_restored(
@@ -381,7 +397,8 @@ class AgentCheckpoints:
         _outside_unit()
         with prepared_credential_rejection(self.store):
             bundle = await self.restore_bundle(run["id"], request_id, request)
-            await self.store.admit_credentials(bundle[:3])
+            credentials = (bundle[:3], self.credential_payload(bundle[1]))
+            await self.store.admit_credentials(credentials)
             await guard()
             if outside_guard is not None:
                 await outside_guard()
@@ -419,7 +436,7 @@ class AgentCheckpoints:
                 if _size(record) > CONSUME_RESERVE:
                     raise ValueError("Restoration consume exceeds its reserved envelope")
                 await guard()
-                self.store.reject_credentials(bundle[:3])
+                self.store.reject_credentials(credentials)
             await guard()
-            self.store.reject_credentials(bundle[:3])
+            self.store.reject_credentials(credentials)
             return body

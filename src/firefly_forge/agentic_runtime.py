@@ -138,18 +138,7 @@ async def execute_agentic(
         return invoke
 
     async def source_manifest() -> dict[str, str]:
-        manifest = {}
-        total = 0
-        for path in await tools.list_files():
-            try:
-                content = await tools.read_file(path)
-            except (ValueError, OSError, UnicodeDecodeError):
-                continue
-            total += len(content.encode("utf-8"))
-            if total > 16_000_000:
-                raise ValueError("Command source manifest exceeds 16 MB")
-            manifest[path] = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        return manifest
+        return await tools.source_manifest()
 
     async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
 
@@ -163,7 +152,7 @@ async def execute_agentic(
         before = await source_manifest()
         result = await context.command_executor(argv, timeout)
         after = await source_manifest()
-        tools.files_written.update(path for path, digest in after.items() if before.get(path) != digest)
+        tools.files_written.update(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
         return {"exit_code": result.exit_code, "output": result.output}
 
     async def browser_check(
@@ -335,7 +324,7 @@ async def execute_agentic(
         return await context.read_run_evidence(query)
 
     handlers: dict[str, Callable[..., Any]] = {
-        "list_files": tools.list_files,
+        "list_files": tools.list_files_page,
         "read_file": read_source,
         "write_file": write_source,
         "search_text": tools.search_text,
@@ -432,7 +421,7 @@ async def execute_agentic(
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
-        instructions=build_instruction(brief, backend, frontend)
+        instructions=build_instruction("", backend, frontend)
         + ("\n" + qa_instructions() if "browser_journey" in handlers else "")
         + (
             prompt_text(
@@ -452,7 +441,13 @@ async def execute_agentic(
             else None
         ),
         tools=[
-            firefly_tool(name, description=prompt_text("tools/" + name), auto_register=False)(guarded(handler))
+            firefly_tool(
+                name,
+                description=prompt_text(
+                    "tools/" + name, version="1.0.1" if name in {"list_files", "search_text"} else "1.0.0"
+                ),
+                auto_register=False,
+            )(guarded(handler))
             for name, handler in handlers.items()
         ],
         capabilities=[ProcessHistory(image_history), *([boundary] if boundary is not None else [])],

@@ -20,7 +20,9 @@ def transition_case(tmp_path, monkeypatch, *, historical=False, current_first=Tr
     executable.write_text("#!/bin/sh\nexit 0\n")
     executable.chmod(0o700)
     current = register_fixture_profile(monkeypatch, executable)
-    previous = replace(current, version=6, loader_profile="codex-exec-restricted-source/v7")
+    previous = replace(
+        current, version=6, loader_profile="codex-exec-restricted-source/v7", admission_contract_digest=""
+    )
     if control is not None:
         previous = replace(previous, **control)
     previous = replace(previous, proof=replace(previous.proof, contract_digest=q.profile_contract_digest(previous)))

@@ -1023,3 +1023,55 @@ pipeline without a mention or copied identifier. Saving that answer does not
 renew source-only consent, resume execution, create a run or reset a budget.
 The separate current native continuation gates still apply. Controlled host and
 SQL fixtures are separate from real GitHub delivery acceptance.
+
+GitHub natural status replies can preserve PR and commit links from the current repository’s verified native delivery journal. The server binds these HTTPS links to the exact project, issue, actor, run, and checkpoint; model text cannot authorize another URL. This link rendering currently supports GitHub only. A local checkpoint alone does not establish a published PR or product acceptance. Credential, setting, private path, HTML, image, and mention guards still apply.
+
+### Bind a fresh maintenance unit to its owner's issue
+
+A maintenance unit created from a confirmed checkpoint has its own run, creation
+receipt, provider session and budgets. Its checkpoint parent supplies source
+provenance, not communication or execution authority. By default its issue
+lineage is read-only, just like a fresh checkpoint test. Neither a status request
+nor an ordinary project reader can upgrade it into a writable conversation.
+
+For a native administrator who can manage the project's members, the API offers
+explicit, finite setup at
+`POST /api/v1/projects/{project_id}/repositories/{repository_id}/maintain-ticket-bindings`.
+The strict version-1 request contains:
+
+- A new `request_id`, the maintain `run_id`, its `creation_request_id` and the
+  exact `expected_creation_digest` returned by run creation.
+- An actual API-observed owner message in `observed_receipt_id` and its
+  `expected_reference_digest`. The existing authenticated conversation must link
+  the checkpoint parent in the same repository, project and component.
+- `expected_previous_digest`, initially `null`, for an exact binding update.
+- A `lifetime_seconds` value from 60 through 3,600 and `max_notifications` from 1
+  through 32. These bound the new communication consent, not the run's coding
+  allowance.
+- Explicit `allowed_actions: ["status", "question", "answer"]` and
+  `acknowledge_native_communication: true`.
+
+Read the immutable result at the same base path plus
+`/requests/{request_id}`. Repeating the identical request recovers that result
+without extending its expiration. A new binding requires its own request and the
+current previous digest. An uncertain prior notification blocks replacement.
+
+After setup, the existing collaboration owner loop automatically posts lifecycle
+updates and supported pending worker questions to the confirmed issue. It checks
+current polling consent, repository scope, owner identity, project permissions,
+communication configuration and finite consent again before dispatch, including
+after waiting for the provider lock. Native configuration stores a clearly marked
+factory outbox; it does not invent an inbound GitHub event or modify
+`issue_context`, the parent's receipts, or the source-only question producer.
+
+A confirmed question comment lets its mapped owner reply naturally in the issue.
+The existing answer pipeline records the child's exact `worker_response` with
+current SCM attribution and leaves the child paused. There is no automatic
+resume, inherited parent grant, extra coding budget, or retry of an uncertain
+remote write. Unbound children, checkpoint tests and other project readers keep
+read-only lineage. Revoked or expired consent holds further notifications.
+
+This first setup path is native API configuration. The natural coordinator does
+not yet create a maintenance unit or its communication binding from an issue
+request. Controlled host/native tests and a real GitHub acceptance trial are
+separate evidence; configuring the API alone does not establish live delivery.

@@ -38,7 +38,8 @@ class Ledger:
         }
         self.run.repository_id = UUID(self.run.data["repository_id"])
         self.run_records = self
-        self.configuration = SimpleNamespace()
+        self.configuration = SimpleNamespace(write_generation=object(), resolve=lambda _: {})
+        self.credential_registry = lambda: {str(index): value for index, value in enumerate(sorted(self.credentials))}
 
     @asynccontextmanager
     async def _unit(self, **kwargs):

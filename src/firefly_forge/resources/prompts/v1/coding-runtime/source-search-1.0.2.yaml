@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "coding-runtime/source-search",
+  "version": "1.0.2",
+  "description": "Versioned complete source traversal with bounded reader pages.",
+  "system_template": "",
+  "user_template": "Search all selected source within a component-relative path prefix, returning one finite version 1 result page. text has 1 to 500 characters on one line, path has 0 to 1000 characters, max_results is an integer from 1 to 100, default 50. Supply next_cursor unchanged with the same query, prefix and max_results to continue until complete=true. Each snippet has an explicit snippet_truncated flag; full-file SHA256 binds its source. Binary and invalid-UTF8 files are classified explicitly; unreadable or changed source is refused. No commands or new authority. Supply a unique request_id of exactly 32 lowercase hexadecimal characters (0-9 and a-f); repeated IDs only read exact source-bound receipts. Only declared fields are accepted.",
+  "required_variables": [],
+  "metadata": {
+    "defaults": {}
+  }
+}

@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+{
+  "name": "tools/search_text",
+  "version": "1.0.1",
+  "description": "Versioned complete source traversal with bounded reader pages.",
+  "system_template": "",
+  "user_template": "Search the complete selected source within path_prefix, including large valid UTF-8 files. max_results bounds one page from 1 to 100 (default 50), not total project matches. Continue next_cursor using the same query/options until complete=true. Snippets disclose snippet_truncated and full-file SHA256; binary and invalid-UTF8 classifications are explicit. Unreadable, changed or unsafe source refuses. No commands or new authority.",
+  "required_variables": [],
+  "metadata": {
+    "defaults": {}
+  }
+}

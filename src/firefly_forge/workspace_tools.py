@@ -3,15 +3,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import codecs
 import hashlib
+import json
 import os
 import stat
 import sys
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from firefly_forge.process import ProcessResult, execute
 from firefly_forge.prompts import prompt_text
@@ -94,9 +98,31 @@ def _directory_path(path: Path) -> Path:
         os.close(fd)
 
 
+def _source_stamp(info: os.stat_result) -> tuple[int, ...]:
+    return tuple(
+        getattr(info, "st_" + key) for key in ("dev", "ino", "uid", "mode", "nlink", "size", "mtime_ns", "ctime_ns")
+    )
+
+
+def _source_root_identity(root: Path) -> tuple[int, int, int]:
+    info = root.lstat()
+    if not stat.S_ISDIR(info.st_mode) or root.is_symlink() or info.st_uid != os.geteuid():
+        raise ValueError("Workspace must retain its owned directory identity")
+    return info.st_dev, info.st_ino, info.st_uid
+
+
+def _page_json(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+
+
 class WorkspaceTools:
     def __init__(
-        self, workspace: Path, *, repository_root: Path | None = None, max_file_bytes: int = 1_000_000
+        self,
+        workspace: Path,
+        *,
+        repository_root: Path | None = None,
+        max_file_bytes: int = 1_000_000,
+        max_page_bytes: int = 64000,
     ) -> None:
         if workspace.is_symlink() or not workspace.is_dir():
             raise ValueError("Workspace must be a real directory")
@@ -107,6 +133,10 @@ class WorkspaceTools:
         self.repository_root = _directory_path(repository)
         if not self.root.is_relative_to(self.repository_root):
             raise ValueError("Workspace must be confined to the repository")
+        self._source_root = _source_root_identity(self.root)
+        if type(max_page_bytes) is not int or max_page_bytes < 1:
+            raise ValueError("Source response window must be a positive byte budget")
+        self.max_page_bytes = max_page_bytes
         self.max_file_bytes = max_file_bytes
         self.files_written: set[str] = set()
 
@@ -197,55 +227,343 @@ class WorkspaceTools:
         finally:
             os.close(parent)
 
-    async def list_files(self) -> list[str]:
-        """List at most 2000 project source paths; exclude dependencies, credentials and symlinks."""
-        output: list[str] = []
-        skipped = {".git", ".env", ".npmrc", ".ssh", ".venv", "node_modules", "vendor", "__pycache__", "dist", "build"}
-        for directory, folders, files in os.walk(self.root, followlinks=False):
-            base = Path(directory)
-            folders[:] = sorted(
-                p for p in folders if p not in skipped and not _private_name(p) and not (base / p).is_symlink()
-            )
-            for name in sorted(files):
-                path = base / name
-                if name not in skipped and not _private_name(name) and not path.is_symlink():
-                    output.append(str(path.relative_to(self.root)))
-                    if len(output) >= 2000:
-                        return output
-        return output
+    @contextmanager
+    def _source_file(self, path: str, expected: tuple[int, ...] | None = None) -> Iterator[BinaryIO]:
+        parts = self._parts(path)
+        parent = self._parent_fd(parts, create=False)
+        try:
+            try:
+                fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            except OSError:
+                raise ValueError("Selected source is unreadable or linked") from None
+            with os.fdopen(fd, "rb") as source:
+                info = os.fstat(source.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    raise ValueError("Selected source requires regular files without links or aliases")
+                if info.st_uid != os.geteuid():
+                    raise ValueError("Selected source ownership changed")
+                self._check_descriptor(source.fileno())
+                if _descriptor_path(source.fileno()).as_posix() != (self.root / path).as_posix():
+                    raise ValueError("Selected source has a case or path alias")
+                before = _source_stamp(info)
+                if expected is not None and before != expected:
+                    raise ValueError("Selected source changed before reading")
+                yield source
+                if _source_stamp(os.fstat(source.fileno())) != before:
+                    raise ValueError("Selected source changed while reading")
+        finally:
+            os.close(parent)
 
-    async def search_text(self, text: str, path_prefix: str = "", max_results: int = 50) -> dict[str, Any]:
-        """Search literal text, returning bounded source lines and content hashes."""
+    def _source_absence(self, path: str) -> tuple[str, tuple[int, ...]] | None:
+        parts = self._parts(path)
+        parent = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            self._check_descriptor(parent)
+            for ordinal, name in enumerate(parts):
+                try:
+                    os.stat(name, dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    return "/".join(parts[: ordinal + 1]), _source_stamp(os.fstat(parent))
+                if ordinal == len(parts) - 1:
+                    return None
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                os.close(parent)
+                parent = child
+                if os.fstat(parent).st_uid != os.geteuid():
+                    raise ValueError("Selected source directory ownership changed")
+                self._check_descriptor(parent)
+                if _descriptor_path(parent) != self.root.joinpath(*parts[: ordinal + 1]):
+                    raise ValueError("Selected source directory has a case or path alias")
+        except OSError:
+            raise ValueError("Selected source is unreadable or linked") from None
+        finally:
+            os.close(parent)
+        return None
+
+    async def _inventory(self, prefix: str = "") -> tuple[list[tuple[str, tuple[int, ...]]], str]:
+        prefix = "/".join(self._parts(prefix)) if prefix else ""
+        if _source_root_identity(self.root) != self._source_root:
+            raise ValueError("Workspace identity changed")
+        selected: dict[str, tuple[int, ...]] = {}
+        absent: dict[str, tuple[str, str | None, tuple[str, tuple[int, ...]]]] = {}
+        rule_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+        async def accept(path: str) -> None:
+            if prefix and path != prefix and not path.startswith(prefix + "/"):
+                return
+            if path in selected:
+                raise ValueError("Selected source contains duplicate paths")
+            with self._source_file(path) as source:
+                selected[path] = _source_stamp(os.fstat(source.fileno()))
+            await asyncio.sleep(0)
+
+        metadata = self.repository_root / ".git"
+        if metadata.exists() or metadata.is_symlink():
+            if metadata.is_symlink() or not (metadata.is_dir() or metadata.is_file()):
+                raise ValueError("Git metadata is unavailable; filesystem fallback is forbidden")
+            from firefly_forge import checkpoint_source_identity
+
+            rule_hash += hashlib.sha256(Path(checkpoint_source_identity.__file__).read_bytes()).hexdigest()
+
+            async def receive(entry: checkpoint_source_identity.SourceEntry) -> None:
+                if prefix and entry.path != prefix and not entry.path.startswith(prefix + "/"):
+                    return
+                if entry.path in selected or entry.path in absent:
+                    raise ValueError("Selected source contains duplicate paths")
+                if entry.mode is not None:
+                    witness = self._source_absence(entry.path)
+                    if witness is not None:
+                        absent[entry.path] = (entry.mode, entry.object_id, witness)
+                        await asyncio.sleep(0)
+                        return
+                await accept(entry.path)
+
+            await checkpoint_source_identity.stream_source_entries(self.root, receive)
+            for absent_path, (_, _, missing_witness) in absent.items():
+                if self._source_absence(absent_path) != missing_witness:
+                    raise ValueError("Tracked source absence changed during inventory")
+        else:
+            skipped = {".git", ".venv", "node_modules", "vendor", "__pycache__", "dist", "build"}
+
+            def unreadable_directory(error: OSError) -> None:
+                raise ValueError("Selected source directory is unreadable") from None
+
+            for directory, folders, files in os.walk(self.root, followlinks=False, onerror=unreadable_directory):
+                base = Path(directory)
+                folders[:] = sorted(
+                    name
+                    for name in folders
+                    if name.casefold() not in skipped and not _private_name(name) and not (base / name).is_symlink()
+                )
+                for name in sorted(files):
+                    path = base / name
+                    if name.casefold() not in skipped and not _private_name(name) and not path.is_symlink():
+                        await accept(path.relative_to(self.root).as_posix())
+        rows = sorted(selected.items())
+        view = hashlib.sha256()
+        view.update(json.dumps([self._scope_id(), prefix, rule_hash], separators=(",", ":")).encode())
+        for row in rows:
+            view.update(json.dumps(row, ensure_ascii=True, separators=(",", ":")).encode() + b"\n")
+        for absent_path, absence_record in sorted(absent.items()):
+            view.update(
+                json.dumps(["deleted", absent_path, absence_record], ensure_ascii=True, separators=(",", ":")).encode()
+                + b"\n"
+            )
+        if _source_root_identity(self.root) != self._source_root:
+            raise ValueError("Workspace identity changed")
+        return rows, view.hexdigest()
+
+    def _scope_id(self) -> str:
+        value = [
+            _source_root_identity(self.repository_root),
+            self._source_root,
+            self.root.relative_to(self.repository_root).as_posix(),
+        ]
+        return hashlib.sha256(json.dumps(value, separators=(",", ":")).encode()).hexdigest()
+
+    def _page_position(self, cursor: str | None, kind: str, query: Any, view: str) -> int:
+        if cursor is None:
+            return 0
+        if type(cursor) is not str or len(cursor) > 4096:
+            raise ValueError("Invalid source page cursor")
+        try:
+            raw = base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True)
+            value = json.loads(raw)
+            if base64.urlsafe_b64encode(_page_json(value)).decode() != cursor:
+                raise ValueError
+            if set(value) != {"version", "kind", "scope", "query", "view", "position"}:
+                raise ValueError
+            if (
+                type(value["version"]) is not int
+                or value["version"] != 1
+                or value["kind"] != kind
+                or value["scope"] != self._scope_id()
+            ):
+                raise ValueError
+            if value["query"] != hashlib.sha256(_page_json(query)).hexdigest():
+                raise ValueError
+            if type(value["position"]) is not int or not 0 <= value["position"] <= 2**53 - 1:
+                raise ValueError
+        except (ValueError, TypeError, KeyError, UnicodeError):
+            raise ValueError("Source page cursor or scope differs") from None
+        if value["view"] != view:
+            raise ValueError("Source page view changed; start a fresh cursor")
+        return int(value["position"])
+
+    def _page_cursor(self, kind: str, query: Any, view: str, position: int) -> str:
+        value = {
+            "version": 1,
+            "kind": kind,
+            "scope": self._scope_id(),
+            "query": hashlib.sha256(_page_json(query)).hexdigest(),
+            "view": view,
+            "position": position,
+        }
+        return base64.urlsafe_b64encode(_page_json(value)).decode()
+
+    async def list_files(self) -> list[str]:
+        """Return the exhaustive internal source inventory; model callers use explicit pages."""
+        rows, _ = await self._inventory()
+        return [name for name, _ in rows]
+
+    async def list_files_page(
+        self, path_prefix: str = "", cursor: str | None = None, page_size: int = 100
+    ) -> dict[str, Any]:
+        """Read a bounded source page; continue its cursor until complete is true."""
+        if type(page_size) is not int or not 1 <= page_size <= 1000:
+            raise ValueError("Source page size must be an integer from 1 to 1000")
+        rows, view = await self._inventory(path_prefix)
+        query = [path_prefix, page_size, self.max_page_bytes]
+        position = self._page_position(cursor, "list", query, view)
+        if position > len(rows):
+            raise ValueError("Source page cursor exceeds its view")
+
+        def result(files: list[str]) -> dict[str, Any]:
+            end = position + len(files)
+            return {
+                "version": 1,
+                "files": files,
+                "view_sha256": view,
+                "complete": end == len(rows),
+                "next_cursor": self._page_cursor("list", query, view, end) if end < len(rows) else None,
+            }
+
+        files: list[str] = []
+        for name, _ in rows[position : position + page_size]:
+            candidate = [*files, name]
+            if len(json.dumps(result(candidate)).encode()) > self.max_page_bytes:
+                if not files:
+                    raise ValueError("Selected filename and cursor exceed one source response window")
+                break
+            files = candidate
+        value = result(files)
+        if (await self._inventory(path_prefix))[1] != view:
+            raise ValueError("Source page selection changed while listing")
+        if len(json.dumps(value).encode()) > self.max_page_bytes:
+            raise ValueError("Source page metadata exceeds the response window")
+        return value
+
+    async def source_manifest(self) -> dict[str, str]:
+        """Hash all eligible bytes, including binary and large files, without a page or text cutoff."""
+        rows, view = await self._inventory()
+        manifest: dict[str, str] = {}
+        for name, expected in rows:
+            digest = hashlib.sha256()
+            with self._source_file(name, expected) as source:
+                while chunk := source.read(65536):
+                    digest.update(chunk)
+                    await asyncio.sleep(0)
+            manifest[name] = digest.hexdigest()
+        if (await self._inventory())[1] != view:
+            raise ValueError("Source manifest selection changed while hashing")
+        return manifest
+
+    async def _search_file(
+        self, path: str, expected: tuple[int, ...], text: str, skip: int, window: int
+    ) -> tuple[list[dict[str, Any]], int, str]:
+        digest, decoder = hashlib.sha256(), codecs.getincrementaldecoder("utf-8")("strict")
+        classification = "text"
+        matches: list[dict[str, Any]] = []
+        count, number, length = 0, 1, 0
+        found, tail, snippet = False, "", ""
+
+        def line() -> None:
+            nonlocal count, number, length, found, tail, snippet
+            if found:
+                if count >= skip and len(matches) < window:
+                    matches.append(
+                        {"path": path, "line": number, "snippet": snippet, "snippet_truncated": length > 300}
+                    )
+                count += 1
+            number += 1
+            length, found, tail, snippet = 0, False, "", ""
+
+        def consume(value: str) -> None:
+            nonlocal length, found, tail, snippet
+            pieces = value.split("\n")
+            for i, piece in enumerate(pieces):
+                if i:
+                    line()
+                candidate = tail + piece
+                found = found or text in candidate
+                tail = candidate[-(len(text) - 1) :] if len(text) > 1 else ""
+                snippet += piece[: max(0, 300 - len(snippet))]
+                length += len(piece)
+
+        with self._source_file(path, expected) as source:
+            while chunk := source.read(65536):
+                digest.update(chunk)
+                if b"\x00" in chunk:
+                    classification = "binary"
+                if classification == "text":
+                    try:
+                        consume(decoder.decode(chunk))
+                    except UnicodeDecodeError:
+                        classification = "invalid_utf8"
+                await asyncio.sleep(0)
+            if classification == "text":
+                try:
+                    consume(decoder.decode(b"", final=True))
+                    line()
+                except UnicodeDecodeError:
+                    classification = "invalid_utf8"
+        if classification != "text":
+            return [], 0, classification
+        for match in matches:
+            match["sha256"] = digest.hexdigest()
+        return matches, count, classification
+
+    async def search_text(
+        self, text: str, path_prefix: str = "", max_results: int = 50, cursor: str | None = None
+    ) -> dict[str, Any]:
+        """Search complete selected UTF-8 source, with finite pages and explicit binary classification."""
         if not text or len(text) > 500 or "\x00" in text or "\n" in text:
             raise ValueError("Search text must contain 1..500 characters on one line")
         if type(max_results) is not int or not 1 <= max_results <= 100:
             raise ValueError("Search results must be bounded to 1..100")
-        prefix = "/".join(self._parts(path_prefix)) if path_prefix else ""
+        rows, view = await self._inventory(path_prefix)
+        query = [path_prefix, text, max_results, self.max_page_bytes]
+        position = self._page_position(cursor, "search", query, view)
         matches: list[dict[str, Any]] = []
-        total = 0
-        truncated = False
-        for path in await self.list_files():
-            if prefix and path != prefix and not path.startswith(prefix + "/"):
-                continue
-            try:
-                content = await self.read_file(path)
-            except (ValueError, OSError, UnicodeDecodeError):
-                continue
-            total += len(content.encode("utf-8"))
-            if total > 16_000_000:
-                truncated = True
+        count = 0
+        classifications = {"text": 0, "binary": 0, "invalid_utf8": 0}
+        for name, expected in rows:
+            found, total, kind = await self._search_file(
+                name, expected, text, max(0, position - count), max_results - len(matches)
+            )
+            classifications[kind] += 1
+            count += total
+            matches.extend(found)
+        if position > count:
+            raise ValueError("Search cursor exceeds its source view")
+        if (await self._inventory(path_prefix))[1] != view:
+            raise ValueError("Search source view changed while reading")
+
+        def result(items: list[dict[str, Any]]) -> dict[str, Any]:
+            end = position + len(items)
+            more = end < count
+            return {
+                "version": 1,
+                "matches": items,
+                "truncated": more,
+                "complete": not more,
+                "classifications": classifications,
+                "view_sha256": view,
+                "next_cursor": self._page_cursor("search", query, view, end) if more else None,
+            }
+
+        bounded: list[dict[str, Any]] = []
+        for match in matches:
+            candidate = [*bounded, match]
+            if len(json.dumps(result(candidate)).encode()) > self.max_page_bytes:
+                if not bounded:
+                    raise ValueError("Selected match and cursor exceed one source response window")
                 break
-            digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-            for number, line in enumerate(content.splitlines(), 1):
-                if text not in line:
-                    continue
-                if len(matches) == max_results:
-                    truncated = True
-                    break
-                matches.append({"path": path, "line": number, "snippet": line[:300], "sha256": digest})
-            if truncated:
-                break
-        return {"matches": matches, "truncated": truncated}
+            bounded = candidate
+        value = result(bounded)
+        if len(json.dumps(value).encode()) > self.max_page_bytes:
+            raise ValueError("Search page metadata exceeds the response window")
+        return value
 
     async def edit_lines(
         self, path: str, start_line: int, end_line: int, replacement: str, expected_sha256: str
@@ -318,10 +636,10 @@ class WorkspaceTools:
 
 
 _TOOL_DESCRIPTIONS = {
-    "list_files": "List confined project source paths",
+    "list_files": prompt_text("tools/list_files", version="1.0.1"),
     "read_file": "Read bounded UTF-8 project source",
     "write_file": "Write confined project source",
-    "search_text": "Search literal source text with file hashes",
+    "search_text": prompt_text("tools/search_text", version="1.0.1"),
     "edit_lines": "Edit lines with an expected source hash",
     "git_diff": "Read the component source diff without Git effects",
     "execute_command": "Execute bounded commands through the selected execution profile",

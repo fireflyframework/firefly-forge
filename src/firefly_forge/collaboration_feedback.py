@@ -34,7 +34,14 @@ def _text(value: object, safe: Callable[[str], str], limit: int = 1200, *, prese
     if preserve_word_slashes:
         path_pattern = r"(?<!\w)" + path_pattern
     value = re.sub(path_pattern, _copy()["redactions"]["path"], value)
-    value = re.sub(r"\b[A-Z][A-Z0-9_]*=\S+", _copy()["redactions"]["setting"], value)
+    return _escaped_text(_redact_settings(value), limit)
+
+
+def _redact_settings(value: str) -> str:
+    return re.sub(r"\b[A-Z][A-Z0-9_]*=\S+", _copy()["redactions"]["setting"], value)
+
+
+def _escaped_text(value: str, limit: int) -> str:
     result = []
     length = 0
     for character in " ".join(value.split()):

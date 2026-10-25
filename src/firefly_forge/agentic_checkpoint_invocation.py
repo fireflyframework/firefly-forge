@@ -18,13 +18,15 @@ from firefly_forge.agent_checkpoint_models import InvocationBinding
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint, OriginalCompletion
 from firefly_forge.bridge_completions import BridgeCompletions, _cut, _outside_unit
+from firefly_forge.checkpoint_source_identity import git_head_identity, source_identity
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.journal import digest
 from firefly_forge.process import checked
 from firefly_forge.prompts import prompt_catalog
-from firefly_forge.sandbox import pack_workspace
+from firefly_forge.source_snapshot import git_index_identity
 
 FILE_TOOLS = frozenset({"list_files", "read_file", "write_file", "search_text", "edit_lines", "git_diff"})
+STATIC_TOOLS = FILE_TOOLS | {"execute_command", "knowledge_lookup", "read_run_evidence"}
 _current: ContextVar[CheckpointInvocation | None] = ContextVar("agentic_checkpoint_invocation", default=None)
 
 
@@ -54,9 +56,26 @@ def runtime_contract() -> str:
                 name: hashlib.sha256((root / name).read_bytes()).hexdigest()
                 for name in (
                     "agentic_runtime.py",
+                    "agent_restores.py",
+                    "agent_checkpoints.py",
                     "agentic_checkpoint_boundary.py",
                     "agentic_checkpoint_invocation.py",
+                    "checkpoint_source_identity.py",
+                    "source_snapshot.py",
+                    "source_diff_admission.py",
+                    "git_workspace.py",
+                    "workspace_tools.py",
                     "providers.py",
+                    "sandbox.py",
+                    "sandbox_command_slots.py",
+                    "journal.py",
+                    "runner_pool_worker.py",
+                    "sandbox_models.py",
+                    "sandbox_persistence.py",
+                    "runner_backends.py",
+                    "runner_factory_models.py",
+                    "runner_pool_models.py",
+                    "engine.py",
                 )
             },
         }
@@ -93,9 +112,22 @@ async def workspace_cut(store: Any, workspace: Path) -> dict[str, str]:
         raise ValueError("The retained owned workspace is unavailable")
     metadata = metadata_digest(workspace)
     head = await checked(trusted_git(["git", "rev-parse", "HEAD"]), workspace, env=git_environment())
-    _, source = pack_workspace(workspace, 16_777_216, registry=store.credential_registry())
-    if metadata_digest(workspace) != metadata:
-        raise ValueError("Workspace Git metadata changed during inspection")
+    index = git_index_identity(workspace)
+    head_identity = git_head_identity(workspace)
+    scanner = await store.source_patch_scanner()
+
+    async def finalize() -> None:
+        current_head = await checked(trusted_git(["git", "rev-parse", "HEAD"]), workspace, env=git_environment())
+        await scanner.revalidate()
+        if (
+            current_head != head
+            or metadata_digest(workspace) != metadata
+            or git_index_identity(workspace) != index
+            or git_head_identity(workspace) != head_identity
+        ):
+            raise ValueError("Workspace Git metadata changed during inspection")
+
+    source = await source_identity(workspace, scanner, finalize=finalize)
     return {"path": str(workspace.resolve()), "head": head, "metadata": metadata, "source": source}
 
 
@@ -127,8 +159,18 @@ class CheckpointInvocation:
         self, boundary: AgenticBoundary, brief: str, backend: str, frontend: str, context: Any, settings: Any
     ) -> Any:
         grants = context.allowed_tools
-        if grants is None or not grants or not set(grants) <= FILE_TOOLS or context.qa_references:
-            raise ValueError("Required checkpoints support only explicit static file-tool grants without QA state")
+        if grants is None or not grants or not set(grants) <= STATIC_TOOLS:
+            raise ValueError("Required checkpoints support only explicit static text-tool grants without QA state")
+        from firefly_forge.engine import Engine
+
+        try:
+            references_match = digest({"references": context.qa_references}) == digest(
+                {"references": Engine._qa_reference_descriptors(self.run)}
+            )
+        except (TypeError, ValueError):
+            references_match = False
+        if not references_match:
+            raise ValueError("Required checkpoints need the exact frozen textual QA reference descriptors")
         self.boundary = boundary
         if self.restored is not None:
             binding = self.restored.binding

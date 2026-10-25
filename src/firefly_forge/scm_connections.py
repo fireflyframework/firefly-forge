@@ -60,6 +60,10 @@ DEFINITIONS: dict[str, Data] = {
 }
 
 
+class ProviderDispatchRefused(ValueError):
+    """An opt-in local admission failed before provider HTTP dispatch."""
+
+
 @service
 class SCMConnections:
     def __init__(self, store: Store, directory: Path | None = None, *, client: httpx.AsyncClient | None = None) -> None:
@@ -320,6 +324,7 @@ class SCMConnections:
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         allowed_statuses = kwargs.pop("allowed_statuses", (200, 201))
         response_limit = kwargs.pop("response_limit", None)
+        before_dispatch = kwargs.pop("before_dispatch", None)
         provider = next(
             (
                 name
@@ -358,7 +363,12 @@ class SCMConnections:
 
         async with guard:
             if self._record(provider) != record:
-                raise ValueError("Application settings changed before provider dispatch; repeat with the current grant")
+                refusal = ProviderDispatchRefused if before_dispatch is not None else ValueError
+                raise refusal("Application settings changed before provider dispatch; repeat with the current grant")
+            if before_dispatch is not None:
+                await before_dispatch()
+                if self._record(provider) != record:
+                    raise ProviderDispatchRefused("Application settings changed during provider admission")
             try:
                 async with asyncio.timeout(20):
                     if self._client is not None:
