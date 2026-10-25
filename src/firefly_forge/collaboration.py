@@ -1933,9 +1933,14 @@ class Collaboration:
 
             host = self.scm._host(data["provider"]) if hasattr(self.scm, "_host") else ""
             conversation = data.get("conversation")
+            natural_status = (
+                bool(run)
+                and (data.get("natural_turn") or {}).get("resolution", {}).get("state") == "status"
+                and (data.get("natural_turn") or {}).get("decision", {}).get("intent") == "status"
+            )
 
             def native_card(current_run: Data) -> str:
-                if data.get("natural_turn") is not None:
+                if data.get("natural_turn") is not None and not natural_status:
                     from firefly_forge.scm_natural_feedback import natural_card
 
                     return natural_card(data, public_text, repository=repo, host=host)
@@ -2011,6 +2016,10 @@ class Collaboration:
                 except ValueError:
                     raise DeferredFeedbackChanged("The deferred feedback communication route changed") from None
                 drafted = {"body": retained["body"], "communication": retained["communication"]}
+            elif natural_status:
+                drafted = await self.communication_writer.write(
+                    run, message, public_text, conversation=conversation_input
+                )
             elif data.get("natural_turn") is not None:
                 drafted = {
                     "body": message,
@@ -2084,6 +2093,8 @@ class Collaboration:
                         "discarded_generation": drafted["communication"],
                     },
                 }
+            if natural_status and retained is None:
+                drafted["communication"]["natural_reply_source"] = "current_execution_facts"
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if retained is None and (
                 drafted["communication"]["mode"] == "ai"

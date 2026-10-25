@@ -323,6 +323,8 @@ Read `verification_handoff` on the run and its matching journal entries:
 
 Known failing checks become feedback for the allowed coding continuation. Completed does not establish product acceptance. Unknown command or continuation effects are held without automatic replay. A refusal before intent has its own `verification_handoff_refused` event and leaves the original question pending. Changed source, revoked authority, changed policy/provider or exhausted limits cannot authorize another coding task. Product decisions and credentials remain manual questions.
 
+Source revalidation keeps the recorded file metadata as its fast path. If only a selected file's `ctime` changes, forge streams a bounded rehash against that file's original retained SHA-256. It does not retimestamp files, refresh the baseline or accept a new payload. Device, inode, owner, group, mode, link count, size and modification time must still match; full metadata and path identity are checked again during the read. Changed content, other identity changes, links, path races or an exhausted inspection limit still hold verification. An observed metadata-only change does not identify which process caused it.
+
 ### Adopt one older paused request
 
 An authenticated native operator can explicitly adopt an older pending verification question. Read `GET /api/v1/runs/{run_id}/verification-handoffs/candidates?agent=codex`, selecting the configured provider explicitly. Review the returned source, command and configuration digests before admission.

@@ -22,8 +22,8 @@ def previous_profile():
 
 
 def test_protected_cleanup_has_a_distinct_current_profile():
-    assert qualification.REGISTRY_VERSION == 14
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v15"
+    assert V8_SEAL["registry_version"] < qualification.REGISTRY_VERSION
+    assert V8_SEAL["loader_profile"] != qualification.LOADER_PROFILE
 
 
 def test_registered_v8_remains_exact_historical_provenance_only():

@@ -94,6 +94,7 @@ def _status_progress_only(previous: Data, current: Data, decision: NaturalDecisi
         value = copy.deepcopy(context)
         for candidate in value["candidates"]:
             candidate.pop("run_status", None)
+            candidate.pop("current_facts", None)
         for key in ("selection", "candidate_ids", "selected_run_id"):
             value["status_context"].pop(key, None)
         return value
@@ -209,6 +210,7 @@ class SCMNaturalTasks:
                     **scope,
                     "run_id": run["id"],
                     "run_status": run["status"],
+                    "current_facts": communication_facts(run),
                     "delivery": await current_delivery_facts(self.store, journal, run),
                     "question_id": question.id if question else None,
                     "question_digest": projection.get("question_digest"),

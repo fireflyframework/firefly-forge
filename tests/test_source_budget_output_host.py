@@ -393,8 +393,8 @@ def test_current_v10_declares_entire_new_allowance_module_without_relabeling_his
     from firefly_forge import source_edit_qualification as qualification
     from firefly_forge.source_edit_supported_profiles import PROFILES
 
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v15"
-    assert qualification.REGISTRY_VERSION == 14
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v16"
+    assert qualification.REGISTRY_VERSION == 15
     assert len(qualification.LOADER_MODULES) == 22
     assert "source_budget_output.py" in qualification.LOADER_MODULES
     assert "known_completed_output_finite_activation" in qualification.SOURCE_BUDGET_CHECKS

@@ -9,8 +9,8 @@
 - Ground AI-written status in current verification facts, recorded reasons and next factory actions. Preserve historical checks as historical context and keep pending factory work separate from questions requiring a person.
 - Accept normal and blocked worker outcomes through atomic native completion custody, including restored checkpoints. Keep QA and Git delivery behind the exact accepted outcome and current authority.
 - Add explicit administrator acknowledgement of an unknown command for one separately bound verification continuation and its following coding/QA/Git lineage. Preserve the unknown row, spent ordinals, frozen command and repair budgets, and repeated current-actor checks.
-- Bind retained source-catalog manifests to their immutable hash and stable identity across checks. Keep full timestamp checks during bounded reads and reject changed payloads, paths, ownership, modes or links.
-- Register the measured V15 profile with 64 admission dependencies and 22 loader inputs, preserve all ten historical profile literals, and build fresh Studio 0.2.45 assets. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
+- Bind retained source-catalog manifests to their immutable hash and stable identity across checks. For file ctime-only changes, stream a bounded rehash against the original payload SHA-256 without refreshing its baseline. Preserve other identity fields and full metadata checks during reads.
+- Register the measured V16 profile with 64 admission dependencies and 22 loader inputs, preserve all eleven historical profile literals, and build fresh Studio 0.2.45 assets. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
 
 ## 0.2.44 — 2026-10-25
 

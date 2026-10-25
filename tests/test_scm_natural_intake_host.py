@@ -45,6 +45,32 @@ async def prepared(c, monkeypatch, *, intent="answer"):
     c.store.task_router = TaskRouting(profiles)
     await c.store.task_router.save(TaskRoutingInput(bindings={"communication": "natural"}))
     c.state["natural_calls"] = 0
+    if intent == "status":
+        import json
+
+        from communication_model_fixture import reviewed_model
+        from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+        def current_card(messages, info):
+            from firefly_forge.communication import CommunicationConversationV1, communication_facts
+
+            facts = communication_facts(
+                c.db["runs"][c.run_id].data,
+                conversation=CommunicationConversationV1(selection="run", language="en", linked_runs=1),
+            )
+            keys = list(facts)
+            decision = facts.get("decision")
+            card = {
+                "title": {"text": "Current execution", "fact_ids": ["state"]},
+                "paragraphs": [
+                    {"text": "Controlled current execution facts.", "fact_ids": keys[index : index + 4]}
+                    for index in range(0, len(keys), 4)
+                ],
+                "decision": {key: decision[key] for key in ("question", "context", "choices")} if decision else None,
+            }
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, json.dumps(card))])
+
+        c.collaboration.communication_writer.model = reviewed_model(current_card)
 
     async def classify(message, context, settings):
         c.state["natural_calls"] += 1

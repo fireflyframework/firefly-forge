@@ -402,6 +402,32 @@ async def test_native_ack_known_red_resume_round_two_qa_git_and_late_actor_revoc
 
         async def known_red(config, argv, *args, **kwargs):
             case.backend_calls.append(list(argv))
+            public = case.engine.workspaces / run_id / "partial.py"
+            raw, before = public.read_bytes(), public.stat()
+            await asyncio.sleep(0.002)
+            public.chmod(before.st_mode & 0o7777)
+            after = public.stat()
+            assert public.read_bytes() == raw
+            assert (
+                after.st_dev,
+                after.st_ino,
+                after.st_uid,
+                after.st_gid,
+                after.st_mode,
+                after.st_nlink,
+                after.st_size,
+                after.st_mtime_ns,
+            ) == (
+                before.st_dev,
+                before.st_ino,
+                before.st_uid,
+                before.st_gid,
+                before.st_mode,
+                before.st_nlink,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            assert after.st_ctime_ns != before.st_ctime_ns
             return ProcessResult(argv, 1, "Controlled known RED receipt; no unknown command result")
 
         case.backend.run = known_red

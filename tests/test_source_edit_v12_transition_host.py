@@ -30,7 +30,7 @@ def _declared_admission_names():
 
 def test_v12_retains_its_history_and_keeps_seven_earlier_profiles():
     profiles = q._profiles()
-    assert len(profiles) in {10, 11}
+    assert len(profiles) >= len(HISTORICAL_SEALS)
     assert [(p.version, p.loader_profile) for p in profiles[:7]] == [
         (n, f"codex-exec-restricted-source/v{n + 1}") for n in range(4, 11)
     ]

@@ -175,7 +175,7 @@ async def test_native_feedback_supplies_current_repository_and_host_to_the_link_
     import firefly_forge.scm_natural_feedback as module
 
     async with poll_case() as case:
-        _, receipt = await prepared(case, monkeypatch, intent="status")
+        _, receipt = await prepared(case, monkeypatch, intent="dialogue")
         original = module.natural_card
         seen = []
 
