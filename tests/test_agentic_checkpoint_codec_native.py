@@ -1,6 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Prepared isolated SQL custody/SDK controls; no real provider or original CRM access."""
 
+import base64
 import hashlib
 import json
 from uuid import uuid4
@@ -26,7 +27,9 @@ async def compressed_for(body):
     for message in record["history"]:
         for part in message["parts"]:
             if isinstance(part.get("content"), str):
-                part["content"] = "Fictional native codec history.\n" * 6000
+                part["content"] = base64.b64encode(
+                    hashlib.shake_256(b"fictional-native-shared-history").digest(100000)
+                ).decode()
     record["request_history"] = record["history"]
     raw = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     assert len(raw) > MAX_PAYLOAD
@@ -50,7 +53,7 @@ async def test_native_compressed_checkpoint_consumes_once_and_retains_encoded_wa
         assert Journal.verify_chain(entries)
         record = next(r for r in entries if r["kind"] == "agent_checkpoint")
         assert record["payload"]["snapshot"].encode() == checkpoint.payload
-        assert json.loads(record["payload"]["snapshot"])["version"] == 2
+        assert json.loads(record["payload"]["snapshot"])["version"] == 3
         assert sum(r["kind"] == "agent_consume" for r in entries) == 1
 
 
@@ -61,7 +64,16 @@ async def test_native_compressed_journal_current_credential_refuses_normal_and_a
         scope = AgentCheckpoints(completions).scope(run, task, capture=lambda wire: checkpoint)
         await scope.admit(descriptor, body)
         store.credential_registry = lambda: store.configuration.resolve("bridge")
-        store.configuration.update("bridge", ProviderConfiguration(values={"token": "Fictional native codec history."}))
+        store.configuration.update(
+            "bridge",
+            ProviderConfiguration(
+                values={
+                    "token": base64.b64encode(
+                        hashlib.shake_256(b"fictional-native-shared-history").digest(100000)
+                    ).decode()[:64]
+                }
+            ),
+        )
         with pytest.raises(ValueError, match="configured credentials"):
             await journal.entries(run["id"])
         async with store._unit():
@@ -79,7 +91,7 @@ async def test_native_large_sdk_retained_response_restores_without_replacement_p
     async with native_restoration(store, tmp_path, monkeypatch) as env:
         entries = await env.journal.entries(env.run_id)
         encoded = [r["payload"]["snapshot"] for r in entries if r["kind"] == "agent_checkpoint"][-1]
-        assert json.loads(encoded)["version"] == 2
+        assert json.loads(encoded)["version"] == 3
         checkpoint = BoundaryCheckpoint.decode(encoded.encode(), hashlib.sha256(encoded.encode()).hexdigest())
         assert len(checkpoint.canonical_payload) > MAX_PAYLOAD
         with models.override_allow_model_requests(False), mock_model_requests(env.model):

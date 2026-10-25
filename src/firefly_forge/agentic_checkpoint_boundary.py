@@ -193,18 +193,42 @@ class _CompressedRecord(BaseModel):
         return value
 
 
+class _SharedHistoryRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    version: Literal[3]
+    codec: Literal["zlib-base64-shared-history"]
+    raw_bytes: int
+    raw_sha256: str
+    packed_bytes: int
+    data: str
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: Any) -> Any:
+        if type(value) is not int:
+            raise ValueError("Checkpoint envelope version must be an integer")
+        return value
+
+
 def _checkpoint_payload(raw: bytes) -> bytes:
     if not 1 <= len(raw) <= MAX_RAW_PAYLOAD:
         raise ValueError("Checkpoint raw record exceeds 8 MiB")
     if len(raw) <= COMPRESSION_THRESHOLD:
         return raw
+    record = _record(raw)
+    value = record.model_dump(mode="json")
+    if record.request_history != record.history or _encoded(value) != raw:
+        raise ValueError("Checkpoint shared history requires the exact canonical record")
+    value["request_history"] = "history"
+    packed = _encoded(value)
     return _encoded(
         {
-            "version": 2,
-            "codec": "zlib-base64",
+            "version": 3,
+            "codec": "zlib-base64-shared-history",
             "raw_bytes": len(raw),
             "raw_sha256": hashlib.sha256(raw).hexdigest(),
-            "data": base64.b64encode(zlib.compress(raw, level=9)).decode("ascii"),
+            "packed_bytes": len(packed),
+            "data": base64.b64encode(zlib.compress(packed, level=9)).decode("ascii"),
         }
     )
 
@@ -216,30 +240,60 @@ def _checkpoint_record(payload: bytes) -> bytes:
         value = json.loads(payload)
     except (ValueError, UnicodeDecodeError, RecursionError):
         raise ValueError("Checkpoint JSON encoding differs") from None
-    if type(value) is not dict or value.get("version") != 2:
+    if type(value) is not dict or value.get("version") not in (2, 3):
         return payload
+    envelope: _CompressedRecord | _SharedHistoryRecord
     try:
-        envelope = _CompressedRecord.model_validate_json(payload)
+        envelope = (
+            _SharedHistoryRecord.model_validate_json(payload)
+            if value["version"] == 3
+            else _CompressedRecord.model_validate_json(payload)
+        )
     except ValidationError:
         raise ValueError("Checkpoint compression envelope schema differs") from None
     if not 1 <= envelope.raw_bytes <= MAX_RAW_PAYLOAD:
         raise ValueError("Checkpoint raw record exceeds 8 MiB")
+    packed_bytes = envelope.packed_bytes if isinstance(envelope, _SharedHistoryRecord) else envelope.raw_bytes
+    if not 1 <= packed_bytes <= MAX_RAW_PAYLOAD:
+        raise ValueError("Checkpoint packed record exceeds 8 MiB")
     try:
         compressed = base64.b64decode(envelope.data, validate=True)
         inflater = zlib.decompressobj()
-        raw = inflater.decompress(compressed, envelope.raw_bytes + 1)
+        raw = inflater.decompress(compressed, packed_bytes + 1)
     except (binascii.Error, ValueError, zlib.error):
         raise ValueError("Checkpoint compression encoding differs") from None
     if (
-        len(raw) != envelope.raw_bytes
+        len(raw) != packed_bytes
         or not inflater.eof
         or inflater.unused_data
         or inflater.unconsumed_tail
-        or hashlib.sha256(raw).hexdigest() != envelope.raw_sha256
         or base64.b64encode(compressed).decode("ascii") != envelope.data
         or _encoded(envelope.model_dump(mode="json")) != payload
     ):
         raise ValueError("Checkpoint compression size, digest or canonical encoding differs")
+    if isinstance(envelope, _SharedHistoryRecord):
+        try:
+            value = json.loads(raw)
+            if (
+                type(value) is not dict
+                or set(value) != set(_Record.model_fields)
+                or type(value.get("history")) is not list
+                or value.get("request_history") != "history"
+                or _encoded(value) != raw
+            ):
+                raise ValueError("Checkpoint shared history representation differs")
+            # Check expanded size before allocating the full mirrored record.
+            history_bytes = len(_encoded(value["history"]))
+            if len(raw) - len(b'"history"') + history_bytes != envelope.raw_bytes:
+                raise ValueError("Checkpoint shared history expanded size differs")
+            value["request_history"] = value["history"]
+            raw = _encoded(value)
+        except (UnicodeDecodeError, RecursionError):
+            raise ValueError("Checkpoint shared history encoding differs") from None
+        except ValueError:
+            raise ValueError("Checkpoint shared history representation or size differs") from None
+    if len(raw) != envelope.raw_bytes or hashlib.sha256(raw).hexdigest() != envelope.raw_sha256:
+        raise ValueError("Checkpoint raw size or digest differs")
     return raw
 
 
@@ -263,8 +317,10 @@ class BoundaryCheckpoint:
     def decode(cls, payload: bytes, digest: str) -> BoundaryCheckpoint:
         if type(payload) is not bytes:
             raise ValueError("Checkpoint payload must be immutable bytes")
-        if not 1 <= len(payload) <= MAX_PAYLOAD or hashlib.sha256(payload).hexdigest() != digest:
-            raise ValueError("Checkpoint size or digest differs")
+        if not 1 <= len(payload) <= MAX_PAYLOAD:
+            raise ValueError(f"Checkpoint encoded size differs (bytes={len(payload)}, limit={MAX_PAYLOAD})")
+        if hashlib.sha256(payload).hexdigest() != digest:
+            raise ValueError("Checkpoint encoded digest differs")
         raw = _checkpoint_record(payload)
         record = _record(raw)
         if record.compatibility != _compatibility() or _encoded(record.model_dump(mode="json")) != raw:
