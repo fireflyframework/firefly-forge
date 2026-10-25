@@ -128,6 +128,8 @@ from firefly_forge.knowledge import (
 from firefly_forge.knowledge_first import KnowledgeFirst
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
+from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController
+from firefly_forge.known_worker_completions import KnownWorkerCompletions
 from firefly_forge.learning import LearningLedger
 from firefly_forge.learning_controllers import LearningController
 from firefly_forge.learning_observation_attempts import LearningObservationAttempts
@@ -866,6 +868,10 @@ class FactoryConfiguration:
         return BridgeCompletions(store, journal)
 
     @bean
+    def known_worker_completions(self, store: Store, journal: Journal) -> KnownWorkerCompletions:
+        return KnownWorkerCompletions(store, journal)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -1232,6 +1238,7 @@ def create_runtime(
         AgentCheckpointCandidateController,
         GitDeliveryPolicyController,
         GitDeliveryController,
+        KnownWorkerCompletionController,
         GitDiffArchive,
         GitDiffController,
         JournalController,
