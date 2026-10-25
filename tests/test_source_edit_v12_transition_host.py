@@ -28,11 +28,9 @@ def _declared_admission_names():
     return next(ast.literal_eval(n) for n in ast.walk(fn) if isinstance(n, ast.Tuple) and len(n.elts) >= 34)
 
 
-def test_v12_requires_new_authority_and_keeps_seven_historical_profiles():
-    assert q.REGISTRY_VERSION == 11
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v12"
+def test_v12_retains_its_history_and_keeps_seven_earlier_profiles():
     profiles = q._profiles()
-    assert len(profiles) in {7, 8}
+    assert len(profiles) in {8, 9}
     assert [(p.version, p.loader_profile) for p in profiles[:7]] == [
         (n, f"codex-exec-restricted-source/v{n + 1}") for n in range(4, 11)
     ]

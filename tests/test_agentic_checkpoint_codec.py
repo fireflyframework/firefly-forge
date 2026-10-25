@@ -104,7 +104,7 @@ async def test_actual_sdk_third_frame_compresses_and_restores_exact_request_with
             checkpoint.record.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode()
         assert len(raw) > MAX_PAYLOAD and len(checkpoint.payload) <= MAX_PAYLOAD
-        assert json.loads(checkpoint.payload)["version"] == 2
+        assert json.loads(checkpoint.payload)["version"] == 3
         assert checkpoint.usage.requests == checkpoint.usage.tool_calls == 2
         assert checkpoint.record.wire_bytes == len(posts[-1])
         assert checkpoint.wire_sha256 == hashlib.sha256(posts[-1]).hexdigest()
@@ -168,7 +168,22 @@ async def large_checkpoint():
         await FireflyAgent(
             name="large-codec", model=FunctionModel(model), auto_register=False, capabilities=[boundary]
         ).run("Fictional source line.\n" * 6000)
-    return captures[0]
+    import base64
+    import zlib
+
+    checkpoint = captures[0]
+    raw = checkpoint.canonical_payload
+    # Keep historical v2 decoder and corruption vectors independent of new writes.
+    payload, digest = reseal_envelope(
+        {
+            "version": 2,
+            "codec": "zlib-base64",
+            "raw_bytes": len(raw),
+            "raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "data": base64.b64encode(zlib.compress(raw, 9)).decode(),
+        }
+    )
+    return BoundaryCheckpoint.decode(payload, digest)
 
 
 def reseal_envelope(value):
@@ -460,7 +475,7 @@ def test_sub192k_raw_history_compresses_before_binding_and_json_escaping_exceed_
     )
     assert _size(legacy.model_dump(mode="json")) + 4096 > ENVELOPE_LIMIT
     encoded = _checkpoint_payload(raw)
-    assert json.loads(encoded)["version"] == 2
+    assert json.loads(encoded)["version"] == 3
     compressed = legacy.model_copy(
         update={"snapshot": encoded.decode(), "checkpoint_digest": hashlib.sha256(encoded).hexdigest()}
     )
@@ -486,7 +501,7 @@ async def test_large_actual_engine_sdk_checkpoint_restores_known_or_observed_ori
         checkpoint = BoundaryCheckpoint.decode(
             retained["payload"]["snapshot"].encode(), retained["payload"]["checkpoint_digest"]
         )
-        assert json.loads(checkpoint.payload)["version"] == 2 and len(checkpoint.canonical_payload) > MAX_PAYLOAD
+        assert json.loads(checkpoint.payload)["version"] == 3 and len(checkpoint.canonical_payload) > MAX_PAYLOAD
 
         async def snapshot(*a, **kw):
             return ["service.py"], controlled_source_snapshot("Fictional retained patch"), "c" * 40

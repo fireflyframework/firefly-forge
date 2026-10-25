@@ -5,6 +5,16 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.44
+
+The version-3 checkpoint codec stores identical native `history` and `request_history` arrays once before compression. Decoding reconstructs the complete canonical record, checks the expanded size before allocating the mirrored record, and verifies its full SHA-256. Version-1 raw records and version-2 compressed records remain readable with their original encoded identities. Restored model requests must still reproduce exact wire bytes, usage, limits and file-tool state; consumed results and completed tools are never replayed.
+
+Encoded-size refusals are distinct from digest refusals and do not expose record content. Capacity remains bounded: **192 KiB per encoded snapshot, 8 MiB per raw canonical record, 256 KiB per WAL envelope, and 4 MiB of per-run checkpoint/consume evidence**. Deduplication improves capacity for mirrored history; it cannot make arbitrary input fit those limits. A content-addressed, chunked overflow path remains pending. This release does not claim unlimited or complete enterprise history storage.
+
+The V13 profile has fresh native 250-case and SQL54/24/6 qualification on the measured protected source. The 22 loader inputs, 35 admission modules and 315 templates remain explicitly bound, with the prior eight profile literals and seals preserved. High-entropy, six-turn SDK tests cover exact next-request restoration, cumulative usage and one-use consumption; current credential and authority guards remain in force. These proofs do not establish completion of a generated CRM or a live product journey.
+
+Backend **0.2.44** intentionally ships the unchanged **Studio 0.2.42** source, compiled assets and captures. No UI refresh, new screenshot qualification or relabeled images is claimed. See [checkpoint recovery](recovery.md) for the remaining restoration and capacity boundaries.
+
 ## 0.2.43
 
 Command slots now come from a durable, atomic run/task/attempt cursor. Fresh service instances allocate a new invocation; an explicit ordinal retains exact replay semantics. Pending, unknown, interrupted or unowned effects hold further dispatch. Command-enabled graph restoration accepts canonical, fully completed durable v2 records only, checks their position before the selected checkpoint or after the matching consume, and preserves lifetime command and browser budgets.

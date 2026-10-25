@@ -2,6 +2,13 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.44 — 2026-10-25
+
+- Store equal native history arrays once in the version-3 lossless checkpoint codec, then reconstruct and hash the complete canonical record before restoration. Preserve version-1 raw and version-2 compressed snapshot readability and original encoded identities.
+- Report encoded-size and digest refusals separately without exposing record text. Keep the 192 KiB encoded snapshot, 8 MiB raw record, 256 KiB WAL envelope and 4 MiB per-run retention limits; chunked content-addressed overflow remains pending.
+- Bind fresh V13 native and SQL proof to the unchanged 22-loader/35-module admission closure, retaining all eight historical profile literals and seals. Exact-wire restoration, current credential checks, spent usage and one-use consumption remain guarded.
+- Keep backend 0.2.44 separate from the unchanged Studio 0.2.42 source, assets and captures. No interface refresh or unlimited-history claim accompanies this backend fix.
+
 ## 0.2.43 — 2026-10-24
 
 - Allocate command ordinals durably across service instances and restored graphs. Preserve exact explicit replay, unknown-effect holds and run-lifetime command budgets.
