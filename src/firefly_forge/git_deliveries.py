@@ -89,7 +89,12 @@ class GitDeliveries:
             actor = ProjectAccess.actor_snapshot(user)
         run = await self.store.get_run(run_id)
         policy = GitDeliveryPolicyV1.model_validate(run.get("git_delivery_policy") or {})
-        if not policy.enabled or run["status"] not in {"paused", "failed"} or run.get("git_failed_unit_adoption"):
+        if (
+            not policy.enabled
+            or run["status"] not in {"paused", "failed"}
+            or run.get("git_failed_unit_adoption")
+            or run.get("git_partial_source_checkpoint")
+        ):
             raise ValueError("Review a quiescent run with its original enabled checkpoint policy")
         await self._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
         active = self.engine.active.get(run_id)
@@ -148,6 +153,13 @@ class GitDeliveries:
         from firefly_forge.git_failed_unit_adoption import effective_policy
 
         policy = await effective_policy(self, current, actor=actor, writing=True)
+        partial = current.get("git_partial_source_checkpoint")
+        if partial:
+            from firefly_forge.git_partial_source_checkpoints import GitPartialSourceCheckpoints
+
+            if actor is None:
+                raise ValueError("Partial source requires its current explicit actor")
+            await GitPartialSourceCheckpoints(self).guard(current, actor)
         if not policy.enabled or self.engine.stopping:
             raise ValueError("Intermediate Git delivery is disabled or the execution owner is draining")
         if self.authorization is None:
@@ -158,8 +170,10 @@ class GitDeliveries:
                 raise ValueError("Current project Git delivery consent is disabled")
             tasks = (await self.journal.plan(run_id))["tasks"]
             implementation = next((task for task in tasks if task["id"] == "implement"), None)
-            if not current.get("git_failed_unit_adoption") and (
-                implementation is None or implementation["status"] not in {"done", "paused"}
+            if (
+                not current.get("git_failed_unit_adoption")
+                and not partial
+                and (implementation is None or implementation["status"] not in {"done", "paused"})
             ):
                 raise ValueError("Git delivery requires a recorded closed implementation unit")
             if implementation is not None and implementation["status"] == "paused":
@@ -194,8 +208,7 @@ class GitDeliveries:
         if boundary is not self and current["status"] not in {"paused", "failed"}:
             raise ValueError("Explicit checkpointing requires a known quiescent paused or failed run")
         if (
-            current.get("bridge_completion_hold")
-            or current.get("implementation_pending")
+            ((current.get("bridge_completion_hold") or current.get("implementation_pending")) and not partial)
             or current.get("cancel_request", {}).get("status") == "requested"
             or (current.get("provider_recovery") or {}).get("status")
             in {"unknown", "executing", "needs_reconciliation"}
@@ -219,7 +232,15 @@ class GitDeliveries:
         return dict(final)
 
     async def _entries(self, run_id: str) -> list[Data]:
-        entries = await self.journal.entries(run_id)
+        run = await self.store.get_run(run_id)
+        if run.get("git_partial_source_checkpoint"):
+            from firefly_forge.git_partial_source_checkpoints import GitPartialSourceCheckpoints
+
+            # These rows stay internal; public methods project typed Git receipts, never model bodies.
+            # The source-frontier producer separately scans every decoded document with the real guard.
+            entries = await GitPartialSourceCheckpoints(self)._entries(run_id)
+        else:
+            entries = await self.journal.entries(run_id)
         verifier = getattr(self.journal, "verify_chain", None)
         if (
             not callable(verifier)
@@ -331,6 +352,9 @@ class GitDeliveries:
             raise ValueError("Keep a canonical checkpoint request identity before admission")
         async with self.locks.setdefault(run_id, asyncio.Lock()):
             run = await self.store.get_run(run_id)
+            partial = run.get("git_partial_source_checkpoint")
+            if partial and (final or request_id != partial.get("request_id")):
+                raise ValueError("Partial source has one unverified checkpoint request and no final-ready authority")
             from firefly_forge.git_failed_unit_adoption import effective_policy
 
             policy = await effective_policy(self, run, actor=actor, writing=True)
@@ -459,7 +483,7 @@ class GitDeliveries:
                     f"Checkpoint {run.get('active_task', 'implement')} unit {run.get('implementation_rounds', 1)} "
                     f"for forge run {run_id}"
                 )
-                if run.get("git_failed_unit_adoption"):
+                if run.get("git_failed_unit_adoption") or partial:
                     message = "[UNVERIFIED] " + message
                 await checked(
                     [
@@ -504,7 +528,7 @@ class GitDeliveries:
                     "pr_url": None,
                     "created_at": datetime.now(UTC).isoformat(),
                 }
-                if run.get("git_failed_unit_adoption"):
+                if run.get("git_failed_unit_adoption") or partial:
                     receipt["verification_status"] = "partial_unverified"
                 receipt["checkpoint_digest"] = delivery_digest(receipt)
                 await self._append(run_id, "git_delivery_receipt", key, receipt)
@@ -830,7 +854,9 @@ class GitDeliveries:
             source_tree=receipt["source_tree"],
             sequence=receipt["sequence"],
             changed_file_count=receipt["changed_file_count"],
-            implementation_disposition="failed" if run.get("git_failed_unit_adoption") else None,
+            implementation_disposition="failed"
+            if run.get("git_failed_unit_adoption") or run.get("git_partial_source_checkpoint")
+            else None,
         )
         await self.store.admit_credentials(context.model_dump())
         native = (
@@ -855,7 +881,7 @@ class GitDeliveries:
             raise ValueError("Selected checkpoint communication is held; no branch or draft PR was published")
         body = drafted["body"] + f"\n\n<!-- forge-git-delivery:{run_id} -->"
         title = drafted["body"].splitlines()[0].removeprefix("### ")[:100]
-        if run.get("git_failed_unit_adoption"):
+        if run.get("git_failed_unit_adoption") or run.get("git_partial_source_checkpoint"):
             title = "[UNVERIFIED] " + title[:87]
         await self.store.admit_credentials({"title": title, "body": body, "communication": evidence})
         await self._guard(run_id, run, actor, boundary=boundary)
