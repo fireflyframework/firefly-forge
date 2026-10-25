@@ -5,6 +5,8 @@ import copy
 from uuid import UUID
 
 import pytest
+from checkpoint_test_native_fixtures import checkpoint_native as checkpoint_native  # noqa: F401
+from scm_polling_native_fixtures import native_poll as native_poll  # noqa: F401
 from test_scm_maintain_ticket_native import maintain_ticket as maintain_ticket  # noqa: F401
 
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
