@@ -129,3 +129,37 @@ Read `client.git_delivery_request(failed_run_id, request["request_id"])` to foll
 The original run remains failed, with its task, pending graph markers, consumed responses, tool receipts, command ordinals and spent budgets intact. Only its source-delivery history advances. After a confirmed remote checkpoint, select that exact `source_checkpoint` in a new test or maintain admission as described above. The child gets a new identity and independently admitted settings; it never receives the failed session's consumed results as execution authority.
 
 This first slice does not settle a write or command made after the latest stored source frontier. Such source remains quarantined until a supported native recovery path can prove its effects. It does not add a button to bypass a hold, reset a budget or declare the product complete.
+
+## Settle a known worker output without replay
+
+A retained HTTP result and consume record do not by themselves establish that
+an implementation finished. The native known-worker settlement API accepts
+only a complete current-contract HTTP/checkpoint/consume closure whose declared
+final JSON or output tool matches the exact stored typed worker feedback.
+Unknown, incomplete, ambiguous or changed custody refuses. This first version
+supports direct HTTP consume-v1; restored consume-v2 requires its separate
+restore-ticket proof. A normal report without worker feedback is also outside
+this first settlement path; it must not be replaced with invented feedback.
+
+Review `GET /api/v1/runs/{run_id}/worker-completion-settlements/candidate`, then
+submit its exact hashes and explicit acknowledgments to
+`POST /api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`. The
+operator's current project/repository execution access, original execution
+identity, task attempt, provider/model scope and immutable journal cut are
+rechecked. `GET` on that request path returns its retained receipt under current
+authority and credential admission. Responses contain identities and hashes,
+not completion bodies, feedback text, prompts or configuration secrets.
+
+The transaction appends a typed immutable WAL receipt containing the original
+observed hold before projecting that exact hold as resolved and linking its
+receipt. Both changes commit or roll back together. It does not change run or
+task status, attempts, pending questions, implementation state, source, tool or
+provider allowances, usage or budgets. It does not resume a graph, run checks,
+publish Git changes or call a model. Those actions keep their existing consent
+and safety gates. Reusing the same request identity reads the known receipt;
+it never replays a consumed response.
+
+This path inherits the existing whole-journal and completion retention guards,
+including the legacy 10000-row/16MiB aggregate journal read boundary. It is not
+elastic storage or a scalable pinned-head reducer. It introduces no new
+project-sized count or aggregate ceiling and never admits a truncated closure.
