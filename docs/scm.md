@@ -1071,6 +1071,14 @@ resume, inherited parent grant, extra coding budget, or retry of an uncertain
 remote write. Unbound children, checkpoint tests and other project readers keep
 read-only lineage. Revoked or expired consent holds further notifications.
 
+A parent reached through native checkpoint lineage has two different identities:
+its run-creation receipt proves the derived run, while its authenticated SCM
+parent receipt proves the issue link. Configuration and every later notification
+revalidation resolve both stores and compare the same typed lineage, frozen
+source and current project/component/owner authority. The original creator is
+provenance, not a new execution grant. Newer status comments do not replace the
+retained parent, and no duplicate parent notification is needed.
+
 This first setup path is native API configuration. The natural coordinator does
 not yet create a maintenance unit or its communication binding from an issue
 request. Controlled host/native tests and a real GitHub acceptance trial are
