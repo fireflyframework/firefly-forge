@@ -29,6 +29,15 @@ async def test_old_ack_policy_and_original_unknown_custody_survive_only_explicit
     import firefly_forge.unknown_command_acknowledgements as acknowledgement
 
     c = unknown_case
+    c.store.configuration.update(
+        "bridge",
+        ProviderConfiguration(
+            values={
+                "endpoint": "https://bridge.example.test",
+                "token": "synthetic-mode-lineage-key",
+            }
+        ),
+    )
     c.store.run.data.update(agent="bridge", repair_budget=2)
     c.store.run.data.update(c.store.configuration.snapshot("bridge"))
     old_snapshot = c.store.run.data["config_revision"]

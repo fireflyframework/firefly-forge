@@ -57,6 +57,7 @@ def _cut(run: Data, field: str) -> str:
                 "admission",
                 field,
                 *(("checkpoint_mode_adoption",) if run.get("checkpoint_mode_adoption") else ()),
+                *(("original_selection_readmission",) if run.get("original_selection_readmission") else ()),
             )
         }
     )
@@ -246,7 +247,7 @@ class BridgeCompletions:
         task_id = "review" if review else "implement"
         key = task.get("idempotency_key")
         key = key if isinstance(key, str) else ""
-        from firefly_forge.checkpoint_mode_runtime import effective_revision
+        from firefly_forge.checkpoint_mode_runtime import effective_model_selection, effective_revision
 
         revision = effective_revision(frozen, field)
         revision = revision if isinstance(revision, str) else ""
@@ -259,9 +260,9 @@ class BridgeCompletions:
             "task_key": key,
             "config_field": field,
             "config_revision": revision,
-            "profile_id": (frozen.get("review_model_selection" if review else "model_selection") or {}).get(
-                "profile_id"
-            ),
+            "profile_id": (
+                effective_model_selection(frozen, "review_model_selection" if review else "model_selection") or {}
+            ).get("profile_id"),
             "scope_digest": _cut(frozen, field),
         }
 

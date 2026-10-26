@@ -131,6 +131,7 @@ nav:
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
       - Enable recovery for an older Bridge run: checkpoint-mode-adoption.md
+      - Restore an original provider selection: original-selection-readmission.md
       - Deploy and roll back: deployment.md
       - Cloud and infrastructure recipes: cloud-deployment.md
       - Application health and maintenance: application-operations.md

@@ -288,9 +288,13 @@ def prepare_worker_completion(
     previous_digest = invocation_id = None
     closures = []
     final = captured = None
-    from firefly_forge.checkpoint_mode_runtime import effective_revision
+    from firefly_forge.checkpoint_mode_runtime import (
+        effective_model_selection,
+        effective_public_config,
+        effective_revision,
+    )
 
-    config = run.get("execution_config") or {}
+    config = effective_public_config(run)
     endpoint = validate_endpoint(config.get("endpoint", ""))
     endpoint = endpoint if endpoint.endswith("/v1") else endpoint + "/v1"
     from firefly_forge.agentic_checkpoint_invocation import STATIC_TOOLS
@@ -312,7 +316,7 @@ def prepare_worker_completion(
             or original.task_attempt != task["attempt"]
             or original.project_id != run.get("project_id")
             or original.repository_id != run.get("repository_id")
-            or original.profile_id != (run.get("model_selection") or {}).get("profile_id")
+            or original.profile_id != (effective_model_selection(run) or {}).get("profile_id")
             or original.config_field != "config_revision"
             or original.config_revision != effective_revision(run)
             or original.scope_digest != _cut(run, "config_revision")

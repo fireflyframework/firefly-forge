@@ -151,6 +151,8 @@ from firefly_forge.oauth_provider_policy_controllers import OAuthProviderPolicyC
 from firefly_forge.oauth_provider_policy_persistence import OAuthProviderPolicyRepository
 from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
+from firefly_forge.original_selection_controllers import OriginalSelectionReadmissionController
+from firefly_forge.original_selection_readmissions import OriginalSelectionReadmissions
 from firefly_forge.persistence import (
     ForgeDeploymentRepository,
     ForgeEventRepository,
@@ -886,6 +888,12 @@ class FactoryConfiguration:
         return CheckpointModeAdoptions(store, journal, engine)
 
     @bean
+    def original_selection_readmissions(
+        self, store: Store, journal: Journal, engine: Engine
+    ) -> OriginalSelectionReadmissions:
+        return OriginalSelectionReadmissions(store, journal, engine)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -1255,6 +1263,7 @@ def create_runtime(
         KnownWorkerCompletionController,
         UnknownCommandAcknowledgementController,
         CheckpointModeAdoptionController,
+        OriginalSelectionReadmissionController,
         GitDiffArchive,
         GitDiffController,
         JournalController,

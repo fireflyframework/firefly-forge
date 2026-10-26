@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
     from firefly_forge.model_profiles import ModelProfileInput
+    from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
@@ -1405,6 +1406,24 @@ class ForgeClient:
 
     def get_checkpoint_mode_adoption(self, run_id: str, request_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/{self._id(request_id)}"))
+
+    def original_selection_candidate(self, run_id: str) -> dict[str, Any]:
+        run_id = self._recovery_identifier(run_id)
+        return dict(self.request("GET", f"runs/{run_id}/original-selection-readmissions/candidate"))
+
+    def request_original_selection_readmission(
+        self, run_id: str, request_id: str, request: OriginalSelectionReadmissionInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; after an uncertain response, read this same admission identity."""
+        from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        body = self._recovery_body(OriginalSelectionReadmissionInput, request)
+        return dict(self.request("POST", f"runs/{run_id}/original-selection-readmissions/{request_id}", json=body))
+
+    def get_original_selection_readmission(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/original-selection-readmissions/{request_id}"))
 
     def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
         if agent not in {"codex", "claude", "bridge", "agentic"}:

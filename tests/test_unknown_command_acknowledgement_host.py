@@ -37,6 +37,9 @@ async def unknown_case(command_case, monkeypatch, tmp_path):
     case.journal._worker_authority = access
     case.store.assert_campaign_current = access
     case.store.configuration = ConfigurationStore(tmp_path / "configuration")
+    case.store.configuration._write(
+        case.store.configuration.path, {"agentic": {"FORGE_AGENTIC_API_KEY": "synthetic-host-key"}}
+    )
     policy = FactoryToolPolicyInput(automatic_verification={"enabled": True, "max_continuations": 3})
     case.store.configuration._write(
         case.store.configuration.directory / "tool-policy.json",

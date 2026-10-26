@@ -1982,7 +1982,7 @@ class Journal:
             raise ValueError("An automatic retry cannot change the selected provider or model profile")
         inherited_mode = current.get("checkpoint_mode_adoption")
         if inherited_mode:
-            from firefly_forge.checkpoint_mode_runtime import prepared_mode
+            from firefly_forge.checkpoint_mode_runtime import execution_settings, prepared_mode
 
             prepared = prepared_mode(current)
             assert prepared is not None
@@ -1990,7 +1990,8 @@ class Journal:
                 raise ValueError("Checkpoint mode adoption keeps its original Bridge provider and model profile")
             if (
                 expected_provider_digest is not None
-                and digest({"agent": "bridge", "settings": prepared.effective_settings}) != expected_provider_digest
+                and digest({"agent": "bridge", "settings": execution_settings(self.store.configuration, current)})
+                != expected_provider_digest
             ):
                 raise ValueError("Explicit verification handoff provider snapshot changed")
         if agent is not None and agent not in {"codex", "claude", "bridge", "agentic"}:
@@ -2008,6 +2009,41 @@ class Journal:
                 raise ValueError("The chosen agent conflicts with this task's model profile")
             agent = selection["provider"]
         handoff = agent is not None
+        frozen_verification = (
+            verification_handoff_id is not None and agent in {None, current.get("agent")} and model_profile_id is None
+        )
+        configuration = None
+        selected_settings = None
+        if (agent is not None or frozen_verification) and not inherited_mode:
+            from firefly_forge.bridge_completions import _outside_unit
+            from firefly_forge.verification_models import validate_coding_readiness
+
+            _outside_unit()
+            selected_agent = agent or current["agent"]
+            selected_settings = (
+                self.store.configuration.load_snapshot(current["config_revision"])
+                if frozen_verification
+                else self.store.configuration.load_snapshot(selection["config_revision"])
+                if selection is not None
+                else self.store.configuration.resolve(selected_agent)
+            )
+            validate_coding_readiness(selected_agent, selected_settings)
+            if (
+                expected_provider_digest is not None
+                and digest({"agent": selected_agent, "settings": selected_settings}) != expected_provider_digest
+            ):
+                raise ValueError("Explicit verification handoff provider snapshot changed")
+            if not frozen_verification:
+                configuration = (
+                    {"config_revision": selection["config_revision"], "execution_config": selection["execution_config"]}
+                    if selection is not None
+                    else self.store.configuration.snapshot(selected_agent)
+                )
+        settings_generation = (
+            self.store.configuration.settings_generation
+            if agent is not None or frozen_verification or inherited_mode
+            else None
+        )
         ProjectAccess.require_provider_isolation(current, agent or current.get("agent"))
         await ProjectAccess(self.store).authorize_execution(current)
         if current.get("bridge_completion_hold"):
@@ -2058,6 +2094,11 @@ class Journal:
                     raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
+            if (
+                settings_generation is not None
+                and self.store.configuration.settings_generation is not settings_generation
+            ):
+                raise ValueError("The selected provider changed before resume admission")
             if inherited_mode:
                 from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
 
@@ -2169,28 +2210,14 @@ class Journal:
             old_agent = run.data.get("agent")
             selection_mode = (
                 "frozen"
-                if inherited_mode
+                if inherited_mode or frozen_verification
                 else "named_profile"
                 if selection is not None
                 else "legacy_provider"
                 if handoff
                 else "frozen"
             )
-            if agent is not None and not inherited_mode:
-                configuration = (
-                    {"config_revision": selection["config_revision"], "execution_config": selection["execution_config"]}
-                    if selection is not None
-                    else self.store.configuration.snapshot(agent)
-                )
-                if expected_provider_digest is not None:
-                    actual = digest(
-                        {
-                            "agent": agent,
-                            "settings": self.store.configuration.load_snapshot(configuration["config_revision"]),
-                        }
-                    )
-                    if actual != expected_provider_digest:
-                        raise ValueError("Explicit verification handoff provider snapshot changed")
+            if configuration is not None:
                 run.data = {
                     **run.data,
                     "agent": agent,

@@ -284,9 +284,9 @@ async def command_intent(
                 )
                 check_verification_authority(journal.store, current, intent)
                 if current["verification_handoff"]["status"] == "completed":
-                    from firefly_forge.verification_models import verification_provider
+                    from firefly_forge.verification_models import verification_provider_current
 
-                    if verification_provider(journal.store, current) != intent["provider_digest"]:
+                    if not verification_provider_current(journal.store, current, intent):
                         _refuse()
             if len(rows) >= policy.command_limit:
                 raise ValueError("Frozen total command budget is exhausted; attempts do not reset it")

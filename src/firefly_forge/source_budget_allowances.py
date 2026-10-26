@@ -269,6 +269,14 @@ def admission_contract_digest() -> str:
                 "checkpoint_mode_models.py",
                 "checkpoint_mode_proof.py",
                 "checkpoint_mode_runtime.py",
+                "original_selection_controllers.py",
+                "original_selection_models.py",
+                "original_selection_proof.py",
+                "original_selection_readmissions.py",
+                "original_selection_runtime.py",
+                "configuration.py",
+                "model_profiles.py",
+                "task_routing.py",
             )
         }
     )

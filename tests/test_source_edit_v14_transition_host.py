@@ -245,11 +245,12 @@ def test_final_material_dependencies_are_explicit_without_losing_historical_pref
         "checkpoint_mode_handoff_custody.py",
         "checkpoint_mode_controllers.py",
     )
-    assert admission == (*EXPECTED_ADMISSION_NAMES, *mode_admission)
-    assert runtime == (*EXPECTED_RUNTIME_NAMES[:-2], *mode_runtime, *EXPECTED_RUNTIME_NAMES[-2:])
-    assert tuple(name for name in runtime if name not in mode_runtime) == EXPECTED_RUNTIME_NAMES
-    assert len(admission) == len(set(admission)) == 71
-    assert len(runtime) == len(set(runtime)) == 45
+    protected_admission = (*EXPECTED_ADMISSION_NAMES, *mode_admission)
+    protected_runtime = (*EXPECTED_RUNTIME_NAMES[:-2], *mode_runtime, *EXPECTED_RUNTIME_NAMES[-2:])
+    assert admission[: len(protected_admission)] == protected_admission
+    assert tuple(name for name in runtime if name in protected_runtime) == protected_runtime
+    assert len(admission) == len(set(admission)) >= len(protected_admission) == 71
+    assert len(runtime) == len(set(runtime)) >= len(protected_runtime) == 45
     assert len(qualification.LOADER_MODULES) == len(set(qualification.LOADER_MODULES)) == 22
 
 

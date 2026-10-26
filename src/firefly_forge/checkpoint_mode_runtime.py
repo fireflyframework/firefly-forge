@@ -10,13 +10,16 @@ from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from firefly_forge.checkpoint_mode_models import CheckpointModeReceiptV1
 from firefly_forge.checkpoint_mode_proof import ADOPTION, CLAIM, required_settings
 from firefly_forge.journal import digest
 
 Data = dict[str, Any]
+
+if TYPE_CHECKING:
+    from firefly_forge.original_selection_runtime import PreparedOriginalSelection
 
 
 def effective_revision(run: Data, field: str = "config_revision") -> str | None:
@@ -34,6 +37,18 @@ def effective_revision(run: Data, field: str = "config_revision") -> str | None:
         raise ValueError("Mode adoption cannot replace the original frozen configuration")
     identifier(reference["request_id"])
     identifier(reference["execution_config_revision"])
+    selected = run.get("original_selection_readmission")
+    if selected is not None:
+        if set(selected) != {"request_id", "record_digest", "execution_config_revision", "policy_digest"}:
+            raise ValueError("Original selection requires an exact native readmission reference")
+        identifier(selected["request_id"])
+        identifier(selected["execution_config_revision"])
+        if selected["execution_config_revision"] in {
+            run.get("config_revision"),
+            reference["execution_config_revision"],
+        }:
+            raise ValueError("Original selection must preserve both prior immutable revisions")
+        return str(selected["execution_config_revision"])
     return str(reference["execution_config_revision"])
 
 
@@ -43,10 +58,14 @@ def execution_settings(configuration: Any, run: Data) -> dict[str, str]:
         if prepared is not None and prepared.record["run_id"] == run["id"]:
             if configuration.settings_generation is not prepared.settings_generation:
                 raise ValueError("The current provider settings changed after preparation")
-            return dict(prepared.effective_settings)
+            return dict(
+                prepared.selection.selected_settings if prepared.selection is not None else prepared.effective_settings
+            )
     from firefly_forge.bridge_completions import _outside_unit
 
     _outside_unit()
+    if run.get("original_selection_readmission"):
+        raise ValueError("The original selection must be prepared before resolving effective execution settings")
     original: dict[str, str] = configuration.load_snapshot(run["config_revision"])
     if not run.get("checkpoint_mode_adoption"):
         return original
@@ -65,6 +84,7 @@ class PreparedModeAdoption:
     effective_settings: dict[str, str] = field(repr=False)
     settings_generation: object = field(repr=False)
     tool_policy_digest: str
+    selection: PreparedOriginalSelection | None = field(default=None, repr=False)
 
 
 _CURRENT: ContextVar[PreparedModeAdoption | None] = ContextVar("forge_checkpoint_mode_adoption", default=None)
@@ -92,6 +112,24 @@ def prepared_mode(run: Data) -> PreparedModeAdoption | None:
     return prepared
 
 
+def effective_model_selection(run: Data, field: str = "model_selection") -> Data | None:
+    if field == "model_selection" and run.get("original_selection_readmission"):
+        prepared = prepared_mode(run)
+        if prepared is None or prepared.selection is None:
+            raise ValueError("The effective model selection requires its prepared native readmission")
+        return copy.deepcopy(prepared.selection.model_selection)
+    value = run.get(field)
+    return copy.deepcopy(value) if value is not None else None
+
+
+def effective_public_config(run: Data, field: str = "execution_config") -> Data:
+    if field == "execution_config" and run.get("original_selection_readmission"):
+        selection = effective_model_selection(run)
+        assert selection is not None
+        return copy.deepcopy(selection["execution_config"])
+    return copy.deepcopy(run.get(field) or {})
+
+
 def policy_digest() -> str:
     from firefly_forge.bridge_completions import _outside_unit
 
@@ -115,6 +153,7 @@ def policy_digest() -> str:
         "native_terminal_completions.py",
         "git_deliveries.py",
         "sandbox.py",
+        "sandbox_command_slots.py",
         "agent_restores.py",
     )
     return digest({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names})
@@ -142,6 +181,11 @@ async def assert_mode_actors(journal: Any, run: Data, entries: list[Data]) -> No
     record = prepared.record
     receipt = CheckpointModeReceiptV1.model_validate(record["payload"])
     candidate = receipt.candidate
+    mediated = run.get("original_selection_readmission") is not None
+    if mediated:
+        from firefly_forge.original_selection_runtime import assert_readmitted_current
+
+        await assert_readmitted_current(journal, run, entries, prepared)
     if (
         run.get("agent") != "bridge"
         or run.get("model_selection") is not None
@@ -150,8 +194,8 @@ async def assert_mode_actors(journal: Any, run: Data, entries: list[Data]) -> No
         or not any(e["digest"] == record["digest"] and e["kind"] == ADOPTION for e in entries)
         or run["checkpoint_mode_adoption"] != mode_reference(record)
         or candidate.original_scope_digest != continuation_scope(run)
-        or candidate.policy_digest != prepared.policy_digest
-        or candidate.acknowledgement_policy_digest != prepared.acknowledgement_policy_digest
+        or (not mediated and candidate.policy_digest != prepared.policy_digest)
+        or (not mediated and candidate.acknowledgement_policy_digest != prepared.acknowledgement_policy_digest)
         or journal.store.configuration.settings_generation is not prepared.settings_generation
         or digest(prepared.original_settings) != candidate.proof.original_settings_digest
         or digest(prepared.effective_settings) != candidate.proof.required_settings_digest
@@ -222,7 +266,16 @@ async def prepare_current_mode(journal: Any, run_id: str) -> PreparedModeAdoptio
     settings_generation = journal.store.configuration.settings_generation
     policy, acknowledgement = policy_digest(), acknowledgement_policy()
     original_settings = journal.store.configuration.load_snapshot(current["config_revision"])
-    selected_settings = execution_settings(journal.store.configuration, current)
+    selected_settings = journal.store.configuration.load_snapshot(
+        current["checkpoint_mode_adoption"]["execution_config_revision"]
+    )
+    if selected_settings != required_settings(original_settings):
+        raise ValueError("The original checkpoint mode snapshot changed")
+    if (
+        not current.get("original_selection_readmission")
+        and journal.store.configuration.resolve("bridge") != selected_settings
+    ):
+        raise ValueError("Only the original provider settings plus both required modes are admitted")
     from firefly_forge.tool_broker import tool_policy_snapshot
 
     tool_policy_digest = tool_policy_snapshot(journal.store.configuration)["digest"]
@@ -230,6 +283,16 @@ async def prepare_current_mode(journal: Any, run_id: str) -> PreparedModeAdoptio
         raise ValueError("Checkpoint mode configuration changed during preparation")
     async with journal.store._unit():
         entries = _entries(await journal.records.find_for_run(identifier(run_id)), run_id)
+    from firefly_forge.original_selection_runtime import prepare_readmitted_selection
+
+    selection = await prepare_readmitted_selection(journal, current, entries)
+    async with journal.store._unit():
+        if (
+            await journal.store.get_run(run_id) != current
+            or _entries(await journal.records.find_for_run(identifier(run_id)), run_id) != entries
+            or journal.store.configuration.settings_generation is not settings_generation
+        ):
+            raise ValueError("Checkpoint mode scope changed during configuration preparation")
         records = [
             e
             for e in entries
@@ -245,6 +308,7 @@ async def prepare_current_mode(journal: Any, run_id: str) -> PreparedModeAdoptio
             selected_settings,
             settings_generation,
             tool_policy_digest,
+            selection,
         )
         with mode_adoption_scope(prepared):
             await assert_mode_actors(journal, current, entries)
@@ -256,6 +320,13 @@ def provider_modes_match(store: Any, run: Data, intent: Data) -> bool:
     if prepared is None:
         return False
     receipt = CheckpointModeReceiptV1.model_validate(prepared.record["payload"])
+    if prepared.selection is not None and (
+        intent.get("request_id") == (run.get("worker_request") or {}).get("id")
+        and intent.get("agent") in {None, "bridge"}
+        and intent.get("provider_digest")
+        == digest({"agent": "bridge", "settings": prepared.selection.selected_settings})
+    ):
+        return store.configuration.settings_generation is prepared.settings_generation
     return (
         intent.get("id") == run.get("verification_handoff", {}).get("id")
         and intent.get("provider_digest") == receipt.candidate.proof.provider_digest
@@ -299,6 +370,10 @@ async def claim_adopted_intent(journal: Any, run: Any, task: Any, original: Any)
     if any(
         e["kind"] == CLAIM and e["idempotency_key"] == "checkpoint-mode-claim:" + receipt.request_id for e in entries
     ):
+        if run.data.get("original_selection_readmission"):
+            from firefly_forge.original_selection_runtime import claim_readmitted_intent
+
+            return await claim_readmitted_intent(journal, run, task, original, entries, prepared)
         return None
     if entries[-1]["digest"] != prepared.record["digest"]:
         raise ValueError("New execution evidence appeared after checkpoint mode admission")
@@ -336,6 +411,11 @@ def claimed_continuation(run: Data, entries: list[Any], continuation: Any) -> bo
     claims = [
         e for e in entries if e.kind == CLAIM and e.idempotency_key == "checkpoint-mode-claim:" + receipt.request_id
     ]
+    if run.get("original_selection_readmission"):
+        from firefly_forge.original_selection_runtime import current_claim
+
+        if not current_claim(run, [copy.deepcopy(e.data) for e in entries], prepared):
+            return False
     return (
         continuation.digest == proof.continuation_intent_digest
         and len(claims) == 1
