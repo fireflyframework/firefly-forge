@@ -30,9 +30,10 @@ def test_package_owns_measured_profile():
         "codex-exec-restricted-source/v15",
         "codex-exec-restricted-source/v16",
         "codex-exec-restricted-source/v17",
+        "codex-exec-restricted-source/v18",
         q.LOADER_PROFILE,
     }
-    assert len(profiles) == 14
+    assert len(profiles) == 15
     profile = registered_profile("codex-exec-restricted-source/v5")
     assert profile.profile_id == "codex-0163-darwin-arm64-source-v5"
     assert profile.executable_sha256 == "8813367285524ac798dd96d1b071aea30d58708c7226fd236cd275cf1cfdee31"
@@ -58,7 +59,7 @@ def test_historical_loader_and_policy_keep_their_exact_provenance():
     )
     assert profile.loader_hashes != q.loader_hashes()
     assert profile.loader_profile == "codex-exec-restricted-source/v5"
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v18"
+    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v19"
     assert profile.policy_digest == q.policy_digest()
     with pytest.raises(ValueError, match="qualified"):
         q.require_profile(profile)
@@ -91,8 +92,8 @@ def test_current_runtime_must_match_measured_profile_before_admission(measured_r
     profile = measured_runtime
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
     assert q.qualified_profile(identity, profile.model) == profile
-    assert profile.version == q.REGISTRY_VERSION == 17
-    assert profile.profile_id == "codex-0163-darwin-arm64-source-v18"
+    assert profile.version == q.REGISTRY_VERSION == 18
+    assert profile.profile_id == "codex-0163-darwin-arm64-source-v19"
     from firefly_forge.source_budget_allowances import admission_contract_digest
 
     assert profile.admission_contract_digest == admission_contract_digest()

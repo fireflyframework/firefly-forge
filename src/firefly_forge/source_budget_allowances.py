@@ -277,6 +277,7 @@ def admission_contract_digest() -> str:
                 "configuration.py",
                 "model_profiles.py",
                 "task_routing.py",
+                "persistence.py",
             )
         }
     )

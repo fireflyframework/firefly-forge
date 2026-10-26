@@ -37,6 +37,11 @@ Data = dict[str, Any]
 ZERO_HASH = "0" * 64
 LOCAL_TASKS = {"prepare", "implement", "verify", "checkpoint"}
 FAILURE_ALIASES = {"rate_limited": "rate_limit", "insufficient_credits": "quota", "missing_auth": "authentication"}
+RECOVERY_REASON = "Worker stopped without a durable receipt; inspect the retained source and external target"
+_RECOVERY_CLAIMS = {
+    "checkpoint_mode_claim": "checkpoint_mode_claim_digest",
+    "original_selection_claim": "original_selection_claim_digest",
+}
 
 
 def digest(data: Data) -> str:
@@ -48,6 +53,101 @@ def digest(data: Data) -> str:
 def _worker_message_key(kind: str, message_id: str) -> str:
     key = f"{kind}:{message_id}"
     return key if len(key) <= 64 else digest({"kind": kind, "id": message_id})
+
+
+def _recovery_generation(entries: list[Data], task_id: str, key: str) -> Data | None:
+    generations = [
+        entry
+        for entry in entries
+        if entry["task_id"] == task_id
+        and (
+            (entry["kind"] == "intent" and entry["idempotency_key"] == key)
+            or (
+                entry["kind"] in _RECOVERY_CLAIMS
+                and isinstance(entry["payload"], dict)
+                and entry["payload"].get("task_key") == key
+            )
+        )
+    ]
+    if any(
+        entry["kind"] in _RECOVERY_CLAIMS
+        and (type(entry["payload"].get("version")) is not int or entry["payload"].get("version") != 1)
+        for entry in generations
+    ):
+        raise ValueError("Recovery requires a native integer claim version")
+    return generations[-1] if generations else None
+
+
+def _recovery_history(entries: list[Data], task_id: str, key: str) -> list[Data]:
+    return [
+        entry
+        for entry in entries
+        if entry["kind"] == "recovery"
+        and entry["task_id"] == task_id
+        and (
+            entry["idempotency_key"] == key
+            or (isinstance(entry["payload"], dict) and entry["payload"].get("task_key") == key)
+        )
+    ]
+
+
+def _recovery_key(run_id: str, task_id: str, key: str, generation: Data) -> str:
+    return digest(
+        {
+            "version": 1,
+            "kind": "recovery",
+            "run_id": run_id,
+            "task_id": task_id,
+            "task_key": key,
+            "generation_digest": generation["digest"],
+        }
+    )
+
+
+def valid_recovery_annotation(record: Data, entries: list[Data], task_id: str, key: str) -> bool:
+    """Validate an observation against its own preceding native execution generation."""
+    try:
+        if (
+            not Journal.verify_chain(entries)
+            or record not in entries
+            or any(entry["run_id"] != record["run_id"] for entry in entries)
+            or record["kind"] != "recovery"
+            or record["task_id"] != task_id
+            or type(record["sequence"]) is not int
+        ):
+            return False
+        before = [entry for entry in entries if entry["sequence"] < record["sequence"]]
+        generation = _recovery_generation(before, task_id, key)
+        if record["payload"] == {"reason": RECOVERY_REASON}:
+            return bool(record["idempotency_key"] == key)
+        payload = record["payload"]
+        if (
+            generation is None
+            or not isinstance(payload, dict)
+            or type(payload.get("version")) is not int
+            or payload.get("observation") not in {"running", "needs_reconciliation"}
+        ):
+            return False
+        prior = _recovery_history(before, task_id, key)
+        previous = prior[-1] if prior else None
+        if payload["observation"] == "needs_reconciliation" and (
+            previous is None or previous["sequence"] >= generation["sequence"]
+        ):
+            return False
+        return bool(
+            record["idempotency_key"] == _recovery_key(record["run_id"], task_id, key, generation)
+            and payload
+            == {
+                "version": 1,
+                "reason": RECOVERY_REASON,
+                "task_key": key,
+                "generation": {name: generation[name] for name in ("kind", "idempotency_key", "digest")},
+                "previous_recovery_digest": previous["digest"] if previous else None,
+                "observation": payload["observation"],
+            }
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 @service
@@ -1882,24 +1982,99 @@ class Journal:
                 ):
                     continue
                 task = await self._task(run.id.hex, candidate.task_id)
-                if task.status != "running":
+                if task.status not in {"running", "needs_reconciliation"}:
                     continue
-                task.status = "needs_reconciliation"
-                await self.tasks.save(task)
-                if run.status not in TERMINAL:
+                entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                if not self.verify_chain(entries) or any(entry["run_id"] != run.id.hex for entry in entries):
+                    raise ValueError("Recovery requires an intact native journal")
+                key = task.data["idempotency_key"]
+                generation = _recovery_generation(entries, task.task_id, key)
+                for kind, pointer in _RECOVERY_CLAIMS.items():
+                    claims = [
+                        entry
+                        for entry in entries
+                        if entry["kind"] == kind
+                        and entry["task_id"] == task.task_id
+                        and isinstance(entry["payload"], dict)
+                        and entry["payload"].get("task_key") == key
+                    ]
+                    reference = task.data.get(pointer)
+                    if claims:
+                        if reference != claims[-1]["digest"]:
+                            raise ValueError("Recovery task claim reference changed")
+                    elif reference is not None:
+                        historical = [
+                            entry
+                            for entry in entries
+                            if entry["digest"] == reference
+                            and entry["kind"] == kind
+                            and entry["task_id"] == task.task_id
+                            and isinstance(entry["payload"], dict)
+                        ]
+                        prior = historical[0] if len(historical) == 1 else None
+                        prior_attempt = prior["payload"].get("attempt") if prior else None
+                        if (
+                            prior is None
+                            or generation is None
+                            or type(prior_attempt) is not int
+                            or not 0 < prior_attempt < task.attempt
+                            or prior["sequence"] >= generation["sequence"]
+                            or prior["payload"].get("task_key")
+                            != uuid.uuid5(uuid.NAMESPACE_URL, f"forge:{run.id.hex}:{task.task_id}:{prior_attempt}").hex
+                            or key
+                            != uuid.uuid5(uuid.NAMESPACE_URL, f"forge:{run.id.hex}:{task.task_id}:{task.attempt}").hex
+                        ):
+                            raise ValueError("Recovery historical claim reference changed")
+                history = _recovery_history(entries, task.task_id, key)
+                current = [
+                    entry
+                    for entry in history
+                    if (generation is None or entry["sequence"] > generation["sequence"])
+                    and valid_recovery_annotation(entry, entries, task.task_id, key)
+                ]
+                if current:
+                    if len(current) != 1:
+                        raise ValueError("Recovery generation has duplicate annotations")
+                    if task.status == "running":
+                        raise ValueError("Recovered task requires a fresh native execution generation")
+                    continue
+                previous = history[-1] if history else None
+                if previous is not None and generation is not None and previous["sequence"] >= generation["sequence"]:
+                    raise ValueError("Recovery generation has an invalid prior annotation")
+                if task.status == "needs_reconciliation" and (
+                    generation is None or previous is None or previous["sequence"] >= generation["sequence"]
+                ):
+                    continue
+                observation = task.status
+                payload: Data = {"reason": RECOVERY_REASON}
+                event_key = key
+                if generation is not None and (generation["kind"] in _RECOVERY_CLAIMS or previous is not None):
+                    event_key = _recovery_key(run.id.hex, task.task_id, key, generation)
+                    payload = {
+                        "version": 1,
+                        "reason": RECOVERY_REASON,
+                        "task_key": key,
+                        "generation": {name: generation[name] for name in ("kind", "idempotency_key", "digest")},
+                        "previous_recovery_digest": previous["digest"] if previous else None,
+                        "observation": observation,
+                    }
+                if any(entry["kind"] == "recovery" and entry["idempotency_key"] == event_key for entry in entries):
+                    raise ValueError("Recovery generation identity is already occupied")
+                if observation == "running":
+                    task.status = "needs_reconciliation"
+                    await self.tasks.save(task)
+                if observation == "running" and run.status not in TERMINAL:
                     run.status = "needs_reconciliation"
                     run.data = {**run.data, "status": run.status, "resume_existing": True, "updated_at": now()}
                     await self.store.run_records.save(run)
                 await self._append(
                     run.id.hex,
                     task.task_id,
-                    task.data["idempotency_key"],
+                    event_key,
                     "recovery",
-                    {
-                        "reason": (
-                            "Worker stopped without a durable receipt; inspect the retained source and external target"
-                        )
-                    },
+                    payload,
                 )
                 count += 1
             return count
@@ -1941,6 +2116,10 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        if current.get("bridge_completion_hold"):
+            raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
+        if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
+            raise ValueError("Bridge outcome requires reconciliation before resuming")
         from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
 
         async def selected() -> Data:

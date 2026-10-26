@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from firefly_forge.journal import Journal, digest
+from firefly_forge.journal import Journal, digest, valid_recovery_annotation
 
 Data = dict[str, Any]
 ADOPTION = "checkpoint_mode_adoption"
@@ -103,9 +103,7 @@ def prepare_adoption(
             len(tail) != 2
             or tail[-1]["kind"] != "recovery"
             or tail[-1]["task_id"] != "implement"
-            or tail[-1]["idempotency_key"] != key
-            or tail[-1]["payload"]
-            != {"reason": "Worker stopped without a durable receipt; inspect the retained source and external target"}
+            or not valid_recovery_annotation(tail[-1], entries, "implement", key)
         ):
             raise ValueError("Only the exact native startup recovery annotation is eligible")
         recovery = tail[-1]

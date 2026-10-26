@@ -13,7 +13,7 @@ from uuid import NAMESPACE_URL, uuid5
 from firefly_forge.checkpoint_mode_models import CheckpointModeReceiptV1
 from firefly_forge.checkpoint_mode_proof import required_settings
 from firefly_forge.configuration import public_settings
-from firefly_forge.journal import Journal, digest
+from firefly_forge.journal import Journal, digest, valid_recovery_annotation
 
 Data = dict[str, Any]
 READINESS_ERROR = "Configure FORGE_BRIDGE_URL and FORGE_BRIDGE_TOKEN before selecting the bridge"
@@ -111,9 +111,7 @@ def prepare_selection_readmission(
             len(tail) != 4
             or tail[-1]["kind"] != "recovery"
             or tail[-1]["task_id"] != "implement"
-            or tail[-1]["idempotency_key"] != key
-            or tail[-1]["payload"]
-            != {"reason": "Worker stopped without a durable receipt; inspect the retained source and external target"}
+            or not valid_recovery_annotation(tail[-1], entries, "implement", key)
         ):
             raise ValueError("Only one exact native startup annotation may follow the old mode claim")
         recovery = tail[-1]

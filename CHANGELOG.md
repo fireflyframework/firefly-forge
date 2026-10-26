@@ -13,7 +13,9 @@
 - Add explicit native checkpoint-mode adoption for an eligible older Bridge continuation that stopped before model dispatch. Retain the original provider revision, unfinished intents, source, unknown outcomes and spent budgets while admitting only stronger result-recovery and checkpoint settings.
 - Follow validated test and maintenance descendants when selecting current issue status, retaining the root conversation receipt and asking for clarification when current leaves are ambiguous.
 - Include the audited credential-scanner dependency closure in fixed workspace exports, preserve later native receipts after an accepted worker outcome, and withhold malformed historical verification requests from public facts.
-- Require fresh V17 source-profile measurements and preserve all twelve historical profile literals. Keep Studio 0.2.45 assets unchanged. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
+- Preserve the originally selected model profile for same-provider Bridge verification continuations and admit only a separately reviewed correction for an eligible retained selection failure before model dispatch. Keep the original configuration, claims, unknown outcomes and spent budgets intact.
+- Record restart recovery against the current intent or explicit readmission claim. Repair a missing annotation for an already held task without rewriting its state or replaying work. Refuse unresolved Bridge results before reading provider configuration.
+- Require fresh source-profile measurements and preserve every historical profile literal. Keep Studio 0.2.45 assets unchanged. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
 
 ## 0.2.44 — 2026-10-25
 

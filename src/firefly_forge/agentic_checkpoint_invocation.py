@@ -109,6 +109,7 @@ def runtime_contract() -> str:
                     "verification_handoffs.py",
                     "scm_authority_models.py",
                     "git_deliveries.py",
+                    "persistence.py",
                 )
             },
         }
