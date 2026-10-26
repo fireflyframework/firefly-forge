@@ -10,6 +10,8 @@ A delivery campaign coordinates the configured components of one product project
 
 Before launch, configure each component's source root, stack, dependency list and executable verification commands. Choose the coding provider and, when needed, a separate review provider. A campaign does not infer a customer's requirements or replace a reviewed product definition.
 
+Review the project's [execution window](campaign-execution-budgets.md) before launch. Each new campaign reserves a configurable number of child dispatches and parallel slots. When its dispatch window is exhausted, remaining children stay blocked until an authorized operator reviews the journal and grants an explicit renewal. Component count and execution capacity are separate settings.
+
 ## Launch and inspect
 
 Send an authenticated `POST /api/v1/projects/{project_id}/campaigns`:
@@ -128,7 +130,7 @@ Retry also requires `component_ids`, for example:
 {"request_id":"a5717fe447cc42379284a0e3e4386272","component_ids":["inventory-api"]}
 ```
 
-Each component allows three explicit retries. Repeating the same action request does not create another attempt. An active downstream component must stop before its upstream component can be retried. Resume does not answer a pending worker question or mark a failed component successful; answer the question or choose an explicit retry.
+For a campaign with an execution-budget receipt, each retry consumes another dispatch when the new child is released. Further retries require capacity in that campaign's reviewed window; its previous consumption remains recorded. Legacy campaigns without a budget receipt retain their three-retry contract. Repeating the same action request does not create another attempt. An active downstream component must stop before its upstream component can be retried. Resume does not answer a pending worker question or mark a failed component successful; answer the question or choose an explicit retry.
 
 An unfinished effect intent, uncertain publication or interrupted cancellation holds new releases. Inspect the child plan and reconcile its recorded effect using the existing run reconciliation controls. The coordinator never automatically repeats an unknown external effect. If a cancellation request stopped before its receipt, stop its recorded children and reconcile their journals first; explicit campaign resume then records the observed stopped outcome. Cancelled children still require an explicit retry to start again.
 

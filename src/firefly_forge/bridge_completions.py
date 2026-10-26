@@ -56,6 +56,8 @@ def _cut(run: Data, field: str) -> str:
                 "source_commit",
                 "admission",
                 field,
+                *(("checkpoint_mode_adoption",) if run.get("checkpoint_mode_adoption") else ()),
+                *(("original_selection_readmission",) if run.get("original_selection_readmission") else ()),
             )
         }
     )
@@ -225,6 +227,10 @@ class BridgeCompletions:
         if _cut(value, field) != _cut(frozen, field):
             raise AccessDenied("Bridge completion owner or source/configuration cut changed")
         await self._execution(value, reader)
+        if value.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+            await assert_active_mode(self.journal, value["id"])
         return value
 
     def scope(
@@ -241,7 +247,9 @@ class BridgeCompletions:
         task_id = "review" if review else "implement"
         key = task.get("idempotency_key")
         key = key if isinstance(key, str) else ""
-        revision = frozen.get(field)
+        from firefly_forge.checkpoint_mode_runtime import effective_model_selection, effective_revision
+
+        revision = effective_revision(frozen, field)
         revision = revision if isinstance(revision, str) else ""
         reader = CURRENT_PRINCIPAL.get()
         binding = {
@@ -252,9 +260,9 @@ class BridgeCompletions:
             "task_key": key,
             "config_field": field,
             "config_revision": revision,
-            "profile_id": (frozen.get("review_model_selection" if review else "model_selection") or {}).get(
-                "profile_id"
-            ),
+            "profile_id": (
+                effective_model_selection(frozen, "review_model_selection" if review else "model_selection") or {}
+            ).get("profile_id"),
             "scope_digest": _cut(frozen, field),
         }
 

@@ -3,22 +3,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
-import math
 import re
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from functools import lru_cache
+from itertools import chain
 from typing import Any, cast
 
+from firefly_forge.credential_text_stream import admission_documents, canonical_chunks, raw_documents, text_chunks
 from firefly_forge.secrets import credential_representations
 
 Data = dict[str, Any]
 MAX_HISTORY = 1024
 MAX_REPRESENTATIONS = 16384
-MAX_TEXT_BYTES = 1_048_576
-MAX_TOTAL_BYTES = 2_097_152
-MAX_WORK = 2_097_152
 
 
 class OAuthCredentialMatcher:
@@ -120,57 +121,44 @@ class OAuthCredentialMatcher:
         except (KeyError, TypeError, ValueError, OverflowError):
             raise ValueError("OAuth credential history cannot be authenticated") from None
 
-    @staticmethod
-    def _strings(value: Any) -> list[str]:
-        strings: list[str] = []
-        nodes = total = 0
-
-        def capture(item: str) -> None:
-            nonlocal total
-            try:
-                size = len(item.encode())
-            except UnicodeError:
-                raise ValueError("Credential admission requires valid Unicode text") from None
-            total += size
-            if size > MAX_TEXT_BYTES or total > MAX_TOTAL_BYTES:
-                raise ValueError("Credential admission exceeds its text bound")
-            strings.append(item)
-
-        def visit(item: Any, depth: int) -> None:
-            nonlocal nodes
-            nodes += 1
-            if nodes > 10000 or depth > 24:
-                raise ValueError("Credential admission exceeds its structural bound")
-            if isinstance(item, str):
-                capture(item)
-            elif isinstance(item, dict):
-                for key, element in item.items():
-                    visit(key, depth + 1)
-                    visit(element, depth + 1)
-            elif isinstance(item, (list, tuple)):
-                for element in item:
-                    visit(element, depth + 1)
-            elif item is None or isinstance(item, bool):
-                capture(json.dumps(item))
-            elif type(item) is int:
-                if item.bit_length() > 4096:
-                    raise ValueError("Credential admission exceeds its numeric bound")
-                capture(str(item))
-            elif type(item) is float:
-                if not math.isfinite(item):
-                    raise ValueError("Credential admission requires finite JSON scalars")
-                capture(json.dumps(item, allow_nan=False))
-            else:
-                raise ValueError("Credential admission requires bounded JSON data")
-
-        visit(value, 0)
-        if isinstance(value, (dict, list, tuple)):
-            capture(json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
-        return strings
-
     def contains(self, value: Any, packets: list[Data]) -> bool:
-        strings = self._strings(value)
-        return self._contains_strings(strings, packets)
+        scanner = _FingerprintScan(self, packets)
+        return any(scanner.feed(chunk) for chunk in admission_documents(value))
+
+    async def contains_async(
+        self,
+        value: Any,
+        packets: list[Data],
+        *,
+        check_chunk: Callable[[str | None], bool] | None = None,
+        check_canonical_chunk: Callable[[str | None], bool] | None = None,
+        verify_current: Callable[[], Awaitable[None]] | None = None,
+    ) -> bool:
+        scanner = _FingerprintScan(self, packets)
+        identity = hashlib.sha256()
+        phases = [(raw_documents(value), check_chunk)]
+        if isinstance(value, (dict, list, tuple)):
+            phases.append((chain(canonical_chunks(value), (None,)), check_canonical_chunk))
+        for documents, check in phases:
+            for chunk in documents:
+                _identity_chunk(identity, chunk)
+                for matched in scanner.steps(chunk):
+                    if matched:
+                        return True
+                    await asyncio.sleep(0)
+                if check is not None and check(chunk):
+                    return True
+                # Total work belongs to the receiver's cancellation/deadline policy.
+                # One text window, rather than the entire project, is synchronous.
+                await asyncio.sleep(0)
+        if verify_current is not None:
+            await verify_current()
+        final = hashlib.sha256()
+        for chunk in admission_documents(value):
+            _identity_chunk(final, chunk)
+        if not hmac.compare_digest(identity.digest(), final.digest()):
+            raise ValueError("Credential data changed during admission")
+        return False
 
     def contains_source_patch(self, patch: Any, packets: list[Data]) -> bool:
         from firefly_forge.source_patch_admission import SourcePatch
@@ -179,29 +167,66 @@ class OAuthCredentialMatcher:
             raise TypeError("Credential admission requires the typed bounded source patch")
         return self._contains_strings([patch.text], packets)
 
-    def _contains_strings(self, strings: list[str], packets: list[Data]) -> bool:
+    def _contains_strings(self, strings: Iterable[str], packets: list[Data]) -> bool:
+        scanner = _FingerprintScan(self, packets)
+        for value in strings:
+            for chunk in text_chunks(value):
+                if scanner.feed(chunk):
+                    return True
+            if scanner.feed(None):
+                return True
+        return False
+
+
+def _identity_chunk(identity: Any, chunk: str | None) -> None:
+    if chunk is None:
+        identity.update(b"\0")
+    else:
+        encoded = chunk.encode("utf-8")
+        identity.update(b"\1" + len(encoded).to_bytes(8, "big"))
+        identity.update(encoded)
+
+
+class _FingerprintScan:
+    def __init__(self, matcher: OAuthCredentialMatcher, packets: list[Data]) -> None:
         if len(packets) > MAX_HISTORY:
             raise ValueError("OAuth credential history exceeds its bound")
-        represented = [item for packet in packets for item in self._validated(packet)]
+        represented = [dict(item) for packet in packets for item in matcher._validated(packet)]
         if len(represented) > MAX_REPRESENTATIONS:
             raise ValueError("OAuth credential representations exceed their bound")
-        prefixes: dict[int, dict[str, list[Data]]] = {}
+        self.matcher = matcher
+        self.prefix_digest = lru_cache(maxsize=1024)(lambda value: matcher._digest(b"prefix", value))
+        self.prefixes: dict[int, dict[str, list[Data]]] = {}
         for item in represented:
-            prefixes.setdefault(item["prefix_length"], {}).setdefault(item["prefix"], []).append(item)
-        work = sum(max(0, len(value) - width + 1) for value in strings for width in prefixes)
-        if work > MAX_WORK:
-            raise ValueError("Credential admission exceeds its matching work bound")
-        hashed_bytes = 0
-        for value in strings:
-            for width, candidates in prefixes.items():
-                for start in range(max(0, len(value) - width + 1)):
-                    prefix = self._digest(b"prefix", value[start : start + width])
-                    for item in candidates.get(prefix, []):
-                        if start + item["length"] <= len(value):
-                            candidate = value[start : start + item["length"]]
-                            hashed_bytes += len(candidate.encode())
-                            if hashed_bytes > 16_777_216:
-                                raise ValueError("Credential admission exceeds its full matching bound")
-                            if hmac.compare_digest(self._digest(b"match", candidate), item["match"]):
-                                return True
-        return False
+            self.prefixes.setdefault(item["prefix_length"], {}).setdefault(item["prefix"], []).append(item)
+        self.length = max((item["length"] for item in represented), default=1)
+        self.tail = ""
+
+    def feed(self, chunk: str | None) -> bool:
+        return any(self.steps(chunk))
+
+    def steps(self, chunk: str | None) -> Iterator[bool]:
+        value = self.tail + (chunk or "")
+        work = 0
+        for width, candidates in self.prefixes.items():
+            # Delay starts until every authenticated representation can be checked.
+            # This avoids rescanning overlap or retaining an unbounded candidate list.
+            stop = max(0, len(value) - (width if chunk is None else self.length) + 1)
+            for start in range(stop):
+                prefix = self.prefix_digest(value[start : start + width])
+                work += width
+                for item in candidates.get(prefix, []):
+                    if start + item["length"] <= len(value):
+                        candidate = value[start : start + item["length"]]
+                        work += len(candidate)
+                        if hmac.compare_digest(self.matcher._digest(b"match", candidate), item["match"]):
+                            yield True
+                            return
+                        if work >= 65536:
+                            yield False
+                            work = 0
+                if work >= 65536:
+                    yield False
+                    work = 0
+        self.tail = "" if chunk is None else value[-(self.length - 1) :] if self.length > 1 else ""
+        yield False

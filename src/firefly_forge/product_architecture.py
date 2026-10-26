@@ -23,9 +23,9 @@ class ProductArchitecture(BaseModel):
     model_config = ConfigDict(extra="forbid")
     backend: Backend
     frontend: Frontend
-    components: list[ArchitectureComponent] = Field(min_length=1, max_length=30)
-    decisions: list[str] = Field(default_factory=list, max_length=30)
-    nonfunctional_requirements: list[str] = Field(default_factory=list, max_length=50)
+    components: list[ArchitectureComponent] = Field(min_length=1)
+    decisions: list[str] = Field(default_factory=list)
+    nonfunctional_requirements: list[str] = Field(default_factory=list)
     reviewed: bool = False
 
     @field_validator("decisions", "nonfunctional_requirements")

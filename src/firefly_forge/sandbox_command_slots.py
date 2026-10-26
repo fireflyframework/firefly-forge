@@ -207,6 +207,10 @@ async def command_intent(
     replay_only: bool = False,
 ) -> Data:
     assert_command_boundary()
+    from firefly_forge.unknown_command_acknowledgements import policy_digest as acknowledgement_policy_digest
+    from firefly_forge.unknown_command_proof import acknowledged_continuation, acknowledged_followup
+
+    acknowledgement_policy = acknowledgement_policy_digest()
     if task_id not in {"implement", "verify"} or type(attempt) is not int or not 1 <= attempt <= 100:
         raise ValueError("Command allocation requires an exact native task attempt")
     policy = validate_factory_pool(snapshot) if snapshot.get("mode") == "pool" else validate_sandbox_snapshot(snapshot)
@@ -252,11 +256,38 @@ async def command_intent(
         existing = values.get(execution_id)
         if existing is None:
             tasks = await journal.tasks.find_for_run(run.id)
-            if any(
-                not _complete(row, values[row.id.hex]) and not _recovered(row, values[row.id.hex], entries, tasks)
-                for row in rows
-            ):
-                _refuse()
+            for row in rows:
+                if _complete(row, values[row.id.hex]) or _recovered(row, values[row.id.hex], entries, tasks):
+                    continue
+                actor = acknowledged_followup(
+                    row, values[row.id.hex], entries, current, ordinal, acknowledgement_policy
+                )
+                if actor is not None:
+                    if task_id != "implement" or task.data.get("verification_handoff") != current.get(
+                        "verification_handoff", {}
+                    ).get("id"):
+                        _refuse()
+                else:
+                    actor = acknowledged_continuation(
+                        row, values, rows, entries, current, tasks, task_id, acknowledgement_policy
+                    )
+                    if actor is None:
+                        _refuse()
+                await ProjectAccess(journal.store).authorize_actor(actor, current.get("project_id"), "execute")
+                from firefly_forge.verification_models import check_verification_authority
+
+                intent = next(
+                    entry["payload"]
+                    for entry in entries
+                    if entry["kind"] == "verification_handoff_intent"
+                    and entry["payload"].get("id") == current["verification_handoff"]["id"]
+                )
+                check_verification_authority(journal.store, current, intent)
+                if current["verification_handoff"]["status"] == "completed":
+                    from firefly_forge.verification_models import verification_provider_current
+
+                    if not verification_provider_current(journal.store, current, intent):
+                        _refuse()
             if len(rows) >= policy.command_limit:
                 raise ValueError("Frozen total command budget is exhausted; attempts do not reset it")
         if replay_only and existing is None:

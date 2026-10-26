@@ -297,9 +297,48 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
     expected = json.loads(baseline["wire_json"])
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
-    # The communication task adds one routing binding; all other prior fields remain literal.
+    # Only the reviewed routing binding and campaign aggregate limit changes differ.
     assert bindings["maxProperties"] == 7
     bindings["maxProperties"] = 8
+    for name, model in [("launch_project_campaign", "CampaignLaunch"), ("retry_project_campaign", "CampaignRetry")]:
+        tool = next(tool for tool in expected["tools"] if tool["name"] == name)
+        components = tool["inputSchema"]["$defs"][model]["properties"]["component_ids"]
+        array = (
+            next(value for value in components["anyOf"] if value.get("type") == "array")
+            if "anyOf" in components
+            else components
+        )
+        assert array.pop("maxItems") == 50
     assert ListToolsResult(tools=previous).model_dump_json(by_alias=True, exclude_none=True) == json.dumps(
         expected, ensure_ascii=False, separators=(",", ":")
     )
+
+
+async def test_campaign_schemas_accept_large_explicit_selection_and_still_require_nonempty_lists():
+    from pydantic import ValidationError
+
+    from firefly_forge.project_campaigns import CampaignLaunch, CampaignRetry
+
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    for name, model, parameters, body in [
+        (
+            "launch_project_campaign",
+            CampaignLaunch,
+            {"project_id": PROJECT},
+            {"request_id": REQUEST, "brief": "Maintain explicit components"},
+        ),
+        (
+            "retry_project_campaign",
+            CampaignRetry,
+            {"project_id": PROJECT, "campaign_id": BINDING},
+            {"request_id": REQUEST},
+        ),
+    ]:
+        request = {**body, "component_ids": [f"component-{index}" for index in range(64)]}
+        assert model.model_validate(request).component_ids == request["component_ids"]
+        validator = Draft202012Validator(tools[name].input_schema)
+        validator.validate({**parameters, "request": request})
+        empty = {**body, "component_ids": []}
+        with pytest.raises(ValidationError):
+            model.model_validate(empty)
+        assert not validator.is_valid({**parameters, "request": empty})

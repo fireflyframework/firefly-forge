@@ -190,7 +190,16 @@ def delivery_case(tmp_path):
             previous = entry["digest"]
         return True
 
-    journal = SimpleNamespace(git_delivery_append=append, entries=entries, verify_chain=verify)
+    async def native_records(_run_id):
+        return [SimpleNamespace(kind=entry["kind"]) for entry in state["entries"]]
+
+    journal = SimpleNamespace(
+        git_delivery_append=append,
+        entries=entries,
+        verify_chain=verify,
+        store=store,
+        records=SimpleNamespace(find_for_run=native_records),
+    )
 
     def create():
         assert importlib.util.find_spec("firefly_forge.git_deliveries") is not None, (

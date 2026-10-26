@@ -526,4 +526,5 @@ async def execute_agentic(
                 raise ValueError("QA finding does not match its actual journey and state evidence")
         recorded_usage["qa_report"] = qa.model_dump(mode="json")
         recorded_usage["browser_evidence"] = list(evidence_records.values())
+    recorded_usage["runtime_report"] = result.output.model_dump(mode="json")
     return result.output.summary, recorded_usage

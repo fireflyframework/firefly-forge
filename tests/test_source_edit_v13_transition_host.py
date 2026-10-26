@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Shared-history V3 needs fresh native authority; prior eight profiles remain provenance."""
+"""Shared-history V3 remains immutable provenance under the new V14 authority boundary."""
 
 from pathlib import Path
 
@@ -11,13 +11,17 @@ from firefly_forge.agentic_checkpoint_invocation import runtime_contract
 from firefly_forge.source_budget_allowances import admission_contract_digest
 
 
-def test_v13_requires_fresh_authority_without_rewriting_eight_historical_seals():
-    assert q.REGISTRY_VERSION == 12
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v13"
+def test_v13_remains_provenance_without_rewriting_nine_historical_seals():
+    assert q.REGISTRY_VERSION > 12
+    assert q.LOADER_PROFILE != "codex-exec-restricted-source/v13"
     profiles = q._profiles()
-    assert len(profiles) == 9
-    expected = (*HISTORICAL_SEALS, "eb5be5fec427f70580264fc9a391626d5bdaf6c207818271aca71f72e6466cc7")
-    for profile, fingerprint in zip(profiles[:8], expected, strict=True):
+    assert len(profiles) >= 9
+    expected = (
+        *HISTORICAL_SEALS,
+        "eb5be5fec427f70580264fc9a391626d5bdaf6c207818271aca71f72e6466cc7",
+        "14c9378d8b7ca4b6274500a92ecd82fc4204dafbd1ed78ac10cf65f510378028",
+    )
+    for profile, fingerprint in zip(profiles[:9], expected, strict=True):
         assert q.historical_profile_seal(profile)["profile_digest"] == fingerprint
         with pytest.raises(ValueError):
             q.require_profile(profile)

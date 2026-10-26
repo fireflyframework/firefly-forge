@@ -472,7 +472,18 @@ class Engine:
                 )
             if run.get("component_snapshot"):
                 self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
-            if run.get("model_selection"):
+            if run.get("checkpoint_mode_adoption"):
+                from firefly_forge.checkpoint_mode_runtime import (
+                    execution_settings,
+                    mode_adoption_scope,
+                    prepare_current_mode,
+                )
+
+                prepared_mode = await prepare_current_mode(self.journal, identifier)
+                assert prepared_mode is not None
+                credential_scopes.enter_context(mode_adoption_scope(prepared_mode))
+                settings = execution_settings(self.store.configuration, run)
+            elif run.get("model_selection"):
                 if self.store.task_router is None or run["agent"] != run["model_selection"]["provider"]:
                     raise ValueError("The frozen implementation model profile is unavailable or inconsistent")
                 settings = self.store.task_router.profiles.validate_snapshot(run["model_selection"])
@@ -708,6 +719,13 @@ class Engine:
                         identifier, EvidenceQuery.model_validate(query), task_id="implement"
                     )
 
+                async def scoped_credential_admission(value: Any) -> None:
+                    await self.store.admit_credentials(value)
+                    if run.get("checkpoint_mode_adoption"):
+                        from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+                        await assert_active_mode(self.journal, identifier)
+
                 provider.configure_runtime(
                     scope_root=scope,
                     read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
@@ -750,7 +768,7 @@ class Engine:
                     if "browser_journey" in (grants or ()) and hasattr(provider, "image_input_capability")
                     else {"status": "unverified"},
                     credential_registry=self.credential_registry,
-                    credential_admission=self.store.admit_credentials,
+                    credential_admission=scoped_credential_admission,
                     internet_search=internet_search
                     if self.search and run.get("search_snapshot") and "internet_search" in (grants or ())
                     else None,
@@ -1280,8 +1298,12 @@ class Engine:
                         identifier, implementation_rounds=completed_rounds, implementation_pending=False
                     )
                     usage = safe_data(getattr(result, "usage", {}))
+                    if native_invocation is not None and not usage.get("runtime_report"):
+                        raise ReconciliationRequired("Native checkpoint output requires its normalized RuntimeReport")
                     (await self.store.update(identifier, summary=safe(result.summary), usage=usage))
-                    await self._worker_feedback(identifier, workspace, result, attempt, safe_data)
+                    await self._worker_feedback(
+                        identifier, workspace, result, attempt, safe_data, restoration=restored_receipt
+                    )
                 qa_report = (await self.store.get_run(identifier)).get("usage", {}).get("qa_report")
                 if qa_report is not None:
                     from firefly_forge.qa import QAReport
@@ -1309,6 +1331,10 @@ class Engine:
                     await self.provider_recoveries.complete(identifier, active_key)
                     recovery = None
                 active_key = None
+                if (await self.store.get_run(identifier)).get("bridge_completion_hold"):
+                    raise ReconciliationRequired(
+                        "Terminal output requires native settlement before Git or verification"
+                    )
                 if self.git_deliveries is not None:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
@@ -1509,7 +1535,14 @@ class Engine:
             credential_scopes.close()
 
     async def _worker_feedback(
-        self, identifier: str, workspace: Path, result: Any, attempt: int, safe_data: Callable[[Any], Any]
+        self,
+        identifier: str,
+        workspace: Path,
+        result: Any,
+        attempt: int,
+        safe_data: Callable[[Any], Any],
+        *,
+        restoration: Any = None,
     ) -> None:
         from pydantic import ValidationError
 
@@ -1553,7 +1586,9 @@ class Engine:
             retained_images = await archive.freeze(run, feedback, workspace, root)
         else:
             retained_images = None
-        if retained_images is not None:
+        if restoration is not None:
+            await self.journal.worker_feedback(identifier, feedback, evidence=retained_images, restoration=restoration)
+        elif retained_images is not None:
             await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
         else:
             await self.journal.worker_feedback(identifier, feedback)
@@ -1686,10 +1721,20 @@ class Engine:
         return await self._begin_task(identifier, task_id, workspace, secrets, failed_checks)
 
     async def _receipt(
-        self, identifier: str, key: str | None, evidence: dict[str, Any], *, checkpoint: dict[str, Any] | None = None
+        self,
+        identifier: str,
+        key: str | None,
+        evidence: dict[str, Any],
+        *,
+        checkpoint: dict[str, Any] | None = None,
+        terminal: Any = None,
+        prepared: bool = False,
     ) -> None:
         if self.journal and key:
-            await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
+            if prepared:
+                await self.journal._receipt(identifier, key, evidence, checkpoint=checkpoint, terminal=terminal)
+            else:
+                await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
 
     @staticmethod
     def component_directory(run: dict[str, Any], workspace: Path, *, create: bool = False) -> Path:
@@ -1927,6 +1972,12 @@ class Engine:
     async def _assert_delivery_tree(
         self, identifier: str, workspace: Path, settings: dict[str, str] | None = None
     ) -> None:
+        if self.journal:
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+            from firefly_forge.unknown_command_proof import assert_continuation_current
+
+            await assert_active_mode(self.journal, identifier)
+            await assert_continuation_current(self.journal, identifier)
         run = await self.store.get_run(identifier)
         if run.get("component_snapshot"):
             self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
@@ -1945,6 +1996,15 @@ class Engine:
             raise ValueError("Delivery requires approved independent review of this source tree")
 
     async def _checkpoint_commit(self, identifier: str, workspace: Path) -> None:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        if self.journal is None:
+            await self._checkpoint_commit_in_scope(identifier, workspace)
+            return
+        async with mode_execution_scope(self.journal, identifier):
+            await self._checkpoint_commit_in_scope(identifier, workspace)
+
+    async def _checkpoint_commit_in_scope(self, identifier: str, workspace: Path) -> None:
         await self._assert_delivery_tree(identifier, workspace)
         run = await self.store.get_run(identifier)
         if (
@@ -1969,6 +2029,10 @@ class Engine:
             )
             return
         if run["changed_files"]:
+            if self.journal:
+                from firefly_forge.unknown_command_proof import assert_continuation_current
+
+                await assert_continuation_current(self.journal, identifier)
             await checked(
                 [
                     "git",
@@ -2466,6 +2530,12 @@ class Engine:
         await self.assert_ownership()
         await self.store.admit_credentials(draft)
         await self.validated_workspace(identifier)
+        if self.journal:
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+            from firefly_forge.unknown_command_proof import assert_continuation_current
+
+            await assert_active_mode(self.journal, identifier)
+            await assert_continuation_current(self.journal, identifier)
         current = await self.store.get_run(identifier)
         await ProjectAccess(self.store).authorize_actor(actor, current.get("project_id"), "release")
         repository = await self.store.repository(current["repository_id"])
@@ -2533,6 +2603,18 @@ class Engine:
             if evidence["mode"] == "held":
                 raise ValueError("Selected publication communication is held")
             body = public_text(drafted["body"])
+            if self.journal:
+                from firefly_forge.unknown_command_proof import assert_continuation_current
+
+                risks = await assert_continuation_current(self.journal, identifier)
+                if risks:
+                    body += (
+                        "\n\nCommand custody: an operator explicitly acknowledged retained command custody "
+                        "for this bound continuation. Original command outcomes remain unchanged; "
+                        "this verification does not prove the original unknown command passed. Execution references: "
+                        + ", ".join(risks)
+                        + "."
+                    )
             title = (
                 body.splitlines()[0].removeprefix("### ")
                 if evidence["mode"] == "ai"
@@ -2565,6 +2647,14 @@ class Engine:
             ) from None
 
     async def publish(self, identifier: str, *, actor: dict[str, Any] | None = None) -> str:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        if self.journal is None:
+            return await self._publish(identifier, actor=actor)
+        async with mode_execution_scope(self.journal, identifier):
+            return await self._publish(identifier, actor=actor)
+
+    async def _publish(self, identifier: str, *, actor: dict[str, Any] | None = None) -> str:
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
             await self.store.execution_requests.request_publish(identifier)
             return ""

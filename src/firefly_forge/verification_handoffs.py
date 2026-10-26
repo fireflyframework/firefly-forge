@@ -137,6 +137,12 @@ class VerificationHandoffs:
         return run
 
     async def candidates(self, run_id: str, agent: str) -> Data:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async with mode_execution_scope(self.journal, run_id):
+            return await self._candidates(run_id, agent)
+
+    async def _candidates(self, run_id: str, agent: str) -> Data:
         if agent not in {"codex", "claude", "bridge", "agentic"}:
             raise ValueError("Choose an explicit configured coding provider")
         run = await self._operator(run_id)
@@ -186,6 +192,12 @@ class VerificationHandoffs:
         return dict(receipt)
 
     async def adopt(self, run_id: str, body: VerificationAdoption) -> Data:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async with mode_execution_scope(self.journal, run_id):
+            return await self._adopt(run_id, body)
+
+    async def _adopt(self, run_id: str, body: VerificationAdoption) -> Data:
         run = await self._operator(run_id)
         entries = await self.journal.entries(run_id)
         existing = next(
@@ -247,8 +259,10 @@ class VerificationHandoffs:
             return result
 
     async def execute(self, run_id: str) -> None:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
         # The active repository slot owns implementation; this existing lock excludes checkpoint writes.
-        async with self.engine.publication_lock:
+        async with self.engine.publication_lock, mode_execution_scope(self.journal, run_id):
             await self._execute(run_id)
 
     async def _execute(self, run_id: str) -> None:

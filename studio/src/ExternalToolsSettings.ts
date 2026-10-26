@@ -153,11 +153,7 @@ export function readProjects(value: unknown): ToolProject[] {
   return value.map((item) => {
     const p = record(item),
       d = record(p.definition);
-    if (
-      !id.test(String(p.id)) ||
-      !Array.isArray(d.components) ||
-      d.components.length > 50
-    )
+    if (!id.test(String(p.id)) || !Array.isArray(d.components))
       throw new Error("Project repository bindings could not be read.");
     return {
       id: p.id as string,

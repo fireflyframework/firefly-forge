@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import PurePosixPath
 from typing import Literal
 
@@ -33,7 +34,7 @@ class ProjectComponent(BaseModel):
     backend: Backend = "pyfly"
     frontend: Frontend = "none"
     verification: list[Command] = Field(default_factory=list, max_length=20)
-    depends_on: list[str] = Field(default_factory=list, max_length=50)
+    depends_on: list[str] = Field(default_factory=list)
     responsibility: str = Field(min_length=1, max_length=2000)
 
     @field_validator("path")
@@ -56,8 +57,8 @@ class ProjectDefinition(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
     topology: Literal["monorepo", "multi_repo"]
     product_repository_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
-    components: list[ProjectComponent] = Field(min_length=1, max_length=50)
-    owners: list[str] = Field(min_length=1, max_length=30)
+    components: list[ProjectComponent] = Field(min_length=1)
+    owners: list[str] = Field(min_length=1)
     roles: ProjectRoles | None = None
 
     @model_validator(mode="after")
@@ -74,32 +75,31 @@ class ProjectDefinition(BaseModel):
             raise ValueError("A monorepo's components share one registered repository")
         if self.topology == "multi_repo" and len(repositories) < 2:
             raise ValueError("A multi-repository product requires at least two registered repositories")
-        for index, first in enumerate(self.components):
-            for second in self.components[index + 1 :]:
-                if first.repository_id == second.repository_id and (
-                    first.path == "."
-                    or second.path == "."
-                    or first.path == second.path
-                    or first.path.startswith(second.path + "/")
-                    or second.path.startswith(first.path + "/")
-                ):
-                    raise ValueError("Components in one repository require distinct nonoverlapping roots")
+        # Segment order keeps a parent adjacent to its first descendant.
+        roots = sorted((component.repository_id, PurePosixPath(component.path).parts) for component in self.components)
+        for (first_repository, first), (second_repository, second) in zip(roots, roots[1:], strict=False):
+            if first_repository == second_repository and second[: len(first)] == first:
+                raise ValueError("Components in one repository require distinct nonoverlapping roots")
         visiting: set[str] = set()
         visited: set[str] = set()
-
-        def visit(component_id: str) -> None:
-            if component_id in visiting:
-                raise ValueError("Component delivery dependencies must not form cycles")
-            if component_id not in components:
-                raise ValueError("Delivery dependencies must reference this project's components")
-            if component_id in visited:
-                return
-            visiting.add(component_id)
-            for dependency in components[component_id].depends_on:
-                visit(dependency)
-            visiting.remove(component_id)
-            visited.add(component_id)
-
         for component in self.components:
-            visit(component.id)
+            if component.id in visited:
+                continue
+            visiting.add(component.id)
+            stack: list[tuple[str, Iterator[str]]] = [(component.id, iter(component.depends_on))]
+            while stack:
+                current, dependencies = stack[-1]
+                dependency = next(dependencies, None)
+                if dependency is None:
+                    visiting.remove(current)
+                    visited.add(current)
+                    stack.pop()
+                    continue
+                if dependency not in components:
+                    raise ValueError("Delivery dependencies must reference this project's components")
+                if dependency in visiting:
+                    raise ValueError("Component delivery dependencies must not form cycles")
+                if dependency not in visited:
+                    visiting.add(dependency)
+                    stack.append((dependency, iter(components[dependency].depends_on)))
         return self

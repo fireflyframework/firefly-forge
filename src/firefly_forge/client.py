@@ -22,11 +22,14 @@ if TYPE_CHECKING:
     from firefly_forge.analytics_models import AnalyticsConfigurationInput
     from firefly_forge.assistant_attachments import AttachmentInput
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
+    from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, CampaignExecutionPolicyInputV1
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+    from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
     from firefly_forge.model_profiles import ModelProfileInput
+    from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
     from firefly_forge.product_lifecycle import FeatureChangeInput
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
@@ -51,6 +54,7 @@ if TYPE_CHECKING:
     from firefly_forge.source_edit_models import SourceEditContinuationInput
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
+    from firefly_forge.unknown_command_models import UnknownCommandAcknowledgementV1
     from firefly_forge.user_administration import (
         AdministrationReconciliation,
         AdministrationRecovery,
@@ -1383,11 +1387,88 @@ class ForgeClient:
             raise ValueError("Worker image bytes do not match their retained hash and raster type")
         return bytes(data)
 
+    def checkpoint_mode_candidate(self, run_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/candidate"))
+
+    def request_checkpoint_mode_adoption(
+        self, run_id: str, request_id: str, request: CheckpointModeAdoptionInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
+
+        body = CheckpointModeAdoptionInput.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/{self._id(request_id)}",
+                json=body.model_dump(),
+            )
+        )
+
+    def get_checkpoint_mode_adoption(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/{self._id(request_id)}"))
+
+    def original_selection_candidate(self, run_id: str) -> dict[str, Any]:
+        run_id = self._recovery_identifier(run_id)
+        return dict(self.request("GET", f"runs/{run_id}/original-selection-readmissions/candidate"))
+
+    def request_original_selection_readmission(
+        self, run_id: str, request_id: str, request: OriginalSelectionReadmissionInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; after an uncertain response, read this same admission identity."""
+        from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        body = self._recovery_body(OriginalSelectionReadmissionInput, request)
+        return dict(self.request("POST", f"runs/{run_id}/original-selection-readmissions/{request_id}", json=body))
+
+    def get_original_selection_readmission(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"runs/{run_id}/original-selection-readmissions/{request_id}"))
+
     def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
         if agent not in {"codex", "claude", "bridge", "agentic"}:
             raise ValueError("Choose an explicit configured coding provider")
         return dict(
             self.request("GET", f"runs/{self._id(run_id)}/verification-handoffs/candidates", params={"agent": agent})
+        )
+
+    def unknown_command_acknowledgement_candidate(
+        self, run_id: str, execution_id: str, *, agent: str, adoption_request_id: str
+    ) -> dict[str, Any]:
+        if agent not in {"codex", "claude", "bridge", "agentic"}:
+            raise ValueError("Choose an explicit configured coding provider")
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{self._id(run_id)}/sandbox-executions/{self._id(execution_id)}/unknown-command-acknowledgements/candidate",
+                params={"agent": agent, "adoption_request_id": self._id(adoption_request_id)},
+            )
+        )
+
+    def acknowledge_unknown_command(
+        self,
+        run_id: str,
+        execution_id: str,
+        request_id: str,
+        request: UnknownCommandAcknowledgementV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        from firefly_forge.unknown_command_models import UnknownCommandAcknowledgementV1
+
+        body = UnknownCommandAcknowledgementV1.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._id(run_id)}/sandbox-executions/{self._id(execution_id)}/unknown-command-acknowledgements/{self._id(request_id)}",
+                json=body.model_dump(),
+            )
+        )
+
+    def unknown_command_acknowledgement(self, run_id: str, execution_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{self._id(run_id)}/sandbox-executions/{self._id(execution_id)}/unknown-command-acknowledgements/{self._id(request_id)}",
+            )
         )
 
     def adopt_verification_handoff(self, run_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1454,6 +1535,41 @@ class ForgeClient:
 
     def project_campaigns(self, project_id: str) -> list[dict[str, Any]]:
         return list(self.request("GET", f"projects/{self._id(project_id)}/campaigns"))
+
+    def campaign_execution_policy(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"projects/{self._id(project_id)}/campaign-execution-policy"))
+
+    def save_campaign_execution_policy(
+        self, project_id: str, request: CampaignExecutionPolicyInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.campaign_execution_budget import CampaignExecutionPolicyInputV1
+
+        try:
+            body = CampaignExecutionPolicyInputV1.model_validate(request)
+        except ValueError:
+            raise ValueError(
+                "Use an exact project policy request, previous digest and finite execution window"
+            ) from None
+        return dict(
+            self.request("PUT", f"projects/{self._id(project_id)}/campaign-execution-policy", json=body.model_dump())
+        )
+
+    def renew_campaign_budget(
+        self, project_id: str, campaign_id: str, request: CampaignBudgetRenewalV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1
+
+        try:
+            body = CampaignBudgetRenewalV1.model_validate(request)
+        except ValueError:
+            raise ValueError("Use an exact campaign request, journal head, policy digest and finite renewal") from None
+        return dict(
+            self.request(
+                "POST",
+                f"projects/{self._id(project_id)}/campaigns/{self._id(campaign_id)}/renew-budget",
+                json=body.model_dump(),
+            )
+        )
 
     def launch_campaign(self, project_id: str, request: CampaignLaunch | dict[str, Any]) -> dict[str, Any]:
         from firefly_forge.project_campaigns import CampaignLaunch

@@ -51,6 +51,7 @@ async def test_typed_patch_is_admitted_before_any_environment_effect(
     oauth.store = env.store
     oauth.matcher = OAuthCredentialMatcher(Fernet.generate_key().decode(), "forge_fixture")
     oauth._secrets = {"FORGE_CURRENT_SECRET": "protected-current-credential"}
+    env.store.credential_registry = lambda: {}
     env.store._unit = unit
     env.store.vault_credential_admission = oauth.admit_credentials
     env.store.vault_source_patch_admission = oauth.admit_source_patch

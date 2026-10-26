@@ -184,11 +184,14 @@ async def test_logical_product_freezes_shared_design_source_and_entire_component
     )
     assert run["component_snapshot"]["product_repository_id"] == second["id"]
     assert run["branding_snapshot"]["digest"] == shared_brand["digest"]
-    assert run["component_snapshot"]["project_definition"] == project["definition"]
+    assert "project_definition" not in run["component_snapshot"]
+    assert await manager.snapshot_definition(run["component_snapshot"]) == project["definition"]
     value["components"][1]["responsibility"] = "Changed after the queued run"
     await manager.configure(ProjectDefinition.model_validate(value), project["id"])
     frozen = (await store.get_run(run["id"]))["component_snapshot"]
-    assert frozen["project_definition"]["components"][1]["responsibility"] != value["components"][1]["responsibility"]
+    assert (await manager.snapshot_definition(frozen))["components"][1]["responsibility"] != value["components"][1][
+        "responsibility"
+    ]
     assert (await manager.revision(project["id"], 1))["digest"] == project["digest"]
     value["product_repository_id"] = "f" * 32
     with pytest.raises(ValueError, match="member"):

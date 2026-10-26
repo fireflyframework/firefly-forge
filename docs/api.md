@@ -18,11 +18,14 @@ running application's OpenAPI document is the authoritative schema.
 ## Automatic verification handoffs
 
 New runs freeze `settings.automatic_verification` from `GET /tools/policy`.
-The factory default is `{"enabled": true, "max_continuations": 1}`; the strict
-maximum is three. The existing administrator-only policy update accepts this
+The factory default is `{"enabled": true, "max_continuations": 1}`. The configured
+window must be a positive finite integer. The existing administrator-only policy update accepts this
 setting with the other tool settings. A frozen snapshot without this setting
 does not grant automatic execution.
 Older SDK/MCP policy writes that omit this setting preserve its current value.
+An explicit renewal changes the current policy and requires a new exact adoption;
+it retains every spent handoff and command slot. The separate four-attempt coding
+stage limit remains unchanged.
 
 A pending implementation request with typed `kind: "verification"` can ask
 Forge to run all explicit, frozen `run.commands` through `SandboxExecutor`.
@@ -73,6 +76,49 @@ The Python SDK exposes `verification_handoff_candidates`,
 `adopt_verification_handoff` and `verification_handoff_adoption`. These methods
 perform one explicit request each and do not create IDs, apply a fallback or
 resume a run implicitly.
+
+### Unknown command acknowledgements
+
+The native operator routes are under
+`/runs/{run_id}/sandbox-executions/{execution_id}/unknown-command-acknowledgements`:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/candidate?agent=agentic&adoption_request_id=...` | Review one unknown execution and one exact future verification adoption |
+| POST | `/{request_id}` | Append the reviewed version 1 acknowledgement once |
+| GET | `/{request_id}` | Read that exact immutable receipt with current permissions and credential admission |
+
+The strict `UnknownCommandAcknowledgementV1` input contains the candidate, policy,
+run, journal and execution digests, the exact `followup` object, and the server's
+observed `classification`. Every input must acknowledge no original replay and
+the bound verification and native continuation with literal `true` in
+`acknowledge_bound_verification_and_continuation`. For `start_unknown`, it must also
+acknowledge the unknown result and possible effects. For `closed_before_start`,
+it must instead acknowledge that the complete native WAL has no start intent;
+unknown-result acknowledgements do not apply. It accepts no claimed exit code,
+success result or arbitrary absence proof.
+This first contract covers native host executions under their original frozen
+sandbox policy. Docker and pool custody require separate supported recovery.
+
+The receipt leaves the original sandbox row, unknown start, consumed ordinal,
+held handoffs and all counters intact. It does not execute, adopt or resume.
+Only a later ordinary verification adoption using the bound request ID can admit
+the exact reviewed source, request, commands, policy, provider and new ordinals.
+Every handoff remains counted against the current finite policy. An exhausted
+window requires an explicit policy renewal and fresh review.
+Several eligible custody records require separate acknowledgements bound to the
+same future adoption. A receipt never waives unrelated or unreviewed executions.
+After every reviewed command has a known result (including known failures), only
+the completed handoff's factory response, native resume and continuation intent
+can carry the acknowledgement into coding, normal QA and Git. Existing frozen
+repair and provider grants remain required, with every spent counter retained.
+The acknowledging actor is checked again before dispatch and delivery. Original
+unknown outcomes remain unknown and are disclosed in publication communication.
+
+The Python SDK exposes `unknown_command_acknowledgement_candidate`,
+`acknowledge_unknown_command` and `unknown_command_acknowledgement`. After an
+uncertain POST, read the original request identity; do not choose a new identity
+or resend an unknown execution. See [operator recovery](recovery.md#acknowledge-an-unknown-command-for-follow-up-verification).
 
 ## Failed official-provider recovery
 

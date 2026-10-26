@@ -359,12 +359,12 @@ async def test_ordinary_test_verification_keeps_exact_commit_without_implementat
     async def update(run_id, **fields):
         updates.append(fields)
 
-    fake = SimpleNamespace(
-        _assert_delivery_tree=exact,
-        store=SimpleNamespace(get_run=current, update=update),
-        git_deliveries=SimpleNamespace(checkpoint=checkpoint),
-    )
-    await Engine._checkpoint_commit(fake, "9" * 32, root)
+    engine = object.__new__(Engine)
+    engine.journal = None
+    engine._assert_delivery_tree = exact
+    engine.store = SimpleNamespace(get_run=current, update=update)
+    engine.git_deliveries = SimpleNamespace(checkpoint=checkpoint)
+    await engine._checkpoint_commit("9" * 32, root)
     assert updates == [{"checkpoint_revision": revision}]
     assert git(root, "rev-parse", "HEAD") == revision
 

@@ -805,7 +805,7 @@ class SandboxExecutor:
                 run_id, task_id, execution_id, effect="cleanup", evidence={"mode": "host", "container": False}
             )
 
-    async def _admit_execution(self, run_id: str) -> dict[str, Any]:
+    async def _admit_execution(self, run_id: str, task_id: str | None = None) -> dict[str, Any]:
         from firefly_forge.project_access import ProjectAccess
 
         await self.store.assert_ownership()
@@ -813,8 +813,16 @@ class SandboxExecutor:
         if (run.get("cancel_request") or {}).get("status") == "requested":
             raise asyncio.CancelledError()
         await ProjectAccess(self.store).authorize_execution(run)
+        if run.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+            await assert_active_mode(self.journal, run_id)
         if run.get("verification_handoff", {}).get("status") == "running":
             await self.journal.verification_assert_current(run_id)
+        else:
+            from firefly_forge.unknown_command_proof import assert_continuation_current
+
+            await assert_continuation_current(self.journal, run_id, task_id)
         return run
 
     async def execute(
@@ -858,10 +866,10 @@ class SandboxExecutor:
         execution_identity: str | None = None
 
         async def admit() -> dict[str, Any]:
-            current = await self._admit_execution(run_id)
+            current = await self._admit_execution(run_id, task_id)
             if _invocation_guard is not None:
                 await _invocation_guard()
-                current = await self._admit_execution(run_id)
+                current = await self._admit_execution(run_id, task_id)
             if current.get("source_edit_continuation") and execution_identity is not None:
                 from firefly_forge.source_edit_continuations import assert_source_final_budget
 
@@ -991,16 +999,16 @@ class SandboxExecutor:
             if config.mode == "host":
                 if created["disposition"] == "needs_reconciliation":
                     raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
-                if created["disposition"] == "execute":
-                    await self.journal.sandbox_effect_receipt(
-                        run_id, task_id, execution_id, effect="create", evidence={"mode": "host"}
-                    )
-                started = await self.journal.sandbox_effect_intent(
-                    run_id, task_id, execution_id, effect="start", payload=payload
-                )
-                if started["disposition"] != "execute":
-                    raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                 try:
+                    if created["disposition"] == "execute":
+                        await self.journal.sandbox_effect_receipt(
+                            run_id, task_id, execution_id, effect="create", evidence={"mode": "host"}
+                        )
+                    started = await self.journal.sandbox_effect_intent(
+                        run_id, task_id, execution_id, effect="start", payload=payload
+                    )
+                    if started["disposition"] != "execute":
+                        raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                     await admit()
                     result = await backend.run(
                         config, argv, directory, min(timeout, config.timeout), config.max_output_bytes

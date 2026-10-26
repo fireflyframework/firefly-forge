@@ -53,9 +53,9 @@ from firefly_forge.oauth_authority import OAuthAccessDenied as OAuthAccessDenied
 from firefly_forge.oauth_authority import require_oauth_administrator
 from firefly_forge.oauth_credential_fingerprints import MAX_HISTORY, MAX_REPRESENTATIONS, OAuthCredentialMatcher
 from firefly_forge.project_persistence import ForgeProjectEntity
-from firefly_forge.secrets import contains_known_credential
+from firefly_forge.secrets import KnownCredentialScan, credential_values
 from firefly_forge.source_diff_admission import CredentialHistorySnapshot
-from firefly_forge.store import Store
+from firefly_forge.store import Store, _credential_registry
 
 Data = dict[str, Any]
 GRANT_RESERVATION_REPRESENTATIONS = 32
@@ -274,14 +274,57 @@ class ConnectionOAuth:
         await self._admit_credentials(patch, source_patch=True)
 
     async def _admit_credentials(self, value: Any, *, source_patch: bool = False) -> None:
-        async with self._credential_packet_snapshot() as packets:
-            matched = (
-                self.matcher.contains_source_patch(value, packets)
-                if source_patch
-                else self.matcher.contains(value, packets)
+        matcher = self.matcher
+        generation = self.store.configuration.write_generation
+        source = self.store.credential_registry
+        hook_name = "vault_source_patch_admission" if source_patch else "vault_credential_admission"
+        hook = getattr(self.store, hook_name, None)
+
+        def current() -> tuple[Any, ...]:
+            if (
+                self.matcher is not matcher
+                or self.store.configuration.write_generation is not generation
+                or self.store.credential_registry is not source
+                or getattr(self.store, hook_name, None) is not hook
+            ):
+                raise ValueError("Credential sources changed during admission")
+            return (
+                matcher.key,
+                matcher.key_id,
+                tuple(sorted(self._secrets.items())),
+                credential_values({**_credential_registry(self.store), **self._secrets}),
             )
-            if matched or contains_known_credential(value.text if source_patch else value, self._secrets):
-                raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
+
+        cut = current()
+        async with self._credential_packet_snapshot() as rows:
+            packets = copy.deepcopy(rows)
+        if current() != cut:
+            raise ValueError("Credential sources changed during admission")
+        matcher.contains("", packets)
+        history = sorted(json.dumps(packet, sort_keys=True, separators=(",", ":")) for packet in packets)
+        known = KnownCredentialScan(cut[-1])
+        canonical_known = KnownCredentialScan(cut[-1], bearer=False)
+
+        async def verify_current() -> None:
+            # A cooperative scan may span a credential rotation. Compare with the
+            # original cut; admitting against a newly captured cut would miss it.
+            async with self._credential_packet_snapshot() as rows:
+                matcher.contains("", rows)
+                latest = sorted(json.dumps(packet, sort_keys=True, separators=(",", ":")) for packet in rows)
+            if current() != cut or latest != history:
+                raise ValueError("Credential sources changed during admission")
+
+        matched = await matcher.contains_async(
+            value.text if source_patch else value,
+            packets,
+            check_chunk=known.feed,
+            check_canonical_chunk=canonical_known.feed,
+            verify_current=verify_current,
+        )
+        if current() != cut:
+            raise ValueError("Credential sources changed during admission")
+        if matched:
+            raise ValueError("Do not place configured credentials in public instructions, messages or tool data")
 
     async def source_diff_history(self) -> CredentialHistorySnapshot:
         async with self._credential_packet_snapshot() as packets:

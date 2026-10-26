@@ -528,6 +528,57 @@ def _assert_identity(root: int, entry: SourceCatalogEntryV1, identity: list[int]
         os.close(parent)
 
 
+async def _rehash_file_identity(
+    root: int, workspace: Path, entry: SourceCatalogEntryV1, identity: list[int], work: _Work
+) -> None:
+    """Prove a ctime-only change against its original retained payload hash."""
+    parts = entry.path.split("/")
+    parent = os.dup(root)
+    target = None
+    try:
+        work.tick()
+        for name in parts[:-1]:
+            child = _directory(name, parent)
+            os.close(parent)
+            parent = child
+        target = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        before = os.fstat(target)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.getuid()
+            or before.st_nlink != 1
+            or _stamp(before) != identity
+            or _stamp(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)) != identity
+        ):
+            raise ValueError("Source file changed before its ctime revalidation")
+        hashed = hashlib.sha256()
+        remaining = entry.byte_count
+        while remaining:
+            work.tick()
+            raw = os.read(target, min(work.budget.chunk_bytes, remaining))
+            if not raw:
+                raise ValueError("Source file changed during its ctime revalidation")
+            hashed.update(raw)
+            remaining -= len(raw)
+            await asyncio.sleep(0)
+        work.tick()
+        if (
+            os.read(target, 1)
+            or _stamp(os.fstat(target)) != identity
+            or _stamp(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)) != identity
+        ):
+            raise ValueError("Source file changed during its ctime revalidation")
+        if hashed.hexdigest() != entry.sha256:
+            raise ValueError("Selected public source payload changed")
+        _assert_identity(root, entry, identity)
+        if _stamp(os.stat(workspace, follow_symlinks=False))[:5] != _stamp(os.fstat(root))[:5]:
+            raise ValueError("Source root changed during its ctime revalidation")
+    finally:
+        if target is not None:
+            os.close(target)
+        os.close(parent)
+
+
 def _cleanup(parent: int, name: str, expected: tuple[int, int]) -> None:
     with suppress(FileNotFoundError):
         info = os.stat(name, dir_fd=parent, follow_symlinks=False)
@@ -759,7 +810,7 @@ async def revalidate_source_catalog(
     assert_current: Callable[[], Awaitable[None]],
     cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
-    """Compare selected public membership and identities without rereading source payloads."""
+    """Compare public membership and identities, rehashing ctime-only files in bounded windows."""
     if workspace.resolve() != workspace or catalog_root.resolve() != catalog_root:
         raise ValueError("Catalog validation requires canonical source and storage roots")
     source = _directory(workspace)
@@ -825,9 +876,13 @@ async def revalidate_source_catalog(
                 # Explicit public membership comparison above replaces that timestamp authority.
                 identity = before["identity"][:5] if left["kind"] == "directory" else before["identity"]
                 actual = after["identity"][:5] if right["kind"] == "directory" else after["identity"]
+                entry = _validate_record(before)
                 if identity != actual:
-                    raise ValueError("Selected public source identity changed")
-                _assert_identity(source, _validate_record(before), after["identity"])
+                    if left["kind"] != "file" or identity[:-1] != actual[:-1]:
+                        raise ValueError("Selected public source identity changed")
+                    await _rehash_file_identity(source, workspace, entry, after["identity"], work)
+                else:
+                    _assert_identity(source, entry, after["identity"])
                 count += 1
         finally:
             original.close()

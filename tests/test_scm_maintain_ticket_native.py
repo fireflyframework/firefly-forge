@@ -23,8 +23,9 @@ from firefly_forge.scm_conversations import SCMConversations
 
 
 @pytest.fixture
-def maintain_ticket(checkpoint_native):
+def maintain_ticket(checkpoint_native, request):
     c = checkpoint_native
+    owner_text = getattr(request, "param", "@forge keep me informed about this maintenance unit")
 
     async def disable_optional_git():
         async with authenticated_operator(c.store):
@@ -103,7 +104,7 @@ def maintain_ticket(checkpoint_native):
     c.case.run.update(c.parent)
     prior = c.case.process(c.case.observe("status"))
     assert prior["run_id"] == c.parent["id"]
-    observed = natural(c.case, "@forge keep me informed about this maintenance unit", number=801)
+    observed = natural(c.case, owner_text, number=801)
     path = f"/api/v1/projects/{c.case.project['id']}/repositories/{c.case.repo['id']}/maintain-ticket-bindings"
     request = dict(
         version=1,
@@ -284,3 +285,83 @@ def test_native_maintain_unknown_notification_never_reposts_or_silently_rebinds(
     assert denied.status_code == 403, denied.text
     assert c.case.http.portal.call(c.store.get_run, child["id"]) == child
     assert c.case.http.portal.call(c.store.get_run, c.parent["id"]) == c.parent
+
+
+@pytest.mark.parametrize(
+    "maintain_ticket",
+    ["@forge, por favor informa sobre el trabajo y pregúntame si hace falta una decisión."],
+    indirect=True,
+    ids=["spanish-owner"],
+)
+def test_native_contextual_maintain_uses_verified_owner_quotation_without_resuming(maintain_ticket):
+    import hashlib
+
+    from communication_model_fixture import reviewed_model
+    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, UserPromptPart
+
+    c, child, creation, observed, path, request = maintain_ticket
+    response = c.case.http.put(
+        "/api/v1/model-profiles/contextual-updates",
+        json={
+            "name": "Controlled contextual updates",
+            "provider": "agentic",
+            "values": {"model": "openai-responses:fixture", "api_key": "public-fixture-context-model-key"},
+        },
+    )
+    assert response.status_code == 200, response.text
+    previous = c.case.http.get("/api/v1/task-routing")
+    assert previous.status_code == 200, previous.text
+    routing = previous.json()
+    response = c.case.http.put(
+        "/api/v1/task-routing",
+        json={
+            "bindings": {**routing["bindings"], "communication": "contextual-updates"},
+            "expected_digest": routing["digest"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    calls = []
+
+    def draft(messages, info):
+        prompt = next(
+            part.content
+            for msg in reversed(messages)
+            for part in msg.parts
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+        )
+        prefix = "Draft the project update using only this recorded fact packet:\n"
+        facts, _ = json.JSONDecoder().raw_decode(prompt.removeprefix(prefix))
+        references = sorted(facts)
+        payload = {
+            "title": {"text": "Decisión sobre el trabajo solicitado", "fact_ids": references[:4]},
+            "paragraphs": [
+                {
+                    "text": "La unidad está pausada y necesita una decisión del propietario.",
+                    "fact_ids": references[start : start + 4],
+                }
+                for start in range(4, len(references), 4)
+            ]
+            or [
+                {"text": "La unidad está pausada y necesita una decisión del propietario.", "fact_ids": references[:4]}
+            ],
+            "decision": {key: facts["decision"][key] for key in ("question", "context", "choices")},
+        }
+        part = ToolCallPart(info.output_tools[0].name, payload) if info.output_tools else TextPart(json.dumps(payload))
+        return ModelResponse(parts=[part])
+
+    c.case.collaboration.communication_writer.model = reviewed_model(draft, calls=calls)
+    kept = configure(maintain_ticket)
+    c.case.http.portal.call(c.case.collaboration.sync_feedback)
+    sent = c.case.http.portal.call(c.case.collaboration.receipt, kept["outbox_id"])
+    assert sent["feedback_status"] == "sent", sent.get("reason")
+    owner = observed["source_snapshot"]["body"]
+    assert owner in str(calls)
+    assert (
+        sent["feedback_intent"]["communication"]["facts"]["audience"]["source_sha256"]
+        == hashlib.sha256(owner.encode()).hexdigest()
+    )
+    assert "Decisión sobre el trabajo solicitado" in sent["feedback_intent"]["body"]
+    assert "Keep the existing contacts?" in sent["feedback_intent"]["body"]
+    assert c.case.http.portal.call(c.store.get_run, child["id"])["status"] == "paused"
+    assert c.case.http.portal.call(c.store.get_run, c.parent["id"]) == c.parent
+    assert c.case.http.portal.call(c.journal.entries, c.parent["id"]) == c.prefix

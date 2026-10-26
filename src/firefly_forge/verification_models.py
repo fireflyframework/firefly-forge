@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class AutomaticVerificationPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = Field(default=True, strict=True)
-    max_continuations: int = Field(default=1, ge=1, le=3, strict=True)
+    max_continuations: int = Field(default=1, ge=1, strict=True)
 
 
 class VerificationAdoption(BaseModel):
@@ -50,10 +50,26 @@ def verification_scope(run: dict[str, Any]) -> str:
 
 
 def verification_provider(store: Any, run: dict[str, Any], agent: str | None = None) -> str:
-    settings = (
-        store.configuration.resolve(agent) if agent else store.configuration.load_snapshot(run["config_revision"])
-    )
+    if run.get("checkpoint_mode_adoption") and agent in {None, run["agent"]}:
+        from firefly_forge.checkpoint_mode_runtime import execution_settings, prepared_mode
+
+        prepared_mode(run)
+        settings = execution_settings(store.configuration, run)
+    else:
+        settings = (
+            store.configuration.resolve(agent)
+            if agent is not None and agent != run["agent"]
+            else store.configuration.load_snapshot(run["config_revision"])
+        )
+    validate_coding_readiness(agent or run["agent"], settings)
     return digest({"agent": agent or run["agent"], "settings": settings})
+
+
+def validate_coding_readiness(provider: str, settings: dict[str, str]) -> None:
+    if provider == "bridge" and (not settings.get("FORGE_BRIDGE_URL") or not settings.get("FORGE_BRIDGE_TOKEN")):
+        raise ValueError("Bridge requires its configured endpoint and credential before admission")
+    if provider == "agentic" and not settings.get("FORGE_AGENTIC_API_KEY"):
+        raise ValueError("Agentic requires its configured credential before admission")
 
 
 def verification_source(workspace: Path, *, prepared: PreparedVerificationSource | None = None) -> str:
@@ -80,14 +96,38 @@ def verification_source(workspace: Path, *, prepared: PreparedVerificationSource
     )
 
 
+def _mode_tool_policy(run: dict[str, Any]) -> str:
+    from firefly_forge.checkpoint_mode_runtime import prepared_tool_policy
+
+    return prepared_tool_policy(run)
+
+
+def _mode_provider_current(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> bool:
+    from firefly_forge.checkpoint_mode_runtime import provider_modes_match
+
+    return provider_modes_match(store, run, intent)
+
+
+def verification_provider_current(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> bool:
+    if run.get("checkpoint_mode_adoption"):
+        return _mode_provider_current(store, run, intent)
+    expected: str = intent["provider_digest"]
+    return verification_provider(store, run, intent.get("agent")) == expected
+
+
 def check_verification_authority(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> None:
     from firefly_forge.tool_broker import tool_policy_snapshot
 
     if (
         verification_scope(run) != intent["scope_digest"]
         or digest({"commands": run.get("commands", [])}) != intent["commands_digest"]
-        or tool_policy_snapshot(store.configuration)["digest"] != intent["policy_digest"]
-        or verification_provider(store, run, intent.get("agent")) != intent["provider_digest"]
+        or (
+            _mode_tool_policy(run)
+            if run.get("checkpoint_mode_adoption")
+            else tool_policy_snapshot(store.configuration)["digest"]
+        )
+        != intent["policy_digest"]
+        or not verification_provider_current(store, run, intent)
         or (run.get("cancel_request") or {}).get("status") == "requested"
     ):
         raise ValueError("Automatic verification scope, policy or provider changed")

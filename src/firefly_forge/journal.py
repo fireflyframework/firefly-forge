@@ -37,6 +37,11 @@ Data = dict[str, Any]
 ZERO_HASH = "0" * 64
 LOCAL_TASKS = {"prepare", "implement", "verify", "checkpoint"}
 FAILURE_ALIASES = {"rate_limited": "rate_limit", "insufficient_credits": "quota", "missing_auth": "authentication"}
+RECOVERY_REASON = "Worker stopped without a durable receipt; inspect the retained source and external target"
+_RECOVERY_CLAIMS = {
+    "checkpoint_mode_claim": "checkpoint_mode_claim_digest",
+    "original_selection_claim": "original_selection_claim_digest",
+}
 
 
 def digest(data: Data) -> str:
@@ -48,6 +53,101 @@ def digest(data: Data) -> str:
 def _worker_message_key(kind: str, message_id: str) -> str:
     key = f"{kind}:{message_id}"
     return key if len(key) <= 64 else digest({"kind": kind, "id": message_id})
+
+
+def _recovery_generation(entries: list[Data], task_id: str, key: str) -> Data | None:
+    generations = [
+        entry
+        for entry in entries
+        if entry["task_id"] == task_id
+        and (
+            (entry["kind"] == "intent" and entry["idempotency_key"] == key)
+            or (
+                entry["kind"] in _RECOVERY_CLAIMS
+                and isinstance(entry["payload"], dict)
+                and entry["payload"].get("task_key") == key
+            )
+        )
+    ]
+    if any(
+        entry["kind"] in _RECOVERY_CLAIMS
+        and (type(entry["payload"].get("version")) is not int or entry["payload"].get("version") != 1)
+        for entry in generations
+    ):
+        raise ValueError("Recovery requires a native integer claim version")
+    return generations[-1] if generations else None
+
+
+def _recovery_history(entries: list[Data], task_id: str, key: str) -> list[Data]:
+    return [
+        entry
+        for entry in entries
+        if entry["kind"] == "recovery"
+        and entry["task_id"] == task_id
+        and (
+            entry["idempotency_key"] == key
+            or (isinstance(entry["payload"], dict) and entry["payload"].get("task_key") == key)
+        )
+    ]
+
+
+def _recovery_key(run_id: str, task_id: str, key: str, generation: Data) -> str:
+    return digest(
+        {
+            "version": 1,
+            "kind": "recovery",
+            "run_id": run_id,
+            "task_id": task_id,
+            "task_key": key,
+            "generation_digest": generation["digest"],
+        }
+    )
+
+
+def valid_recovery_annotation(record: Data, entries: list[Data], task_id: str, key: str) -> bool:
+    """Validate an observation against its own preceding native execution generation."""
+    try:
+        if (
+            not Journal.verify_chain(entries)
+            or record not in entries
+            or any(entry["run_id"] != record["run_id"] for entry in entries)
+            or record["kind"] != "recovery"
+            or record["task_id"] != task_id
+            or type(record["sequence"]) is not int
+        ):
+            return False
+        before = [entry for entry in entries if entry["sequence"] < record["sequence"]]
+        generation = _recovery_generation(before, task_id, key)
+        if record["payload"] == {"reason": RECOVERY_REASON}:
+            return bool(record["idempotency_key"] == key)
+        payload = record["payload"]
+        if (
+            generation is None
+            or not isinstance(payload, dict)
+            or type(payload.get("version")) is not int
+            or payload.get("observation") not in {"running", "needs_reconciliation"}
+        ):
+            return False
+        prior = _recovery_history(before, task_id, key)
+        previous = prior[-1] if prior else None
+        if payload["observation"] == "needs_reconciliation" and (
+            previous is None or previous["sequence"] >= generation["sequence"]
+        ):
+            return False
+        return bool(
+            record["idempotency_key"] == _recovery_key(record["run_id"], task_id, key, generation)
+            and payload
+            == {
+                "version": 1,
+                "reason": RECOVERY_REASON,
+                "task_key": key,
+                "generation": {name: generation[name] for name in ("kind", "idempotency_key", "digest")},
+                "previous_recovery_digest": previous["digest"] if previous else None,
+                "observation": payload["observation"],
+            }
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 @service
@@ -619,6 +719,12 @@ class Journal:
                     entry.kind == "receipt" and entry.idempotency_key == key
                     for entry in await self.records.find_for_run(run.id)
                 )
+                if not receipted:
+                    from firefly_forge.checkpoint_mode_runtime import claim_adopted_intent
+
+                    adopted = await claim_adopted_intent(self, run, task, existing)
+                    if adopted is not None:
+                        return adopted
                 disposition = "completed" if receipted else "needs_reconciliation"
                 return {"idempotency_key": key, "disposition": disposition, "entry": copy.deepcopy(existing.data)}
             repair = (
@@ -669,8 +775,22 @@ class Journal:
         return found
 
     async def receipt(self, run_id: str, key: str, evidence: Data, *, checkpoint: Data | None = None) -> Data:
+        from firefly_forge.native_terminal_completions import native_terminal_acceptance
+
+        async with native_terminal_acceptance(self, run_id, "receipt", key, evidence, checkpoint) as terminal:
+            return await self._receipt(run_id, key, evidence, checkpoint=checkpoint, terminal=terminal)
+
+    async def _receipt(
+        self, run_id: str, key: str, evidence: Data, *, checkpoint: Data | None = None, terminal: Any = None
+    ) -> Data:
         async with self.store._unit():
+            if terminal is not None:
+                await terminal.before()
             run = await self._run(run_id)
+            if run.data.get("checkpoint_mode_adoption"):
+                from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+                await assert_active_mode(self, run_id)
             existing = next(
                 (
                     entry
@@ -680,6 +800,8 @@ class Journal:
                 None,
             )
             if existing is not None:
+                if terminal is not None:
+                    await terminal.commit(copy.deepcopy(existing.data))
                 return copy.deepcopy(existing.data)
             task = await self._effect_task(run_id, key)
             if task.status == "done":
@@ -696,6 +818,10 @@ class Journal:
                 "updated_at": now(),
             }
             await self.store.run_records.save(run)
+            if terminal is not None:
+                await terminal.commit(record)
+            if run.data.get("checkpoint_mode_adoption"):
+                await assert_active_mode(self, run_id)
             return record
 
     async def fail(
@@ -943,7 +1069,9 @@ class Journal:
                 await admitted()
         return context
 
-    async def worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
+    async def worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, restoration: Any = None
+    ) -> Data:
         from firefly_forge.agent_roles import (
             NativeAllowanceWorkerFeedback,
             SourceBudgetWorkerFeedback,
@@ -959,7 +1087,7 @@ class Journal:
             if not actor:
                 raise ValueError("Native final feedback requires its original allowance actor")
             async with ProviderRecoveries(self.store, self, None)._locked(run_id, actor):
-                return await self._worker_feedback(run_id, feedback, evidence=evidence)
+                return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
         if isinstance(feedback, SourceBudgetWorkerFeedback):
             from firefly_forge.provider_recoveries import ProviderRecoveries
             from firefly_forge.source_budget_allowances import current_budget_receipt
@@ -971,10 +1099,28 @@ class Journal:
                 if receipt is None:
                     raise ValueError("Source budget feedback requires its actual native receipt")
                 async with ProviderRecoveries(self.store, self, None)._locked(run_id, receipt["actor"]):
-                    return await self._worker_feedback(run_id, feedback, evidence=evidence)
-        return await self._worker_feedback(run_id, feedback, evidence=evidence)
+                    return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
+        return await self._worker_feedback(run_id, feedback, evidence=evidence, restoration=restoration)
 
-    async def _worker_feedback(self, run_id: str, feedback: Any, *, evidence: Data | None = None) -> Data:
+    async def _worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, restoration: Any = None
+    ) -> Data:
+        from firefly_forge.native_terminal_completions import native_terminal_acceptance
+
+        payload = feedback.model_dump(mode="json")
+        async with native_terminal_acceptance(
+            self,
+            run_id,
+            "worker_feedback",
+            _worker_message_key("worker-feedback", feedback.id),
+            payload,
+            restoration=restoration,
+        ) as terminal:
+            return await self._accept_worker_feedback(run_id, feedback, evidence=evidence, terminal=terminal)
+
+    async def _accept_worker_feedback(
+        self, run_id: str, feedback: Any, *, evidence: Data | None = None, terminal: Any = None
+    ) -> Data:
         from firefly_forge.agent_roles import (
             BINDINGS,
             NativeAllowanceWorkerFeedback,
@@ -997,6 +1143,8 @@ class Journal:
                 raise ValueError("Worker evidence must identify this exact native feedback and question")
             manifest.check_feedback(feedback.model_dump(mode="json"), feedback.task_id)
         async with self.store._unit():
+            if terminal is not None:
+                await terminal.before()
             run = await self._run(run_id)
             payload = model.model_validate_json(self._worker_payload(run, feedback.model_dump_json())).model_dump(
                 mode="json"
@@ -1044,6 +1192,8 @@ class Journal:
                     ]
                     if retained != [evidence]:
                         raise ValueError("Worker evidence replay differs from its immutable receipt")
+                if terminal is not None:
+                    await terminal.commit(copy.deepcopy(existing.data))
                 return copy.deepcopy(existing.data)
             if run.status in TERMINAL:
                 raise ValueError("A terminal run cannot accept late worker feedback")
@@ -1112,6 +1262,8 @@ class Journal:
                     "verification_adoption": {},
                 }
             await self.store.run_records.save(run)
+            if terminal is not None:
+                await terminal.commit(record)
             return record
 
     async def worker_response(self, run_id: str, request_id: str, response: Any) -> Data:
@@ -1368,7 +1520,9 @@ class Journal:
                 if (
                     task.status != "paused"
                     or used + 1 != intent["continuation"]
-                    or not 1 <= used + 1 <= intent["max_continuations"] <= 3
+                    or type(intent.get("continuation")) is not int
+                    or type(intent.get("max_continuations")) is not int
+                    or not 1 <= used + 1 <= intent["max_continuations"]
                 ):
                     raise ValueError("Automatic verification continuation budget exhausted")
             await ProjectAccess(self.store).authorize_execution(run.data)
@@ -1605,16 +1759,18 @@ class Journal:
             return copy.deepcopy(state)
 
     async def verification_assert_current(self, run_id: str) -> None:
+        from firefly_forge.unknown_command_acknowledgements import policy_digest as acknowledgement_policy_digest
         from firefly_forge.verification_handoffs import prepare_journal_verification_source
         from firefly_forge.verification_source_preparation import verification_source_scope
 
+        acknowledgement_policy = acknowledgement_policy_digest()
         prepared = await prepare_journal_verification_source(self, run_id, provider=False)
         if prepared is None:
-            return await self._verification_assert_current(run_id)
+            return await self._verification_assert_current(run_id, acknowledgement_policy=acknowledgement_policy)
         with verification_source_scope(prepared):
-            await self._verification_assert_current(run_id)
+            await self._verification_assert_current(run_id, acknowledgement_policy=acknowledgement_policy)
 
-    async def _verification_assert_current(self, run_id: str) -> None:
+    async def _verification_assert_current(self, run_id: str, *, acknowledgement_policy: str | None = None) -> None:
         from firefly_forge.project_access import ProjectAccess
         from firefly_forge.verification_models import check_verification_cut
 
@@ -1631,6 +1787,9 @@ class Journal:
             )
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
+            from firefly_forge.unknown_command_proof import assert_followup_actors
+
+            await assert_followup_actors(self, run.data, entries, intent, acknowledgement_policy)
             check_verification_cut(self.store, run.data, intent)
 
     async def verification_provider_admission(self, run_id: str) -> None:
@@ -1667,10 +1826,25 @@ class Journal:
                 raise ValueError("Factory continuation requires completed verification evidence")
             if int(run.data.get("implementation_rounds", 0)) > intent["parent_round"]:
                 return
-            if any(
-                item.kind == "verification_continuation_intent" and item.idempotency_key == intent["id"] + ":coding"
-                for item in entries
-            ):
+            coding = next(
+                (
+                    item
+                    for item in entries
+                    if item.kind == "verification_continuation_intent"
+                    and item.idempotency_key == intent["id"] + ":coding"
+                ),
+                None,
+            )
+            if coding is not None:
+                from firefly_forge.checkpoint_mode_runtime import claimed_continuation
+
+                if claimed_continuation(run.data, entries, coding):
+                    from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
+                    from firefly_forge.known_worker_completions import _entries
+
+                    await assert_mode_actors(self, run.data, _entries(entries, run_id))
+                    check_verification_cut(self.store, run.data, intent)
+                    return
                 raise ValueError("The original verification continuation outcome requires reconciliation")
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
@@ -1775,7 +1949,9 @@ class Journal:
                     3,
                     sum(
                         handoff in completed & responses & resumed
-                        and 1 <= payload["continuation"] <= payload["max_continuations"] <= 3
+                        and type(payload.get("continuation")) is int
+                        and type(payload.get("max_continuations")) is int
+                        and 1 <= payload["continuation"] <= payload["max_continuations"]
                         for handoff, payload in admitted.items()
                     ),
                 )
@@ -1806,24 +1982,99 @@ class Journal:
                 ):
                     continue
                 task = await self._task(run.id.hex, candidate.task_id)
-                if task.status != "running":
+                if task.status not in {"running", "needs_reconciliation"}:
                     continue
-                task.status = "needs_reconciliation"
-                await self.tasks.save(task)
-                if run.status not in TERMINAL:
+                entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                if not self.verify_chain(entries) or any(entry["run_id"] != run.id.hex for entry in entries):
+                    raise ValueError("Recovery requires an intact native journal")
+                key = task.data["idempotency_key"]
+                generation = _recovery_generation(entries, task.task_id, key)
+                for kind, pointer in _RECOVERY_CLAIMS.items():
+                    claims = [
+                        entry
+                        for entry in entries
+                        if entry["kind"] == kind
+                        and entry["task_id"] == task.task_id
+                        and isinstance(entry["payload"], dict)
+                        and entry["payload"].get("task_key") == key
+                    ]
+                    reference = task.data.get(pointer)
+                    if claims:
+                        if reference != claims[-1]["digest"]:
+                            raise ValueError("Recovery task claim reference changed")
+                    elif reference is not None:
+                        historical = [
+                            entry
+                            for entry in entries
+                            if entry["digest"] == reference
+                            and entry["kind"] == kind
+                            and entry["task_id"] == task.task_id
+                            and isinstance(entry["payload"], dict)
+                        ]
+                        prior = historical[0] if len(historical) == 1 else None
+                        prior_attempt = prior["payload"].get("attempt") if prior else None
+                        if (
+                            prior is None
+                            or generation is None
+                            or type(prior_attempt) is not int
+                            or not 0 < prior_attempt < task.attempt
+                            or prior["sequence"] >= generation["sequence"]
+                            or prior["payload"].get("task_key")
+                            != uuid.uuid5(uuid.NAMESPACE_URL, f"forge:{run.id.hex}:{task.task_id}:{prior_attempt}").hex
+                            or key
+                            != uuid.uuid5(uuid.NAMESPACE_URL, f"forge:{run.id.hex}:{task.task_id}:{task.attempt}").hex
+                        ):
+                            raise ValueError("Recovery historical claim reference changed")
+                history = _recovery_history(entries, task.task_id, key)
+                current = [
+                    entry
+                    for entry in history
+                    if (generation is None or entry["sequence"] > generation["sequence"])
+                    and valid_recovery_annotation(entry, entries, task.task_id, key)
+                ]
+                if current:
+                    if len(current) != 1:
+                        raise ValueError("Recovery generation has duplicate annotations")
+                    if task.status == "running":
+                        raise ValueError("Recovered task requires a fresh native execution generation")
+                    continue
+                previous = history[-1] if history else None
+                if previous is not None and generation is not None and previous["sequence"] >= generation["sequence"]:
+                    raise ValueError("Recovery generation has an invalid prior annotation")
+                if task.status == "needs_reconciliation" and (
+                    generation is None or previous is None or previous["sequence"] >= generation["sequence"]
+                ):
+                    continue
+                observation = task.status
+                payload: Data = {"reason": RECOVERY_REASON}
+                event_key = key
+                if generation is not None and (generation["kind"] in _RECOVERY_CLAIMS or previous is not None):
+                    event_key = _recovery_key(run.id.hex, task.task_id, key, generation)
+                    payload = {
+                        "version": 1,
+                        "reason": RECOVERY_REASON,
+                        "task_key": key,
+                        "generation": {name: generation[name] for name in ("kind", "idempotency_key", "digest")},
+                        "previous_recovery_digest": previous["digest"] if previous else None,
+                        "observation": observation,
+                    }
+                if any(entry["kind"] == "recovery" and entry["idempotency_key"] == event_key for entry in entries):
+                    raise ValueError("Recovery generation identity is already occupied")
+                if observation == "running":
+                    task.status = "needs_reconciliation"
+                    await self.tasks.save(task)
+                if observation == "running" and run.status not in TERMINAL:
                     run.status = "needs_reconciliation"
                     run.data = {**run.data, "status": run.status, "resume_existing": True, "updated_at": now()}
                     await self.store.run_records.save(run)
                 await self._append(
                     run.id.hex,
                     task.task_id,
-                    task.data["idempotency_key"],
+                    event_key,
                     "recovery",
-                    {
-                        "reason": (
-                            "Worker stopped without a durable receipt; inspect the retained source and external target"
-                        )
-                    },
+                    payload,
                 )
                 count += 1
             return count
@@ -1865,10 +2116,63 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        if current.get("bridge_completion_hold"):
+            raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
+        if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
+            raise ValueError("Bridge outcome requires reconciliation before resuming")
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async def selected() -> Data:
+            return await self._resume_selected(
+                current,
+                run_id,
+                agent,
+                model_profile_id=model_profile_id,
+                auto=auto,
+                campaign_action_id=campaign_action_id,
+                verification_handoff_id=verification_handoff_id,
+                expected_provider_digest=expected_provider_digest,
+                source_human_readmission=source_human_readmission,
+                source_budget_readmission=source_budget_readmission,
+            )
+
+        if current.get("checkpoint_mode_adoption"):
+            async with mode_execution_scope(self, run_id):
+                return await selected()
+        return await selected()
+
+    async def _resume_selected(
+        self,
+        current: Data,
+        run_id: str,
+        agent: str | None = None,
+        *,
+        model_profile_id: str | None = None,
+        auto: bool = False,
+        campaign_action_id: str | None = None,
+        verification_handoff_id: str | None = None,
+        expected_provider_digest: str | None = None,
+        source_human_readmission: str | None = None,
+        source_budget_readmission: str | None = None,
+    ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         if auto and (agent is not None or model_profile_id is not None):
             raise ValueError("An automatic retry cannot change the selected provider or model profile")
+        inherited_mode = current.get("checkpoint_mode_adoption")
+        if inherited_mode:
+            from firefly_forge.checkpoint_mode_runtime import execution_settings, prepared_mode
+
+            prepared = prepared_mode(current)
+            assert prepared is not None
+            if agent not in {None, "bridge"} or model_profile_id is not None:
+                raise ValueError("Checkpoint mode adoption keeps its original Bridge provider and model profile")
+            if (
+                expected_provider_digest is not None
+                and digest({"agent": "bridge", "settings": execution_settings(self.store.configuration, current)})
+                != expected_provider_digest
+            ):
+                raise ValueError("Explicit verification handoff provider snapshot changed")
         if agent is not None and agent not in {"codex", "claude", "bridge", "agentic"}:
             raise ValueError("Unknown handoff coding provider")
         selection = None
@@ -1884,6 +2188,41 @@ class Journal:
                 raise ValueError("The chosen agent conflicts with this task's model profile")
             agent = selection["provider"]
         handoff = agent is not None
+        frozen_verification = (
+            verification_handoff_id is not None and agent in {None, current.get("agent")} and model_profile_id is None
+        )
+        configuration = None
+        selected_settings = None
+        if (agent is not None or frozen_verification) and not inherited_mode:
+            from firefly_forge.bridge_completions import _outside_unit
+            from firefly_forge.verification_models import validate_coding_readiness
+
+            _outside_unit()
+            selected_agent = agent or current["agent"]
+            selected_settings = (
+                self.store.configuration.load_snapshot(current["config_revision"])
+                if frozen_verification
+                else self.store.configuration.load_snapshot(selection["config_revision"])
+                if selection is not None
+                else self.store.configuration.resolve(selected_agent)
+            )
+            validate_coding_readiness(selected_agent, selected_settings)
+            if (
+                expected_provider_digest is not None
+                and digest({"agent": selected_agent, "settings": selected_settings}) != expected_provider_digest
+            ):
+                raise ValueError("Explicit verification handoff provider snapshot changed")
+            if not frozen_verification:
+                configuration = (
+                    {"config_revision": selection["config_revision"], "execution_config": selection["execution_config"]}
+                    if selection is not None
+                    else self.store.configuration.snapshot(selected_agent)
+                )
+        settings_generation = (
+            self.store.configuration.settings_generation
+            if agent is not None or frozen_verification or inherited_mode
+            else None
+        )
         ProjectAccess.require_provider_isolation(current, agent or current.get("agent"))
         await ProjectAccess(self.store).authorize_execution(current)
         if current.get("bridge_completion_hold"):
@@ -1934,6 +2273,20 @@ class Journal:
                     raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
+            if (
+                settings_generation is not None
+                and self.store.configuration.settings_generation is not settings_generation
+            ):
+                raise ValueError("The selected provider changed before resume admission")
+            if inherited_mode:
+                from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
+
+                if run.data.get("checkpoint_mode_adoption") != inherited_mode:
+                    raise ValueError("Checkpoint mode adoption changed before resume")
+                mode_entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                await assert_mode_actors(self, run.data, mode_entries)
             if run.status not in {"paused", "needs_reconciliation", "interrupted"}:
                 raise ValueError("Only a paused or interrupted run can resume")
             if run.data.get("worker_request", {}).get("status") == "pending":
@@ -2034,22 +2387,16 @@ class Journal:
             old_revision = run.data.get("config_revision")
             old_selection = copy.deepcopy(run.data.get("model_selection"))
             old_agent = run.data.get("agent")
-            selection_mode = "named_profile" if selection is not None else "legacy_provider" if handoff else "frozen"
-            if agent is not None:
-                configuration = (
-                    {"config_revision": selection["config_revision"], "execution_config": selection["execution_config"]}
-                    if selection is not None
-                    else self.store.configuration.snapshot(agent)
-                )
-                if expected_provider_digest is not None:
-                    actual = digest(
-                        {
-                            "agent": agent,
-                            "settings": self.store.configuration.load_snapshot(configuration["config_revision"]),
-                        }
-                    )
-                    if actual != expected_provider_digest:
-                        raise ValueError("Explicit verification handoff provider snapshot changed")
+            selection_mode = (
+                "frozen"
+                if inherited_mode or frozen_verification
+                else "named_profile"
+                if selection is not None
+                else "legacy_provider"
+                if handoff
+                else "frozen"
+            )
+            if configuration is not None:
                 run.data = {
                     **run.data,
                     "agent": agent,
@@ -2128,6 +2475,7 @@ class Journal:
                     "previous_model_selection": old_selection,
                     "model_selection": copy.deepcopy(run.data.get("model_selection")),
                     "selection_mode": selection_mode,
+                    **({"checkpoint_mode_adoption_digest": inherited_mode["record_digest"]} if inherited_mode else {}),
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
                     **({"human_clarification": human_clarification} if human_clarification else {}),

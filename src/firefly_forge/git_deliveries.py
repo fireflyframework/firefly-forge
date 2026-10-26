@@ -148,6 +148,9 @@ class GitDeliveries:
             await self.store.assert_campaign_current(run)
 
     async def _guard(self, run_id: str, expected: Data, actor: Data | None, *, boundary: object | None = None) -> Data:
+        from firefly_forge.unknown_command_proof import assert_continuation_current
+
+        await assert_continuation_current(self.journal, run_id)
         await self.store.assert_ownership()
         current = await self.store.get_run(run_id)
         from firefly_forge.git_failed_unit_adoption import effective_policy
@@ -308,6 +311,16 @@ class GitDeliveries:
 
     @asynccontextmanager
     async def _owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+        from firefly_forge.unknown_command_proof import continuation_policy_scope
+
+        async with mode_execution_scope(self.journal, run_id):
+            with continuation_policy_scope(run_id):
+                async with self._custody_owned(run_id, actor) as session:
+                    yield session
+
+    @asynccontextmanager
+    async def _custody_owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
         async with self.store.source_budget_admission_unit() as session:
             if self.authorization is None:
                 from pyfly.data.relational.sqlalchemy import LockMode
@@ -854,6 +867,8 @@ class GitDeliveries:
             source_tree=receipt["source_tree"],
             sequence=receipt["sequence"],
             changed_file_count=receipt["changed_file_count"],
+            changed_files=receipt.get("changed_files", []),
+            changed_files_preview_truncated=receipt.get("changed_files_preview_truncated", True),
             implementation_disposition="failed"
             if run.get("git_failed_unit_adoption") or run.get("git_partial_source_checkpoint")
             else None,

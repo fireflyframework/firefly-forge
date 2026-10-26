@@ -285,9 +285,30 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
     assert json.dumps(expected, ensure_ascii=False, separators=(",", ":")) == wire
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
-    # The communication task adds one routing binding; every other original byte stays fixed.
+    # Only the reviewed routing binding and campaign aggregate limit changes differ.
     assert bindings["maxProperties"] == 8
     bindings["maxProperties"] = 7
+    for name, model in [("launch_project_campaign", "CampaignLaunch"), ("retry_project_campaign", "CampaignRetry")]:
+        tool = next(tool for tool in expected["tools"] if tool["name"] == name)
+        components = tool["inputSchema"]["$defs"][model]["properties"]["component_ids"]
+        array = (
+            next(value for value in components["anyOf"] if value.get("type") == "array")
+            if "anyOf" in components
+            else components
+        )
+        assert array == {
+            "items": {"type": "string"},
+            "minItems": 1,
+            **({"title": "Component Ids"} if model == "CampaignRetry" else {}),
+            "type": "array",
+        }
+        retained = {
+            "items": array["items"],
+            "maxItems": 50,
+            **{key: value for key, value in array.items() if key != "items"},
+        }
+        array.clear()
+        array.update(retained)
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
     assert len(tools) == 174

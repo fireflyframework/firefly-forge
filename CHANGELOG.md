@@ -2,6 +2,21 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.45 — 2026-10-25
+
+- Page project and campaign data without a fixed project-count ceiling, retain revision-bound references, and configure finite campaign execution windows with durable usage accounting.
+- Stream credential fingerprint preparation and checkpoint source admission outside database writer units while retaining current credential, source and ownership checks.
+- Ground AI-written status in current verification facts, recorded reasons and next factory actions. Preserve historical checks as historical context and keep pending factory work separate from questions requiring a person.
+- Accept normal and blocked worker outcomes through atomic native completion custody, including restored checkpoints. Keep QA and Git delivery behind the exact accepted outcome and current authority.
+- Add explicit administrator acknowledgement of an unknown command for one separately bound verification continuation and its following coding/QA/Git lineage. Preserve the unknown row, spent ordinals, frozen command and repair budgets, and repeated current-actor checks.
+- Bind retained source-catalog manifests to their immutable hash and stable identity across checks. For file ctime-only changes, stream a bounded rehash against the original payload SHA-256 without refreshing its baseline. Preserve other identity fields and full metadata checks during reads.
+- Add explicit native checkpoint-mode adoption for an eligible older Bridge continuation that stopped before model dispatch. Retain the original provider revision, unfinished intents, source, unknown outcomes and spent budgets while admitting only stronger result-recovery and checkpoint settings.
+- Follow validated test and maintenance descendants when selecting current issue status, retaining the root conversation receipt and asking for clarification when current leaves are ambiguous.
+- Include the audited credential-scanner dependency closure in fixed workspace exports, preserve later native receipts after an accepted worker outcome, and withhold malformed historical verification requests from public facts.
+- Preserve the originally selected model profile for same-provider Bridge verification continuations and admit only a separately reviewed correction for an eligible retained selection failure before model dispatch. Keep the original configuration, claims, unknown outcomes and spent budgets intact.
+- Record restart recovery against the current intent or explicit readmission claim. Repair a missing annotation for an already held task without rewriting its state or replaying work. Refuse unresolved Bridge results before reading provider configuration.
+- Require fresh source-profile measurements and preserve every historical profile literal. Keep Studio 0.2.45 assets unchanged. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
+
 ## 0.2.44 — 2026-10-25
 
 - Store equal native history arrays once in the version-3 lossless checkpoint codec, then reconstruct and hash the complete canonical record before restoration. Preserve version-1 raw and version-2 compressed snapshot readability and original encoded identities.

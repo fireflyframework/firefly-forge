@@ -7,6 +7,7 @@ import copy
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -105,7 +106,7 @@ class SCMConversations:
             run_id = run["id"]
             if run_id in runs:
                 continue
-            runs[run_id] = run
+            runs[run_id] = {key: value for key, value in run.items() if key != "_ticket_creation"}
             if len(runs) > 200:
                 raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
             references.append(reference)
@@ -199,88 +200,129 @@ class SCMConversations:
         records = getattr(self.store, "run_creation_records", None)
         if not runs or records is None:
             return
-        parents = {reference["run_id"]: reference for reference in references}
-        async with self.store._unit():
-            children = await records.checkpoint_children(
-                sorted(identifier(run_id) for run_id in parents),
-                identifier(delivery["repository_id"]),
-            )
-        if len(children) > 200:
-            raise AccessDenied("The current ticket has too many native checkpoint test references")
-        creations = RunCreationRequests(self.store, records=records)
-        for child_id in children:
-            try:
-                async with self.store._unit():
-                    receipt = await creations._load(child_id.hex)
-                if receipt is None or receipt.get("source_checkpoint") is None:
-                    continue
-                source = receipt["source_checkpoint"]
-                parent = parents.get(source["reference"]["run_id"])
-                scope = next(
-                    (
-                        item
-                        for item in scopes
-                        if (
-                            item["project_id"] == receipt["project_id"]
-                            and receipt["component_id"] in item["component_ids"]
-                        )
-                    ),
-                    None,
+        pending = {reference["run_id"]: reference for reference in references}
+        while pending:
+            parents, pending = pending, {}
+            async with self.store._unit():
+                children = await records.checkpoint_children(
+                    sorted(identifier(run_id) for run_id in parents),
+                    identifier(delivery["repository_id"]),
                 )
-                if parent is None or scope is None or receipt["repository_id"] != delivery["repository_id"]:
+            if len(children) > 200:
+                raise AccessDenied("The current ticket has too many native checkpoint test references")
+            creations = RunCreationRequests(self.store, records=records)
+            for child_id in children:
+                try:
+                    async with self.store._unit():
+                        receipt = await creations._load(child_id.hex)
+                    if receipt is None or receipt.get("source_checkpoint") is None:
+                        continue
+                    source = receipt["source_checkpoint"]
+                    parent = parents.get(source["reference"]["run_id"])
+                    scope = next(
+                        (
+                            item
+                            for item in scopes
+                            if (
+                                item["project_id"] == receipt["project_id"]
+                                and receipt["component_id"] in item["component_ids"]
+                            )
+                        ),
+                        None,
+                    )
+                    if parent is None or scope is None or receipt["repository_id"] != delivery["repository_id"]:
+                        continue
+                    await ProjectAccess(self.store).authorize_actor(
+                        {"user_id": scope["native_user_id"], "authentication_method": "oidc_bearer"},
+                        receipt["project_id"],
+                        "read",
+                    )
+                    child = await self.store.get_run(receipt["run_id"])
+                    if child.get("source_checkpoint_snapshot") != source or any(
+                        child.get(key) != receipt[key] for key in ("repository_id", "project_id", "component_id")
+                    ):
+                        continue
+                    frozen_checkpoint_source(child, {"id": delivery["repository_id"]})
+                    admitted = receipt.get("admitted_at")
+                    stamp = datetime.fromisoformat(admitted.replace("Z", "+00:00")) if admitted is not None else None
+                    if stamp is not None and stamp.tzinfo is None:
+                        raise ValueError("Native creation admission requires its retained timezone")
+                    # Keep admission ordering local to this read, never in shared service state.
+                    child = {
+                        **child,
+                        "_ticket_creation": {
+                            "parent_run_id": source["reference"]["run_id"],
+                            "admitted_at": stamp.timestamp() if stamp is not None else None,
+                        },
+                    }
+                    # Intermediate native creations are not SCM inbox receipts.
+                    reference = TicketContextReferenceV1(
+                        kind="native_checkpoint_maintain"
+                        if source.get("operation", "test") == "maintain"
+                        else "native_checkpoint_test",
+                        receipt_id=receipt["request_id"],
+                        parent_receipt_id=parent.get("parent_receipt_id") or parent["receipt_id"],
+                        creator_user_id=receipt["original_actor"]["user_id"],
+                        sequence=parent["sequence"],
+                        run_id=child["id"],
+                        project_id=receipt["project_id"],
+                        component_id=receipt["component_id"],
+                        context_digest=digest(
+                            {
+                                "parent": parent,
+                                "creation_digest": receipt["digest"],
+                                "source_digest": source["digest"],
+                                "run_id": child["id"],
+                            }
+                        ),
+                    ).model_dump(mode="json")
+                except (AccessDenied, KeyError, TypeError, ValueError):
                     continue
-                await ProjectAccess(self.store).authorize_actor(
-                    {"user_id": scope["native_user_id"], "authentication_method": "oidc_bearer"},
-                    receipt["project_id"],
-                    "read",
-                )
-                child = await self.store.get_run(receipt["run_id"])
-                if (
-                    child["id"] in runs
-                    or child.get("source_checkpoint_snapshot") != source
-                    or any(child.get(key) != receipt[key] for key in ("repository_id", "project_id", "component_id"))
-                ):
+                if child["id"] in runs:
+                    runs[child["id"]] = child
                     continue
-                frozen_checkpoint_source(child, {"id": delivery["repository_id"]})
-                reference = TicketContextReferenceV1(
-                    kind="native_checkpoint_maintain"
-                    if source.get("operation", "test") == "maintain"
-                    else "native_checkpoint_test",
-                    receipt_id=receipt["request_id"],
-                    parent_receipt_id=parent["receipt_id"],
-                    creator_user_id=receipt["original_actor"]["user_id"],
-                    sequence=parent["sequence"],
-                    run_id=child["id"],
-                    project_id=receipt["project_id"],
-                    component_id=receipt["component_id"],
-                    context_digest=digest(
-                        {
-                            "parent": parent,
-                            "creation_digest": receipt["digest"],
-                            "source_digest": source["digest"],
-                            "run_id": child["id"],
-                        }
-                    ),
-                ).model_dump(mode="json")
-            except (AccessDenied, KeyError, TypeError, ValueError):
-                continue
-            if len(runs) >= 200:
-                raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
-            runs[child["id"]] = child
-            references.append(reference)
+                if len(runs) >= 200:
+                    raise AccessDenied("The current ticket has too many distinct run references for one natural choice")
+                runs[child["id"]] = child
+                references.append(reference)
+                pending[child["id"]] = reference
+
+    @staticmethod
+    def current_references(references: list[Data], runs: Data) -> list[Data]:
+        active = [ref for ref in references if runs[ref["run_id"]]["status"] not in TERMINAL]
+        if active:
+            superseded = set()
+            for ref in active:
+                seen = {ref["run_id"]}
+                parent = runs[ref["run_id"]].get("_ticket_creation", {}).get("parent_run_id")
+                while parent in runs:
+                    if parent in seen:
+                        raise AccessDenied("Native creation lineage contains a cycle")
+                    seen.add(parent)
+                    superseded.add(parent)
+                    parent = runs[parent].get("_ticket_creation", {}).get("parent_run_id")
+            return [ref for ref in active if ref["run_id"] not in superseded]
+        parents = {value["_ticket_creation"]["parent_run_id"] for value in runs.values() if "_ticket_creation" in value}
+        leaves = [ref for ref in references if ref["run_id"] not in parents]
+        admitted = [
+            ref for ref in leaves if runs[ref["run_id"]].get("_ticket_creation", {}).get("admitted_at") is not None
+        ]
+        if admitted:
+            latest = max(runs[ref["run_id"]]["_ticket_creation"]["admitted_at"] for ref in admitted)
+            return [ref for ref in admitted if runs[ref["run_id"]]["_ticket_creation"]["admitted_at"] == latest]
+        return leaves[:1]
 
     async def selection(self, delivery: Data, scopes: list[Data]) -> Data:
         message = AddressedStatusV1.model_validate(delivery["command"])
         references, runs = await self.references(delivery, scopes) if message.intent == "status" else ([], {})
-        active = [r for r in references if runs[r["run_id"]]["status"] not in TERMINAL]
-        eligible = active if active else references[:1]
+        eligible = self.current_references(references, runs)
         selection = (
             "clarify"
             if message.intent == "clarify"
             else "missing"
             if not eligible
             else "ambiguous"
-            if len(active) > 1
+            if len(eligible) > 1
             else "run"
         )
         return {

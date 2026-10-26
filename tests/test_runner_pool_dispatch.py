@@ -232,7 +232,8 @@ async def test_fixed_exporter_reuses_hardened_reader_and_rejects_symlinks(tmp_pa
     assert code != 0 and b"only regular files" in raw
 
 
-async def test_fixed_exporter_rejects_child_environment_credentials_without_copying_parent_tokens(tmp_path):
+@pytest.mark.parametrize("offset", [0, 8177])
+async def test_fixed_exporter_rejects_child_environment_credentials_without_copying_parent_tokens(tmp_path, offset):
     import sys
 
     from firefly_forge.runner_backends import _bounded_process
@@ -243,7 +244,7 @@ async def test_fixed_exporter_rejects_child_environment_credentials_without_copy
     workspace.mkdir()
     token = "fixture-exporter-child-token-59d58f"
     parent_token = "fixture-exporter-parent-token-b6d574"
-    (workspace / "main.py").write_text("value = " + repr(token))
+    (workspace / "main.py").write_text("x" * offset + "value = " + repr(token))
     with ephemeral_credentials({"FORGE_CODING_RUNTIME_TOKEN": parent_token}):
         script = workspace_collector(1_048_576)
     assert parent_token not in script

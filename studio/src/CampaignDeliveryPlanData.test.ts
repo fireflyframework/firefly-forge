@@ -244,3 +244,70 @@ it("an exact history read must match the selected immutable receipt digest and r
     ),
   ).rejects.toThrow();
 });
+
+it("binds a bounded campaign to a component beyond a large frozen project prefix", async () => {
+  const d = deliveryFixture(),
+    parser = await api(),
+    component = d.report.components[0];
+  const campaign = {
+    id: d.report.campaign.id,
+    project_id: d.report.project_id,
+    request_digest: d.report.campaign.request_digest,
+    launch: d.launch,
+    project_snapshot: {
+      id: d.report.project_id,
+      digest: d.report.campaign.project_digest,
+      definition: {
+        components: [
+          ...Array.from({ length: 4999 }, (_, index) => ({
+            id: `other-${index}`,
+            name: `Other ${index}`,
+            repository_id: component.repository_id,
+            depends_on: [],
+          })),
+          {
+            id: component.component_id,
+            name: "Last frozen API",
+            repository_id: component.repository_id,
+            depends_on: component.depends_on,
+          },
+        ],
+      },
+    },
+    children: [
+      {
+        current: true,
+        component_id: component.component_id,
+        run_id: component.run_id,
+        attempt: component.attempt,
+      },
+    ],
+  };
+  const graph = await parser.readDeliveryGraph(campaign, d.report);
+  expect(graph.components).toHaveLength(1);
+  expect(graph.components[0].name).toBe("Last frozen API");
+  await expect(
+    parser.readDeliveryGraph(campaign, {
+      ...d.report,
+      components: Array.from({ length: 51 }, () => component),
+    }),
+  ).rejects.toThrow();
+});
+
+it("reads a descriptive 119-dependency fanout without relaxing ID or graph authority checks", async () => {
+  const parser = await api();
+  const dependencies = Array.from(
+    { length: 119 },
+    (_, index) => `service-${index}`,
+  );
+  const projectIds = new Set(dependencies);
+  expect(parser.readProjectDependencies(dependencies, projectIds)).toEqual(
+    dependencies,
+  );
+  for (const changed of [
+    [...dependencies, "foreign"],
+    [...dependencies, dependencies[0]],
+    [...dependencies, "INVALID ID"],
+  ])
+    expect(() => parser.readProjectDependencies(changed, projectIds)).toThrow();
+});

@@ -42,10 +42,12 @@ class CandidateProjectionTests(unittest.TestCase):
             {"id": f"{i:032x}", "verification": copy.deepcopy(REFERENCE), "conversation": context} for i in range(1, 66)
         ]
         matcher = OAuthCredentialMatcher(base64.urlsafe_b64encode(b"0" * 32).decode(), "public_projection")
-        with self.assertRaisesRegex(ValueError, "structural bound"):
-            matcher.contains({"items": rows[:50]}, [])
+        self.assertFalse(matcher.contains({"items": rows[:50]}, []))
+        packet = matcher.packet("1" * 32, "registration", "2" * 32, 1, ["private retained discussion"])
+        self.assertTrue(matcher.contains({"items": rows[:50]}, [packet]))
         items = [self.project(row) for row in rows[:50]]
         self.assertFalse(matcher.contains({"items": items}, []))
+        self.assertFalse(matcher.contains({"items": items}, [packet]))
         self.assertEqual(items[0], {"id": "0" * 31 + "1", "verification": REFERENCE, "reference_digest": "e" * 64})
         self.assertEqual(len(items), 50)
         self.assertTrue(all(set(item) == {"id", "verification", "reference_digest"} for item in items))

@@ -68,7 +68,7 @@ def workspace_collector(limit: int) -> str:
     """Use the audited reader itself, without importing image or project packages."""
     import inspect
 
-    from firefly_forge import sandbox, secrets, workspace_tools
+    from firefly_forge import credential_text_stream, sandbox, secrets, workspace_tools
 
     functions = (
         workspace_tools._private_name,
@@ -78,17 +78,23 @@ def workspace_collector(limit: int) -> str:
         secrets.sensitive_name,
         secrets.credential_representations,
         secrets.redact_environment,
+        secrets.credential_values,
+        credential_text_stream.text_chunks,
+        credential_text_stream._scalar,
+        credential_text_stream.raw_documents,
+        secrets.KnownCredentialScan,
         secrets.contains_known_credential,
         sandbox.pack_workspace,
     )
     prefix = (
         "from __future__ import annotations\n"
-        "import hashlib,io,json,os,re,stat,sys,tarfile\n"
+        "import hashlib,io,json,math,os,re,stat,sys,tarfile\n"
         "from pathlib import Path\n"
         "from typing import Any\n"
         "from urllib.parse import unquote,urlsplit\n"
         "from contextvars import ContextVar\n"
         "_ephemeral=ContextVar('forge_ephemeral_credentials',default=())\n"
+        f"TEXT_CHARS={credential_text_stream.TEXT_CHARS!r}\n"
         f"PRIVATE_BASENAMES=frozenset({sorted(workspace_tools.PRIVATE_BASENAMES)!r})\n"
         f"PUBLIC_ENV_SUFFIXES={workspace_tools.PUBLIC_ENV_SUFFIXES!r}\n"
         f"PRIVATE_KEY_SUFFIXES={workspace_tools.PRIVATE_KEY_SUFFIXES!r}\n"

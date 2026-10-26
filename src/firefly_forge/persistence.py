@@ -314,7 +314,9 @@ class ForgeTaskRepository(Repository[ForgeTaskEntity, UUID]):
     async def find_pending_recovery(self) -> list[ForgeTaskEntity]:
         return list(
             await self._require_session().scalars(
-                select(ForgeTaskEntity).where(ForgeTaskEntity.status == "running").order_by(ForgeTaskEntity.run_id)
+                select(ForgeTaskEntity)
+                .where(ForgeTaskEntity.status.in_(("running", "needs_reconciliation")))
+                .order_by(ForgeTaskEntity.run_id)
             )
         )
 

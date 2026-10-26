@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextvars
+import hashlib
 import os
 import threading
 from collections.abc import Awaitable, Callable, Iterator
@@ -19,6 +20,7 @@ from firefly_forge.source_catalog import (
     SourceCatalogBudget,
     SourceCatalogRefV1,
     _directory,
+    _read,
     _stamp,
     retain_source_catalog,
     revalidate_source_catalog,
@@ -48,14 +50,28 @@ def _manifest_identity(root: Path, reference: SourceCatalogRefV1) -> tuple[int, 
     folder = None
     try:
         folder = _directory(reference.artifact_id, parent, private=True)
-        info = os.stat("manifest.json", dir_fd=folder, follow_symlinks=False)
-        return (
-            os.fstat(parent).st_dev,
-            os.fstat(parent).st_ino,
-            os.fstat(folder).st_dev,
-            os.fstat(folder).st_ino,
-            *_stamp(info),
-        )
+        parent_identity = _stamp(os.fstat(parent))[:5]
+        folder_identity = _stamp(os.fstat(folder))[:5]
+
+        def assert_paths() -> None:
+            if (
+                _stamp(os.fstat(parent))[:5] != parent_identity
+                or _stamp(os.stat(root, follow_symlinks=False))[:5] != parent_identity
+                or _stamp(os.fstat(folder))[:5] != folder_identity
+                or _stamp(os.stat(reference.artifact_id, dir_fd=parent, follow_symlinks=False))[:5] != folder_identity
+            ):
+                raise ValueError("Prepared verification catalog path changed during its identity read")
+
+        assert_paths()
+        before = _stamp(os.stat("manifest.json", dir_fd=folder, follow_symlinks=False))
+        encoded = _read(folder, "manifest.json", 1048576)
+        after = _stamp(os.stat("manifest.json", dir_fd=folder, follow_symlinks=False))
+        assert_paths()
+        # Post-publication ctime can change without payload changes on Documents filesystems.
+        # The immutable descriptor read still checks full stamps, including ctime, during I/O.
+        if before != after or hashlib.sha256(encoded).hexdigest() != reference.manifest_sha256:
+            raise ValueError("Prepared verification catalog manifest changed during its identity read")
+        return (*parent_identity[:2], *folder_identity[:2], *after[:-1])
     finally:
         if folder is not None:
             os.close(folder)
@@ -155,7 +171,7 @@ class PreparedVerificationSource:
         return self.reference.source_digest
 
     def fence(self) -> None:
-        """Constant-size metadata fence; the caller must still hold exclusive workspace ownership."""
+        """Bounded manifest fence; the caller must still hold exclusive workspace ownership."""
         if _identity(self.workspace) != self._source_identity:
             raise ValueError("Verification source root changed after preparation")
         if _manifest_identity(self.catalog_root, self.reference) != self._manifest_identity:

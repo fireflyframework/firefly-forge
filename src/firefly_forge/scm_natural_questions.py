@@ -150,7 +150,12 @@ def natural_questions(receipt: Data) -> Data | None:
         raise ValueError("The typed natural questions changed after their confirmed publication")
     decision = producer["decision"]
     resolution = receipt["natural_turn"].get("resolution") or {}
-    if not decision["questions"] or resolution.get("state") == "waiting" and resolution.get("candidates"):
+    if (
+        (receipt["feedback_intent"].get("communication") or {}).get("natural_reply_source") == "current_execution_facts"
+        or not decision["questions"]
+        or resolution.get("state") == "waiting"
+        and resolution.get("candidates")
+    ):
         return None
     reference = {
         "origin": "natural_turn",

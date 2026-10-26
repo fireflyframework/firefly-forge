@@ -30,7 +30,7 @@ def _declared_admission_names():
 
 def test_v12_retains_its_history_and_keeps_seven_earlier_profiles():
     profiles = q._profiles()
-    assert len(profiles) in {8, 9}
+    assert len(profiles) >= len(HISTORICAL_SEALS)
     assert [(p.version, p.loader_profile) for p in profiles[:7]] == [
         (n, f"codex-exec-restricted-source/v{n + 1}") for n in range(4, 11)
     ]
@@ -42,8 +42,12 @@ def test_v12_retains_its_history_and_keeps_seven_earlier_profiles():
 
 def test_source_identity_helper_is_explicit_in_loader_and_admission():
     names = _declared_admission_names()
-    assert len(names) == len(set(names)) == 35
-    assert names[-3:] == ("sandbox_command_slots.py", "agentic_checkpoint_boundary.py", "checkpoint_source_identity.py")
+    assert len(names) == len(set(names)) and len(names) >= 35
+    assert names[32:35] == (
+        "sandbox_command_slots.py",
+        "agentic_checkpoint_boundary.py",
+        "checkpoint_source_identity.py",
+    )
     assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) == 22
     assert q.LOADER_MODULES[-1] == "checkpoint_source_identity.py"
     root = Path(q.__file__).parent

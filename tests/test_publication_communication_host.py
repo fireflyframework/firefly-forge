@@ -4,6 +4,7 @@
 import copy
 import hashlib
 import json
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -432,6 +433,8 @@ async def test_existing_publication_intent_refuses_before_regenerating_a_draft(p
     p.engine.communication_writer.model = reviewed_model(card(), calls=calls)
 
     class RetainedIntent:
+        store = p.store
+
         async def plan(self, _identifier):
             return {"tasks": [{"id": "publish", "status": "running"}]}
 
@@ -464,8 +467,21 @@ async def test_drift_after_draft_storage_clears_public_text_before_push(publicat
 async def test_exact_title_and_body_are_durable_before_publication_intent(publication):
     p = publication
     observed = []
+    custody_reads = []
+
+    @asynccontextmanager
+    async def unit():
+        yield
+
+    async def native_records(identifier):
+        assert identifier.hex == p.run["id"]
+        custody_reads.append(identifier)
+        return []
 
     class Journal:
+        store = SimpleNamespace(_unit=unit, get_run=p.store.get_run)
+        records = SimpleNamespace(find_for_run=native_records)
+
         async def plan(self, _identifier):
             return {"tasks": []}
 
@@ -484,6 +500,7 @@ async def test_exact_title_and_body_are_durable_before_publication_intent(public
     p.engine.journal = Journal()
     await p.engine.publish(p.run["id"])
     assert observed[0] == p.state["before_push"] == p.run["publication_draft"]
+    assert custody_reads
 
 
 async def test_recorded_title_drift_during_draft_storage_blocks_push(publication):

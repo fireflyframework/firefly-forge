@@ -1064,6 +1064,25 @@ after waiting for the provider lock. Native configuration stores a clearly marke
 factory outbox; it does not invent an inbound GitHub event or modify
 `issue_context`, the parent's receipts, or the source-only question producer.
 
+With a configured communication profile, these updates use the child's frozen
+component, requested work and current check provenance. Requested changes remain
+intentions until recorded verification supports an outcome. The AI writer and
+independent reviewer receive the exact verified owner quotation as language
+context, so an English technical brief does not override the owner's Spanish
+conversation. Quotations do not grant authority or become verified results;
+credential and trusted-link checks still apply. A generic or unsupported draft
+has at most one correction, and a selected AI failure sends nothing.
+
+Draft publication facts describe the requested remote action separately from its
+confirmation. A retained local checkpoint or a missing prepublication URL does
+not mean that no remote action was requested. Its native receipt supplies the
+exact changed-file count and a labeled repository-path preview; a truncated
+preview is not the complete file set. The writer cannot claim a future review
+URL. Source-admission errors establish the recorded guard failure, not the
+changed path or underlying cause. Check counts retain current versus historical
+provenance. A successful test or maintenance unit does not establish completion
+of the original product issue.
+
 A confirmed question comment lets its mapped owner reply naturally in the issue.
 The existing answer pipeline records the child's exact `worker_response` with
 current SCM attribution and leaves the child paused. There is no automatic

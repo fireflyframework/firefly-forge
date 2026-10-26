@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from cryptography.fernet import Fernet
 
+from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.connection_oauth import ConnectionOAuth
 from firefly_forge.oauth_credential_fingerprints import OAuthCredentialMatcher
 from firefly_forge.source_patch_admission import SourcePatch
@@ -21,12 +22,13 @@ def history(service, secret):
     return service.packet(uuid4().hex, "registration", uuid4().hex, 1, [secret])
 
 
-def test_large_public_patch_has_a_separate_typed_bound():
+def test_large_public_patch_and_generic_documents_use_complete_streamed_matching():
     service = matcher()
     text = "public" * 190000
     assert not service.contains_source_patch(SourcePatch(text), [])
-    with pytest.raises(ValueError, match="text bound"):
-        service.contains(text, [])
+    assert not service.contains(text, [])
+    secret = "historical-credential-at-public-tail"
+    assert service.contains(text + secret, [history(service, secret)])
 
 
 @pytest.mark.parametrize("offset", [0, 1048570, 1100000])
@@ -37,15 +39,17 @@ def test_historical_credential_is_detected_at_every_patch_position(offset):
     assert service.contains_source_patch(SourcePatch(text), [history(service, secret)])
 
 
-def test_patch_history_and_matching_work_remain_bounded():
+def test_patch_history_remains_authenticated_across_a_large_complete_scan():
     service = matcher()
     packet = history(service, "secret")
     tampered = copy.deepcopy(packet)
     tampered["revision"] += 1
     with pytest.raises(ValueError, match="authenticated"):
         service.contains_source_patch(SourcePatch("public"), [tampered])
-    with pytest.raises(ValueError, match="work bound"):
-        service.contains_source_patch(SourcePatch("x" * 1140000), [history(service, "a"), history(service, "bb")])
+    assert not service.contains_source_patch(
+        SourcePatch("x" * 1140000), [history(service, "a"), history(service, "bb")]
+    )
+    assert service.contains_source_patch(SourcePatch("x" * 1140000 + "secret"), [packet])
 
 
 @pytest.mark.parametrize("value", ["x" * (4 * 1024 * 1024 + 1), "\ud800", b"bytes", True])
@@ -54,7 +58,7 @@ def test_patch_requires_bounded_valid_unicode(value):
         SourcePatch(value)
 
 
-async def test_current_di_binds_typed_patch_to_authenticated_evidence_snapshot():
+async def test_current_di_binds_typed_patch_to_authenticated_evidence_snapshot(tmp_path):
     calls = []
 
     async def execute(statement):
@@ -65,12 +69,18 @@ async def test_current_di_binds_typed_patch_to_authenticated_evidence_snapshot()
     async def unit(**kwargs):
         yield SimpleNamespace(execute=execute)
 
-    store = SimpleNamespace(schema="forge_test_patch", _unit=unit)
+    store = SimpleNamespace(
+        schema="forge_test_patch",
+        _unit=unit,
+        configuration=ConfigurationStore(tmp_path),
+        credential_registry=lambda: {},
+    )
     service = ConnectionOAuth(store, encryption_key=Fernet.generate_key().decode(), browser_origin="")
     assert store.vault_source_patch_admission == service.admit_source_patch
     text = "public" * 190000
     await store.vault_source_patch_admission(SourcePatch(text))
-    assert len(calls) == 1
+    assert len(calls) == 2
+    assert str(calls[0]) == str(calls[1])
     service._secrets["FORGE_CURRENT_SECRET"] = "public"
     with pytest.raises(ValueError, match="configured credentials"):
         await store.vault_source_patch_admission(SourcePatch(text))

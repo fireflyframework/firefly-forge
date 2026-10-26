@@ -18,6 +18,14 @@ from test_bridge_inflight_cancel import RUN
 @pytest.fixture
 async def known_worker(tmp_path, monkeypatch):
     env = await activated(tmp_path, monkeypatch)
+    accept_feedback = env.journal.worker_feedback
+
+    async def historical_feedback(*args, **kwargs):
+        # Reconstruct the preautomatic writer representation retained by Phase A operators.
+        env.store.run.data.get("usage", {}).pop("runtime_report", None)
+        return await accept_feedback(*args, **kwargs)
+
+    monkeypatch.setattr(env.journal, "worker_feedback", historical_feedback)
     posts = []
     feedback = dict(
         id="known-final-worker",

@@ -84,6 +84,7 @@ async def activated(tmp_path, monkeypatch):
     store.run.data.pop("active_task", None)
     store.schema = "stage3-host-memory"
     store._ownership_pid = 12345
+    store.execution_ownership_token = object()
     store.configuration.update("bridge", ProviderConfiguration(values={"checkpoints": "required"}))
     store.run.data.update(store.configuration.snapshot("bridge"))
     roles = RoleRegistry(tmp_path / "roles")
@@ -663,7 +664,13 @@ async def test_explicit_ticket_restores_actual_agent_without_prior_tool_or_post_
         assert consume["payload"]["source"]["kind"] == source
         assert consume["payload"]["response_sha256"] == hashlib.sha256(body).hexdigest()
         assert (await env.requests.get(request.request_id))["status"] == "completed"
-        assert env.store.run.data["bridge_completion_hold"]
+        assert not env.store.run.data["bridge_completion_hold"]
+        terminal = next(row.data for row in env.journal.records.rows if row.kind == "terminal_completion_receipt")
+        restored_custody = next(
+            item for item in terminal["payload"]["proof"]["completions"] if item.get("consume_version") == 2
+        )
+        assert restored_custody["restore_request_id"] == request.request_id
+        assert restored_custody["source_kind"] == source
     finally:
         await env.model.client.close()
 

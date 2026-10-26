@@ -65,6 +65,8 @@ from firefly_forge.campaign_report_history_persistence import ForgeCampaignRepor
 from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
+from firefly_forge.checkpoint_mode_adoptions import CheckpointModeAdoptions
+from firefly_forge.checkpoint_mode_controllers import CheckpointModeAdoptionController
 from firefly_forge.checkpoint_test_sources import CheckpointTestSources
 from firefly_forge.cloud import CloudRecipes
 from firefly_forge.cloud_controllers import CloudController
@@ -149,6 +151,8 @@ from firefly_forge.oauth_provider_policy_controllers import OAuthProviderPolicyC
 from firefly_forge.oauth_provider_policy_persistence import OAuthProviderPolicyRepository
 from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
+from firefly_forge.original_selection_controllers import OriginalSelectionReadmissionController
+from firefly_forge.original_selection_readmissions import OriginalSelectionReadmissions
 from firefly_forge.persistence import (
     ForgeDeploymentRepository,
     ForgeEventRepository,
@@ -168,7 +172,7 @@ from firefly_forge.product_design_controllers import ProductDesignController
 from firefly_forge.product_lifecycle import ProductLifecycle
 from firefly_forge.product_lifecycle_controllers import ProductLifecycleController
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
-from firefly_forge.project_campaign_controllers import ProjectCampaignController
+from firefly_forge.project_campaign_controllers import CampaignExecutionPolicyController, ProjectCampaignController
 from firefly_forge.project_campaign_persistence import (
     ForgeCampaignChildRepository,
     ForgeCampaignEventRepository,
@@ -239,6 +243,8 @@ from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
 from firefly_forge.tool_controllers import ToolController
 from firefly_forge.tool_persistence import ForgeToolInvocationRepository
+from firefly_forge.unknown_command_acknowledgements import UnknownCommandAcknowledgements
+from firefly_forge.unknown_command_controllers import UnknownCommandAcknowledgementController
 from firefly_forge.user_administration import UserAdministration
 from firefly_forge.user_administration_controllers import UserAdministrationController
 from firefly_forge.user_administration_persistence import (
@@ -872,6 +878,22 @@ class FactoryConfiguration:
         return KnownWorkerCompletions(store, journal)
 
     @bean
+    def unknown_command_acknowledgements(
+        self, store: Store, journal: Journal, handoffs: VerificationHandoffs
+    ) -> UnknownCommandAcknowledgements:
+        return UnknownCommandAcknowledgements(store, journal, handoffs)
+
+    @bean
+    def checkpoint_mode_adoptions(self, store: Store, journal: Journal, engine: Engine) -> CheckpointModeAdoptions:
+        return CheckpointModeAdoptions(store, journal, engine)
+
+    @bean
+    def original_selection_readmissions(
+        self, store: Store, journal: Journal, engine: Engine
+    ) -> OriginalSelectionReadmissions:
+        return OriginalSelectionReadmissions(store, journal, engine)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -1239,6 +1261,9 @@ def create_runtime(
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
+        UnknownCommandAcknowledgementController,
+        CheckpointModeAdoptionController,
+        OriginalSelectionReadmissionController,
         GitDiffArchive,
         GitDiffController,
         JournalController,
@@ -1311,6 +1336,7 @@ def create_runtime(
         ForgeCampaignDeliveryPlanRepository,
         CampaignDeliveryPlanController,
         ProjectCampaignController,
+        CampaignExecutionPolicyController,
     ]:
         container.register(component)
 

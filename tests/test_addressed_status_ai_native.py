@@ -96,7 +96,7 @@ def card(c, language):
         run, conversation=CommunicationConversationV1(selection="run", language=language, linked_runs=1)
     )
     decision = {key: facts["decision"][key] for key in ("question", "context", "choices")}
-    return {
+    value = {
         "title": {"text": "Estado del trabajo" if language == "es" else "Work status", "fact_ids": ["conversation"]},
         "paragraphs": [
             {
@@ -108,6 +108,18 @@ def card(c, language):
         ],
         "decision": decision,
     }
+
+    references = sorted(set(facts) - {"conversation", "state", "decision"})
+    for start in range(0, len(references), 4):
+        value["paragraphs"].append(
+            {
+                "text": "La ejecución registra el alcance y el estado de pruebas; la entrega no está acreditada."
+                if language == "es"
+                else "The execution records its scope and check status; delivery is not established.",
+                "fact_ids": references[start : start + 4],
+            }
+        )
+    return value
 
 
 @pytest.mark.parametrize("transport", ["polling", "signed"])
@@ -133,17 +145,28 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert result["feedback_status"] == "sent" and len(c.state["posts"]) == baseline + 1
     intent = result["feedback_intent"]
     evidence = intent["communication"]
-    assert evidence["facts"]["conversation"]["language"] == language
-    if transport == "signed":
-        assert evidence["mode"] == "ai"
-        assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
-        assert [call[0] for call in calls] == ["draft", "review"]
-        assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
-    else:
-        assert evidence["mode"] == "deterministic" and evidence["reason"] == "natural_recorded_reply"
-        assert len(coordinator_calls) == 1 and not calls
+    from firefly_forge.product_provenance import content_digest
+
+    current_facts = communication_facts(
+        c.http.portal.call(c.store.get_run, c.run["id"]),
+        conversation=CommunicationConversationV1(
+            selection="run",
+            language=language,
+            linked_runs=1 if transport == "polling" else len(result["conversation"]["candidate_ids"]),
+        ),
+    )
+    assert evidence["facts"] == current_facts
+    assert evidence["facts_sha256"] == content_digest(current_facts)
+    assert evidence["mode"] == "ai"
+    assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
+    assert [call[0] for call in calls] == ["draft", "review"]
+    assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
+    if transport == "polling":
+        assert evidence["natural_reply_source"] == "current_execution_facts"
+        assert len(coordinator_calls) == 1
         assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
         assert result["natural_turn"]["decision"]["language"] == language
+        assert result["natural_turn"]["reply"] not in intent["body"]
     assert (
         result["source_snapshot"] == delivery["source_snapshot"] and result["verification"] == delivery["verification"]
     )
@@ -151,7 +174,7 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert c.http.portal.call(c.journal.entries, c.run["id"]) == before
     assert c.process(delivery) == result
     c.http.portal.call(c.collaboration.sync_feedback)
-    assert len(calls) == (2 if transport == "signed" else 0) and len(c.state["posts"]) == baseline + 1
+    assert len(calls) == 2 and len(c.state["posts"]) == baseline + 1
     assert len(coordinator_calls) == (0 if transport == "signed" else 1)
 
 
@@ -180,7 +203,9 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
             payload = {
                 "verdict": "supported",
                 "issues": [],
-                "fact_ids": ["conversation", "state", "decision"],
+                "fact_ids": sorted(
+                    {key for part in [draft["title"], *draft["paragraphs"]] for key in part["fact_ids"]}
+                ),
                 "rationale": "The original candidate follows its original recorded facts.",
             }
         return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, payload)])
@@ -214,7 +239,8 @@ def test_native_signed_one_semantic_correction_is_published_once_without_second_
             {
                 "text": "El trabajo ha terminado." if language == "es" else "All work has finished.",
                 "fact_ids": ["conversation", "state", "decision"],
-            }
+            },
+            *corrected["paragraphs"][1:],
         ],
     }
     configure_ai(c)

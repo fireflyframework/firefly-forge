@@ -91,6 +91,7 @@ nav:
       - Choose a stack: profiles.md
       - Build, maintain and test: workflows.md
       - Coordinate project campaigns: project-campaigns.md
+      - Configure campaign execution windows: campaign-execution-budgets.md
       - Work on a large product: large-products.md
       - Save development progress: development-workflow.md
       - Verify a saved checkpoint: checkpoint-verification.md
@@ -129,6 +130,8 @@ nav:
       - Factory infrastructure and clusters: factory-infrastructure.md
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
+      - Enable recovery for an older Bridge run: checkpoint-mode-adoption.md
+      - Restore an original provider selection: original-selection-readmission.md
       - Deploy and roll back: deployment.md
       - Cloud and infrastructure recipes: cloud-deployment.md
       - Application health and maintenance: application-operations.md

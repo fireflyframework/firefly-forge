@@ -23,6 +23,10 @@ For example, a CRM might separate identity, contacts, sales and its web applicat
 
 A monorepo uses nonoverlapping component roots within one registered repository. Separate repositories retain their own delivery identities. forge currently permits one active run per repository; dividing a monorepo into components does not add concurrent write ownership.
 
+Project topology can describe more than 50 components, more than 50 direct dependencies per component and more than 30 owners. The architecture can also describe more than 30 pieces or decisions and more than 50 nonfunctional requirements. Component identifiers must remain unique, dependencies must exist without cycles, and roots in the same repository must not overlap. Increasing a description does not grant more execution authority.
+
+Focused model regressions cover a 5,000-component JSON round trip and 1,500-component dependency chains, including a deep cycle. They do not establish campaign admission, Studio usability, distributed execution or assembled-product acceptance at that scale. In particular, explicit campaign component selection still has its own 50-item input limit and report snapshots remain bounded.
+
 ## Keep context proportional to the task
 
 Retain complete source evidence outside the model conversation. Give the worker its reviewed task, relevant contracts, selected knowledge and exact source references. A preview helps navigation; it does not establish that every changed file was inspected.
@@ -47,7 +51,7 @@ The automatic worker handoff uses [prepared source identity](source-catalog-prep
 | Diff retention | Chunked local artifacts; `diff_budget.max_bytes: null` adds no fixed total-patch ceiling. | Deadlines, free-space checks and deployment resources still apply. |
 | Legacy source identity | Remaining synchronous callers reject more than 100,000,000 source bytes or 10,000 inventory entries. A source-inventory path also has a 4 MiB output limit. | Elastic diffs alone do not qualify repositories beyond these constraints. |
 | Product definition | At most 50 journeys, 100 features, 50 integrations and 20 processes, within 80,000 serialized JSON characters. | Detailed contracts can exceed the aggregate bound before the individual list limits. Versioned, paged product entities remain required for larger definitions. |
-| Component topology | Project topology allows 50 components; the separate product architecture model allows 30. | These description boundaries still need a coordinated extension for larger products. |
+| Component topology | The topology and architecture models have no fixed component count. Dependency validation uses an iterative graph walk; source-root overlap checks sort path segments. | This removes the former 50/30 model ceilings. Campaign selection, report snapshots, transport and execution budgets remain separate constraints. |
 | Project discovery | The native listing returns the newest 200 projects without a cursor. | Older projects can be absent from discovery; known-ID access still requires current permission. |
 | Execution | One active run per repository. | Separate repositories can run in parallel; monorepo write execution is serialized. |
 | Source acquisition | Git clone runs on the controller with time and output limits. | Clone disk-growth supervision is not implemented; runner container controls do not cover this step. |

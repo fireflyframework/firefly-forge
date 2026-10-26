@@ -82,18 +82,27 @@ class RestoreExecution:
 
     async def receipt(self, engine: Any, key: str, evidence: dict[str, Any], checkpoint: dict[str, Any]) -> None:
         _outside_unit()
-        with prepared_credential_rejection(self.service.store):
-            await self.service.store.admit_credentials(evidence)
-            operator = await self.service.operator(self.ticket["request"]["actor"])
-            async with self.service.store._unit():
-                run = await self.service.store.get_run(self.run_id)
-                await self.service.completions._writer(run, operator)
-                await self.service.journal._run(self.run_id)
-                await self.guard()
-                await engine._receipt(self.run_id, key, evidence, checkpoint=checkpoint)
+        from firefly_forge.native_terminal_completions import native_terminal_acceptance
+
+        async with native_terminal_acceptance(
+            self.service.journal, self.run_id, "receipt", key, evidence, checkpoint, restoration=self
+        ) as terminal:
+            with prepared_credential_rejection(self.service.store):
+                await self.service.store.admit_credentials(evidence)
+                operator = await self.service.operator(self.ticket["request"]["actor"])
+                async with self.service.store._unit():
+                    run = await self.service.store.get_run(self.run_id)
+                    await self.service.completions._writer(run, operator)
+                    await self.service.journal._run(self.run_id)
+                    await self.guard()
+                    await engine._receipt(
+                        self.run_id, key, evidence, checkpoint=checkpoint, terminal=terminal, prepared=True
+                    )
+                    self.service.store.reject_credentials(evidence)
+                await self.service.access(
+                    await self.service.store.get_run(self.run_id), self.ticket["request"]["actor"]
+                )
                 self.service.store.reject_credentials(evidence)
-            await self.service.access(await self.service.store.get_run(self.run_id), self.ticket["request"]["actor"])
-            self.service.store.reject_credentials(evidence)
 
 
 class AgentRestores:
@@ -253,8 +262,11 @@ class AgentRestores:
                 refuse()
 
     async def request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
-        with prepared_credential_rejection(self.store):
-            return await self._request(run_id, completion_id, body)
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async with mode_execution_scope(self.journal, identifier(run_id).hex):
+            with prepared_credential_rejection(self.store):
+                return await self._request(run_id, completion_id, body)
 
     async def _request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
         _outside_unit()
@@ -432,6 +444,16 @@ class AgentRestores:
             await self._command_restore(run, context, ticket=ticket)
 
     async def execute(self, request_id: str) -> None:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        self.requests.runtime.require_execution()
+        ticket = await self.requests.get(request_id)
+        if ticket["kind"] != KIND:
+            raise ValueError("Not a checkpoint restore ticket")
+        async with mode_execution_scope(self.journal, ticket["run_id"]):
+            await self._execute_in_mode_scope(request_id)
+
+    async def _execute_in_mode_scope(self, request_id: str) -> None:
         self.requests.runtime.require_execution()
         ticket = await self.requests.get(request_id)
         if ticket["kind"] != KIND:
@@ -524,25 +546,59 @@ class AgentRestores:
                     for row in rows
                     if row.kind == "receipt" and row.idempotency_key == bundle[0]["payload"]["task_key"]
                 ]
-                if len(receipts) != 1:
+                if not receipts:
+                    from firefly_forge.native_terminal_completion_models import validate_native_receipt
+
+                    entries = [copy.deepcopy(row.data) for row in rows]
+                    terminal = [
+                        entry
+                        for entry in entries
+                        if entry["kind"] == "terminal_completion_receipt"
+                        and entry["payload"].get("producer") == "native_worker_feedback"
+                        and any(
+                            item.get("consume_version") == 2
+                            and item.get("restore_request_id") == request_id
+                            and item.get("generation") == ticket["generation"]
+                            for item in entry["payload"].get("proof", {}).get("completions", [])
+                        )
+                    ]
+                    if len(terminal) != 1:
+                        raise ValueError("Restoration did not reach its exact native output acceptance")
+                    accepted = validate_native_receipt(terminal[0], entries)
+                    current = await self.store.get_run(run_id)
+                    feedbacks = [
+                        entry for entry in entries if entry["digest"] == accepted.proof.acceptance_record_digest
+                    ]
+                    if (
+                        accepted.proof.task_key != bundle[0]["payload"]["task_key"]
+                        or accepted.proof.task_attempt != context.round
+                        or feedbacks[0]["payload"] != current.get("worker_feedback")
+                        or current.get("bridge_completion_hold")
+                    ):
+                        raise ValueError("Restored feedback acceptance differs from its current original task")
+                elif len(receipts) != 1:
                     raise ValueError("Restoration did not reach its original implementation receipt")
-                row = receipts[0]
-                receipt = self.completions._validate_record(
-                    row.data,
-                    run_id,
-                    bundle[0]["payload"]["task_key"],
-                    "receipt",
-                    {
-                        "digest": row.digest,
-                        "task_id": row.task_id,
-                        "sequence": row.sequence,
-                        "run_id": row.run_id.hex,
-                        "kind": row.kind,
-                        "idempotency_key": row.idempotency_key,
-                    },
-                )
-                if receipt["task_id"] != "implement" or receipt["payload"].get("implementation_round") != context.round:
-                    raise ValueError("Restoration receipt does not belong to its original implementation round")
+                else:
+                    row = receipts[0]
+                    receipt = self.completions._validate_record(
+                        row.data,
+                        run_id,
+                        bundle[0]["payload"]["task_key"],
+                        "receipt",
+                        {
+                            "digest": row.digest,
+                            "task_id": row.task_id,
+                            "sequence": row.sequence,
+                            "run_id": row.run_id.hex,
+                            "kind": row.kind,
+                            "idempotency_key": row.idempotency_key,
+                        },
+                    )
+                    if (
+                        receipt["task_id"] != "implement"
+                        or receipt["payload"].get("implementation_round") != context.round
+                    ):
+                        raise ValueError("Restoration receipt does not belong to its original implementation round")
             await self.finish(
                 request_id,
                 "completed",
