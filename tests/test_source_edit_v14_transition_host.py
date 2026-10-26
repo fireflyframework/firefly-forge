@@ -227,10 +227,29 @@ def test_final_material_dependencies_are_explicit_without_losing_historical_pref
     root = Path(qualification.__file__).parent
     admission = declared_names(root / "source_budget_allowances.py", "admission_contract_digest", 35)
     runtime = declared_names(root / "agentic_checkpoint_invocation.py", "runtime_contract", 21)
-    assert admission == EXPECTED_ADMISSION_NAMES
-    assert runtime == EXPECTED_RUNTIME_NAMES
-    assert len(admission) == len(set(admission)) == 64
-    assert len(runtime) == len(set(runtime)) == 38
+    mode_admission = (
+        "checkpoint_mode_adoptions.py",
+        "checkpoint_mode_controllers.py",
+        "checkpoint_mode_custody.py",
+        "checkpoint_mode_handoff_custody.py",
+        "checkpoint_mode_models.py",
+        "checkpoint_mode_proof.py",
+        "checkpoint_mode_runtime.py",
+    )
+    mode_runtime = (
+        "checkpoint_mode_adoptions.py",
+        "checkpoint_mode_models.py",
+        "checkpoint_mode_proof.py",
+        "checkpoint_mode_runtime.py",
+        "checkpoint_mode_custody.py",
+        "checkpoint_mode_handoff_custody.py",
+        "checkpoint_mode_controllers.py",
+    )
+    assert admission == (*EXPECTED_ADMISSION_NAMES, *mode_admission)
+    assert runtime == (*EXPECTED_RUNTIME_NAMES[:-2], *mode_runtime, *EXPECTED_RUNTIME_NAMES[-2:])
+    assert tuple(name for name in runtime if name not in mode_runtime) == EXPECTED_RUNTIME_NAMES
+    assert len(admission) == len(set(admission)) == 71
+    assert len(runtime) == len(set(runtime)) == 45
     assert len(qualification.LOADER_MODULES) == len(set(qualification.LOADER_MODULES)) == 22
 
 

@@ -80,14 +80,35 @@ def verification_source(workspace: Path, *, prepared: PreparedVerificationSource
     )
 
 
+def _mode_tool_policy(run: dict[str, Any]) -> str:
+    from firefly_forge.checkpoint_mode_runtime import prepared_tool_policy
+
+    return prepared_tool_policy(run)
+
+
+def _mode_provider_current(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> bool:
+    from firefly_forge.checkpoint_mode_runtime import provider_modes_match
+
+    return provider_modes_match(store, run, intent)
+
+
 def check_verification_authority(store: Any, run: dict[str, Any], intent: dict[str, Any]) -> None:
     from firefly_forge.tool_broker import tool_policy_snapshot
 
     if (
         verification_scope(run) != intent["scope_digest"]
         or digest({"commands": run.get("commands", [])}) != intent["commands_digest"]
-        or tool_policy_snapshot(store.configuration)["digest"] != intent["policy_digest"]
-        or verification_provider(store, run, intent.get("agent")) != intent["provider_digest"]
+        or (
+            _mode_tool_policy(run)
+            if run.get("checkpoint_mode_adoption")
+            else tool_policy_snapshot(store.configuration)["digest"]
+        )
+        != intent["policy_digest"]
+        or not (
+            _mode_provider_current(store, run, intent)
+            if run.get("checkpoint_mode_adoption")
+            else verification_provider(store, run, intent.get("agent")) == intent["provider_digest"]
+        )
         or (run.get("cancel_request") or {}).get("status") == "requested"
     ):
         raise ValueError("Automatic verification scope, policy or provider changed")

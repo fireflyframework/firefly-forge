@@ -311,11 +311,13 @@ class GitDeliveries:
 
     @asynccontextmanager
     async def _owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
         from firefly_forge.unknown_command_proof import continuation_policy_scope
 
-        with continuation_policy_scope(run_id):
-            async with self._custody_owned(run_id, actor) as session:
-                yield session
+        async with mode_execution_scope(self.journal, run_id):
+            with continuation_policy_scope(run_id):
+                async with self._custody_owned(run_id, actor) as session:
+                    yield session
 
     @asynccontextmanager
     async def _custody_owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:

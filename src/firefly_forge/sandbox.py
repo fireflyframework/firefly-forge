@@ -813,6 +813,10 @@ class SandboxExecutor:
         if (run.get("cancel_request") or {}).get("status") == "requested":
             raise asyncio.CancelledError()
         await ProjectAccess(self.store).authorize_execution(run)
+        if run.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+            await assert_active_mode(self.journal, run_id)
         if run.get("verification_handoff", {}).get("status") == "running":
             await self.journal.verification_assert_current(run_id)
         else:

@@ -62,6 +62,10 @@ class NativeAcceptance:
         await self.journal._run(current["id"])
         current = await self.store.get_run(current["id"])
         await self.completions._execution(current, self.actor)
+        if current.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+            await assert_active_mode(self.journal, current["id"])
         if self.restored is not None:
             await self.restored.current()
         task = _task(await self.journal._task(current["id"], "implement"))
@@ -78,6 +82,10 @@ class NativeAcceptance:
 
     async def commit(self, acceptance: Data) -> None:
         current = await self.store.get_run(self.run["id"])
+        if current.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+            await assert_active_mode(self.journal, current["id"])
         task = _task(await self.journal._task(current["id"], "implement"))
         entries = _entries(await self.journal.records.find_for_run(identifier(current["id"])), current["id"])
         prepared = self.prepared
@@ -186,6 +194,28 @@ async def native_terminal_acceptance(
     *,
     restoration: Any = None,
 ) -> AsyncIterator[NativeAcceptance | None]:
+    from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+    async with (
+        mode_execution_scope(journal, run_id),
+        _native_terminal_acceptance(
+            journal, run_id, kind, key, payload, checkpoint, restoration=restoration
+        ) as accepted,
+    ):
+        yield accepted
+
+
+@asynccontextmanager
+async def _native_terminal_acceptance(
+    journal: Journal,
+    run_id: str,
+    kind: str,
+    key: str,
+    payload: Data,
+    checkpoint: Data | None = None,
+    *,
+    restoration: Any = None,
+) -> AsyncIterator[NativeAcceptance | None]:
     store = journal.store
     run = await store.get_run(run_id)
     if not run.get("bridge_completion_hold"):
@@ -233,23 +263,23 @@ async def native_terminal_acceptance(
 async def _admit_duplicate(
     journal: Journal, run: Data, kind: str, key: str, payload: Data, checkpoint: Data | None
 ) -> None:
-    _outside_unit()
     store = journal.store
+    async with store._unit():
+        entries = _entries(await journal.records.find_for_run(identifier(run["id"])), run["id"])
+    accepted = [entry for entry in entries if entry["kind"] == kind and entry["idempotency_key"] == key]
+    receipts = [
+        entry
+        for entry in entries
+        if entry["kind"] == SETTLEMENT
+        and accepted
+        and entry["payload"]["proof"]["acceptance_record_digest"] == accepted[0]["digest"]
+    ]
+    if not receipts:
+        return
+    _outside_unit()
     actor = CURRENT_PRINCIPAL.get()
     with prepared_credential_rejection(store):
         await journal.entries(run["id"])
-        async with store._unit():
-            entries = _entries(await journal.records.find_for_run(identifier(run["id"])), run["id"])
-        accepted = [entry for entry in entries if entry["kind"] == kind and entry["idempotency_key"] == key]
-        receipts = [
-            entry
-            for entry in entries
-            if entry["kind"] == SETTLEMENT
-            and accepted
-            and entry["payload"]["proof"]["acceptance_record_digest"] == accepted[0]["digest"]
-        ]
-        if not receipts:
-            return
         if len(receipts) != 1 or len(accepted) != 1:
             raise ValueError("Native terminal acceptance has duplicate immutable identities")
         receipt = validate_native_receipt(receipts[0], entries)

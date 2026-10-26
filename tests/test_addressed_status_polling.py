@@ -29,6 +29,10 @@ async def configured_status(c, monkeypatch):
     )
     c.store.task_router = TaskRouting(profiles)
     await c.store.task_router.save(TaskRoutingInput(bindings={"communication": "status"}))
+    from communication_model_fixture import recorded_communication_models
+
+    with recorded_communication_models() as install:
+        install(c.collaboration, c.collaboration)
     c.state["status_calls"] = 0
 
     async def classify(message, context, settings):

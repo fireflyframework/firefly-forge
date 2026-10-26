@@ -10,7 +10,10 @@
 - Accept normal and blocked worker outcomes through atomic native completion custody, including restored checkpoints. Keep QA and Git delivery behind the exact accepted outcome and current authority.
 - Add explicit administrator acknowledgement of an unknown command for one separately bound verification continuation and its following coding/QA/Git lineage. Preserve the unknown row, spent ordinals, frozen command and repair budgets, and repeated current-actor checks.
 - Bind retained source-catalog manifests to their immutable hash and stable identity across checks. For file ctime-only changes, stream a bounded rehash against the original payload SHA-256 without refreshing its baseline. Preserve other identity fields and full metadata checks during reads.
-- Register the measured V16 profile with 64 admission dependencies and 22 loader inputs, preserve all eleven historical profile literals, and build fresh Studio 0.2.45 assets. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
+- Add explicit native checkpoint-mode adoption for an eligible older Bridge continuation that stopped before model dispatch. Retain the original provider revision, unfinished intents, source, unknown outcomes and spent budgets while admitting only stronger result-recovery and checkpoint settings.
+- Follow validated test and maintenance descendants when selecting current issue status, retaining the root conversation receipt and asking for clarification when current leaves are ambiguous.
+- Include the audited credential-scanner dependency closure in fixed workspace exports, preserve later native receipts after an accepted worker outcome, and withhold malformed historical verification requests from public facts.
+- Require fresh V17 source-profile measurements and preserve all twelve historical profile literals. Keep Studio 0.2.45 assets unchanged. Controlled native, SQL, host and visual evidence remains separate from completed CRM delivery or live-provider acceptance.
 
 ## 0.2.44 — 2026-10-25
 

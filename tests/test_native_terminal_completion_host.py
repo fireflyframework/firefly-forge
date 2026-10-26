@@ -381,3 +381,19 @@ async def test_unknown_tool_outcome_stays_independently_held_before_terminal_acc
     assert observed["run"].get("bridge_completion_hold")
     assert "unresolved" in observed["run"].get("error", "")
     assert not any(e["kind"] == "terminal_completion_receipt" for e in observed["entries"])
+
+
+async def test_later_stage_receipt_stays_inside_its_owned_unit_after_terminal_settlement(tmp_path, monkeypatch):
+    observed = await observe_boundary(tmp_path, monkeypatch, True)
+    env = observed["environment"]
+    accepted = next(e for e in observed["entries"] if e["kind"] == "receipt" and e["task_id"] == "implement")
+    async with env.store._unit():
+        intent = await env.journal.intent(RUN, "verify", 1)
+        record = await env.journal.receipt(RUN, intent["idempotency_key"], {"checks": []})
+        assert record["task_id"] == "verify" and record["payload"] == {"checks": []}
+    checkpoint = {"base_revision": observed["run"]["base_revision"], "source_tree": "c" * 40}
+    async with env.store._unit():
+        with pytest.raises(ValueError, match="no active caller transaction"):
+            await env.journal.receipt(RUN, accepted["idempotency_key"], accepted["payload"], checkpoint=checkpoint)
+    assert len([r for r in env.journal.records.rows if r.kind == "terminal_completion_receipt"]) == 1
+    assert len(env.posts) == 2

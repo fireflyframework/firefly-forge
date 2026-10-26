@@ -65,6 +65,8 @@ from firefly_forge.campaign_report_history_persistence import ForgeCampaignRepor
 from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
+from firefly_forge.checkpoint_mode_adoptions import CheckpointModeAdoptions
+from firefly_forge.checkpoint_mode_controllers import CheckpointModeAdoptionController
 from firefly_forge.checkpoint_test_sources import CheckpointTestSources
 from firefly_forge.cloud import CloudRecipes
 from firefly_forge.cloud_controllers import CloudController
@@ -880,6 +882,10 @@ class FactoryConfiguration:
         return UnknownCommandAcknowledgements(store, journal, handoffs)
 
     @bean
+    def checkpoint_mode_adoptions(self, store: Store, journal: Journal, engine: Engine) -> CheckpointModeAdoptions:
+        return CheckpointModeAdoptions(store, journal, engine)
+
+    @bean
     def runner_backends(self) -> RunnerBackends:
         return RunnerBackends()
 
@@ -1248,6 +1254,7 @@ def create_runtime(
         GitDeliveryController,
         KnownWorkerCompletionController,
         UnknownCommandAcknowledgementController,
+        CheckpointModeAdoptionController,
         GitDiffArchive,
         GitDiffController,
         JournalController,

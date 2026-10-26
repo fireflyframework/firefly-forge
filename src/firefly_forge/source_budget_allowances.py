@@ -262,6 +262,13 @@ def admission_contract_digest() -> str:
                 "unknown_command_controllers.py",
                 "scm_authority_models.py",
                 "git_deliveries.py",
+                "checkpoint_mode_adoptions.py",
+                "checkpoint_mode_controllers.py",
+                "checkpoint_mode_custody.py",
+                "checkpoint_mode_handoff_custody.py",
+                "checkpoint_mode_models.py",
+                "checkpoint_mode_proof.py",
+                "checkpoint_mode_runtime.py",
             )
         }
     )

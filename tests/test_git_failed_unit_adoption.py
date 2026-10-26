@@ -181,7 +181,7 @@ def failed_delivery(operational, monkeypatch):
 
     async def records(_):
         return [
-            SimpleNamespace(data={k: v for k, v in e.items() if k != "digest"}, digest=e["digest"])
+            SimpleNamespace(kind=e["kind"], data={k: v for k, v in e.items() if k != "digest"}, digest=e["digest"])
             for e in c.state["entries"]
         ]
 
@@ -380,7 +380,7 @@ def test_failed_checkpoint_model_facts_do_not_claim_verification_or_success():
             implementation_disposition="failed",
         ),
     )
-    assert facts["git_delivery"]["verification"] == "not_run"
+    assert facts["git_delivery"]["verification"] == "unverified"
     assert facts["git_delivery"]["purpose"] == "unverified_failed_checkpoint"
     assert facts["git_delivery"]["implementation_disposition"] == "failed"
     assert "publication" not in facts
@@ -393,7 +393,7 @@ async def test_failed_checkpoint_cannot_enter_ready_phase_directly(failed_delive
         await c.service.final_ready({"run": c.state["run"], "actor": {}}, {})
 
 
-def test_historical_normal_checkpoint_facts_keep_exact_bytes_and_digest():
+def test_historical_checkpoint_projection_is_preserved_with_explicit_current_evidence():
     import json
 
     from firefly_forge.communication import CommunicationGitDeliveryV1, communication_facts
@@ -410,7 +410,15 @@ def test_historical_normal_checkpoint_facts_keep_exact_bytes_and_digest():
         "purpose": "intermediate_draft_pull_request",
     }
     actual = communication_facts({"status": "paused"}, git_delivery=context)["git_delivery"]
-    assert json.dumps(actual, sort_keys=True, separators=(",", ":")) == json.dumps(
+    retained = {key: actual[key] for key in expected}
+    assert json.dumps(retained, sort_keys=True, separators=(",", ":")) == json.dumps(
         expected, sort_keys=True, separators=(",", ":")
     )
-    assert digest(actual) == digest(expected)
+    assert digest(retained) == digest(expected)
+    assert actual == {
+        **expected,
+        "changed_files": [],
+        "changed_files_preview_truncated": True,
+        "source_basis": "native_checkpoint_receipt",
+        "intent": {"status": "requested_not_confirmed", "target": "draft_pull_request"},
+    }

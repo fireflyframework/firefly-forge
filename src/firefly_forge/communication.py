@@ -263,9 +263,10 @@ def assistant_communication(
 def _factory_verification(run: Data, handoff: Data) -> Data:
     from firefly_forge.agent_roles import WorkerRequest
 
-    request = run.get("worker_request") or {}
+    request = run.get("worker_request")
     if (
-        request.get("kind") != "verification"
+        not isinstance(request, dict)
+        or request.get("kind") != "verification"
         or request.get("status") not in {"pending", "answered"}
         or (not handoff and run.get("status") != "paused")
     ):
@@ -465,6 +466,19 @@ def communication_facts(
             "basis": "recorded_error",
             "cause": "not_established",
             "next_step": "inspect_source_and_checkpoint_evidence",
+        }
+    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+        "native_agentic_checkpoint_wal_required",
+        "bridge_completion_wal_required",
+    }:
+        facts["blocker"] = {
+            "kind": "native_durability_mode_guard",
+            "basis": "recorded_error",
+            "requirement": "agentic_checkpoint_wal"
+            if run["error"] == "native_agentic_checkpoint_wal_required"
+            else "bridge_completion_wal",
+            "cause": "not_established",
+            "next_step": "review_native_configuration_and_scoped_adoption",
         }
     handoff = (
         verification_handoff(run)

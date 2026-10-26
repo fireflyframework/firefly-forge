@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, CampaignExecutionPolicyInputV1
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+    from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
@@ -1384,6 +1385,26 @@ class ForgeClient:
         ):
             raise ValueError("Worker image bytes do not match their retained hash and raster type")
         return bytes(data)
+
+    def checkpoint_mode_candidate(self, run_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/candidate"))
+
+    def request_checkpoint_mode_adoption(
+        self, run_id: str, request_id: str, request: CheckpointModeAdoptionInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
+
+        body = CheckpointModeAdoptionInput.model_validate(request)
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/{self._id(request_id)}",
+                json=body.model_dump(),
+            )
+        )
+
+    def get_checkpoint_mode_adoption(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(self.request("GET", f"runs/{self._id(run_id)}/checkpoint-mode-adoptions/{self._id(request_id)}"))
 
     def verification_handoff_candidates(self, run_id: str, agent: str) -> dict[str, Any]:
         if agent not in {"codex", "claude", "bridge", "agentic"}:

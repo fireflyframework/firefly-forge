@@ -55,6 +55,12 @@ def unknown_execution(row: Any, value: Data) -> str:
     return "start_unknown" if "start" in effects else "closed_before_start"
 
 
+def _mode_acknowledgement_policy(run: Data, record: Data, current_policy: str) -> bool:
+    from firefly_forge.checkpoint_mode_runtime import acknowledgement_policy_matches
+
+    return acknowledgement_policy_matches(run, record, current_policy)
+
+
 def acknowledged_followup(
     row: Any,
     value: Data,
@@ -118,7 +124,10 @@ def acknowledged_followup(
         request = bound["payload"]["request"]
         if (
             receipt.run_id != run["id"]
-            or receipt.candidate.policy_digest != current_policy_digest
+            or (
+                receipt.candidate.policy_digest != current_policy_digest
+                and not _mode_acknowledgement_policy(run, record, current_policy_digest)
+            )
             or receipt.candidate.execution_digest != digest(value)
             or receipt.candidate.classification != classification
             or receipt.candidate.start_intent_digest != start_digest
@@ -446,6 +455,10 @@ async def assert_continuation_current(journal: Any, run_id: str, task_id: str | 
         if run.get("verification_handoff", {}).get("status") == "running":
             return []
         entries = _entries(native, run_id)
+        if run.get("checkpoint_mode_adoption"):
+            from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
+
+            await assert_mode_actors(journal, run, entries)
         rows = await journal.sandboxes.for_run(identifier(run_id))
         values = {row.id.hex: _canonical(row, entries, run_id) for row in rows}
         tasks = await journal.tasks.find_for_run(identifier(run_id))
@@ -472,7 +485,10 @@ async def assert_continuation_current(journal: Any, run_id: str, task_id: str | 
                 and e["payload"].get("id") == run["verification_handoff"]["id"]
             )
             check_verification_authority(journal.store, run, intent)
-            if verification_provider(journal.store, run) != intent["provider_digest"]:
+            if (
+                not run.get("checkpoint_mode_adoption")
+                and verification_provider(journal.store, run) != intent["provider_digest"]
+            ):
                 raise ValueError("The acknowledged continuation provider grant changed")
             await ProjectAccess(journal.store).authorize_actor(actor, run.get("project_id"), "execute")
             risks.append(row.id.hex)

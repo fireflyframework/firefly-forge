@@ -262,8 +262,11 @@ class AgentRestores:
                 refuse()
 
     async def request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
-        with prepared_credential_rejection(self.store):
-            return await self._request(run_id, completion_id, body)
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async with mode_execution_scope(self.journal, identifier(run_id).hex):
+            with prepared_credential_rejection(self.store):
+                return await self._request(run_id, completion_id, body)
 
     async def _request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
         _outside_unit()
@@ -441,6 +444,16 @@ class AgentRestores:
             await self._command_restore(run, context, ticket=ticket)
 
     async def execute(self, request_id: str) -> None:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        self.requests.runtime.require_execution()
+        ticket = await self.requests.get(request_id)
+        if ticket["kind"] != KIND:
+            raise ValueError("Not a checkpoint restore ticket")
+        async with mode_execution_scope(self.journal, ticket["run_id"]):
+            await self._execute_in_mode_scope(request_id)
+
+    async def _execute_in_mode_scope(self, request_id: str) -> None:
         self.requests.runtime.require_execution()
         ticket = await self.requests.get(request_id)
         if ticket["kind"] != KIND:

@@ -472,7 +472,18 @@ class Engine:
                 )
             if run.get("component_snapshot"):
                 self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
-            if run.get("model_selection"):
+            if run.get("checkpoint_mode_adoption"):
+                from firefly_forge.checkpoint_mode_runtime import (
+                    execution_settings,
+                    mode_adoption_scope,
+                    prepare_current_mode,
+                )
+
+                prepared_mode = await prepare_current_mode(self.journal, identifier)
+                assert prepared_mode is not None
+                credential_scopes.enter_context(mode_adoption_scope(prepared_mode))
+                settings = execution_settings(self.store.configuration, run)
+            elif run.get("model_selection"):
                 if self.store.task_router is None or run["agent"] != run["model_selection"]["provider"]:
                     raise ValueError("The frozen implementation model profile is unavailable or inconsistent")
                 settings = self.store.task_router.profiles.validate_snapshot(run["model_selection"])
@@ -708,6 +719,13 @@ class Engine:
                         identifier, EvidenceQuery.model_validate(query), task_id="implement"
                     )
 
+                async def scoped_credential_admission(value: Any) -> None:
+                    await self.store.admit_credentials(value)
+                    if run.get("checkpoint_mode_adoption"):
+                        from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+                        await assert_active_mode(self.journal, identifier)
+
                 provider.configure_runtime(
                     scope_root=scope,
                     read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
@@ -750,7 +768,7 @@ class Engine:
                     if "browser_journey" in (grants or ()) and hasattr(provider, "image_input_capability")
                     else {"status": "unverified"},
                     credential_registry=self.credential_registry,
-                    credential_admission=self.store.admit_credentials,
+                    credential_admission=scoped_credential_admission,
                     internet_search=internet_search
                     if self.search and run.get("search_snapshot") and "internet_search" in (grants or ())
                     else None,
@@ -1955,8 +1973,10 @@ class Engine:
         self, identifier: str, workspace: Path, settings: dict[str, str] | None = None
     ) -> None:
         if self.journal:
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
             from firefly_forge.unknown_command_proof import assert_continuation_current
 
+            await assert_active_mode(self.journal, identifier)
             await assert_continuation_current(self.journal, identifier)
         run = await self.store.get_run(identifier)
         if run.get("component_snapshot"):
@@ -1976,6 +1996,15 @@ class Engine:
             raise ValueError("Delivery requires approved independent review of this source tree")
 
     async def _checkpoint_commit(self, identifier: str, workspace: Path) -> None:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        if self.journal is None:
+            await self._checkpoint_commit_in_scope(identifier, workspace)
+            return
+        async with mode_execution_scope(self.journal, identifier):
+            await self._checkpoint_commit_in_scope(identifier, workspace)
+
+    async def _checkpoint_commit_in_scope(self, identifier: str, workspace: Path) -> None:
         await self._assert_delivery_tree(identifier, workspace)
         run = await self.store.get_run(identifier)
         if (
@@ -2502,8 +2531,10 @@ class Engine:
         await self.store.admit_credentials(draft)
         await self.validated_workspace(identifier)
         if self.journal:
+            from firefly_forge.checkpoint_mode_runtime import assert_active_mode
             from firefly_forge.unknown_command_proof import assert_continuation_current
 
+            await assert_active_mode(self.journal, identifier)
             await assert_continuation_current(self.journal, identifier)
         current = await self.store.get_run(identifier)
         await ProjectAccess(self.store).authorize_actor(actor, current.get("project_id"), "release")
@@ -2616,6 +2647,14 @@ class Engine:
             ) from None
 
     async def publish(self, identifier: str, *, actor: dict[str, Any] | None = None) -> str:
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        if self.journal is None:
+            return await self._publish(identifier, actor=actor)
+        async with mode_execution_scope(self.journal, identifier):
+            return await self._publish(identifier, actor=actor)
+
+    async def _publish(self, identifier: str, *, actor: dict[str, Any] | None = None) -> str:
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
             await self.store.execution_requests.request_publish(identifier)
             return ""

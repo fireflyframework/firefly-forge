@@ -82,9 +82,9 @@ def lineage(monkeypatch):
             raise ValueError("Current native read authority revoked")
 
     async def children(parents, repository):
-        assert parents == [UUID(PARENT)] and repository == UUID(REPO)
+        assert len(parents) <= 200 and repository == UUID(REPO)
         state["queries"] += 1
-        return [UUID(CREATION)]
+        return [UUID(CREATION)] if UUID(PARENT) in parents else []
 
     async def load(self, request_id):
         assert request_id == CREATION

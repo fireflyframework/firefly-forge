@@ -619,6 +619,12 @@ class Journal:
                     entry.kind == "receipt" and entry.idempotency_key == key
                     for entry in await self.records.find_for_run(run.id)
                 )
+                if not receipted:
+                    from firefly_forge.checkpoint_mode_runtime import claim_adopted_intent
+
+                    adopted = await claim_adopted_intent(self, run, task, existing)
+                    if adopted is not None:
+                        return adopted
                 disposition = "completed" if receipted else "needs_reconciliation"
                 return {"idempotency_key": key, "disposition": disposition, "entry": copy.deepcopy(existing.data)}
             repair = (
@@ -681,6 +687,10 @@ class Journal:
             if terminal is not None:
                 await terminal.before()
             run = await self._run(run_id)
+            if run.data.get("checkpoint_mode_adoption"):
+                from firefly_forge.checkpoint_mode_runtime import assert_active_mode
+
+                await assert_active_mode(self, run_id)
             existing = next(
                 (
                     entry
@@ -710,6 +720,8 @@ class Journal:
             await self.store.run_records.save(run)
             if terminal is not None:
                 await terminal.commit(record)
+            if run.data.get("checkpoint_mode_adoption"):
+                await assert_active_mode(self, run_id)
             return record
 
     async def fail(
@@ -1714,10 +1726,25 @@ class Journal:
                 raise ValueError("Factory continuation requires completed verification evidence")
             if int(run.data.get("implementation_rounds", 0)) > intent["parent_round"]:
                 return
-            if any(
-                item.kind == "verification_continuation_intent" and item.idempotency_key == intent["id"] + ":coding"
-                for item in entries
-            ):
+            coding = next(
+                (
+                    item
+                    for item in entries
+                    if item.kind == "verification_continuation_intent"
+                    and item.idempotency_key == intent["id"] + ":coding"
+                ),
+                None,
+            )
+            if coding is not None:
+                from firefly_forge.checkpoint_mode_runtime import claimed_continuation
+
+                if claimed_continuation(run.data, entries, coding):
+                    from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
+                    from firefly_forge.known_worker_completions import _entries
+
+                    await assert_mode_actors(self, run.data, _entries(entries, run_id))
+                    check_verification_cut(self.store, run.data, intent)
+                    return
                 raise ValueError("The original verification continuation outcome requires reconciliation")
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
@@ -1914,10 +1941,58 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+
+        async def selected() -> Data:
+            return await self._resume_selected(
+                current,
+                run_id,
+                agent,
+                model_profile_id=model_profile_id,
+                auto=auto,
+                campaign_action_id=campaign_action_id,
+                verification_handoff_id=verification_handoff_id,
+                expected_provider_digest=expected_provider_digest,
+                source_human_readmission=source_human_readmission,
+                source_budget_readmission=source_budget_readmission,
+            )
+
+        if current.get("checkpoint_mode_adoption"):
+            async with mode_execution_scope(self, run_id):
+                return await selected()
+        return await selected()
+
+    async def _resume_selected(
+        self,
+        current: Data,
+        run_id: str,
+        agent: str | None = None,
+        *,
+        model_profile_id: str | None = None,
+        auto: bool = False,
+        campaign_action_id: str | None = None,
+        verification_handoff_id: str | None = None,
+        expected_provider_digest: str | None = None,
+        source_human_readmission: str | None = None,
+        source_budget_readmission: str | None = None,
+    ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         if auto and (agent is not None or model_profile_id is not None):
             raise ValueError("An automatic retry cannot change the selected provider or model profile")
+        inherited_mode = current.get("checkpoint_mode_adoption")
+        if inherited_mode:
+            from firefly_forge.checkpoint_mode_runtime import prepared_mode
+
+            prepared = prepared_mode(current)
+            assert prepared is not None
+            if agent not in {None, "bridge"} or model_profile_id is not None:
+                raise ValueError("Checkpoint mode adoption keeps its original Bridge provider and model profile")
+            if (
+                expected_provider_digest is not None
+                and digest({"agent": "bridge", "settings": prepared.effective_settings}) != expected_provider_digest
+            ):
+                raise ValueError("Explicit verification handoff provider snapshot changed")
         if agent is not None and agent not in {"codex", "claude", "bridge", "agentic"}:
             raise ValueError("Unknown handoff coding provider")
         selection = None
@@ -1983,6 +2058,15 @@ class Journal:
                     raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
+            if inherited_mode:
+                from firefly_forge.checkpoint_mode_runtime import assert_mode_actors
+
+                if run.data.get("checkpoint_mode_adoption") != inherited_mode:
+                    raise ValueError("Checkpoint mode adoption changed before resume")
+                mode_entries = [
+                    {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
+                ]
+                await assert_mode_actors(self, run.data, mode_entries)
             if run.status not in {"paused", "needs_reconciliation", "interrupted"}:
                 raise ValueError("Only a paused or interrupted run can resume")
             if run.data.get("worker_request", {}).get("status") == "pending":
@@ -2083,8 +2167,16 @@ class Journal:
             old_revision = run.data.get("config_revision")
             old_selection = copy.deepcopy(run.data.get("model_selection"))
             old_agent = run.data.get("agent")
-            selection_mode = "named_profile" if selection is not None else "legacy_provider" if handoff else "frozen"
-            if agent is not None:
+            selection_mode = (
+                "frozen"
+                if inherited_mode
+                else "named_profile"
+                if selection is not None
+                else "legacy_provider"
+                if handoff
+                else "frozen"
+            )
+            if agent is not None and not inherited_mode:
                 configuration = (
                     {"config_revision": selection["config_revision"], "execution_config": selection["execution_config"]}
                     if selection is not None
@@ -2177,6 +2269,7 @@ class Journal:
                     "previous_model_selection": old_selection,
                     "model_selection": copy.deepcopy(run.data.get("model_selection")),
                     "selection_mode": selection_mode,
+                    **({"checkpoint_mode_adoption_digest": inherited_mode["record_digest"]} if inherited_mode else {}),
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
                     **({"human_clarification": human_clarification} if human_clarification else {}),

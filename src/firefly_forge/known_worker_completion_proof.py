@@ -288,6 +288,8 @@ def prepare_worker_completion(
     previous_digest = invocation_id = None
     closures = []
     final = captured = None
+    from firefly_forge.checkpoint_mode_runtime import effective_revision
+
     config = run.get("execution_config") or {}
     endpoint = validate_endpoint(config.get("endpoint", ""))
     endpoint = endpoint if endpoint.endswith("/v1") else endpoint + "/v1"
@@ -312,7 +314,7 @@ def prepare_worker_completion(
             or original.repository_id != run.get("repository_id")
             or original.profile_id != (run.get("model_selection") or {}).get("profile_id")
             or original.config_field != "config_revision"
-            or original.config_revision != run.get("config_revision")
+            or original.config_revision != effective_revision(run)
             or original.scope_digest != _cut(run, "config_revision")
             or original.descriptor.model != config.get("model", "bridge/default")
             or original.descriptor.endpoint != endpoint

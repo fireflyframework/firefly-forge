@@ -48,7 +48,13 @@ def test_native_handoff_and_source_guard_supply_useful_bounded_context():
         "recorded": 7,
         "failed": 1,
     }
-    assert facts["delivery"] == {"factory_result": "not_accepted", "review_link": "not_recorded"}
+    assert facts["delivery"] == {
+        "factory_result": "not_accepted",
+        "scope": "execution_unit",
+        "operation": "unknown",
+        "product_completion": "not_established",
+        "review_link": "not_recorded",
+    }
     retained = json.dumps(facts)
     assert all(value not in retained for value in ("PRIVATE", "UNVERIFIED", "credentials or worker", "check-seven"))
 
@@ -194,3 +200,43 @@ async def test_reported_source_guard_cannot_become_a_credential_breach_diagnosis
     assert "source-safety check" in result["body"]
     assert result["communication"]["reason"] == "generated"
     assert result["communication"]["review"]["verdict"] == "unsupported"
+
+
+@pytest.mark.parametrize("status", ["failed", "needs_reconciliation"])
+@pytest.mark.parametrize(
+    "code,requirement",
+    [
+        ("native_agentic_checkpoint_wal_required", "agentic_checkpoint_wal"),
+        ("bridge_completion_wal_required", "bridge_completion_wal"),
+    ],
+)
+def test_recorded_native_durability_guard_explains_operator_review_without_diagnosing_configuration(
+    status, code, requirement
+):
+    run = stopped_run()
+    run.update(status=status, error=code)
+    facts = communication_facts(run)
+    assert facts["blocker"] == {
+        "kind": "native_durability_mode_guard",
+        "basis": "recorded_error",
+        "requirement": requirement,
+        "cause": "not_established",
+        "next_step": "review_native_configuration_and_scoped_adoption",
+    }
+    assert facts["check_batch"]["recorded"] == 7 and facts["check_batch"]["failed"] == 1
+    assert code not in json.dumps(facts)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "native_agentic_checkpoint_wal_required PRIVATE RAW DETAIL",
+        "bridge_completion_wal_required_unknown",
+        "unrecognized_guard PRIVATE RAW DETAIL",
+    ],
+)
+def test_unrecognized_mode_error_cannot_supply_a_known_blocker_or_raw_error(code):
+    run = stopped_run()
+    run["error"] = code
+    facts = communication_facts(run)
+    assert "blocker" not in facts and code not in json.dumps(facts)
