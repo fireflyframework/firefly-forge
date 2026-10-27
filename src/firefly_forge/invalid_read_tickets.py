@@ -108,6 +108,7 @@ class InvalidReadTickets:
     engine: Any
     requests: Any
     restores: Any
+    recoveries: Any
 
     async def _prepare(self, run_id: str) -> Data:
         raise NotImplementedError
@@ -145,6 +146,8 @@ class InvalidReadTickets:
         last = events[-1]
         if ticket["status"] == "queued":
             valid = last["kind"] == "request_admitted" and ticket["generation"] is None and ticket["result"] is None
+            if last["kind"] == "request_recovered_before_claim":
+                valid = await self.recoveries.queued_valid(ticket)
         elif ticket["status"] == "executing":
             valid = last["kind"] == "worker_claim" and last["evidence"] == {
                 "generation": ticket["generation"],
@@ -480,6 +483,7 @@ class InvalidReadTickets:
         ticket = await self.requests.get(request_id)
         if ticket["kind"] != KIND or ticket["status"] != "queued":
             return
+        verify_ticket(ticket)
         if not await self.engine.reserve_agent_restore(ticket["run_id"]):
             return
         try:
@@ -501,10 +505,18 @@ class InvalidReadTickets:
     async def _execute(self, ticket: Data) -> None:
         from firefly_forge.invalid_read_epochs import epoch_scope, epoch_snapshot
 
+        recovery = getattr(self, "recoveries", None)
+        if recovery is not None and await recovery.has(ticket):
+            await recovery.execute(ticket)
+            return
+
         run = await self.store.get_run(ticket["run_id"])
         async with self.store._unit():
             entries = _entries(await self.journal.records.find_for_run(identifier(run["id"])), run["id"])
-        epoch = epoch_snapshot(self.store, run, entries)
+        from firefly_forge.invalid_read_continuity import LEGACY_RUNTIME_CONTRACT
+
+        selected_runtime = (ticket["policy_epoch"] or {}).get("legacy_runtime_contract", LEGACY_RUNTIME_CONTRACT)
+        epoch = epoch_snapshot(self.store, run, entries, legacy_runtime_contract=selected_runtime)
         if epoch != ticket["policy_epoch"]:
             raise ValueError("The reviewed historical policy epoch changed before execution")
         with epoch_scope(epoch):

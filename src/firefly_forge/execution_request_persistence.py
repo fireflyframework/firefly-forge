@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import BaseEntity, Repository
-from sqlalchemy import ForeignKey, String, UniqueConstraint, func, select
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, cast, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,6 +103,19 @@ class ForgeExecutionRequestRepository(Repository[ForgeExecutionRequestEntity, UU
 
 @repository
 class ForgeExecutionRequestEventRepository(Repository[ForgeExecutionRequestEventEntity, UUID]):
+    async def custody_budget(self, request_id: UUID) -> tuple[int, int]:
+        count, size = (
+            await self._require_session().execute(
+                select(
+                    func.count(),
+                    func.coalesce(func.sum(func.octet_length(cast(ForgeExecutionRequestEventEntity.data, Text))), 0),
+                ).where(ForgeExecutionRequestEventEntity.request_id == request_id)
+            )
+        ).one()
+        if type(count) is not int or type(size) is not int:
+            raise ValueError("Native request-event custody budget must contain integer measurements")
+        return count, size
+
     async def events(self, request_id: UUID) -> list[ForgeExecutionRequestEventEntity]:
         return list(
             await self._require_session().scalars(

@@ -9,6 +9,7 @@ from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, req
 from firefly_forge.invalid_read_continuities import InvalidReadContinuities
 from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicies, ContinuityLeasePolicyV1
+from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
 
 
 @rest_controller
@@ -32,6 +33,34 @@ class InvalidReadContinuityController:
         self, run_id: PathVar[str], request_id: PathVar[str], body: Body[InvalidReadAdmissionInputV2]
     ) -> dict[str, Any]:
         return await self.continuities.request(run_id, request_id, body)
+
+    async def _recovery(self, action: Any, *arguments: Any) -> dict[str, Any]:
+        try:
+            return dict(await action(*arguments))
+        except KeyError as exc:
+            raise KeyError("Continuity recovery not found") from exc
+        except ValueError as exc:
+            raise ValueError(
+                "Continuity recovery is unavailable; inspect the retained request and current authority"
+            ) from exc
+
+    @get_mapping("/requests/{request_id}/recovery-candidate")
+    async def recovery_candidate(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self._recovery(self.continuities.recoveries.candidate, run_id, request_id)
+
+    @post_mapping("/requests/{request_id}/recoveries/{recovery_id}", status_code=201)
+    async def recover_unclaimed(
+        self,
+        run_id: PathVar[str],
+        request_id: PathVar[str],
+        recovery_id: PathVar[str],
+        body: Body[InvalidReadRecoveryInputV1],
+    ) -> dict[str, Any]:
+        return await self._recovery(self.continuities.recoveries.request, run_id, request_id, recovery_id, body)
+
+    @get_mapping("/requests/{request_id}/recovery")
+    async def recovery(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self._recovery(self.continuities.recoveries.status, run_id, request_id)
 
     @get_mapping("/requests/{request_id}")
     async def get(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:

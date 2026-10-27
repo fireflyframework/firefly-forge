@@ -2103,8 +2103,12 @@ class Journal:
     async def reconcile(self, run_id: str, key: str, *, evidence: Data, outcome: str) -> Data:
         if outcome not in {"retry", "completed"} or not evidence:
             raise ValueError("Reconciliation requires an observed outcome and evidence")
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+        await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
         async with self.store._unit():
             run = await self._run(run_id)
+            await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
             task = await self._effect_task(run_id, key)
             if task.status != "needs_reconciliation":
                 raise ValueError("Task does not need reconciliation")
@@ -2137,6 +2141,9 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+        await assert_generic_dispatch_allowed(self.store, self, current)
         if current.get("bridge_completion_hold"):
             raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
         if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
@@ -2294,6 +2301,9 @@ class Journal:
                     raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
+            from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+            await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
             if (
                 settings_generation is not None
                 and self.store.configuration.settings_generation is not settings_generation

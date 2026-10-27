@@ -48,6 +48,9 @@ class InvalidReadContinuities(InvalidReadTickets):
         self.requests = requests or getattr(store, "execution_requests", None)
         self.restores = AgentRestores(store, self.requests, engine)
         self.modes = CheckpointModeAdoptions(store, journal, engine)
+        from firefly_forge.invalid_read_recoveries import InvalidReadRecoveries
+
+        self.recoveries: InvalidReadRecoveries = InvalidReadRecoveries(self)
 
     async def _actor(self, run_id: str) -> Any:
         actor = CURRENT_PRINCIPAL.get()

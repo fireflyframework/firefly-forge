@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
     from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
     from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
+    from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -364,6 +365,40 @@ class ForgeClient:
         base = f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity"
         path = f"{base}/requests/{self._recovery_identifier(request_id)}"
         return dict(self.request("GET", path))
+
+    def _invalid_read_recovery_path(self, identifier: str, request_id: str) -> str:
+        return (
+            f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity/requests/"
+            + self._recovery_identifier(request_id)
+        )
+
+    def invalid_read_recovery_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect whether the exact original request failed before any worker claim."""
+        return dict(
+            self.request("GET", self._invalid_read_recovery_path(identifier, request_id) + "/recovery-candidate")
+        )
+
+    def request_invalid_read_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: InvalidReadRecoveryInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit one explicit lease recovery action; retain its ID for readback."""
+        from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        body = self._recovery_body(InvalidReadRecoveryInputV1, request)
+        return dict(self.request("POST", path, json=body))
+
+    def invalid_read_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved recovery witness without submitting another action."""
+        return dict(self.request("GET", self._invalid_read_recovery_path(identifier, request_id) + "/recovery"))
 
     def invalid_read_continuity_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "invalid-read-continuity/policy"))

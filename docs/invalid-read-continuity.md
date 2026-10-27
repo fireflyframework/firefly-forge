@@ -104,6 +104,14 @@ Queue counts default to 50 tickets per run and 500 pending tickets. An administr
 
 Command usage is measured from canonical retained native execution rows. For example, a retained ledger at 11 of 22 remains at 11 during admission. Two newly executed commands bring it to 13 of 22, with the old eleven receipts unchanged. Reading the same completed command or ticket again adds no charge. The remaining nine commands may run under the original limit; a twenty-third command is refused before execution.
 
+## A request that failed before a worker claim
+
+A failed continuity request can recover once under the same native request ID when its complete native event history proves that no worker ever claimed it. A missing owner or generation alone is insufficient. The current original administrator must review the unchanged source, checkpoint, scope, spent usage, configuration, qualified profile and finite-lease policy. A legitimate typed startup recovery annotation remains in the journal; unrelated later activity keeps the request held.
+
+The recovery candidate is `GET .../requests/{request_id}/recovery-candidate`. Submit its exact digests to `POST .../requests/{request_id}/recoveries/{recovery_id}` with all four acknowledgements and a bounded window. Retain this action ID and read `GET .../requests/{request_id}/recovery` after a lost response. The SDK methods are `invalid_read_recovery_candidate`, `request_invalid_read_recovery` and `invalid_read_recovery`. A different action cannot replace an existing recovery witness.
+
+The transaction preserves the original ticket, admission seal, settlement, reservation, checkpoint and failed receipt. It appends an explicit recovery witness and request event, then queues the same request with a new finite ownership lease. Queued means accepted for dispatch; only a native worker claim and later completion establish execution progress. This grants no new attempt, model allowance or command quota. Claimed or uncertain requests remain held and cannot use this workflow. Generic retry, resume, handoff and reconciliation cannot bypass an outstanding continuity ticket.
+
 ## Failure and validation boundaries
 
 Policy revocation, expired ownership, changed source/configuration/profile/scope, cancellation, actor loss, unknown effects, or a changed native ticket stop execution. Claimed tickets are never automatically requeued after owner loss. Their outcome requires explicit native reconciliation.
