@@ -162,10 +162,19 @@ async def prepare_readmitted_selection(
     profile, routing, settings = await current_selection(journal.store, selected)
     old = journal.store.configuration.load_snapshot(run["config_revision"])
     ineffective = journal.store.configuration.load_snapshot(original.execution_config_revision)
+    from firefly_forge.invalid_read_epochs import selection_epoch_matches
+
+    current_policies = {"selection": policy_digest(), "mode": mode_policy(), "acknowledgement": ack_policy()}
+    epoch_matches = selection_epoch_matches(run, candidate, current_policies, journal.store.configuration)
     if (
-        candidate.policy_digest != policy_digest()
-        or candidate.checkpoint_mode_policy_digest != mode_policy()
-        or candidate.acknowledgement_policy_digest != ack_policy()
+        (
+            not epoch_matches
+            and (
+                candidate.policy_digest != current_policies["selection"]
+                or candidate.checkpoint_mode_policy_digest != current_policies["mode"]
+                or candidate.acknowledgement_policy_digest != current_policies["acknowledgement"]
+            )
+        )
         or candidate.original_mode_policy_digest != original.candidate.policy_digest
         or candidate.original_acknowledgement_policy_digest != original.candidate.acknowledgement_policy_digest
         or candidate.proof.mode_receipt_digest != mode["digest"]

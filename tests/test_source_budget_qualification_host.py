@@ -23,7 +23,7 @@ def test_historical_profile_payload_preserves_exact_original_seal_bytes():
 
 
 def test_new_native_profile_measures_budget_modules_and_keeps_old_literal_historical():
-    assert module.LOADER_PROFILE == "codex-exec-restricted-source/v19"
+    assert module.LOADER_PROFILE == "codex-exec-restricted-source/v20"
     assert {"source_budget_allowances.py", "source_budget_output.py", "source_tool_budget.py", "tool_broker.py"} <= set(
         module.LOADER_MODULES
     )

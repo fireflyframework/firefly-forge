@@ -5,6 +5,20 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.47 — implementation preview
+
+Official framework references have immutable corpus identities, bounded refresh operations, version checks and generation pins. Binary reference exclusions do not grant authority to corrupt private cache bytes. The catalog retains its original 322 prompt entries and adds eleven framework templates; the MCP surface has 182 tools. See [framework reference refresh](framework-knowledge-refresh.md).
+
+A namespaced [rejected evidence-read continuation](invalid-read-continuity.md) reconstructs one known consumed negative tool turn offline. It permits only the reviewed strict evidence schema and description changes, recognizes a pinned historical policy epoch under current authority, and queues a finite same-attempt ownership lease. It preserves the original consumption, configuration, source at admission, history, limits and unknown-effect custody. Actual command usage advances from 11 of 22 to 13 of 22 after two newly executed commands; duplicate readback or known-result replay adds no charge.
+
+Native CLI metadata discovery uses the caller's finite timeout without a model request. Studio and walkthrough metadata identify version 0.2.47. The composed source still requires independent current-profile registration, native PostgreSQL/controller qualification and exact original-custody review before retained-run admission. Host controls and fixture screenshots do not establish a published release, live provider quality or delivered CRM.
+
+## 0.2.46
+
+The model-facing `read_run_evidence` tool now publishes its exact query schema. Unknown fields, invalid types, malformed JSON and incomplete pagination cursors produce a fixed `invalid_query` tool result before the native evidence service runs. That result contains no evidence. It preserves ordinary tool history, so correcting the query does not introduce SDK retry state that checkpoints cannot restore. Worker pages default to ten records and accept at most ten, matching the existing native limit. The operator API keeps its separate fifty-record limit.
+
+A corrected call still uses the original execution identity and role. Authorization, integrity, credential and unresolved-effect failures remain terminal. Query corrections consume the existing request and tool-call budgets. Validation feedback does not resume work, replay a tool or reset a budget. The new native source profile requires fresh measurements for this runtime; historical profile literals and receipts remain unchanged. Controlled tests do not establish completion of the retained CRM.
+
 ## 0.2.45
 
 Project and campaign views use complete pages and revision-bound references instead of a fixed project-count ceiling. Campaign execution windows are finite, configurable and checked against retained usage. Credential fingerprint preparation and checkpoint source identity stream outside database writer units, with current source, credential and ownership checks retained. See [large-product boundaries](large-products.md) and [project campaigns](project-campaigns.md).

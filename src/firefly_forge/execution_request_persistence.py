@@ -31,6 +31,37 @@ class ForgeExecutionRequestEventEntity(BaseEntity):
 
 @repository
 class ForgeExecutionRequestRepository(Repository[ForgeExecutionRequestEntity, UUID]):
+    async def for_key(self, run_id: UUID, kind: str, request_key: str) -> ForgeExecutionRequestEntity | None:
+        return await self._require_session().scalar(
+            select(ForgeExecutionRequestEntity).where(
+                ForgeExecutionRequestEntity.run_id == run_id,
+                ForgeExecutionRequestEntity.kind == kind,
+                ForgeExecutionRequestEntity.request_key == request_key,
+            )
+        )
+
+    async def count_for_run(self, run_id: UUID, kind: str) -> int:
+        return int(
+            await self._require_session().scalar(
+                select(func.count())
+                .select_from(ForgeExecutionRequestEntity)
+                .where(ForgeExecutionRequestEntity.run_id == run_id, ForgeExecutionRequestEntity.kind == kind)
+            )
+            or 0
+        )
+
+    async def active_for_run(self, run_id: UUID) -> bool:
+        return bool(
+            await self._require_session().scalar(
+                select(func.count())
+                .select_from(ForgeExecutionRequestEntity)
+                .where(
+                    ForgeExecutionRequestEntity.run_id == run_id,
+                    ForgeExecutionRequestEntity.status.in_(["queued", "executing"]),
+                )
+            )
+        )
+
     async def for_run(self, run_id: UUID, kind: str) -> list[ForgeExecutionRequestEntity]:
         return list(
             await self._require_session().scalars(

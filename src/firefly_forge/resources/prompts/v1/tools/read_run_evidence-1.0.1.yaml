@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/read_run_evidence
+version: 1.0.1
+description: Strict retained run evidence queries with checkpoint-safe validation outcomes
+system_template: ""
+user_template: |
+  Read retained evidence for this executing run only. Supply the documented query object; worker pages default to ten records and accept at most ten. Continue pages with the exact returned cut and filter digests. An invalid_query result contains no evidence: correct the query against the tool schema before interpreting any result. It is not an empty evidence page. Corrections use ordinary tool results so checkpoint history and existing execution budgets remain intact. Read original WAL and tool results without executing or replaying them. A preview is incomplete when omitted_bytes is positive; unknown or withheld outcomes require explicit review.
+required_variables: []
+metadata:
+  defaults: {}

@@ -28,6 +28,12 @@ forge evidence query RUN_ID --expected-cut CUT_DIGEST --record-id journal:3
 
 The query and its output are bounded. Exact records can be at most 1 MiB. A page has at most 50 records and 1 MiB of JSON. The full cut permits 2,048 journal entries, 4,096 activity entries, 1,000 tool rows, 128 tasks, 128 artifact references and 16 MiB of source JSON, with a ten-second snapshot timeout. Oversized or inconsistent evidence is withheld. A cut that changes before another page or export returns `evidence_cut_changed`; read a new cut explicitly. The server does not keep a separate history of these query snapshots.
 
+## Let an agent read its run history
+
+A role with the `read_run_evidence` grant can inspect the executing run through Native Agentic or the bridge. The model receives a strict `{"query": {...}}` schema. Worker pages default to ten records and accept at most ten; the operator API retains its separate fifty-record page limit.
+
+Unknown fields, invalid types, malformed JSON and incomplete pagination cursors return a fixed `invalid_query` tool result before the evidence service runs. That result contains no evidence and must not be treated as an empty page. The agent can correct the query within its existing request and tool-call budgets; the result remains compatible with checkpoint capture and restoration. A corrected query still passes the original run, identity and role checks. An authorization failure, inconsistent evidence or an unresolved effect stops execution; validation feedback grants no access or permission to replay work.
+
 ## Export the reviewed cut
 
 ```bash

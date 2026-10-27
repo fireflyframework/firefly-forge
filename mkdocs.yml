@@ -122,6 +122,7 @@ nav:
       - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
+      - Refresh framework references, in development: framework-knowledge-refresh.md
       - Structured project analytics: structured-knowledge.md
       - Learning and knowledge reuse: learning.md
       - DevSecOps pipelines: devsecops.md
@@ -131,7 +132,7 @@ nav:
       - API and worker roles: runtime-roles.md
       - Recover and hand off: recovery.md
       - Enable recovery for an older Bridge run: checkpoint-mode-adoption.md
-      - Restore an original provider selection: original-selection-readmission.md
+      - Continue after a rejected evidence read: invalid-read-continuity.md
       - Deploy and roll back: deployment.md
       - Cloud and infrastructure recipes: cloud-deployment.md
       - Application health and maintenance: application-operations.md

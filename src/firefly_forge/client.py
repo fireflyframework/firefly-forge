@@ -26,6 +26,15 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
     from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
+    from firefly_forge.framework_knowledge_models import (
+        FrameworkBudgetRenewalInput,
+        FrameworkCheckUpdatesInput,
+        FrameworkGenerationTargetInput,
+        FrameworkRefreshCancelInput,
+        FrameworkRefreshInput,
+        FrameworkRefreshResumeInput,
+        FrameworkSearchInput,
+    )
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
     from firefly_forge.model_profiles import ModelProfileInput
@@ -395,6 +404,129 @@ class ForgeClient:
 
     def search_knowledge(self, repository_id: str, query: str) -> dict[str, Any]:
         return dict(self.request("POST", "knowledge/search", json={"repository_id": repository_id, "query": query}))
+
+    @staticmethod
+    def _framework_name(framework: str) -> str:
+        if type(framework) is not str or framework not in {"pyfly", "larafly"}:
+            raise ValueError("Select pyfly or larafly framework knowledge")
+        return framework
+
+    @staticmethod
+    def _framework_page(cursor: str | None, page_size: int) -> dict[str, str | int]:
+        if type(page_size) is not int or not 1 <= page_size <= 200:
+            raise ValueError("Choose a framework response page size between 1 and 200")
+        if cursor is not None and (type(cursor) is not str or not cursor):
+            raise ValueError("Use the original framework page cursor")
+        return {"page_size": page_size, **({"cursor": cursor} if cursor is not None else {})}
+
+    def framework_knowledge_status(self) -> dict[str, Any]:
+        return dict(self.request("GET", "knowledge/frameworks/status"))
+
+    def check_framework_updates(
+        self, framework: str, request: FrameworkCheckUpdatesInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.framework_knowledge_models import FrameworkCheckUpdatesInput
+
+        framework = self._framework_name(framework)
+        body = self._recovery_body(FrameworkCheckUpdatesInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/check-updates", json=body))
+
+    def refresh_framework_knowledge(
+        self, framework: str, request_id: str, request: FrameworkRefreshInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; after an uncertain response, read the same retained operation."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}", json=body))
+
+    def framework_knowledge_refresh(self, framework: str, request_id: str) -> dict[str, Any]:
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/refreshes/{request_id}"))
+
+    def observe_framework_knowledge_refresh(self, framework: str, request_id: str) -> dict[str, Any]:
+        """Observe this operation once without resubmitting an uncertain source write."""
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/observe"))
+
+    def renew_framework_knowledge_budget(
+        self, framework: str, request_id: str, request: FrameworkBudgetRenewalInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Extend reviewed totals on the same operation, preserving all spent work."""
+        from firefly_forge.framework_knowledge_models import FrameworkBudgetRenewalInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkBudgetRenewalInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/budget", json=body))
+
+    def cancel_framework_knowledge_refresh(
+        self, framework: str, request_id: str, request: FrameworkRefreshCancelInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Cancel the reviewed operation without erasing uncertain submissions or receipts."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshCancelInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshCancelInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/cancel", json=body))
+
+    def resume_framework_knowledge_refresh(
+        self, framework: str, request_id: str, request: FrameworkRefreshResumeInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Resume the same reviewed import; uncertain submissions need observation first."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshResumeInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshResumeInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/resume", json=body))
+
+    def framework_corpora(self, framework: str, *, cursor: str | None = None, page_size: int = 50) -> dict[str, Any]:
+        framework = self._framework_name(framework)
+        params = self._framework_page(cursor, page_size)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/corpora", params=params))
+
+    def framework_generation_candidates(
+        self, framework: str, corpus_ref: str, *, cursor: str | None = None, page_size: int = 50
+    ) -> dict[str, Any]:
+        """List canonical validation evidence for this exact corpus before activation."""
+        framework, corpus_ref = self._framework_name(framework), self._recovery_identifier(corpus_ref)
+        cursor = self._recovery_identifier(cursor) if cursor is not None else None
+        params = {"corpus_ref": corpus_ref, **self._framework_page(cursor, page_size)}
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/generation-candidates", params=params))
+
+    def activate_framework_generation_target(
+        self, framework: str, request_id: str, request: FrameworkGenerationTargetInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Activate a validated release once; read the same request after uncertainty."""
+        from firefly_forge.framework_knowledge_models import FrameworkGenerationTargetInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkGenerationTargetInput, request)
+        return dict(
+            self.request("POST", f"knowledge/frameworks/{framework}/generation-targets/{request_id}", json=body)
+        )
+
+    def get_framework_generation_target(self, framework: str, request_id: str) -> dict[str, Any]:
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/generation-targets/{request_id}"))
+
+    def framework_corpus_sources(
+        self, framework: str, corpus_ref: str, *, cursor: str | None = None, page_size: int = 50
+    ) -> dict[str, Any]:
+        framework, corpus_ref = self._framework_name(framework), self._recovery_identifier(corpus_ref)
+        params = self._framework_page(cursor, page_size)
+        return dict(
+            self.request("GET", f"knowledge/frameworks/{framework}/corpora/{corpus_ref}/sources", params=params)
+        )
+
+    def search_framework_knowledge(
+        self, framework: str, request: FrameworkSearchInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.framework_knowledge_models import FrameworkSearchInput
+
+        framework = self._framework_name(framework)
+        body = self._recovery_body(FrameworkSearchInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/search", json=body))
 
     def index_source(self, identifier: str, paths: list[str]) -> dict[str, Any]:
         return dict(self.request("POST", f"runs/{identifier}/knowledge/index", json={"paths": paths}))

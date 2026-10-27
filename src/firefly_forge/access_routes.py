@@ -127,6 +127,10 @@ class AccessRoutes:
                 if not safe and permission == "execute" and run.get("publish"):
                     await self.access.require_project(user, run["project_id"], "release")
                 return
+        if parts[:2] == ["knowledge", "frameworks"]:
+            if safe or (request.method == "POST" and len(parts) == 4 and parts[-1] == "search"):
+                return  # The native service rechecks current identity and immutable corpus scope.
+            raise AccessDenied("Framework knowledge updates require a current factory administrator")
         if path == "knowledge/explore" and safe:
             await self.access.require_repository(user, request.query_params.get("repository_id", ""), "read")
             return

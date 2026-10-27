@@ -19,6 +19,7 @@ from pydantic import (
 
 from firefly_forge.agent_roles import ProjectRoles
 from firefly_forge.checkpoint_test_models import SourceCheckpointV1
+from firefly_forge.framework_knowledge_models import FrameworkRunTargetInput
 from firefly_forge.runner_factory_models import FactoryPoolSelection
 from firefly_forge.sandbox_models import SandboxInput
 
@@ -90,6 +91,7 @@ class RunInput(BaseModel):
     component_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
     brief: str = Field(min_length=1, max_length=40000)
     backend: Backend = "pyfly"
+    framework_target: FrameworkRunTargetInput | None = None
     frontend: Frontend = "react"
     agent: Literal["codex", "claude", "bridge", "agentic", "api"] = "codex"
     model_profile_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
@@ -107,6 +109,8 @@ class RunInput(BaseModel):
     @model_serializer(mode="wrap")
     def retained_source_input(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         value: dict[str, Any] = handler(self)
+        if value.get("framework_target") is None:
+            value.pop("framework_target", None)
         if value.get("source_checkpoint") is None:
             value.pop("source_checkpoint", None)
         return value
@@ -132,6 +136,14 @@ class RunInput(BaseModel):
 
         from firefly_forge.collaboration import ProductDefinition
 
+        if self.framework_target is not None and (
+            self.backend not in {"pyfly", "larafly"}
+            or self.operation == "test"
+            or (self.framework_target.upgrade_from is not None and self.operation != "maintain")
+        ):
+            raise ValueError(
+                "Explicit framework targets require a supported coding operation; upgrades require maintain"
+            )
         if bool(self.project_id) != bool(self.component_id):
             raise ValueError("Choose both a product project and one of its components")
         if self.source_checkpoint is not None and (

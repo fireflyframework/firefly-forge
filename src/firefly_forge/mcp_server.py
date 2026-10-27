@@ -17,6 +17,11 @@ from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
 from firefly_forge.campaign_report_history import CampaignReportArchiveInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
+from firefly_forge.framework_knowledge_models import (
+    FrameworkCheckUpdatesInput,
+    FrameworkRefreshInput,
+    FrameworkSearchInput,
+)
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
@@ -81,6 +86,12 @@ DiffCheckpointRequest = Annotated[
     Any,
     WithJsonSchema({"anyOf": [{"type": "string", "pattern": r"^[a-f0-9]{32}$"}, {"type": "null"}]}),
 ]
+FrameworkArgument = Annotated[Any, WithJsonSchema({"type": "string", "enum": ["pyfly", "larafly"]})]
+FrameworkPageSize = Annotated[Any, WithJsonSchema({"type": "integer", "minimum": 1, "maximum": 200})]
+FrameworkCursor = Annotated[Any, WithJsonSchema({"anyOf": [{"type": "string"}, {"type": "null"}]})]
+FrameworkCheckRequest = SkipValidation[FrameworkCheckUpdatesInput]
+FrameworkRefreshRequest = SkipValidation[FrameworkRefreshInput]
+FrameworkSearchRequest = SkipValidation[FrameworkSearchInput]
 
 
 def create_server() -> MCPServer:
@@ -382,6 +393,113 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.search_knowledge(repository_id, query)
+
+    @server.tool(
+        description=prompt_text("mcp/get_framework_knowledge_status"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_framework_knowledge_status() -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.framework_knowledge_status()
+
+    @server.tool(
+        description=prompt_text("mcp/check_framework_updates"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def check_framework_updates(framework: FrameworkArgument, request: FrameworkCheckRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.check_framework_updates(framework, request)
+
+    @server.tool(
+        description=prompt_text("mcp/refresh_framework_knowledge"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def refresh_framework_knowledge(
+        framework: FrameworkArgument, request_id: RecoveryIdentifier, request: FrameworkRefreshRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.refresh_framework_knowledge(framework, request_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_framework_knowledge_refresh"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_framework_knowledge_refresh(framework: FrameworkArgument, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.framework_knowledge_refresh(framework, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/observe_framework_knowledge_refresh"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def observe_framework_knowledge_refresh(
+        framework: FrameworkArgument, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.observe_framework_knowledge_refresh(framework, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/list_framework_corpora"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def list_framework_corpora(
+        framework: FrameworkArgument, cursor: FrameworkCursor = None, page_size: FrameworkPageSize = 50
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.framework_corpora(framework, cursor=cursor, page_size=page_size)
+
+    @server.tool(
+        description=prompt_text("mcp/list_framework_corpus_sources"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def list_framework_corpus_sources(
+        framework: FrameworkArgument,
+        corpus_ref: RecoveryIdentifier,
+        cursor: FrameworkCursor = None,
+        page_size: FrameworkPageSize = 50,
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.framework_corpus_sources(framework, corpus_ref, cursor=cursor, page_size=page_size)
+
+    @server.tool(
+        description=prompt_text("mcp/search_framework_knowledge"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def search_framework_knowledge(framework: FrameworkArgument, request: FrameworkSearchRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.search_framework_knowledge(framework, request)
 
     @server.tool(description=prompt_text("mcp/index_verified_source"))
     def index_verified_source(identifier: str, paths: list[str]) -> dict[str, Any]:

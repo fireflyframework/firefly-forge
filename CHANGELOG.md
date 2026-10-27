@@ -2,6 +2,19 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.47 — Unreleased
+
+- Add immutable, version-isolated official framework references, bounded refresh operations, verified private-cache reads, and generation target pins. Extend the prompt catalog with eleven entries while retaining the original 322, and expose 182 MCP tools.
+- Prepare same-attempt continuity for one already consumed, statically rejected evidence read through offline SDK reconstruction, explicit compatible policy/tool-contract migration, and a finite ownership lease. Preserve original receipts, scope, history and limits; charge new native commands once against their existing lifetime ledger.
+- Honor the caller's finite metadata timeout for native CLI discovery without submitting a model request.
+- Compose the current Studio guides and 550 registered walkthrough rasters. The successor source/profile, PostgreSQL/controller and actual retained-run qualification remain separate gates; this entry does not claim publication or CRM delivery.
+
+## 0.2.46 — 2026-10-26
+
+- Give `read_run_evidence` a strict model-facing query schema. Validate fields, types and pagination before the native callback; return checkpoint-safe `invalid_query` results so malformed queries can be corrected within existing execution budgets.
+- Default worker evidence pages to ten records, matching the native worker limit. Keep the operator API's separate page size and all authorization, integrity and unknown-effect checks.
+- Bind the worker query and evidence reader to the source admission and checkpoint runtime inventories. Historical native profiles remain unchanged; the new runtime requires fresh qualification before admission.
+
 ## 0.2.45 — 2026-10-25
 
 - Page project and campaign data without a fixed project-count ceiling, retain revision-bound references, and configure finite campaign execution windows with durable usage accounting.

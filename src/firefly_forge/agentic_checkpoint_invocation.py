@@ -49,7 +49,13 @@ def runtime_contract() -> str:
     return digest(
         {
             "versions": {
-                name: version(name) for name in ("fireflyframework-agentic", "pydantic-ai-slim", "openai", "pyfly")
+                name: version(name)
+                for name in (
+                    "fireflyframework-agentic",
+                    "pydantic-ai-slim",
+                    "openai",
+                    "pyfly",
+                )
             },
             "prompts": prompt_catalog().digest,
             "adapter": {
@@ -110,6 +116,38 @@ def runtime_contract() -> str:
                     "scm_authority_models.py",
                     "git_deliveries.py",
                     "persistence.py",
+                    "worker_evidence_query.py",
+                    "run_evidence.py",
+                    "api.py",
+                    "invalid_read_continuities.py",
+                    "invalid_read_continuity.py",
+                    "invalid_read_contract.py",
+                    "invalid_read_epochs.py",
+                    "invalid_read_continuity_controllers.py",
+                    "invalid_read_continuity_models.py",
+                    "invalid_read_lease.py",
+                    "invalid_read_reconstruction.py",
+                    "invalid_read_settlements.py",
+                    "invalid_read_tickets.py",
+                    "knowledge.py",
+                    "knowledge_first.py",
+                    "learning_context.py",
+                    "framework_knowledge.py",
+                    "framework_knowledge_models.py",
+                    "framework_knowledge_persistence.py",
+                    "framework_knowledge_bootstrap.py",
+                    "framework_knowledge_conformance.py",
+                    "framework_knowledge_requirements.py",
+                    "framework_knowledge_targets.py",
+                    "framework_knowledge_upstream.py",
+                    "framework_knowledge_worker.py",
+                    "framework_knowledge_sync.py",
+                    "framework_knowledge_generation.py",
+                    "framework_knowledge_evidence.py",
+                    "framework_knowledge_controllers.py",
+                    "profiles.py",
+                    "access_routes.py",
+                    "migrations.py",
                 )
             },
         }
@@ -117,38 +155,50 @@ def runtime_contract() -> str:
 
 
 def invocation_cut(run: dict[str, Any]) -> str:
-    return digest(
-        {
-            "bridge": _cut(run, "config_revision"),
-            "frozen": {
-                name: run.get(name)
-                for name in (
-                    "agent",
-                    "backend",
-                    "frontend",
-                    "role_snapshot",
-                    "policy_snapshot",
-                    "model_selection",
-                    "knowledge_context_digest",
-                    "campaign_context",
-                    "design_snapshot",
-                    "branding_snapshot",
-                    "product_definition",
-                )
-            },
+    value = {
+        "bridge": _cut(run, "config_revision"),
+        "frozen": {
+            name: run.get(name)
+            for name in (
+                "agent",
+                "backend",
+                "frontend",
+                "role_snapshot",
+                "policy_snapshot",
+                "model_selection",
+                "knowledge_context_digest",
+                "campaign_context",
+                "design_snapshot",
+                "branding_snapshot",
+                "product_definition",
+            )
+        },
+    }
+    if run.get("framework_knowledge_request"):
+        value["framework_knowledge"] = {
+            name: run.get(name)
+            for name in ("framework_knowledge_request", "framework_knowledge_pin", "framework_runtime_attestation")
         }
-    )
+    return digest(value)
 
 
-async def workspace_cut(store: Any, workspace: Path) -> dict[str, str]:
+async def workspace_cut(
+    store: Any, workspace: Path, *, assert_current: Callable[[], Awaitable[None]] | None = None
+) -> dict[str, str]:
     _outside_unit()
+    if assert_current is not None:
+        await assert_current()
     if workspace.is_symlink() or not workspace.is_dir():
         raise ValueError("The retained owned workspace is unavailable")
     metadata = metadata_digest(workspace)
     head = await checked(trusted_git(["git", "rev-parse", "HEAD"]), workspace, env=git_environment())
     index = git_index_identity(workspace)
     head_identity = git_head_identity(workspace)
-    scanner = await store.source_patch_scanner()
+    scanner = (
+        await store.source_patch_scanner()
+        if assert_current is None
+        else await store.source_patch_scanner(assert_current=assert_current)
+    )
 
     async def finalize() -> None:
         current_head = await checked(trusted_git(["git", "rev-parse", "HEAD"]), workspace, env=git_environment())
@@ -162,6 +212,8 @@ async def workspace_cut(store: Any, workspace: Path) -> dict[str, str]:
             raise ValueError("Workspace Git metadata changed during inspection")
 
     source = await source_identity(workspace, scanner, finalize=finalize)
+    if assert_current is not None:
+        await assert_current()
     return {"path": str(workspace.resolve()), "head": head, "metadata": metadata, "source": source}
 
 
@@ -217,8 +269,14 @@ class CheckpointInvocation:
             ):
                 raise ValueError("Restored invocation instructions, grants or runtime contract changed")
             self.binding = binding
-            self.ordinal, self.predecessor = binding.ordinal, self.restored.checkpoint.digest
-            self.original = OriginalCompletion(self.restored.checkpoint, self.restored.body, self.restored.consume)
+            from firefly_forge.invalid_read_tickets import InvalidReadExecution
+
+            if isinstance(self.restored, InvalidReadExecution):
+                self.ordinal, self.predecessor = 0, None
+                self.original = None
+            else:
+                self.ordinal, self.predecessor = binding.ordinal, self.restored.checkpoint.digest
+                self.original = OriginalCompletion(self.restored.checkpoint, self.restored.body, self.restored.consume)
         else:
             self.binding = InvocationBinding(
                 invocation_id=uuid.uuid4().hex,

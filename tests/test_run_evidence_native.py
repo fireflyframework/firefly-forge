@@ -109,7 +109,8 @@ async def test_native_concurrent_new_activity_invalidates_the_old_cut(store, sto
         CURRENT_PRINCIPAL.reset(context)
 
 
-async def test_native_optin_agent_queries_only_its_original_run_without_effects(store, tmp_path):
+@pytest.mark.parametrize("first_query", [{"limit": 1}, {}, {"tool_name": "execute_command"}])
+async def test_native_optin_agent_queries_only_its_original_run_without_effects(store, tmp_path, first_query):
     from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
 
@@ -147,10 +148,14 @@ async def test_native_optin_agent_queries_only_its_original_run_without_effects(
                 run["id"], EvidenceQuery.model_validate(query), task_id="implement"
             )
 
+        model_queries = []
+
         def model(messages, info):
             if not calls:
                 assert [tool.name for tool in info.function_tools] == ["read_run_evidence"]
-                return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {"limit": 1}})])
+                query = first_query if not model_queries else {"limit": 1}
+                model_queries.append(query)
+                return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": query})])
             report = {
                 "summary": "Evidence read; awaiting owner input",
                 "worker_feedback": {
@@ -184,7 +189,7 @@ async def test_native_optin_agent_queries_only_its_original_run_without_effects(
                 tmp_path, tmp_path, allowed_tools=frozenset({"read_run_evidence"}), read_run_evidence=read
             ),
         )
-        assert calls == [{"limit": 1}]
+        assert calls == [{"limit": 10 if first_query == {} else 1}]
         assert await journal.entries(run["id"]) == before
         with pytest.raises(ValueError):
             await read({"run_id": uuid4().hex})

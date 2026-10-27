@@ -109,7 +109,7 @@ async def test_required_checkpoint_runs_actual_static_function_tools_and_capture
     sequence = [
         ("execute_command", {"argv": ["python", "build.py"], "timeout": 10}),
         ("knowledge_lookup", {"query": "data transactions"}),
-        ("read_run_evidence", {"query": {"kind": "checks"}}),
+        ("read_run_evidence", {"query": {"kind": "journal"}}),
     ]
 
     def model(messages, info):

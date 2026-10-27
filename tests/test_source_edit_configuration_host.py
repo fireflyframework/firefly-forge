@@ -10,7 +10,7 @@ import pytest
 from source_edit_qualification_fixtures import api_configuration, register_fixture_profile
 
 
-def metadata_cli(tmp_path, monkeypatch, *, response="valid"):
+def metadata_cli(tmp_path, monkeypatch, *, response="valid", startup_delay=0):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     private_roots = (tmp_path / "private",)
@@ -18,7 +18,9 @@ def metadata_cli(tmp_path, monkeypatch, *, response="valid"):
     executable = tmp_path / "metadata-fixture"
     executable.write_text(
         f"#!{sys.executable}\n"
-        "import json,os,select,sys\n"
+        "import json,os,select,sys,time\n"
+        f"with open({str(requests_path.with_suffix('.pid'))!r}, 'w') as stream: stream.write(str(os.getpid()))\n"
+        f"time.sleep({startup_delay!r})\n"
         "assert os.environ.get('CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED') == '1'\n"
         "assert sys.argv[1:4] == ['app-server', '--listen', 'stdio://']\n"
         "assert '--strict-config' in sys.argv\n"
@@ -108,6 +110,70 @@ async def test_metadata_handshake_refuses_incomplete_or_unsuccessful_initializat
     with pytest.raises(failure, match="timed out|metadata"):
         await qualify_configuration(identity, 1, profile=profile, workspace=workspace, private_roots=private_roots)
     assert [row["method"] for row in json.loads(requests_path.read_text())] == ["initialize"]
+
+
+async def test_metadata_honors_configured_window_above_five_seconds(tmp_path, monkeypatch):
+    from firefly_forge.source_edit_cli_policy import qualify_configuration
+
+    profile, identity, workspace, private_roots, requests_path = metadata_cli(tmp_path, monkeypatch, startup_delay=5.2)
+    proof = await qualify_configuration(identity, 10, profile=profile, workspace=workspace, private_roots=private_roots)
+    assert proof["version"] == 5
+    assert [row["method"] for row in json.loads(requests_path.read_text())] == [
+        "initialize",
+        "initialized",
+        "config/read",
+        "configRequirements/read",
+    ]
+
+
+async def test_metadata_preserves_short_caller_deadline_and_stops_owned_child(tmp_path, monkeypatch):
+    from firefly_forge.providers import ProviderError
+    from firefly_forge.source_edit_cli_policy import qualify_configuration
+
+    profile, identity, workspace, private_roots, requests_path = metadata_cli(tmp_path, monkeypatch, startup_delay=1)
+    with pytest.raises(ProviderError, match="timed out after 0.15 seconds"):
+        await qualify_configuration(identity, 0.15, profile=profile, workspace=workspace, private_roots=private_roots)
+    assert not requests_path.exists()
+    pid_file = requests_path.with_suffix(".pid")
+    if pid_file.exists():
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pid_file.read_text()), 0)
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [0, -1, float("nan"), float("inf"), -float("inf"), True, False, "10", None, 1 + 0j, 10**1000],
+    ids=[
+        "zero",
+        "negative",
+        "nan",
+        "infinite",
+        "negative-infinite",
+        "true",
+        "false",
+        "string",
+        "none",
+        "complex",
+        "overflow",
+    ],
+)
+async def test_invalid_metadata_deadline_is_rejected_before_process_dispatch(tmp_path, monkeypatch, timeout):
+    from firefly_forge import providers
+    from firefly_forge.source_edit_cli_policy import qualify_configuration
+
+    profile, identity, workspace, private_roots, requests_path = metadata_cli(tmp_path, monkeypatch)
+    calls = []
+
+    async def forbidden(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("Invalid metadata deadlines cannot dispatch a native process")
+
+    monkeypatch.setattr(providers, "run_process", forbidden)
+    with pytest.raises(ValueError, match="finite positive"):
+        await qualify_configuration(
+            identity, timeout, profile=profile, workspace=workspace, private_roots=private_roots
+        )
+    assert calls == [] and not requests_path.exists()
 
 
 def project(config, requirements, profile, workspace, private_roots):

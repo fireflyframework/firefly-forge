@@ -625,7 +625,9 @@ UPDATE_DOC_SCREENSHOTS=1 FORGE_DOCS_PORT=5227 \
   --config studio/playwright.docs.config.ts
 ```
 
-The configuration captures the product journey, learning decisions and source recovery, external tool setup, queued-command review, campaign evidence, provider activity and GitHub continuation consent. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
+The configuration captures the product journey, learning decisions and source recovery, external tool setup, queued-command review, campaign evidence, provider activity, GitHub continuation consent and framework generation review. For complementary views against unchanged frontend and capture inputs, set `CAPTURE_STAGES` to a comma-separated list of state names. Existing captures keep their bytes and recorded provenance. After a frontend, Studio version or capture-input change, refresh all complete journeys.
+
+Framework generation examples capture complete bounded sections. Their records retain the actual browser viewport plus `section_capture` with the approved selector, visible bounds and PNG dimensions. The strict build checks that the raster matches that section and that it fits the recorded viewport. A focused image does not imply a smaller browser viewport.
 
 Choose an unused local port. The configuration starts its own server and refuses to reuse another checkout. Captures wait for fonts, use the configured viewport and check visible wizard actions against the footer and click target. Native scrollbar painting stays enabled. Review the actual images and rendered guides after regeneration. Fixture screenshots remain presentation evidence, even when the browser checks pass.
 

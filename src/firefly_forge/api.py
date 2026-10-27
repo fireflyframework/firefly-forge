@@ -105,6 +105,9 @@ from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestRepository,
 )
 from firefly_forge.execution_requests import ExecutionRequests
+from firefly_forge.framework_knowledge import FrameworkKnowledge
+from firefly_forge.framework_knowledge_controllers import FrameworkKnowledgeController
+from firefly_forge.framework_knowledge_persistence import FrameworkKnowledgeRecords
 from firefly_forge.git_deliveries import GitDeliveries
 from firefly_forge.git_delivery_controllers import GitDeliveryController, GitDeliveryPolicyController
 from firefly_forge.git_delivery_policy import GitDeliveryPolicies
@@ -118,6 +121,12 @@ from firefly_forge.identity_persistence import (
     ForgeIdentitySessionRepository,
     ForgeIdentityUserRepository,
 )
+from firefly_forge.invalid_read_continuities import InvalidReadContinuities
+from firefly_forge.invalid_read_continuity_controllers import (
+    ContinuityLeasePolicyController,
+    InvalidReadContinuityController,
+)
+from firefly_forge.invalid_read_lease import ContinuityLeasePolicies
 from firefly_forge.journal import Journal
 from firefly_forge.knowledge import (
     KnowledgeConfiguration,
@@ -494,6 +503,18 @@ class FactoryConfiguration:
         return restores
 
     @bean
+    def invalid_read_continuities(
+        self, store: Store, journal: Journal, requests: ExecutionRequests, engine: Engine
+    ) -> InvalidReadContinuities:
+        service = InvalidReadContinuities(store, journal, engine, requests)
+        requests.invalid_read_continuities = service
+        return service
+
+    @bean
+    def continuity_lease_policies(self, store: Store) -> ContinuityLeasePolicies:
+        return ContinuityLeasePolicies(store)
+
+    @bean
     def git_delivery_policies(self, store: Store) -> GitDeliveryPolicies:
         return GitDeliveryPolicies(store)
 
@@ -533,6 +554,7 @@ class FactoryConfiguration:
         collaboration: Collaboration,
         polling: SCMPolling,
         observability: ApplicationOperations,
+        frameworks: FrameworkKnowledge,
     ) -> WorkerSupervision:
         return WorkerSupervision(
             engine,
@@ -544,6 +566,7 @@ class FactoryConfiguration:
                 "scm_feedback": collaboration,
                 "scm_ingress": polling,
                 "observability": observability,
+                "framework_knowledge": frameworks,
             },
         )
 
@@ -1093,6 +1116,15 @@ class FactoryConfiguration:
         return manager
 
     @bean
+    def framework_knowledge(
+        self, store: Store, knowledge: KnowledgeManager, records: FrameworkKnowledgeRecords
+    ) -> FrameworkKnowledge:
+        manager = FrameworkKnowledge(store, knowledge, records)
+        knowledge.frameworks = manager
+        store.framework_knowledge = manager
+        return manager
+
+    @bean
     def knowledge_uploads(
         self,
         store: Store,
@@ -1258,6 +1290,8 @@ def create_runtime(
         AgentCheckpoints,
         AgentRestoreController,
         AgentCheckpointCandidateController,
+        InvalidReadContinuityController,
+        ContinuityLeasePolicyController,
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
@@ -1306,6 +1340,8 @@ def create_runtime(
         ChannelController,
         ForgeKnowledgeUploadRepository,
         KnowledgeUploadsController,
+        FrameworkKnowledgeController,
+        FrameworkKnowledgeRecords,
         ForgeProjectRepository,
         ForgeProjectRevisionRepository,
         ForgeAnalysisRepository,

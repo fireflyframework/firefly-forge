@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/observe_framework_knowledge_refresh
+version: 1.0.0
+description: Forge framework knowledge MCP tool description.
+system_template: ''
+user_template: Observe and reconcile the same retained refresh operation. Uncertain source submissions
+  remain held unless uniquely observed; this never resubmits an uncertain write. Requires factory administration.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,11 +1,28 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { repositoryLabels } from "./RepositoryLabels";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { post, request, type Connection, type Repository } from "./api";
 import { KnowledgeUploads } from "./KnowledgeUploads";
 import { LearningRecords } from "./LearningRecords";
 import type { IdentitySession } from "./Identity";
 import { safeExternalLink } from "./FeatureLinks";
+import { RichMarkdown } from "./RichMarkdown";
+import { KnowledgeFrameworkPanel } from "./KnowledgeFrameworkPanel";
+import {
+  FrameworkCorpusSelector,
+  FrameworkCorpusSources,
+} from "./FrameworkCorpusSources";
+import {
+  corpusSelectionKey,
+  frameworkSearch,
+  type FrameworkCorpus,
+} from "./FrameworkKnowledgeData";
 import "./StudioFeatures.css";
 
 type Settings = {
@@ -396,7 +413,22 @@ type CitedHit = Hit & {
   page?: number;
   knowledge_item_id?: string;
   knowledge_version?: number;
+  framework?: string;
+  framework_version?: string;
+  release_tag?: string;
+  commit?: string;
+  source_sha256?: string;
+  license_sha256?: string;
 };
+
+const explorerTabs = [
+  "sources",
+  "knowledge",
+  "search",
+  "frameworks",
+  "history",
+  "learning",
+] as const;
 
 export function KnowledgeExplorer({
   connection,
@@ -416,9 +448,21 @@ export function KnowledgeExplorer({
   const repository =
     repositories.find((item) => item.id === project) ?? repositories[0] ?? null;
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<
-    "sources" | "knowledge" | "search" | "history" | "learning"
-  >("sources");
+  const [tab, setTab] = useState<(typeof explorerTabs)[number]>("sources");
+  const [selectedFramework, setSelectedFramework] = useState<{
+    owner: string;
+    corpus: FrameworkCorpus;
+  } | null>(null);
+  const frameworkOwner = JSON.stringify([
+    connection.base,
+    session?.user.id ?? "",
+  ]);
+  const corpus =
+    selectedFramework?.owner === frameworkOwner
+      ? selectedFramework.corpus
+      : null;
+  const searchController = useRef<AbortController | null>(null);
+  const abortSearch = useCallback(() => searchController.current?.abort(), []);
   const [scope, setScope] = useState<"project" | "framework">("project");
   const [offset, setOffset] = useState(0);
   const [browse, setBrowse] = useState<{ key: string; data: Explore } | null>(
@@ -439,6 +483,9 @@ export function KnowledgeExplorer({
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const id = repository?.id;
+  const searchScope = corpus
+    ? corpusSelectionKey(connection, session?.user.id ?? "", corpus)
+    : JSON.stringify([frameworkOwner, id]);
   const key = `${id}:${scope}:${offset}`;
   useEffect(() => {
     if (!connected) return;
@@ -459,6 +506,8 @@ export function KnowledgeExplorer({
       tab === "search" ||
       tab === "history" ||
       tab === "learning" ||
+      tab === "frameworks" ||
+      (tab === "sources" && corpus !== null) ||
       !settings?.enabled
     )
       return;
@@ -491,25 +540,55 @@ export function KnowledgeExplorer({
     scope,
     settings?.enabled,
     tab,
+    corpus,
     refresh,
   ]);
+  useEffect(() => {
+    abortSearch();
+    setBusy(false);
+    return abortSearch;
+  }, [searchScope, abortSearch]);
   async function search(value: string) {
-    if (!id || !value.trim()) return;
+    if ((!id && !corpus) || !value.trim()) return;
+    searchController.current?.abort();
+    const controller = new AbortController();
+    searchController.current = controller;
     setBusy(true);
     setError("");
     setTab("search");
     setQuery(value);
     try {
-      const response = await post<{ hits: CitedHit[]; warnings: string[] }>(
-        connection,
-        "/knowledge/search",
-        { repository_id: id, query: value.trim() },
-      );
-      setResult({ repository: id, query: value.trim(), ...response });
+      const response = corpus
+        ? await frameworkSearch(
+            connection,
+            corpus,
+            value,
+            controller.signal,
+          ).then((data) => ({
+            hits: data.hits.map((hit) => ({
+              ...hit,
+              source_title: hit.path,
+              workspace_id: corpus.workspace_id,
+              chunk_id: hit.chunk_id ?? undefined,
+              knowledge_version: hit.knowledge_version ?? undefined,
+            })),
+            warnings: data.warnings,
+          }))
+        : await request<{ hits: CitedHit[]; warnings: string[] }>(
+            connection,
+            "/knowledge/search",
+            {
+              method: "POST",
+              body: JSON.stringify({ repository_id: id, query: value.trim() }),
+              signal: controller.signal,
+            },
+          );
+      if (controller.signal.aborted) return;
+      setResult({ repository: searchScope, query: value.trim(), ...response });
       setHistory((items) =>
         [
           {
-            repository: id,
+            repository: searchScope,
             query: value.trim(),
             at: new Date().toISOString(),
             count: response.hits.length,
@@ -518,13 +597,19 @@ export function KnowledgeExplorer({
         ].slice(0, 30),
       );
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (!controller.signal.aborted) setError(errorMessage(cause));
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
   const data = browse?.key === key ? browse.data : null;
-  const currentResult = result?.repository === id ? result : null;
+  const currentResult = result?.repository === searchScope ? result : null;
+  function selectCorpus(value: FrameworkCorpus, view: "sources" | "search") {
+    setSelectedFramework({ owner: frameworkOwner, corpus: value });
+    setOffset(0);
+    setTab(view);
+    setError("");
+  }
   const total = data
     ? tab === "sources"
       ? data.totals.sources
@@ -559,28 +644,43 @@ export function KnowledgeExplorer({
       ) : (
         <>
           <div className="feature-toolbar">
-            <div className="field">
-              <label htmlFor="explorer-project">Knowledge project</label>
-              <select
-                id="explorer-project"
-                value={id ?? ""}
-                disabled={!repositories.length}
-                onChange={(event) => {
-                  setProject(event.target.value);
-                  setOffset(0);
+            {tab !== "frameworks" &&
+              !(corpus && ["sources", "search", "history"].includes(tab)) && (
+                <div className="field">
+                  <label htmlFor="explorer-project">Knowledge project</label>
+                  <select
+                    id="explorer-project"
+                    value={id ?? ""}
+                    disabled={!repositories.length}
+                    onChange={(event) => {
+                      setProject(event.target.value);
+                      setSelectedFramework(null);
+                      setOffset(0);
+                    }}
+                  >
+                    <option value="" disabled>
+                      Choose a repository
+                    </option>
+                    {repositories.map((repo) => (
+                      <option key={repo.id} value={repo.id}>
+                        {projectLabels.get(repo.id)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            {corpus && ["sources", "search", "history"].includes(tab) && (
+              <button
+                className="secondary"
+                onClick={() => {
+                  setSelectedFramework(null);
+                  setTab("sources");
                 }}
               >
-                <option value="" disabled>
-                  Choose a repository
-                </option>
-                {repositories.map((repo) => (
-                  <option key={repo.id} value={repo.id}>
-                    {projectLabels.get(repo.id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {tab === "sources" && id && (
+                Return to project knowledge
+              </button>
+            )}
+            {tab === "sources" && id && !corpus && (
               <KnowledgeUploads
                 connection={connection}
                 repository={id}
@@ -588,7 +688,7 @@ export function KnowledgeExplorer({
                 onRefresh={() => setRefresh((value) => value + 1)}
               />
             )}
-            {(tab === "sources" || tab === "knowledge") && (
+            {((tab === "sources" && !corpus) || tab === "knowledge") && (
               <div className="field">
                 <label htmlFor="explorer-scope">Browse scope</label>
                 <select
@@ -615,7 +715,7 @@ export function KnowledgeExplorer({
               {error}
             </div>
           )}
-          {!settings?.enabled && tab !== "learning" && (
+          {!settings?.enabled && tab !== "learning" && tab !== "frameworks" && (
             <p className="integration-status">
               Enable and configure knowledge retrieval before browsing or
               searching.
@@ -626,21 +726,13 @@ export function KnowledgeExplorer({
             role="tablist"
             aria-label="Knowledge views"
           >
-            {(
-              ["sources", "knowledge", "search", "history", "learning"] as const
-            ).map((value) => (
+            {explorerTabs.map((value) => (
               <button
                 key={value}
                 role="tab"
                 tabIndex={tab === value ? 0 : -1}
                 onKeyDown={(event) => {
-                  const tabs = [
-                    "sources",
-                    "knowledge",
-                    "search",
-                    "history",
-                    "learning",
-                  ] as const;
+                  const tabs = explorerTabs;
                   if (
                     ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
                       event.key,
@@ -675,10 +767,43 @@ export function KnowledgeExplorer({
                   ? "Knowledge items"
                   : value === "learning"
                     ? "Learning records"
-                    : value[0].toUpperCase() + value.slice(1)}
+                    : value === "frameworks"
+                      ? "Framework releases"
+                      : value[0].toUpperCase() + value.slice(1)}
               </button>
             ))}
           </div>
+          {tab === "frameworks" && (
+            <KnowledgeFrameworkPanel
+              key={frameworkOwner}
+              connection={connection}
+              connected={connected}
+              userId={session?.user.id ?? ""}
+              onBrowse={(value) => selectCorpus(value, "sources")}
+              onSearch={(value) => selectCorpus(value, "search")}
+            />
+          )}
+          {corpus && ["sources", "search", "history"].includes(tab) && (
+            <FrameworkCorpusSelector
+              key={`${frameworkOwner}:${corpus.framework}`}
+              connection={connection}
+              selected={corpus}
+              onSelect={(value) =>
+                selectCorpus(value, tab === "search" ? "search" : "sources")
+              }
+            />
+          )}
+          {tab === "sources" && corpus && (
+            <FrameworkCorpusSources
+              key={corpusSelectionKey(
+                connection,
+                session?.user.id ?? "",
+                corpus,
+              )}
+              connection={connection}
+              corpus={corpus}
+            />
+          )}
           {tab === "learning" && (
             <LearningRecords
               key={`${connection.base}:${id}:${session?.user.id ?? ""}`}
@@ -688,7 +813,7 @@ export function KnowledgeExplorer({
               session={session}
             />
           )}
-          {(tab === "sources" || tab === "knowledge") && (
+          {((tab === "sources" && !corpus) || tab === "knowledge") && (
             <section className="feature-record">
               <header>
                 <div>
@@ -850,12 +975,21 @@ export function KnowledgeExplorer({
             </section>
           )}
           {tab === "search" && (
-            <section className="feature-record">
+            <section
+              className={`feature-record${corpus ? " framework-corpus-record" : ""}`}
+            >
               <h2>Cited search</h2>
               <p className="subtle">
-                Search uses the current project's workspace and the configured
-                shared framework scope.
+                {corpus
+                  ? `Search is scoped to ${corpus.framework} ${corpus.framework_version}, commit ${corpus.commit}.`
+                  : "Search uses the current project's workspace and the configured shared framework scope."}
               </p>
+              {corpus && corpus.state !== "ready" && (
+                <p className="integration-status" role="status">
+                  This selected release is not ready for search. Inspect its
+                  ingestion state or choose a retained ready corpus.
+                </p>
+              )}
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -867,7 +1001,7 @@ export function KnowledgeExplorer({
                   <textarea
                     id="explorer-query"
                     required
-                    maxLength={4000}
+                    maxLength={corpus ? 2000 : 4000}
                     rows={3}
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
@@ -875,7 +1009,13 @@ export function KnowledgeExplorer({
                 </div>
                 <button
                   className="primary"
-                  disabled={busy || !id || !settings?.enabled || !query.trim()}
+                  disabled={
+                    busy ||
+                    (!id && !corpus) ||
+                    (corpus !== null && corpus.state !== "ready") ||
+                    !settings?.enabled ||
+                    !query.trim()
+                  }
                 >
                   {busy ? "Retrieving citations…" : "Search knowledge"}
                 </button>
@@ -904,6 +1044,11 @@ export function KnowledgeExplorer({
                         </h3>
                         <div className="feature-meta">
                           <span>Workspace {hit.workspace_id}</span>
+                          {hit.framework_version && (
+                            <span>
+                              {hit.framework} {hit.framework_version}
+                            </span>
+                          )}
                           {hit.knowledge_version && (
                             <span>
                               Knowledge version {hit.knowledge_version}
@@ -914,11 +1059,15 @@ export function KnowledgeExplorer({
                           )}
                         </div>
                         <div className="knowledge-excerpt">
-                          {hit.content
-                            .split(/\n\s*\n/)
-                            .map((paragraph, paragraphIndex) => (
-                              <p key={paragraphIndex}>{paragraph}</p>
-                            ))}
+                          {hit.framework ? (
+                            <RichMarkdown value={hit.content} />
+                          ) : (
+                            hit.content
+                              .split(/\n\s*\n/)
+                              .map((paragraph, paragraphIndex) => (
+                                <p key={paragraphIndex}>{paragraph}</p>
+                              ))
+                          )}
                         </div>
                         <details>
                           <summary>Citation details</summary>
@@ -931,6 +1080,30 @@ export function KnowledgeExplorer({
                               <dt>Chunk ID</dt>
                               <dd>{hit.chunk_id ?? "Not returned"}</dd>
                             </div>
+                            {hit.commit && (
+                              <div>
+                                <dt>Framework source commit</dt>
+                                <dd>
+                                  <code>{hit.commit}</code>
+                                </dd>
+                              </div>
+                            )}
+                            {hit.source_sha256 && (
+                              <div>
+                                <dt>Source SHA-256</dt>
+                                <dd>
+                                  <code>{hit.source_sha256}</code>
+                                </dd>
+                              </div>
+                            )}
+                            {hit.license_sha256 && (
+                              <div>
+                                <dt>Source license SHA-256</dt>
+                                <dd>
+                                  <code>{hit.license_sha256}</code>
+                                </dd>
+                              </div>
+                            )}
                             {hit.section_path && (
                               <div>
                                 <dt>Section</dt>
@@ -983,7 +1156,7 @@ export function KnowledgeExplorer({
               </p>
               <div className="feature-list">
                 {history
-                  .filter((item) => item.repository === id)
+                  .filter((item) => item.repository === searchScope)
                   .map((item, index) => (
                     <article key={`${item.at}-${index}`}>
                       <h3>{item.query}</h3>
@@ -1001,9 +1174,9 @@ export function KnowledgeExplorer({
                     </article>
                   ))}
               </div>
-              {!history.some((item) => item.repository === id) && (
+              {!history.some((item) => item.repository === searchScope) && (
                 <p className="integration-status">
-                  No searches recorded for this project in this tab.
+                  No searches recorded for this selected scope in this tab.
                 </p>
               )}
             </section>

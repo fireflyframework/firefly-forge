@@ -6,6 +6,7 @@ cause native CLI configuration admission to fail, never be bypassed.
 """
 
 import json
+import math
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -218,7 +219,14 @@ async def qualify_configuration(
 
     The actual pinned startup/sentinel qualification is required before adopting
     this mode. Configuration replies stay in memory and never enter activity logs.
+    The caller supplies the finite window; metadata must not silently shorten it.
     """
+    try:
+        valid_timeout = type(timeout) in (int, float) and math.isfinite(timeout) and timeout > 0
+    except OverflowError:
+        valid_timeout = False
+    if not valid_timeout:
+        raise ValueError("Native metadata timeout must be a finite positive number")
     from firefly_forge.source_edit_qualification import qualified_profile
 
     if qualified_profile(executable, profile.model) != profile:
@@ -253,7 +261,7 @@ async def qualify_configuration(
             command,
             workspace.resolve(),
             discard,
-            timeout=min(5, timeout),
+            timeout=timeout,
             stdin_protocol=protocol,
             env=runtime_environment(SOURCE_ONLY_ENV),
         )

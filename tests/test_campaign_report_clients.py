@@ -23,6 +23,8 @@ from firefly_forge.store import Store
 
 @pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
 def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_schema, monkeypatch, interface):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -50,6 +52,7 @@ def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_sch
         assert reports.campaigns.poller is None
 
         async def seed():
+            await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
             return await one_component(http.app.state.store, tmp_path)
 
         project, manager, journal, campaign = http.portal.call(seed)

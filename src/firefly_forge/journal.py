@@ -39,6 +39,7 @@ LOCAL_TASKS = {"prepare", "implement", "verify", "checkpoint"}
 FAILURE_ALIASES = {"rate_limited": "rate_limit", "insufficient_credits": "quota", "missing_auth": "authentication"}
 RECOVERY_REASON = "Worker stopped without a durable receipt; inspect the retained source and external target"
 _RECOVERY_CLAIMS = {
+    "invalid_read_claim": "invalid_read_claim_digest",
     "checkpoint_mode_claim": "checkpoint_mode_claim_digest",
     "original_selection_claim": "original_selection_claim_digest",
 }

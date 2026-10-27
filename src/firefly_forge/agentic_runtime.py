@@ -11,7 +11,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
@@ -23,6 +23,7 @@ from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_imag
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.tool_broker import ToolReconciliationRequired
+from firefly_forge.worker_evidence_query import WorkerEvidenceReadInput
 from firefly_forge.workspace_tools import ToolRuntimeContext
 from firefly_forge.workspace_tools import WorkspaceTools as WorkspaceTools
 
@@ -51,8 +52,10 @@ async def execute_agentic(
     from fireflyframework_agentic.models import ModelOptions
     from fireflyframework_agentic.tools import firefly_tool
     from pydantic_ai import PromptedOutput
-    from pydantic_ai.capabilities import ProcessHistory
-    from pydantic_ai.messages import BinaryContent, ToolReturn, UserPromptPart
+    from pydantic_ai.capabilities import AbstractCapability, ProcessHistory
+    from pydantic_ai.messages import BinaryContent, ToolCallPart, ToolReturn, UserPromptPart
+    from pydantic_ai.tools import RunContext, ToolDefinition
+    from pydantic_ai.tools import Tool as PydanticTool
     from pydantic_ai.usage import UsageLimits
 
     from firefly_forge.agentic_checkpoint_invocation import current_checkpoint_invocation
@@ -94,12 +97,20 @@ async def execute_agentic(
             return [safe_data(item) for item in value]
         return value
 
+    async def admit_tool_arguments(arguments: Any) -> None:
+        if invocation is not None:
+            await invocation.guard()
+            invocation.remaining()
+        if context.credential_admission is not None:
+            await context.credential_admission(arguments)
+        if invocation is not None:
+            await invocation.guard()
+        if contains_known_credential(arguments, context.credential_registry()):
+            raise ValueError("Native tool arguments cannot contain configured credentials")
+
     def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(handler)
         async def invoke(*args: Any, **kwargs: Any) -> Any:
-            if invocation is not None:
-                await invocation.guard()
-                invocation.remaining()
             arguments = [
                 [arg.model_dump(mode="json") if isinstance(arg, BaseModel) else arg for arg in args],
                 {
@@ -107,12 +118,7 @@ async def execute_agentic(
                     for key, value in kwargs.items()
                 },
             ]
-            if context.credential_admission is not None:
-                await context.credential_admission(arguments)
-            if invocation is not None:
-                await invocation.guard()
-            if contains_known_credential(arguments, context.credential_registry()):
-                raise ValueError("Native tool arguments cannot contain configured credentials")
+            await admit_tool_arguments(arguments)
             try:
                 result = await handler(*args, **kwargs)
                 if context.credential_admission is not None:
@@ -318,9 +324,15 @@ async def execute_agentic(
         await emit("file", result)
         return result
 
-    async def read_run_evidence(query: dict[str, Any]) -> dict[str, Any]:
+    async def read_run_evidence(**arguments: Any) -> dict[str, Any]:
+        try:
+            request = WorkerEvidenceReadInput.model_validate(arguments)
+        except ValidationError:
+            return {"status": "invalid_query"}
         if context.read_run_evidence is None:
             raise ValueError("Retained run evidence is not configured")
+        query = request.query.model_dump(mode="json", exclude_unset=True)
+        query["limit"] = request.query.limit
         return await context.read_run_evidence(query)
 
     handlers: dict[str, Callable[..., Any]] = {
@@ -418,6 +430,51 @@ async def execute_agentic(
         if invocation is not None and boundary is not None
         else None
     )
+
+    def agent_tool(name: str, handler: Callable[..., Any]) -> Any:
+        tool = firefly_tool(
+            name,
+            description=prompt_text(
+                "tools/" + name,
+                version="1.0.1" if name in {"list_files", "search_text", "read_run_evidence"} else "1.0.0",
+            ),
+            auto_register=False,
+        )(guarded(handler))
+        if name == "read_run_evidence":
+            # Ordinary tool results preserve checkpoint history without introducing SDK retry state.
+            strict_tool = PydanticTool.from_schema(
+                tool.execute,
+                name=name,
+                description=tool.description,
+                json_schema=WorkerEvidenceReadInput.model_json_schema(),
+            )
+
+            async def retained_return_schema(ctx: RunContext[Any], definition: ToolDefinition) -> ToolDefinition:
+                from dataclasses import replace
+
+                return replace(definition, return_schema={"type": "object", "additionalProperties": True})
+
+            strict_tool.prepare = retained_return_schema
+            return strict_tool
+        return tool
+
+    class EvidenceQueryValidation(AbstractCapability[Any]):
+        async def before_tool_validate(
+            self,
+            ctx: RunContext[Any],
+            *,
+            call: ToolCallPart,
+            tool_def: ToolDefinition,
+            args: str | dict[str, Any],
+        ) -> str | dict[str, Any]:
+            if call.tool_name == tool_def.name == "read_run_evidence" and isinstance(args, str):
+                try:
+                    TypeAdapter(dict[str, Any]).validate_json(args, strict=True)
+                except ValidationError:
+                    await admit_tool_arguments(args)
+                    return {"query": None}
+            return args
+
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
@@ -440,17 +497,12 @@ async def execute_agentic(
             if allow_output_token_cap
             else None
         ),
-        tools=[
-            firefly_tool(
-                name,
-                description=prompt_text(
-                    "tools/" + name, version="1.0.1" if name in {"list_files", "search_text"} else "1.0.0"
-                ),
-                auto_register=False,
-            )(guarded(handler))
-            for name, handler in handlers.items()
+        tools=[agent_tool(name, handler) for name, handler in handlers.items()],
+        capabilities=[
+            ProcessHistory(image_history),
+            *([EvidenceQueryValidation()] if "read_run_evidence" in handlers else []),
+            *([boundary] if boundary is not None else []),
         ],
-        capabilities=[ProcessHistory(image_history), *([boundary] if boundary is not None else [])],
     )
     await emit("provider", "Firefly Agentic is generating source with confined workspace tools")
     try:

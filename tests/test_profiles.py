@@ -19,8 +19,8 @@ def test_profile_catalog_separates_live_acceptance_from_inspected_contracts():
     catalog = profile_catalog()
     backends = {profile["id"]: profile for profile in catalog["backends"]}
     frontends = {profile["id"]: profile for profile in catalog["frontends"]}
-    assert backends["pyfly"]["validation_state"] == "live_fixture_verified"
-    assert backends["larafly"]["validation_state"] == "live_fixture_verified"
+    assert backends["pyfly"]["validation_state"] == "requires_run_validation"
+    assert backends["larafly"]["validation_state"] == "requires_run_validation"
     assert frontends["react"]["validation_state"] == "live_fixture_verified"
     assert all(backends[name]["validation_state"] == "contract_inspected" for name in ["java", "rust", "dotnet"])
     assert frontends["angular"]["validation_state"] == "contract_inspected"
@@ -61,14 +61,16 @@ def test_no_verification_configuration_is_not_a_passing_gate(tmp_path):
         verification_commands(tmp_path, "none", "none")
 
 
-def test_generation_profile_and_framework_manuals_target_the_same_pyfly_release():
+def test_generation_candidate_keeps_legacy_bundled_manuals_historical_and_requires_new_corpus():
     from firefly_forge.managed_knowledge import framework_documents
 
     backends = {p["id"]: p for p in profile_catalog()["backends"]}
     assert backends["pyfly"]["name"] == "pyfly · Python"
     assert backends["larafly"]["name"] == "larafly · PHP"
-    assert backends["pyfly"]["version"].startswith("26.10.6 ·")
-    assert backends["pyfly"]["source"].endswith("/releases/tag/v26.10.06")
+    assert backends["pyfly"]["version"].startswith("26.10.11 candidate ·")
+    assert "PHP 8.5.12+" in backends["larafly"]["version"]
+    assert "ready exact corpus" in backends["pyfly"]["validation"]
+    assert backends["pyfly"]["source"].endswith("/releases/tag/v26.10.11")
     manuals = [d for d in framework_documents() if d["framework"] == "pyfly"]
     assert len(manuals) == 7
     assert {d["version"] for d in manuals} == {"26.10.6"}
@@ -77,3 +79,13 @@ def test_generation_profile_and_framework_manuals_target_the_same_pyfly_release(
     prompt = build_instruction("Create contacts with unique email addresses.", "pyfly", "react")
     assert "Starlette>=1.7.0" in prompt
     assert "26.10.1" not in prompt
+
+
+def test_target_scope_uses_versioned_yaml_without_changing_legacy_prompts():
+    from firefly_forge.framework_knowledge_targets import framework_target_scope
+
+    legacy = build_instruction("Build", "pyfly", "none")
+    with framework_target_scope({"framework": "pyfly", "framework_version": "26.10.11"}):
+        exact = build_instruction("Build", "pyfly", "none")
+    assert "pyfly 26.10.11" in exact and "26.10.6" not in exact
+    assert build_instruction("Build", "pyfly", "none") == legacy
