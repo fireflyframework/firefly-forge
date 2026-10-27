@@ -14,6 +14,7 @@ vi.mock("react", async (original) => {
 import { ExecutionRecord } from "./ExecutionRecord";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
+import { InvalidReadRecovery } from "./InvalidReadRecovery";
 it("keeps recovery controls under distinct React identities through plan polls", () => {
   const run: ForgeRun = {
     id: "a".repeat(32),
@@ -52,4 +53,65 @@ it("keeps recovery controls under distinct React identities through plan polls",
       isValidElement(node) ? node.key : null,
     ),
   ).not.toEqual(keys);
+});
+it("uses the same-ticket surface after continuity admission and withholds generic checkpoint recovery", () => {
+  for (const marker of [
+    { request_id: "d".repeat(32) },
+    { request_id: "unknown" },
+  ]) {
+    const tree = ExecutionRecord({
+      run: {
+        id: "a".repeat(32),
+        repository_id: "b".repeat(32),
+        brief: "Retained source",
+        status: "needs_reconciliation",
+        invalid_read_continuity: marker,
+      },
+      connection: { base: "/api/v1", token: "" },
+      session: {
+        user: { id: "c".repeat(32) },
+        global_admin: true,
+        memberships: [],
+      } as unknown as IdentitySession,
+    });
+    const children = Children.toArray(tree.props.children).filter(
+      isValidElement,
+    );
+    expect(children.some((node) => node.type === InvalidReadRecovery)).toBe(
+      true,
+    );
+    expect(children.some((node) => node.type === AgentCheckpointRecovery)).toBe(
+      false,
+    );
+    expect(children.some((node) => node.type === RunnerContinuation)).toBe(
+      false,
+    );
+  }
+});
+it("keeps an actual pending runner command visible after continuity admission", () => {
+  const tree = ExecutionRecord({
+    run: {
+      id: "a".repeat(32),
+      repository_id: "b".repeat(32),
+      brief: "Pending original runner command",
+      status: "running",
+      invalid_read_continuity: { request_id: "d".repeat(32) },
+      worker_request: {
+        id: "e".repeat(32),
+        kind: "command",
+        status: "pending",
+      },
+    },
+    connection: { base: "/api/v1", token: "" },
+    session: {
+      user: { id: "c".repeat(32) },
+      global_admin: true,
+      memberships: [],
+    } as unknown as IdentitySession,
+  });
+  expect(
+    Children.toArray(tree.props.children).some(
+      (node) => isValidElement(node) && node.type === RunnerContinuation,
+    ),
+  ).toBe(true);
 });

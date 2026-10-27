@@ -85,6 +85,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/docs-coding-check-recovery.spec.ts": "fixture coding producer",
                 "studio/tests/development-workflow.spec.ts": "fixture development workflow producer",
                 "studio/tests/framework-knowledge.spec.ts": "fixture framework generation producer",
+                "studio/tests/invalid-read-recovery.spec.ts": "fixture continuity recovery producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -225,6 +226,7 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/tests/docs-provider-allowance.spec.ts", "capture producer"),
                 ("studio/tests/development-workflow.spec.ts", "capture producer"),
+                ("studio/tests/invalid-read-recovery.spec.ts", "capture producer"),
                 ("studio/tests/git-delivery-contract-fixture.json", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-fixture.ts", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-browser-fixture.ts", "capture helper"),
@@ -509,6 +511,8 @@ class WalkthroughTests(unittest.TestCase):
             workflow_capture.write_text("fixture development workflow producer")
             framework_capture = root / "studio/tests/framework-knowledge.spec.ts"
             framework_capture.write_text("fixture framework knowledge producer")
+            recovery_capture = root / "studio/tests/invalid-read-recovery.spec.ts"
+            recovery_capture.write_text("fixture continuity recovery producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -531,6 +535,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/docs-coding-check-recovery.spec.ts": sha(coding_capture),
                     "studio/tests/development-workflow.spec.ts": sha(workflow_capture),
                     "studio/tests/framework-knowledge.spec.ts": sha(framework_capture),
+                    "studio/tests/invalid-read-recovery.spec.ts": sha(recovery_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

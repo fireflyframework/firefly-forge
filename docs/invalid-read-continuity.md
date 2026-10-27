@@ -110,6 +110,60 @@ Policy revocation, expired ownership, changed source/configuration/profile/scope
 
 Host controls cover the actual Engine and installed worker adapter, strict evidence correction, two new file-tool cycles, two durable command cycles, unchanged attempt and allowances, original-consumption reuse, idempotency, expiry, revoked authority, and incompatible policy or contract changes. Prepared PostgreSQL controls use only a dedicated fictional `_test` database and in-process model transport. Host tests do not establish PostgreSQL atomicity, current installed-profile qualification, controller composition, or acceptance of a particular retained run.
 
+## When an admitted continuation has not started
+
+Admission records a queued continuation. A worker must still claim that ticket and pass the current execution checks before it can make a model request or run a tool or command. A successful admission receipt alone does not prove that any of those operations occurred.
+
+An admission can fail before a worker claims it. For an exactly eligible failure, Studio offers **Review failed admission** in the run's execution record to the original execution actor with current factory administrator authority. Reviewing the current candidate queues nothing. The review identifies the existing request and attempt and explains the permitted finite time window. Opaque custody and source digests are carried by Studio; operators do not paste or edit them. The earlier generic checkpoint recovery control is withheld once continuity admission is recorded.
+
+Recovery requires explicit acknowledgement that the worker never claimed the ticket, that the original request and attempt remain the same, that original consumption and budgets stay charged, and that only the same-attempt lease is renewed. **Requeue existing task** records one operator action against that ticket. It creates no replacement task, new provider attempt, new grant, replay, or reset allowance. The failed admission receipt remains part of the history.
+
+If the response is lost, Studio checks the saved recovery identity. An unavailable response or a missing readback does not authorize another submission. Source races, changed qualification, revoked authority, another actor, unknown outcomes, and claimed tickets remain held. A fresh candidate is not permission to overwrite an uncertain action.
+
+After recovery, **Continuation queued** still means admission only. Worker claim and actual execution are separate later events. A failed or held continuation is not evidence that a model or command ran, and a queued continuation is not acceptance of the requested product work.
+
+### Follow the recovery in Studio
+
+Open the run's **Plan** tab and select **Check current admission**. Studio reads the existing ticket before offering a recovery. These screenshots use controlled fixtures; they illustrate the review, not a completed product run.
+
+<figure class="forge-shot" markdown="1">
+
+![Review the existing continuation and its remaining command allowance](assets/screenshots/continuity-recovery-intro-desktop-light.png)
+
+<figcaption>Inspect the same attempt, permitted ownership window and commands already used. Reviewing this information does not queue work.</figcaption>
+</figure>
+
+Select **Review failed admission**, read the four acknowledgements, then choose **Requeue existing task**. The time window is supplied by the current server checks. Studio carries the request identity and custody digests without asking you to enter them.
+
+<figure class="forge-shot" markdown="1">
+
+![Confirm a same-request recovery with all four acknowledgements](assets/screenshots/continuity-recovery-review-desktop-light.png)
+
+<figcaption>Confirm the existing request and attempt. Original usage remains charged; recovery renews ownership time and adds no execution allowance.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Review the mobile flow and queued receipt</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Confirm the recovery on a phone](assets/screenshots/continuity-recovery-review-mobile-light.png)
+
+<figcaption>Review all four acknowledgements before submitting. The action remains disabled until every acknowledgement is selected.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Read the queued continuation receipt on a phone](assets/screenshots/continuity-recovery-queued-mobile-light.png)
+
+<figcaption>The queued receipt confirms admission only. Follow the later worker, model, tool and command records to see what actually ran.</figcaption>
+</figure>
+
+</div>
+</details>
+
 ## Credential inspection and ordinary restore
 
 Authenticated journal reads may inspect canonical records from the known SDK epochs under current reader and credential guards. Historical inspection requires matching native row fields and an intact journal chain. It checks encoded bounds, hash, canonical structure and typed budgets, then passes the original JSON text to credential screening. It preserves every field, including telemetry provenance.

@@ -450,6 +450,7 @@ export async function captureWalkthrough(
     "studio/tests/docs-coding-check-recovery.spec.ts",
     "studio/tests/development-workflow.spec.ts",
     "studio/tests/framework-knowledge.spec.ts",
+    "studio/tests/invalid-read-recovery.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

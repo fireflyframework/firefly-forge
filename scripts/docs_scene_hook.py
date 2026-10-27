@@ -53,6 +53,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/docs-coding-check-recovery.spec.ts",
     "studio/tests/development-workflow.spec.ts",
     "studio/tests/framework-knowledge.spec.ts",
+    "studio/tests/invalid-read-recovery.spec.ts",
 }
 
 
@@ -153,8 +154,13 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("framework-generation-") and framework_stages.get(stage) != device:
             raise ValueError("Unknown framework generation capture stage: " + name)
+        recovery_stages = {"continuity-recovery-intro", "continuity-recovery-review", "continuity-recovery-queued"}
+        if stage.startswith("continuity-recovery-") and stage not in recovery_stages:
+            raise ValueError("Unknown continuity recovery capture stage: " + name)
         expected_producer = (
-            "studio/tests/framework-knowledge.spec.ts"
+            "studio/tests/invalid-read-recovery.spec.ts"
+            if stage in recovery_stages
+            else "studio/tests/framework-knowledge.spec.ts"
             if stage in framework_stages
             else "studio/tests/development-workflow.spec.ts"
             if stage in workflow_stages
