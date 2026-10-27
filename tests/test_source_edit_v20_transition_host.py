@@ -14,7 +14,12 @@ def test_v20_binds_evidence_query_and_native_reader_before_admission():
     root = Path(q.__file__).parent
     admission = declared_names(root / "source_budget_allowances.py", "admission_contract_digest", 80)
     runtime = declared_names(root / "agentic_checkpoint_invocation.py", "runtime_contract", 55)
-    assert admission[80:82] == runtime[55:57] == ("worker_evidence_query.py", "run_evidence.py")
+    evidence = ("worker_evidence_query.py", "run_evidence.py")
+    for names in (admission, runtime):
+        offset = names.index("persistence.py") + 1
+        assert names[offset : offset + 2] == evidence
+    if q.REGISTRY_VERSION == 19:
+        assert admission[80:82] == runtime[55:57] == evidence
     assert len(admission) == len(set(admission)) >= 82
     assert len(runtime) == len(set(runtime)) >= 57
     historical = q._profiles()[:15]
