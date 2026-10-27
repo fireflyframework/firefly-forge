@@ -82,6 +82,19 @@ def test_historical_v6_budget_and_receipt_remain_immutable():
         q.require_profile(profile)
 
 
+def test_previous_registered_v21_is_historical_without_granting_current_authority():
+    profile = registered_profile("codex-exec-restricted-source/v21")
+    seal = q.historical_profile_seal(profile)
+    assert seal["registry_version"] == 20
+    assert seal["loader_profile"] == profile.loader_profile
+    assert seal["profile_digest"] == q.digest(q.profile_payload(profile))
+    assert seal["proof_sha256"] == profile.proof.artifact_sha256
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(profile)
+    with pytest.raises(ValueError, match="registered provenance"):
+        q.historical_profile_seal(replace(profile, version=q.REGISTRY_VERSION, loader_profile=q.LOADER_PROFILE))
+
+
 @pytest.fixture
 def measured_runtime(monkeypatch):
     profile = registered_profile(q.LOADER_PROFILE)

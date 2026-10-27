@@ -222,6 +222,7 @@ def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
             (17, "codex-exec-restricted-source/v18"),
             (18, "codex-exec-restricted-source/v19"),
             (19, "codex-exec-restricted-source/v20"),
+            (20, "codex-exec-restricted-source/v21"),
         }
         or profile.proof.contract_digest != profile_contract_digest(profile)
     ):
