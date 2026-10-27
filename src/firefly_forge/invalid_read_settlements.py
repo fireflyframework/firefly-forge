@@ -5,10 +5,10 @@ from typing import Any
 
 from firefly_forge.agent_checkpoint_models import InvocationBinding
 from firefly_forge.invalid_read_continuity_models import (
-    InvalidReadAdmissionInputV1,
+    ADMISSION,
+    PROOF,
+    SETTLEMENT_RECORD,
     InvalidReadClaimV1,
-    InvalidReadProofV1,
-    InvalidReadSettlementV1,
 )
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1, lease_window
 from firefly_forge.journal import digest
@@ -19,9 +19,9 @@ KIND = "invalid_read"
 
 
 def settled_requests(entry: dict[str, Any], entries: list[dict[str, Any]]) -> list[str]:
-    value = InvalidReadSettlementV1.model_validate(entry["payload"]).model_dump()
-    proof = InvalidReadProofV1.model_validate(value["proof"])
-    request = InvalidReadAdmissionInputV1.model_validate(value["request"])
+    value = SETTLEMENT_RECORD.validate_python(entry["payload"]).model_dump()
+    proof = PROOF.validate_python(value["proof"])
+    request = ADMISSION.validate_python(value["request"])
     if (
         entry["kind"] != SETTLEMENT
         or proof.run_id != entry["run_id"]
@@ -113,6 +113,51 @@ def settled_requests(entry: dict[str, Any], entries: list[dict[str, Any]]) -> li
     original_checkpoints = [e for e in entries if e["digest"] == proof.checkpoint_record_digest]
     if len(original_checkpoints) != 1 or original_checkpoints[0]["payload"]["invocation"] != original.model_dump():
         raise ValueError("Negative-read migration lost its original invocation binding")
+    from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2
+    from firefly_forge.invalid_read_continuity import RETAINED_SDK_RUNTIME_CONTRACT, compatibility_migration
+
+    if proof.runtime_contract == RETAINED_SDK_RUNTIME_CONTRACT:
+        expected_migration = compatibility_migration(
+            CheckpointPayloadV2.model_validate(original_checkpoints[0]["payload"])
+        )
+        if expected_migration is None or reconstruction.get("compatibility_migration") != expected_migration:
+            raise ValueError("Negative-read checkpoint compatibility migration differs")
+    elif "compatibility_migration" in reconstruction:
+        raise ValueError("Negative-read settlement has an unregistered compatibility migration")
+    if proof.version == 2:
+        from openai.types.chat import ChatCompletion
+
+        from firefly_forge.bridge_completion_models import CompletionResponsePayload
+        from firefly_forge.invalid_read_continuity import historical_checkpoint, unavailable_source_observations
+
+        configured = ContinuityLeasePolicyV1.model_validate(policy["settings"])
+        if request.version != 2 or not configured.allow_unavailable_source_observations:
+            raise ValueError("Unavailable observations require their explicit current policy and acknowledgement")
+        responses = [e for e in entries if e["digest"] == proof.response_record_digest]
+        if len(responses) != 1:
+            raise ValueError("Unavailable observations lost their original response")
+        response = CompletionResponsePayload.model_validate(responses[0]["payload"])
+        calls = ChatCompletion.model_validate_json(response.response, strict=True).choices[0].message.tool_calls
+        if not calls:
+            raise ValueError("Unavailable observations lost their original calls")
+        original_checkpoint = historical_checkpoint(
+            CheckpointPayloadV2.model_validate(original_checkpoints[0]["payload"])
+        )
+        rejected, observations = unavailable_source_observations(
+            calls, original, original_checkpoint, response.response_sha256
+        )
+        if (
+            rejected.id != proof.tool_call_id
+            or observations != [o.model_dump() for o in proof.unavailable_observations]
+            or reconstruction.get("version") != 2
+            or reconstruction.get("unavailable_observations") != observations
+            or reconstruction.get("native_tool_custody_digest") != proof.native_tool_custody_digest
+        ):
+            raise ValueError("Unavailable observations differ from their exact original negative outcome witness")
+    elif reconstruction.get("version") != 1 or any(
+        k in reconstruction for k in ("unavailable_observations", "native_tool_custody_digest")
+    ):
+        raise ValueError("Singleton reconstruction cannot silently acquire unavailable observations")
     claims = [e for e in entries if e["kind"] == CLAIM and e["payload"].get("settlement_digest") == entry["digest"]]
     if len(claims) != 1 or claims[0]["sequence"] != entry["sequence"] + 1 or claims[0]["run_id"] != entry["run_id"]:
         raise ValueError("Negative-read settlement lacks its one native ownership claim")

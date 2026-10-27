@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from firefly_forge.checkpoint_mode_models import CheckpointModeReceiptV1
-from firefly_forge.invalid_read_continuity import LEGACY_RUNTIME_CONTRACT
+from firefly_forge.invalid_read_continuity import LEGACY_RUNTIME_CONTRACT, RETAINED_SDK_RUNTIME_CONTRACT
 from firefly_forge.invalid_read_lease import policy_snapshot
 from firefly_forge.journal import Journal, digest
 from firefly_forge.original_selection_models import OriginalSelectionReceiptV1
@@ -37,7 +37,13 @@ def historical_policies(candidate: Any) -> dict[str, str]:
     }
 
 
-def epoch_snapshot(store: Any, run: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+def epoch_snapshot(
+    store: Any,
+    run: dict[str, Any],
+    entries: list[dict[str, Any]],
+    *,
+    legacy_runtime_contract: str = LEGACY_RUNTIME_CONTRACT,
+) -> dict[str, Any] | None:
     from firefly_forge.checkpoint_mode_runtime import policy_digest as mode_policy
     from firefly_forge.invalid_read_continuities import current_profile_seal
     from firefly_forge.original_selection_runtime import mode_record, selection_reference
@@ -65,6 +71,7 @@ def epoch_snapshot(store: Any, run: dict[str, Any], entries: list[dict[str, Any]
         return None
     if (
         policies != LEGACY_EPOCH
+        or legacy_runtime_contract not in {LEGACY_RUNTIME_CONTRACT, RETAINED_SDK_RUNTIME_CONTRACT}
         or receipt.candidate.original_scope_digest != continuation_scope(run)
         or receipt.candidate.proof.mode_receipt_digest != mode["digest"]
         or prior.candidate.policy_digest != policies["original_mode"]
@@ -78,7 +85,7 @@ def epoch_snapshot(store: Any, run: dict[str, Any], entries: list[dict[str, Any]
         "version": 1,
         "run_id": run["id"],
         "scope_digest": continuation_scope(run),
-        "legacy_runtime_contract": LEGACY_RUNTIME_CONTRACT,
+        "legacy_runtime_contract": legacy_runtime_contract,
         "legacy": policies,
         "current": current,
         "mode_reference": copy.deepcopy(run["checkpoint_mode_adoption"]),
@@ -108,6 +115,7 @@ def _active(run: dict[str, Any]) -> dict[str, Any] | None:
         or value["mode_reference"] != run.get("checkpoint_mode_adoption")
         or value["selection_reference"] != run.get("original_selection_readmission")
         or value["legacy"] != LEGACY_EPOCH
+        or value["legacy_runtime_contract"] not in {LEGACY_RUNTIME_CONTRACT, RETAINED_SDK_RUNTIME_CONTRACT}
         or digest({k: v for k, v in value.items() if k != "digest"}) != value["digest"]
     ):
         raise ValueError("Qualified continuity policy epoch scope changed")

@@ -415,7 +415,7 @@ export function ExecutionRecord({
         )}
         <ol className="journal-entries">
           {journal?.entries?.map((entry) => (
-            <li key={entry.sequence}>
+            <li key={entry.sequence} id={"journal-record-" + entry.digest}>
               <div className="record-ledger-heading">
                 <span
                   className="record-sequence"
@@ -444,6 +444,10 @@ export function ExecutionRecord({
                 "tool_receipt",
                 "tool_unknown",
                 "tool_reconciled",
+                "agentic_tool_intent",
+                "agentic_tool_result",
+                "agentic_tool_unknown",
+                "agentic_tool_effect_link",
               ].includes(entry.kind) ? (
                 <ToolEvidence
                   kind={entry.kind}

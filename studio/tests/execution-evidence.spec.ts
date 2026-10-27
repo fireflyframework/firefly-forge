@@ -1175,3 +1175,84 @@ for (const viewport of [
       });
     });
   }
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 700 },
+])
+  for (const theme of ["light", "dark"])
+    test(`agent tool custody is readable at ${viewport.width}px ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      const shared = {
+        version: 1,
+        custody_id: "a".repeat(64),
+        tool_call_id: "call_source_7",
+        tool: "read_file",
+        effect: "source_read",
+        invocation_id: "request-3",
+        task_key: "implement",
+        task_attempt: 2,
+        request_step: 7,
+        arguments_sha256: "b".repeat(64),
+        binding_sha256: "c".repeat(64),
+      };
+      const entries = [
+        {
+          kind: "agentic_tool_intent",
+          digest: "d".repeat(64),
+          payload: { ...shared, arguments: { path: "src/customer.py" } },
+        },
+        {
+          kind: "agentic_tool_result",
+          digest: "e".repeat(64),
+          payload: {
+            ...shared,
+            intent_digest: "d".repeat(64),
+            status: "retained",
+            result: {
+              content:
+                "class Customer:\n    pass\n<img src=x onerror=window.injected=true>",
+            },
+            result_sha256: "f".repeat(64),
+          },
+        },
+      ].map((entry, index) => ({
+        ...entry,
+        sequence: index + 1,
+        task_id: "implement",
+        idempotency_key: shared.custody_id,
+        created_at: "2026-10-27T14:00:00Z",
+      }));
+      await page.setViewportSize(viewport);
+      await openRun(page, entries);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      const rows = page.getByRole("tabpanel").locator(".journal-entries>li");
+      await expect(rows).toHaveCount(2);
+      await expect(rows.nth(0)).toContainText("Result retained");
+      await expect(rows.nth(1).getByLabel("Agent tool evidence")).toContainText(
+        "Read a source file",
+      );
+      await expect(rows.nth(1)).toContainText("class Customer");
+      await expect(rows.locator("img,script")).toHaveCount(0);
+      await expect(rows.locator(".record-advanced[open]")).toHaveCount(0);
+      const copy = rows
+        .nth(1)
+        .getByRole("button", { name: "Copy full output", exact: true })
+        .first();
+      await copy.focus();
+      const box = await copy.boundingBox();
+      const footer = await page.locator(".workspace-main>footer").boundingBox();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(footer!.y);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `tool-custody-${viewport.width}-${theme}.png`,
+        ),
+      });
+    });

@@ -398,7 +398,7 @@ async def test_upgrade_from_revision24_adds_immutable_archive_without_changing_c
 
     project, manager, journal, campaign, token = await seeded(store, tmp_path)
     try:
-        assert SCHEMA_REVISION == 30
+        assert SCHEMA_REVISION == 31
         before = await manager.campaign(project["id"], campaign["id"])
         async with store._unit() as session:
             assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0

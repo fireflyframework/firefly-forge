@@ -48,7 +48,7 @@ async def test_active_refresh_and_status_show_durable_ready_parts_without_ledger
     assert len(remote.posts) == 1
 
 
-async def test_cancelled_progress_and_observation_preserve_historical_response_without_queries(tmp_path):
+async def test_cancelled_progress_preserves_historical_response_without_queries(tmp_path):
     manager, _ = await partial(tmp_path)
     stored = await manager._get("operation", "f" * 32)
     cancelled = await manager.cancel(
@@ -61,7 +61,6 @@ async def test_cancelled_progress_and_observation_preserve_historical_response_w
 
     manager.records.progress_counts = forbidden
     assert await manager.get_refresh("pyfly", "f" * 32) == cancelled
-    assert await manager.observe("pyfly", "f" * 32) == cancelled
     assert {key: row.data for key, row in manager.records.rows.items()} == rows
 
 

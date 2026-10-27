@@ -195,6 +195,9 @@ class Journal:
         return found
 
     async def _append(self, run_id: str, task_id: str, key: str, kind: str, payload: Data) -> Data:
+        from firefly_forge.agentic_tool_custody import nested_effect_parent
+
+        parent = nested_effect_parent(kind)
         run_id = identifier(run_id).hex
         current = await self.store.get_run(run_id)
         if current.get("bridge_completion_hold"):
@@ -234,6 +237,15 @@ class Journal:
                 data=data,
             )
         )
+        if parent is not None:
+            effect = {name: data[name] for name in ("kind", "idempotency_key", "digest")}
+            await self._append(
+                run_id,
+                task_id,
+                digest({"parent": parent, "effect": effect}),
+                "agentic_tool_effect_link",
+                {"version": 1, "custody_id": parent, "effect": effect},
+            )
         return data
 
     async def git_delivery_append(self, run_id: str, kind: str, key: str, payload: Data) -> Data:
@@ -441,10 +453,8 @@ class Journal:
             scope = self._worker_scope(run)
             if run.get("bridge_completion_hold"):
                 await self._bridge_read_bound(run_id)
-            entries = [
-                {**copy.deepcopy(entry.data), "digest": entry.digest}
-                for entry in await self.records.find_for_run(identifier(run_id))
-            ]
+            native_records = await self.records.find_for_run(identifier(run_id))
+            entries = [{**copy.deepcopy(entry.data), "digest": entry.digest} for entry in native_records]
             protected = [
                 entry["payload"]
                 for entry in entries
@@ -458,6 +468,9 @@ class Journal:
                     "bridge_request_response",
                     "agent_checkpoint",
                     "agent_consume",
+                    "agentic_tool_intent",
+                    "agentic_tool_result",
+                    "agentic_tool_unknown",
                 }
             ]
             if protected:
@@ -479,15 +492,22 @@ class Journal:
 
         async def admitted() -> None:
             from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
+            from firefly_forge.known_worker_completions import _entries
+
+            try:
+                historical_custody = _entries(native_records, run_id) == entries
+            except (AttributeError, KeyError, ValueError):
+                historical_custody = False
 
             with prepared_credential_rejection(self.store):
                 await self.store.admit_credentials(protected)
                 await checked(protected)
                 for payload in checkpoint_payloads:
-                    checkpoint = BoundaryCheckpoint.decode(
-                        payload["snapshot"].encode("utf-8"), payload["checkpoint_digest"]
+                    canonical = BoundaryCheckpoint.credential_text(
+                        payload["snapshot"].encode("utf-8"),
+                        payload["checkpoint_digest"],
+                        historical_custody=historical_custody,
                     )
-                    canonical = checkpoint.canonical_payload.decode("utf-8")
                     await self.store.admit_credentials(canonical)
                     await checked(canonical)
 

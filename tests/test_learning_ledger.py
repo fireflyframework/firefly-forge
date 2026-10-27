@@ -11,12 +11,17 @@ from firefly_forge.models import Command, RunInput
 from firefly_forge.providers import AgentResult
 
 
-async def completed(store, tmp_path, *, scoped=False):
+async def completed(store, tmp_path, *, scoped=False, framework_remote=None):
     initial = await fixture_run(store, tmp_path)
     source = tmp_path / "source"
-    # Actual declaration is versioned source, not the factory's own framework version.
+    # Native positive callers explicitly select the same version as their admitted corpus.
+    framework_version = "26.10.1"
+    if framework_remote is not None:
+        from native_client_knowledge_fixtures import VERSION
+
+        framework_version = VERSION
     (source / "pyproject.toml").write_text(
-        '[project]\nname="owned-stock"\nversion="0.1.0"\ndependencies=["pyfly==26.10.1"]\n'
+        '[project]\nname="owned-stock"\nversion="0.1.0"\n' + f'dependencies=["pyfly=={framework_version}"]\n'
     )
     from firefly_forge.process import checked
 
@@ -72,6 +77,17 @@ async def completed(store, tmp_path, *, scoped=False):
             return AgentResult("Observed stock assertion implemented", "fixture")
 
     engine = Engine(store, tmp_path / "workspaces", lambda _: Worker(), journal=Journal(store))
+    if framework_remote is not None:
+        from native_client_knowledge_fixtures import (
+            bind_framework_knowledge,
+            preserve_product_checks_with_framework_fixture,
+        )
+
+        from firefly_forge.sandbox import SandboxExecutor
+
+        bind_framework_knowledge(engine, framework_remote)
+        engine.sandbox = SandboxExecutor(store, engine.journal)
+        preserve_product_checks_with_framework_fixture(engine)
     await engine.execute_run(initial["id"])
     final = await store.get_run(initial["id"])
     assert final["status"] == "succeeded", final.get("error")

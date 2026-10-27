@@ -475,6 +475,14 @@ async def execute_agentic(
                     return {"query": None}
             return args
 
+    from firefly_forge.agentic_tool_custody import (
+        EFFECTS,
+        AgenticToolCapability,
+        current_agentic_tool_custody,
+    )
+
+    custody = current_agentic_tool_custody()
+    captured_tools = frozenset(handlers) & EFFECTS.keys()
     agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
         name="forge-builder",
         model=selected_model,
@@ -500,6 +508,7 @@ async def execute_agentic(
         tools=[agent_tool(name, handler) for name, handler in handlers.items()],
         capabilities=[
             ProcessHistory(image_history),
+            *([AgenticToolCapability(custody, captured_tools)] if custody is not None else []),
             *([EvidenceQueryValidation()] if "read_run_evidence" in handlers else []),
             *([boundary] if boundary is not None else []),
         ],
@@ -532,6 +541,8 @@ async def execute_agentic(
             if isinstance(cause, (SearchProviderError, ToolReconciliationRequired)):
                 raise cause from None
         raise
+    if custody is not None:
+        await custody.assert_effects_settled()
     if context.credential_admission is not None:
         await context.credential_admission(result.output.model_dump(mode="json"))
     if invocation is not None:
@@ -578,5 +589,12 @@ async def execute_agentic(
                 raise ValueError("QA finding does not match its actual journey and state evidence")
         recorded_usage["qa_report"] = qa.model_dump(mode="json")
         recorded_usage["browser_evidence"] = list(evidence_records.values())
+    recorded_usage["agentic_tool_custody"] = {
+        "version": 1,
+        "status": "captured" if custody is not None else "unavailable",
+        "captured_tools": sorted(captured_tools) if custody is not None else [],
+        "uncaptured_tools": sorted(set(handlers) - captured_tools) if custody is not None else sorted(handlers),
+        "reason": None if custody is not None else "native_factory_invocation_missing",
+    }
     recorded_usage["runtime_report"] = result.output.model_dump(mode="json")
     return result.output.summary, recorded_usage

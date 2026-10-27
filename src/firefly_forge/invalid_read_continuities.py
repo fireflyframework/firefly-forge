@@ -15,7 +15,13 @@ from firefly_forge.bridge_completions import _outside_unit
 from firefly_forge.checkpoint_mode_adoptions import CheckpointModeAdoptions
 from firefly_forge.checkpoint_mode_runtime import effective_revision, mode_adoption_scope, prepare_current_mode
 from firefly_forge.configuration import validate_checkpoints
-from firefly_forge.invalid_read_continuity import LEGACY_RUNTIME_CONTRACT, prepare_invalid_read, reconstruct_and_migrate
+from firefly_forge.invalid_read_continuity import (
+    LEGACY_RUNTIME_CONTRACT,
+    native_tool_custody,
+    prepare_invalid_read,
+    reconstruct_and_migrate,
+    registered_legacy_runtime,
+)
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1, policy_snapshot
 from firefly_forge.invalid_read_tickets import InvalidReadTickets
 from firefly_forge.journal import Journal, digest
@@ -84,6 +90,34 @@ class InvalidReadContinuities(InvalidReadTickets):
         acknowledgements, verification = await self.modes._command_custody(run, task, entries)
         return digest({"acknowledgements": acknowledgements, "verification": verification})
 
+    async def _native_observation_tools(
+        self, run_id: str, entries: list[dict[str, Any]], *, before_sequence: int | None = None
+    ) -> list[dict[str, Any]]:
+        broker = self.engine.tool_broker
+        if broker is None:
+            raise ValueError("Unavailable observations require the actual native tool repository")
+        async with self.store._unit():
+            records = await broker.records.for_run(identifier(run_id))
+            rows = [
+                dict(
+                    id=row.id.hex,
+                    run_id=row.run_id.hex,
+                    task_id=row.task_id,
+                    tool=row.tool,
+                    correlation_id=row.correlation_id,
+                    status=row.status,
+                    data=copy.deepcopy(row.data),
+                )
+                for row in records
+            ]
+        native_tool_custody(run_id, entries, rows)
+        if before_sequence is not None:
+            entries = [e for e in entries if e["sequence"] < before_sequence]
+            keys = {e["idempotency_key"] for e in entries if e["kind"] == "tool_intent"}
+            rows = [row for row in rows if row["correlation_id"] in keys]
+            native_tool_custody(run_id, entries, rows)
+        return rows
+
     async def _prepare(self, run_id: str) -> dict[str, Any]:
         _outside_unit()
         run_id = identifier(run_id).hex
@@ -91,13 +125,29 @@ class InvalidReadContinuities(InvalidReadTickets):
         with prepared_credential_rejection(self.store):
             run, task, entries = await self._read(run_id)
             generation = self.store.configuration.settings_generation
+            policy = policy_snapshot(self.store.configuration)
+            configured = ContinuityLeasePolicyV1.model_validate(policy["settings"])
+            allow_observations = configured.enabled and configured.allow_unavailable_source_observations
+            tool_rows = (
+                await self._native_observation_tools(run_id, entries)
+                if allow_observations and self.engine.tool_broker is not None
+                else None
+            )
             from firefly_forge.invalid_read_epochs import epoch_scope, epoch_snapshot
 
-            epoch = epoch_snapshot(self.store, run, entries)
+            accepted_runtime = registered_legacy_runtime(entries, run_id, primary=LEGACY_RUNTIME_CONTRACT)
+            epoch = epoch_snapshot(self.store, run, entries, legacy_runtime_contract=accepted_runtime)
             with epoch_scope(epoch):
                 mode = await prepare_current_mode(self.journal, run_id)
             with epoch_scope(epoch), mode_adoption_scope(mode) if mode is not None else nullcontext():
-                prepared = prepare_invalid_read(run, task, entries, accepted_runtime_contract=LEGACY_RUNTIME_CONTRACT)
+                prepared = prepare_invalid_read(
+                    run,
+                    task,
+                    entries,
+                    accepted_runtime_contract=accepted_runtime,
+                    allow_unavailable_source_observations=allow_observations,
+                    native_tools=tool_rows,
+                )
                 if epoch is not None and prepared.proof["runtime_contract"] != epoch["legacy_runtime_contract"]:
                     raise ValueError("Historical policy epoch differs from the consumed runtime")
                 read_guard = await self.restores.source_read_guard(
@@ -124,9 +174,7 @@ class InvalidReadContinuities(InvalidReadTickets):
                 active_deadline = run.get("active_execution_deadline_ms")
                 if active_deadline is not None and type(active_deadline) is not int:
                     raise ValueError("The active execution deadline is unsupported")
-                policy = policy_snapshot(self.store.configuration)
                 holds = []
-                configured = ContinuityLeasePolicyV1.model_validate(policy["settings"])
                 if not policy["revision"] or not configured.enabled:
                     holds.append("lease_policy_disabled")
                 try:
@@ -169,6 +217,11 @@ class InvalidReadContinuities(InvalidReadTickets):
                     await self._read(run_id) != (run, task, entries)
                     or self.store.configuration.settings_generation is not generation
                     or policy_snapshot(self.store.configuration) != policy
+                    or (
+                        prepared.proof["version"] == 2
+                        and native_tool_custody(run_id, entries, await self._native_observation_tools(run_id, entries))
+                        != prepared.proof["native_tool_custody_digest"]
+                    )
                     or await workspace_cut(self.store, self.engine.workspaces / run_id, assert_current=read_guard)
                     != workspace
                     or await self._command_cut(run, task, entries) != command_cut

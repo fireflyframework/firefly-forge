@@ -699,7 +699,7 @@ class FrameworkKnowledge:
         record = await self._get("operation", request_id)
         if record is None or record["public"]["framework"] != self._framework(framework):
             raise KeyError("Official framework refresh not found")
-        if record["public"]["state"] == "cancelled":
+        if record["public"]["state"] == "cancelled" and not record["public"]["uncertain_sources"]:
             return await self.get_refresh(framework, request_id)
         await FrameworkKnowledgeWorker(self).advance(request_id, observe_only=True, observer=actor)
         return await self.get_refresh(framework, request_id)

@@ -287,6 +287,7 @@ async def test_authenticated_reader_context_cannot_disappear_or_switch_during_ad
 
 
 def test_native_role_api_returns_the_actual_direct_diagnostic_and_valid_full_chain(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
 
     from firefly_forge.api import create_application
@@ -300,6 +301,7 @@ def test_native_role_api_returns_the_actual_direct_diagnostic_and_valid_full_cha
         client=("127.0.0.1", 52000),
     ) as http:
         store = http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         context = http.app.state.runtime.context
         assert context.get_bean(JournalController).journal.store is store
         run, journal, request, observation, *_ = http.portal.call(completed_php, store, tmp_path)

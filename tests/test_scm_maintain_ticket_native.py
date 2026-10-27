@@ -24,103 +24,105 @@ from firefly_forge.scm_conversations import SCMConversations
 
 @pytest.fixture
 def maintain_ticket(checkpoint_native, request):
-    c = checkpoint_native
-    owner_text = getattr(request, "param", "@forge keep me informed about this maintenance unit")
+    from native_client_knowledge_fixtures import native_maintain_knowledge_fixture
 
-    async def disable_optional_git():
-        async with authenticated_operator(c.store):
-            current = await GitDeliveryPolicies(c.store).view(c.case.project["id"])
-            await GitDeliveryPolicies(c.store).configure(
-                c.case.project["id"],
-                GitDeliveryPolicyInputV1(
-                    version=1,
-                    request_id=uuid4().hex,
-                    expected_previous_digest=current["digest"],
-                    policy={**current["policy"], "enabled": False},
-                ),
-            )
+    with native_maintain_knowledge_fixture(checkpoint_native) as c:
+        owner_text = getattr(request, "param", "@forge keep me informed about this maintenance unit")
 
-    c.case.http.portal.call(disable_optional_git)
-    body = copy.deepcopy(c.body)
-    body["input"].update(operation="maintain", brief="Ask one decision about this independent maintenance unit")
-    creation_id = uuid4().hex
-    response = c.case.http.post("/api/v1/run-creation-requests/" + creation_id, json=body)
-    assert response.status_code == 201, response.text
-    creation = response.json()
-    assert creation["run_id"] != c.parent["id"] and creation["source_checkpoint"]["operation"] == "maintain"
-    calls = []
+        async def disable_optional_git():
+            async with authenticated_operator(c.store):
+                current = await GitDeliveryPolicies(c.store).view(c.case.project["id"])
+                await GitDeliveryPolicies(c.store).configure(
+                    c.case.project["id"],
+                    GitDeliveryPolicyInputV1(
+                        version=1,
+                        request_id=uuid4().hex,
+                        expected_previous_digest=current["digest"],
+                        policy={**current["policy"], "enabled": False},
+                    ),
+                )
 
-    class Worker:
-        async def execute(self, workspace, *args):
-            calls.append(workspace)
-            assert (workspace / "product.py").read_text() == "value = 2\n"
-            return AgentResult(
-                json.dumps(
-                    {
-                        "summary": "A maintenance decision is required",
-                        "feedback": {
-                            "id": "maintain-ticket-feedback",
-                            "role_id": "implementer",
-                            "task_id": "implement",
-                            "attempt": 1,
-                            "disposition": "clarification",
-                            "summary": "Choose the expected maintenance result",
-                            "request": {
-                                "id": "maintain-ticket-question",
-                                "kind": "other",
-                                "question": "Keep the existing contacts?",
-                                "context": "A fresh unit keeps the retained source and its records.",
-                                "choices": ["Keep", "Review"],
+        c.case.http.portal.call(disable_optional_git)
+        body = copy.deepcopy(c.body)
+        body["input"].update(operation="maintain", brief="Ask one decision about this independent maintenance unit")
+        creation_id = uuid4().hex
+        response = c.case.http.post("/api/v1/run-creation-requests/" + creation_id, json=body)
+        assert response.status_code == 201, response.text
+        creation = response.json()
+        assert creation["run_id"] != c.parent["id"] and creation["source_checkpoint"]["operation"] == "maintain"
+        calls = []
+
+        class Worker:
+            async def execute(self, workspace, *args):
+                calls.append(workspace)
+                assert (workspace / "product.py").read_text() == "value = 2\n"
+                return AgentResult(
+                    json.dumps(
+                        {
+                            "summary": "A maintenance decision is required",
+                            "feedback": {
+                                "id": "maintain-ticket-feedback",
+                                "role_id": "implementer",
+                                "task_id": "implement",
+                                "attempt": 1,
+                                "disposition": "clarification",
+                                "summary": "Choose the expected maintenance result",
+                                "request": {
+                                    "id": "maintain-ticket-question",
+                                    "kind": "other",
+                                    "question": "Keep the existing contacts?",
+                                    "context": "A fresh unit keeps the retained source and its records.",
+                                    "choices": ["Keep", "Review"],
+                                },
                             },
-                        },
-                    }
-                ),
-                "controlled native maintain fixture",
-            )
+                        }
+                    ),
+                    "controlled native maintain fixture",
+                )
 
-    c.engine.provider_factory = lambda _: Worker()
+        c.engine.provider_factory = lambda _: Worker()
 
-    async def execute_child():
-        c.engine.active[creation["run_id"]] = asyncio.current_task()
-        try:
-            await c.engine.execute_run(creation["run_id"])
-        finally:
-            c.engine.active.pop(creation["run_id"], None)
-        child = await c.store.get_run(creation["run_id"])
-        assert child["status"] == "paused", child.get("error")
-        assert child["worker_request"]["id"] == "maintain-ticket-question"
-        assert "issue_context" not in child or child["issue_context"] == c.parent.get("issue_context")
-        assert len(calls) == 1 and child["implementation_rounds"] == 1
-        assert await c.store.get_run(c.parent["id"]) == c.parent
-        assert await c.journal.entries(c.parent["id"]) == c.prefix
-        await c.store.release_ownership()
-        await c.case.store.acquire_ownership()
-        return child
+        async def execute_child():
+            c.engine.active[creation["run_id"]] = asyncio.current_task()
+            try:
+                await c.engine.execute_run(creation["run_id"])
+            finally:
+                c.engine.active.pop(creation["run_id"], None)
+            child = await c.store.get_run(creation["run_id"])
+            assert child["status"] == "paused", child.get("error")
+            assert child["worker_request"]["id"] == "maintain-ticket-question"
+            assert "issue_context" not in child or child["issue_context"] == c.parent.get("issue_context")
+            assert len(calls) == 1 and child["implementation_rounds"] == 1
+            assert await c.store.get_run(c.parent["id"]) == c.parent
+            assert await c.journal.entries(c.parent["id"]) == c.prefix
+            await c.store.release_ownership()
+            await c.case.store.acquire_ownership()
+            return child
 
-    child = c.case.http.portal.call(execute_child)
-    c.case.ready()
-    c.case.consent()
-    c.case.run.clear()
-    c.case.run.update(c.parent)
-    prior = c.case.process(c.case.observe("status"))
-    assert prior["run_id"] == c.parent["id"]
-    observed = natural(c.case, owner_text, number=801)
-    path = f"/api/v1/projects/{c.case.project['id']}/repositories/{c.case.repo['id']}/maintain-ticket-bindings"
-    request = dict(
-        version=1,
-        request_id=uuid4().hex,
-        run_id=child["id"],
-        creation_request_id=creation_id,
-        expected_creation_digest=creation["digest"],
-        observed_receipt_id=observed["id"],
-        expected_reference_digest=digest(observed["verification"]),
-        expected_previous_digest=None,
-        lifetime_seconds=1800,
-        max_notifications=8,
-        allowed_actions=["status", "question", "answer"],
-        acknowledge_native_communication=True,
-    )
-    return c, child, creation, observed, path, request
+        child = c.case.http.portal.call(execute_child)
+        c.case.ready()
+        c.case.consent()
+        c.case.run.clear()
+        c.case.run.update(c.parent)
+        prior = c.case.process(c.case.observe("status"))
+        assert prior["run_id"] == c.parent["id"]
+        observed = natural(c.case, owner_text, number=801)
+        path = f"/api/v1/projects/{c.case.project['id']}/repositories/{c.case.repo['id']}/maintain-ticket-bindings"
+        request = dict(
+            version=1,
+            request_id=uuid4().hex,
+            run_id=child["id"],
+            creation_request_id=creation_id,
+            expected_creation_digest=creation["digest"],
+            observed_receipt_id=observed["id"],
+            expected_reference_digest=digest(observed["verification"]),
+            expected_previous_digest=None,
+            lifetime_seconds=1800,
+            max_notifications=8,
+            allowed_actions=["status", "question", "answer"],
+            acknowledge_native_communication=True,
+        )
+        yield c, child, creation, observed, path, request
 
 
 def configure(values):

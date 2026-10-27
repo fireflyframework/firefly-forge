@@ -30,6 +30,14 @@ def test_client_carries_authentication_and_validated_run():
 async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
+        "get_framework_knowledge_status",
+        "check_framework_updates",
+        "refresh_framework_knowledge",
+        "get_framework_knowledge_refresh",
+        "observe_framework_knowledge_refresh",
+        "list_framework_corpora",
+        "list_framework_corpus_sources",
+        "search_framework_knowledge",
         "list_repositories",
         "configure_scm_polling_functional_grant",
         "get_scm_polling_functional_grant",
@@ -576,6 +584,9 @@ def test_native_campaign_runner_search_and_image_sdk_cli_mcp_parity(tmp_path, po
         headers={"Authorization": "Bearer " + token},
         client=("127.0.0.1", 50000),
     ) as http:
+        from native_client_knowledge_fixtures import activate_native_client_target
+
+        http.portal.call(activate_native_client_target, app.state.store, tmp_path / "framework-target")
         connection = ForgeClient("http://testserver", token)
         connection.http.close()
         connection.http = http
@@ -617,8 +628,9 @@ def test_native_campaign_runner_search_and_image_sdk_cli_mcp_parity(tmp_path, po
         resumed = connection.resume_campaign(project["id"], campaign["id"], {"request_id": "4" * 32})
         assert resumed["journal"]["verified"] is True
         assert any(event["kind"] == "action_receipt" for event in resumed["journal"]["entries"])
-        assert all(run["status"] in {"queued", "cancelled"} for run in connection.request("GET", "runs"))
-        assert all(not run.get("summary") for run in connection.request("GET", "runs"))
+        project_runs = [run for run in connection.request("GET", "runs") if run.get("project_id") == project["id"]]
+        assert project_runs and all(run["status"] in {"queued", "cancelled"} for run in project_runs)
+        assert all(not run.get("summary") for run in project_runs)
         calls = []
         key = "native-fixture-brave-key"
 

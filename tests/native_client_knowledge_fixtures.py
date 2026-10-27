@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Native knowledge prerequisites used only by seven client/maintain controls.
+"""Native knowledge prerequisites for explicitly opted-in positive client/maintain controls.
 
 Official and SDK HTTP plus framework interpreter checks are controlled boundaries.
 Storage, authority, corpus ingestion, engine receipts and target activation are native.

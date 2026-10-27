@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     )
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
+    from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
+    from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -335,6 +337,44 @@ class ForgeClient:
         """Read the same restore ticket without retrying admission or consuming a result."""
         path = self._agent_checkpoint_restore_path(identifier, completion_id)
         return dict(self.request("GET", path + "/" + self._recovery_identifier(request_id)))
+
+    def invalid_read_continuity_candidate(self, identifier: str) -> dict[str, Any]:
+        """Inspect a held same-attempt candidate without admitting or dispatching it."""
+        return dict(
+            self.request("GET", f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity/candidate")
+        )
+
+    def request_invalid_read_continuity(
+        self,
+        identifier: str,
+        request_id: str,
+        request: InvalidReadAdmissionInputV1 | InvalidReadAdmissionInputV2 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit once; unavailable observations require the explicit version-2 acknowledgement."""
+        from firefly_forge.invalid_read_continuity_models import ADMISSION
+
+        body = ADMISSION.validate_python(request.model_dump() if isinstance(request, BaseModel) else request)
+        namespace = "requests" if body.version == 1 else "requests-v2"
+        base = f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity"
+        path = f"{base}/{namespace}/{self._recovery_identifier(request_id)}"
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def invalid_read_continuity(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the original one-use ticket after a lost response; never repeat admission."""
+        base = f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity"
+        path = f"{base}/requests/{self._recovery_identifier(request_id)}"
+        return dict(self.request("GET", path))
+
+    def invalid_read_continuity_policy(self) -> dict[str, Any]:
+        return dict(self.request("GET", "invalid-read-continuity/policy"))
+
+    def configure_invalid_read_continuity_policy(
+        self, request: ContinuityLeasePolicyV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
+
+        body = self._recovery_body(ContinuityLeasePolicyV1, request)
+        return dict(self.request("PUT", "invalid-read-continuity/policy", json=body))
 
     def get_run(self, identifier: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{identifier}"))

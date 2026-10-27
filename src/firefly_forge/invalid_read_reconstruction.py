@@ -61,12 +61,12 @@ class _PendingMetadata(AbstractCapability[Any]):
 
 
 class _NegativeResultMetadata(AbstractCapability[Any]):
-    def __init__(self, checkpoint: BoundaryCheckpoint, call_id: str, consumed_at: str) -> None:
+    def __init__(self, checkpoint: BoundaryCheckpoint, outcomes: dict[str, Any], consumed_at: str) -> None:
         self.requests = checkpoint.usage.requests
         self.prefix_count = len(checkpoint.history)
         self.run_id = checkpoint.history[-1].run_id
         self.conversation_id = checkpoint.history[-1].conversation_id
-        self.call_id = call_id
+        self.outcomes = outcomes
         self.timestamp = datetime.fromisoformat(consumed_at)
         if self.timestamp.utcoffset() is None:
             raise ValueError("Native consumption time must have a timezone")
@@ -86,16 +86,18 @@ class _NegativeResultMetadata(AbstractCapability[Any]):
                 message.run_id = self.run_id
                 message.conversation_id = self.conversation_id
             pending = messages[-1]
-            if len(pending.parts) != 1 or not isinstance(pending.parts[0], ToolReturnPart):
-                raise ValueError("Negative validation must close exactly one original tool call")
-            part = pending.parts[0]
-            if (
-                part.tool_call_id != self.call_id
-                or part.tool_name != "read_run_evidence"
-                or part.content != {"status": "invalid_query"}
-            ):
-                raise ValueError("Negative validation output changed before capture")
-            part.timestamp = self.timestamp
+            parts = [part for part in pending.parts if isinstance(part, ToolReturnPart)]
+            if len(parts) != len(pending.parts) or len(parts) != len(self.outcomes):
+                raise ValueError("Negative validation must close every exact original read call")
+            if len({p.tool_call_id for p in parts}) != len(self.outcomes):
+                raise ValueError("Negative observation outcomes have duplicate call identities")
+            for part in parts:
+                if part.tool_call_id is None:
+                    raise ValueError("Negative observations require exact original call identities")
+                expected = self.outcomes.get(part.tool_call_id)
+                if expected is None or part.tool_name != expected["name"] or part.content != expected["result"]:
+                    raise ValueError("Negative validation or unavailable observation changed before capture")
+                part.timestamp = self.timestamp
             pending.timestamp = self.timestamp
         return request_context
 
@@ -178,13 +180,25 @@ def _agent(
     for definition in definitions:
         name = definition["name"]
 
-        async def rejected_read(**arguments: Any) -> dict[str, str]:
-            if migrate or arguments != prepared_arguments:
-                raise ValueError("No tool invocation is permitted during migration")
-            return {"status": "invalid_query"}
+        def sealed_handler(tool_name: str) -> Any:
+            async def respond(ctx: RunContext[Any], **arguments: Any) -> Any:
+                from firefly_forge.invalid_read_continuity import _bytes
 
-        async def forbidden(**arguments: Any) -> None:
-            raise ValueError("Continuity cannot invoke an original native tool")
+                if ctx.tool_call_id is None:
+                    raise ValueError("Sealed observations require their exact original call identity")
+                expected = prepared_arguments.get(ctx.tool_call_id)
+                if (
+                    migrate
+                    or expected is None
+                    or expected["name"] != tool_name
+                    or _bytes(arguments) != _bytes(expected["arguments"])
+                    or expected["returned"]
+                ):
+                    raise ValueError("No replay or unbound native tool invocation is permitted during migration")
+                expected["returned"] = True
+                return copy.deepcopy(expected["result"])
+
+            return respond
 
         schema = (
             WorkerEvidenceReadInput.model_json_schema()
@@ -192,10 +206,11 @@ def _agent(
             else _ordered_schema(name, definition["parameters_json_schema"])
         )
         tool = Tool.from_schema(
-            rejected_read if name == "read_run_evidence" else forbidden,
+            sealed_handler(name),
             name=name,
             description=definition.get("description"),
             json_schema=schema,
+            takes_ctx=True,
         )
         frozen_return = copy.deepcopy(definition.get("return_schema"))
 
@@ -270,25 +285,41 @@ async def _capture(
             provider=OpenAIProvider(openai_client=client),
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
         )
-        metadata = (
-            None
-            if migrate
-            else _NegativeResultMetadata(checkpoint, prepared.proof["tool_call_id"], data["consume_created_at"])
-        )
+        from openai.types.chat import ChatCompletion
+
+        from firefly_forge.invalid_read_continuity import UNAVAILABLE_OBSERVATION
+
+        calls = ChatCompletion.model_validate_json(response, strict=True).choices[0].message.tool_calls
+        if not calls:
+            raise ValueError("The sealed response no longer identifies its exact known function calls")
+        outcomes: dict[str, Any] = {}
+        unavailable = {o["tool_call_id"]: o for o in prepared.proof.get("unavailable_observations", [])}
+        for call in calls:
+            if call.type != "function":
+                raise ValueError("The sealed response contains an unsupported tool call kind")
+            args = _json(call.function.arguments)
+            if call.id == prepared.proof["tool_call_id"] and call.function.name == "read_run_evidence":
+                result = {"status": "invalid_query"}
+            elif call.id in unavailable and call.function.name == "list_files":
+                if unavailable[call.id]["arguments_digest"] != digest(args):
+                    raise ValueError("Unavailable observation arguments changed")
+                result = dict(UNAVAILABLE_OBSERVATION)
+            else:
+                raise ValueError("The sealed response contains an unbound tool outcome")
+            if call.id in outcomes:
+                raise ValueError("The sealed response duplicates a call identity")
+            outcomes[call.id] = {"name": call.function.name, "arguments": args, "result": result, "returned": False}
+        metadata = None if migrate else _NegativeResultMetadata(checkpoint, outcomes, data["consume_created_at"])
         agent, arguments = _agent(
             model, boundary, checkpoint, migrate=migrate, metadata=metadata, target_contract=target_contract
         )
-        from openai.types.chat import ChatCompletion
-
-        calls = ChatCompletion.model_validate_json(response, strict=True).choices[0].message.tool_calls
-        if not calls or len(calls) != 1 or calls[0].type != "function":
-            raise ValueError("The sealed response no longer identifies one known function call")
-        call = calls[0]
-        arguments.update(_json(call.function.arguments))
+        arguments.update(outcomes)
         try:
             with boundary.invocation():
                 await agent.run(**checkpoint.resume_kwargs())
         except _Captured as stopped:
+            if not migrate and not all(value["returned"] for value in arguments.values()):
+                raise ValueError("Not every original observation received its exact negative outcome") from None
             return stopped.checkpoint
     raise ValueError("Continuity did not stop at its pending model boundary")
 
@@ -318,13 +349,13 @@ async def reconstruct_and_migrate(prepared: PreparedInvalidRead) -> Reconstructe
         raise ValueError("Migration changed more than the approved strict evidence schema and description")
     if (derived.usage.requests, derived.usage.tool_calls) != (
         original.usage.requests + 1,
-        original.usage.tool_calls + 1,
+        original.usage.tool_calls + 1 + len(prepared.proof.get("unavailable_observations", [])),
     ):
         raise ValueError("Continuity did not account for exactly one original response and validation outcome")
     receipt = dict(
-        version=1,
+        version=prepared.proof["version"],
         proof_digest=prepared.proof["digest"],
-        original_checkpoint=original.digest,
+        original_checkpoint=prepared.proof["checkpoint_digest"],
         derived_checkpoint=derived.digest,
         migrated_checkpoint=migrated.digest,
         original_tool_contract=digest(derived.record.contract),
@@ -336,6 +367,15 @@ async def reconstruct_and_migrate(prepared: PreparedInvalidRead) -> Reconstructe
         admission="HOLD",
         holds=prepared.proof["holds"],
     )
+    from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2
+    from firefly_forge.invalid_read_continuity import compatibility_migration
+
+    if prepared.proof["version"] == 2:
+        receipt["unavailable_observations"] = prepared.proof["unavailable_observations"]
+        receipt["native_tool_custody_digest"] = prepared.proof["native_tool_custody_digest"]
+    migration = compatibility_migration(CheckpointPayloadV2.model_validate(prepared.data["checkpoint"]))
+    if migration is not None:
+        receipt["compatibility_migration"] = migration
     receipt["digest"] = digest(receipt)
     return ReconstructedInvalidRead(
         derived, migrated, json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()

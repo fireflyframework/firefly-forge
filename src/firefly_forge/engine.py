@@ -1051,6 +1051,7 @@ class Engine:
                         checkpoint_invocation,
                         invocation_cut,
                     )
+                    from firefly_forge.agentic_tool_custody import AgenticToolCustody, agentic_tool_custody_scope
 
                     frozen_cut = invocation_cut(current)
                     restored_execution = restoration
@@ -1280,6 +1281,13 @@ class Engine:
                         with (
                             bridge_completion_scope(completion_scope),
                             checkpoint_invocation(native_invocation),
+                            agentic_tool_custody_scope(
+                                AgenticToolCustody(
+                                    self.store, self.journal, current, implementation, workspace, checkpoint_guard
+                                )
+                                if self.journal and run["agent"] in {"api", "bridge"}
+                                else None
+                            ),
                             cli_dispatch_scope(
                                 launch_guard if official_dispatch else None, executable=adopted_executable
                             ),

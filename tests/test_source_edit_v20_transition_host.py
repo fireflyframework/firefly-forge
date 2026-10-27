@@ -29,3 +29,14 @@ def test_v20_preserves_all_fifteen_historical_profile_seals():
     for profile in q._profiles()[:15]:
         seal = q.historical_profile_seal(profile)
         assert seal["proof_sha256"] == profile.proof.artifact_sha256
+
+
+def test_checkpoint_epoch_successor_requires_new_measurement_and_preserves_v20():
+    assert q.REGISTRY_VERSION >= 20
+    assert q.LOADER_PROFILE != "codex-exec-restricted-source/v20"
+    historical = q._profiles()[:16]
+    assert len(historical) == 16
+    assert historical[-1].loader_profile == "codex-exec-restricted-source/v20"
+    for profile in historical:
+        seal = q.historical_profile_seal(profile)
+        assert seal["proof_sha256"] == profile.proof.artifact_sha256

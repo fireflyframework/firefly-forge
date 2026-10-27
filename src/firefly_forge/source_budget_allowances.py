@@ -310,6 +310,8 @@ def admission_contract_digest() -> str:
                 "profiles.py",
                 "access_routes.py",
                 "migrations.py",
+                "agentic_tool_custody.py",
+                "agentic_tool_results.py",
             )
         }
     )

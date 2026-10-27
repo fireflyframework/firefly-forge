@@ -46,6 +46,14 @@ The WAL retains its original payloads and chain hashes. Activity and task rows c
 
 `artifacts.json` contains references. A reference is `receipt_bound` only when its SHA256 appears in a matching immutable receipt. Older `changes.zip` records have no historical byte hash and are labeled `not_historically_bound`. Their bytes are not copied, rebuilt or certified by this export. The existing source ZIP endpoint remains available separately.
 
+## Inspect native agent tool calls
+
+In **Run details > Plan**, the write-ahead journal separates a tool call from its retained result. Each agent tool card names the operation, shows the exact model call ID and presents arguments and output as readable fields. Source text and patches use the existing code and diff views. The full canonical payload and its technical bindings remain under **Advanced record**.
+
+**Result retained** means that the factory recorded the callback result. It does not mean that a business operation succeeded, a check passed or the product was accepted. An unavailable result stays visibly distinct. The factory does not repeat an uncertain callback automatically.
+
+An intent links to a result only through its exact custody identity, model call, task, attempt, invocation, request step, argument digest, authority binding and original intent digest. Conflicting records require review. A similar tool name or nearby timestamp cannot supply a missing result.
+
 ## Read complete provider activity
 
 New stdout and stderr events retain a short preview and, for recognized provider JSON, a typed activity summary. Codex command records show their observed exit code and output. Claude records distinguish text, tool requests, reported tool results and final provider reports. **Read full recorded event** retrieves the retained sanitized message explicitly. Factory verification and product acceptance have their own records.
@@ -124,6 +132,6 @@ Forge checks current credentials before returning a page or download and recheck
 
 `ForgeClient.run_evidence` and `export_run_evidence` use the same authenticated endpoints. The factory MCP tool `query_run_evidence` supports the typed query, including exact record reads.
 
-The native Agentic tool `read_run_evidence` is an explicit implementation-stage role grant for API and Bridge workers. Existing default workspace grants stay unchanged. Its callback is bound to the current run and task by the server, checks that task's frozen grant, the original execution identity and current read permissions, and limits output to ten records and 32 KiB. It accepts no alternate actor, project, run or task. Independent review and design providers do not receive this callback. Larger records remain available to authorized operators through the bounded HTTP reader. This tool reads retained records without invoking ToolBroker callbacks or writing query events into the WAL it reads.
+The native Agentic tool `read_run_evidence` is an explicit implementation-stage role grant for API and Bridge workers. Existing default workspace grants stay unchanged. Its callback is bound to the current run and task by the server, checks that task's frozen grant, the original execution identity and current read permissions, and limits output to ten records and 32 KiB. It accepts no alternate actor, project, run or task. Independent review and design providers do not receive this callback. Larger records remain available to authorized operators through the bounded HTTP reader. The reader does not invoke ToolBroker callbacks. In a captured native Agentic invocation, the outer capability records the exact call intent before the reader opens its snapshot and retains the result after that snapshot closes. The returned cut can contain its intent, but cannot contain its own later result. Reading a record does not execute its original tool.
 
 An evidence export describes the retained records and their stated verification boundary. It does not establish live provider execution, certify unbound artifact bytes or restore an interrupted Agentic graph.

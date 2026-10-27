@@ -149,6 +149,56 @@ async def test_native_unknown_write_survives_reload_without_duplicate_submission
             assert final["spent_budget"]["requests"] > held["spent_budget"]["requests"]
 
 
+@pytest.mark.parametrize("revocation", ["before", "during_get"])
+async def test_native_cancelled_observation_rechecks_administrator_without_new_submission(store, tmp_path, revocation):
+    import httpx
+
+    async with native_knowledge(store, tmp_path) as (manager, remote, body, _):
+        request_id = uuid4().hex
+        await manager.refresh("pyfly", request_id, body)
+        remote.unknown_after_create = True
+        await FrameworkKnowledgeWorker(manager).advance(request_id)
+        held = await manager.get_refresh("pyfly", request_id)
+        await manager.cancel(
+            "pyfly", request_id, FrameworkRefreshCancelInput(version=1, expected_revision=held["revision"])
+        )
+        principal = CURRENT_PRINCIPAL.get()
+        assert principal is not None
+        actor = ProjectAccess.actor_snapshot(principal)
+
+        async def revoke():
+            async with store._unit():
+                users = ForgeIdentityUserRepository()
+                user = await users.find_by_id(identifier(actor["user_id"]))
+                assert user is not None
+                user.enabled = False
+                await users.save(user)
+
+        requests = len(remote.requests)
+        before = await manager._get("operation", request_id)
+        if revocation == "before":
+            await revoke()
+        else:
+
+            async def revoked_response(request):
+                response = await remote.handle(request)
+                if request.method == "GET" and request.url.path == "/api/v1/sources":
+                    await revoke()
+                return response
+
+            manager.knowledge.transport = httpx.MockTransport(revoked_response)
+        with pytest.raises(AccessDenied, match="suspended"):
+            await manager.observe("pyfly", request_id)
+        observed = await manager._get("operation", request_id)
+        assert observed["public"]["state"] == "cancelled" and observed["public"]["uncertain_sources"] == 1
+        assert len(remote.posts) == 1 and not observed.get("owner")
+        assert all(request.method == "GET" for request in remote.requests[requests:])
+        if revocation == "before":
+            assert observed == before and len(remote.requests) == requests
+        else:
+            assert len(remote.requests) == requests + 1
+
+
 async def test_native_refresh_intent_and_operation_roll_back_together(store, tmp_path, monkeypatch):
     async with native_knowledge(store, tmp_path) as (manager, remote, body, _):
         request_id = uuid4().hex

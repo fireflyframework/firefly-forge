@@ -199,6 +199,7 @@ async def test_native_stale_or_revoked_allowance_rolls_back_without_new_intent(s
 
 
 def test_native_allowance_http_di_strict_contract_and_exact_readback(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
     from test_execution import seed_repository
 
@@ -217,6 +218,7 @@ def test_native_allowance_http_di_strict_contract_and_exact_readback(tmp_path, p
     ) as http:
         assert http.post("/api/v1/auth/login", json={"token": token}).status_code == 200
         store = http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         context = http.app.state.runtime.context
         engine = context.get_bean(Engine)
         recoveries = context.get_bean(ProviderRecoveries)

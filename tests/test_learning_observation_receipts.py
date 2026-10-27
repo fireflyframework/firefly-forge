@@ -18,6 +18,8 @@ from firefly_forge.store import identifier
 def test_native_exact_historical_observation_receipt_is_readable_without_remote_io(
     tmp_path, postgres_schema, monkeypatch
 ):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -25,7 +27,6 @@ def test_native_exact_historical_observation_receipt_is_readable_without_remote_
         raise AssertionError("Receipt read must never contact knowledge service")
 
     monkeypatch.setattr(Engine, "_poll", idle)
-    monkeypatch.setattr(KnowledgeManager, "client", forbidden_remote)
     token = "owned-observation-bootstrap-token-32chars"
     with TestClient(
         create_application(tmp_path / "api", token),
@@ -36,7 +37,8 @@ def test_native_exact_historical_observation_receipt_is_readable_without_remote_
 
         async def seed():
             store = http.app.state.store
-            engine, run = await completed(store, tmp_path, scoped=True)
+            remote = await activate_native_client_target(store, tmp_path / "framework-prerequisite")
+            engine, run = await completed(store, tmp_path, scoped=True, framework_remote=remote)
             ledger = LearningLedger(store, engine.journal)
             ledger.engine = engine
             record = await ledger.capture_outcome(run["id"])
@@ -82,6 +84,7 @@ def test_native_exact_historical_observation_receipt_is_readable_without_remote_
             return record, request_id, event
 
         record, request_id, event = http.portal.call(seed)
+        monkeypatch.setattr(KnowledgeManager, "client", forbidden_remote)
         response = http.get(f"/api/v1/learning/records/{record['id']}/projection/observations/{request_id}")
         assert response.status_code == 200, response.text
         receipt = response.json()
@@ -93,7 +96,9 @@ def test_native_exact_historical_observation_receipt_is_readable_without_remote_
         assert receipt["projection_id"] is None and receipt["submission_request_id"] is None
 
 
-async def admitted_projection(store, tmp_path, *, source_id="owned-source", before_search=None, remote_service=None):
+async def admitted_projection(
+    store, tmp_path, *, source_id="owned-source", before_search=None, remote_service=None, framework_remote=None
+):
     import hashlib
     import json
 
@@ -103,7 +108,7 @@ async def admitted_projection(store, tmp_path, *, source_id="owned-source", befo
     from firefly_forge.learning_models import LearningContext
     from firefly_forge.learning_projection import LearningProjection
 
-    engine, run = await completed(store, tmp_path, scoped=True)
+    engine, run = await completed(store, tmp_path, scoped=True, framework_remote=framework_remote)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])

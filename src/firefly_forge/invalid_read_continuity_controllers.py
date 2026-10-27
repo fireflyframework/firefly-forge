@@ -7,7 +7,7 @@ from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 
 from firefly_forge.invalid_read_continuities import InvalidReadContinuities
-from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1
+from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicies, ContinuityLeasePolicyV1
 
 
@@ -24,6 +24,12 @@ class InvalidReadContinuityController:
     @post_mapping("/requests/{request_id}", status_code=201)
     async def request(
         self, run_id: PathVar[str], request_id: PathVar[str], body: Body[InvalidReadAdmissionInputV1]
+    ) -> dict[str, Any]:
+        return await self.continuities.request(run_id, request_id, body)
+
+    @post_mapping("/requests-v2/{request_id}", status_code=201)
+    async def request_unavailable_observations(
+        self, run_id: PathVar[str], request_id: PathVar[str], body: Body[InvalidReadAdmissionInputV2]
     ) -> dict[str, Any]:
         return await self.continuities.request(run_id, request_id, body)
 

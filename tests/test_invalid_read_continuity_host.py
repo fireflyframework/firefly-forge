@@ -501,3 +501,327 @@ async def test_public_sdk_prior_usage_survives_reconstruction_without_new_limits
     assert result.migrated.record.history == result.derived.record.history
     limits = result.migrated.resume_kwargs()["usage_limits"]
     assert limits.request_limit == 100 and limits.tool_calls_limit == 300
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        "f3cc412b382858ee8b4e9c9534a1dba20fcc582936d07e96a620c9f7a0c247f6",
+    ],
+)
+async def test_registered_historical_dependency_epoch_preserves_original_custody(consumed_read, contract):
+    run, task, entries = copy.deepcopy(consumed_read)
+    entries[1]["payload"]["invocation"]["contract"] = contract
+    rechain(entries)
+    entries[3]["payload"].update(
+        checkpoint_record_digest=entries[1]["digest"], response_record_digest=entries[2]["digest"]
+    )
+    rechain(entries)
+    before = copy.deepcopy((run, task, entries))
+    prepared = api().prepare_invalid_read(run, task, entries)
+    assert prepared.proof["runtime_contract"] == contract
+    assert prepared.proof["attempt"] == 2
+    assert prepared.proof["admission"] == "HOLD"
+    assert prepared.proof["consume_record_digest"] == entries[-1]["digest"]
+    assert (run, task, entries) == before
+
+
+@pytest.mark.parametrize("contract", ["0" * 64, "3" * 64])
+async def test_unregistered_historical_dependency_epoch_is_refused(consumed_read, contract):
+    run, task, entries = copy.deepcopy(consumed_read)
+    entries[1]["payload"]["invocation"]["contract"] = contract
+    rechain(entries)
+    entries[3]["payload"].update(
+        checkpoint_record_digest=entries[1]["digest"], response_record_digest=entries[2]["digest"]
+    )
+    rechain(entries)
+    with pytest.raises(ValueError, match="runtime"):
+        api().prepare_invalid_read(run, task, entries)
+
+
+@pytest.mark.parametrize("tool_kind_present", [False, True])
+@pytest.mark.parametrize(("url_ids", "tool_names"), [(None, None), ([], []), (None, []), ([], None)])
+async def test_retained_sdk_epoch_derives_new_checkpoint_without_widening_restore(
+    consumed_read, url_ids, tool_names, tool_kind_present
+):
+    from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint, _checkpoint_payload
+
+    run, task, entries = copy.deepcopy(consumed_read)
+    saved = entries[1]["payload"]
+    original = BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
+    record = json.loads(original.canonical_payload)
+    record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+    record["contract"]["parameters"].update(
+        _telemetry_mcp_url_ids=url_ids, _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=tool_names
+    )
+    for definition in record["contract"]["parameters"]["function_tools"]:
+        if not tool_kind_present:
+            assert definition.pop("tool_kind") is None
+    record["usage"].update(
+        input_tokens=200, output_tokens=100, cache_write_tokens=30, output_reasoning_tokens=17, cache_write_1h_tokens=5
+    )
+    historical = _checkpoint_payload(
+        json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    )
+    saved.update(snapshot=historical.decode(), checkpoint_digest=hashlib.sha256(historical).hexdigest())
+    saved["invocation"]["contract"] = "0b48cf3f13632a7f182edb904ae97060f585f8907a737b695422eb8f4582786d"
+    rechain(entries)
+    entries[3]["payload"].update(
+        checkpoint_record_digest=entries[1]["digest"], response_record_digest=entries[2]["digest"]
+    )
+    rechain(entries)
+    before = copy.deepcopy((run, task, entries))
+    with pytest.raises(ValueError, match="runtime"):
+        BoundaryCheckpoint.decode(historical, saved["checkpoint_digest"])
+    prepared = api().prepare_invalid_read(run, task, entries)
+    assert prepared.proof["checkpoint_digest"] == saved["checkpoint_digest"]
+    assert prepared.checkpoint.digest != saved["checkpoint_digest"]
+    derived_record = json.loads(prepared.checkpoint.canonical_payload)
+    expected = copy.deepcopy(record)
+    expected["compatibility"] = original.record.compatibility
+    for key in ("_telemetry_mcp_url_ids", "_telemetry_mcp_url_toolset_ids", "_telemetry_mcp_url_tool_names"):
+        expected["contract"]["parameters"].pop(key)
+    for definition in expected["contract"]["parameters"]["function_tools"]:
+        definition["tool_kind"] = None
+    assert derived_record == expected
+    assert prepared.checkpoint.record.usage["output_reasoning_tokens"] == 17
+    assert prepared.checkpoint.record.usage["cache_write_1h_tokens"] == 5
+    result = await api().reconstruct_and_migrate(prepared)
+    assert result.receipt["original_checkpoint"] == saved["checkpoint_digest"]
+    assert result.receipt["compatibility_migration"]["source_checkpoint"] == saved["checkpoint_digest"]
+    assert result.receipt["compatibility_migration"]["derived_checkpoint"] == prepared.checkpoint.digest
+    provenance = {
+        "_telemetry_mcp_url_ids": url_ids,
+        "_telemetry_mcp_url_toolset_ids": [],
+        "_telemetry_mcp_url_tool_names": tool_names,
+    }
+    witness = result.receipt["compatibility_migration"]
+    source_tools = [
+        {"name": tool["name"], "source_present": tool_kind_present, "source_value": None, "target_value": None}
+        for tool in record["contract"]["parameters"]["function_tools"]
+    ]
+    assert witness["version"] == 3
+    assert witness["source_function_tool_kinds"] == source_tools
+    assert witness["source_function_tool_kinds_sha256"] == digest({"tools": source_tools})
+    assert witness["contract_projection"]["function_tool_kinds"] == source_tools
+    assert witness["source_telemetry"] == provenance
+    assert witness["source_telemetry_sha256"] == digest(provenance)
+    assert witness["contract_projection"]["remove_exact_provenance"] == provenance
+    assert result.derived.record.usage["output_reasoning_tokens"] == 17
+    assert result.derived.record.usage["cache_write_1h_tokens"] == 5
+    assert result.derived.usage.requests == original.usage.requests + 1
+    assert result.derived.usage.tool_calls == original.usage.tool_calls + 1
+    assert result.receipt["external_requests"] == result.receipt["native_tool_callbacks"] == 0
+    assert (run, task, entries) == before
+    with pytest.raises(ValueError, match="runtime"):
+        BoundaryCheckpoint.decode(historical, saved["checkpoint_digest"])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "unknown_source",
+        "unknown_target",
+        "history_loss",
+        "wire",
+        "mixed_runtime",
+        "telemetry",
+        "telemetry_type",
+        "unknown_parameter",
+        "unknown_tool_field",
+        "collision",
+        "tool_kind",
+        "tool_kind_bool",
+        "tool_kind_number",
+        "tool_kind_list",
+        "tool_kind_object",
+        "instruction",
+        "schema",
+    ],
+)
+async def test_historical_sdk_migration_refuses_unregistered_or_changed_frontiers(consumed_read, monkeypatch, change):
+    from firefly_forge import agentic_checkpoint_boundary as codec
+
+    run, task, entries = copy.deepcopy(consumed_read)
+    saved = entries[1]["payload"]
+    original = codec.BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
+    record = json.loads(original.canonical_payload)
+    record["compatibility"]["pydantic-ai-slim"] = "2.59.0" if change == "unknown_source" else "2.58.0"
+    record["usage"].update(output_reasoning_tokens=0, cache_write_1h_tokens=0)
+    record["contract"]["parameters"].update(
+        _telemetry_mcp_url_ids=None, _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=None
+    )
+    for definition in record["contract"]["parameters"]["function_tools"]:
+        assert definition.pop("tool_kind") is None
+    parameters = record["contract"]["parameters"]
+    if change == "telemetry":
+        parameters["_telemetry_mcp_url_ids"] = ["unregistered-provenance"]
+    elif change == "telemetry_type":
+        parameters["_telemetry_mcp_url_toolset_ids"] = {}
+    elif change == "unknown_parameter":
+        parameters["unknown"] = None
+    elif change == "unknown_tool_field":
+        parameters["function_tools"][0]["unknown"] = None
+    elif change == "collision":
+        parameters["function_tools"].append(copy.deepcopy(parameters["function_tools"][0]))
+    elif change == "tool_kind":
+        parameters["function_tools"][0]["tool_kind"] = "tool-search"
+    elif change.startswith("tool_kind_"):
+        parameters["function_tools"][0]["tool_kind"] = {
+            "tool_kind_bool": False,
+            "tool_kind_number": 0,
+            "tool_kind_list": [],
+            "tool_kind_object": {},
+        }[change]
+    elif change == "instruction":
+        parameters["instruction_parts"][0]["content"] += " Changed instruction"
+    elif change == "schema":
+        parameters["function_tools"][0]["parameters_json_schema"]["properties"]["query"]["description"] = (
+            "Unapproved schema"
+        )
+    raw = codec._checkpoint_payload(
+        json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    )
+    saved.update(snapshot=raw.decode(), checkpoint_digest=hashlib.sha256(raw).hexdigest())
+    saved["invocation"]["contract"] = api().RETAINED_SDK_RUNTIME_CONTRACT
+    rechain(entries)
+    entries[3]["payload"].update(
+        checkpoint_record_digest=entries[1]["digest"], response_record_digest=entries[2]["digest"]
+    )
+    rechain(entries)
+    if change == "unknown_target":
+        monkeypatch.setattr(
+            codec, "_compatibility", lambda: {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.54.0"}
+        )
+    elif change == "history_loss":
+        serialize = codec.serialize_model_messages
+        monkeypatch.setattr(codec, "serialize_model_messages", lambda messages: serialize(messages) + [{}])
+    elif change == "mixed_runtime":
+        grouped = api()._unsettled(entries, run["id"])
+        extra = copy.deepcopy(grouped["agent_checkpoint"][0])
+        extra["payload"]["invocation"]["contract"] = api().LEGACY_RUNTIME_CONTRACT
+        grouped["agent_checkpoint"].append(extra)
+        monkeypatch.setattr(api(), "_unsettled", lambda *args: grouped)
+    elif change == "wire":
+        record["wire_sha256"] = "0" * 64
+        raw = codec._checkpoint_payload(
+            json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        )
+        saved.update(snapshot=raw.decode(), checkpoint_digest=hashlib.sha256(raw).hexdigest())
+        rechain(entries)
+        entries[3]["payload"].update(
+            checkpoint_record_digest=entries[1]["digest"], response_record_digest=entries[2]["digest"]
+        )
+        rechain(entries)
+    with pytest.raises(ValueError):
+        prepared = api().prepare_invalid_read(run, task, entries)
+        await api().reconstruct_and_migrate(prepared)
+
+
+def test_public_usage_preserves_and_increments_known_reasoning_counter_without_double_counting():
+    from pydantic_ai.usage import RunUsage, UsageLimits
+
+    from firefly_forge.agentic_checkpoint_boundary import LIMITS, USAGE, _budgets
+
+    raw = USAGE.dump_python(
+        RunUsage(requests=7, tool_calls=11, input_tokens=200, cache_write_tokens=30, output_tokens=100), mode="json"
+    )
+    raw.update(output_reasoning_tokens=17, cache_write_1h_tokens=5)
+    usage = USAGE.validate_json(json.dumps(raw))
+    increment = USAGE.dump_python(
+        RunUsage(requests=1, tool_calls=1, input_tokens=50, cache_write_tokens=4, output_tokens=30), mode="json"
+    )
+    increment.update(output_reasoning_tokens=3, cache_write_1h_tokens=2)
+    usage.incr(USAGE.validate_json(json.dumps(increment)))
+    actual = USAGE.dump_python(usage, mode="json")
+    assert actual == {
+        **raw,
+        "requests": 8,
+        "tool_calls": 12,
+        "input_tokens": 250,
+        "cache_write_tokens": 34,
+        "output_tokens": 130,
+        "output_reasoning_tokens": 20,
+        "cache_write_1h_tokens": 7,
+    }
+    limits = LIMITS.dump_python(UsageLimits(request_limit=100, tool_calls_limit=300), mode="json")
+    _budgets(actual, limits)
+
+
+@pytest.mark.parametrize("counter", ["output_reasoning_tokens", "cache_write_1h_tokens"])
+@pytest.mark.parametrize("change", [True, -1, 2**53, 1.5, "17", "unknown", "missing"])
+def test_known_optional_reasoning_counter_keeps_strict_counter_and_field_validation(change, counter):
+    from pydantic_ai.usage import RunUsage, UsageLimits
+
+    from firefly_forge.agentic_checkpoint_boundary import LIMITS, USAGE, _budgets
+
+    usage = USAGE.dump_python(RunUsage(), mode="json")
+    usage[counter] = change
+    if change == "unknown":
+        usage[counter] = 17
+        usage["arbitrary_counter"] = 1
+    elif change == "missing":
+        usage.pop("requests")
+        usage[counter] = 17
+    limits = LIMITS.dump_python(UsageLimits(request_limit=100, tool_calls_limit=300), mode="json")
+    with pytest.raises(ValueError):
+        _budgets(usage, limits)
+
+
+@pytest.mark.parametrize("change", [None, "unknown_version", "digest", "canonical_schema", "custody", "counter"])
+async def test_historical_credential_text_is_lossless_scanned_and_never_resumable(consumed_read, change):
+    from types import SimpleNamespace
+
+    from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint, _checkpoint_payload
+    from firefly_forge.secrets import ephemeral_credentials, redact_environment
+    from firefly_forge.store import Store
+
+    _, _, entries = consumed_read
+    saved = entries[1]["payload"]
+    current = BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
+    record = json.loads(current.canonical_payload)
+    record["compatibility"]["pydantic-ai-slim"] = "2.59.0" if change == "unknown_version" else "2.58.0"
+    record["usage"].update(output_reasoning_tokens=17, cache_write_1h_tokens=5)
+    marker = "fictional-retained-credential-for-current-scanner-only"
+    record["contract"]["parameters"]["_telemetry_mcp_url_ids"] = [marker]
+    if change == "canonical_schema":
+        record["unknown_record_field"] = 1
+    elif change == "counter":
+        record["usage"]["cache_write_1h_tokens"] = True
+    raw = _checkpoint_payload(json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode())
+    checksum = "0" * 64 if change == "digest" else hashlib.sha256(raw).hexdigest()
+    if change is not None:
+        with pytest.raises(ValueError):
+            BoundaryCheckpoint.credential_text(raw, checksum, historical_custody=change != "custody")
+        return
+    text = BoundaryCheckpoint.credential_text(raw, checksum, historical_custody=True)
+    assert json.loads(text) == record and marker in text
+    source = SimpleNamespace(
+        credential_registry=lambda: {"FIXTURE_TOKEN": marker},
+        configuration=SimpleNamespace(resolve=lambda _: {}),
+    )
+    with pytest.raises(ValueError, match="configured credentials"):
+        Store.reject_credentials(source, text)
+    with ephemeral_credentials({"FIXTURE_TOKEN": marker}):
+        assert marker not in redact_environment(text)
+    with pytest.raises(ValueError, match="runtime"):
+        BoundaryCheckpoint.decode(raw, checksum)
+    with pytest.raises(ValueError, match="custody"):
+        BoundaryCheckpoint.credential_text(raw, checksum)
+
+
+async def test_migration_history_schema_failure_hides_retained_input(consumed_read):
+    from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint, _checkpoint_payload
+
+    _, _, entries = consumed_read
+    payload = entries[1]["payload"]
+    checkpoint = BoundaryCheckpoint.decode(payload["snapshot"].encode(), payload["checkpoint_digest"])
+    record = json.loads(checkpoint.canonical_payload)
+    record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+    record["usage"].update(output_reasoning_tokens=0, cache_write_1h_tokens=0)
+    marker = "fictional-retained-input-must-not-appear-in-errors"
+    record["history"] = record["request_history"] = [{"kind": marker}]
+    raw = _checkpoint_payload(json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode())
+    with pytest.raises(ValueError, match="^Checkpoint native history schema differs$") as raised:
+        BoundaryCheckpoint.migrate_public_compatibility(raw, hashlib.sha256(raw).hexdigest())
+    assert marker not in str(raised.value)

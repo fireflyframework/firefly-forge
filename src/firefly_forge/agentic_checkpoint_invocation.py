@@ -62,6 +62,8 @@ def runtime_contract() -> str:
                 name: hashlib.sha256((root / name).read_bytes()).hexdigest()
                 for name in (
                     "agentic_runtime.py",
+                    "agentic_tool_custody.py",
+                    "agentic_tool_results.py",
                     "agent_restores.py",
                     "agent_checkpoints.py",
                     "agentic_checkpoint_boundary.py",

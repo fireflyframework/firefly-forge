@@ -107,6 +107,8 @@ async def test_native_disabled_original_actor_cannot_read_or_replay_creation(sto
 
 
 def test_native_registered_creation_api_exact_replay_and_legacy_contract(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     token = "owned-original-run-creation-bootstrap-fixture"
     with TestClient(
         create_application(tmp_path / "api", token, role="api"),
@@ -114,7 +116,9 @@ def test_native_registered_creation_api_exact_replay_and_legacy_contract(tmp_pat
         headers={"Authorization": "Bearer " + token, "Origin": "http://testserver"},
         client=("127.0.0.1", 52561),
     ) as client:
+        client.portal.call(activate_native_client_target, client.app.state.store, tmp_path / "framework-prerequisite")
         assert client.post("/api/v1/auth/login", json={"token": token}).status_code == 200
+        prerequisite_runs = client.get("/api/v1/runs").json()
         repo = client.post("/api/v1/repositories", json={"name": "Fictional admission", "url": str(tmp_path)})
         assert repo.status_code == 201
         body = {"version": 1, "input": {"repository_id": repo.json()["id"], "brief": "Fictional admission only"}}
@@ -128,6 +132,7 @@ def test_native_registered_creation_api_exact_replay_and_legacy_contract(tmp_pat
         conflicting = {"version": 1, "input": {**body["input"], "commands": []}}
         assert client.post(url, json=conflicting).status_code == 409
         runs = client.get("/api/v1/runs").json()
+        runs = [run for run in runs if run["id"] not in {item["id"] for item in prerequisite_runs}]
         assert len(runs) == 1 and runs[0]["id"] == original.json()["run_id"]
         assert runs[0]["status"] == "queued"
         legacy = client.post("/api/v1/runs", json=body["input"])

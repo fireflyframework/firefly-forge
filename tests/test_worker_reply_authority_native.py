@@ -242,6 +242,7 @@ async def test_both_message_read_surfaces_recheck_after_admission(store, tmp_pat
 
 @pytest.mark.parametrize("loss", ["credential", "disabled"])
 def test_actual_api_generic_journal_get_rechecks_admission(tmp_path, postgres_schema, loss):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
 
     from firefly_forge.api import create_application
@@ -256,6 +257,7 @@ def test_actual_api_generic_journal_get_rechecks_admission(tmp_path, postgres_sc
     ) as http:
         assert http.post("/api/v1/auth/login", json={"token": token}).status_code == 200
         store = http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         run, journal, _, identity, _ = http.portal.call(pending, store, tmp_path)
         try:
             endpoint = f"/api/v1/runs/{run['id']}/worker-requests/question-1/respond"

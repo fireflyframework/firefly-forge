@@ -453,7 +453,7 @@ class FrameworkKnowledgeWorker:
                             self.request_id,
                         )
                     await self._spend()
-                if part["source_id"]:
+                if part["source_id"] and not (observe_only and data.get("cancel_requested")):
                     await self._verify_part(client, data, part)
         await self._stage("verifying")
 
@@ -670,18 +670,36 @@ class FrameworkKnowledgeWorker:
         data = await self.manager._get("operation", request_id)
         if data is not None:
             validate_collector_revision(data["policy"].get("collector_revision", 1))
-        if data is None or data["public"]["state"] in {"ready", "failed", "cancelled"}:
+        if (
+            data is None
+            or data["public"]["state"] in {"ready", "failed"}
+            or (
+                data["public"]["state"] == "cancelled"
+                and (not observe_only or observer is None or not data["public"]["uncertain_sources"])
+            )
+        ):
             return
         if observe_only and data["public"]["stage"] in {"inventory", "fetching"}:
             return
         async with self.manager.store._unit() as session:
             await self.manager._lock(session, data["public"]["framework"])
             data = await self.manager._get("operation", request_id)
+            if (
+                data is None
+                or data["public"]["state"] in {"ready", "failed"}
+                or (
+                    data["public"]["state"] == "cancelled"
+                    and (not observe_only or observer is None or not data["public"]["uncertain_sources"])
+                )
+            ):
+                return
             if data.get("owner") and datetime.fromisoformat(data["lease_until"]) > datetime.now(UTC):
                 return
             data["owner"] = self.owner
             data["lease_until"] = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
-            data["public"].update(state="running", sanitized_error=None)
+            data["public"].update(
+                state="cancelled" if data.get("cancel_requested") else "running", sanitized_error=None
+            )
             await self._write_operation(data)
         try:
             await self._spend()

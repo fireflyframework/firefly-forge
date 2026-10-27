@@ -115,9 +115,13 @@ async def test_existing_source_check_preserves_legacy_product_without_design_or_
 
 @pytest.mark.parametrize("operation", ["build", "maintain"])
 def test_historical_design_still_blocks_implementation_http_admission(tmp_path, postgres_schema, operation):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     token = "test-only-historical-design-operator"
     app = create_application(tmp_path, token, role="api")
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        client.portal.call(activate_native_client_target, app.state.store, tmp_path / "framework-prerequisite")
+        prerequisite_runs = client.get("/api/v1/runs", headers={"Authorization": f"Bearer {token}"}).json()
         repository = client.post(
             "/api/v1/repositories",
             headers={"Authorization": f"Bearer {token}"},
@@ -137,7 +141,7 @@ def test_historical_design_still_blocks_implementation_http_admission(tmp_path, 
             ).json()
             == product
         )
-        assert client.get("/api/v1/runs", headers={"Authorization": f"Bearer {token}"}).json() == []
+        assert client.get("/api/v1/runs", headers={"Authorization": f"Bearer {token}"}).json() == prerequisite_runs
 
 
 def test_test_http_admission_freezes_exact_historical_revision_without_approving_design(tmp_path, postgres_schema):

@@ -19,7 +19,8 @@ from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.agentic_checkpoint_invocation import invocation_cut, runtime_contract, workspace_cut
 from firefly_forge.bridge_completions import _outside_unit
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity
-from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1
+from firefly_forge.invalid_read_continuity import native_tool_custody
+from firefly_forge.invalid_read_continuity_models import ADMISSION, InvalidReadAdmissionInput
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1, lease_window, policy_snapshot
 from firefly_forge.invalid_read_settlements import CLAIM, KIND, SETTLEMENT, settled_requests
 from firefly_forge.journal import digest
@@ -117,6 +118,11 @@ class InvalidReadTickets:
     async def _command_cut(self, run: Data, task: Data, entries: list[Data]) -> str:
         raise NotImplementedError
 
+    async def _native_observation_tools(
+        self, run_id: str, entries: list[Data], *, before_sequence: int | None = None
+    ) -> list[Data]:
+        raise NotImplementedError
+
     async def get(self, run_id: str, request_id: str) -> Data:
         _outside_unit()
         await self._actor(run_id)
@@ -154,11 +160,11 @@ class InvalidReadTickets:
         self.store.reject_credentials(ticket)
         return copy.deepcopy(ticket)
 
-    async def request(self, run_id: str, request_id: str, body: InvalidReadAdmissionInputV1) -> Data:
+    async def request(self, run_id: str, request_id: str, body: InvalidReadAdmissionInput) -> Data:
         _outside_unit()
         if identifier(request_id).hex != request_id or identifier(run_id).hex != run_id:
             raise ValueError("Use exact lowercase native continuity run and request identities")
-        body = InvalidReadAdmissionInputV1.model_validate(body.model_dump())
+        body = ADMISSION.validate_python(body.model_dump())
         actor = await self._actor(run_id)
         incoming = {
             "run_id": run_id,
@@ -191,6 +197,8 @@ class InvalidReadTickets:
             body.expected_policy_digest,
         ) != expected:
             raise ValueError("The reviewed continuity candidate changed")
+        if body.version != candidate["proof"]["version"]:
+            raise ValueError("The reviewed proof requires its exact version and acknowledgement")
         if candidate["admission"] != "READY":
             raise ValueError("Continuity lease policy or current qualified profile is unavailable")
         await self.store.admit_credentials([incoming, candidate, prepared["checkpoint"]])
@@ -217,6 +225,11 @@ class InvalidReadTickets:
                     or entries != prepared["entries"]
                     or self.store.configuration.settings_generation is not prepared["generation"]
                     or policy_snapshot(self.store.configuration) != candidate["lease_policy"]
+                    or (
+                        candidate["proof"]["version"] == 2
+                        and native_tool_custody(run_id, entries, await self._native_observation_tools(run_id, entries))
+                        != candidate["proof"]["native_tool_custody_digest"]
+                    )
                 ):
                     raise ValueError("Continuity admission source, configuration or policy changed")
                 await prepared["read_guard"]()
@@ -250,7 +263,7 @@ class InvalidReadTickets:
                     "contract": candidate["current_runtime_contract"],
                 }
                 payload = dict(
-                    version=1,
+                    version=body.version,
                     request_id=request_id,
                     proof=candidate["proof"],
                     policy_epoch=candidate["policy_epoch"],
@@ -434,6 +447,16 @@ class InvalidReadTickets:
             raise ValueError("Continuity migration receipt is missing")
         settled_requests(settlements[0], entries)
         receipt = settlements[0]["payload"]
+        if receipt["proof"]["version"] == 2:
+            prior_entries = [e for e in entries if e["sequence"] < settlements[0]["sequence"]]
+            prior_rows = await self._native_observation_tools(
+                run["id"], entries, before_sequence=settlements[0]["sequence"]
+            )
+            if (
+                native_tool_custody(run["id"], prior_entries, prior_rows)
+                != receipt["proof"]["native_tool_custody_digest"]
+            ):
+                raise ValueError("Original native tool custody changed")
         for key in (
             "binding",
             "checkpoint_digest",

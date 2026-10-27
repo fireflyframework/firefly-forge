@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { EvidenceView, ToolEvidence } from "./ExecutionPresentation";
+import {
+  EvidenceView,
+  ToolEvidence,
+  journalDisposition,
+} from "./ExecutionPresentation";
 
 describe("broker tool evidence", () => {
   it("keeps the exact machine identity in a collapsed disclosure with full copy", () => {
@@ -133,5 +137,122 @@ describe("same-run repair proposal evidence", () => {
     expect(primary).not.toContain("e".repeat(64));
     expect(html).toContain(fingerprint);
     expect(payload.fingerprint).toBe(fingerprint);
+  });
+});
+
+describe("agent tool custody", () => {
+  it("presents a retained source read without showing technical bindings", () => {
+    const binding = "b".repeat(64);
+    const html = renderToStaticMarkup(
+      <ToolEvidence
+        kind="agentic_tool_result"
+        value={{
+          version: 1,
+          custody_id: "a".repeat(64),
+          tool_call_id: "call_7",
+          tool: "read_file",
+          effect: "source_read",
+          status: "retained",
+          binding_sha256: binding,
+          result: { content: "class Customer:" },
+        }}
+      />,
+    );
+    const primary = html.split("Advanced record")[0];
+    expect(primary).toContain("Read a source file");
+    expect(primary).toContain("Result retained");
+    expect(primary).toContain("call_7");
+    expect(primary).toContain("class Customer");
+    expect(primary).not.toContain(binding);
+    expect(html).toContain(binding);
+    expect(html).not.toContain("Succeeded receipt");
+  });
+  it("distinguishes an unavailable callback result", () => {
+    const html = renderToStaticMarkup(
+      <ToolEvidence
+        kind="agentic_tool_unknown"
+        value={{
+          version: 1,
+          custody_id: "a".repeat(64),
+          tool_call_id: "call_7",
+          tool: "read_file",
+          reason: "callback_interrupted",
+        }}
+      />,
+    );
+    expect(html).toContain("Result unavailable; review required");
+    expect(html).toContain("The callback will not be repeated automatically");
+    expect(html).not.toContain("Result retained");
+  });
+});
+
+describe("agent tool journal linkage", () => {
+  const identity = {
+    version: 1,
+    custody_id: "a".repeat(64),
+    tool_call_id: "call_7",
+    tool: "read_file",
+    invocation_id: "invocation-3",
+    task_key: "implement",
+    task_attempt: 2,
+    request_step: 7,
+    arguments_sha256: "b".repeat(64),
+    binding_sha256: "c".repeat(64),
+  };
+  const intent = {
+    task_id: "implement",
+    kind: "agentic_tool_intent",
+    digest: "d".repeat(64),
+    idempotency_key: identity.custody_id,
+    payload: identity,
+  };
+  const result = {
+    ...intent,
+    kind: "agentic_tool_result",
+    digest: "e".repeat(64),
+    payload: { ...identity, intent_digest: intent.digest, status: "retained" },
+  };
+  it("requires an exact linked result", () => {
+    expect(journalDisposition(intent, [intent, result])).toBe(
+      "Result retained",
+    );
+    for (const field of [
+      "tool_call_id",
+      "tool",
+      "invocation_id",
+      "task_key",
+      "task_attempt",
+      "request_step",
+      "arguments_sha256",
+      "binding_sha256",
+      "intent_digest",
+    ]) {
+      const changed = {
+        ...result,
+        payload: { ...result.payload, [field]: "different" },
+      };
+      expect(journalDisposition(intent, [intent, changed])).toBe(
+        "Result not retained",
+      );
+    }
+    for (const changed of [
+      { ...result, task_id: "other-task" },
+      { ...result, idempotency_key: "0".repeat(64) },
+    ])
+      expect(journalDisposition(intent, [intent, changed])).toBe(
+        "Result not retained",
+      );
+    expect(journalDisposition(intent, [intent, result, result])).toBe(
+      "Conflicting tool records; review required",
+    );
+  });
+  it("keeps unknown results distinct", () => {
+    const unknown = { ...result, kind: "agentic_tool_unknown" };
+    expect(journalDisposition(intent, [intent, unknown])).toBe(
+      "Result unavailable; review required",
+    );
+    expect(journalDisposition(unknown, [intent, unknown])).toBe(
+      "Result unavailable; review required",
+    );
   });
 });

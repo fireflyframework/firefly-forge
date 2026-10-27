@@ -75,8 +75,11 @@ async def test_new_collector_has_distinct_corpus_and_preserves_cancelled_legacy_
     )
     cancelled_rows = copy.deepcopy(manager.records.rows)
     observed = await manager.observe("pyfly", "f" * 32)
-    assert observed == cancelled
-    assert {k: r.data for k, r in manager.records.rows.items()} == {k: r.data for k, r in cancelled_rows.items()}
+    assert observed["state"] == "cancelled" and observed["uncertain_sources"] == 1
+    assert all(observed["spent_budget"][key] >= cancelled["spent_budget"][key] for key in spent)
+    assert {k: r.data for k, r in manager.records.rows.items() if r.kind != "operation"} == {
+        k: r.data for k, r in cancelled_rows.items() if r.kind != "operation"
+    }
     assert len(remote.posts) == 1
     discovered = await manager.check_updates("pyfly", FrameworkCheckUpdatesInput())
     fresh = await manager.refresh(
@@ -105,7 +108,7 @@ async def test_new_collector_has_distinct_corpus_and_preserves_cancelled_legacy_
     assert {
         k: r.data for k, r in manager.records.rows.items() if r.kind in {"part", "source"} and r.parent == old_ref
     } == before
-    assert (await manager.get_refresh("pyfly", "f" * 32)) == cancelled
+    assert (await manager.get_refresh("pyfly", "f" * 32)) == observed
     assert len(remote.posts) == 5
 
 
@@ -131,9 +134,14 @@ async def test_cancelled_observation_is_read_only_even_with_an_unknown_source(tm
     )
     rows = copy.deepcopy({key: row.data for key, row in manager.records.rows.items()})
     requests = len(remote.requests)
-    assert await manager.observe("pyfly", "f" * 32) == cancelled
-    assert {key: row.data for key, row in manager.records.rows.items()} == rows
-    assert len(remote.requests) == requests
+    observed = await manager.observe("pyfly", "f" * 32)
+    assert observed["state"] == "cancelled" and observed["uncertain_sources"] == 1
+    assert all(observed["spent_budget"][key] >= cancelled["spent_budget"][key] for key in cancelled["spent_budget"])
+    assert {key: row.data for key, row in manager.records.rows.items() if row.kind != "operation"} == {
+        key: value for key, value in rows.items() if key[0] != "operation"
+    }
+    assert len(remote.posts) == 1 and len(remote.requests) > requests
+    assert all(request.method == "GET" for request in remote.requests[requests:])
 
 
 @pytest.mark.parametrize("selected", [2, 3])

@@ -94,6 +94,8 @@ def canon_reads():
 def test_native_observation_lost_response_and_three_exact_read_clients(
     tmp_path, postgres_schema, monkeypatch, canon_reads
 ):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -122,7 +124,10 @@ def test_native_observation_lost_response_and_three_exact_read_clients(
     ) as http:
 
         async def seed():
-            return await admitted_projection(http.app.state.store, tmp_path, remote_service=canon_reads)
+            remote = await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
+            return await admitted_projection(
+                http.app.state.store, tmp_path, remote_service=canon_reads, framework_remote=remote
+            )
 
         service, record, _ = http.portal.call(seed)
         actual_client = service.knowledge.client

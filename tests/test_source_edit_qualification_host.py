@@ -138,3 +138,24 @@ def test_declared_config_cannot_enable_known_execution_controls(qualified, monke
         monkeypatch.setattr(module, "_profiles", lambda changed=changed: (changed,))
         with pytest.raises(ValueError, match="qualified"):
             module.qualified_profile(identity, "fixture-model")
+
+
+@pytest.mark.parametrize("contract", ["runtime", "admission"])
+@pytest.mark.parametrize("dependency", ["agentic_tool_custody.py", "agentic_tool_results.py"])
+def test_agent_tool_custody_changes_invalidate_current_execution_contract(monkeypatch, contract, dependency):
+    from pathlib import Path
+
+    from firefly_forge.agentic_checkpoint_invocation import runtime_contract
+    from firefly_forge.source_budget_allowances import admission_contract_digest
+
+    operation = runtime_contract if contract == "runtime" else admission_contract_digest
+    original = Path.read_bytes
+    content = b"first tool custody implementation"
+
+    def observed(path):
+        return content if path.name == dependency else original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", observed)
+    before = operation()
+    content = b"changed tool custody implementation"
+    assert operation() != before

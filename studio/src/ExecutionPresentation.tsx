@@ -1041,6 +1041,195 @@ function sanitationReceiptMatches(
       sameSanitationEvidence(a[key], b[key]),
   );
 }
+function agenticToolOutcome(kind: string, payload: Record<string, unknown>) {
+  if (payload.version !== 1) return "Unsupported tool record";
+  if (kind === "agentic_tool_result")
+    return payload.status === "retained"
+      ? "Result retained"
+      : "Result not retained";
+  if (kind === "agentic_tool_unknown")
+    return "Result unavailable; review required";
+  return "Tool call recorded";
+}
+function AgenticToolEvidence({
+  kind,
+  value,
+  disposition,
+}: {
+  kind: string;
+  value: Record<string, unknown>;
+  disposition?: string;
+}) {
+  if (kind === "agentic_tool_effect_link") {
+    const effect = asRecord(value.effect);
+    const target =
+      typeof effect?.digest === "string" && /^[a-f0-9]{64}$/.test(effect.digest)
+        ? effect.digest
+        : null;
+    return (
+      <article
+        className="record-evidence record-command record-tool"
+        aria-label="Related native effect"
+      >
+        <div className="record-command-heading">
+          <Waypoints size={17} />
+          <strong>Related native effect</strong>
+        </div>
+        {typeof effect?.kind === "string" && <p>{fieldLabel(effect.kind)}</p>}
+        {target && (
+          <a href={"#journal-record-" + target}>Find original journal record</a>
+        )}
+        <AdvancedRecord value={value} />
+      </article>
+    );
+  }
+  const names: Record<string, string> = {
+    list_files: "List source files",
+    read_file: "Read a source file",
+    search_text: "Search source text",
+    git_diff: "Inspect source changes",
+    write_file: "Write a source file",
+    execute_command: "Run a project command",
+    edit_lines: "Edit source lines",
+    knowledge_lookup: "Search project knowledge",
+    read_run_evidence: "Read execution evidence",
+  };
+  const tool = typeof value.tool === "string" ? value.tool : "Agent tool";
+  const fields = {
+    ...(typeof value.effect === "string"
+      ? { effect: fieldLabel(value.effect) }
+      : {}),
+    ...(typeof value.tool_call_id === "string"
+      ? { tool_call: value.tool_call_id }
+      : {}),
+  };
+  return (
+    <article
+      className="record-evidence record-command record-tool"
+      aria-label="Agent tool evidence"
+    >
+      <div className="record-command-heading">
+        <Waypoints size={17} />
+        <strong>
+          <BoundedLabel value={names[tool] ?? tool} />
+        </strong>
+        <span className="record-outcome">
+          {disposition ?? agenticToolOutcome(kind, value)}
+        </span>
+      </div>
+      <EvidenceView value={fields} advanced={false} />
+      {kind === "agentic_tool_unknown" && (
+        <p className="subtle">
+          The original result is unavailable. The callback will not be repeated
+          automatically. Review the retained execution before continuing.
+        </p>
+      )}
+      {value.arguments !== undefined && (
+        <EvidenceView
+          title="Requested arguments"
+          value={value.arguments}
+          advanced={false}
+        />
+      )}
+      {value.result !== undefined && (
+        <EvidenceView
+          title="Retained result"
+          value={value.result}
+          advanced={false}
+        />
+      )}
+      {value.arguments_artifact !== undefined && (
+        <EvidenceView
+          title="Retained arguments artifact"
+          value={value.arguments_artifact}
+          advanced={false}
+        />
+      )}
+      {value.result_artifact !== undefined && (
+        <EvidenceView
+          title="Retained result artifact"
+          value={value.result_artifact}
+          advanced={false}
+        />
+      )}
+      {Array.isArray(value.parent_effects) &&
+        value.parent_effects.length > 0 && (
+          <details>
+            <summary>Related native effects</summary>
+            <EvidenceView value={value.parent_effects} advanced={false} />
+          </details>
+        )}
+      {(value.source_before !== undefined ||
+        value.source_after !== undefined) && (
+        <details>
+          <summary>Source before and after</summary>
+          <EvidenceView
+            value={{ before: value.source_before, after: value.source_after }}
+            advanced={false}
+          />
+        </details>
+      )}
+      <AdvancedRecord value={value} />
+    </article>
+  );
+}
+
+function agenticToolDisposition(
+  entry: JournalIdentity,
+  entries: JournalIdentity[],
+) {
+  const payload = asRecord(entry.payload);
+  if (
+    payload?.version !== 1 ||
+    typeof payload.custody_id !== "string" ||
+    !/^[a-f0-9]{64}$/.test(payload.custody_id) ||
+    entry.idempotency_key !== payload.custody_id
+  )
+    return "Unsupported tool record";
+  const sameCall = (item: JournalIdentity) => {
+    const value = asRecord(item.payload);
+    return (
+      item.task_id === entry.task_id &&
+      item.idempotency_key === payload.custody_id &&
+      value?.version === 1 &&
+      [
+        "custody_id",
+        "tool_call_id",
+        "tool",
+        "invocation_id",
+        "task_key",
+        "task_attempt",
+        "request_step",
+        "arguments_sha256",
+        "binding_sha256",
+        "effect",
+        "raw_arguments_sha256",
+        "request_context_sha256",
+        "checkpoint_digest",
+      ].every((key) => value[key] === payload[key])
+    );
+  };
+  const intents = entries.filter(
+    (item) => item.kind === "agentic_tool_intent" && sameCall(item),
+  );
+  if (intents.length !== 1 || typeof intents[0].digest !== "string")
+    return "Tool intent not matched";
+  const outcomes = entries.filter(
+    (item) =>
+      ["agentic_tool_result", "agentic_tool_unknown"].includes(item.kind) &&
+      sameCall(item) &&
+      asRecord(item.payload)?.intent_digest === intents[0].digest,
+  );
+  if (outcomes.length > 1) return "Conflicting tool records; review required";
+  if (entry.kind === "agentic_tool_intent")
+    return outcomes.length
+      ? agenticToolOutcome(outcomes[0].kind, asRecord(outcomes[0].payload)!)
+      : "Result not retained";
+  return outcomes.includes(entry)
+    ? agenticToolOutcome(entry.kind, payload)
+    : "Result not matched to intent";
+}
+
 export function ToolEvidence({
   kind,
   value,
@@ -1052,6 +1241,21 @@ export function ToolEvidence({
 }) {
   const record = asRecord(value);
   if (!record) return <EvidenceView value={value} />;
+  if (
+    [
+      "agentic_tool_intent",
+      "agentic_tool_result",
+      "agentic_tool_unknown",
+      "agentic_tool_effect_link",
+    ].includes(kind)
+  )
+    return (
+      <AgenticToolEvidence
+        kind={kind}
+        value={record}
+        disposition={disposition}
+      />
+    );
   const names: Record<string, string> = {
     coding_configured_check: "Run configured project check",
     internet_search: "Internet search",
@@ -1220,6 +1424,14 @@ export function journalDisposition(
   entry: JournalIdentity,
   entries: JournalIdentity[],
 ) {
+  if (
+    [
+      "agentic_tool_intent",
+      "agentic_tool_result",
+      "agentic_tool_unknown",
+    ].includes(entry.kind)
+  )
+    return agenticToolDisposition(entry, entries);
   if (
     entry.kind === "index_sanitation_intent" ||
     entry.kind === "index_sanitation_receipt"

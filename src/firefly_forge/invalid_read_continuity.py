@@ -20,7 +20,7 @@ from firefly_forge.agentic_checkpoint_invocation import STATIC_TOOLS, invocation
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
 from firefly_forge.bridge_completions import _cut, _outside_unit
 from firefly_forge.checkpoint_mode_runtime import effective_model_selection, effective_public_config, effective_revision
-from firefly_forge.invalid_read_continuity_models import InvalidReadProofV1
+from firefly_forge.invalid_read_continuity_models import PROOF
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_worker_completion_proof import CUSTODY, _schema, _unsettled
 from firefly_forge.run_evidence import EvidenceQuery
@@ -30,6 +30,69 @@ Data = dict[str, Any]
 LEGACY_QUERY_SHA256 = "a259f91531882f1370cd2eab5aee98c5e1e76b3cca4084e3abfa05da77d77344"
 LEGACY_ENGINE_SHA256 = "e32e3d199ab8147017e781e757aa48b5857472a51ac93ff3f49116e13da716ac"
 LEGACY_RUNTIME_CONTRACT = "f3cc412b382858ee8b4e9c9534a1dba20fcc582936d07e96a620c9f7a0c247f6"
+# Same frozen 55 adapters and prompt manifest; retained 2.58.0/3.35.1 SDK launch epoch.
+RETAINED_SDK_RUNTIME_CONTRACT = "0b48cf3f13632a7f182edb904ae97060f585f8907a737b695422eb8f4582786d"
+
+
+def registered_legacy_runtime(entries: list[Data], run_id: str, *, primary: str = LEGACY_RUNTIME_CONTRACT) -> str:
+    _outside_unit()
+    if not Journal.verify_chain(entries) or any(e["run_id"] != run_id for e in entries):
+        raise ValueError("Historical runtime requires intact native custody")
+    contracts = {
+        CheckpointPayloadV2.model_validate(e["payload"]).invocation.contract
+        for e in _unsettled(entries, run_id)[CUSTODY[1]]
+    }
+    if len(contracts) != 1 or not contracts <= {primary, RETAINED_SDK_RUNTIME_CONTRACT}:
+        raise ValueError("No uniform registered historical runtime exists")
+    return next(iter(contracts))
+
+
+def historical_checkpoint(payload: CheckpointPayloadV2) -> BoundaryCheckpoint:
+    raw = payload.snapshot.encode()
+    if payload.invocation.contract == RETAINED_SDK_RUNTIME_CONTRACT:
+        derived = BoundaryCheckpoint.migrate_public_compatibility(raw, payload.checkpoint_digest)
+        if not {definition["name"] for definition in derived.record.contract["parameters"]["function_tools"]} <= set(
+            payload.invocation.grants
+        ):
+            raise ValueError("Historical SDK tools exceed their original grants")
+        return derived
+    return BoundaryCheckpoint.decode(raw, payload.checkpoint_digest)
+
+
+def compatibility_migration(payload: CheckpointPayloadV2) -> Data | None:
+    derived = historical_checkpoint(payload)
+    if derived.digest == payload.checkpoint_digest:
+        return None
+    original_contract = BoundaryCheckpoint(payload.snapshot.encode(), payload.checkpoint_digest).record.contract
+    provenance = {
+        name: original_contract["parameters"][name]
+        for name in ("_telemetry_mcp_url_ids", "_telemetry_mcp_url_toolset_ids", "_telemetry_mcp_url_tool_names")
+    }
+    tool_kinds = [
+        {"name": tool["name"], "source_present": "tool_kind" in tool, "source_value": None, "target_value": None}
+        for tool in original_contract["parameters"]["function_tools"]
+    ]
+    return dict(
+        version=3,
+        source_checkpoint=payload.checkpoint_digest,
+        derived_checkpoint=derived.digest,
+        source_runtime=payload.invocation.contract,
+        source={"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"},
+        target=derived.record.compatibility,
+        original_contract=digest(original_contract),
+        derived_contract=digest(derived.record.contract),
+        source_telemetry=provenance,
+        source_telemetry_sha256=digest(provenance),
+        telemetry_variant={name: "unknown" if value is None else "known_empty" for name, value in provenance.items()},
+        source_function_tool_kinds=tool_kinds,
+        source_function_tool_kinds_sha256=digest({"tools": tool_kinds}),
+        contract_projection={
+            "version": 3,
+            "remove_exact_provenance": provenance,
+            "function_tool_kinds": tool_kinds,
+        },
+        preserved=["history", "request_history", "usage", "limits", "state", "wire_sha256", "wire_bytes"],
+    )
 
 
 def _json(raw: str) -> Any:
@@ -65,11 +128,111 @@ class PreparedInvalidRead:
     @property
     def checkpoint(self) -> BoundaryCheckpoint:
         value = self.data["checkpoint"]
-        return BoundaryCheckpoint.decode(value["snapshot"].encode(), value["checkpoint_digest"])
+        return historical_checkpoint(CheckpointPayloadV2.model_validate(value))
+
+
+PURE_LIST_FILES_HANDLER_SHA256 = "53d9977ebcb050abcda6592baf09cf3de96f26fb6b3ce40fddbec2a2236d2dce"
+UNAVAILABLE_OBSERVATION = {"status": "observation_unavailable", "reason": "original_read_result_not_retained"}
+
+
+def unavailable_source_observations(
+    calls: list[Any], binding: Any, captured: BoundaryCheckpoint, response_sha256: str
+) -> tuple[Any, list[Data]]:
+    unavailable: list[Data] = []
+    if any(c.type != "function" for c in calls) or len({c.id for c in calls}) != len(calls):
+        raise ValueError("Sibling observations require unique exact function call identities")
+    readers = [c for c in calls if c.function.name == "read_run_evidence"]
+    if len(readers) != 1:
+        raise ValueError("Sibling observations require exactly one statically rejected evidence read")
+    schemas = {t["name"]: t["parameters_json_schema"] for t in captured.record.contract["parameters"]["function_tools"]}
+    for index, sibling in enumerate(calls):
+        if sibling is readers[0]:
+            continue
+        if (
+            sibling.function.name != "list_files"
+            or sibling.function.name not in binding.grants
+            or sibling.function.name not in schemas
+            or len(sibling.function.arguments.encode()) > 64000
+            or not 1 <= len(sibling.id) <= 200
+        ):
+            raise ValueError("Only granted pinned pure list_files observations may be unavailable")
+        args = _json(sibling.function.arguments)
+        if type(args) is not dict:
+            raise ValueError("Source observations require an exact object argument envelope")
+        from jsonschema.exceptions import ValidationError as SchemaValidationError  # type: ignore[import-untyped]
+
+        try:
+            _schema(schemas["list_files"], args)
+        except SchemaValidationError:
+            raise ValueError("Source observation arguments differ from the exact frozen schema") from None
+        unavailable.append(
+            dict(
+                version=1,
+                index=index,
+                tool_call_id=sibling.id,
+                tool_name="list_files",
+                arguments_digest=digest(args),
+                response_sha256=response_sha256,
+                source_digest=digest(binding.workspace),
+                grants_digest=digest({"grants": binding.grants}),
+                handler_sha256=PURE_LIST_FILES_HANDLER_SHA256,
+                original_outcome="not_retained",
+                outcome=dict(UNAVAILABLE_OBSERVATION),
+            )
+        )
+    return readers[0], unavailable
+
+
+def native_tool_custody(run_id: str, entries: list[Data], rows: list[Data]) -> str:
+    if not Journal.verify_chain(entries) or any(e["run_id"] != run_id for e in entries):
+        raise ValueError("Native tool custody requires its intact original journal chain")
+    if type(rows) is not list or len(_bytes(rows)) > 16 * 1024 * 1024:
+        raise ValueError("Native tool custody exceeds the existing bounded proof window")
+    intents = [e for e in entries if e["kind"] == "tool_intent"]
+    receipts = [e for e in entries if e["kind"] == "tool_receipt"]
+    if any(e["kind"] in {"tool_unknown", "tool_reconcile", "tool_reconciled"} for e in entries):
+        raise ValueError("Unknown native tool effects cannot become unavailable source observations")
+    if len(intents) != len(rows) or len(receipts) != len(rows):
+        raise ValueError("Native tools require complete immutable row and WAL custody")
+    identities = set()
+    for row in rows:
+        if set(row) != {"id", "run_id", "task_id", "tool", "correlation_id", "status", "data"}:
+            raise ValueError("Native tool columns differ")
+        key = row["correlation_id"]
+        if key in identities or row["run_id"] != run_id or row["status"] not in {"succeeded", "rejected"}:
+            raise ValueError("Unsettled or ambiguous native tool custody prevents observation abandonment")
+        identities.add(key)
+        data, admission = row["data"], row["data"]["admission"]
+        admitted = [e for e in intents if e["idempotency_key"] == key]
+        completed = [e for e in receipts if e["idempotency_key"] == key]
+        evidence = {
+            k: v
+            for k, v in data.items()
+            if k not in {"admission", "request_digest", "created_at", "lease_expires_at", "completed_at"}
+        }
+        if (
+            len(admitted) != 1
+            or len(completed) != 1
+            or admission != admitted[0]["payload"]
+            or digest(admission) != data["request_digest"]
+            or any(admission[k] != row[k] for k in ("run_id", "task_id", "tool", "correlation_id"))
+            or completed[0]["payload"]
+            != {"correlation_id": key, "tool": row["tool"], "status": row["status"], **evidence}
+            or not admitted[0]["sequence"] < completed[0]["sequence"]
+            or any(e["run_id"] != run_id or e["task_id"] != row["task_id"] for e in (admitted[0], completed[0]))
+        ):
+            raise ValueError("Native tool row differs from its immutable completed receipt")
+    return digest({"native_tools": rows})
 
 
 def prepare_invalid_read(
-    run: Data, task: Data, entries: list[Data], *, accepted_runtime_contract: str = LEGACY_RUNTIME_CONTRACT
+    run: Data,
+    task: Data,
+    entries: list[Data],
+    *,
+    accepted_runtime_contract: str | None = None,
+    allow_unavailable_source_observations: bool = False,
+    native_tools: list[Data] | None = None,
 ) -> PreparedInvalidRead:
     """The runtime argument is a trusted policy-catalog pin, never an admission-body field."""
     _outside_unit()
@@ -90,6 +253,8 @@ def prepare_invalid_read(
     validator_path = Path(__file__).with_name("run_evidence.py")
     if hashlib.sha256(validator_path.read_bytes()).hexdigest() != LEGACY_QUERY_SHA256:
         raise ValueError("The pinned historical input validator is unavailable")
+    if accepted_runtime_contract is None:
+        accepted_runtime_contract = registered_legacy_runtime(entries, run["id"])
     policy = digest(
         {
             "version": 1,
@@ -167,7 +332,15 @@ def prepare_invalid_read(
             or spent.response_bytes != body.response_bytes
         ):
             raise ValueError("Continuity custody differs from its original frozen scope or consume receipt")
-        AgentCheckpoints._validate_checkpoint(checkpoint, intent)
+        if binding.contract == RETAINED_SDK_RUNTIME_CONTRACT:
+            captured = historical_checkpoint(payload)
+            if (
+                captured.wire_sha256 != original.descriptor.wire_sha256
+                or captured.record.wire_bytes != original.descriptor.wire_bytes
+            ):
+                raise ValueError("Retained checkpoint wire differs from its intent")
+        else:
+            AgentCheckpoints._validate_checkpoint(checkpoint, intent)
         _json(body.response)
         completion = ChatCompletion.model_validate_json(body.response, strict=True)
         if len(completion.choices) != 1 or completion.model != original.descriptor.model or completion.usage is None:
@@ -182,18 +355,25 @@ def prepare_invalid_read(
                 "consume_record_digest": consume["digest"],
             }
         )
-    captured = BoundaryCheckpoint.decode(payload.snapshot.encode(), payload.checkpoint_digest)
+    captured = historical_checkpoint(payload)
     choice = completion.choices[0]
     calls = choice.message.tool_calls or []
     if (
         choice.finish_reason != "tool_calls"
-        or len(calls) != 1
+        or not calls
         or choice.message.content not in {None, ""}
         or choice.message.refusal
         or choice.message.audio is not None
     ):
         raise ValueError("Continuity supports exactly one rejected tool call without a final report or sibling effects")
-    call = calls[0]
+    unavailable: list[Data] = []
+    if len(calls) > 1:
+        if allow_unavailable_source_observations is not True or native_tools is None:
+            raise ValueError("Unavailable source observations require explicit policy and native custody")
+        call, unavailable = unavailable_source_observations(calls, binding, captured, body.response_sha256)
+        tools_digest = native_tool_custody(run["id"], entries, native_tools)
+    else:
+        call = calls[0]
     if call.type != "function" or call.function.name != "read_run_evidence" or call.function.name not in binding.grants:
         raise ValueError("Continuity supports only the granted evidence reader")
     schemas = {t["name"]: t["parameters_json_schema"] for t in captured.record.contract["parameters"]["function_tools"]}
@@ -202,7 +382,7 @@ def prepare_invalid_read(
     arguments = _json(call.function.arguments)
     if not isinstance(arguments, dict) or set(arguments) != {"query"} or not isinstance(arguments["query"], dict):
         raise ValueError("Continuity requires the original object query envelope")
-    from jsonschema.exceptions import ValidationError as SchemaValidationError  # type: ignore[import-untyped]
+    from jsonschema.exceptions import ValidationError as SchemaValidationError
 
     try:
         _schema(schemas[call.function.name], arguments)
@@ -229,7 +409,7 @@ def prepare_invalid_read(
         completion_request_id=original.descriptor.request_id,
         intent_digest=intent["digest"],
         checkpoint_record_digest=checkpoint["digest"],
-        checkpoint_digest=captured.digest,
+        checkpoint_digest=payload.checkpoint_digest,
         response_record_digest=response["digest"],
         consume_record_digest=consume["digest"],
         completions=closures,
@@ -245,8 +425,10 @@ def prepare_invalid_read(
         admission="HOLD",
         holds=holds,
     )
+    if unavailable:
+        proof.update(version=2, unavailable_observations=unavailable, native_tool_custody_digest=tools_digest)
     proof["digest"] = digest(proof)
-    proof = InvalidReadProofV1.model_validate(proof).model_dump(mode="json")
+    proof = PROOF.validate_python(proof).model_dump(mode="json")
     return PreparedInvalidRead(
         _bytes(
             {

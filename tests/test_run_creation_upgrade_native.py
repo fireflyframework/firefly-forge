@@ -45,7 +45,7 @@ async def test_populated_actual_schema26_upgrade_preserves_execution_and_receipt
     assert spec is not None and spec.loader is not None
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
-    assert legacy.SCHEMA_REVISION == 26 and SCHEMA_REVISION == 30
+    assert legacy.SCHEMA_REVISION == 26 and SCHEMA_REVISION == 31
     monkeypatch.setattr(store_module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema26" / "factory.db")
     async with store._unit() as session:

@@ -678,7 +678,7 @@ async def host_refresh_case(tmp_path, *, transport=None):
 
 
 @pytest.mark.parametrize("remote_created", [False, True])
-async def test_cancel_reload_observe_preserves_unknown_and_all_spent_read_only(tmp_path, remote_created):
+async def test_cancel_reload_observe_only_reconciles_retained_unknown_without_new_work(tmp_path, remote_created):
     from firefly_forge.framework_knowledge import FrameworkKnowledge
     from firefly_forge.framework_knowledge_models import FrameworkRefreshCancelInput, FrameworkRefreshResumeInput
     from firefly_forge.framework_knowledge_worker import FrameworkKnowledgeWorker
@@ -699,17 +699,23 @@ async def test_cancel_reload_observe_preserves_unknown_and_all_spent_read_only(t
     cancelled = await reloaded.get_refresh("pyfly", "f" * 32)
     rows = copy.deepcopy({key: row.data for key, row in manager.records.rows.items()})
     requests = len(remote.requests)
+    await FrameworkKnowledgeWorker(reloaded).advance("f" * 32)
+    assert {key: row.data for key, row in manager.records.rows.items()} == rows
+    assert len(remote.requests) == requests
     await reloaded.observe("pyfly", "f" * 32)
     observed = await reloaded.get_refresh("pyfly", "f" * 32)
-    assert observed == cancelled and observed["state"] == "cancelled"
-    assert {key: row.data for key, row in manager.records.rows.items()} == rows
-    assert len(remote.posts) == 1 and len(remote.requests) == requests
-    assert observed["spent_budget"] == held["spent_budget"]
-    assert observed["uncertain_sources"] == 1 and "resume" not in observed["allowed_actions"]
-    with pytest.raises(ValueError, match="uncertain|Observe"):
-        await reloaded.resume(
-            "pyfly", "f" * 32, FrameworkRefreshResumeInput(version=1, expected_revision=observed["revision"])
-        )
+    assert observed["state"] == "cancelled" and observed["request_id"] == cancelled["request_id"]
+    assert len(remote.posts) == 1 and len(remote.requests) > requests
+    assert all(request.method == "GET" for request in remote.requests[requests:])
+    assert all(observed["spent_budget"][key] >= held["spent_budget"][key] for key in held["spent_budget"])
+    assert (await manager._status("pyfly"))["current_corpus"] is None
+    assert observed["uncertain_sources"] == (0 if remote_created else 1)
+    assert ("resume" in observed["allowed_actions"]) is remote_created
+    if not remote_created:
+        with pytest.raises(ValueError, match="uncertain|Observe"):
+            await reloaded.resume(
+                "pyfly", "f" * 32, FrameworkRefreshResumeInput(version=1, expected_revision=observed["revision"])
+            )
 
 
 async def test_discovery_rate_limit_retains_outcome_spent_and_refuses_early_recheck():

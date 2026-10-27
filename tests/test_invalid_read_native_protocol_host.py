@@ -16,7 +16,7 @@ from test_bridge_inflight_cancel import RUN
 
 @pytest.fixture
 async def continuity_case(tmp_path, monkeypatch, request):
-    from firefly_forge import agentic_runtime
+    from firefly_forge import agentic_runtime, agentic_tool_custody
     from firefly_forge import invalid_read_continuities as native
     from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
     from firefly_forge.agentic_checkpoint_invocation import runtime_contract
@@ -171,7 +171,10 @@ async def continuity_case(tmp_path, monkeypatch, request):
                     query=SimpleNamespace(model_dump=lambda **_: dict(query), limit=query.get("limit", 10))
                 )
 
+        custody_lookup = agentic_tool_custody.current_agentic_tool_custody
         with monkeypatch.context() as historical:
+            # This producer predates durable tool custody; resumed execution uses the current implementation.
+            historical.setattr(agentic_tool_custody, "current_agentic_tool_custody", lambda: None)
             historical.setattr(agentic_runtime, "WorkerEvidenceReadInput", HistoricalInput)
             render = agentic_runtime.prompt_text
             historical.setattr(
@@ -182,6 +185,8 @@ async def continuity_case(tmp_path, monkeypatch, request):
                 ),
             )
             await env.engine.execute_run(RUN)
+        assert agentic_tool_custody.current_agentic_tool_custody is custody_lookup
+        assert not any(row.kind.startswith("agentic_tool_") for row in env.journal.records.rows)
         frozen = await env.store.get_run(RUN)
         assert frozen["status"] == "failed" and frozen.get("bridge_completion_hold"), frozen.get("error")
         assert len(posts) == 1
@@ -733,3 +738,135 @@ async def test_concurrent_identical_admission_returns_known_receipt_after_read_c
     assert raced and ticket["status"] == "queued" and len(env.requests.records.rows) == 1
     assert len([row for row in env.journal.records.rows if row.kind == "invalid_read_claim"]) == 1
     assert len(env.posts) == 1
+
+
+@pytest.mark.parametrize("continuity_case", [True], indirect=True)
+async def test_retained_sdk_compatibility_witness_is_bound_to_native_settlement(continuity_case):
+    import hashlib
+
+    from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint, _checkpoint_payload
+    from firefly_forge.invalid_read_continuity import RETAINED_SDK_RUNTIME_CONTRACT
+    from firefly_forge.invalid_read_settlements import settled_requests
+    from firefly_forge.journal import ZERO_HASH, digest
+
+    env = continuity_case
+    previous, replaced = ZERO_HASH, {}
+    original_physical = None
+    for row in env.journal.records.rows:
+        data = row.data
+        old_digest = data["digest"]
+        if row.kind == "agent_checkpoint":
+            payload = data["payload"]
+            checkpoint = BoundaryCheckpoint.decode(payload["snapshot"].encode(), payload["checkpoint_digest"])
+            record = json.loads(checkpoint.canonical_payload)
+            record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+            record["contract"]["parameters"].update(
+                _telemetry_mcp_url_ids=[], _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=[]
+            )
+            for definition in record["contract"]["parameters"]["function_tools"]:
+                assert "tool_kind" in definition and definition["tool_kind"] is None
+            record["usage"].update(
+                input_tokens=200,
+                output_tokens=100,
+                cache_write_tokens=30,
+                output_reasoning_tokens=17,
+                cache_write_1h_tokens=5,
+            )
+            original_physical = _checkpoint_payload(
+                json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+            )
+            payload.update(
+                snapshot=original_physical.decode(), checkpoint_digest=hashlib.sha256(original_physical).hexdigest()
+            )
+            payload["invocation"]["contract"] = RETAINED_SDK_RUNTIME_CONTRACT
+        if row.kind == "agent_consume":
+            for key in ("checkpoint_record_digest", "response_record_digest"):
+                data["payload"][key] = replaced.get(data["payload"][key], data["payload"][key])
+        data["previous_hash"] = previous
+        data["digest"] = previous = digest({k: v for k, v in data.items() if k != "digest"})
+        replaced[old_digest] = previous
+        row.digest, row.previous_hash = previous, data["previous_hash"]
+    from firefly_forge.invalid_read_continuity import prepare_invalid_read, reconstruct_and_migrate
+    from firefly_forge.known_worker_completions import _task
+
+    reordered = copy.deepcopy([row.data for row in env.journal.records.rows])
+    changed = next(entry["payload"] for entry in reordered if entry["kind"] == "agent_checkpoint")
+    source_record = BoundaryCheckpoint(changed["snapshot"].encode(), changed["checkpoint_digest"]).record.model_dump(
+        mode="json"
+    )
+    assert len(source_record["contract"]["parameters"]["function_tools"]) > 1
+    source_record["contract"]["parameters"]["function_tools"].reverse()
+    reordered_raw = _checkpoint_payload(
+        json.dumps(source_record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    )
+    changed.update(snapshot=reordered_raw.decode(), checkpoint_digest=hashlib.sha256(reordered_raw).hexdigest())
+    previous, rebound = ZERO_HASH, {}
+    for entry in reordered:
+        old_digest = entry["digest"]
+        if entry["kind"] == "agent_consume":
+            for key in ("checkpoint_record_digest", "response_record_digest"):
+                entry["payload"][key] = rebound.get(entry["payload"][key], entry["payload"][key])
+        entry["previous_hash"] = previous
+        entry["digest"] = previous = digest({k: v for k, v in entry.items() if k != "digest"})
+        rebound[old_digest] = previous
+    prepared = prepare_invalid_read(
+        await env.store.get_run(RUN), _task(await env.journal._task(RUN, "implement")), reordered
+    )
+    with pytest.raises(ValueError, match="wire|Restored model state"):
+        await reconstruct_and_migrate(prepared)
+    assert len(env.posts) == 1
+    before = copy.deepcopy([row.data for row in env.journal.records.rows])
+    assert await env.journal.entries(RUN) == before
+    historical_row = next(row for row in env.journal.records.rows if row.kind == "agent_checkpoint")
+    intact_digest = historical_row.digest
+    historical_row.digest = "0" * 64
+    try:
+        with pytest.raises(ValueError, match="custody"):
+            await env.journal.entries(RUN)
+    finally:
+        historical_row.digest = intact_digest
+    assert await env.journal.entries(RUN) == before
+    ticket, _ = await admit(env)
+    entries = copy.deepcopy([row.data for row in env.journal.records.rows])
+    assert entries[: len(before)] == before
+    settlement = entries[-2]
+    assert settled_requests(settlement, entries) == [env.frozen["bridge_completion_hold"]["request_id"]]
+    witness = settlement["payload"]["reconstruction"]["compatibility_migration"]
+    assert witness["source_checkpoint"] == hashlib.sha256(original_physical).hexdigest()
+    assert witness["source_runtime"] == RETAINED_SDK_RUNTIME_CONTRACT
+    original_tools = BoundaryCheckpoint(
+        original_physical, hashlib.sha256(original_physical).hexdigest()
+    ).record.contract["parameters"]["function_tools"]
+    assert [item["name"] for item in witness["source_function_tool_kinds"]] == [tool["name"] for tool in original_tools]
+    assert all(item["source_present"] is True for item in witness["source_function_tool_kinds"])
+    assert all(value == [] for value in witness["source_telemetry"].values())
+    for change in ("missing", "target", "derived_checkpoint"):
+        altered = copy.deepcopy(entries)
+        payload = altered[-2]["payload"]
+        reconstruction = payload["reconstruction"]
+        if change == "missing":
+            reconstruction.pop("compatibility_migration")
+        elif change == "target":
+            reconstruction["compatibility_migration"]["target"]["pydantic-ai-slim"] = "2.54.0"
+        else:
+            reconstruction["compatibility_migration"]["derived_checkpoint"] = "0" * 64
+        reconstruction["digest"] = digest({k: v for k, v in reconstruction.items() if k != "digest"})
+        payload["digest"] = digest({k: v for k, v in payload.items() if k != "digest"})
+        with pytest.raises(ValueError, match="compatibility"):
+            settled_requests(altered[-2], altered)
+    await env.continuity.execute(ticket["id"])
+    assert len(env.posts) == 7
+    observed = await env.continuity.get(RUN, ticket["id"])
+    assert observed["status"] == "completed", (observed.get("result"), (await env.store.get_run(RUN)).get("error"))
+    assert len(env.journal.sandboxes.rows) == 13
+    assert [row.data for row in env.journal.sandboxes.rows][:11] == env.historical_rows
+    latest = [row.data["payload"] for row in env.journal.records.rows if row.kind == "agent_checkpoint"][-1]
+    resumed = BoundaryCheckpoint.decode(latest["snapshot"].encode(), latest["checkpoint_digest"])
+    assert resumed.record.usage["output_reasoning_tokens"] == 17
+    assert resumed.record.usage["cache_write_1h_tokens"] == 5
+    assert resumed.usage.requests == 6 and resumed.usage.tool_calls == 6
+    assert resumed.resume_kwargs()["usage_limits"].request_limit == 100
+    assert resumed.resume_kwargs()["usage_limits"].tool_calls_limit == 300
+    await env.continuity.execute(ticket["id"])
+    assert len(env.posts) == 7 and len(env.journal.sandboxes.rows) == 13
+    assert [row.data for row in env.journal.records.rows][: len(before)] == before

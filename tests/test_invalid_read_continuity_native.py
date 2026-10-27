@@ -21,7 +21,7 @@ from test_agentic_restore_receipt_native import seed_restore_workspace
 from test_bridge_completion_callbacks import CAPABILITY
 from test_bridge_completion_native import prepared
 
-from firefly_forge import agentic_runtime
+from firefly_forge import agentic_runtime, agentic_tool_custody
 from firefly_forge import invalid_read_continuities as native
 from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.agentic_checkpoint_invocation import runtime_contract
@@ -194,7 +194,10 @@ async def native_continuity(store, tmp_path, monkeypatch):
             model = provider.model(http_client=http)
             monkeypatch.setattr(provider, "model", lambda **kwargs: model)
             try:
+                custody_lookup = agentic_tool_custody.current_agentic_tool_custody
                 with monkeypatch.context() as historical, models.override_allow_model_requests(True):
+                    # Match the published pre-custody producer only; restore current custody before activation.
+                    historical.setattr(agentic_tool_custody, "current_agentic_tool_custody", lambda: None)
                     historical.setattr(agentic_runtime, "WorkerEvidenceReadInput", HistoricalInput)
                     render = agentic_runtime.prompt_text
                     historical.setattr(
@@ -205,6 +208,9 @@ async def native_continuity(store, tmp_path, monkeypatch):
                         ),
                     )
                     await engine.execute_run(run_id)
+                assert agentic_tool_custody.current_agentic_tool_custody is custody_lookup
+                historical_entries = await journal.entries(run_id)
+                assert not any(entry["kind"].startswith("agentic_tool_") for entry in historical_entries)
                 frozen = await store.get_run(run_id)
                 assert frozen["status"] == "failed" and frozen["bridge_completion_hold"] and len(posts) == 1
                 initial_commands = copy.deepcopy(await journal.sandbox_executions(run_id))

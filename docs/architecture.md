@@ -520,6 +520,12 @@ The restore ticket binds the original checkpoint, intent and selected result rec
 
 Boundary snapshots retain lossless canonical native history within an explicit 8 MiB raw bound. New records above 64 KiB use the version-3 shared-history zlib/base64 codec within the existing 192 KiB snapshot, 256 KiB WAL and 4 MiB per-run retention limits. Equal native history arrays are stored once and reconstructed losslessly; the expanded canonical record keeps its full size/hash binding. This reduces duplication without promising unbounded history or chunked overflow storage. Canonical envelope/base64, raw SHA-256, size, end-of-stream and trailing-data checks precede restoration. Current credential admission scans decoded records at capture, consume, restore and generic journal read without exposing raw history in returned WAL or logs. Generic journal reads suspend ambient unit bindings and inspect one bounded record at a time under current reader/configuration guards. Historical source admission V11 added the decoder to its explicit closure; the checkpoint runtime contract binds custody producer and consumer. The changed version-3 boundary needs fresh source qualification before adoption.
 
+Same-attempt [invalid-read continuity](invalid-read-continuity.md) has a separate registered historical-SDK adapter. It verifies immutable native custody, public history and budget round trips, then derives new checkpoint bytes for the exact supported SDK pair. Its witness binds the original checkpoint, both full contracts, the exact null-or-empty telemetry provenance and the named projection. The original wire must match before a sealed parser receives the already consumed response. The subsequent evidence-tool migration permits only its strict schema and description change. Original actor, source, configuration, unknown-effect custody and execution limits remain checked through current finite-lease admission.
+
+Unavailable pure source observations use a separate version-2 proof, request and settlement. A default-off administrator policy and per-request acknowledgement permit only pinned, granted `list_files` siblings. Sealed adapters return `observation_unavailable` without invoking the original reader or inferring its result. Original response bytes, call IDs, arguments and source custody stay bound. SDK usage advances once for the consumed response and once per original tool call. Singleton continuity and ordinary restore keep their existing contracts.
+
+Credential inspection has no restore authority. For the known SDK epochs, generic journal reads verify native row and chain custody and pass the original bounded canonical JSON to current credential screening. They retain all telemetry and usage fields. Ordinary checkpoint decode and restore remain version-strict; neither credential inspection nor SDK recognition grants another consumption or execution claim. Inclusive reasoning and one-hour cache counters remain preserved without increasing their parent token totals.
+
 Known-worker output settlement is a separate operator-owned native transaction. A complete current-contract HTTP/checkpoint/consume closure must match its declared final output and exact stored typed worker feedback. A hash-only reviewed candidate binds the current operator, task, source/configuration and journal cut. Its immutable receipt retains the original observed hold; the receipt and only its resolved hold projection commit together. No model replay, source adoption, verification, resume or new execution grant is performed. Unknown custody and normal reports without worker feedback remain ineligible for this first path. Whole-journal reads retain inherited capacity boundaries; this is not an elastic-storage claim. See [known-output settlement](checkpoint-verification.md#settle-a-known-worker-output-without-replay).
 
 `BridgeProvider.execute()` creates a separate pending-request set for each invocation. Agentic task-graph children inherit that shared object through a context variable. Each completion tracks its own attempt before transport and clears it after a validated response, an exhausted stream or a known quota/pause response. Completing one request cannot clear another pending request. If the task graph unwraps a cancellation exception, the outer provider checks its own set before returning cancellation to the Engine. Both context tokens are reset when their scopes end. The Engine then records an unresolved submission against the original journal intent before finishing local cancellation. Regression controls cover the real `FireflyAgent` path, concurrent invocations on a shared provider, successive completions and restart through the native Store.
@@ -771,3 +777,25 @@ flowchart TB
 ```
 
 A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation and no issues with a supported verdict. Unsupported claims or uncertainty trigger one AI correction followed by the response. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
+
+### Native Agentic tool custody
+
+`AgenticToolCustody` is scoped to one native implementation invocation. The factory installs `AgenticToolCapability` on the actual `FireflyAgent`, using its public `AbstractCapability.wrap_tool_execute` hook. Exact model-facing call IDs, raw argument encodings and SDK-validated arguments are retained together with task attempt, invocation/checkpoint/request-history digests, current authority binding, and before/after workspace identities. Checkpoint-enabled execution uses the retained invocation identity; other native invocations receive a fresh identity and refuse reuse from a different scope.
+
+```mermaid
+sequenceDiagram
+    participant A as Agentic capability
+    participant D as Native journal
+    participant T as Tool callback
+    A->>A: Current authority and source admission
+    A->>D: Commit exact tool intent
+    A->>T: Invoke once outside database unit
+    T-->>A: Actual result
+    A->>A: Current authority, credentials and source
+    A->>D: Commit result or artifact descriptor
+    A-->>A: Return admitted result
+```
+
+The append-only `agentic_tool_*` journal domain is independent of broker invocation rows and command budgets. Native run locks serialize intent/result writes, while callbacks, source inspection and artifact IO occur outside database units. Separate effect-link rows are appended in the nested effect's transaction and leave its original row/WAL payload unchanged. The result contains exact references to those links. Reuse verifies the full journal chain and scalar envelopes before current credential and source admission. An uncertain callback never becomes eligible for automatic reexecution.
+
+Small JSON values remain inline. Larger values are retained as owned, private, single-link regular JSON artifacts with content-addressed names, durable file/directory synchronization and verified readback. Journal descriptors retain their encoding, size and SHA-256. Missing native capture context and tools outside the initial nine text handlers are explicit usage metadata, not an implied durability guarantee. See [agent lifecycle](agent-lifecycle.md#durable-native-tool-observations) for coverage and recovery boundaries.

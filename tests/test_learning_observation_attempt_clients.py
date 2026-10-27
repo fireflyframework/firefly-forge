@@ -53,6 +53,8 @@ def test_invalid_v2_input_never_dispatches_or_reflects_sensitive_fields(monkeypa
 def test_native_v2_exact_request_clients_and_lost_response(
     tmp_path, postgres_schema, monkeypatch, canon_reads, interface
 ):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -81,7 +83,10 @@ def test_native_v2_exact_request_clients_and_lost_response(
     ) as http:
 
         async def seed():
-            return await admitted_projection(http.app.state.store, tmp_path, remote_service=canon_reads)
+            remote = await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
+            return await admitted_projection(
+                http.app.state.store, tmp_path, remote_service=canon_reads, framework_remote=remote
+            )
 
         service, record, _ = http.portal.call(seed)
         actual_client = service.knowledge.client

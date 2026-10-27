@@ -30,6 +30,8 @@ CONNECTOR = "local-repository-tools"
 
 @asynccontextmanager
 async def configured(tmp_path, monkeypatch, *, scheme="https"):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     origin = scheme + "://127.0.0.1:49200"
     monkeypatch.setenv("FORGE_OAUTH_LOCAL_DEVELOPMENT", "1")
     monkeypatch.setenv("FORGE_OIDC_ALLOW_LOOPBACK_HTTP", "true")
@@ -49,6 +51,7 @@ async def configured(tmp_path, monkeypatch, *, scheme="https"):
             assert (await browser.post(BASE + "/auth/login", json={"token": TOKEN})).status_code == 200
             await browser.get(BASE + "/auth/session")
             browser.headers["X-XSRF-TOKEN"] = browser.cookies["XSRF-TOKEN"]
+            await activate_native_client_target(app.state.store, tmp_path / "framework-prerequisite")
 
             async def request(method, path, **kwargs):
                 result = await browser.request(method, BASE + path, **kwargs)

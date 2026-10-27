@@ -47,7 +47,9 @@ Part counts describe admitted text windows. The optional `excluded_parts` count 
 
 Local operational acceptance subsequently verified all 6,986 admitted parts in published flycanon 26.10.6 using the local nomic embedding model. Authenticated native searches returned documentation, example code and API symbols for both audited releases. The ready corpora retained their exact version, commit, manifest and source citations. This qualifies the framework-knowledge component; each installation must establish its own corpus readiness and product acceptance.
 
-Cancelling an old operation preserves its sources, submission intents, unknown outcomes and spent usage. Observing a cancelled operation is read-only. A separately reviewed collector policy can admit a distinct corpus after cancellation; it does not retry an uncertain submission or establish success for the old operation. Managed installation authorization remains a separate version 1 grant protocol.
+Cancelling an operation stops submissions and preserves its sources, submission intents, unknown outcomes and spent usage. If an outcome is uncertain, an administrator can select **Observe** to look for the original source in flycanon. This sends read requests only, charges them to the existing allowance and keeps the operation cancelled. A matching receipt clears that uncertainty; it does not resume work, verify retrieval or activate the corpus. If no receipt is found, the hold remains. Background workers leave cancelled operations untouched.
+
+A separately reviewed collector policy can admit a distinct corpus after cancellation; it does not retry an uncertain submission or establish success for the old operation. Managed installation authorization remains a separate version 1 grant protocol.
 
 Identical source parts can share flycanon content storage. Forge validates the canonical source, content hash and corpus scope while retaining each original path, Git blob and part identity. Source-scoped retrieval applies admitted membership before ranking, then validates returned citations against those retained identities. A shared content record does not merge framework versions or source provenance.
 
@@ -87,7 +89,7 @@ flowchart TB
 
 <p class="forge-flow-caption" id="framework-refresh-flow-guide">Follow the refresh from top to bottom. On narrow screens, scroll horizontally or focus the diagram and use the arrow keys. Ready knowledge remains separate from generation activation.</p>
 
-During an active import, progress counts are derived from durable inventory and part states without changing the operation ledger or charging its work budget. Inventory totals grow as files are retained, and verified exclusions can reduce the admitted totals. The lifecycle revision remains an opaque action token; final ready counts belong to the completed manifest. Cancelled and historical terminal observations retain their saved responses.
+During an active import, progress counts are derived from durable inventory and part states without changing the operation ledger or charging its work budget. Inventory totals grow as files are retained, and verified exclusions can reduce the admitted totals. The lifecycle revision remains an opaque action token; final ready counts belong to the completed manifest. Reading a cancelled or terminal operation returns its saved counts. The explicit **Observe** action can reconcile an uncertain cancelled submission, as described above.
 
 Request, byte and time work budgets are configurable, with durable spent usage. Cursor page sizes are response windows, not complete-corpus caps. The interface exposes renewal or cancellation only when the retained operation allows that action.
 

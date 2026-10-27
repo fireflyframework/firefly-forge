@@ -31,8 +31,8 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models import ModelRequestContext
-from pydantic_ai.tools import RunContext
+from pydantic_ai.models import ModelRequestContext, ModelRequestParameters
+from pydantic_ai.tools import RunContext, ToolDefinition
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 MAX_PAYLOAD = 192 * 1024
@@ -79,7 +79,8 @@ def _cost(value: Any, label: str) -> None:
 
 
 def _budgets(usage: dict[str, Any], limits: dict[str, Any]) -> None:
-    if set(usage) != {field.name for field in dataclasses.fields(RunUsage)}:
+    required = {field.name for field in dataclasses.fields(RunUsage)}
+    if not required <= set(usage) <= required | {"output_reasoning_tokens", "cache_write_1h_tokens"}:
         raise ValueError("Checkpoint usage has missing or unknown counters")
     for name, value in usage.items():
         if name == "cost":
@@ -312,6 +313,108 @@ class BoundaryCheckpoint:
     def __post_init__(self) -> None:
         if type(self.payload) is not bytes:
             raise ValueError("Checkpoint payload must be immutable bytes")
+
+    @classmethod
+    def credential_text(cls, payload: bytes, digest: str, *, historical_custody: bool = False) -> str:
+        """Inspect known canonical bytes for secrets without granting native restore compatibility."""
+        if type(payload) is not bytes or not 1 <= len(payload) <= MAX_PAYLOAD:
+            raise ValueError("Checkpoint credential payload exceeds its bound")
+        if hashlib.sha256(payload).hexdigest() != digest:
+            raise ValueError("Checkpoint encoded digest differs")
+        raw = _checkpoint_record(payload)
+        record = _record(raw)
+        if record.compatibility == _compatibility():
+            return cls.decode(payload, digest).canonical_payload.decode("utf-8")
+        if (
+            historical_custody is not True
+            or record.compatibility != {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
+            or _encoded(record.model_dump(mode="json")) != raw
+            or set(record.usage)
+            != {field.name for field in dataclasses.fields(RunUsage)}
+            | {"output_reasoning_tokens", "cache_write_1h_tokens"}
+        ):
+            raise ValueError("Historical checkpoint credential inspection requires exact known native custody")
+        _native_round_trip(USAGE, record.usage)
+        _native_round_trip(LIMITS, record.limits)
+        _budgets(record.usage, record.limits)
+        return raw.decode("utf-8")
+
+    @classmethod
+    def migrate_public_compatibility(cls, payload: bytes, digest: str) -> BoundaryCheckpoint:
+        """Derive the registered 2.58-to-2.55 frontier; ordinary restore remains exact-version only."""
+        source = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
+        target = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.55.0"}
+        if (
+            type(payload) is not bytes
+            or not 1 <= len(payload) <= MAX_PAYLOAD
+            or hashlib.sha256(payload).hexdigest() != digest
+            or _compatibility() != target
+        ):
+            raise ValueError("No registered checkpoint compatibility migration exists")
+        raw = _checkpoint_record(payload)
+        record = _record(raw)
+        if (
+            record.compatibility != source
+            or _encoded(record.model_dump(mode="json")) != raw
+            or set(record.usage)
+            != {field.name for field in dataclasses.fields(RunUsage)}
+            | {"output_reasoning_tokens", "cache_write_1h_tokens"}
+        ):
+            raise ValueError("Historical checkpoint runtime or canonical encoding differs")
+        for history in (record.history, record.request_history):
+            try:
+                serialized = serialize_model_messages(deserialize_model_messages(history))
+            except ValidationError:
+                raise ValueError("Checkpoint native history schema differs") from None
+            if _encoded(serialized) != _encoded(history):
+                raise ValueError("Checkpoint compatibility migration changed native history")
+        data = record.model_dump(mode="json")
+        from firefly_forge.agentic_checkpoint_invocation import STATIC_TOOLS
+
+        parameters = data["contract"]["parameters"]
+        if type(parameters) is not dict:
+            raise ValueError("Historical SDK parameter fields differ")
+        defaults: dict[str, list[str] | None] = {
+            "_telemetry_mcp_url_ids": None,
+            "_telemetry_mcp_url_toolset_ids": [],
+            "_telemetry_mcp_url_tool_names": None,
+        }
+        parameter_fields = {field.name for field in dataclasses.fields(ModelRequestParameters)} - {
+            "deferred_capability_ids",
+            "revealed_tool_names",
+        }
+        if set(parameters) != parameter_fields | defaults.keys():
+            raise ValueError("Historical SDK parameter fields differ")
+        for name, expected in defaults.items():
+            value = parameters.get(name)
+            if name not in parameters or not (
+                (type(value) is list and not value) or (expected is None and value is None)
+            ):
+                raise ValueError("Historical SDK telemetry provenance is not a registered empty variant")
+            parameters.pop(name)
+        definitions = parameters["function_tools"]
+        if type(definitions) is not list or any(
+            type(definition) is not dict or type(definition.get("name")) is not str for definition in definitions
+        ):
+            raise ValueError("Historical SDK function-tool definitions differ")
+        names = [definition["name"] for definition in definitions]
+        if not names or len(names) != len(set(names)) or not set(names) <= STATIC_TOOLS:
+            raise ValueError("Historical SDK contract requires unique static function tools")
+        tool_fields = {field.name for field in dataclasses.fields(ToolDefinition)}
+        for definition in definitions:
+            if (
+                set(definition) not in (tool_fields, tool_fields - {"tool_kind"})
+                or definition.get("tool_kind") is not None
+                or definition.get("kind") != "function"
+                or definition.get("toolset_id") != "<agent>"
+                or definition.get("capability_id") is not None
+                or definition.get("defer_loading") is not False
+            ):
+                raise ValueError("Historical SDK function-tool provenance differs")
+            definition["tool_kind"] = None
+        data["compatibility"] = target
+        derived = _checkpoint_payload(_encoded(data))
+        return cls.decode(derived, hashlib.sha256(derived).hexdigest())
 
     @classmethod
     def decode(cls, payload: bytes, digest: str) -> BoundaryCheckpoint:

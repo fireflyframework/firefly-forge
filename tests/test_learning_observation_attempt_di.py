@@ -20,6 +20,8 @@ canon_reads = canon_reads_fixture
 
 
 def test_native_observation_routes_use_the_injected_service_graph(tmp_path, postgres_schema, monkeypatch, canon_reads):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -41,7 +43,10 @@ def test_native_observation_routes_use_the_injected_service_graph(tmp_path, post
         assert attempts.ledger is context.get_bean(LearningLedger) is projection.ledger
 
         async def seed():
-            return await admitted_projection(http.app.state.store, tmp_path, remote_service=canon_reads)
+            remote = await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
+            return await admitted_projection(
+                http.app.state.store, tmp_path, remote_service=canon_reads, framework_remote=remote
+            )
 
         _, record, _ = http.portal.call(seed)
         status_response = http.get(f"learning/records/{record['id']}/projection")
