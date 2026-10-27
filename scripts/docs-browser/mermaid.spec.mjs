@@ -176,12 +176,15 @@ test("Mermaid survives theme changes, instant navigation and browser history", a
       return window.diagramDocument;
     });
     const original = await assertDiagrams(page, 1);
+    expect(original[0].labelPixels.length).toBeGreaterThan(0);
     await page.getByRole("link", { name: "Next diagram", exact: true }).click();
     await expect(page).toHaveURL(/\/next\/$/);
     expect(await page.evaluate(() => window.diagramDocument)).toBe(
       originalDocument,
     );
     const next = await assertDiagrams(page, 1);
+    expect(next[0].labelPixels.length).toBeGreaterThan(0);
+    expect(Math.min(...next[0].labelPixels)).toBeGreaterThanOrEqual(12);
     await page.locator('label[title="Switch to dark appearance"]').click();
     await expect(page.locator("body")).toHaveAttribute(
       "data-md-color-scheme",

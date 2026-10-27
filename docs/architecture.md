@@ -762,6 +762,8 @@ Generation is optional presentation work with one total deadline and bounded per
 
 The writer and reviewer are separate `FireflyAgent` invocations using the same selected communication profile. The reviewer sees only the exact structured candidate and bounded recorded facts. The candidate is quoted data, not instructions. Its strict result contains a verdict, issue categories, fact references and a short rationale. It checks the whole passage for supported negations, contradictions, misleading check results, unrecorded actions and human decisions. It neither rewrites the candidate nor uses tools.
 
+<div class="forge-flow" role="region" aria-label="Semantic review of source-control messages" aria-describedby="semantic-review-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
 flowchart TB
     F["Recorded facts"] --> W["Draft complete card"]
@@ -776,11 +778,17 @@ flowchart TB
     I --> P["SCM write boundary"]
 ```
 
+</div>
+
+<p class="forge-flow-caption" id="semantic-review-flow-guide">A semantic verdict is followed by current facts and authority checks before the write intent. Focus and scroll the diagram on a narrow screen.</p>
+
 A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation and no issues with a supported verdict. Unsupported claims or uncertainty trigger one AI correction followed by the response. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
 
 ### Native Agentic tool custody
 
 `AgenticToolCustody` is scoped to one native implementation invocation. The factory installs `AgenticToolCapability` on the actual `FireflyAgent`, using its public `AbstractCapability.wrap_tool_execute` hook. Exact model-facing call IDs, raw argument encodings and SDK-validated arguments are retained together with task attempt, invocation/checkpoint/request-history digests, current authority binding, and before/after workspace identities. Checkpoint-enabled execution uses the retained invocation identity; other native invocations receive a fresh identity and refuse reuse from a different scope.
+
+<div class="forge-flow" role="region" aria-label="Native Agentic tool custody" aria-describedby="native-tool-custody-guide" tabindex="0" markdown="1">
 
 ```mermaid
 sequenceDiagram
@@ -795,6 +803,10 @@ sequenceDiagram
     A->>D: Commit result or artifact descriptor
     A-->>A: Return admitted result
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="native-tool-custody-guide">The intent is committed before the callback. Current authority, credentials and source are checked again before the result is retained and returned. Focus and scroll the diagram on a narrow screen.</p>
 
 The append-only `agentic_tool_*` journal domain is independent of broker invocation rows and command budgets. Native run locks serialize intent/result writes, while callbacks, source inspection and artifact IO occur outside database units. Separate effect-link rows are appended in the nested effect's transaction and leave its original row/WAL payload unchanged. The result contains exact references to those links. Reuse verifies the full journal chain and scalar envelopes before current credential and source admission. An uncertain callback never becomes eligible for automatic reexecution.
 
