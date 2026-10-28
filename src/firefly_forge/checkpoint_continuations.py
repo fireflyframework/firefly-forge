@@ -367,9 +367,11 @@ class CheckpointContinuations:
         from firefly_forge.bridge_completion_models import CompletionDescriptor
         from firefly_forge.pending_checkpoint_reconstruction import reconstruct_pending_request
 
-        await reconstruct_pending_request(
-            cp, CompletionDescriptor.model_validate(frontier["intent"]["payload"]["descriptor"]), run
-        )
+        with epoch_scope(epoch):
+            async with mode_execution_scope(self.journal, run_id):
+                await reconstruct_pending_request(
+                    cp, CompletionDescriptor.model_validate(frontier["intent"]["payload"]["descriptor"]), run
+                )
         value = dict(
             version=1,
             kind="checkpoint_continuation_candidate",
