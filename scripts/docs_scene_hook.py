@@ -54,6 +54,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/development-workflow.spec.ts",
     "studio/tests/framework-knowledge.spec.ts",
     "studio/tests/invalid-read-recovery.spec.ts",
+    "studio/tests/runner-setup.spec.ts",
 }
 
 
@@ -164,8 +165,13 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("checkpoint-continuation-") and stage not in checkpoint_stages:
             raise ValueError("Unknown checkpoint continuation capture stage: " + name)
+        runner_stages = {"runner-setup-execution", "runner-setup-processes", "runner-setup-review"}
+        if stage.startswith("runner-setup-") and stage not in runner_stages:
+            raise ValueError("Unknown runner setup capture stage: " + name)
         expected_producer = (
-            "studio/tests/invalid-read-recovery.spec.ts"
+            "studio/tests/runner-setup.spec.ts"
+            if stage in runner_stages
+            else "studio/tests/invalid-read-recovery.spec.ts"
             if stage in recovery_stages | checkpoint_stages
             else "studio/tests/framework-knowledge.spec.ts"
             if stage in framework_stages

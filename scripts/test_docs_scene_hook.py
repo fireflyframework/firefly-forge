@@ -86,6 +86,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/development-workflow.spec.ts": "fixture development workflow producer",
                 "studio/tests/framework-knowledge.spec.ts": "fixture framework generation producer",
                 "studio/tests/invalid-read-recovery.spec.ts": "fixture continuity recovery producer",
+                "studio/tests/runner-setup.spec.ts": "fixture runner setup producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -180,15 +181,23 @@ class WalkthroughTests(unittest.TestCase):
                 "checkpoint-continuation-policy",
                 "checkpoint-continuation-review",
                 "checkpoint-continuation-status",
+                "runner-setup-execution",
+                "runner-setup-processes",
+                "runner-setup-review",
             ):
+                producer = (
+                    "studio/tests/runner-setup.spec.ts"
+                    if stage.startswith("runner-setup-")
+                    else "studio/tests/invalid-read-recovery.spec.ts"
+                )
                 name = stage + "-mobile-light.png"
                 (asset.parent / name).write_bytes(asset.read_bytes())
                 capture = {
                     **record,
                     "stage": stage,
                     "path": "assets/screenshots/" + name,
-                    "producer": "studio/tests/invalid-read-recovery.spec.ts",
-                    "producer_sha256": producers["studio/tests/invalid-read-recovery.spec.ts"],
+                    "producer": producer,
+                    "producer_sha256": producers[producer],
                 }
                 manifest["captures"][name] = capture
                 save()
@@ -551,6 +560,8 @@ class WalkthroughTests(unittest.TestCase):
             framework_capture.write_text("fixture framework knowledge producer")
             recovery_capture = root / "studio/tests/invalid-read-recovery.spec.ts"
             recovery_capture.write_text("fixture continuity recovery producer")
+            runner_capture = root / "studio/tests/runner-setup.spec.ts"
+            runner_capture.write_text("fixture runner setup producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -574,6 +585,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/development-workflow.spec.ts": sha(workflow_capture),
                     "studio/tests/framework-knowledge.spec.ts": sha(framework_capture),
                     "studio/tests/invalid-read-recovery.spec.ts": sha(recovery_capture),
+                    "studio/tests/runner-setup.spec.ts": sha(runner_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

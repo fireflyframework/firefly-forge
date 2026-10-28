@@ -119,6 +119,7 @@ import { Administration } from "./Administration";
 import { Analytics } from "./Analytics";
 import { LearningConfiguration } from "./LearningConfiguration";
 import { SearchConfiguration } from "./SearchConfiguration";
+import { RunnerSetup } from "./RunnerSetup";
 import { ExternalTools } from "./ExternalTools";
 import { BrowserConnections } from "./BrowserConnections";
 import { readResume, resumeKey } from "./ConnectionOAuthSettings";
@@ -160,6 +161,7 @@ type Page =
   | "search"
   | "learning"
   | "analytics"
+  | "runners"
   | "browser-connections"
   | "external-tools";
 const working = (status: string) =>
@@ -668,6 +670,7 @@ export default function App() {
     search: "Internet search",
     learning: "Learning",
     analytics: "Structured analytics",
+    runners: "Runners & processes",
     "external-tools": "External tools",
     "browser-connections": "Connected accounts",
   };
@@ -1202,6 +1205,14 @@ export default function App() {
             <SearchConfiguration
               connection={connection}
               session={identity.session}
+            />
+          )}
+          {page === "runners" && (
+            <RunnerSetup
+              connection={connection}
+              session={identity.session}
+              repositories={repositories}
+              onAgents={() => navigate("workflow")}
             />
           )}
           {page === "learning" && (
@@ -1865,7 +1876,7 @@ export function NewProduct({
     setError("");
     let epoch: number | null = null;
     try {
-      const checks = parseCommands(commands);
+      const checks = parseCommands(commands, { workDurationV2: true });
       if (step === 1 && frozenArchitecture && !frozenArchitecture.reviewed)
         throw new Error(
           "Review this product’s saved architecture in Product definition before starting a run.",

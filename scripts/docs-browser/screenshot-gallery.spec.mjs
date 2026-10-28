@@ -33,6 +33,7 @@ for (const width of [1440, 390, 375]) {
         "console-tour",
         "search-providers",
         "external-tools-tour",
+        "sandbox",
         "quickstart",
         "guide",
       ]) {
@@ -81,6 +82,7 @@ for (const width of [1440, 390, 375]) {
               "console-tour",
               "search-providers",
               "external-tools-tour",
+              "sandbox",
             ].includes(guide),
           );
         const links = article.locator(".forge-shot__link:visible");

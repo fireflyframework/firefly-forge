@@ -73,9 +73,16 @@ export async function captureWalkthrough(
     options.producer === "studio/tests/docs-walkthrough.spec.ts" &&
     stage === "agent-question-retained" &&
     options.boundary === undefined;
+  const runnerInitial =
+    options.framing === "initial" &&
+    options.producer === "studio/tests/runner-setup.spec.ts" &&
+    device === "mobile" &&
+    ["runner-setup-execution", "runner-setup-processes"].includes(stage) &&
+    options.boundary === undefined;
   if (
     options.framing !== undefined &&
     !questionInitial &&
+    !runnerInitial &&
     (options.framing !== "initial" ||
       options.producer !== "studio/tests/docs-coding-check-recovery.spec.ts" ||
       options.boundary !== "dialog" ||
@@ -108,6 +115,9 @@ export async function captureWalkthrough(
       .locator(".wizard-field-scroll")
       .evaluateAll((nodes) => nodes.forEach((node) => (node.scrollTop = 0)));
   const expectedStep: Record<string, string> = {
+    "runner-setup-execution": "Execution",
+    "runner-setup-processes": "Processes",
+    "runner-setup-review": "Review",
     "connect-workspace": "Workspace",
     "connect-coding-ai": "Coding AI",
     "connect-repositories": "Repositories",
@@ -206,7 +216,44 @@ export async function captureWalkthrough(
     }
   }
   let control = null;
-  if (!questionInitial && (await action.isVisible())) {
+  if (runnerInitial) {
+    await page.locator(".runner-wizard").evaluate((node) => {
+      const main = node.closest("main")!,
+        header = document
+          .querySelector(".workspace-main > header")!
+          .getBoundingClientRect();
+      main.scrollTop += node.getBoundingClientRect().top - header.bottom - 12;
+    });
+    for (const selector of [
+      ".runner-wizard .wizard-heading h2",
+      stage === "runner-setup-execution"
+        ? "#runner-mode"
+        : ".runner-monitor-choice",
+    ]) {
+      expect(
+        await page.locator(selector).evaluate((node) => {
+          const box = node.getBoundingClientRect(),
+            header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          return (
+            box.top >= header.bottom &&
+            box.bottom <= footer.top &&
+            node.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            )
+          );
+        }),
+      ).toBe(true);
+    }
+  }
+  if (!questionInitial && !runnerInitial && (await action.isVisible())) {
     await action.scrollIntoViewIfNeeded();
     if (options.focusSelector) {
       await page.locator(options.focusSelector).evaluate((element) => {
@@ -292,7 +339,7 @@ export async function captureWalkthrough(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  if (options.framing === "initial" && !questionInitial) {
+  if (options.framing === "initial" && !questionInitial && !runnerInitial) {
     const modal = page.locator("dialog:modal");
     await modal.evaluate((node) => {
       node.scrollTop = 0;
@@ -451,6 +498,7 @@ export async function captureWalkthrough(
     "studio/tests/development-workflow.spec.ts",
     "studio/tests/framework-knowledge.spec.ts",
     "studio/tests/invalid-read-recovery.spec.ts",
+    "studio/tests/runner-setup.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {
