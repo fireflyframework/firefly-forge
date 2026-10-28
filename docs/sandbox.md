@@ -41,7 +41,7 @@ Use **Check availability** after saving. A successful check establishes that the
 
 ### Work duration and process ownership
 
-New settings select the explicit `forge-work-duration-v2` policy. Its `timeout_seconds` is `null` by default: work continues until completion, cancellation or loss of execution authority. If a project or an individual operation explicitly chooses a deadline, the earliest chosen deadline applies. There is no fixed one-hour ceiling on a chosen work deadline.
+Newly admitted runs capture the explicit `forge-work-duration-v2` policy, including runs that use older repository defaults. Its `timeout_seconds` is `null` by default: work continues until completion, cancellation or loss of execution authority. If a project or an individual operation explicitly chooses a deadline, the earliest chosen deadline applies. There is no fixed one-hour ceiling on a chosen work deadline.
 
 ```json
 {
@@ -54,7 +54,7 @@ New settings select the explicit `forge-work-duration-v2` policy. Its `timeout_s
 
 Work duration and owner liveness answer different questions. A renewable heartbeat confirms that the authorized controller still owns a process. Losing that controller starts orphan cleanup; a healthy heartbeat does not extend an explicitly chosen work deadline. Control requests, readiness checks and cleanup retain their own finite timeouts, so a broken connection cannot leave a control operation waiting indefinitely.
 
-Saving new defaults does not rewrite an existing run, checkpoint or command receipt. A policy without `work_duration` follows its original finite-duration contract. Recovery preserves that captured contract and its remaining usage.
+Saving new defaults does not rewrite an existing run, checkpoint or command receipt. An existing captured run without `work_duration` follows its original finite-duration contract. Recovery preserves that captured contract and its remaining usage. For new runs, choose a deadline through `work_duration` when one is required; the old runner `timeout` field and legacy provider timeout defaults do not silently supply a new work deadline.
 
 Work without a deadline also needs an execution boundary that supports it. Plain Docker execution currently refuses an uncapped command before recording a command intent: losing the Docker client does not guarantee that its container stops. Choose a work deadline or use a supported host path; forge never inserts a hidden deadline or switches runners. Pool execution needs its independently verified owner watchdog before accepting uncapped work. Check runner availability before starting the project. Ordinary host commands retain their documented crash-reconciliation limitation; the optional host process monitor has its own guardian and owner heartbeats.
 

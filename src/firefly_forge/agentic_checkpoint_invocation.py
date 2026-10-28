@@ -108,7 +108,6 @@ def runtime_contract() -> str:
                     "checkpoint_continuation_controllers.py",
                     "agent_checkpoint_models.py",
                     "checkpoint_work_duration.py",
-                    "work_duration_models.py",
                     "models.py",
                     "bridge_completion_models.py",
                     "bridge_completions.py",
