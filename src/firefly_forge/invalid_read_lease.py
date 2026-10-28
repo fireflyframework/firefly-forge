@@ -21,6 +21,7 @@ class ContinuityLeasePolicyV1(StrictRecord):
     version: Literal[1]
     enabled: bool = False
     allow_unavailable_source_observations: bool = False
+    allow_pre_admission_recovery: bool = False
     max_window_seconds: int = Field(default=60, ge=1, le=7200)
     max_tickets_per_run: int = Field(default=50, ge=1)
     max_pending_tickets: int = Field(default=500, ge=1)

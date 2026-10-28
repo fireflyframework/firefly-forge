@@ -153,6 +153,14 @@ class PreparedWorkerCompletion:
 def _unsettled(entries: list[Data], run_id: str, *, restored: bool = False) -> dict[str, list[Data]]:
     closed: set[str] = set()
     for entry in entries:
+        if entry["kind"] == "provider_rejection_recovery":
+            from firefly_forge.provider_rejection_recoveries import settled_rejection
+
+            for request_id in settled_rejection(entry, entries):
+                if request_id in closed:
+                    raise ValueError("A rejected completion cannot acquire a second settlement")
+                closed.add(request_id)
+            continue
         if entry["kind"] == "invalid_read_settlement":
             from firefly_forge.invalid_read_settlements import settled_requests
 

@@ -10,6 +10,7 @@ from firefly_forge.invalid_read_continuities import InvalidReadContinuities
 from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicies, ContinuityLeasePolicyV1
 from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1, ReviewedProviderRejectionV1
 
 
 @rest_controller
@@ -61,6 +62,26 @@ class InvalidReadContinuityController:
     @get_mapping("/requests/{request_id}/recovery")
     async def recovery(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self._recovery(self.continuities.recoveries.status, run_id, request_id)
+
+    @post_mapping("/requests/{request_id}/rejected-boundary-candidate")
+    async def rejected_boundary_candidate(
+        self, run_id: PathVar[str], request_id: PathVar[str], body: Body[ReviewedProviderRejectionV1]
+    ) -> dict[str, Any]:
+        return await self._recovery(self.continuities.rejections.candidate, run_id, request_id, body)
+
+    @post_mapping("/requests/{request_id}/rejected-boundary-recoveries/{recovery_id}", status_code=201)
+    async def recover_rejected_boundary(
+        self,
+        run_id: PathVar[str],
+        request_id: PathVar[str],
+        recovery_id: PathVar[str],
+        body: Body[RejectedBoundaryRecoveryInputV1],
+    ) -> dict[str, Any]:
+        return await self._recovery(self.continuities.rejections.request, run_id, request_id, recovery_id, body)
+
+    @get_mapping("/requests/{request_id}/rejected-boundary-recovery")
+    async def rejected_boundary_recovery(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self._recovery(self.continuities.rejections.status, run_id, request_id)
 
     @get_mapping("/requests/{request_id}")
     async def get(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:

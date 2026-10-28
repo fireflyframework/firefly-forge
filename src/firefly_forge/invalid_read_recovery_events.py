@@ -13,19 +13,21 @@ from firefly_forge.store import identifier
 MAX_EVENTS = 5
 
 
-def _budget(value: Any) -> tuple[int, int]:
+def _budget(value: Any, maximum: int = MAX_EVENTS) -> tuple[int, int]:
     if (
-        type(value) is not tuple
+        type(maximum) is not int
+        or maximum not in {5, 8}
+        or type(value) is not tuple
         or len(value) != 2
         or any(type(item) is not int for item in value)
-        or not 1 <= value[0] <= MAX_EVENTS
+        or not 1 <= value[0] <= maximum
         or not 0 < value[1] <= MAX_BYTES
     ):
         raise ValueError("Recovery requires a complete bounded native request-event history")
     return value[0], value[1]
 
 
-async def read_recovery_events(requests: Any, request_id: str) -> list[dict[str, Any]]:
+async def read_recovery_events(requests: Any, request_id: str, *, maximum: int = MAX_EVENTS) -> list[dict[str, Any]]:
     try:
         key = identifier(request_id)
     except KeyError as error:
@@ -33,7 +35,7 @@ async def read_recovery_events(requests: Any, request_id: str) -> list[dict[str,
     if key.hex != request_id:
         raise ValueError("Recovery requires an exact lowercase native request identity")
     async with requests.store._unit():
-        before = _budget(await requests.journal.custody_budget(key))
+        before = _budget(await requests.journal.custody_budget(key), maximum)
         rows = await requests.journal.events(key)
         if len(rows) != before[0]:
             raise ValueError("Recovery native request-event history is incomplete")
@@ -57,6 +59,6 @@ async def read_recovery_events(requests: Any, request_id: str) -> list[dict[str,
             valid = False
         if not valid:
             raise ValueError("Recovery native request-event chain changed")
-        if _budget(await requests.journal.custody_budget(key)) != before:
+        if _budget(await requests.journal.custody_budget(key), maximum) != before:
             raise ValueError("Recovery native request-event custody changed during inspection")
     return entries

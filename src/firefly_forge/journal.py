@@ -471,6 +471,7 @@ class Journal:
                     "agentic_tool_intent",
                     "agentic_tool_result",
                     "agentic_tool_unknown",
+                    "provider_rejection_recovery",
                 }
             ]
             if protected:
@@ -479,8 +480,11 @@ class Journal:
             return entries
 
         checkpoint_payloads = [entry["payload"] for entry in entries if entry["kind"] == "agent_checkpoint"]
+        rejection_entries = [entry for entry in entries if entry["kind"] == "provider_rejection_recovery"]
         if len(checkpoint_payloads) > 100:
             raise ValueError("Journal checkpoint history exceeds its retained bound")
+        if len(rejection_entries) > 100:
+            raise ValueError("Journal rejection custody exceeds its retained request bound")
 
         async def checked(value: Any) -> None:
             async with self.store._unit():
@@ -502,6 +506,18 @@ class Journal:
             with prepared_credential_rejection(self.store):
                 await self.store.admit_credentials(protected)
                 await checked(protected)
+                for entry in rejection_entries:
+                    from firefly_forge.provider_rejection_recoveries import settled_rejection
+
+                    if not historical_custody:
+                        raise ValueError("Rejection credential inspection requires intact native custody")
+                    settled_rejection(entry, entries)
+                    ticket = entry["payload"]["failed_ticket"]
+                    canonical = BoundaryCheckpoint.credential_text(
+                        ticket["checkpoint"].encode("utf-8"), ticket["checkpoint_digest"]
+                    )
+                    await self.store.admit_credentials(canonical)
+                    await checked(canonical)
                 for payload in checkpoint_payloads:
                     canonical = BoundaryCheckpoint.credential_text(
                         payload["snapshot"].encode("utf-8"),
@@ -1918,10 +1934,18 @@ class Journal:
         async with self.store._unit():
             run = await self._run(run_id)
             request = run.data.get("worker_request", {})
+            handoff = run.data.get("verification_handoff", {})
+            completed = (
+                request.get("status") == "answered"
+                and request.get("response_source") == "factory_verification"
+                and handoff.get("status") == "completed"
+                and handoff.get("request_id") == request.get("id")
+            )
             if (
                 run.status not in {"paused", "needs_reconciliation"}
-                or request.get("status") != "pending"
+                or not (request.get("status") == "pending" or completed)
                 or digest(request) != request_digest
+                or run.data.get("verification_refusal", {}).get("request_digest") == request_digest
             ):
                 return
             refusal = {

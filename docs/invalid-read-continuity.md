@@ -112,9 +112,35 @@ The recovery candidate is `GET .../requests/{request_id}/recovery-candidate`. Su
 
 The transaction preserves the original ticket, admission seal, settlement, reservation, checkpoint and failed receipt. It appends an explicit recovery witness and request event, then queues the same request with a new finite ownership lease. Queued means accepted for dispatch; only a native worker claim and later completion establish execution progress. This grants no new attempt, model allowance or command quota. Claimed or uncertain requests remain held and cannot use this workflow. Generic retry, resume, handoff and reconciliation cannot bypass an outstanding continuity ticket.
 
+## A provider request refused before admission
+
+A worker claim does not prove that a provider accepted its next request. A provider can reject a request during validation, before it creates a job or dispatches work. This case has a separate, disabled-by-default policy, `allow_pre_admission_recovery`. It never qualifies for the never-claimed workflow above.
+
+The supported case is the first provider request of the admitted continuation. Its pending checkpoint must be byte-identical to the original ticket's checkpoint, with no intervening model response, tool outcome, source change or command. The complete native request-event chain must retain the worker claim and failed outcome. Unknown or partially executed requests remain held.
+
+The original actor must still have current factory administrator and execution authority. The administrator reviews the exact executed provider epoch and matching source-validator and executable-probe reports. The review records the original wire digest and length, endpoint, principal, model, source revision and executable identity, with zero admissions, jobs, provider dispatches and tool callbacks. A status code, error message, missing job or absent receipt alone supplies no such proof. The API records this as an administrator-reviewed assertion with pinned evidence; it does not authenticate a remote refusal receipt automatically.
+
+Validate the corrective provider configuration or version before admitting this one-use action. Evidence for the old rejection does not establish that the current provider will accept the request. A repeated refusal remains held.
+
+Use the SDK or these namespaced routes after that review:
+
+| Step | Route relative to `.../invalid-read-continuity/requests/{request_id}` |
+| --- | --- |
+| Inspect without admitting work | `POST /rejected-boundary-candidate` with `ReviewedProviderRejectionV1` |
+| Submit the reviewed action once | `POST /rejected-boundary-recoveries/{recovery_id}` with `RejectedBoundaryRecoveryInputV1` |
+| Read the saved action | `GET /rejected-boundary-recovery` |
+
+The SDK methods are `rejected_boundary_recovery_candidate`, `request_rejected_boundary_recovery` and `rejected_boundary_recovery`. Retain the action ID before submission. Read it back after a lost response; do not choose a replacement identity or submit a second action. Admission requires four exact acknowledgements covering the reviewed provider epoch, absence of original response or tool replay, the same request and budgets, and the finite ownership lease.
+
+Forge reproduces the pending request through a sealed public SDK transport and requires the exact wire bytes, history, settings, tool definitions, usage and limits. It supplies no model response and executes no original tool callback. The native transaction appends a distinct refusal settlement and action receipt while preserving the original ticket, admission seal, failed claim and checkpoint. Only a later worker claim can clear that exact hold and continue the pending graph under a new finite ownership lease.
+
+SDK counters remain unchanged at admission and increase when new responses and tools complete. The rejected native request remains in the lifetime admission budget. New commands consume their original command ceiling normally. A queued receipt establishes no execution success or acceptance of the requested product work. A second failure remains held; this workflow supplies no automatic retry loop.
+
 ## Failure and validation boundaries
 
 Policy revocation, expired ownership, changed source/configuration/profile/scope, cancellation, actor loss, unknown effects, or a changed native ticket stop execution. Claimed tickets are never automatically requeued after owner loss. Their outcome requires explicit native reconciliation.
+
+Automatic verification checks outstanding continuity custody before source preparation or commands. A typed refusal while entering its policy epoch leaves one native admission-refusal record and becomes ineligible for automatic scheduling. The earlier verification results and worker response remain unchanged. Cancellation, lost ownership and failures after admission retain their existing boundaries.
 
 Host controls cover the actual Engine and installed worker adapter, strict evidence correction, two new file-tool cycles, two durable command cycles, unchanged attempt and allowances, original-consumption reuse, idempotency, expiry, revoked authority, and incompatible policy or contract changes. Prepared PostgreSQL controls use only a dedicated fictional `_test` database and in-process model transport. Host tests do not establish PostgreSQL atomicity, current installed-profile qualification, controller composition, or acceptance of a particular retained run.
 

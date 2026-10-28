@@ -723,3 +723,87 @@ it("retains an unknown legacy structured event in closed accessible details", ()
   expect(html).not.toContain("<script>");
   expect(html).not.toContain("<details open");
 });
+
+describe("reviewed provider refusal", () => {
+  const witness = () => ({
+    version: 1,
+    kind: "reviewed_pre_admission_continuation",
+    request_id: "a".repeat(32),
+    request: {
+      version: 1,
+      valid_for_seconds: 120,
+      acknowledge_reviewed_provider_epoch: true,
+      acknowledge_no_original_response_or_tool_replay: true,
+      acknowledge_same_request_attempt_and_budgets: true,
+      acknowledge_finite_ownership_lease: true,
+      evidence: {
+        version: 1,
+        provider: "bridge",
+        classification: "request_refused_before_admission",
+        model: "bridge/default",
+        http_status: 400,
+        admissions: 0,
+        jobs: 0,
+        provider_dispatches: 0,
+        tool_callbacks: 0,
+      },
+    },
+    candidate: {
+      version: 1,
+      kind: "claimed_pre_admission_recovery_candidate",
+      request_id: "a".repeat(32),
+      admission: "READY",
+      execution_authorized: false,
+      review_basis: "administrator_reviewed_exact_provider_epoch",
+      usage: {
+        requests: 1,
+        request_limit: 100,
+        tool_calls: 2,
+        tool_calls_limit: 300,
+        commands: 11,
+        command_limit: 22,
+      },
+    },
+    failed_ticket: { checkpoint: "SEALED_CHECKPOINT_BYTES" },
+  });
+
+  it("summarizes consent and charged usage while keeping checkpoint data in closed details", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="provider_rejection_recovery" value={witness()} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Provider refusal reviewed");
+    expect(initial).toContain("Worker receipts show subsequent execution");
+    expect(initial).toContain("bridge/default");
+    expect(initial).toContain("120 seconds");
+    expect(initial).toContain("1 of 100");
+    expect(initial).toContain("2 of 300");
+    expect(initial).toContain("11 of 22");
+    expect(initial).not.toContain("SEALED_CHECKPOINT_BYTES");
+    expect(initial).not.toContain("Outcome not recorded");
+    expect(html).toContain("Advanced record");
+    expect(html).toContain("SEALED_CHECKPOINT_BYTES");
+    expect(html).not.toContain("<details open");
+  });
+
+  it.each([
+    "unknown refusal",
+    "missing acknowledgement",
+    "unreviewed candidate",
+  ])("does not present %s as approved", (mutation) => {
+    const value = witness();
+    if (mutation === "unknown refusal")
+      value.request.evidence.classification = "outcome_unknown";
+    else if (mutation === "missing acknowledgement")
+      value.request.acknowledge_same_request_attempt_and_budgets = false;
+    else value.candidate.review_basis = "inferred_from_error";
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="provider_rejection_recovery" value={value} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Provider refusal review is incomplete");
+    expect(initial).not.toContain("Provider refusal reviewed");
+    expect(initial).not.toContain("SEALED_CHECKPOINT_BYTES");
+    expect(html).toContain("Advanced record");
+  });
+});

@@ -559,6 +559,115 @@ function ValueView({ value, depth }: { value: unknown; depth: number }) {
     return <EvidenceView value={value} depth={depth + 1} advanced={false} />;
   return <span className="subtle">Unsupported value</span>;
 }
+function ProviderRefusalEvidence({
+  value,
+  advanced,
+}: {
+  value: unknown;
+  advanced: boolean;
+}) {
+  const record = asRecord(value);
+  const request = asRecord(record?.request);
+  const evidence = asRecord(request?.evidence);
+  const candidate = asRecord(record?.candidate);
+  const usage = asRecord(candidate?.usage);
+  const budget = (used: unknown, limit: unknown) => {
+    if (typeof used !== "number" || !Number.isSafeInteger(used) || used < 0)
+      return undefined;
+    if (limit === null) return `${used} used · no configured limit`;
+    return typeof limit === "number" &&
+      Number.isSafeInteger(limit) &&
+      limit > 0 &&
+      used <= limit
+      ? `${used} of ${limit}`
+      : undefined;
+  };
+  const requests = budget(usage?.requests, usage?.request_limit);
+  const tools = budget(usage?.tool_calls, usage?.tool_calls_limit);
+  const commands = budget(usage?.commands, usage?.command_limit);
+  const duration = request?.valid_for_seconds;
+  if (
+    record?.version !== 1 ||
+    record.kind !== "reviewed_pre_admission_continuation" ||
+    typeof record.request_id !== "string" ||
+    !/^[a-f0-9]{32}$/.test(record.request_id) ||
+    request?.version !== 1 ||
+    ![
+      "acknowledge_reviewed_provider_epoch",
+      "acknowledge_no_original_response_or_tool_replay",
+      "acknowledge_same_request_attempt_and_budgets",
+      "acknowledge_finite_ownership_lease",
+    ].every((key) => request[key] === true) ||
+    evidence?.version !== 1 ||
+    evidence.provider !== "bridge" ||
+    evidence.classification !== "request_refused_before_admission" ||
+    typeof evidence.model !== "string" ||
+    !evidence.model ||
+    typeof evidence.http_status !== "number" ||
+    !Number.isInteger(evidence.http_status) ||
+    evidence.http_status < 400 ||
+    evidence.http_status > 499 ||
+    !["admissions", "jobs", "provider_dispatches", "tool_callbacks"].every(
+      (key) => evidence[key] === 0,
+    ) ||
+    candidate?.version !== 1 ||
+    candidate.kind !== "claimed_pre_admission_recovery_candidate" ||
+    candidate.request_id !== record.request_id ||
+    candidate.admission !== "READY" ||
+    candidate.execution_authorized !== false ||
+    candidate.review_basis !== "administrator_reviewed_exact_provider_epoch" ||
+    typeof duration !== "number" ||
+    !Number.isSafeInteger(duration) ||
+    duration < 1 ||
+    !requests ||
+    !tools ||
+    !commands
+  )
+    return (
+      <section className="record-evidence">
+        <p role="status">Provider refusal review is incomplete.</p>
+        <p>
+          Review the original record and its administrator approval before
+          continuing.
+        </p>
+        {advanced && <AdvancedRecord value={value} />}
+      </section>
+    );
+  const fields = [
+    ["Original request", record.request_id],
+    ["Provider", "Agent bridge"],
+    ["Model", evidence.model],
+    ["Time allowance", `${duration} seconds`],
+    ["Requests used", requests],
+    ["Tool calls used", tools],
+    ["Commands used", commands],
+  ];
+  return (
+    <section className="record-evidence">
+      <h4>Provider refusal reviewed</h4>
+      <p>
+        An administrator approved a finite continuation for the original request
+        after reviewing the provider build and refusal evidence.
+      </p>
+      <p>
+        Requests, tool calls and commands already used remain charged. Worker
+        receipts show subsequent execution.
+      </p>
+      <dl className="record-fields">
+        {fields.map(([label, text]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>
+              <span className="record-value">{text}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {advanced && <AdvancedRecord value={value} />}
+    </section>
+  );
+}
+
 export function EvidenceView({
   value,
   title,
@@ -574,6 +683,8 @@ export function EvidenceView({
   advanced?: boolean;
   omitFields?: string[];
 }) {
+  if (kind === "provider_rejection_recovery")
+    return <ProviderRefusalEvidence value={value} advanced={advanced} />;
   if (
     kind === "index_sanitation_intent" ||
     kind === "index_sanitation_receipt" ||

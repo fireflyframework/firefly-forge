@@ -600,6 +600,8 @@ Historical credential inspection remains a read operation. It screens the origin
 
 A separately enabled [version-2 observation policy](invalid-read-continuity.md#unavailable-pure-source-observations) can close granted pure `list_files` siblings when their original results were not retained. It requires an explicit observation acknowledgement and records `observation_unavailable`, preserving the unknown original read outcome. It does not replay the read or manufacture success. The original response and both tool-call charges stay preserved; writable, network, unsupported and unresolved effects remain held.
 
+A claimed continuation whose first provider request was refused before remote admission has a [separate reviewed recovery](invalid-read-continuity.md#a-provider-request-refused-before-admission). Its default-off policy requires the current original administrator to review matching executable and validation evidence, the exact wire and the complete native claim history. Forge resumes only a byte-identical pending checkpoint under the same ticket and task attempt. It preserves the refused request, failed claim and spent counters; new responses, tools and commands use the remaining allowances. HTTP errors or missing jobs alone cannot authorize this action.
+
 ## Internal run-admission boundary
 
 Run admission prepares runner capabilities, provider settings, policies, roles and reviewed design files before taking the insertion locks. `Store.prepare_run` retains immutable bytes and original field presence. The locked insert checks the current native actor, project/component and repository/product cuts, then saves the queued run and its first event together. Campaign and incident admissions prepare before entering their own atomic write.

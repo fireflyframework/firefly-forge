@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowanceInput
+    from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1, ReviewedProviderRejectionV1
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.run_creation_models import RunCreationCancelInput, RunCreationInput
     from firefly_forge.runner_continuations import RunnerContinuationInput
@@ -399,6 +400,42 @@ class ForgeClient:
     def invalid_read_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
         """Read the saved recovery witness without submitting another action."""
         return dict(self.request("GET", self._invalid_read_recovery_path(identifier, request_id) + "/recovery"))
+
+    def rejected_boundary_recovery_candidate(
+        self, identifier: str, request_id: str, evidence: ReviewedProviderRejectionV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Preview an administrator-reviewed exact provider rejection; this grants no dispatch."""
+        from firefly_forge.provider_rejection_models import ReviewedProviderRejectionV1
+
+        body = self._recovery_body(ReviewedProviderRejectionV1, evidence)
+        path = self._invalid_read_recovery_path(identifier, request_id) + "/rejected-boundary-candidate"
+        return dict(self.request("POST", path, json=body))
+
+    def request_rejected_boundary_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: RejectedBoundaryRecoveryInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Admit once on the original ticket; retain the action ID for readback after a lost response."""
+        from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1
+
+        body = self._recovery_body(RejectedBoundaryRecoveryInputV1, request)
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/rejected-boundary-recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        return dict(self.request("POST", path, json=body))
+
+    def rejected_boundary_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the original rejected-boundary action without resubmitting it."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/rejected-boundary-recovery"
+            )
+        )
 
     def invalid_read_continuity_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "invalid-read-continuity/policy"))
