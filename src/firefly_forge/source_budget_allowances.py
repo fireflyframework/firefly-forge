@@ -242,6 +242,8 @@ def admission_contract_digest() -> str:
                 "agentic_runtime.py",
                 "agentic_checkpoint_invocation.py",
                 "agent_checkpoint_models.py",
+                "checkpoint_work_duration.py",
+                "work_duration_models.py",
                 "agent_checkpoints.py",
                 "bridge_completions.py",
                 "bridge_completion_models.py",

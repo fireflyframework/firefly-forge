@@ -9,9 +9,10 @@ from uuid import NAMESPACE_URL, uuid5
 
 from openai.types.chat import ChatCompletion
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, ConsumePayload, ConsumePayloadV2
+from firefly_forge.agent_checkpoint_models import ConsumePayload, ConsumePayloadV2
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
+from firefly_forge.checkpoint_work_duration import checkpoint_payload
 from firefly_forge.configuration import validate_endpoint
 from firefly_forge.journal import Journal, digest
 
@@ -53,7 +54,7 @@ def _validate_closed_custody(
         ):
             raise ValueError("Historical Bridge closure order or task changed")
         i = CompletionIntentPayload.model_validate(a["payload"])
-        cp = CheckpointPayloadV2.model_validate(b["payload"])
+        cp = checkpoint_payload(b["payload"])
         r = CompletionResponsePayload.model_validate(c["payload"])
         consume = (ConsumePayload if d["payload"].get("version") == 1 else ConsumePayloadV2).model_validate(
             d["payload"]

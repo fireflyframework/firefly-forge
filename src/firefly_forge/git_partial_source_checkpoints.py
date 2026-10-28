@@ -11,12 +11,13 @@ from typing import Any
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from openai.types.chat import ChatCompletion
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, ConsumePayload
+from firefly_forge.agent_checkpoint_models import ConsumePayload, InvocationCheckpoint
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.agentic_checkpoint_invocation import STATIC_TOOLS, invocation_cut, runtime_contract
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
 from firefly_forge.bridge_completions import _cut
+from firefly_forge.checkpoint_work_duration import checkpoint_payload, same_owned_duration, validate_binding_duration
 from firefly_forge.git_partial_source_models import (
     PartialSourceAdmissionV1,
     PartialSourceCandidateV1,
@@ -61,15 +62,16 @@ def stored_frontier_proof(run: Data, task: Data, entries: list[Data]) -> Data:
     }:
         raise ValueError("The held graph does not identify its original native completion")
     current_contract = runtime_contract()
-    previous: CheckpointPayloadV2 | None = None
+    previous: InvocationCheckpoint | None = None
     invocation_id = None
     for parts in zip(*(grouped[kind] for kind in kinds), strict=True):
         intent, checkpoint, response, consume = parts
         if any(e["run_id"] != run["id"] or e["task_id"] != "implement" for e in parts):
             raise ValueError("Completion closure belongs to another run or task")
         original_intent = CompletionIntentPayload.model_validate(intent["payload"])
-        payload = CheckpointPayloadV2.model_validate(checkpoint["payload"])
+        payload = checkpoint_payload(checkpoint["payload"])
         bound = payload.invocation
+        validate_binding_duration(run, bound)
         if bound.contract != current_contract:
             raise ValueError("The stored frontier has an unsupported runtime contract")
         if (
@@ -94,7 +96,9 @@ def stored_frontier_proof(run: Data, task: Data, entries: list[Data]) -> Data:
             or (
                 previous is not None
                 and (
-                    bound.ordinal != previous.invocation.ordinal + 1 or bound.predecessor != previous.checkpoint_digest
+                    not same_owned_duration(previous.invocation, bound)
+                    or bound.ordinal != previous.invocation.ordinal + 1
+                    or bound.predecessor != previous.checkpoint_digest
                 )
             )
             or not intent["sequence"] < checkpoint["sequence"] < response["sequence"] < consume["sequence"]

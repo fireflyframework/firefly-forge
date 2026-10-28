@@ -12,7 +12,7 @@ from typing import Any
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from openai.types.chat import ChatCompletion
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, ConsumePayload
+from firefly_forge.agent_checkpoint_models import ConsumePayload
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agent_roles import BINDINGS, worker_feedback_model
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
@@ -20,6 +20,7 @@ from firefly_forge.agentic_checkpoint_invocation import invocation_cut, runtime_
 from firefly_forge.agentic_runtime import RuntimeReport
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
 from firefly_forge.bridge_completions import _cut, _outside_unit
+from firefly_forge.checkpoint_work_duration import checkpoint_payload, same_owned_duration, validate_binding_duration
 from firefly_forge.configuration import validate_endpoint
 from firefly_forge.journal import Journal, digest
 
@@ -360,8 +361,9 @@ def prepare_worker_completion(
 
     for intent, checkpoint, response, consume in zip(*(grouped[kind] for kind in CUSTODY), strict=True):
         original = CompletionIntentPayload.model_validate(intent["payload"])
-        payload = CheckpointPayloadV2.model_validate(checkpoint["payload"])
+        payload = checkpoint_payload(checkpoint["payload"])
         binding = payload.invocation
+        validate_binding_duration(run, binding)
         if (
             any(
                 entry["run_id"] != run["id"] or entry["task_id"] != task["id"]
@@ -395,7 +397,8 @@ def prepare_worker_completion(
             or (
                 previous is not None
                 and (
-                    binding.ordinal != previous.ordinal + 1
+                    not same_owned_duration(previous, binding)
+                    or binding.ordinal != previous.ordinal + 1
                     or binding.predecessor != previous_digest
                     or binding.invocation_id != invocation_id
                     or binding.grants != previous.grants

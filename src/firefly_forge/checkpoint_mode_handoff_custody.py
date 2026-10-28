@@ -7,14 +7,32 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from firefly_forge.agent_roles import WorkerResponse
+from firefly_forge.checkpoint_work_duration import selected_work_duration
 from firefly_forge.journal import Journal, digest
-from firefly_forge.models import Command
+from firefly_forge.models import Command, NewWorkCommand, configured_commands
 from firefly_forge.sandbox import SandboxReconciliationRequired
 from firefly_forge.sandbox_command_slots import _canonical, _complete
-from firefly_forge.sandbox_models import validate_sandbox_snapshot
+from firefly_forge.sandbox_models import SandboxInput, validate_sandbox_snapshot
 from firefly_forge.verification_models import verification_scope
+from firefly_forge.work_duration_models import effective_work_timeout
 
 Data = dict[str, Any]
+
+
+def verification_commands(
+    run: Data, sandbox: SandboxInput
+) -> tuple[list[Command | NewWorkCommand], list[int | None], int]:
+    policy = selected_work_duration(run)
+    commands = configured_commands(run)
+    timeouts: list[int | None] = []
+    for command in commands:
+        if policy is None:
+            if command.timeout is None:
+                raise ValueError("Legacy verification requires its original finite command timeout")
+            timeouts.append(min(command.timeout, sandbox.timeout))
+        else:
+            timeouts.append(effective_work_timeout(command.timeout, policy.timeout_seconds))
+    return commands, timeouts, 1 if policy is None else 2
 
 
 def _one(entries: list[Data], kind: str, key: str, handoff_id: str | None = None) -> Data:
@@ -40,8 +58,8 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
     handoff_id = state["id"]
     handoff = _one(entries, "verification_handoff_intent", handoff_id, handoff_id)
     intent = handoff["payload"]
-    commands = [Command.model_validate(c) for c in run["commands"]]
     sandbox = validate_sandbox_snapshot(run["sandbox_snapshot"])
+    commands, expected_timeouts, version = verification_commands(run, sandbox)
     total = len(commands)
     ordinals, timeouts = intent["ordinals"], intent["timeouts"]
     if (
@@ -59,9 +77,9 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         or any(type(v) is not int for v in ordinals)
         or ordinals != list(range(ordinals[0], ordinals[0] + total))
         or not 1 <= ordinals[0] <= ordinals[-1] <= sandbox.command_limit
-        or timeouts != [min(c.timeout, sandbox.timeout) for c in commands]
-        or any(type(v) is not int for v in timeouts)
-        or intent["version"] != 1
+        or timeouts != expected_timeouts
+        or any(type(v) is not int and not (version == 2 and v is None) for v in timeouts)
+        or intent["version"] != version
         or type(intent["version"]) is not int
         or intent["commands_digest"] != digest({"commands": run["commands"]})
         or intent["sandbox_digest"] != run["sandbox_snapshot"]["digest"]
