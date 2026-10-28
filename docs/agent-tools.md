@@ -35,7 +35,7 @@ Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phas
 
 Native tool arguments reject known configured credentials before file writes or external requests. Text returned by every native tool is redacted against the shared server credential registry before the model receives it. This checks known values and their configured representations; it does not discover every possible secret in a repository.
 
-Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. A rejected line edit requires reading the new file before retrying.
+Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. It includes tracked changes and nonignored untracked source files, representing new files as added-file patches without staging them. The response covers at most 100 paths and 128,000 characters, with explicit truncation; it is not a complete project diff when truncated. A rejected line edit requires reading the new file before retrying.
 
 The table is a conditional native registry, not a promise that every provider receives every listed tool. Ordinary Codex and Claude Code execution uses the CLI's own permissions; role tool lists alone do not enforce those providers' tool access. Firefly Agentic and bridge execution use the native Python admission boundary.
 

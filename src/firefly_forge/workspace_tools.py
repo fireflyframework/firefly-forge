@@ -79,6 +79,31 @@ def _private_name(name: str) -> bool:
     )
 
 
+def _added_source_diff(path: str, content: str, mode: str) -> str:
+    def quoted(prefix: str) -> str:
+        return (
+            '"'
+            + "".join(
+                chr(value) if 32 <= value < 127 and value not in {34, 92} else f"\\{value:03o}"
+                for value in (prefix + path).encode("utf-8")
+            )
+            + '"'
+        )
+
+    old, new = quoted("a/"), quoted("b/")
+    header = f"diff --git {old} {new}\nnew file mode {mode}\n"
+    if not content:
+        return header
+    lines = content.split("\n")
+    terminated = content.endswith("\n")
+    if terminated:
+        lines.pop()
+    extent = "1" if len(lines) == 1 else f"1,{len(lines)}"
+    result = header + f"--- /dev/null\n+++ {new}\n@@ -0,0 +{extent} @@\n"
+    result += "".join("+" + line + "\n" for line in lines)
+    return result if terminated else result + "\\ No newline at end of file\n"
+
+
 def _descriptor_path(fd: int) -> Path:
     """Use the opened object's spelling; resolve() preserves APFS case aliases."""
     if sys.platform == "darwin":
@@ -587,7 +612,7 @@ class WorkspaceTools:
         """Read the component's source diff without hooks, external diff drivers or index writes."""
         component = self.root.relative_to(self.repository_root).as_posix()
         spec = f":(literal){component}" if component != "." else ":(top)*"
-        base = [
+        git = [
             "git",
             "--no-optional-locks",
             "-c",
@@ -599,6 +624,8 @@ class WorkspaceTools:
             "-c",
             "core.pager=cat",
             "--no-pager",
+        ]
+        base = git + [
             "diff",
             "--no-ext-diff",
             "--no-textconv",
@@ -608,8 +635,14 @@ class WorkspaceTools:
         listed = await execute(base + ["--name-only", "-z", "HEAD", "--", spec], self.repository_root, 30, env=env)
         if listed.exit_code:
             raise ValueError("Source diff requires a repository with an existing HEAD")
+        untracked = await execute(
+            git + ["ls-files", "--others", "--exclude-standard", "-z", "--", spec], self.repository_root, 30, env=env
+        )
+        if untracked.exit_code:
+            raise ValueError("Cannot read component source diff")
+        added = set(untracked.output.split("\x00")) - {""}
         paths: list[str] = []
-        for name in listed.output.split("\x00"):
+        for name in sorted(set(listed.output.split("\x00")) | added):
             if not name:
                 continue
             candidate = Path(name)
@@ -617,6 +650,8 @@ class WorkspaceTools:
                 continue
             full = self.repository_root / candidate
             if not full.is_relative_to(self.root) or full.is_symlink():
+                continue
+            if name in added and not full.exists():
                 continue
             if full.exists():
                 try:
@@ -626,15 +661,27 @@ class WorkspaceTools:
             paths.append(name)
         if not paths:
             return {"diff": "", "truncated": False}
-        result = await execute(
-            base + ["HEAD", "--"] + [f":(literal){path}" for path in paths[:100]],
-            self.repository_root,
-            30,
-            env=env,
-        )
-        if result.exit_code:
-            raise ValueError("Cannot read component source diff")
-        return {"diff": result.output[:128_000], "truncated": len(paths) > 100 or len(result.output) > 128_000}
+        tracked = [path for path in paths[:100] if path not in added]
+        output = ""
+        if tracked:
+            result = await execute(
+                base + ["HEAD", "--"] + [f":(literal){path}" for path in tracked], self.repository_root, 30, env=env
+            )
+            if result.exit_code:
+                raise ValueError("Cannot read component source diff")
+            output = result.output
+        for name in paths[:100]:
+            if name not in added or len(output) > 128_000:
+                continue
+            relative = (self.repository_root / name).relative_to(self.root).as_posix()
+            with self._source_file(relative) as source:
+                data = source.read(self.max_file_bytes + 1)
+                if len(data) > self.max_file_bytes:
+                    raise ValueError("File exceeds the workspace read limit")
+                mode = "100755" if os.fstat(source.fileno()).st_mode & stat.S_IXUSR else "100644"
+                content = data.decode("utf-8")
+            output += _added_source_diff(name, content, mode)
+        return {"diff": output[:128_000], "truncated": len(paths) > 100 or len(output) > 128_000}
 
 
 _TOOL_DESCRIPTIONS = {
