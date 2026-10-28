@@ -125,6 +125,114 @@ def test_catalog_distinguishes_configured_workspace_tools_from_optional_runners(
     assert all(item["availability"] == "unsupported" for item in module().tool_catalog(provider="codex"))
 
 
+@pytest.fixture
+async def diff_workspace(tmp_path):
+    from firefly_forge.process import checked
+
+    repository = tmp_path / "repository"
+    component = repository / "inventory"
+    component.mkdir(parents=True)
+    (component / "service.py").write_text("VALUE = 1\n")
+    (component / ".gitignore").write_text("ignored.py\n")
+    await checked(["git", "init", "-b", "main"], repository)
+    await checked(["git", "add", "."], repository)
+    await checked(
+        ["git", "-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", "fixture"],
+        repository,
+        env={
+            "GIT_AUTHOR_NAME": "Fixture",
+            "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture",
+            "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+        },
+    )
+    return repository, component, module().WorkspaceTools(component, repository_root=repository)
+
+
+@pytest.mark.asyncio
+async def test_component_diff_includes_untracked_source_without_git_metadata_writes(diff_workspace, tmp_path):
+    repository, component, tools = diff_workspace
+    await tools.write_file("new.py", "NEW_VALUE = 42\n")
+    await tools.write_file("service.py", "VALUE = 2\n")
+    (repository / "sibling.py").write_text("SIBLING_SECRET = 1\n")
+    (component / ".env").write_text("PRIVATE_SECRET = 1\n")
+    (component / "ignored.py").write_text("IGNORED_SECRET = 1\n")
+    outside = tmp_path / "outside.py"
+    outside.write_text("LINK_SECRET = 1\n")
+    (component / "symlink.py").symlink_to(outside)
+    os.link(outside, component / "hardlink.py")
+    metadata = [repository / ".git" / name for name in ("index", "HEAD", "config")]
+    before = {path: path.read_bytes() for path in metadata}
+
+    result = await tools.git_diff()
+
+    assert "inventory/new.py" in result["diff"] and "+NEW_VALUE = 42\n" in result["diff"]
+    assert "+VALUE = 2\n" in result["diff"]
+    assert all(
+        value not in result["diff"] for value in ("SIBLING_SECRET", "PRIVATE_SECRET", "IGNORED_SECRET", "LINK_SECRET")
+    )
+    assert result["truncated"] is False
+    assert before == {path: path.read_bytes() for path in metadata}
+
+
+@pytest.mark.asyncio
+async def test_untracked_diff_supports_repository_root_scope(diff_workspace):
+    repository, _, _ = diff_workspace
+    tools = module().WorkspaceTools(repository)
+    await tools.write_file("new.py", "VALUE = 3\n")
+    result = await tools.git_diff()
+    assert '"b/new.py"' in result["diff"] and "+VALUE = 3\n" in result["diff"]
+    assert result["truncated"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("permissions,mode", [(0o744, "100755"), (0o654, "100644"), (0o645, "100644")])
+async def test_untracked_diff_matches_git_executable_mode(diff_workspace, permissions, mode):
+    from firefly_forge.process import execute
+
+    repository, component, tools = diff_workspace
+    await tools.write_file("new.py", "VALUE = 3\n")
+    (component / "new.py").chmod(permissions)
+    canonical = await execute(
+        ["git", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--", "/dev/null", "inventory/new.py"],
+        repository,
+    )
+    assert canonical.exit_code == 1 and f"new file mode {mode}\n" in canonical.output
+    assert f"new file mode {mode}\n" in (await tools.git_diff())["diff"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name,content", [('-quoted "name"\n世界.py', "VALUE = '世界'\rnext"), ("empty.py", "")])
+async def test_untracked_diff_is_git_readable_for_hostile_paths_and_empty_files(
+    diff_workspace, tmp_path, name, content
+):
+    from firefly_forge.process import checked
+
+    repository, _, tools = diff_workspace
+    await tools.write_file(name, content)
+    result = await tools.git_diff()
+    assert result["diff"] and result["truncated"] is False
+    patch = tmp_path / "source.patch"
+    patch.write_text(result["diff"])
+    await checked(["git", "apply", "--check", "--reverse", "--", str(patch)], repository)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", ["files", "characters"])
+async def test_untracked_diff_keeps_existing_response_limits(diff_workspace, limit):
+    _, _, tools = diff_workspace
+    if limit == "files":
+        for index in range(101):
+            await tools.write_file(f"new-{index:03}.py", "VALUE = 1\n")
+    else:
+        await tools.write_file("large.py", "x" * 150_000)
+    result = await tools.git_diff()
+    assert result["truncated"] is True
+    assert 0 < len(result["diff"]) <= 128_000
+    if limit == "files":
+        assert "new-099.py" in result["diff"] and "new-100.py" not in result["diff"]
+
+
 @pytest.mark.asyncio
 async def test_line_edit_checks_hash_again_on_the_open_write_descriptor(tmp_path, monkeypatch):
     source = tmp_path / "service.py"
