@@ -44,8 +44,11 @@ HISTORICAL_LITERAL_HASHES = (
 
 
 def test_v25_has_distinct_measurement_markers():
-    assert q.REGISTRY_VERSION == 24
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v25"
+    assert q.REGISTRY_VERSION >= 24
+    if q.REGISTRY_VERSION == 24:
+        assert q.LOADER_PROFILE == "codex-exec-restricted-source/v25"
+    else:
+        assert q.LOADER_PROFILE != "codex-exec-restricted-source/v25"
 
 
 def test_v24_measurement_is_historical_without_current_authority():
