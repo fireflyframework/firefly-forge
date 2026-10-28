@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from firefly_forge.php_diagnostics import PHPProfileRequest
     from firefly_forge.qa import BrowserJourney, EvidenceImage, JourneyEvidence, QAReference
     from firefly_forge.runner_monitors import RunnerMonitors
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class ToolRuntimeContext:
     scope_root: Path
     repository_root: Path
     allowed_tools: frozenset[str] | None = None
-    command_executor: Callable[[list[str], int], Awaitable[ProcessResult]] | None = None
+    command_executor: Callable[[list[str], int | None], Awaitable[ProcessResult]] | None = None
     browser_runner: Callable[[str, int, int, str], Awaitable[dict[str, Any]]] | None = None
     internet_search: Callable[[str, int], Awaitable[dict[str, Any]]] | None = None
     internet_search_refresh: Callable[[str, int, bool, str | None], Awaitable[dict[str, Any]]] | None = None
@@ -50,6 +51,7 @@ class ToolRuntimeContext:
     python_trace: Callable[[PythonTraceRequest], Awaitable[dict[str, Any]]] | None = None
     php_profile: Callable[[PHPProfileRequest], Awaitable[dict[str, Any]]] | None = None
     process_monitor: RunnerMonitors | None = None
+    work_duration: WorkDurationPolicyV2 | None = None
 
 
 PRIVATE_BASENAMES = frozenset(

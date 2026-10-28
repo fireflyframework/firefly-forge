@@ -33,7 +33,7 @@ from firefly_forge.diagnostic_recipes import (
 )
 from firefly_forge.git_diff_models import GitDiffBudget
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
-from firefly_forge.models import Command
+from firefly_forge.models import Command, NewWorkCommand, configured_commands
 from firefly_forge.php_diagnostics import PHPProfileRequest, build_php_profile_argv, php_profile_observation
 from firefly_forge.php_diagnostics import profile_configuration as php_profile_configuration
 from firefly_forge.policies import inject_policy_snapshot, policy_commands
@@ -46,6 +46,7 @@ from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
 from firefly_forge.source_snapshot import SourceDiffSnapshotV1, snapshot_run_fields
 from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 
@@ -57,7 +58,7 @@ async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[s
     return await process_checked(trusted_git(argv), cwd, timeout, env=git_environment(env) if argv[0] == "git" else env)
 
 
-async def execute(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> Any:
+async def execute(argv: list[str], cwd: Path, timeout: int | None = 300, *, env: dict[str, str] | None = None) -> Any:
     return await process_execute(trusted_git(argv), cwd, timeout, env=git_environment(env) if argv[0] == "git" else env)
 
 
@@ -65,25 +66,30 @@ def redact(value: str) -> str:
     return redact_environment(value)
 
 
-def default_commands(workspace: Path) -> list[Command]:
+def default_commands(
+    workspace: Path, *, work_duration: WorkDurationPolicyV2 | None = None
+) -> list[Command | NewWorkCommand]:
+    def command(argv: list[str]) -> Command | NewWorkCommand:
+        return Command(argv=argv, timeout=600) if work_duration is None else NewWorkCommand(argv=argv)
+
     makefile = workspace / "Makefile"
     if makefile.is_file() and re.search(r"^check\s*:", makefile.read_text(), re.MULTILINE):
-        return [Command(argv=["make", "check"], timeout=600)]
+        return [command(["make", "check"])]
     package = workspace / "package.json"
     if package.is_file():
         scripts = json.loads(package.read_text()).get("scripts", {})
         if "check" in scripts:
-            return [Command(argv=["npm", "run", "check"], timeout=600)]
+            return [command(["npm", "run", "check"])]
         if "test" in scripts:
-            return [Command(argv=["npm", "test"], timeout=600)]
+            return [command(["npm", "test"])]
     if (workspace / "pyproject.toml").is_file() and (workspace / "tests").is_dir():
-        return [Command(argv=["uv", "run", "pytest"], timeout=600)]
+        return [command(["uv", "run", "pytest"])]
     if (workspace / "artisan").is_file() and (workspace / "vendor").is_dir():
-        return [Command(argv=["php", "artisan", "test"], timeout=600)]
+        return [command(["php", "artisan", "test"])]
     if (workspace / "package.json").is_file():
         from firefly_forge.profiles import verification_commands
 
-        return [Command(argv=argv, timeout=600) for argv in verification_commands(workspace, "none", "react")]
+        return [command(argv) for argv in verification_commands(workspace, "none", "react")]
     raise ValueError("No verification command found; supply commands or add an executable make check target")
 
 
@@ -598,7 +604,7 @@ class Engine:
                     else set()
                 )
 
-                async def command_executor(argv: list[str], timeout: int) -> Any:
+                async def command_executor(argv: list[str], timeout: int | None) -> Any:
                     return await self._project_command(identifier, run, workspace, argv, timeout, "implement")
 
                 async def python_profile(request: PythonProfileRequest) -> dict[str, Any]:
@@ -748,6 +754,9 @@ class Engine:
 
                 provider.configure_runtime(
                     scope_root=scope,
+                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None,
                     read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
                     repository_root=workspace,
                     allowed_tools=frozenset(grants or ()),
@@ -804,7 +813,7 @@ class Engine:
                 )
                 source_brief += "\n\n" + prompt_text(
                     "implementation/verification-contract",
-                    commands=json.dumps([Command.model_validate(command).model_dump() for command in run["commands"]]),
+                    commands=json.dumps([command.model_dump() for command in configured_commands(run)]),
                     policy_checks=json.dumps(
                         [
                             command.model_dump()
@@ -1392,8 +1401,11 @@ class Engine:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
                 (await self.store.update(identifier, **snapshot_run_fields(files, diff), status="validating"))
-                commands = [Command.model_validate(command) for command in run["commands"]] or default_commands(
-                    self.component_directory(run, workspace)
+                commands = configured_commands(run) or default_commands(
+                    self.component_directory(run, workspace),
+                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None,
                 )
                 commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
                 if run.get("framework_knowledge_pin"):
@@ -2144,7 +2156,7 @@ class Engine:
         run: dict[str, Any],
         workspace: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         stage: str,
         *,
         ordinal: int | None = None,
@@ -2325,8 +2337,11 @@ class Engine:
         )
         (await self.store.update(identifier, status="validating", attempt=1))
         await emit("validating", "Testing existing source without a coding provider")
-        commands = [Command.model_validate(command) for command in run["commands"]] or default_commands(
-            self.component_directory(run, workspace)
+        commands = configured_commands(run) or default_commands(
+            self.component_directory(run, workspace),
+            work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+            if run.get("work_duration") is not None
+            else None,
         )
         commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
         if len(commands) > 20:

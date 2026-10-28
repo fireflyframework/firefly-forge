@@ -25,6 +25,7 @@ from firefly_forge.runner_monitor_models import MonitorStartInput, MonitorWaitIn
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.tool_broker import ToolReconciliationRequired
+from firefly_forge.work_duration_models import effective_work_timeout
 from firefly_forge.worker_evidence_query import WorkerEvidenceReadInput
 from firefly_forge.workspace_tools import ToolRuntimeContext
 from firefly_forge.workspace_tools import WorkspaceTools as WorkspaceTools
@@ -175,20 +176,28 @@ async def execute_agentic(
             raise ValueError("Owned host process monitoring is not configured")
         return await context.process_monitor.cancel(monitor_id)
 
-    async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
-
+    async def run_command(argv: list[str], timeout: int | None) -> dict[str, Any]:
         from firefly_forge.sandbox_models import bounded_argv
 
         if context.command_executor is None:
             raise ValueError("Command execution is not configured")
-        if not 1 <= len(argv) <= 64 or type(timeout) is not int or not 1 <= timeout <= 3600:
-            raise ValueError("Command arguments or timeout exceed the tool bounds")
+        if not 1 <= len(argv) <= 64:
+            raise ValueError("Command arguments exceed the tool bounds")
         bounded_argv(argv)
         before = await source_manifest()
         result = await context.command_executor(argv, timeout)
         after = await source_manifest()
         tools.files_written.update(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
         return {"exit_code": result.exit_code, "output": result.output}
+
+    async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
+        if type(timeout) is not int or not 1 <= timeout <= 3600:
+            raise ValueError("Command arguments or timeout exceed the tool bounds")
+        return await run_command(argv, timeout)
+
+    async def execute_command_v2(argv: list[str], timeout: int | None = None) -> dict[str, Any]:
+        assert context.work_duration is not None
+        return await run_command(argv, effective_work_timeout(context.work_duration.timeout_seconds, timeout))
 
     async def browser_check(
         path: str = "/", width: int = 1440, height: int = 900, theme: str = "light"
@@ -375,7 +384,7 @@ async def execute_agentic(
     if context.read_run_evidence is not None:
         handlers["read_run_evidence"] = read_run_evidence
     if context.command_executor is not None:
-        handlers["execute_command"] = execute_command
+        handlers["execute_command"] = execute_command if context.work_duration is None else execute_command_v2
     monitor_handlers: dict[str, Callable[..., Any]] = {
         "start_process": start_process,
         "process_status": process_status,
@@ -576,6 +585,8 @@ async def execute_agentic(
                     brief,
                     timeout=invocation.remaining()
                     if invocation is not None
+                    else context.work_duration.timeout_seconds
+                    if context.work_duration is not None
                     else float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
                     usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
                 )

@@ -21,7 +21,7 @@ from firefly_forge.secrets import runtime_environment
 async def _bounded_process(
     argv: list[str],
     cwd: Path,
-    timeout: int,
+    timeout: int | None,
     max_output_bytes: int,
     *,
     input_data: bytes | None = None,
@@ -75,7 +75,7 @@ async def _bounded_process(
 
 
 async def bounded_process(
-    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
+    argv: list[str], cwd: Path, timeout: int | None, max_output_bytes: int, *, input_data: bytes | None = None
 ) -> ProcessResult:
     code, output = await _bounded_process(argv, cwd, timeout, max_output_bytes, input_data=input_data)
     return ProcessResult(argv, code, output.decode("utf-8", errors="replace"))
@@ -92,7 +92,7 @@ class RunnerBackend(Protocol):
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -103,7 +103,7 @@ class RunnerBackend(Protocol):
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -122,7 +122,7 @@ class HostRunnerBackend:
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -134,7 +134,7 @@ class HostRunnerBackend:
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,

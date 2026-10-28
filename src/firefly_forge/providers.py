@@ -290,7 +290,7 @@ async def run_process(
     workspace: Path,
     emit: Emit,
     *,
-    timeout: float,
+    timeout: float | None,
     stdin: str | None = None,
     env: dict[str, str] | None = None,
     stdin_protocol: ProcessStdinProtocol | None = None,
@@ -353,7 +353,7 @@ async def run_process(
         for stream in streams:
             stream.cancel()
         await asyncio.gather(*streams, return_exceptions=True)
-        if isinstance(exc, TimeoutError):
+        if isinstance(exc, TimeoutError) and timeout is not None:
             raise ProviderError(f"Coding provider timed out after {timeout:g} seconds") from exc
         raise
     assert process.returncode is not None
@@ -402,6 +402,13 @@ class ConfiguredProvider:
         self.source_edits: Any = None
         self.source_edit_activation: Any = None
         self.source_edit_private_roots: tuple[Path, ...] | None = None
+
+    def execution_timeout(self) -> float | None:
+        if self.runtime_context is not None and self.runtime_context.work_duration is not None:
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+            return WorkDurationPolicyV2.model_validate(self.runtime_context.work_duration).timeout_seconds
+        return float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800"))
 
     def configure_coding_checks(self, server: Any, instructions: str) -> None:
         from firefly_forge.coding_cli_channel import CodingCLIChannel
@@ -507,7 +514,7 @@ class CodexProvider(ConfiguredProvider):
                 command,
                 workspace,
                 emit,
-                timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                timeout=self.execution_timeout(),
                 stdin=prompt,
                 env=runtime_environment(
                     (self.source_edits or self.coding_checks).server.environment
@@ -577,7 +584,7 @@ class ClaudeProvider(ConfiguredProvider):
                 command,
                 workspace,
                 emit,
-                timeout=float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
+                timeout=self.execution_timeout(),
                 stdin=prompt,
                 env=child_env,
             )

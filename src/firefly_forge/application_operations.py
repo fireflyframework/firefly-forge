@@ -301,7 +301,7 @@ class ApplicationOperations:
                 backend=app.get("backend", "pyfly"),
                 frontend=app.get("frontend", "react"),
                 operation="maintain",
-                commands=request.commands,
+                commands=[command for command in request.commands],
                 publish=False,
             )
         )
