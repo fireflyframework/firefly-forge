@@ -136,6 +136,45 @@ Forge reproduces the pending request through a sealed public SDK transport and r
 
 SDK counters remain unchanged at admission and increase when new responses and tools complete. The rejected native request remains in the lifetime admission budget. New commands consume their original command ceiling normally. A queued receipt establishes no execution success or acceptance of the requested product work. A second failure remains held; this workflow supplies no automatic retry loop.
 
+## A consumed turn with an unavailable evidence observation
+
+A later continuation can receive a valid model response, consume it, and stop when `read_run_evidence` cannot durably retain its result. This needs a separate administrator decision. The provider-refusal action above is already spent; its evidence cannot authorize another request. The new `allow_readonly_observation_recovery` policy setting is **off by default** and grants no execution by itself.
+
+The supported native history contains the complete earlier claim and refusal recovery, followed by one consumed response and exact pure-read custody. That response contains one unavailable `read_run_evidence` call and, optionally, one `list_files` call with its exact retained successful result. Each call must have its original grant, arguments, source cut, checkpoint and complete durable intent/outcome. Writable, command, network, unsupported or unaccounted later effects remain held.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Unavailable observation continuation" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+    Consumed["Consumed model<br/>response"] --> Custody["Exact read custody<br/>and current authority"]
+    Custody --> Known["Retained list result<br/>unchanged"]
+    Custody --> Unknown["Evidence observation<br/>explicitly unavailable"]
+    Known --> Review["Administrator review<br/>same existing ticket"]
+    Unknown --> Review
+    Review --> Lease["Finite ownership lease<br/>next model turn"]
+```
+
+</div>
+<p class="forge-flow-caption">Read from left to right. The unknown evidence result remains unknown. Neither original reader runs again.</p>
+
+Sealed public SDK reconstruction preserves the original raw response and history. It appends the exact retained list result and `{"status":"observation_unavailable","reason":"original_read_result_not_retained"}` for the missing evidence observation. It invokes no original callback, makes no provider request and writes no native tool result. The original `agentic_tool_unknown` record remains unchanged; the distinct `readonly_observation_recovery` witness explains the reviewed continuation.
+
+Validation compares canonical JSON for the complete message history, request history, state, limits, contract and usage. It preserves JSON types and rejects altered model metadata, token details or retained cost fields.
+
+Use these routes relative to `/api/v1/runs/{run_id}/invalid-read-continuity/requests/{request_id}`:
+
+| Step | Route and typed input |
+| --- | --- |
+| Inspect the held turn without admitting work | `GET /readonly-observation-candidate` |
+| Save one reviewed action on the same ticket | `POST /readonly-observation-recoveries/{recovery_id}` with `ReadonlyObservationRecoveryInputV1` |
+| Read the saved action after an uncertain response | `GET /readonly-observation-recovery` |
+
+The Python client methods are `readonly_observation_recovery_candidate`, `request_readonly_observation_recovery` and `readonly_observation_recovery`. Keep the action ID before submission. The strict version-1 input binds the exact `candidate_digest`, a bounded `valid_for_seconds`, and four explicit acknowledgements: `acknowledge_unavailable_observation`, `acknowledge_no_original_callback_replay`, `acknowledge_same_request_attempt_and_budgets` and `acknowledge_finite_ownership_lease`. Each acknowledgement must be the Boolean `true`. An identical action reads back the saved result; another action cannot replace it.
+
+Admission appends one witness and one event atomically, then queues the same request. Its original checkpoint, admission seal, binding and failed receipts stay intact. A separate derived checkpoint and invocation binding carry the reviewed history and finite lease. Current administrator and execution authority, source, configuration, qualified profile, policy revision and original task attempt are checked again before claim and during execution. Revocation or expiry stops dispatch.
+
+Reconstruction charges the already consumed response once and each original tool call once, retaining the original request, token and tool ceilings. It adds no command charge: an existing ledger at 11 of 22 stays at 11 during review and admission. New commands use the remaining original allowance. The attempt, repair budget and original consumption never reset. A queued receipt confirms admission; a later native worker claim and completion establish execution progress. The unavailable observation remains visible to that next model turn and supplies no claim that the requested product work succeeded.
+
 ## Failure and validation boundaries
 
 Policy revocation, expired ownership, changed source/configuration/profile/scope, cancellation, actor loss, unknown effects, or a changed native ticket stop execution. Claimed tickets are never automatically requeued after owner loss. Their outcome requires explicit native reconciliation.
@@ -199,6 +238,8 @@ Select **Review failed admission**, read the four acknowledgements, then choose 
 </details>
 
 ## Credential inspection and ordinary restore
+
+Historical query proofs keep their original validator identity. The package accepts the original reader source and an explicitly reviewed successor whose `EvidenceQuery` class and JSON schema are unchanged. It verifies the complete source hash before rebuilding a proof. Other source hashes remain ineligible until reviewed and qualified.
 
 Authenticated journal reads may inspect canonical records from the known SDK epochs under current reader and credential guards. Historical inspection requires matching native row fields and an intact journal chain. It checks encoded bounds, hash, canonical structure and typed budgets, then passes the original JSON text to credential screening. It preserves every field, including telemetry provenance.
 

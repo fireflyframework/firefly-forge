@@ -165,6 +165,7 @@ def _agent(
     migrate: bool,
     metadata: AbstractCapability[Any] | None = None,
     target_contract: dict[str, Any] | None = None,
+    current_contract: bool = False,
 ) -> Any:
     contract = target_contract if migrate and target_contract is not None else checkpoint.record.contract
     parameters = contract["parameters"]
@@ -174,7 +175,7 @@ def _agent(
     if len({t["name"] for t in definitions}) != len(definitions):
         raise ValueError("Continuity tools have duplicate names")
     selected = [item for item in definitions if item["name"] == "read_run_evidence"]
-    if len(selected) != 1:
+    if not current_contract and len(selected) != 1:
         raise ValueError("Continuity has no unique frozen evidence tool")
     tools = []
     for definition in definitions:
@@ -202,9 +203,11 @@ def _agent(
 
         schema = (
             WorkerEvidenceReadInput.model_json_schema()
-            if migrate and name == "read_run_evidence"
+            if (migrate or current_contract) and name == "read_run_evidence"
             else _ordered_schema(name, definition["parameters_json_schema"])
         )
+        if current_contract and schema != definition["parameters_json_schema"]:
+            raise ValueError("Current sealed tool schema differs from its exact original")
         tool = Tool.from_schema(
             sealed_handler(name),
             name=name,

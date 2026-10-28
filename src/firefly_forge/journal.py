@@ -472,6 +472,7 @@ class Journal:
                     "agentic_tool_result",
                     "agentic_tool_unknown",
                     "provider_rejection_recovery",
+                    "readonly_observation_recovery",
                 }
             ]
             if protected:
@@ -481,6 +482,9 @@ class Journal:
 
         checkpoint_payloads = [entry["payload"] for entry in entries if entry["kind"] == "agent_checkpoint"]
         rejection_entries = [entry for entry in entries if entry["kind"] == "provider_rejection_recovery"]
+        observation_entries = [entry for entry in entries if entry["kind"] == "readonly_observation_recovery"]
+        if len(observation_entries) > 100:
+            raise ValueError("Journal observation custody exceeds its retained request bound")
         if len(checkpoint_payloads) > 100:
             raise ValueError("Journal checkpoint history exceeds its retained bound")
         if len(rejection_entries) > 100:
@@ -506,6 +510,16 @@ class Journal:
             with prepared_credential_rejection(self.store):
                 await self.store.admit_credentials(protected)
                 await checked(protected)
+                for entry in observation_entries:
+                    from firefly_forge.readonly_observation_recoveries import settled_observation
+
+                    if not historical_custody:
+                        raise ValueError("Observation credential inspection requires intact native custody")
+                    settled_observation(entry, entries)
+                    p = entry["payload"]
+                    canonical = BoundaryCheckpoint.credential_text(p["checkpoint"].encode(), p["checkpoint_digest"])
+                    await self.store.admit_credentials(canonical)
+                    await checked(canonical)
                 for entry in rejection_entries:
                     from firefly_forge.provider_rejection_recoveries import settled_rejection
 

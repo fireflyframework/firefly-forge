@@ -110,6 +110,7 @@ class InvalidReadTickets:
     restores: Any
     recoveries: Any
     rejections: Any
+    observations: Any
 
     async def _prepare(self, run_id: str) -> Data:
         raise NotImplementedError
@@ -149,6 +150,8 @@ class InvalidReadTickets:
             valid = last["kind"] == "request_admitted" and ticket["generation"] is None and ticket["result"] is None
             if last["kind"] == "request_recovered_before_claim":
                 valid = await self.recoveries.queued_valid(ticket)
+            if last["kind"] == "request_recovered_after_readonly_observation":
+                valid = await self.observations.queued_valid(ticket)
             if last["kind"] == "request_recovered_after_rejection":
                 valid = await self.rejections.queued_valid(ticket)
         elif ticket["status"] == "executing":
@@ -508,6 +511,10 @@ class InvalidReadTickets:
     async def _execute(self, ticket: Data) -> None:
         from firefly_forge.invalid_read_epochs import epoch_scope, epoch_snapshot
 
+        observation = getattr(self, "observations", None)
+        if observation is not None and await observation.has(ticket):
+            await observation.execute(ticket)
+            return
         rejection = getattr(self, "rejections", None)
         if rejection is not None and await rejection.has(ticket):
             await rejection.execute(ticket)

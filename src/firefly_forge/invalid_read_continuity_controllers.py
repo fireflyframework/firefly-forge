@@ -11,6 +11,7 @@ from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInp
 from firefly_forge.invalid_read_lease import ContinuityLeasePolicies, ContinuityLeasePolicyV1
 from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
 from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1, ReviewedProviderRejectionV1
+from firefly_forge.readonly_observation_models import ReadonlyObservationRecoveryInputV1
 
 
 @rest_controller
@@ -82,6 +83,24 @@ class InvalidReadContinuityController:
     @get_mapping("/requests/{request_id}/rejected-boundary-recovery")
     async def rejected_boundary_recovery(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self._recovery(self.continuities.rejections.status, run_id, request_id)
+
+    @get_mapping("/requests/{request_id}/readonly-observation-candidate")
+    async def readonly_observation_candidate(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self._recovery(self.continuities.observations.candidate, run_id, request_id)
+
+    @post_mapping("/requests/{request_id}/readonly-observation-recoveries/{recovery_id}", status_code=201)
+    async def recover_readonly_observation(
+        self,
+        run_id: PathVar[str],
+        request_id: PathVar[str],
+        recovery_id: PathVar[str],
+        body: Body[ReadonlyObservationRecoveryInputV1],
+    ) -> dict[str, Any]:
+        return await self._recovery(self.continuities.observations.request, run_id, request_id, recovery_id, body)
+
+    @get_mapping("/requests/{request_id}/readonly-observation-recovery")
+    async def readonly_observation_recovery(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self._recovery(self.continuities.observations.status, run_id, request_id)
 
     @get_mapping("/requests/{request_id}")
     async def get(self, run_id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:

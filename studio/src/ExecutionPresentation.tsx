@@ -19,6 +19,7 @@ import "./ExecutionPresentation.css";
 import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
 import { workerEvidenceImages } from "./WorkerEvidenceData";
 import { VerificationHandoff } from "./VerificationHandoff";
+import { ReadonlyObservationEvidence } from "./ReadonlyObservationEvidence";
 
 export function TimelineEventView({
   event,
@@ -685,6 +686,12 @@ export function EvidenceView({
 }) {
   if (kind === "provider_rejection_recovery")
     return <ProviderRefusalEvidence value={value} advanced={advanced} />;
+  if (kind === "readonly_observation_recovery")
+    return (
+      <ReadonlyObservationEvidence value={value}>
+        {advanced && <AdvancedRecord value={value} />}
+      </ReadonlyObservationEvidence>
+    );
   if (
     kind === "index_sanitation_intent" ||
     kind === "index_sanitation_receipt" ||

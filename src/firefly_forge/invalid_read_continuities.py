@@ -54,6 +54,9 @@ class InvalidReadContinuities(InvalidReadTickets):
         from firefly_forge.provider_rejection_recoveries import ProviderRejectionRecoveries
 
         self.rejections = ProviderRejectionRecoveries(self)
+        from firefly_forge.readonly_observation_recoveries import ReadonlyObservationRecoveries
+
+        self.observations = ReadonlyObservationRecoveries(self)
 
     async def _actor(self, run_id: str) -> Any:
         actor = CURRENT_PRINCIPAL.get()

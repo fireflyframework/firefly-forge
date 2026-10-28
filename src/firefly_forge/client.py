@@ -437,6 +437,40 @@ class ForgeClient:
             )
         )
 
+    def readonly_observation_recovery_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect a consumed read turn; this does not grant dispatch or retry its callback."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/readonly-observation-candidate"
+            )
+        )
+
+    def request_readonly_observation_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save one reviewed unavailable observation on the existing request."""
+        from firefly_forge.readonly_observation_models import ReadonlyObservationRecoveryInputV1
+
+        body = self._recovery_body(ReadonlyObservationRecoveryInputV1, request)
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/readonly-observation-recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        return dict(self.request("POST", path, json=body))
+
+    def readonly_observation_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved action after a lost response without another submission."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/readonly-observation-recovery"
+            )
+        )
+
     def invalid_read_continuity_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "invalid-read-continuity/policy"))
 

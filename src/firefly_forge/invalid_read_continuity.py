@@ -28,10 +28,25 @@ from firefly_forge.run_evidence import EvidenceQuery
 Data = dict[str, Any]
 # Approved historical validator and pre-callback call site; neither is loaded from an operator's request.
 LEGACY_QUERY_SHA256 = "a259f91531882f1370cd2eab5aee98c5e1e76b3cca4084e3abfa05da77d77344"
+# The reviewed reader successor keeps EvidenceQuery byte-identical. Historical proof identity stays unchanged.
+APPROVED_QUERY_VALIDATORS = dict.fromkeys(
+    (
+        "a259f91531882f1370cd2eab5aee98c5e1e76b3cca4084e3abfa05da77d77344",
+        "2712e480fb4b6a21f0ff999d5b8fa233d5087278d6b755f12a90e90889649e30",
+    ),
+    "a259f91531882f1370cd2eab5aee98c5e1e76b3cca4084e3abfa05da77d77344",
+)
 LEGACY_ENGINE_SHA256 = "e32e3d199ab8147017e781e757aa48b5857472a51ac93ff3f49116e13da716ac"
 LEGACY_RUNTIME_CONTRACT = "f3cc412b382858ee8b4e9c9534a1dba20fcc582936d07e96a620c9f7a0c247f6"
 # Same frozen 55 adapters and prompt manifest; retained 2.58.0/3.35.1 SDK launch epoch.
 RETAINED_SDK_RUNTIME_CONTRACT = "0b48cf3f13632a7f182edb904ae97060f585f8907a737b695422eb8f4582786d"
+
+
+def require_legacy_query_validator() -> None:
+    validator_path = Path(__file__).with_name("run_evidence.py")
+    observed = hashlib.sha256(validator_path.read_bytes()).hexdigest()
+    if APPROVED_QUERY_VALIDATORS.get(observed) != LEGACY_QUERY_SHA256:
+        raise ValueError("The pinned historical input validator is unavailable")
 
 
 def registered_legacy_runtime(entries: list[Data], run_id: str, *, primary: str = LEGACY_RUNTIME_CONTRACT) -> str:
@@ -250,9 +265,7 @@ def prepare_invalid_read(
         or task.get("status") not in {"running", "needs_reconciliation"}
     ):
         raise ValueError("Continuity requires an intact, failed original implementation attempt")
-    validator_path = Path(__file__).with_name("run_evidence.py")
-    if hashlib.sha256(validator_path.read_bytes()).hexdigest() != LEGACY_QUERY_SHA256:
-        raise ValueError("The pinned historical input validator is unavailable")
+    require_legacy_query_validator()
     if accepted_runtime_contract is None:
         accepted_runtime_contract = registered_legacy_runtime(entries, run["id"])
     policy = digest(

@@ -30,6 +30,16 @@ def _require(value: Any) -> None:
 
 
 def _completed(ticket: Data, entries: list[Data], events: list[Data]) -> None:
+    if any(event["kind"] == "request_recovered_after_readonly_observation" for event in events):
+        from firefly_forge.readonly_observation_recoveries import validate_readonly_observation_record
+
+        _require(validate_readonly_observation_record(ticket, entries, events) is not None)
+        _require(ticket["status"] == "completed")
+        result = ticket["result"]
+        _require(type(result) is dict and set(result) == {"run_status", "same_task_attempt"})
+        _require(result["run_status"] in {"paused", "succeeded", "validating"})
+        _require(type(result["same_task_attempt"]) is int and result["same_task_attempt"] == ticket["binding"]["round"])
+        return
     if any(event["kind"] == "request_recovered_after_rejection" for event in events):
         from firefly_forge.provider_rejection_recoveries import validate_rejection_recovery_record
 
@@ -167,7 +177,13 @@ async def assert_generic_dispatch_allowed(store: Any, journal: Any, run: Data) -
                 entry for entry in entries if entry["kind"] == CLAIM and entry["digest"] == ticket["claim_digest"]
             ]
             _require(len(claims) == 1 and claims[0]["payload"]["settlement_digest"] == settlement["digest"])
-            maximum = 8 if any(entry["kind"] == "provider_rejection_recovery" for entry in entries) else 5
+            maximum = (
+                11
+                if any(entry["kind"] == "readonly_observation_recovery" for entry in entries)
+                else 8
+                if any(entry["kind"] == "provider_rejection_recovery" for entry in entries)
+                else 5
+            )
             events = await read_recovery_events(requests, request_id, maximum=maximum)
             _completed(ticket, entries, events)
     except (KeyError, TypeError, AttributeError, ValueError, ImportError):
