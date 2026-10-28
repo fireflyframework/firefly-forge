@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from firefly_forge.diagnostic_recipes import PythonProfileRequest, PythonTraceRequest
     from firefly_forge.php_diagnostics import PHPProfileRequest
     from firefly_forge.qa import BrowserJourney, EvidenceImage, JourneyEvidence, QAReference
+    from firefly_forge.runner_monitors import RunnerMonitors
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class ToolRuntimeContext:
     python_profile: Callable[[PythonProfileRequest], Awaitable[dict[str, Any]]] | None = None
     python_trace: Callable[[PythonTraceRequest], Awaitable[dict[str, Any]]] | None = None
     php_profile: Callable[[PHPProfileRequest], Awaitable[dict[str, Any]]] | None = None
+    process_monitor: RunnerMonitors | None = None
 
 
 PRIVATE_BASENAMES = frozenset(
@@ -643,6 +645,11 @@ _TOOL_DESCRIPTIONS = {
     "edit_lines": "Edit lines with an expected source hash",
     "git_diff": "Read the component source diff without Git effects",
     "execute_command": "Execute bounded commands through the selected execution profile",
+    "start_process": "Start an explicitly granted owned process with renewable ownership",
+    "process_status": "Observe an owned process without starting it again",
+    "process_logs": "Read bounded redacted output from an owned process",
+    "wait_process": "Await owned process exit, output or a confined file condition in one tool call",
+    "cancel_process": "Stop an owned process and drain its process group",
     "browser_check": "Capture declared viewports and inspect the isolated project browser",
     "browser_journey": "Exercise bounded user journeys and return DOM and screenshot evidence",
     "internet_search": "Search the configured server-mediated search provider",
@@ -659,19 +666,28 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
     snapshot = runtime_snapshot or {}
     result = []
     for identifier, description in _TOOL_DESCRIPTIONS.items():
-        optional = identifier in {
-            "execute_command",
-            "browser_check",
-            "browser_journey",
-            "internet_search",
-            "external_mcp",
-            "knowledge_lookup",
-            "read_run_evidence",
-            "profile_python",
-            "trace_python",
-            "profile_php",
-        }
-        available = not optional or bool(snapshot.get(identifier, False))
+        monitor = identifier in {"start_process", "process_status", "process_logs", "wait_process", "cancel_process"}
+        optional = (
+            identifier
+            in {
+                "execute_command",
+                "browser_check",
+                "browser_journey",
+                "internet_search",
+                "external_mcp",
+                "knowledge_lookup",
+                "read_run_evidence",
+                "profile_python",
+                "trace_python",
+                "profile_php",
+            }
+            or monitor
+        )
+        available = (
+            bool(snapshot.get("process_monitor", False)) and bool(snapshot.get("execute_command", False))
+            if monitor
+            else not optional or bool(snapshot.get(identifier, False))
+        )
         if identifier in {"profile_python", "trace_python", "profile_php"}:
             available = available and bool(snapshot.get("execute_command", False))
         supported = provider in {"agentic", "bridge", "api"}
@@ -690,7 +706,7 @@ def tool_catalog(runtime_snapshot: dict[str, Any] | None = None, provider: str =
                 ),
                 "providers": ["agentic", "bridge"],
                 "requires": ["execute_command", identifier]
-                if identifier in {"profile_python", "trace_python", "profile_php"}
+                if identifier in {"profile_python", "trace_python", "profile_php"} or monitor
                 else [identifier]
                 if optional
                 else [],

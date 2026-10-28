@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/process_status
+version: 1.0.0
+description: Forge process_status instructions.
+system_template: ''
+user_template: "Observe the existing owned monitor. Never start or replay its command to check progress."
+required_variables: []
+metadata:
+  defaults: {}

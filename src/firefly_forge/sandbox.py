@@ -41,6 +41,7 @@ from firefly_forge.store import Store
 from firefly_forge.workspace_tools import _private_name
 
 if TYPE_CHECKING:
+    from firefly_forge.runner_monitors import RunnerMonitors
     from firefly_forge.runner_pool_worker import RunnerPoolWorker
 
 
@@ -471,6 +472,16 @@ class SandboxExecutor:
         self.transfer_image = pinned_image(transfer_image) if transfer_image else None
         self._capacity = asyncio.Semaphore(2)
         self._run_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._process_monitors: dict[tuple[str, str], RunnerMonitors] = {}
+
+    async def monitor(self, run_id: str, workspace: Path, task_id: str) -> RunnerMonitors:
+        from firefly_forge.runner_monitors import RunnerMonitors
+
+        key = (run_id, task_id)
+        async with self._run_locks[run_id]:
+            if key not in self._process_monitors or self._process_monitors[key].transport._closed:
+                self._process_monitors[key] = await RunnerMonitors.create(self, run_id, workspace, task_id)
+            return self._process_monitors[key]
 
     def _safe_result(self, result: ProcessResult, *, browser: bool = False) -> ProcessResult:
         if browser and contains_known_credential(result.output, self.credential_registry()):
@@ -955,9 +966,12 @@ class SandboxExecutor:
                 )[1]
                 if current_digest != request["workspace_digest"]:
                     raise ValueError("Command source changed during archive preparation")
-            created = await self.journal.sandbox_command_intent(
-                run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
-            )
+            from firefly_forge.runner_monitor_custody import monitor_scope
+
+            with monitor_scope(self._process_monitors.get((run_id, task_id))):
+                created = await self.journal.sandbox_command_intent(
+                    run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
+                )
             payload = created["execution"]["request"]
             execution_id = created["execution"]["execution_id"]
             execution_identity = execution_id

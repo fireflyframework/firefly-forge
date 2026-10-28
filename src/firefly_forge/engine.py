@@ -735,6 +735,17 @@ class Engine:
 
                         await assert_active_mode(self.journal, identifier)
 
+                monitor_grants = {"start_process", "process_status", "process_logs", "wait_process", "cancel_process"}
+                process_monitor = (
+                    await self.sandbox.monitor(identifier, scope, "implement")
+                    if self.sandbox
+                    and "execute_command" in (grants or ())
+                    and monitor_grants.intersection(grants or ())
+                    and run.get("sandbox_snapshot", {}).get("configuration", {}).get("process_monitor") is True
+                    and settings.get("FORGE_AGENTIC_CHECKPOINTS") != "required"
+                    else None
+                )
+
                 provider.configure_runtime(
                     scope_root=scope,
                     read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
@@ -752,6 +763,7 @@ class Engine:
                     and "external_mcp" in (grants or ())
                     else None,
                     command_executor=command_executor if self.sandbox and "execute_command" in (grants or ()) else None,
+                    process_monitor=process_monitor,
                     python_profile=python_profile
                     if self.sandbox
                     and {"execute_command", "profile_python"}.issubset(grants or ())

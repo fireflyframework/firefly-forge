@@ -16,6 +16,11 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 | `edit_lines` | Inclusive line replacement requiring the current file hash, rechecked on the open write descriptor. |
 | `git_diff` | A bounded component diff with external drivers, text conversion, filesystem monitors and hooks disabled. |
 | `execute_command` | Bounded argv execution through the frozen host or Docker policy. |
+| `start_process` | Optional owned host process with renewable ownership and an optional work deadline. |
+| `process_status` | Current state of an owned monitor, without restarting its command. |
+| `process_logs` | Bounded redacted output snapshot and its visible-content hash. |
+| `wait_process` | One bounded wait for exit, literal output, or a confined file condition. |
+| `cancel_process` | Stop the owned monitor and verify process-group and stream cleanup. |
 | `browser_check` | A fresh Playwright context against a declared container-local project origin. |
 | `browser_journey` | Declared user flows with typed actions, state DOM evidence and optional verified image input. |
 | `internet_search` | A configured server-mediated search API with bounded citations. |
@@ -32,9 +37,11 @@ Native tool arguments reject known configured credentials before file writes or 
 
 Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. A rejected line edit requires reading the new file before retrying.
 
-The table is a conditional native registry, not a promise that every provider receives all sixteen tools. Ordinary Codex and Claude Code execution uses the CLI's own permissions; role tool lists alone do not enforce those providers' tool access. Firefly Agentic and bridge execution use the native Python admission boundary.
+The table is a conditional native registry, not a promise that every provider receives every listed tool. Ordinary Codex and Claude Code execution uses the CLI's own permissions; role tool lists alone do not enforce those providers' tool access. Firefly Agentic and bridge execution use the native Python admission boundary.
 
 The separately qualified source-only Codex route has a different, measured contract: governed source list/read/search and source edits within its exact admitted workspace, plus only the utilities explicitly recorded in its supported profile. It does not inherit `execute_command`, browser tools, internet search or `read_run_evidence` from the ordinary native registry. The current binary, model metadata, package policy and runtime must match that qualified profile before dispatch. A configured provider, an available capability, a qualified source-only profile and a completed invocation are separate states; check the [tool prerequisites](tooling-prerequisites.md) and [source-only recovery requirements](recovery.md) for the applicable route. Owner guidance does not modify a call already in flight or become delivery authority for a sealed source-only invocation.
+
+Use [owned process monitors](runner-monitors.md) to start a configured host service, wait for readiness, run another authorized command, and stop it. Monitor grants are opt-in and are unavailable in required-checkpoint invocations.
 
 ## Continue through a large source tree
 

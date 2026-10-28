@@ -136,6 +136,7 @@ class RunnerConfiguration:
                 {
                     "read_run_evidence": True,
                     "execute_command": True,
+                    "process_monitor": configuration.get("process_monitor") is True and sandbox["mode"] == "host",
                     "profile_python": profile_available(sandbox),
                     "trace_python": profile_available(sandbox),
                     "profile_php": profile_available(sandbox),
@@ -172,6 +173,7 @@ class RunnerConfiguration:
             {
                 "read_run_evidence": True,
                 "execute_command": command["available"],
+                "process_monitor": command["available"] and configuration.get("process_monitor") is True,
                 "profile_python": profile_available(sandbox),
                 "trace_python": profile_available(sandbox),
                 "profile_php": profile_available(sandbox),

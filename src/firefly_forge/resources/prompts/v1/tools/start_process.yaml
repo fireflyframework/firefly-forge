@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/start_process
+version: 1.0.0
+description: Forge start_process instructions.
+system_template: ''
+user_template: "Start a host process within the explicit version-two monitoring policy. Work has no duration cap unless a project or request timeout is chosen. Ownership heartbeats continue while the current owner and authority remain valid. Retain monitor_id and inspect its actual exit code."
+required_variables: []
+metadata:
+  defaults: {}

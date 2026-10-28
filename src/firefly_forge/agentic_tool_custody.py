@@ -36,6 +36,11 @@ EFFECTS = {
     "write_file": "source_write",
     "edit_lines": "source_write",
     "execute_command": "command",
+    "start_process": "process_start",
+    "process_status": "process_observe",
+    "process_logs": "process_observe",
+    "wait_process": "process_observe",
+    "cancel_process": "process_cancel",
     "knowledge_lookup": "knowledge_read",
     "read_run_evidence": "evidence_read",
 }
@@ -175,7 +180,7 @@ class AgenticToolCustody:
             if row["kind"] == INTENT
             and row["task_id"] == "implement"
             and row["payload"].get("task_attempt") == self.run.get("attempt", 1)
-            and row["payload"].get("effect") in {"source_write", "command"}
+            and row["payload"].get("effect") in {"source_write", "command", "process_start", "process_cancel"}
         ]
         for intent in intents:
             results = [

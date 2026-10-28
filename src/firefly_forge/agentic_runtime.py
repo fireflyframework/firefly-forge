@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ from firefly_forge.php_diagnostics import PHPProfileRequest
 from firefly_forge.profiles import build_instruction
 from firefly_forge.prompts import prompt_text
 from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
+from firefly_forge.runner_monitor_models import MonitorStartInput, MonitorWaitInput
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.tool_broker import ToolReconciliationRequired
@@ -145,6 +147,33 @@ async def execute_agentic(
 
     async def source_manifest() -> dict[str, str]:
         return await tools.source_manifest()
+
+    monitor_source_before = await source_manifest() if context.process_monitor is not None else {}
+
+    async def start_process(request: MonitorStartInput) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.start(request)
+
+    async def process_status(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.status(monitor_id)
+
+    async def process_logs(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.logs(monitor_id)
+
+    async def wait_process(request: MonitorWaitInput) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.wait(request)
+
+    async def cancel_process(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.cancel(monitor_id)
 
     async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
 
@@ -347,6 +376,20 @@ async def execute_agentic(
         handlers["read_run_evidence"] = read_run_evidence
     if context.command_executor is not None:
         handlers["execute_command"] = execute_command
+    monitor_handlers: dict[str, Callable[..., Any]] = {
+        "start_process": start_process,
+        "process_status": process_status,
+        "process_logs": process_logs,
+        "wait_process": wait_process,
+        "cancel_process": cancel_process,
+    }
+    monitor_grants = set(context.allowed_tools or ()) & monitor_handlers.keys()
+    if monitor_grants:
+        if context.process_monitor is None or "execute_command" not in (context.allowed_tools or ()):
+            raise ValueError("Process monitoring is not configured or available within the granted runner")
+        if invocation is not None:
+            raise ValueError("Process monitoring is unavailable for required-checkpoint invocations")
+        handlers.update(monitor_handlers)
     if context.browser_runner is not None:
         handlers["browser_check"] = browser_check
     if context.browser_journey is not None:
@@ -383,6 +426,11 @@ async def execute_agentic(
         "edit_lines",
         "git_diff",
         "execute_command",
+        "start_process",
+        "process_status",
+        "process_logs",
+        "wait_process",
+        "cancel_process",
         "browser_check",
         "browser_journey",
         "internet_search",
@@ -541,6 +589,15 @@ async def execute_agentic(
             if isinstance(cause, (SearchProviderError, ToolReconciliationRequired)):
                 raise cause from None
         raise
+    finally:
+        if context.process_monitor is not None:
+            await asyncio.shield(context.process_monitor.close())
+            after = await source_manifest()
+            tools.files_written.update(
+                path
+                for path in monitor_source_before.keys() | after.keys()
+                if monitor_source_before.get(path) != after.get(path)
+            )
     if custody is not None:
         await custody.assert_effects_settled()
     if context.credential_admission is not None:

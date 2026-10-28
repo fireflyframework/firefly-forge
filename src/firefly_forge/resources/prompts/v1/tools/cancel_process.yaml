@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/cancel_process
+version: 1.0.0
+description: Forge cancel_process instructions.
+system_template: ''
+user_template: "Cancel the exact owned monitor and wait for its group and streams to drain. Never supply an arbitrary operating-system PID."
+required_variables: []
+metadata:
+  defaults: {}
