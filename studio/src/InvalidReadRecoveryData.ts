@@ -68,6 +68,10 @@ export type RecoveryStatus = {
   lease: Record<string, unknown> | null;
   current_profile: Record<string, string> | null;
 };
+export type ReadonlyRecoveryStatus = Omit<
+  RecoveryStatus,
+  "kind" | "current_profile"
+> & { kind: "readonly_observation_recovery_status" };
 const id = /^[a-f0-9]{32}$/,
   hash = /^[a-f0-9]{64}$/;
 const holds = [
@@ -279,6 +283,56 @@ export function recoveryStatus(
     record(s.lease);
   }
   return s as RecoveryStatus;
+}
+export function readonlyRecoveryStatus(
+  value: unknown,
+  context: RecoveryContext,
+  seal?: string,
+): ReadonlyRecoveryStatus {
+  const s = record(value);
+  keys(s, [
+    "version",
+    "kind",
+    "run_id",
+    "request_id",
+    "recovery_id",
+    "recovery_record_digest",
+    "status",
+    "original_admission_seal",
+    "lease",
+  ]);
+  bound(s, context);
+  requireValue(
+    s.kind === "readonly_observation_recovery_status" &&
+      typeof s.status === "string" &&
+      [
+        "not_recovered",
+        "queued",
+        "executing",
+        "completed",
+        "failed",
+        "needs_reconciliation",
+      ].includes(String(s.status)) &&
+      typeof s.original_admission_seal === "string" &&
+      hash.test(s.original_admission_seal) &&
+      (!seal || s.original_admission_seal === seal),
+  );
+  if (s.status === "not_recovered") {
+    requireValue(
+      s.recovery_id === null &&
+        s.recovery_record_digest === null &&
+        s.lease === null,
+    );
+  } else {
+    requireValue(
+      typeof s.recovery_id === "string" &&
+        id.test(s.recovery_id) &&
+        typeof s.recovery_record_digest === "string" &&
+        hash.test(s.recovery_record_digest),
+    );
+    record(s.lease);
+  }
+  return s as ReadonlyRecoveryStatus;
 }
 // The shared key also prevents a different actor from reusing this browser's uncertain action.
 export function markerKey(c: RecoveryContext) {

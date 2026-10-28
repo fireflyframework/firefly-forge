@@ -4,6 +4,7 @@ import {
   candidate,
   recoveryInput,
   recoveryStatus,
+  readonlyRecoveryStatus,
   markerKey,
   readMarker,
   sendOnce,
@@ -186,5 +187,67 @@ describe("failed preclaim recovery contract", () => {
       ),
     ).rejects.toThrow();
     expect(calls).toBe(0);
+  });
+});
+
+const readonlyStatus = (state = "executing") => ({
+  version: 1,
+  kind: "readonly_observation_recovery_status",
+  run_id: context.run,
+  request_id: request,
+  recovery_id: state === "not_recovered" ? null : "e".repeat(32),
+  recovery_record_digest: state === "not_recovered" ? null : hash,
+  status: state,
+  original_admission_seal: hash,
+  lease: state === "not_recovered" ? null : {},
+});
+describe("saved unavailable-read status contract", () => {
+  it.each([
+    "queued",
+    "executing",
+    "completed",
+    "failed",
+    "needs_reconciliation",
+  ])("accepts the exact %s saved action", (state) => {
+    const value = readonlyRecoveryStatus(readonlyStatus(state), context, hash);
+    expect(value.status).toBe(state);
+    expect(value.recovery_id).toBe("e".repeat(32));
+  });
+  it("accepts an absent action only with absent receipt and lease", () => {
+    expect(
+      readonlyRecoveryStatus(readonlyStatus("not_recovered"), context).status,
+    ).toBe("not_recovered");
+    expect(() =>
+      readonlyRecoveryStatus(
+        { ...readonlyStatus(), status: "not_recovered" },
+        context,
+      ),
+    ).toThrow();
+  });
+  it.each([
+    { version: 2 },
+    { kind: "unclaimed_invalid_read_recovery_status" },
+    { run_id: "5".repeat(32) },
+    { request_id: "6".repeat(32) },
+    { status: "succeeded" },
+    { recovery_id: null },
+    { recovery_record_digest: "private-canary" },
+    { original_admission_seal: "wrong" },
+    { lease: null },
+    { lease: [] },
+    { current_profile: {} },
+    { status: ["queued"] },
+    { recovery_id: ["e".repeat(32)] },
+    { recovery_record_digest: [hash] },
+    { original_admission_seal: [hash] },
+  ])("rejects mismatched or malformed saved status %j", (change) => {
+    expect(() =>
+      readonlyRecoveryStatus({ ...readonlyStatus(), ...change }, context),
+    ).toThrow();
+  });
+  it("rejects a different admission than the saved browser action", () => {
+    expect(() =>
+      readonlyRecoveryStatus(readonlyStatus(), context, "f".repeat(64)),
+    ).toThrow();
   });
 });

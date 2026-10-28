@@ -202,6 +202,9 @@ After grant confirmation, refresh the final-allowance candidate and include `cod
 | GET | `/runs/{id}/agent-checkpoints/candidates` | Discover bounded original-result references without continuing work |
 | POST | `/runs/{id}/agent-checkpoints/{completion_id}/restores` | Admit one reviewed original-result continuation |
 | GET | `/runs/{id}/agent-checkpoints/{completion_id}/restores/{request_id}` | Read that exact continuation ticket without dispatch |
+| GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/candidate` | Inspect a retained checkpoint and original ticket without admitting work |
+| POST | `/runs/{id}/checkpoint-continuations/requests/{request_id}/actions/{action_id}` | Save a reviewed finite continuation on the same execution request |
+| GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/status` | Read the saved checkpoint-continuation action and worker status |
 | GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
 | POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
 | POST | `/runs/{id}/runner-continuations` | Admit one explicit continuation of the original eligible queued pool command |

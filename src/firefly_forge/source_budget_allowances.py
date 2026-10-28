@@ -324,6 +324,10 @@ def admission_contract_digest() -> str:
                 "migrations.py",
                 "agentic_tool_custody.py",
                 "agentic_tool_results.py",
+                "checkpoint_continuations.py",
+                "checkpoint_continuation_proof.py",
+                "checkpoint_continuation_models.py",
+                "checkpoint_continuation_controllers.py",
             )
         }
     )

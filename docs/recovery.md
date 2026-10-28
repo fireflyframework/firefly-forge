@@ -7,6 +7,8 @@ description: Recover paused and interrupted runs with persisted task state, expl
 
 Use the durable plan and journal to determine what happened before continuing a run. The same run can retain partial source, provider and policy snapshots, earlier failed checks, a real checkpoint commit and remote-effect receipts.
 
+When an existing continuation stops at a later retained checkpoint, review [checkpoint continuation](checkpoint-continuations.md). It preserves the same execution request and task attempt, including completed work and charged consumption. Its candidate and status reads start no work.
+
 ## Settle an uncertain run submission
 
 Run creation has a separate identity from the run it may admit. `POST /api/v1/run-creation-requests/{request_id}` accepts the original `{"version":1,"input":...}` envelope under a retained 32-character hexadecimal request ID. A new admission returns HTTP201; an exact replay by the original user and authentication method returns HTTP200 with the unchanged receipt. The legacy `POST /api/v1/runs` route remains a separate operation.

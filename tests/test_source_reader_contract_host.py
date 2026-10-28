@@ -90,12 +90,13 @@ def test_selected_prompt_or_renderer_drift_revokes_profile_before_admission(chan
 
 
 def test_reader_bound_proof_uses_a_new_registry_and_loader_contract():
-    assert qualification.REGISTRY_VERSION == 22
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v23"
+    assert f"codex-exec-restricted-source/v{qualification.REGISTRY_VERSION + 1}" == qualification.LOADER_PROFILE
+    assert tuple(name for name, _ in qualification.loader_hashes()) == qualification.LOADER_MODULES
     historical = [
         profile for profile in qualification._profiles() if profile.loader_profile == "codex-exec-restricted-source/v5"
     ]
     assert len(historical) == 1
+    assert historical[0].version < qualification.REGISTRY_VERSION
     assert (
         qualification.historical_profile_seal(historical[0])["profile_digest"]
         == "17320f82c0f2f9ab4b65c7e3bd8b89741a3716a8896dd5f674f6409ac1490c3c"

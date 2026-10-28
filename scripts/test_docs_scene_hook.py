@@ -176,6 +176,44 @@ class WalkthroughTests(unittest.TestCase):
 
             save()
             hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            for stage in (
+                "checkpoint-continuation-policy",
+                "checkpoint-continuation-review",
+                "checkpoint-continuation-status",
+            ):
+                name = stage + "-mobile-light.png"
+                (asset.parent / name).write_bytes(asset.read_bytes())
+                capture = {
+                    **record,
+                    "stage": stage,
+                    "path": "assets/screenshots/" + name,
+                    "producer": "studio/tests/invalid-read-recovery.spec.ts",
+                    "producer_sha256": producers["studio/tests/invalid-read-recovery.spec.ts"],
+                }
+                manifest["captures"][name] = capture
+                save()
+                with self.subTest(checkpoint_stage=stage):
+                    hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                capture["producer"] = "studio/tests/docs-walkthrough.spec.ts"
+                capture["producer_sha256"] = producers[capture["producer"]]
+                save()
+                with self.assertRaisesRegex(ValueError, "stage differs from its producer"):
+                    hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                del manifest["captures"][name]
+            unknown_name = "checkpoint-continuation-unknown-mobile-light.png"
+            (asset.parent / unknown_name).write_bytes(asset.read_bytes())
+            manifest["captures"][unknown_name] = {
+                **record,
+                "stage": "checkpoint-continuation-unknown",
+                "path": "assets/screenshots/" + unknown_name,
+                "producer": "studio/tests/invalid-read-recovery.spec.ts",
+                "producer_sha256": producers["studio/tests/invalid-read-recovery.spec.ts"],
+            }
+            save()
+            with self.assertRaisesRegex(ValueError, "Unknown checkpoint continuation capture stage"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][unknown_name]
+            save()
             section_name = "framework-generation-confirmation-mobile-light.png"
             section_asset = asset.parent / section_name
             section_asset.write_bytes(bytes(16) + (265).to_bytes(4, "big") + (526).to_bytes(4, "big"))

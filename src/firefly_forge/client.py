@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, CampaignExecutionPolicyInputV1
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+    from firefly_forge.checkpoint_continuation_models import CheckpointContinuationInputV1
     from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
     from firefly_forge.framework_knowledge_models import (
@@ -470,6 +471,38 @@ class ForgeClient:
                 "GET", self._invalid_read_recovery_path(identifier, request_id) + "/readonly-observation-recovery"
             )
         )
+
+    def _checkpoint_continuation_path(self, identifier: str, request_id: str) -> str:
+        return (
+            f"runs/{self._recovery_identifier(identifier)}/checkpoint-continuations/requests/"
+            + self._recovery_identifier(request_id)
+        )
+
+    def checkpoint_continuation_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect the retained checkpoint and original ticket without admitting work."""
+        return dict(self.request("GET", self._checkpoint_continuation_path(identifier, request_id) + "/candidate"))
+
+    def request_checkpoint_continuation(
+        self,
+        identifier: str,
+        request_id: str,
+        action_id: str,
+        request: CheckpointContinuationInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save one finite same-ticket continuation; retain its action ID for readback."""
+        from firefly_forge.checkpoint_continuation_models import CheckpointContinuationInputV1
+
+        path = (
+            self._checkpoint_continuation_path(identifier, request_id)
+            + "/actions/"
+            + self._recovery_identifier(action_id)
+        )
+        body = self._recovery_body(CheckpointContinuationInputV1, request)
+        return dict(self.request("POST", path, json=body))
+
+    def checkpoint_continuation_status(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved action and worker status without submitting another action."""
+        return dict(self.request("GET", self._checkpoint_continuation_path(identifier, request_id) + "/status"))
 
     def invalid_read_continuity_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "invalid-read-continuity/policy"))

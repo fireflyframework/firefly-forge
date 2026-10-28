@@ -7,6 +7,7 @@ import copy
 import hashlib
 from dataclasses import dataclass, replace
 from datetime import datetime
+from functools import cache
 from typing import Any
 
 import httpx2
@@ -102,8 +103,9 @@ class _NegativeResultMetadata(AbstractCapability[Any]):
         return request_context
 
 
-def _ordered_schema(name: str, captured: dict[str, Any]) -> dict[str, Any]:
-    """Canonical snapshots lose object insertion order; regenerate only an exactly equal public schema."""
+@cache
+def _schema_template(name: str) -> Tool[Any]:
+    """Cache only the closed, non-executing template registry; never arguments or authority."""
 
     async def list_files(path_prefix: str = "", cursor: str | None = None, page_size: int = 100) -> dict[str, Any]:
         raise ValueError("Schema template cannot execute")
@@ -151,10 +153,19 @@ def _ordered_schema(name: str, captured: dict[str, Any]) -> dict[str, Any]:
     )
     if name not in templates:
         raise ValueError("No pinned schema template exists for this original tool")
-    generated = Tool(templates[name], name=name).tool_def.parameters_json_schema
-    if generated != captured:
+    return Tool(templates[name], name=name)
+
+
+def _ordered_tool(name: str, captured: dict[str, Any]) -> Tool[Any]:
+    tool = _schema_template(name)
+    if tool.tool_def.parameters_json_schema != captured:
         raise ValueError("The public schema template differs from the frozen original")
-    return generated
+    return tool
+
+
+def _ordered_schema(name: str, captured: dict[str, Any]) -> dict[str, Any]:
+    """Canonical snapshots lose object insertion order; regenerate only an exactly equal public schema."""
+    return copy.deepcopy(_ordered_tool(name, captured).tool_def.parameters_json_schema)
 
 
 def _agent(

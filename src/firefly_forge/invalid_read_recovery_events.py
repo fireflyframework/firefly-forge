@@ -14,9 +14,11 @@ MAX_EVENTS = 5
 
 
 def _budget(value: Any, maximum: int = MAX_EVENTS) -> tuple[int, int]:
+    from firefly_forge.run_evidence import LIMITS
+
     if (
         type(maximum) is not int
-        or maximum not in {5, 8, 11}
+        or maximum not in {5, 8, 11, LIMITS["journal"]}
         or type(value) is not tuple
         or len(value) != 2
         or any(type(item) is not int for item in value)

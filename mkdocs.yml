@@ -133,6 +133,7 @@ nav:
       - Recover and hand off: recovery.md
       - Enable recovery for an older Bridge run: checkpoint-mode-adoption.md
       - Continue after a rejected evidence read: invalid-read-continuity.md
+      - Continue from a retained checkpoint: checkpoint-continuations.md
       - Deploy and roll back: deployment.md
       - Cloud and infrastructure recipes: cloud-deployment.md
       - Application health and maintenance: application-operations.md

@@ -1,0 +1,84 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.continuity-policy-settings {
+  margin-top: 24px;
+  padding: 24px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  gap: 16px;
+}
+.continuity-policy-settings p,
+.continuity-policy-settings small {
+  max-width: 76ch;
+  line-height: 1.6;
+}
+.continuity-policy-settings p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.continuity-policy-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0;
+}
+.continuity-policy-fields .field {
+  margin: 0;
+}
+.continuity-policy-settings small {
+  display: block;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.continuity-policy-settings .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.continuity-policy-settings details {
+  margin-top: 0;
+}
+.continuity-policy-settings summary {
+  cursor: pointer;
+}
+.continuity-policy-settings pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow: auto;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  padding: 12px;
+  margin-top: 12px;
+}
+.continuity-policy-settings :focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .continuity-policy-settings {
+    padding: 18px;
+  }
+  .continuity-policy-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .continuity-policy-settings .card-actions button {
+    width: 100%;
+  }
+}
+
+.continuity-policy-settings h3 {
+  font-size: 18px;
+}
+.continuity-policy-settings form {
+  display: grid;
+  gap: 16px;
+}
+.continuity-policy-fields .check-choice {
+  margin: 0;
+  align-items: flex-start;
+}

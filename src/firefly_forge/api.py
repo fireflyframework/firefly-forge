@@ -65,6 +65,7 @@ from firefly_forge.campaign_report_history_persistence import ForgeCampaignRepor
 from firefly_forge.campaign_reports import CampaignReports
 from firefly_forge.channel_actions import RepositoryChannels
 from firefly_forge.channel_controllers import ChannelController
+from firefly_forge.checkpoint_continuation_controllers import CheckpointContinuationController
 from firefly_forge.checkpoint_mode_adoptions import CheckpointModeAdoptions
 from firefly_forge.checkpoint_mode_controllers import CheckpointModeAdoptionController
 from firefly_forge.checkpoint_test_sources import CheckpointTestSources
@@ -1291,6 +1292,7 @@ def create_runtime(
         AgentRestoreController,
         AgentCheckpointCandidateController,
         InvalidReadContinuityController,
+        CheckpointContinuationController,
         ContinuityLeasePolicyController,
         GitDeliveryPolicyController,
         GitDeliveryController,

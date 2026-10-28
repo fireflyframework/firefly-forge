@@ -111,6 +111,7 @@ class InvalidReadTickets:
     recoveries: Any
     rejections: Any
     observations: Any
+    checkpoints: Any
 
     async def _prepare(self, run_id: str) -> Data:
         raise NotImplementedError
@@ -148,6 +149,11 @@ class InvalidReadTickets:
         last = events[-1]
         if ticket["status"] == "queued":
             valid = last["kind"] == "request_admitted" and ticket["generation"] is None and ticket["result"] is None
+            if last["kind"] == "checkpoint_continuation_admitted":
+                run, task, entries = await self.recoveries._native(run_id)
+                from firefly_forge.checkpoint_continuations import checkpoint_record
+
+                valid = checkpoint_record(ticket, entries, await self.checkpoints._events(request_id)) is not None
             if last["kind"] == "request_recovered_before_claim":
                 valid = await self.recoveries.queued_valid(ticket)
             if last["kind"] == "request_recovered_after_readonly_observation":
@@ -164,6 +170,12 @@ class InvalidReadTickets:
             valid = last["kind"] == "worker_" + ticket["status"] and last["evidence"] == ticket["result"]
         if not valid:
             raise ValueError("Continuity ticket outcome differs from its immutable receipts")
+        checkpoints = getattr(self, "checkpoints", None)
+        if checkpoints is not None and await checkpoints.has(ticket):
+            from firefly_forge.checkpoint_continuations import checkpoint_record
+
+            _, _, entries = await self.recoveries._native(run_id)
+            checkpoint_record(ticket, entries, await checkpoints._events(request_id))
         await self.store.admit_credentials(ticket)
         await self._actor(run_id)
         self.store.reject_credentials(ticket)
@@ -511,6 +523,10 @@ class InvalidReadTickets:
     async def _execute(self, ticket: Data) -> None:
         from firefly_forge.invalid_read_epochs import epoch_scope, epoch_snapshot
 
+        checkpoints = getattr(self, "checkpoints", None)
+        if checkpoints is not None and await checkpoints.has(ticket):
+            await checkpoints.execute(ticket)
+            return
         observation = getattr(self, "observations", None)
         if observation is not None and await observation.has(ticket):
             await observation.execute(ticket)

@@ -150,9 +150,28 @@ class PreparedWorkerCompletion:
     report: Data | None = None
 
 
-def _unsettled(entries: list[Data], run_id: str, *, restored: bool = False) -> dict[str, list[Data]]:
+def _unsettled(
+    entries: list[Data], run_id: str, *, restored: bool = False, pending: bool = False
+) -> dict[str, list[Data]]:
+    from firefly_forge.checkpoint_continuation_proof import handoff_proof_scope
+
+    with handoff_proof_scope():
+        return _unsettled_records(entries, run_id, restored=restored, pending=pending)
+
+
+def _unsettled_records(
+    entries: list[Data], run_id: str, *, restored: bool = False, pending: bool = False
+) -> dict[str, list[Data]]:
     closed: set[str] = set()
     for entry in entries:
+        if entry["kind"] == "checkpoint_continuation":
+            from firefly_forge.checkpoint_continuation_proof import settled_checkpoint_handoff
+
+            for request_id in settled_checkpoint_handoff(entry, entries):
+                if request_id in closed:
+                    raise ValueError("A completion cannot be settled twice")
+                closed.add(request_id)
+            continue
         if entry["kind"] == "readonly_observation_recovery":
             from firefly_forge.readonly_observation_recoveries import settled_observation
 
@@ -253,6 +272,19 @@ def _unsettled(entries: list[Data], run_id: str, *, restored: bool = False) -> d
         if any(entry not in selected for entry in grouped["bridge_request_response"]):
             raise ValueError("Native terminal closure has an unselected original response")
         grouped["bridge_request_response"] = selected
+    if pending:
+        if (
+            restored
+            or not keys
+            or len(set(keys)) != len(keys)
+            or any(
+                [entry["idempotency_key"] for entry in grouped[kind]]
+                != (keys[:-1] if kind == "agent_consume" else keys)
+                for kind in CUSTODY[1:]
+            )
+        ):
+            raise ValueError("Pending closure requires exactly one unconsumed final response")
+        return grouped
     if (
         not keys
         or len(set(keys)) != len(keys)
@@ -300,7 +332,10 @@ def prepare_worker_completion(
     _eligible(run, task, selected or None, accepted=report is not None)
     grouped = _unsettled(entries, run["id"], restored=restored is not None)
     keys = [entry["idempotency_key"] for entry in grouped[CUSTODY[0]]]
-    if run["bridge_completion_hold"] != {
+    from firefly_forge.native_terminal_restore_proof import checkpoint_handoff
+
+    handoff = restored is not None and checkpoint_handoff(restored.restoration)
+    if not handoff and run["bridge_completion_hold"] != {
         "version": 1,
         "reason": "graph_checkpoint_unavailable",
         "request_id": keys[0],
@@ -347,12 +382,16 @@ def prepare_worker_completion(
             or original.descriptor.model != config.get("model", "bridge/default")
             or original.descriptor.endpoint != endpoint
             or original.descriptor.request_id != intent["idempotency_key"]
-            or binding.contract != contract
+            or (binding.contract != contract and not (handoff and checkpoint == restored.restoration.record))
             or binding.run_cut != invocation_cut(run)
             or binding.round != task["attempt"]
             or not binding.grants
             or not set(binding.grants) <= STATIC_TOOLS
-            or (previous is None and (binding.ordinal != 1 or binding.predecessor is not None))
+            or (
+                previous is None
+                and (binding.ordinal != 1 or binding.predecessor is not None)
+                and not (handoff and checkpoint == restored.restoration.record)
+            )
             or (
                 previous is not None
                 and (

@@ -12,8 +12,12 @@ from firefly_forge import source_edit_supported_profiles as supported
 
 
 def test_current_streaming_loader_requires_a_new_v9_measurement():
-    assert qualification.REGISTRY_VERSION == 22
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v23"
+    historical = next(
+        profile for profile in qualification._profiles() if profile.loader_profile == "codex-exec-restricted-source/v8"
+    )
+    assert historical.version < qualification.REGISTRY_VERSION
+    assert f"codex-exec-restricted-source/v{qualification.REGISTRY_VERSION + 1}" == qualification.LOADER_PROFILE
+    assert tuple(name for name, _ in qualification.loader_hashes()) == qualification.LOADER_MODULES
     assert len(qualification.LOADER_MODULES) == 22
 
 

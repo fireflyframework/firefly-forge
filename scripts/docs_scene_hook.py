@@ -157,9 +157,16 @@ def _load_walkthrough(config, root=ROOT):
         recovery_stages = {"continuity-recovery-intro", "continuity-recovery-review", "continuity-recovery-queued"}
         if stage.startswith("continuity-recovery-") and stage not in recovery_stages:
             raise ValueError("Unknown continuity recovery capture stage: " + name)
+        checkpoint_stages = {
+            "checkpoint-continuation-policy",
+            "checkpoint-continuation-review",
+            "checkpoint-continuation-status",
+        }
+        if stage.startswith("checkpoint-continuation-") and stage not in checkpoint_stages:
+            raise ValueError("Unknown checkpoint continuation capture stage: " + name)
         expected_producer = (
             "studio/tests/invalid-read-recovery.spec.ts"
-            if stage in recovery_stages
+            if stage in recovery_stages | checkpoint_stages
             else "studio/tests/framework-knowledge.spec.ts"
             if stage in framework_stages
             else "studio/tests/development-workflow.spec.ts"

@@ -12,7 +12,7 @@ export default defineConfig({
     "framework-knowledge.spec.ts",
     "invalid-read-recovery.spec.ts",
   ],
-  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements/,
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements|guided checkpoint continuation frames/,
   workers: 1,
   timeout: 90000,
   use: {
