@@ -123,7 +123,10 @@ for (const viewport of [
         ),
       ).toBe(true);
       await row
-        .getByRole("heading", { name: "Unavailable read reviewed", exact: true })
+        .getByRole("heading", {
+          name: "Unavailable read reviewed",
+          exact: true,
+        })
         .scrollIntoViewIfNeeded();
       await page.screenshot({
         path: testInfo.outputPath("unavailable-read-recovery.png"),

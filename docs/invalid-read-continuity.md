@@ -145,6 +145,12 @@ The supported native history contains the complete earlier claim and refusal rec
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="Unavailable observation continuation" tabindex="0" markdown="1">
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+    rankSpacing: 24
+---
 flowchart LR
     Consumed["Consumed model<br/>response"] --> Custody["Exact read custody<br/>and current authority"]
     Custody --> Known["Retained list result<br/>unchanged"]
