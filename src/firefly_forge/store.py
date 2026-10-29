@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode, SessionProvider
@@ -33,7 +33,11 @@ from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.collaboration_persistence import ForgeProductDefinitionRepository
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.migrations import migrate
-from firefly_forge.models import RepositoryInput, RunInput
+from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_commands, configured_commands
+
+if TYPE_CHECKING:
+    from firefly_forge.native_location_runtime import NativeLocationState
+
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
     ForgeDeploymentRepository,
@@ -47,14 +51,16 @@ from firefly_forge.persistence import (
 from firefly_forge.policies import PolicyCatalog
 from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
 from firefly_forge.project_snapshot import PreparedProjectRevision, prepared_revision, snapshot_roles
-from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
-from firefly_forge.sandbox_models import capture_sandbox
+from firefly_forge.runner_backends import uncapped_docker_reason
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool, uncapped_pool_reason
+from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.source_diff_admission import (
     CredentialHistorySnapshot,
     SourceDiffAdmission,
     prepare_source_diff_admission,
 )
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 Data = dict[str, Any]
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
@@ -224,11 +230,16 @@ class Store:
         product_records: ForgeProductDefinitionRepository | None = None,
         campaign_records: ForgeCampaignRepository | None = None,
         campaign_children: ForgeCampaignChildRepository | None = None,
+        existing_only: bool = False,
     ) -> None:
         self.path = path or Path(os.environ.get("FORGE_DATA_DIR", ".forge")) / "factory.db"
-        self.configuration = ConfigurationStore(self.path.parent)
-        self.policies = PolicyCatalog(self.path.parent)
-        self.roles = RoleRegistry(self.path.parent)
+        if existing_only:
+            from firefly_forge.native_location_files import read_storage_identity
+
+            read_storage_identity(self.path.parent)
+        self.configuration = ConfigurationStore(self.path.parent, existing_only=existing_only)
+        self.policies = PolicyCatalog(self.path.parent, existing_only=existing_only)
+        self.roles = RoleRegistry(self.path.parent, existing_only=existing_only)
         self.credential_registry: Callable[[], dict[str, str]] = dict
         self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
         self.vault_source_patch_admission: Callable[[Any], Awaitable[None]] | None = None
@@ -236,6 +247,7 @@ class Store:
         self.task_router: Any = None
         self.framework_knowledge: Any = None
         self.runtime_roles: Any = None
+        self.native_location_state: NativeLocationState | None = None
         self.execution_requests: Any = None
         self.runners: Any = None
         self.connections: Any = None
@@ -246,7 +258,8 @@ class Store:
         self.scm_polling: Any = None
         self.scm_poll_functional: Any = None
         self.scm_resume_authorities: dict[str, Any] = {}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not existing_only:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.schema = schema or os.environ.get("FORGE_DATABASE_SCHEMA", "forge")
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", self.schema):
             raise ValueError("PostgreSQL schema must be a lowercase identifier of at most 63 characters")
@@ -274,7 +287,7 @@ class Store:
     async def stop(self) -> None:
         await self.close()
 
-    async def initialize(self) -> None:
+    async def initialize(self, *, existing_only: bool = False) -> None:
         if self._initialized:
             return
         if self.session_provider is None:
@@ -292,7 +305,16 @@ class Store:
             self.session_provider = SessionProvider(registry)
         assert self.session_provider is not None
         async with self.session_provider.unit() as session:
-            await migrate(session, self.schema)
+            if existing_only:
+                from firefly_forge.migrations import SCHEMA_REVISION
+
+                await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                revision = await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations"))
+                topology = await session.scalar(text("SELECT to_regclass('forge_runtime_topology')"))
+                if revision != SCHEMA_REVISION or topology is None:
+                    raise ValueError("Offline maintenance requires the existing current native schema and topology")
+            else:
+                await migrate(session, self.schema)
         self._initialized = True
 
     async def close(self) -> None:
@@ -584,21 +606,32 @@ class Store:
                 actor, request.project_id, "release" if request.publish else "execute"
             )
         await self.admit_credentials(request.model_dump())
+        fallback_runner: dict[str, Any] | None = None
+        if prepared_runner is None and self.runners is None:
+            fallback_sandbox = request.sandbox or SandboxInput()
+            duration = WorkDurationPolicyV2.model_validate(
+                fallback_sandbox.model_dump(mode="json").get("work_duration") or {}
+            )
+            fallback_sandbox = type(fallback_sandbox).model_validate(
+                {**fallback_sandbox.model_dump(mode="json"), "work_duration": duration.model_dump(mode="json")}
+            )
+            if isinstance(fallback_sandbox, SandboxInput) and (reason := uncapped_docker_reason(fallback_sandbox)):
+                raise ValueError(reason)
+            fallback_runner = {
+                "sandbox_snapshot": capture_factory_pool(fallback_sandbox)
+                if isinstance(fallback_sandbox, FactoryPoolSelection)
+                else capture_sandbox(fallback_sandbox),
+                "work_duration": duration.model_dump(mode="json"),
+                "search_snapshot": None,
+                "runner_config_revision": None,
+            }
         runner = (
             prepared_runner
             if prepared_runner is not None
             else (
                 await self.runners.capture_run(request.repository_id, request.sandbox)
                 if self.runners is not None
-                else {
-                    "sandbox_snapshot": (
-                        capture_factory_pool(request.sandbox)
-                        if isinstance(request.sandbox, FactoryPoolSelection)
-                        else capture_sandbox(request.sandbox)
-                    ),
-                    "search_snapshot": None,
-                    "runner_config_revision": None,
-                }
+                else fallback_runner
             )
         )
         if runner is None:
@@ -606,6 +639,19 @@ class Store:
         sandbox_snapshot = runner["sandbox_snapshot"]
         if not isinstance(sandbox_snapshot, dict):
             raise ValueError("The selected runner requires a frozen sandbox configuration")
+        if sandbox_snapshot.get("mode") == "pool":
+            if reason := uncapped_pool_reason(FactoryPoolSelection.model_validate(sandbox_snapshot["configuration"])):
+                raise ValueError(reason)
+        elif reason := uncapped_docker_reason(SandboxInput.model_validate(sandbox_snapshot["configuration"])):
+            raise ValueError(reason)
+        if runner.get("work_duration") != sandbox_snapshot.get("configuration", {}).get("work_duration"):
+            raise ValueError("The selected work duration differs from its frozen runner configuration")
+        configured_commands(
+            {
+                "work_duration": runner.get("work_duration"),
+                "commands": [command.model_dump() for command in request.commands],
+            }
+        )
         if actor is not None and not await ProjectAccess(self).current_administrator(actor):
             if sandbox_snapshot["mode"] not in {"docker", "pool"}:
                 raise ValueError(
@@ -680,6 +726,8 @@ class Store:
         if product_definition and product_definition["repository_id"] != product_repository_id:
             raise ValueError("Product snapshot must match the selected product's definition and design source")
         fields = request.model_dump()
+        if runner.get("work_duration") is not None:
+            fields["commands"] = capture_new_work_commands(request.commands)
         if component:
             fields["backend"], fields["frontend"] = component["backend"], component["frontend"]
             if "commands" not in request.model_fields_set:

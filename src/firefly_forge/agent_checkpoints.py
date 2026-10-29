@@ -16,6 +16,7 @@ from pyfly.data.transaction import current_unit_of_work
 from firefly_forge.agent_checkpoint_models import (
     CheckpointPayload,
     CheckpointPayloadV2,
+    CheckpointPayloadV3,
     ConsumePayload,
     ConsumePayloadV2,
     RestoreInput,
@@ -24,6 +25,7 @@ from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.bridge_completion_models import CompletionResponsePayload
 from firefly_forge.bridge_completion_scope import BridgeCompletionScope
 from firefly_forge.bridge_completions import RESPONSE, BridgeCompletions, _cut, _outside_unit, _request_id
+from firefly_forge.checkpoint_work_duration import invocation_binding, validate_binding_duration
 from firefly_forge.journal import digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 from firefly_forge.store import identifier, prepared_credential_rejection
@@ -92,7 +94,13 @@ class AgentCheckpoints:
             },
         )
         schema = (
-            (CheckpointPayloadV2 if data["payload"].get("version") == 2 else CheckpointPayload)
+            (
+                CheckpointPayloadV3
+                if data["payload"].get("version") == 3
+                else CheckpointPayloadV2
+                if data["payload"].get("version") == 2
+                else CheckpointPayload
+            )
             if kind == CHECKPOINT
             else (ConsumePayloadV2 if data["payload"].get("version") == 2 else ConsumePayload)
         )
@@ -138,6 +146,8 @@ class AgentCheckpoints:
                 raise ValueError("Checkpoint differs from the original wire request")
             snapshot = checkpoint.payload.decode("utf-8")
             invocation = await capture_context() if capture_context is not None else None
+            if invocation is not None:
+                validate_binding_duration(frozen, invocation_binding(invocation))
             credential_payload = {
                 "snapshot": snapshot,
                 "canonical_record": checkpoint.canonical_payload.decode("utf-8"),
@@ -160,7 +170,9 @@ class AgentCheckpoints:
                     snapshot=snapshot,
                 )
                 payload = (
-                    CheckpointPayloadV2.model_validate({"version": 2, **fields, "invocation": invocation})
+                    (CheckpointPayloadV3 if "protocol" in invocation else CheckpointPayloadV2).model_validate(
+                        {"version": 3 if "protocol" in invocation else 2, **fields, "invocation": invocation}
+                    )
                     if invocation is not None
                     else CheckpointPayload.model_validate({"version": 1, **fields})
                 ).model_dump(mode="json")
@@ -338,7 +350,7 @@ class AgentCheckpoints:
             checkpoint = await self._record(run_id, request_id, CHECKPOINT)
             if (
                 checkpoint is None
-                or checkpoint["payload"]["version"] != 2
+                or checkpoint["payload"]["version"] not in {2, 3}
                 or checkpoint["digest"] != request.expected_checkpoint_digest
                 or intent["digest"] != request.expected_intent_digest
                 or checkpoint["payload"]["intent_digest"] != intent["digest"]

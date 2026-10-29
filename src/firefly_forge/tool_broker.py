@@ -7,6 +7,7 @@ import asyncio
 import copy
 import json
 import re
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -25,10 +26,14 @@ from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.source_tool_budget import ToolBudgetRefusal, source_budget_snapshot
 from firefly_forge.store import Store, identifier, now
+from firefly_forge.tool_operation_lease import OwnedToolLease, current_task_intent, operation_cut
+from firefly_forge.tool_operation_models import OwnedToolOperationV2, operation_policy
+from firefly_forge.tool_operations import OwnedToolSupervisor, ToolWorkTimedOut
 from firefly_forge.tool_persistence import ForgeToolInvocationEntity, ForgeToolInvocationRepository
 from firefly_forge.verification_models import AutomaticVerificationPolicy
 
 Data = dict[str, Any]
+OWNERSHIP_GRACE_SECONDS = 30
 
 
 class ToolReconciliationRequired(RuntimeError):
@@ -166,6 +171,8 @@ class ToolInvocationBroker:
             arguments = {**SearchQuery.model_validate(clean_arguments).model_dump(), **refresh}
             if not arguments["query"].strip() or len(arguments["query"].split()) > 75:
                 raise ValueError("Search query must contain nonempty text and at most 75 words")
+        owner: OwnedToolLease | None = None
+        supervisor: OwnedToolSupervisor | None = None
         async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
@@ -254,8 +261,18 @@ class ToolInvocationBroker:
                 )
                 if budget_authority is not None:
                     request["source_budget_allowance"] = budget_authority
-            request_digest = digest(request)
+            duration = operation_policy(run.data, source_read=source_read)
             previous = next((row for row in rows if row.correlation_id == correlation_id), None)
+            if previous is not None:
+                retained_operation = previous.data["admission"].get("operation")
+                if (retained_operation is None) != (duration is None):
+                    raise ValueError("A retained invocation cannot change its operation policy")
+                if retained_operation is not None:
+                    retained = OwnedToolOperationV2.model_validate(retained_operation)
+                    if retained.work_duration != duration:
+                        raise ValueError("A retained invocation cannot change its work duration")
+                    request["operation"] = copy.deepcopy(retained_operation)
+            request_digest = digest(request)
             if previous is not None:
                 if previous.data["request_digest"] != request_digest:
                     raise ValueError("Tool correlation ID already belongs to another invocation")
@@ -317,7 +334,51 @@ class ToolInvocationBroker:
             task = await self.journal._task(run_id, task_id)
             if task.status != "running" or run.data.get("active_task") != task_id:
                 raise ValueError("A tool invocation requires its active execution stage")
+            started_monotonic = time.monotonic()
             database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
+            progress = None
+            if duration is not None:
+                from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
+
+                await self.store.assert_ownership()
+                ownership = self.store.execution_ownership_token
+                native_task, native_intent = await current_task_intent(self.store, self.journal, run, task_id)
+                fence = await RunnerFactoryAuthority(self.store, self.journal).exclusive_fence()
+                issued = int(database_time * 1000)
+                record = OwnedToolOperationV2(
+                    generation=uuid.uuid4().hex,
+                    task_key=native_task.data["idempotency_key"],
+                    intent_digest=native_intent.digest,
+                    task_id=task_id,
+                    attempt=native_task.attempt,
+                    factory_fence=fence,
+                    run_cut=operation_cut(run.data),
+                    work_duration=duration,
+                    work_started_at_ms=issued,
+                    work_deadline_ms=None
+                    if duration.timeout_seconds is None
+                    else issued + duration.timeout_seconds * 1000,
+                    owner_grace_seconds=OWNERSHIP_GRACE_SECONDS,
+                )
+                request["operation"] = record.model_dump(mode="json")
+                request_digest = digest(request)
+                progress = {
+                    "generation": record.generation,
+                    "sequence": 0,
+                    "lease_expires_at": database_time + record.owner_grace_seconds,
+                }
+                owner = OwnedToolLease(
+                    self.store,
+                    self.journal,
+                    self.records,
+                    run_id,
+                    correlation_id,
+                    record,
+                    ownership,
+                    request_digest,
+                    progress,
+                )
+                supervisor = OwnedToolSupervisor(record, owner.renew, started_monotonic=started_monotonic)
             if admission_guard is not None:
                 admission_guard()
             await self.records.save(
@@ -332,7 +393,10 @@ class ToolInvocationBroker:
                         "admission": request,
                         "request_digest": request_digest,
                         "created_at": now(),
-                        "lease_expires_at": database_time + limits["timeout_seconds"] + 10,
+                        "lease_expires_at": progress["lease_expires_at"]
+                        if progress is not None
+                        else database_time + limits["timeout_seconds"] + 10,
+                        **({"ownership": copy.deepcopy(progress)} if progress is not None else {}),
                     },
                 )
             )
@@ -350,9 +414,20 @@ class ToolInvocationBroker:
                 raise ValueError("Tool observations cannot reflect configured credentials")
             return {**payload, "observation": observed}
 
-        try:
-            async with asyncio.timeout(limits["timeout_seconds"]):
+        async def execute() -> Data:
+            try:
                 result = await callback()
+            except SearchProviderError as exc:
+                if supervisor is not None and exc.kind in {"rate_limit", "quota", "authentication"}:
+                    async with supervisor.finalizing():
+                        await self._complete(
+                            run_id,
+                            correlation_id,
+                            "rejected",
+                            evidence({"error": {**exc.metadata(), "message": str(exc)}}),
+                            owner=owner,
+                        )
+                raise
             if not isinstance(result, dict):
                 raise ValueError("Tool result exceeds its frozen response bound")
             result = {**result, "invocation_id": correlation_id}
@@ -361,19 +436,44 @@ class ToolInvocationBroker:
             await self.store.admit_credentials(result)
             if contains_known_credential(result, self.credential_registry()):
                 raise ValueError("Tool result reflected configured credentials")
-            await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}), validate_result)
+            if supervisor is not None:
+                async with supervisor.finalizing():
+                    await self._complete(
+                        run_id, correlation_id, "succeeded", evidence({"result": result}), validate_result, owner=owner
+                    )
+            else:
+                await self._complete(run_id, correlation_id, "succeeded", evidence({"result": result}), validate_result)
             return result
+
+        try:
+            if supervisor is not None:
+                return await supervisor.run(execute)
+            async with asyncio.timeout(limits["timeout_seconds"]):
+                return await execute()
         except SearchProviderError as exc:
             if exc.kind in {"rate_limit", "quota", "authentication"}:
+                if supervisor is not None:
+                    raise
                 await self._complete(
-                    run_id, correlation_id, "rejected", evidence({"error": {**exc.metadata(), "message": str(exc)}})
+                    run_id,
+                    correlation_id,
+                    "rejected",
+                    evidence({"error": {**exc.metadata(), "message": str(exc)}}),
+                    owner=owner,
                 )
                 raise
             await self._unknown(
                 run_id,
                 correlation_id,
                 "unknown",
-                evidence({"error": {"message": "Provider outcome was not admitted; reconcile its usage"}}),
+                evidence(
+                    {
+                        "error": {
+                            "message": "Provider outcome was not admitted; reconcile its usage",
+                            **({"operation_outcome": "unavailable"} if owner is not None else {}),
+                        }
+                    }
+                ),
             )
             raise ToolReconciliationRequired("Tool outcome is unknown; reconcile it before requesting again") from exc
         except asyncio.CancelledError:
@@ -382,13 +482,38 @@ class ToolInvocationBroker:
                     run_id,
                     correlation_id,
                     "unknown",
-                    evidence({"error": {"message": "Tool execution was interrupted"}}),
+                    evidence(
+                        {
+                            "error": {
+                                "message": "Tool execution was interrupted",
+                                **({"operation_outcome": "cancelled"} if owner is not None else {}),
+                            }
+                        }
+                    ),
                 )
             )
             raise
         except Exception as exc:
             await self._unknown(
-                run_id, correlation_id, "unknown", evidence({"error": {"message": "Tool outcome was not admitted"}})
+                run_id,
+                correlation_id,
+                "unknown",
+                evidence(
+                    {
+                        "error": {
+                            "message": "Tool outcome was not admitted",
+                            **(
+                                {
+                                    "operation_outcome": "timed_out"
+                                    if isinstance(exc, ToolWorkTimedOut)
+                                    else "unavailable"
+                                }
+                                if owner is not None
+                                else {}
+                            ),
+                        }
+                    }
+                ),
             )
             raise ToolReconciliationRequired("Tool outcome is unknown; reconcile it before requesting again") from exc
 
@@ -406,13 +531,18 @@ class ToolInvocationBroker:
         status: str,
         evidence: Data,
         validate_result: Callable[[Data], Awaitable[Callable[[], None] | None]] | None = None,
+        *,
+        owner: OwnedToolLease | None = None,
     ) -> None:
-        async with self.store._unit():
+        async with self.store._unit() as session:
             run = await self.journal._run(run_id)
             await ProjectAccess(self.store).authorize_execution(run.data)
             row = next(item for item in await self.records.for_run(run.id) if item.correlation_id == correlation_id)
             if row.status != "pending":
                 raise ValueError("Tool invocation already has a recorded outcome")
+            if owner is not None:
+                database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
+                await owner.validate_locked(run, row, database_time)
             completion_guard = await validate_result(copy.deepcopy(evidence["result"])) if validate_result else None
             if completion_guard is not None:
                 await ProjectAccess(self.store).authorize_execution(run.data)
@@ -433,6 +563,9 @@ class ToolInvocationBroker:
             await self._authorize_result(row, status)
             if completion_guard is not None:
                 completion_guard()
+            if owner is not None:
+                database_time = cast(datetime, await session.scalar(select(func.clock_timestamp()))).timestamp()
+                await owner.validate_locked(run, row, database_time, status=status)
 
     async def _authorize_result(self, row: ForgeToolInvocationEntity, status: str) -> None:
         if status != "succeeded" or not row.tool.startswith("external_mcp:"):

@@ -207,6 +207,7 @@ async def command_intent(
     replay_only: bool = False,
 ) -> Data:
     assert_command_boundary()
+    from firefly_forge.runner_monitor_custody import monitor_admits
     from firefly_forge.unknown_command_acknowledgements import policy_digest as acknowledgement_policy_digest
     from firefly_forge.unknown_command_proof import acknowledged_continuation, acknowledged_followup
 
@@ -257,7 +258,11 @@ async def command_intent(
         if existing is None:
             tasks = await journal.tasks.find_for_run(run.id)
             for row in rows:
-                if _complete(row, values[row.id.hex]) or _recovered(row, values[row.id.hex], entries, tasks):
+                if (
+                    _complete(row, values[row.id.hex])
+                    or _recovered(row, values[row.id.hex], entries, tasks)
+                    or monitor_admits(row, values[row.id.hex], entries)
+                ):
                     continue
                 actor = acknowledged_followup(
                     row, values[row.id.hex], entries, current, ordinal, acknowledgement_policy

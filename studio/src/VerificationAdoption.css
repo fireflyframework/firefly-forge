@@ -1,0 +1,66 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.verification-adoption {
+  margin-block: 24px;
+  min-width: 0;
+}
+.verification-adoption > label {
+  display: grid;
+  gap: 8px;
+  margin-block: 16px;
+  max-width: 32rem;
+}
+.verification-adoption select {
+  width: 100%;
+  min-width: 0;
+}
+.verification-adoption fieldset {
+  border: 1px solid var(--line);
+  padding: 16px;
+  margin-block: 16px;
+  min-width: 0;
+}
+.verification-reuse-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-block: 16px;
+  line-height: 1.6;
+}
+.verification-reuse-choice input {
+  flex: 0 0 auto;
+  margin-top: 5px;
+}
+.verification-reuse-choice span {
+  min-width: 0;
+}
+.verification-reuse-choice code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 4px;
+}
+.verification-adoption .worker-dialogue-actions {
+  flex-wrap: wrap;
+}
+.verification-adoption .agent-checkpoint-review {
+  border: 0;
+  padding-top: 0;
+  margin-top: 16px;
+}
+.verification-adoption .agent-checkpoint-review h4 {
+  margin-block: 16px 12px;
+}
+@media (max-width: 640px) {
+  .verification-adoption .final-outcome-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .verification-adoption .final-outcome-steps li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .verification-adoption .final-outcome-steps span {
+    width: 28px;
+  }
+}

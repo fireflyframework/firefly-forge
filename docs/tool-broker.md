@@ -43,6 +43,8 @@ forge tools configure-policy --file tool-policy.json
 
 These are the defaults. The total can be set from 1 to 100 calls, each tool from 1 to 30 calls, the invocation timeout from 1 to 60 seconds, and admitted result size from 1,024 to 750,000 bytes. The search provider transport keeps its own stricter request and response limits.
 
+For a new run that explicitly selects work-duration version two, the operation uses that run's chosen work timeout. An explicit null means no fixed work deadline. Its finite ownership lease renews only while the same factory owner, active task, actor permissions and frozen configuration remain valid. The chosen work deadline, if any, starts at admission and never renews. Status reads do not renew ownership. The captured call counts and response-size limit still apply; retained corrective source readers keep their original finite budget and lease.
+
 The policy freezes when a run is queued. Updating the factory policy changes new runs and leaves queued revisions intact. Pre-broker runs without a saved policy use the fixed version-one defaults. Campaign admission also checks the policy revision so its component runs cannot silently capture different limits.
 
 Successful calls, provider rejections and unresolved attempts consume budget. A repeated correlation ID with the same source, arguments and configuration returns its stored result or disposition without dispatching again. Reusing the ID for different input is rejected.
@@ -63,7 +65,7 @@ The reconciliation ID must contain 32 lowercase hexadecimal characters and ident
 
 A known quota, authentication or rate-limit rejection pauses the execution stage with its typed classification. A lost or unadmitted response moves the run to `needs_reconciliation`. Native FireflyAgent execution disables its internal whole-run rate-limit retry so the durable supervisor controls continuation; the coding model cannot turn a failed tool call into an automatic replay.
 
-An invocation that may still be running cannot be abandoned until its bounded lease expires. Abandonment does not claim successful execution, restore consumed budget or send another provider request. A later request needs a new correlation ID. Inspect the run's overall recovery state before [resuming implementation](recovery.md); the implementation intent has its own recovery contract.
+An invocation that may still be running cannot be abandoned until its finite ownership lease expires. For an explicitly selected version-two operation, healthy ownership can keep renewing without a fixed work deadline; owner loss cancels the local callback and leaves its outcome unresolved. A chosen work timeout records `timed_out`, cancellation records `cancelled`, and lost authority or an unadmitted result records `unavailable`. Each remains an unknown outcome rather than a successful receipt. Abandonment does not claim successful execution, restore consumed budget or send another provider request. A later request needs a new correlation ID. Inspect the run's overall recovery state before [resuming implementation](recovery.md); the implementation intent has its own recovery contract.
 
 ## API, Python and MCP access
 

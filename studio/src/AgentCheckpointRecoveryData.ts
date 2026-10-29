@@ -20,6 +20,11 @@ export type Candidate = {
   attempt: number;
   ordinal: number | null;
   deadline_ms: number | null;
+  invocation_protocol?: "forge-owned-checkpoint-v3";
+  work_duration?: {
+    protocol: "forge-work-duration-v2";
+    timeout_seconds: number | null;
+  };
   created_at: string;
   state: string;
   result: ResultReference | null;
@@ -100,6 +105,7 @@ export function candidatePage(
   );
   const items = p.items.map((value) => {
     const c = record(value);
+    const owned = c.invocation_protocol === "forge-owned-checkpoint-v3";
     keys(c, [
       "completion_id",
       "checkpoint_digest",
@@ -113,7 +119,22 @@ export function candidatePage(
       "result",
       "observation",
       "ticket",
+      ...(owned ? ["invocation_protocol", "work_duration"] : []),
     ]);
+    if (owned) {
+      const duration = record(c.work_duration);
+      keys(duration, ["protocol", "timeout_seconds"]);
+      requireValue(
+        duration.protocol === "forge-work-duration-v2" &&
+          (duration.timeout_seconds === null ||
+            (typeof duration.timeout_seconds === "number" &&
+              Number.isSafeInteger(duration.timeout_seconds) &&
+              duration.timeout_seconds > 0)),
+      );
+      requireValue(
+        (duration.timeout_seconds === null) === (c.deadline_ms === null),
+      );
+    }
     requireValue(
       completion.test(String(c.completion_id)) &&
         hash.test(String(c.checkpoint_digest)) &&
@@ -159,7 +180,7 @@ export function candidatePage(
         (c.state !== "ticket_recorded" || c.ticket !== null) &&
         (c.ticket === null || c.state === "ticket_recorded") &&
         (c.state === "legacy" ||
-          (c.ordinal !== null && c.deadline_ms !== null)),
+          (c.ordinal !== null && (c.deadline_ms !== null || owned))),
     );
     return c as Candidate;
   });

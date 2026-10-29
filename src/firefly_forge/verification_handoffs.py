@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from pyfly.container import service
 
 from firefly_forge.journal import Journal, digest
-from firefly_forge.models import Command
+from firefly_forge.models import configured_commands
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.store import Store
@@ -21,6 +22,7 @@ from firefly_forge.verification_models import (
     automatic_verification_grant,
     check_verification_authority,
     check_verification_cut,
+    verification_build_declarations,
     verification_provider,
     verification_scope,
     verification_source,
@@ -32,6 +34,7 @@ from firefly_forge.verification_source_preparation import (
     verification_catalog_root,
     verification_source_scope,
 )
+from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
 
 Data = dict[str, Any]
 
@@ -73,8 +76,13 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
     current = tool_policy_snapshot(store.configuration)
     if current["digest"] != snapshot["digest"]:
         raise ValueError("Current automatic verification policy changed")
-    commands = [Command.model_validate(command).model_dump() for command in run["commands"]]
+    commands = [command.model_dump() for command in configured_commands(run)]
     config = validate_sandbox_snapshot(run["sandbox_snapshot"])
+    duration = run.get("work_duration")
+    if duration is not None:
+        duration = WorkDurationPolicyV2.model_validate(duration)
+        if run["sandbox_snapshot"]["configuration"].get("work_duration") != duration.model_dump(mode="json"):
+            raise ValueError("Verification work duration differs from the frozen runner")
     used = sum(entry["kind"] == "verification_handoff_intent" for entry in entries)
     if used >= grant.max_continuations:
         raise ValueError("Automatic verification continuation budget exhausted")
@@ -90,7 +98,7 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         raise ValueError("Frozen verification command budget is exhausted")
     selection = VerificationAdoption.model_validate(adoption["request"]) if adoption else None
     intent = {
-        "version": 1,
+        "version": 1 if duration is None else 2,
         "id": uuid.uuid4().hex,
         "request_id": request["id"],
         "request_digest": digest(request),
@@ -105,11 +113,23 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         "parent_attempt": request["attempt"],
         "parent_round": int(run.get("implementation_rounds", request["attempt"])),
         "ordinals": list(range(ordinal + 1, ordinal + 1 + len(commands))),
-        "timeouts": [min(command["timeout"], config.timeout) for command in commands],
+        "timeouts": [min(command["timeout"], config.timeout) for command in commands]
+        if duration is None
+        else [effective_work_timeout(command["timeout"], duration.timeout_seconds) for command in commands],
         "sandbox_digest": run["sandbox_snapshot"]["digest"],
         "workspace": str(workspace.resolve()),
         "cwd": (run.get("component_snapshot") or {}).get("path", "."),
     }
+    declarations = verification_build_declarations(run)
+    from firefly_forge.native_location_projection import native_projection_record
+
+    location = native_projection_record(store)
+    if location is not None:
+        intent["native_location"] = location
+    if declarations:
+        intent["reusable_build_declaration_digest"] = digest(
+            {"checks": [item.model_dump(mode="json") for item in declarations]}
+        )
     if selection:
         expected = {
             "pending_request_digest": intent["request_digest"],
@@ -158,6 +178,8 @@ class VerificationHandoffs:
         if automatic_verification_grant(policy) is None or not run.get("commands"):
             raise ValueError("Automatic verification requires current policy and frozen approved commands")
         ProjectAccess.require_provider_isolation(run, agent)
+        from firefly_forge.verification_scope import eligible_build_checks
+
         return {
             "version": 1,
             "run_id": run_id,
@@ -169,6 +191,7 @@ class VerificationHandoffs:
             "provider_digest": verification_provider(self.store, run, agent),
             "agent": agent,
             "commands_count": len(run["commands"]),
+            "reusable_build_candidates": eligible_build_checks(run, self.engine.workspaces / run_id),
             "max_continuations": policy["settings"]["automatic_verification"]["max_continuations"],
         }
 
@@ -199,6 +222,7 @@ class VerificationHandoffs:
 
     async def _adopt(self, run_id: str, body: VerificationAdoption) -> Data:
         run = await self._operator(run_id)
+        verification_build_declarations({**run, "verification_adoption": {"request": body.model_dump()}})
         entries = await self.journal.entries(run_id)
         existing = next(
             (
@@ -225,6 +249,10 @@ class VerificationHandoffs:
             )
         ):
             raise ValueError("Verification adoption differs from the observed source, request or current configuration")
+        allowed = {item["command_digest"] for item in candidate.get("reusable_build_candidates", [])}
+        selected = [item.command_digest for item in body.reusable_build_checks]
+        if len(set(selected)) != len(selected) or not set(selected) <= allowed:
+            raise ValueError("Build reuse declaration must select exact observed eligible source checks")
         policy = tool_policy_snapshot(self.store.configuration)
         temporary = {
             **run,
@@ -243,7 +271,11 @@ class VerificationHandoffs:
             run_id,
             body.model_dump(),
             policy,
-            check_current=lambda current: check_verification_cut(self.store, current, intent),
+            check_current=lambda current: check_verification_cut(
+                self.store,
+                {**current, "verification_adoption": {"request": body.model_dump(), "policy_snapshot": policy}},
+                intent,
+            ),
         )
 
     async def ready(self) -> list[str]:
@@ -339,20 +371,84 @@ class VerificationHandoffs:
                         intent,
                         check_current=lambda current: check_verification_cut(self.store, current, intent),
                     )
+                    from firefly_forge.verification_scope_attestation import (
+                        mapped_argv,
+                        prepare_build_scope,
+                        save_build_scope,
+                    )
+
+                    async def build_current() -> None:
+                        await self.engine.assert_ownership()
+                        current = await self.store.get_run(run_id)
+                        await ProjectAccess(self.store).authorize_execution(current)
+                        await self.store.assert_campaign_current(current)
+                        check_verification_authority(self.store, current, intent)
+
+                    anchored = await self.journal.entries(run_id)
+                    handoff = next(
+                        e
+                        for e in anchored
+                        if e["kind"] == "verification_handoff_intent" and e["payload"]["id"] == intent["id"]
+                    )
+                    build_scope = None
+                    if existing is None or any(
+                        e["kind"] == "verification_build_scope"
+                        and e["payload"].get("handoff_intent_digest") == handoff["digest"]
+                        for e in anchored
+                    ):
+                        build_scope = await prepare_build_scope(
+                            self.store, self.journal, self.engine, run, intent, handoff, build_current
+                        )
+                    if build_scope is not None:
+                        await save_build_scope(self.journal, intent, build_scope, build_current)
+                    anchored = await self.journal.entries(run_id)
                     for index, command in enumerate(run["commands"]):
                         await self._authorize(run_id, intent)
+                        if build_scope is not None:
+                            await build_current()
+                            await build_scope.fence()
                         directory = self.engine.component_directory(run, workspace)
-                        await self.engine.sandbox.execute(
-                            run_id,
-                            workspace,
-                            directory,
-                            command["argv"],
-                            command["timeout"],
-                            "implement",
-                            ordinal=intent["ordinals"][index],
-                            git_root=workspace,
+                        from firefly_forge.execution_environment import build_execution_environment
+
+                        selected = (
+                            next((c for c in build_scope.witness.checks if c.command_index == index + 1), None)
+                            if build_scope
+                            else None
                         )
+                        scratch = (
+                            Path(build_scope.witness.scratch) / str(index + 1)
+                            if selected and build_scope is not None
+                            else None
+                        )
+                        if (
+                            scratch is not None
+                            and not any(
+                                e["kind"] == "verification_handoff_command"
+                                and e["payload"].get("id") == intent["id"]
+                                and e["payload"].get("command_index") == index + 1
+                                for e in anchored
+                            )
+                            and any(any((scratch / part).iterdir()) for part in ("home", "tmp"))
+                        ):
+                            raise ValueError("A new reusable check requires its empty owned scratch inputs")
+                        with (
+                            build_execution_environment(scratch, build_scope.environment())
+                            if scratch is not None and build_scope is not None
+                            else nullcontext()
+                        ):
+                            await self.engine.sandbox.execute(
+                                run_id,
+                                workspace,
+                                directory,
+                                mapped_argv(run, intent, anchored, index),
+                                command["timeout"],
+                                "implement",
+                                ordinal=intent["ordinals"][index],
+                                git_root=workspace,
+                            )
                         await self._authorize(run_id, intent)
+                        if build_scope is not None:
+                            await build_scope.fence()
                         await self.journal.verification_command(
                             run_id,
                             intent,
@@ -360,11 +456,23 @@ class VerificationHandoffs:
                             check_current=lambda current: check_verification_cut(self.store, current, intent),
                         )
                     await self._authorize(run_id, intent)
-                    await self.journal.verification_finish(
-                        run_id,
-                        intent,
-                        check_current=lambda current: check_verification_cut(self.store, current, intent),
-                    )
+                    if build_scope is not None:
+                        await build_scope.revalidate()
+                        await self._authorize(run_id, intent)
+                        await build_scope.fence()
+                    if build_scope is None:
+                        await self.journal.verification_finish(
+                            run_id,
+                            intent,
+                            check_current=lambda current: check_verification_cut(self.store, current, intent),
+                        )
+                    else:
+                        await self.journal.verification_finish(
+                            run_id,
+                            intent,
+                            check_current=lambda current: check_verification_cut(self.store, current, intent),
+                            assert_inputs=build_scope.fence,
+                        )
                 await self._authorize(run_id, intent)
                 await self.journal.resume(
                     run_id,
@@ -388,6 +496,10 @@ class VerificationHandoffs:
             await ProjectAccess(self.store).authorize_execution(run)
             await self.store.assert_campaign_current(run)
             check_verification_authority(self.store, run, intent)
+
+            from firefly_forge.native_location_projection import assert_handoff_location
+
+            await assert_handoff_location(self.store, run_id, intent)
 
         prepared = current_verification_source(Path(intent["workspace"]))
         if prepared is not None:

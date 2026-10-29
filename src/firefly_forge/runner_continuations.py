@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from threading import Event
 from time import monotonic
 from typing import TYPE_CHECKING, Any
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -71,13 +72,32 @@ def continuation_binding(run: dict[str, Any], wal: dict[str, Any], stage: dict[s
         component.get("project_id") != run["project_id"] or component.get("repository_id") != run["repository_id"]
     ):
         raise ValueError("Original component no longer grants this project and repository")
+    configuration = (run.get("sandbox_snapshot") or {}).get("configuration", {})
+    legacy = (
+        run.get("work_duration") is None
+        and configuration.get("work_duration") is None
+        and configuration.get("profile", {}).get("work_duration") is None
+    )
     if (
-        run["status"] != "running"
+        not (
+            run["status"] == {"implement": "developing", "verify": "validating"}.get(wal["task_id"])
+            and run.get("active_task") == wal["task_id"]
+            or legacy
+            and run["status"] == "running"
+            and run.get("active_task") == wal["task_id"]
+        )
         or run.get("cancel_request", {}).get("status") == "requested"
         or stage["status"] != "running"
+        or stage.get("id") != wal["task_id"]
         or wal["task_id"] not in {"implement", "verify"}
+        or type(stage["attempt"]) is not int
+        or stage["attempt"] < 1
+        or type(wal["parent_attempt"]) is not int
+        or type(payload["parent_attempt"]) is not int
         or wal["parent_attempt"] != stage["attempt"]
         or payload["parent_attempt"] != stage["attempt"]
+        or stage.get("idempotency_key")
+        != uuid5(NAMESPACE_URL, f"forge:{UUID(run['id']).hex}:{wal['task_id']}:{stage['attempt']}").hex
         or wal["status"] != "running"
         or effects.get("start") != {"status": "intent"}
         or "cleanup" in effects

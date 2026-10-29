@@ -27,7 +27,7 @@ from firefly_forge.configuration import redact_secrets
 from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.journal import Journal, digest
 from firefly_forge.process import ProcessResult
-from firefly_forge.runner_backends import RunnerBackends
+from firefly_forge.runner_backends import UNCAPPED_DOCKER_REASON, RunnerBackends, uncapped_docker_reason
 from firefly_forge.runner_backends import bounded_process as bounded_process
 from firefly_forge.sandbox_models import (
     SandboxInput,
@@ -41,6 +41,7 @@ from firefly_forge.store import Store
 from firefly_forge.workspace_tools import _private_name
 
 if TYPE_CHECKING:
+    from firefly_forge.runner_monitors import RunnerMonitors
     from firefly_forge.runner_pool_worker import RunnerPoolWorker
 
 
@@ -471,6 +472,16 @@ class SandboxExecutor:
         self.transfer_image = pinned_image(transfer_image) if transfer_image else None
         self._capacity = asyncio.Semaphore(2)
         self._run_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._process_monitors: dict[tuple[str, str], RunnerMonitors] = {}
+
+    async def monitor(self, run_id: str, workspace: Path, task_id: str) -> RunnerMonitors:
+        from firefly_forge.runner_monitors import RunnerMonitors
+
+        key = (run_id, task_id)
+        async with self._run_locks[run_id]:
+            if key not in self._process_monitors or self._process_monitors[key].transport._closed:
+                self._process_monitors[key] = await RunnerMonitors.create(self, run_id, workspace, task_id)
+            return self._process_monitors[key]
 
     def _safe_result(self, result: ProcessResult, *, browser: bool = False) -> ProcessResult:
         if browser and contains_known_credential(result.output, self.credential_registry()):
@@ -483,7 +494,7 @@ class SandboxExecutor:
         self,
         config: SandboxInput,
         argv: list[str],
-        timeout: int = 30,
+        timeout: int | None = 30,
         limit: int = 500_000,
         *,
         input_data: bytes | None = None,
@@ -496,6 +507,10 @@ class SandboxExecutor:
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("mode") == "pool":
+            from firefly_forge.runner_factory_models import uncapped_pool_reason, validate_factory_pool
+
+            if reason := uncapped_pool_reason(validate_factory_pool(snapshot)):
+                return {"available": False, "mode": "pool", "status": "not_implemented", "reason": reason}
             if self.pool_worker is None:
                 return {"available": False, "mode": "pool", "reason": "Factory pool worker is not configured"}
             return await self.pool_worker.probe(snapshot)
@@ -507,6 +522,8 @@ class SandboxExecutor:
                 "status": "not_implemented",
                 "reason": "Runner pool execution is not enabled",
             }
+        if reason := uncapped_docker_reason(config):
+            return {"available": False, "mode": "docker", "status": "not_implemented", "reason": reason}
         if config.mode == "host":
             return {"available": True, "mode": "host", "reason": snapshot["reason"]}
         try:
@@ -831,7 +848,7 @@ class SandboxExecutor:
         workspace_root: Path,
         cwd: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         task_id: str,
         *,
         ordinal: int | None = None,
@@ -847,10 +864,15 @@ class SandboxExecutor:
         assert_command_boundary()
         if task_id not in {"implement", "verify"}:
             raise ValueError("Runner commands must belong to an implementation or verification stage")
-        if not argv or len(argv) > 64 or type(timeout) is not int or timeout < 1:
+        if not argv or len(argv) > 64 or (timeout is not None and (type(timeout) is not int or timeout < 1)):
             raise ValueError("Runner command arguments or timeout are invalid")
         bounded_argv(argv)
-        if contains_known_credential(argv, self.credential_registry()):
+        logical_argv = argv
+        from firefly_forge.native_location_projection import runner_location
+
+        argv, location_evidence, location_guard = await runner_location(self.store, run_id, task_id, argv)
+        bounded_argv(argv)
+        if any(contains_known_credential(value, self.credential_registry()) for value in (logical_argv, argv)):
             raise ValueError("Runner arguments cannot contain configured credentials")
         if _browser_input is not None:
             if not _browser or len(_browser_input) > 2_100_000:
@@ -866,6 +888,8 @@ class SandboxExecutor:
         execution_identity: str | None = None
 
         async def admit() -> dict[str, Any]:
+            if location_guard is not None:
+                await location_guard()
             current = await self._admit_execution(run_id, task_id)
             if _invocation_guard is not None:
                 await _invocation_guard()
@@ -879,6 +903,8 @@ class SandboxExecutor:
         async with self._run_locks[run_id], self._capacity:
             run = await admit()
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
+            if location_evidence is not None and snapshot.get("mode") != "host":
+                raise ValueError("Native physical relocation requires its explicitly supported trusted host runner")
             if _diagnostic_snapshot is not None:
                 from firefly_forge.diagnostic_recipes import profile_configuration
 
@@ -894,6 +920,21 @@ class SandboxExecutor:
                     run_id, workspace, directory, argv, timeout, task_id, ordinal=ordinal
                 )
             config = validate_sandbox_snapshot(snapshot)
+            if location_evidence is not None and (config.mode != "host" or config.pool_binding is not None):
+                raise ValueError("Native physical relocation requires its explicitly supported trusted host runner")
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
+
+            duration = snapshot["configuration"].get("work_duration")
+            if duration is None:
+                if timeout is None:
+                    raise ValueError("A legacy runner requires its finite command timeout")
+                work_timeout: int | None = min(timeout, config.timeout)
+            else:
+                work_timeout = effective_work_timeout(
+                    timeout, WorkDurationPolicyV2.model_validate(duration).timeout_seconds
+                )
+            if config.mode == "docker" and work_timeout is None:
+                raise ValueError(UNCAPPED_DOCKER_REASON)
             backend = self.backends.select(config)
             if _browser:
                 if config.mode != "docker" or config.browser is None:
@@ -919,9 +960,11 @@ class SandboxExecutor:
                 "cwd": directory.relative_to(workspace).as_posix(),
                 "workspace": str(workspace),
                 "configuration": capture_sandbox(config)["configuration"],
-                "timeout": min(timeout, config.timeout),
+                "timeout": work_timeout,
                 "git_root": str(git_root) if git_root else None,
             }
+            if location_evidence is not None:
+                request["native_location"] = location_evidence
             if config.workspace_transport == "archive":
                 if not self.transfer_image:
                     raise ValueError("Archive execution requires an administrator-configured pinned transfer image")
@@ -955,9 +998,12 @@ class SandboxExecutor:
                 )[1]
                 if current_digest != request["workspace_digest"]:
                     raise ValueError("Command source changed during archive preparation")
-            created = await self.journal.sandbox_command_intent(
-                run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
-            )
+            from firefly_forge.runner_monitor_custody import monitor_scope
+
+            with monitor_scope(self._process_monitors.get((run_id, task_id))):
+                created = await self.journal.sandbox_command_intent(
+                    run_id, task_id, attempt, snapshot, prepare, ordinal=ordinal
+                )
             payload = created["execution"]["request"]
             execution_id = created["execution"]["execution_id"]
             execution_identity = execution_id
@@ -1010,9 +1056,7 @@ class SandboxExecutor:
                     if started["disposition"] != "execute":
                         raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                     await admit()
-                    result = await backend.run(
-                        config, argv, directory, min(timeout, config.timeout), config.max_output_bytes
-                    )
+                    result = await backend.run(config, argv, directory, work_timeout, config.max_output_bytes)
                     result = self._safe_result(result)
                     await self.journal.sandbox_effect_receipt(
                         run_id,
@@ -1136,12 +1180,12 @@ class SandboxExecutor:
                         result = await self._docker(
                             config,
                             start_argv,
-                            min(timeout, config.timeout),
+                            work_timeout,
                             output_limit,
                             input_data=_browser_input,
                         )
                     else:
-                        result = await self._docker(config, start_argv, min(timeout, config.timeout), output_limit)
+                        result = await self._docker(config, start_argv, work_timeout, output_limit)
                     state = await self._inspect(config, payload["container_name"], labels)
                     if state is None or state["State"]["Status"] != "exited":
                         raise SandboxReconciliationRequired("Docker command completion could not be confirmed")

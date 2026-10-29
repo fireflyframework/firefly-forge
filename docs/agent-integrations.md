@@ -128,7 +128,7 @@ Python `reconcile_execution_request(run_id, request_id, reconciliation_id)`, MCP
 
 Use `checkpoint_continuation_candidate(run_id, request_id)` to inspect an existing ticket. After reviewing a ready candidate, `request_checkpoint_continuation(run_id, request_id, action_id, request)` saves one explicitly acknowledged finite continuation. Read `checkpoint_continuation_status(run_id, request_id)` after an uncertain response and match the saved action ID. The typed input is `CheckpointContinuationInputV1`; all identifiers and acknowledgements are validated before transport.
 
-These methods preserve the original attempt, history, completed effects and remaining budgets. A retained response is consumed once, and completed effects are reused from their original receipts. See [retained checkpoint continuation](checkpoint-continuations.md) for policy, eligibility, input fields and status meanings.
+These methods preserve the original attempt, history, completed effects and remaining budgets. A retained response is consumed once, and completed effects are reused from their original receipts. See [retained checkpoint continuation](checkpoint-continuations.md) for policy, eligibility, input fields and status meanings. Already-consumed final output has a separate [final-result acceptance](checkpoint-continuations.md#accept-an-already-consumed-final-result) path through the client, CLI and MCP. It preserves typed blockers and verification requests without another inference or consumption.
 
 ## Exact observation attempts
 

@@ -2,6 +2,7 @@
 """Native tracing admission and exact retained receipt binding."""
 
 import pytest
+from diagnostic_legacy_fixtures import create_retained_diagnostic_run
 from test_profile_admission import IMAGE, snapshot
 
 from firefly_forge import diagnostic_recipes as recipes
@@ -20,7 +21,8 @@ async def test_engine_trace_observation_binds_exact_command_and_preserves_worklo
     from firefly_forge.workspace_tools import tool_catalog
 
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"],
             brief="Observe owned workload",
@@ -72,10 +74,11 @@ async def test_trace_without_executor_or_grants_never_uses_host(store, tmp_path)
     from firefly_forge.sandbox_models import SandboxInput
 
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"], brief="Observe", sandbox=SandboxInput.model_validate(snapshot()["configuration"])
-        )
+        ),
     )
     (tmp_path / "workload.py").write_text("raise AssertionError('must not execute')")
     engine = Engine(store, tmp_path / "jobs")
@@ -139,7 +142,8 @@ async def test_engine_supplies_the_optional_trace_hook_to_the_native_worker(stor
     from firefly_forge.workspace_tools import tool_catalog
 
     initial = await fixture_run(store, tmp_path)
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=initial["repository_id"],
             brief="Inspect optional diagnostic binding",

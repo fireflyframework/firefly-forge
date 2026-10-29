@@ -60,6 +60,7 @@ function Settings({
   const [current, setCurrent] = useState<ContinuityPolicyView | null>(null),
     [enabled, setEnabled] = useState(false),
     [checkpoint, setCheckpoint] = useState(false),
+    [finalOutcome, setFinalOutcome] = useState(false),
     [seconds, setSeconds] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -86,6 +87,7 @@ function Settings({
     setCurrent(value);
     setEnabled(value.settings.enabled);
     setCheckpoint(value.settings.allow_checkpoint_continuation);
+    setFinalOutcome(value.settings.allow_final_outcome_continuation === true);
     setSeconds(String(value.settings.max_window_seconds));
   }
   function hide(cause: unknown) {
@@ -146,6 +148,10 @@ function Settings({
           ...current.settings,
           enabled,
           allow_checkpoint_continuation: checkpoint,
+          ...(finalOutcome ||
+          "allow_final_outcome_continuation" in current.settings
+            ? { allow_final_outcome_continuation: finalOutcome }
+            : {}),
           max_window_seconds: Number(seconds),
         })
       : null;
@@ -325,6 +331,23 @@ function Settings({
                     <small id="continuity-policy-checkpoint-help">
                       Off by default. Every task still requires a separate
                       review.
+                    </small>
+                  </span>
+                </label>
+                <label className="check-choice">
+                  <input
+                    type="checkbox"
+                    checked={finalOutcome}
+                    aria-label="Allow reviewed final-result continuations"
+                    aria-describedby="continuity-policy-final-help"
+                    onChange={(event) => setFinalOutcome(event.target.checked)}
+                  />
+                  <span>
+                    Allow reviewed final-result continuations
+                    <small id="continuity-policy-final-help">
+                      Accept an already consumed final report on its original
+                      request, with its blocker or follow-up and spent usage
+                      preserved. No model or completed command is repeated.
                     </small>
                   </span>
                 </label>

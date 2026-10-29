@@ -126,6 +126,7 @@ async def test_interrupted_admission_recovers_as_unknown_without_an_automatic_re
         ("binary.txt", b"\x00x"),
         ("encoding.md", b"\xff"),
     ],
+    ids=["traversal", "private-environment", "binary-extension", "empty", "oversized", "nul", "invalid-utf8"],
 )
 def test_only_bounded_utf8_documents_can_be_admitted(filename, content):
     with pytest.raises(ValueError):

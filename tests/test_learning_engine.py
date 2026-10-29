@@ -110,6 +110,7 @@ async def test_actual_engine_reuses_exact_receipted_local_outcome_without_web_ke
     engine.knowledge_first = first
     engine.knowledge = manager
     engine.tool_broker = broker
+    await store.acquire_ownership()
     await engine.execute_run(run["id"])
     final = await store.get_run(run["id"])
     assert final["status"] == "succeeded", final.get("error")

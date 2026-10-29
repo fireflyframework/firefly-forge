@@ -22,6 +22,7 @@ from firefly_forge.checkpoint_test_models import SourceCheckpointV1
 from firefly_forge.framework_knowledge_models import FrameworkRunTargetInput
 from firefly_forge.runner_factory_models import FactoryPoolSelection
 from firefly_forge.sandbox_models import SandboxInput
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 Provider = Literal["git", "github", "gitlab", "bitbucket", "azure", "gitea"]
 Backend = Literal["pyfly", "larafly", "java", "rust", "dotnet", "none"]
@@ -78,6 +79,31 @@ class Command(BaseModel):
         return value
 
 
+class NewWorkCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    argv: list[str] = Field(min_length=1, max_length=64)
+    timeout: int | None = Field(default=None, gt=0, strict=True)
+
+    _argv = field_validator("argv")(Command.validate_argv)
+
+
+def configured_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
+    policy = run.get("work_duration")
+    if policy is not None:
+        WorkDurationPolicyV2.model_validate(policy)
+    command_type = NewWorkCommand if policy is not None else Command
+    return [command_type.model_validate(value) for value in run.get("commands", [])]
+
+
+def capture_new_work_commands(commands: list[Command | NewWorkCommand]) -> list[dict[str, Any]]:
+    return [
+        NewWorkCommand(
+            argv=command.argv, timeout=command.timeout if "timeout" in command.model_fields_set else None
+        ).model_dump()
+        for command in commands
+    ]
+
+
 class AssuranceInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     review_agent: Literal["codex", "claude", "bridge", "agentic"] | None = None
@@ -95,7 +121,7 @@ class RunInput(BaseModel):
     frontend: Frontend = "react"
     agent: Literal["codex", "claude", "bridge", "agentic", "api"] = "codex"
     model_profile_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
-    commands: list[Command] = Field(default_factory=list, max_length=20)
+    commands: list[Command | NewWorkCommand] = Field(default_factory=list, max_length=20)
     publish: bool = False
     operation: Literal["build", "maintain", "test"] = "build"
     assurance: AssuranceInput = Field(default_factory=AssuranceInput)

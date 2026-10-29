@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -11,7 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, StrictInt, TypeAdapter, ValidationError
 
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
@@ -20,9 +21,11 @@ from firefly_forge.php_diagnostics import PHPProfileRequest
 from firefly_forge.profiles import build_instruction
 from firefly_forge.prompts import prompt_text
 from firefly_forge.qa import BrowserJourney, QAReference, QAReport, bounded_image_history, qa_instructions
+from firefly_forge.runner_monitor_models import MonitorStartInput, MonitorWaitInput
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.tool_broker import ToolReconciliationRequired
+from firefly_forge.work_duration_models import effective_work_timeout
 from firefly_forge.worker_evidence_query import WorkerEvidenceReadInput
 from firefly_forge.workspace_tools import ToolRuntimeContext
 from firefly_forge.workspace_tools import WorkspaceTools as WorkspaceTools
@@ -146,20 +149,55 @@ async def execute_agentic(
     async def source_manifest() -> dict[str, str]:
         return await tools.source_manifest()
 
-    async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
+    monitor_source_before = await source_manifest() if context.process_monitor is not None else {}
 
+    async def start_process(request: MonitorStartInput) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.start(request)
+
+    async def process_status(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.status(monitor_id)
+
+    async def process_logs(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.logs(monitor_id)
+
+    async def wait_process(request: MonitorWaitInput) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.wait(request)
+
+    async def cancel_process(monitor_id: str) -> dict[str, Any]:
+        if context.process_monitor is None:
+            raise ValueError("Owned host process monitoring is not configured")
+        return await context.process_monitor.cancel(monitor_id)
+
+    async def run_command(argv: list[str], timeout: int | None) -> dict[str, Any]:
         from firefly_forge.sandbox_models import bounded_argv
 
         if context.command_executor is None:
             raise ValueError("Command execution is not configured")
-        if not 1 <= len(argv) <= 64 or type(timeout) is not int or not 1 <= timeout <= 3600:
-            raise ValueError("Command arguments or timeout exceed the tool bounds")
+        if not 1 <= len(argv) <= 64:
+            raise ValueError("Command arguments exceed the tool bounds")
         bounded_argv(argv)
         before = await source_manifest()
         result = await context.command_executor(argv, timeout)
         after = await source_manifest()
         tools.files_written.update(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
         return {"exit_code": result.exit_code, "output": result.output}
+
+    async def execute_command(argv: list[str], timeout: int = 300) -> dict[str, Any]:
+        if type(timeout) is not int or not 1 <= timeout <= 3600:
+            raise ValueError("Command arguments or timeout exceed the tool bounds")
+        return await run_command(argv, timeout)
+
+    async def execute_command_v2(argv: list[str], timeout: StrictInt | None = None) -> dict[str, Any]:
+        assert context.work_duration is not None
+        return await run_command(argv, effective_work_timeout(context.work_duration.timeout_seconds, timeout))
 
     async def browser_check(
         path: str = "/", width: int = 1440, height: int = 900, theme: str = "light"
@@ -346,7 +384,21 @@ async def execute_agentic(
     if context.read_run_evidence is not None:
         handlers["read_run_evidence"] = read_run_evidence
     if context.command_executor is not None:
-        handlers["execute_command"] = execute_command
+        handlers["execute_command"] = execute_command if context.work_duration is None else execute_command_v2
+    monitor_handlers: dict[str, Callable[..., Any]] = {
+        "start_process": start_process,
+        "process_status": process_status,
+        "process_logs": process_logs,
+        "wait_process": wait_process,
+        "cancel_process": cancel_process,
+    }
+    monitor_grants = set(context.allowed_tools or ()) & monitor_handlers.keys()
+    if monitor_grants:
+        if context.process_monitor is None or "execute_command" not in (context.allowed_tools or ()):
+            raise ValueError("Process monitoring is not configured or available within the granted runner")
+        if invocation is not None:
+            raise ValueError("Process monitoring is unavailable for required-checkpoint invocations")
+        handlers.update(monitor_handlers)
     if context.browser_runner is not None:
         handlers["browser_check"] = browser_check
     if context.browser_journey is not None:
@@ -383,6 +435,11 @@ async def execute_agentic(
         "edit_lines",
         "git_diff",
         "execute_command",
+        "start_process",
+        "process_status",
+        "process_logs",
+        "wait_process",
+        "cancel_process",
         "browser_check",
         "browser_journey",
         "internet_search",
@@ -528,6 +585,8 @@ async def execute_agentic(
                     brief,
                     timeout=invocation.remaining()
                     if invocation is not None
+                    else context.work_duration.timeout_seconds
+                    if context.work_duration is not None
                     else float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800")),
                     usage_limits=UsageLimits(request_limit=100, tool_calls_limit=300),
                 )
@@ -541,6 +600,15 @@ async def execute_agentic(
             if isinstance(cause, (SearchProviderError, ToolReconciliationRequired)):
                 raise cause from None
         raise
+    finally:
+        if context.process_monitor is not None:
+            await asyncio.shield(context.process_monitor.close())
+            after = await source_manifest()
+            tools.files_written.update(
+                path
+                for path in monitor_source_before.keys() | after.keys()
+                if monitor_source_before.get(path) != after.get(path)
+            )
     if custody is not None:
         await custody.assert_effects_settled()
     if context.credential_admission is not None:
@@ -549,8 +617,18 @@ async def execute_agentic(
         await invocation.guard()
         invocation.remaining()
     feedback = result.output.worker_feedback
+    retained_source = None
     if not tools.files_written and (feedback is None or feedback.disposition not in {"blocked", "clarification"}):
-        raise RuntimeError("Firefly Agentic returned without writing any project source")
+        if invocation is None:
+            raise RuntimeError("Firefly Agentic returned without writing any project source")
+        from firefly_forge.retained_verified_source import prepare_retained_source
+
+        try:
+            retained_source = await prepare_retained_source(
+                invocation.store, invocation.journal, await invocation.store.get_run(invocation.run["id"]), workspace
+            )
+        except ValueError as error:
+            raise RuntimeError("Firefly Agentic returned without writing any project source") from error
     usage = result.usage
     recorded_usage = {
         "input_tokens": usage.input_tokens,
@@ -558,6 +636,8 @@ async def execute_agentic(
         "requests": usage.requests,
         "files_written": sorted(tools.files_written),
     }
+    if retained_source is not None:
+        recorded_usage["retained_source"] = retained_source.proof.model_dump(mode="json")
     if feedback is not None:
         recorded_usage["worker_feedback"] = feedback.model_dump(mode="json")
     if result.output.qa_report is not None:

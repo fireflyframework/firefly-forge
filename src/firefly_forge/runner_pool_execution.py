@@ -6,15 +6,18 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from contextlib import suppress
+import time
+from collections.abc import Callable
+from contextlib import nullcontext, suppress
 from typing import Any
 from uuid import uuid4
 
 from pyfly.container import service
 
+from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
 from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
-from firefly_forge.runner_pool_dispatch import DockerPoolDispatcher
+from firefly_forge.runner_pool_dispatch import DockerPoolDispatcher, Guard
 from firefly_forge.runner_pool_models import (
     FactoryFence,
     RunnerInvocation,
@@ -23,6 +26,9 @@ from firefly_forge.runner_pool_models import (
     parse_invocation,
 )
 from firefly_forge.runner_pools import RunnerPools
+from firefly_forge.runner_run_authority import RunnerRunAuthority
+from firefly_forge.runner_run_liveness import RunLease, RunRenewalV1, run_digest
+from firefly_forge.runner_run_owner import RunOwnerChannel
 
 
 @service
@@ -41,6 +47,10 @@ class RunnerPoolExecutions:
         self.fence: FactoryFence | None = None
         self.admission_lock = asyncio.Lock()
         self.stopping = False
+        self.run_leases: dict[str, RunLease] = {}
+        self.run_authority: RunnerRunAuthority | None = None
+        self.run_clock: Callable[[], float] = time.monotonic
+        self.run_admission_lock = asyncio.Lock()
 
     @property
     def profile(self) -> RunnerPoolProfile:
@@ -49,24 +59,120 @@ class RunnerPoolExecutions:
     async def accept(
         self, invocation: RunnerInvocation, fence: FactoryFence, archive: bytes, stdin: bytes
     ) -> dict[str, Any]:
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
+            raise ValueError(UNCAPPED_POOL_REASON)
         if self.stopping:
             raise RuntimeError("Runner controller is stopping")
-        await self.pools.check_factory_fence(fence)
-        await self.dispatcher.verify_daemon()
-        self.artifacts.prepare(self.profile, invocation, archive)
-        if isinstance(invocation, RunnerProjectInvocation):
-            if self.git_snapshot is None:
-                raise RuntimeError("Project bundle controller capability is inactive")
-            await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
-        self.artifacts.retain(self.profile, invocation, "stdin", stdin)
-        result = await self.pools.submit(self.profile, invocation, fence=fence)
-        self.fence = fence
-        await self.pump()
-        return result
+        async with self.run_admission_lock if invocation.run_liveness is not None else nullcontext():
+            if invocation.run_liveness is not None:
+                for identity, previous in list(self.run_leases.items()):
+                    if previous.closed or previous.expires <= self.run_clock():
+                        previous.stop()
+                        self.run_leases.pop(identity)
+                self.profile.validate_invocation(invocation)
+                try:
+                    await self.pools.observe(self.profile, invocation.execution_id)
+                except KeyError:
+                    pass
+                else:
+                    raise RuntimeError("Prior run-owned submission requires reconciliation; no redispatch")
+                await self._authorize_run(invocation, fence)
+            await self.pools.check_factory_fence(fence)
+            await self.dispatcher.verify_daemon()
+            self.artifacts.prepare(self.profile, invocation, archive)
+            if isinstance(invocation, RunnerProjectInvocation):
+                if self.git_snapshot is None:
+                    raise RuntimeError("Project bundle controller capability is inactive")
+                await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
+            self.artifacts.retain(self.profile, invocation, "stdin", stdin)
+            lease = (
+                RunLease(
+                    run_digest(invocation.model_dump(mode="json")),
+                    invocation.run_liveness,
+                    self.owner,
+                    self.profile.lease_seconds,
+                    clock=self.run_clock,
+                )
+                if invocation.run_liveness is not None
+                else None
+            )
+            result = await self.pools.submit(
+                self.profile, invocation, fence=fence, **({"run_lease": lease.ack()} if lease is not None else {})
+            )
+            if lease is not None:
+                await self._authorize_run(invocation, fence)
+                lease.remaining()
+                self.run_leases[invocation.execution_id] = lease
+                result = {**result, "run_lease": lease.ack()}
+            self.fence = fence
+            await self.pump()
+            return result
+
+    async def _authorize_run(self, invocation: RunnerInvocation, fence: FactoryFence) -> None:
+        if self.run_authority is None:
+            self.run_authority = RunnerRunAuthority(self.pools)
+        await self.run_authority.authorize(invocation, fence)
+
+    def _run_lease(self, invocation: RunnerInvocation) -> RunLease:
+        lease = self.run_leases.get(invocation.execution_id)
+        if (
+            invocation.run_liveness is None
+            or lease is None
+            or lease.controller_epoch != self.owner
+            or lease.binding != invocation.run_liveness
+            or lease.invocation_digest != run_digest(invocation.model_dump(mode="json"))
+        ):
+            raise ValueError("Original run-owned controller epoch is unavailable; reconciliation required")
+        return lease
+
+    async def _assert_run_current(self, invocation: RunnerInvocation, fence: FactoryFence) -> RunLease:
+        lease = self._run_lease(invocation)
+        lease.remaining()
+        await self._authorize_run(invocation, fence)
+        lease.remaining()
+        return lease
+
+    async def renew_run(
+        self, invocation: RunnerInvocation, fence: FactoryFence, request: RunRenewalV1
+    ) -> dict[str, Any]:
+        self.profile.validate_invocation(invocation)
+        lease = self._run_lease(invocation)
+        lease.check(request)
+        try:
+            await self.pools.check_factory_fence(fence)
+            await self._assert_run_current(invocation, fence)
+            acknowledgement = lease.renew(request)
+            await self.pools.renew_run_admission(self.profile, invocation, fence, request, acknowledgement)
+            await self._assert_run_current(invocation, fence)
+        except Exception:
+            lease.stop()
+            with suppress(Exception):
+                await self.cancel(invocation.execution_id, fence)
+            raise
+        return acknowledgement
+
+    def _run_owner_channel(self, invocation: RunnerInvocation, container_id: str, guard: Guard) -> RunOwnerChannel:
+        async def exchange(materialize: Callable[[], bytes]) -> bytes:
+            code, raw = await self.dispatcher.fenced_control(
+                self.dispatcher.owner_plan(invocation, container_id),
+                guard,
+                timeout=3,
+                limit=4096,
+                input_factory=materialize,
+            )
+            if code:
+                raise RuntimeError("Run-bound owner transport requires reconciliation")
+            return raw
+
+        return RunOwnerChannel(invocation.execution_id, self._run_lease(invocation), exchange)
 
     async def continue_invocation(
         self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str
     ) -> dict[str, Any]:
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
+            raise ValueError(UNCAPPED_POOL_REASON)
+        if invocation.run_liveness is not None:
+            raise RuntimeError("Run-owned controller continuation requires reconciliation; no implicit adoption")
         from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
 
         async with self.admission_lock:
@@ -109,6 +215,8 @@ class RunnerPoolExecutions:
 
     async def stop(self) -> None:
         self.stopping = True
+        for lease in self.run_leases.values():
+            lease.stop()
         self.fence = None
         tasks = list(self.tasks.values())
         for task in tasks:
@@ -119,6 +227,10 @@ class RunnerPoolExecutions:
     async def _renew(self, claim: dict[str, Any]) -> None:
         while True:
             await asyncio.sleep(self.profile.lease_seconds / 3)
+            invocation = parse_invocation(claim["request"])
+            if invocation.run_liveness is not None:
+                assert self.fence is not None
+                await self._assert_run_current(invocation, self.fence)
             if not await self.pools.renew(self.profile, claim["id"], self.owner, claim["epoch"]):
                 raise RuntimeError("Runner lease or factory owner was lost")
 
@@ -136,17 +248,32 @@ class RunnerPoolExecutions:
             return
         if current["request"] != invocation.model_dump(mode="json"):
             raise ValueError("Invocation claim changed its immutable request")
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
+            await self.pools.quarantine(
+                self.profile, claim["id"], self.owner, claim["epoch"], {"reason": UNCAPPED_POOL_REASON}
+            )
+            return
+        if invocation.run_liveness is not None:
+            try:
+                await self._assert_run_current(invocation, fence)
+            except Exception:
+                await self.pools.quarantine(
+                    self.profile, claim["id"], self.owner, claim["epoch"], {"reason": "run_owned_authority_unavailable"}
+                )
+                return
         heartbeat = asyncio.create_task(self._renew(claim))
         work = asyncio.create_task(
             self._execute(invocation, claim, fence)
             if continuation is None
             else self._execute(invocation, claim, fence, continuation)
         )
+        completed_work = False
         try:
             completed, _ = await asyncio.wait((heartbeat, work), return_when=asyncio.FIRST_COMPLETED)
             if heartbeat in completed:
                 await heartbeat
             await work
+            completed_work = True
         except BaseException:
             work.cancel()
             await asyncio.gather(work, return_exceptions=True)
@@ -156,9 +283,19 @@ class RunnerPoolExecutions:
                 )
             # No unverified resource removal or capacity release on this path.
             # Independent PID1 timers bound code/grace; a live owner reconciles exact resources.
+            if invocation.run_liveness is not None:
+                lease = self.run_leases.get(invocation.execution_id)
+                if lease is not None:
+                    lease.stop()
+                with suppress(Exception):
+                    await self.reconcile(invocation.execution_id, fence)
         finally:
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
+            if invocation.run_liveness is not None and not completed_work:
+                lease = self.run_leases.pop(invocation.execution_id, None)
+                if lease is not None:
+                    lease.stop()
         self.tasks.pop(invocation.execution_id, None)
         if pump_after and self.fence is not None:
             with suppress(Exception):
@@ -175,6 +312,8 @@ class RunnerPoolExecutions:
 
         async def guard() -> None:
             await self.pools.authorize(self.profile, claim["id"], self.owner, claim["epoch"], fence)
+            if invocation.run_liveness is not None and not cleaning:
+                await self._assert_run_current(invocation, fence)
             if continuation is not None and not cleaning:
                 from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
 
@@ -264,6 +403,11 @@ class RunnerPoolExecutions:
         await guard()
         await self.pools.effect_intent(self.profile, claim["id"], self.owner, claim["epoch"], fence, "start")
         await control(["start", cid])
+        ready_script = (
+            "import os,stat;assert stat.S_ISFIFO(os.lstat('/tmp/forge-start').st_mode)"
+            if invocation.work_duration is None
+            else "import os,stat;assert stat.S_ISSOCK(os.lstat('/tmp/forge-owner.sock').st_mode)"
+        )
         async with asyncio.timeout(15):
             while True:
                 code, _ = await self.dispatcher.fenced_control(
@@ -274,7 +418,7 @@ class RunnerPoolExecutions:
                         "-I",
                         "-S",
                         "-c",
-                        "import os,stat;assert stat.S_ISFIFO(os.lstat('/tmp/forge-start').st_mode)",
+                        ready_script,
                     ],
                     guard,
                     timeout=5,
@@ -283,7 +427,53 @@ class RunnerPoolExecutions:
                 if code == 0:
                     break
                 await asyncio.sleep(0.1)
-        await control(self.dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
+        owner_key: bytes | None = None
+        owner_sequence = 0
+        owner_challenge: str | None = None
+
+        async def ownership(operation: str) -> dict[str, Any]:
+            from firefly_forge.runner_pool_owner import owner_reply, owner_request
+
+            nonlocal owner_sequence, owner_challenge
+            assert owner_key is not None and owner_challenge is not None
+            owner_sequence += 1
+            raw = await control(
+                self.dispatcher.owner_plan(invocation, cid),
+                timeout=3,
+                limit=4096,
+                input_data=owner_request(
+                    owner_key, invocation.execution_id, operation, owner_sequence, owner_challenge
+                ),
+            )
+            reply = owner_reply(raw, invocation.execution_id, sequence=owner_sequence)
+            owner_challenge = reply["challenge"]
+            return reply
+
+        run_owner_channel: RunOwnerChannel | None = None
+        if invocation.work_duration is None:
+            await control(self.dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
+        elif invocation.run_liveness is not None:
+            run_owner_channel = self._run_owner_channel(invocation, cid, guard)
+            await run_owner_channel.start()
+        else:
+            from firefly_forge.runner_pool_owner import owner_reply
+
+            raw = await control(
+                self.dispatcher.owner_plan(invocation, cid),
+                timeout=5,
+                limit=4096,
+                input_data=json.dumps(
+                    {
+                        "protocol": "forge-runner-owner-v2",
+                        "execution_id": invocation.execution_id,
+                        "operation": "claim",
+                    }
+                ).encode(),
+            )
+            claimed = owner_reply(raw, invocation.execution_id, claim=True)
+            owner_key = bytes.fromhex(claimed["key"])
+            owner_challenge = claimed["challenge"]
+            await ownership("start")
         await self.pools.effect_receipt(
             self.profile,
             claim["id"],
@@ -293,11 +483,18 @@ class RunnerPoolExecutions:
             "start",
             {"container_id": cid, "released": True},
         )
-        async with asyncio.timeout(invocation.timeout + 5):
+        async with asyncio.timeout(None if invocation.timeout is None else invocation.timeout + 5):
             while True:
-                code, output = await self.dispatcher.fenced_control(
-                    self.dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
-                )
+                if invocation.work_duration is None:
+                    code, output = await self.dispatcher.fenced_control(
+                        self.dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
+                    )
+                else:
+                    owned = (
+                        await run_owner_channel.status() if run_owner_channel is not None else await ownership("renew")
+                    )
+                    code = 0 if owned["state"] == "drained" else 1
+                    output = json.dumps(owned).encode()
                 if code == 0:
                     status = json.loads(output)
                     if (

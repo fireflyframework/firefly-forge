@@ -29,13 +29,14 @@ from firefly_forge.assistant_persistence import (
     ForgeAssistantTurnRepository,
 )
 from firefly_forge.knowledge import snapshot_knowledge
-from firefly_forge.product_assistant_runtime import AssistantReply, design_reply
+from firefly_forge.product_assistant_runtime import WORK_DURATION_SETTING, AssistantReply, design_reply
 from firefly_forge.product_provenance import receipt_provenance
 from firefly_forge.projects import Projects
 from firefly_forge.prompts import prompt_text
 from firefly_forge.providers import classify_provider_failure
 from firefly_forge.secrets import credential_representations, redact_environment, sensitive_name
 from firefly_forge.store import Store, identifier, now
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 Data = dict[str, Any]
 Designer = Callable[..., Awaitable[AssistantReply]]
@@ -58,6 +59,19 @@ def digest(data: Any) -> str:
     ).hexdigest()
 
 
+def conversation_work_duration(session: Data, created: Data) -> WorkDurationPolicyV2 | None:
+    if "work_duration" not in session and "work_duration_digest" not in created:
+        return None
+    try:
+        raw = session["work_duration"]
+        policy = WorkDurationPolicyV2.model_validate(raw)
+        if digest(raw) != digest(policy.model_dump()) or digest(raw) != created["work_duration_digest"]:
+            raise ValueError
+        return policy
+    except (KeyError, ValueError, TypeError):
+        raise ValueError("Work duration differs from its immutable conversation receipt") from None
+
+
 class AssistantSessionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent: Literal["bridge", "agentic"] = "bridge"
@@ -67,6 +81,7 @@ class AssistantSessionInput(BaseModel):
     analysis_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     analysis_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     analysis_component_ids: list[str] = Field(default_factory=list, max_length=50)
+    work_duration: WorkDurationPolicyV2 = Field(default_factory=WorkDurationPolicyV2)
 
     @model_validator(mode="after")
     def reviewed_selection(self) -> AssistantSessionInput:
@@ -196,10 +211,15 @@ class ProductAssistant:
         async with self.store._unit():
             return await self.turns.renew_claim(identifier(turn_id), self.owner_id, epoch, self.lease_seconds)
 
-    async def _heartbeat(self, turn_id: str, epoch: int, task: asyncio.Task[Any]) -> None:
+    async def _heartbeat(self, turn_id: str, epoch: int, task: asyncio.Task[Any], session: Data | None = None) -> None:
         while True:
             await asyncio.sleep(self.lease_seconds / 4)
             try:
+                if session is not None:
+                    current = await self.session(session["repository_id"], session["id"])
+                    await self._authorize_session(current, "edit")
+                    if digest(current.get("work_duration")) != digest(session["work_duration"]):
+                        raise AssistantClaimLost("The frozen conversation work policy changed")
                 held = await self._renew_claim(turn_id, epoch)
             except Exception:
                 held = False
@@ -326,6 +346,7 @@ class ProductAssistant:
             "project_id": request.project_id,
             "project_snapshot": project,
             "analysis_snapshot": analysis_snapshot,
+            "work_duration": request.work_duration.model_dump(),
             "created_at": now(),
             **frozen_configuration,
         }
@@ -346,6 +367,7 @@ class ProductAssistant:
                     "project_digest": (project or {}).get("digest"),
                     "analysis_digest": (analysis_snapshot or {}).get("analysis_digest"),
                     "analysis_context_digest": (analysis_snapshot or {}).get("context_digest"),
+                    "work_duration_digest": digest(data["work_duration"]),
                 },
             )
             return copy.deepcopy(row.data)
@@ -389,6 +411,7 @@ class ProductAssistant:
         if previous != data["journal_head"]:
             raise ValueError("Product conversation journal is incomplete")
         created = next(item for item in journal if item["kind"] == "conversation_created")
+        conversation_work_duration(data, created["payload"])
         selected = data.get("model_selection")
         expected_model = created["payload"].get("model_selection_digest")
         if selected:
@@ -510,6 +533,13 @@ class ProductAssistant:
             if session.get("model_selection")
             else self.store.configuration.load_snapshot(session["config_revision"])
         )
+        settings = dict(settings)
+        settings.pop(WORK_DURATION_SETTING, None)
+        work_duration = (
+            WorkDurationPolicyV2.model_validate(session["work_duration"]) if "work_duration" in session else None
+        )
+        if work_duration is not None:
+            settings[WORK_DURATION_SETTING] = work_duration.model_dump_json()
         await self.store.admit_credentials(request.message)
         if self.contains_credential(request.message, settings):
             raise ValueError("Do not place configured credentials in a product conversation")
@@ -561,6 +591,10 @@ class ProductAssistant:
         async with self.store._unit():
             row = await self._record(repository_id, session_id, lock=True)
             await self._authorize_session(row.data, "edit")
+            if ("work_duration" in row.data) != ("work_duration" in session) or digest(
+                row.data.get("work_duration")
+            ) != digest(session.get("work_duration")):
+                raise ValueError("Work duration changed during conversation admission")
             old = await self.turns.request(row.id, request.request_id)
             if old:
                 if (
@@ -598,6 +632,8 @@ class ProductAssistant:
                 "attachment_text": file_text,
                 "image_input_receipt": image_receipt,
             }
+            if work_duration is not None:
+                context["work_duration"] = work_duration.model_dump()
             await self.store.admit_credentials(context)
             if self.contains_credential(context, settings):
                 raise ValueError("Remove configured credentials from the frozen product context before continuing")
@@ -649,7 +685,9 @@ class ProductAssistant:
         current_task = asyncio.current_task()
         assert current_task is not None
         self._inflight[data["id"]] = current_task
-        heartbeat = asyncio.create_task(self._heartbeat(data["id"], 1, current_task))
+        heartbeat = asyncio.create_task(
+            self._heartbeat(data["id"], 1, current_task, session if work_duration is not None else None)
+        )
         from firefly_forge.project_access import AccessDenied
 
         try:

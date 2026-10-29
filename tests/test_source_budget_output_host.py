@@ -395,7 +395,8 @@ def test_current_v10_declares_entire_new_allowance_module_without_relabeling_his
 
     assert f"codex-exec-restricted-source/v{qualification.REGISTRY_VERSION + 1}" == qualification.LOADER_PROFILE
     assert tuple(name for name, _ in qualification.loader_hashes()) == qualification.LOADER_MODULES
-    assert len(qualification.LOADER_MODULES) == 22
+    assert len(qualification.LOADER_MODULES) == 23
+    assert "work_duration_models.py" in qualification.LOADER_MODULES
     assert "source_budget_output.py" in qualification.LOADER_MODULES
     assert "known_completed_output_finite_activation" in qualification.SOURCE_BUDGET_CHECKS
     historical = {profile.loader_profile: profile for profile in PROFILES}

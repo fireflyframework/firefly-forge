@@ -36,6 +36,8 @@ export type ForgeRun = {
   attempt?: number;
   provider_recovery?: unknown;
   invalid_read_continuity?: unknown;
+  usage?: Record<string, unknown>;
+  implementation_pending?: boolean;
   backend?: string;
   frontend?: string;
   agent?: string;
@@ -85,7 +87,7 @@ export type NewRun = {
   backend: string;
   frontend: string;
   agent: string;
-  commands: { argv: string[]; timeout: number }[];
+  commands: { argv: string[]; timeout: number | null }[];
   publish: false;
 };
 export class ApiError extends Error {
@@ -232,7 +234,17 @@ export const post = <T>(connection: Connection, path: string, body?: unknown) =>
     method: "POST",
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-export function parseCommands(value: string): NewRun["commands"] {
+export function parseCommands(
+  value: string,
+): { argv: string[]; timeout: number }[];
+export function parseCommands(
+  value: string,
+  options: { workDurationV2: true },
+): NewRun["commands"];
+export function parseCommands(
+  value: string,
+  options?: { workDurationV2: true },
+): NewRun["commands"] {
   if (!value.trim()) return [];
   let commands: unknown;
   try {
@@ -256,7 +268,10 @@ export function parseCommands(value: string): NewRun["commands"] {
     throw new Error(
       "Each command needs at least one non-empty string argument.",
     );
-  return (commands as string[][]).map((argv) => ({ argv, timeout: 120 }));
+  return (commands as string[][]).map((argv) => ({
+    argv,
+    timeout: options?.workDurationV2 === true ? null : 120,
+  }));
 }
 export type MetricThreshold = {
   name: string;

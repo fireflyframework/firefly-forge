@@ -33,6 +33,13 @@ from firefly_forge.runner_pool_persistence import (
     ForgeRunnerPoolEntity,
     ForgeRunnerPoolRepository,
 )
+from firefly_forge.runner_run_liveness import (
+    RUN_ADMISSION_PROTOCOL,
+    RunLeaseAckV1,
+    RunRenewalV1,
+    run_digest,
+    validate_run_ack,
+)
 
 HELD = {"leased", "creating", "created", "starting", "running", "draining", "quarantined"}
 
@@ -179,15 +186,31 @@ class RunnerPools:
             raise RuntimeError("Exact factory database execution ownership was lost")
 
     async def submit(
-        self, profile: RunnerPoolProfile, request: RunnerInvocation, *, fence: FactoryFence | None = None
+        self,
+        profile: RunnerPoolProfile,
+        request: RunnerInvocation,
+        *,
+        fence: FactoryFence | None = None,
+        run_lease: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         profile.validate_invocation(request)
+        owner = None
+        if request.run_liveness is not None:
+            if fence is None or request.run_liveness.factory_fence_digest != run_digest(fence.model_dump(mode="json")):
+                raise ValueError("Run-owned admission requires its original Factory fence")
+            owner = validate_run_ack(
+                run_lease, run_digest(request.model_dump(mode="json")), request.run_liveness, sequence=0
+            )
+        elif run_lease is not None:
+            raise ValueError("An unmarked admission cannot acquire run-owned queue authority")
         async with self._unit():
             if fence is not None:
                 await self._owned(fence)
             document = request.model_dump(mode="json")
             prior = await self.invocations.execution(request.execution_id)
             if prior is not None:
+                if owner is not None:
+                    raise RuntimeError("Prior run-owned submission requires reconciliation; no owner replacement")
                 if prior.data["request"] != document:
                     raise ValueError("Runner invocation request is immutable across every profile and daemon")
                 return self._public(prior)
@@ -201,13 +224,98 @@ class RunnerPools:
                 execution_id=request.execution_id,
                 status="queued",
                 epoch=0,
-                admission_expires_at=now + timedelta(seconds=profile.admission_seconds),
-                data={"request": document, "submission_fence": fence.model_dump(mode="json") if fence else None},
+                admission_expires_at=now
+                + timedelta(
+                    seconds=profile.admission_seconds
+                    if owner is None
+                    else min(profile.admission_seconds, profile.lease_seconds)
+                ),
+                data={
+                    "request": document,
+                    "submission_fence": fence.model_dump(mode="json") if fence else None,
+                    **(
+                        {"run_admission_protocol": RUN_ADMISSION_PROTOCOL, "run_admission_owner": owner}
+                        if owner
+                        else {}
+                    ),
+                },
             )
             await self.invocations.save(row)
             await self.invocations._require_session().flush()
             await self._event(row, "submitted", {"request_digest": pool_digest(document)})
             return self._public(row)
+
+    async def renew_run_admission(
+        self,
+        profile: RunnerPoolProfile,
+        invocation: RunnerInvocation,
+        fence: FactoryFence,
+        request: RunRenewalV1,
+        next_ack: dict[str, Any],
+    ) -> bool:
+        profile.validate_invocation(invocation)
+        binding = invocation.run_liveness
+        if binding is None or binding.factory_fence_digest != run_digest(fence.model_dump(mode="json")):
+            raise ValueError("Only explicit run-owned work with its original fence can renew waiting authority")
+        identity = run_digest(invocation.model_dump(mode="json"))
+        after = validate_run_ack(
+            next_ack, identity, binding, sequence=request.sequence, controller_epoch=request.controller_epoch
+        )
+        if request.invocation_digest != identity or request.worker_epoch != binding.worker_epoch:
+            raise ValueError("Waiting renewal selects another immutable run")
+        async with self._unit() as session:
+            # Use the same daemon/pool lock order as claim before reading its current row.
+            pool = await self._pool(profile)
+            await self._owned(fence)
+            row = await self.invocations.execution(invocation.execution_id)
+            if (
+                row is None
+                or row.pool_id != pool.id
+                or row.execution_id != invocation.execution_id
+                or row.data.get("run_admission_protocol") != RUN_ADMISSION_PROTOCOL
+                or run_digest(row.data.get("request")) != identity
+                or run_digest(row.data.get("submission_fence")) != run_digest(fence.model_dump(mode="json"))
+            ):
+                raise ValueError("Original waiting admission is unavailable or changed")
+            before = RunLeaseAckV1.model_validate(row.data.get("run_admission_owner"))
+            if (
+                before.invocation_digest != identity
+                or before.worker_epoch != binding.worker_epoch
+                or before.controller_epoch != request.controller_epoch
+                or "continuation" in row.data
+            ):
+                raise ValueError("Waiting renewal changed its original controller or worker")
+            now = await self.invocations.database_time()
+            if row.status != "queued":
+                if (
+                    row.owner_id != request.controller_epoch
+                    or row.epoch < 1
+                    or run_digest(row.data.get("fence")) != run_digest(fence.model_dump(mode="json"))
+                    or not (
+                        row.status == "finished"
+                        and (row.data.get("receipt") or {}).get("drained") is True
+                        or row.status in HELD - {"quarantined"}
+                        and row.lease_expires_at is not None
+                        and row.lease_expires_at > now
+                    )
+                ):
+                    raise ValueError("Waiting admission is canceled, lost or no longer owned")
+                return False
+            if (
+                row.owner_id is not None
+                or row.epoch != 0
+                or row.admission_expires_at <= now
+                or request.sequence != before.sequence + 1
+                or request.challenge != before.challenge
+                or any(
+                    name in row.data for name in ("create_intent", "create_receipt", "start_intent", "start_receipt")
+                )
+            ):
+                raise ValueError("Waiting admission expired or already acquired an execution identity")
+            row.admission_expires_at = now + timedelta(seconds=min(profile.admission_seconds, profile.lease_seconds))
+            row.data = {**row.data, "run_admission_owner": after}
+            await session.flush()
+            return True
 
     async def claim(self, profile: RunnerPoolProfile, owner: str, fence: FactoryFence) -> dict[str, Any] | None:
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", owner):

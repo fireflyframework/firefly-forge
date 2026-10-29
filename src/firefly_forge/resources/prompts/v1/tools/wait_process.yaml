@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/wait_process
+version: 1.0.0
+description: Forge wait_process instructions.
+system_template: ''
+user_template: "Await owned process exit, literal output, or a public confined file condition in one cancellable tool call. Omit timeout_seconds to wait within the current invocation. An explicitly chosen wait timeout leaves the service running. Inspect exit_code before claiming success."
+required_variables: []
+metadata:
+  defaults: {}

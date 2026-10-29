@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: tools/process_logs
+version: 1.0.0
+description: Forge process_logs instructions.
+system_template: ''
+user_template: "Read a bounded full redacted output snapshot from the owned monitor. Incremental log cursors are not supported."
+required_variables: []
+metadata:
+  defaults: {}

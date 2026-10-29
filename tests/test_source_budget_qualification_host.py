@@ -26,10 +26,14 @@ def test_new_native_profile_measures_budget_modules_and_keeps_old_literal_histor
     assert PROFILES[0].version < module.REGISTRY_VERSION
     assert f"codex-exec-restricted-source/v{module.REGISTRY_VERSION + 1}" == module.LOADER_PROFILE
     assert tuple(name for name, _ in module.loader_hashes()) == module.LOADER_MODULES
-    assert {"source_budget_allowances.py", "source_budget_output.py", "source_tool_budget.py", "tool_broker.py"} <= set(
-        module.LOADER_MODULES
-    )
-    assert len(module.LOADER_MODULES) == 22
+    assert {
+        "source_budget_allowances.py",
+        "source_budget_output.py",
+        "source_tool_budget.py",
+        "tool_broker.py",
+        "work_duration_models.py",
+    } <= set(module.LOADER_MODULES)
+    assert len(module.LOADER_MODULES) == 23
     assert PROFILES[0].loader_profile == "codex-exec-restricted-source/v5"
     with pytest.raises(ValueError):
         module.require_profile(PROFILES[0])

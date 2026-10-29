@@ -14,11 +14,17 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from firefly_forge.agent_checkpoint_models import InvocationBinding
+from firefly_forge.agent_checkpoint_models import InvocationContext
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint, OriginalCompletion
 from firefly_forge.bridge_completions import BridgeCompletions, _cut, _outside_unit
 from firefly_forge.checkpoint_source_identity import git_head_identity, source_identity
+from firefly_forge.checkpoint_work_duration import (
+    binding_remaining,
+    invocation_binding,
+    selected_work_duration,
+    validate_binding_duration,
+)
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.journal import digest
 from firefly_forge.process import checked
@@ -87,6 +93,12 @@ def runtime_contract() -> str:
                     "known_worker_completion_models.py",
                     "known_worker_completion_proof.py",
                     "known_worker_completions.py",
+                    "known_final_outcome_proof.py",
+                    "final_outcome_models.py",
+                    "final_outcome_continuations.py",
+                    "final_outcome_acceptance.py",
+                    "retained_verified_source.py",
+                    "final_outcome_controllers.py",
                     "native_terminal_completion_models.py",
                     "native_terminal_completions.py",
                     "native_terminal_restore_proof.py",
@@ -166,6 +178,63 @@ def runtime_contract() -> str:
                     "profiles.py",
                     "access_routes.py",
                     "migrations.py",
+                    "store.py",
+                    "process.py",
+                    "assurance.py",
+                    "runner_configuration.py",
+                    "runner_pool_owner.py",
+                    "runner_pool_launcher.py",
+                    "runner_pool_dispatch.py",
+                    "runner_pool_execution.py",
+                    "runner_pool_artifacts.py",
+                    "runner_controller_client.py",
+                    "runner_monitor_models.py",
+                    "work_duration_models.py",
+                    "runner_monitor_transport.py",
+                    "runner_monitor_guardian.py",
+                    "runner_monitor_custody.py",
+                    "runner_monitors.py",
+                    "checkpoint_work_duration.py",
+                    "models.py",
+                    "runner_controller.py",
+                    "runner_pools.py",
+                    "runner_pool_persistence.py",
+                    "runner_factory_authority.py",
+                    "runner_run_liveness.py",
+                    "runner_run_authority.py",
+                    "runner_run_owner.py",
+                    "mcp_registry.py",
+                    "tool_operation_models.py",
+                    "tool_operation_lease.py",
+                    "tool_operations.py",
+                    "model_operation_client.py",
+                    "tool_persistence.py",
+                    "project_access.py",
+                    "runner_continuations.py",
+                    "runner_continuation_authority.py",
+                    "verification_dependencies.py",
+                    "verification_scope.py",
+                    "verification_scope_attestation.py",
+                    "verification_result_reuse.py",
+                    "verification_models.py",
+                    "execution_environment.py",
+                    "source_catalog.py",
+                    "verification_source_preparation.py",
+                    "secrets.py",
+                    "private_identity.py",
+                    "product_assistant.py",
+                    "product_assistant_runtime.py",
+                    "native_location_cli.py",
+                    "native_location_files.py",
+                    "native_location_maintenance.py",
+                    "native_location_models.py",
+                    "native_location_projection.py",
+                    "native_location_proof.py",
+                    "native_location_runtime.py",
+                    "runtime_roles.py",
+                    "runtime_role_persistence.py",
+                    "agent_roles.py",
+                    "policies.py",
                 )
             },
         }
@@ -197,6 +266,9 @@ def invocation_cut(run: dict[str, Any]) -> str:
             name: run.get(name)
             for name in ("framework_knowledge_request", "framework_knowledge_pin", "framework_runtime_attestation")
         }
+    duration = selected_work_duration(run)
+    if duration is not None:
+        value["work_duration"] = duration.model_dump(mode="json")
     return digest(value)
 
 
@@ -251,7 +323,7 @@ class CheckpointInvocation:
         self.run, self.task = copy.deepcopy(run), copy.deepcopy(task)
         self.workspace, self.guard, self.restored = workspace, guard, restored
         self.service = AgentCheckpoints(BridgeCompletions(store, journal))
-        self.binding: InvocationBinding | None = None
+        self.binding: InvocationContext | None = None
         self.boundary: AgenticBoundary | None = None
         self.original: OriginalCompletion | None = None
         self.ordinal = 0
@@ -275,6 +347,9 @@ class CheckpointInvocation:
             references_match = False
         if not references_match:
             raise ValueError("Required checkpoints need the exact frozen textual QA reference descriptors")
+        duration = selected_work_duration(self.run)
+        if getattr(context, "work_duration", None) != duration:
+            raise ValueError("Checkpoint runtime context differs from its frozen work duration")
         self.boundary = boundary
         if self.restored is not None:
             binding = self.restored.binding
@@ -286,6 +361,7 @@ class CheckpointInvocation:
                 runtime_contract(),
             ):
                 raise ValueError("Restored invocation instructions, grants or runtime contract changed")
+            validate_binding_duration(self.run, binding)
             self.binding = binding
             from firefly_forge.invalid_read_tickets import InvalidReadExecution
 
@@ -296,7 +372,8 @@ class CheckpointInvocation:
                 self.ordinal, self.predecessor = binding.ordinal, self.restored.checkpoint.digest
                 self.original = OriginalCompletion(self.restored.checkpoint, self.restored.body, self.restored.consume)
         else:
-            self.binding = InvocationBinding(
+            started = int(time.time() * 1000)
+            fields = dict(
                 invocation_id=uuid.uuid4().hex,
                 ordinal=1,
                 predecessor=None,
@@ -304,11 +381,26 @@ class CheckpointInvocation:
                 backend=backend,
                 frontend=frontend,
                 round=int(self.run.get("attempt", 1)),
-                deadline_ms=int((time.time() + float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800"))) * 1000),
                 grants=sorted(grants),
                 contract=runtime_contract(),
                 run_cut=invocation_cut(self.run),
                 workspace={"path": "", "head": "", "metadata": "", "source": ""},
+            )
+            self.binding = invocation_binding(
+                {
+                    **fields,
+                    "protocol": "forge-owned-checkpoint-v3",
+                    "work_duration": duration.model_dump(mode="json"),
+                    "work_started_at_ms": started,
+                    "work_deadline_ms": None
+                    if duration.timeout_seconds is None
+                    else started + duration.timeout_seconds * 1000,
+                }
+                if duration is not None
+                else {
+                    **fields,
+                    "deadline_ms": int((time.time() + float(settings.get("FORGE_PROVIDER_TIMEOUT", "1800"))) * 1000),
+                }
             )
 
         def capture(wire: bytes) -> BoundaryCheckpoint:
@@ -324,19 +416,16 @@ class CheckpointInvocation:
             data = self.binding.model_dump(mode="json")
             data.update(ordinal=self.ordinal, predecessor=self.predecessor, workspace=source)
             self.predecessor = self._captured.digest
-            self.binding = InvocationBinding.model_validate(data)
+            self.binding = invocation_binding(data)
             return data
 
         return self.service.scope(
             self.run, self.task, capture=capture, capture_context=capture_context, assert_ownership=self.guard
         )
 
-    def remaining(self) -> float:
+    def remaining(self) -> float | None:
         assert self.binding is not None
-        remaining = self.binding.deadline_ms / 1000 - time.time()
-        if remaining <= 0:
-            raise ValueError("Original checkpoint invocation deadline expired")
-        return remaining
+        return binding_remaining(self.binding)
 
     async def replay_first(self, wire: bytes) -> bytes | None:
         if self.original is None or self._original_delivered:

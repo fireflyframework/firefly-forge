@@ -18,6 +18,7 @@ from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.projects import Projects
 from firefly_forge.run_creation_models import RunCreationInput
 from firefly_forge.run_creation_requests import RunCreationRequests
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 
 @asynccontextmanager
@@ -65,6 +66,7 @@ async def nonadministrator(store, tmp_path):
                     "mode": "docker",
                     "context": "owned-native-admission-only",
                     "image": "owned-admission-fixture@sha256:" + "a" * 64,
+                    "work_duration": WorkDurationPolicyV2(timeout_seconds=300).model_dump(mode="json"),
                 },
             },
         }

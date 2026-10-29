@@ -7,7 +7,6 @@ import asyncio
 import copy
 import hashlib
 import json
-import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -16,11 +15,17 @@ from typing import Any, NoReturn, cast
 from pyfly.data.relational.sqlalchemy import LockMode
 from sqlalchemy import text
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, InvocationBinding, RestoreInput
+from firefly_forge.agent_checkpoint_models import InvocationContext, RestoreInput
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.agentic_checkpoint_invocation import invocation_cut, runtime_contract, workspace_cut
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit, _request_id
+from firefly_forge.checkpoint_work_duration import (
+    binding_expired,
+    binding_remaining,
+    checkpoint_payload,
+    validate_binding_duration,
+)
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity
 from firefly_forge.identity import Principal
 from firefly_forge.journal import Journal, digest
@@ -34,7 +39,7 @@ class RestoreExecution:
     def __init__(self, service: AgentRestores, ticket: dict[str, Any], bundle: Any) -> None:
         self.service, self.ticket = service, copy.deepcopy(ticket)
         self.intent, self.record, self.result_record, self.body = bundle
-        payload = CheckpointPayloadV2.model_validate(self.record["payload"])
+        payload = checkpoint_payload(self.record["payload"])
         self.binding = payload.invocation
         self.checkpoint = BoundaryCheckpoint.decode(payload.snapshot.encode(), payload.checkpoint_digest)
         self.request = RestoreInput.model_validate(ticket["request"]["input"])
@@ -52,7 +57,7 @@ class RestoreExecution:
     async def guard_source(self) -> None:
         _outside_unit()
         await self.guard()
-        if self.binding.contract != runtime_contract() or self.binding.deadline_ms <= int(time.time() * 1000):
+        if self.binding.contract != runtime_contract() or binding_expired(self.binding):
             raise ValueError("Original checkpoint runtime contract changed or deadline expired")
         actual = await workspace_cut(self.service.store, self.service.workspace(self.run_id))
         if actual != self.binding.workspace:
@@ -216,8 +221,10 @@ class AgentRestores:
         return guard
 
     async def validate_db(
-        self, run: dict[str, Any], context: InvocationBinding, intent: dict[str, Any], *, active: bool
+        self, run: dict[str, Any], context: InvocationContext, intent: dict[str, Any], *, active: bool
     ) -> None:
+        validate_binding_duration(run, context)
+        binding_remaining(context)
         if (
             run.get("agent") != "bridge"
             or invocation_cut(run) != context.run_cut
@@ -237,7 +244,7 @@ class AgentRestores:
         await self._command_restore(run, context)
 
     async def _command_restore(
-        self, run: dict[str, Any], context: InvocationBinding, *, ticket: dict[str, Any] | None = None
+        self, run: dict[str, Any], context: InvocationContext, *, ticket: dict[str, Any] | None = None
     ) -> None:
         if "execute_command" not in context.grants:
             return
@@ -376,8 +383,9 @@ class AgentRestores:
         if old is not None:
             return await self.get(run_id, completion_id, body.request_id)
         bundle = await self.checkpoints.restore_bundle(run_id, completion_id, body)
-        context = CheckpointPayloadV2.model_validate(bundle[1]["payload"]).invocation
-        if context.contract != runtime_contract() or context.deadline_ms <= int(time.time() * 1000):
+        context = checkpoint_payload(bundle[1]["payload"]).invocation
+        validate_binding_duration(run, context)
+        if context.contract != runtime_contract() or binding_expired(context):
             raise ValueError("Original checkpoint contract changed or deadline expired")
         read_guard = await self.source_read_guard(run, reader, task_attempt=context.round)
         if await workspace_cut(self.store, self.workspace(run_id), assert_current=read_guard) != context.workspace:
@@ -387,7 +395,7 @@ class AgentRestores:
         if CURRENT_PRINCIPAL.get() != reader:
             raise AccessDenied("Restore caller changed during admission")
         await read_guard()
-        if context.contract != runtime_contract() or context.deadline_ms <= int(time.time() * 1000):
+        if context.contract != runtime_contract() or binding_expired(context):
             raise ValueError("Original checkpoint contract changed or deadline expired")
         async with self.store._unit() as session:
             await session.execute(
@@ -400,7 +408,7 @@ class AgentRestores:
             await self.access(current, actor)
             await self.validate_db(current, context, bundle[0], active=False)
             await read_guard()
-            if context.deadline_ms <= int(time.time() * 1000):
+            if binding_expired(context):
                 raise ValueError("Original checkpoint deadline expired during native admission")
             old = await self.requests.records.find_by_id(identifier(body.request_id))
             if old is not None:
@@ -524,7 +532,9 @@ class AgentRestores:
                 or intent["digest"] != body.expected_intent_digest
             ):
                 raise ValueError("Restore checkpoint changed after claim")
-            context = CheckpointPayloadV2.model_validate(checkpoint["payload"]).invocation
+            context = checkpoint_payload(checkpoint["payload"]).invocation
+            validate_binding_duration(run, context)
+            binding_remaining(context)
             if (
                 invocation_cut(run) != context.run_cut
                 or run["status"] != "developing"
@@ -578,11 +588,13 @@ class AgentRestores:
         bundle = await self.checkpoints.restore_bundle(
             run_id, ticket["request"]["completion_request_id"], RestoreInput.model_validate(ticket["request"]["input"])
         )
-        context = CheckpointPayloadV2.model_validate(bundle[1]["payload"]).invocation
-        await self.access(await self.store.get_run(run_id), ticket["request"]["actor"])
+        context = checkpoint_payload(bundle[1]["payload"]).invocation
+        observed_run = await self.store.get_run(run_id)
+        await self.access(observed_run, ticket["request"]["actor"])
+        validate_binding_duration(observed_run, context)
         if (
             context.contract != runtime_contract()
-            or context.deadline_ms <= int(time.time() * 1000)
+            or binding_expired(context)
             or await workspace_cut(self.store, self.workspace(run_id)) != context.workspace
         ):
             raise ValueError("Retained checkpoint source, deadline or runtime is unavailable")

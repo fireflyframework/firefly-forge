@@ -115,12 +115,15 @@ async def cached_case(store, tmp_path, request):
         )
     finally:
         CURRENT_PRINCIPAL.reset(token)
+    assert run["work_duration"] == origin["work_duration"]
+    assert run["sandbox_snapshot"] == origin["sandbox_snapshot"]
     journal = Journal(store)
     broker = ToolInvocationBroker(store, journal, store.path.parent)
     first = KnowledgeFirst(store, journal, ledger, broker, SearchTools(tmp_path / "no-web-key"))
     first.knowledge = knowledge
+    await store.acquire_ownership()
     await journal.intent(run["id"], "implement")
-    await store.update(run["id"], status="generating")
+    await store.update(run["id"], status="developing", attempt=1)
     workspace = engine.workspaces / origin["id"]
     source = await engine._inspect_workspace(origin["id"], workspace, {})
 

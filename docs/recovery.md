@@ -7,6 +7,8 @@ description: Recover paused and interrupted runs with persisted task state, expl
 
 Use the durable plan and journal to determine what happened before continuing a run. The same run can retain partial source, provider and policy snapshots, earlier failed checks, a real checkpoint commit and remote-effect receipts.
 
+If private storage or a verification runtime has moved, complete [offline location maintenance](runtime-roles.md#move-a-stopped-local-installation) before starting recovery. Preserve the original paths in retained records; the maintenance receipt binds their physical replacements without replaying work.
+
 When an existing continuation stops at a later retained checkpoint, review [checkpoint continuation](checkpoint-continuations.md). It preserves the same execution request and task attempt, including completed work and charged consumption. Its candidate and status reads start no work.
 
 ## Settle an uncertain run submission
@@ -568,6 +570,8 @@ These controlled Studio fixtures show a saved result, an acknowledged review and
 </figure>
 
 </details>
+
+For new runs that explicitly select `forge-work-duration-v2`, the top-level work policy must match the frozen runner policy. Owned version-3 checkpoint envelopes retain that policy and the original invocation start. They have no work deadline unless a positive timeout was selected. A selected timeout keeps its original deadline through capture and restoration; continuing a checkpoint does not restart that allowance. Current worker ownership, ticket generation, actor permissions, cancellation, task attempt, source checks and spent usage remain required even when no work deadline is configured. Older runs retain their version-2 finite deadlines and recovery contracts. The outer invocation-envelope version is independent of the compressed history codec version.
 
 The real Agentic implementation captures a closed native message history at the exact HTTP request boundary. Version-2 checkpoint envelopes bind the original composed instructions, runtime and prompt contracts, cumulative native usage and limits, absolute deadline, task attempt, file-tool state and retained owned workspace. The original Bridge intent and checkpoint commit together before POST. Both ordinary and restored results commit a consume receipt before reaching the native parser. Version-1 checkpoints and HTTP-only consume receipts retain their original semantics and cannot authorize restoration.
 

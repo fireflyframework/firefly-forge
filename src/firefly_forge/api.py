@@ -106,6 +106,7 @@ from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestRepository,
 )
 from firefly_forge.execution_requests import ExecutionRequests
+from firefly_forge.final_outcome_controllers import FinalOutcomeContinuationController
 from firefly_forge.framework_knowledge import FrameworkKnowledge
 from firefly_forge.framework_knowledge_controllers import FrameworkKnowledgeController
 from firefly_forge.framework_knowledge_persistence import FrameworkKnowledgeRecords
@@ -1293,6 +1294,7 @@ def create_runtime(
         AgentCheckpointCandidateController,
         InvalidReadContinuityController,
         CheckpointContinuationController,
+        FinalOutcomeContinuationController,
         ContinuityLeasePolicyController,
         GitDeliveryPolicyController,
         GitDeliveryController,

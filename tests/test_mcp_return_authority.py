@@ -20,7 +20,7 @@ from firefly_forge.mcp_registry import ExternalMCPRegistry, MCPConnectionInput, 
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.projects import Projects
-from firefly_forge.sandbox_models import SandboxInput
+from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.tool_broker import ToolInvocationBroker, ToolReconciliationRequired
 from firefly_forge.workspace_tools import tool_catalog
 
@@ -127,6 +127,7 @@ async def test_native_broker_cannot_admit_or_replay_result_after_authority_loss(
     actor = Principal(uuid4(), "https://fixture.invalid", "owned-developer")
     access = ProjectAccess(store)
     await access.set_membership(project["id"], actor, "developer")
+    sandbox = SandboxInput(mode="docker", image="owned@sha256:" + "a" * 64, context="owned-fixture")
     token = CURRENT_PRINCIPAL.set(actor)
     try:
         run = await store.create_run(
@@ -138,12 +139,20 @@ async def test_native_broker_cannot_admit_or_replay_result_after_authority_loss(
                 agent="agentic",
                 assurance={"review_agent": "agentic"},
                 roles=ProjectRoles(allowed_tools={"implementer": ["external_mcp"]}),
-                sandbox=SandboxInput(mode="docker", image="owned@sha256:" + "a" * 64, context="owned-fixture"),
+                sandbox=sandbox,
             ),
             prepared_tools=tool_catalog({"external_mcp": True}),
+            prepared_runner={
+                "sandbox_snapshot": capture_sandbox(sandbox),
+                "runner_config_revision": None,
+                "search_snapshot": None,
+            },
         )
     finally:
         CURRENT_PRINCIPAL.reset(token)
+    assert "work_duration" not in run
+    assert "work_duration" not in run["sandbox_snapshot"]["configuration"]
+    assert run["sandbox_snapshot"] == capture_sandbox(sandbox)
     broker = ToolInvocationBroker(store, Journal(store), store.path.parent)
     broker.external_mcp = registry
     broker.credential_registry = registry.credentials

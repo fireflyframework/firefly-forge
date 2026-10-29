@@ -19,8 +19,8 @@ running application's OpenAPI document is the authoritative schema.
 
 New runs freeze `settings.automatic_verification` from `GET /tools/policy`.
 The factory default is `{"enabled": true, "max_continuations": 1}`. The configured
-window must be a positive finite integer. The existing administrator-only policy update accepts this
-setting with the other tool settings. A frozen snapshot without this setting
+handoff count must be a positive integer; it does not set a job deadline.
+The existing administrator-only policy update accepts this setting with the other tool settings. A frozen snapshot without this setting
 does not grant automatic execution.
 Older SDK/MCP policy writes that omit this setting preserve its current value.
 An explicit renewal changes the current policy and requires a new exact adoption;
@@ -75,7 +75,10 @@ Engine consumer and never executes commands in the HTTP request.
 The Python SDK exposes `verification_handoff_candidates`,
 `adopt_verification_handoff` and `verification_handoff_adoption`. These methods
 perform one explicit request each and do not create IDs, apply a fallback or
-resume a run implicitly.
+resume a run implicitly. An optional `reusable_build_checks` selection declares
+specific source checks for a new confined handoff. See [reuse passed source
+checks](checkpoint-continuations.md#reuse-passed-source-checks) for the exact body,
+supported runner and receipt boundaries.
 
 ### Unknown command acknowledgements
 
@@ -205,6 +208,9 @@ After grant confirmation, refresh the final-allowance candidate and include `cod
 | GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/candidate` | Inspect a retained checkpoint and original ticket without admitting work |
 | POST | `/runs/{id}/checkpoint-continuations/requests/{request_id}/actions/{action_id}` | Save a reviewed finite continuation on the same execution request |
 | GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/status` | Read the saved checkpoint-continuation action and worker status |
+| GET | `/runs/{id}/final-outcome-continuations/requests/{request_id}/candidate` | Review an already-consumed final result and current eligibility |
+| POST | `/runs/{id}/final-outcome-continuations/requests/{request_id}/actions/{action_id}` | Save one same-ticket final-result acceptance action |
+| GET | `/runs/{id}/final-outcome-continuations/requests/{request_id}/status` | Read final-result acceptance status without another submission |
 | GET | `/runs/{id}/execution-requests` | Read worker delivery and cancellation requests with their receipts |
 | POST | `/runs/{id}/execution-requests/{request_id}/reconcile` | Settle an unknown request only from matching recorded server evidence |
 | POST | `/runs/{id}/runner-continuations` | Admit one explicit continuation of the original eligible queued pool command |
@@ -419,6 +425,10 @@ uv run forge run --repository REPOSITORY_ID --brief 'Build the reservation servi
 uv run forge status RUN_ID
 uv run forge export RUN_ID --output changes.zip
 ```
+
+New CLI checks inherit the selected run's optional work deadline. `--wait` observes
+the run until a terminal result without an implicit time limit. Ctrl-C ends local
+observation; use `forge cancel RUN_ID` to request cancellation of the run.
 
 `forge doctor` reads local provider and profile configuration. `forge cancel`,
 `forge retry` and `forge publish` operate on the named run. Publication is an

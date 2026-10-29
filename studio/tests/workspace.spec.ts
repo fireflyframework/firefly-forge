@@ -231,7 +231,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
     repository_id: repository.id,
     backend: "pyfly",
     frontend: "none",
-    commands: [{ argv: ["make", "check"], timeout: 120 }],
+    commands: [{ argv: ["make", "check"], timeout: null }],
   });
   await expect(
     page.getByText("Provider started", { exact: true }),

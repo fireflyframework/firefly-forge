@@ -285,3 +285,19 @@ describe("automatic verification continuation controls", () => {
     ).toContain("Execution result needs review");
   });
 });
+
+it("recognizes version-two handoff state while retaining version-one command custody", () => {
+  const selected = { ...handoff, version: 2 };
+  expect(verificationInProgress(selected)).toBe(true);
+  expect(render("verification_handoff_intent", selected)).toContain(
+    "Automatic verification requested",
+  );
+  expect(
+    render("verification_handoff_outcome", {
+      ...selected,
+      status: "completed",
+      completed_commands: 7,
+    }),
+  ).toContain("Automatic verification results");
+  expect(verificationInProgress({ ...selected, version: 3 })).toBe(false);
+});

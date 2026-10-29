@@ -9,7 +9,7 @@ import json
 import math
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from pyfly.container import service
@@ -1643,11 +1643,14 @@ class Journal:
         ):
             raise ValueError("Automatic verification slot is outside its admitted handoff")
         index = intent["ordinals"].index(payload["ordinal"])
+        from firefly_forge.verification_scope_attestation import mapped_argv
+
+        expected_argv = mapped_argv(run.data, intent, [e.data for e in entries], index)
         request = payload.get("request", {})
         if (
             task_id != "implement"
             or payload.get("parent_attempt") != intent["parent_attempt"]
-            or request.get("argv") != run.data["commands"][index]["argv"]
+            or request.get("argv") != expected_argv
             or request.get("workspace") != intent["workspace"]
             or request.get("cwd") != intent["cwd"]
             or request.get("timeout") != intent["timeouts"][index]
@@ -1714,11 +1717,20 @@ class Journal:
             check_current(run.data)
             return copy.deepcopy(state)
 
-    async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[Data], None]) -> Data:
+    async def verification_finish(
+        self,
+        run_id: str,
+        intent: Data,
+        *,
+        check_current: Callable[[Data], None],
+        assert_inputs: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if assert_inputs is not None:
+                await assert_inputs()
             state = run.data.get("verification_handoff", {})
             if (
                 state.get("id") != intent["id"]
@@ -1807,6 +1819,8 @@ class Journal:
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
             check_current(run.data)
+            if assert_inputs is not None:
+                await assert_inputs()
             return copy.deepcopy(state)
 
     async def verification_assert_current(self, run_id: str) -> None:

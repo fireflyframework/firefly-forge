@@ -77,6 +77,43 @@ it("accepts only bounded allowlisted candidates bound to the current identity", 
   ])
     expect(() => candidatePage({ ...page, ...change }, context)).toThrow();
 });
+it("accepts an open work deadline only under the explicit owned checkpoint protocol", () => {
+  const owned = {
+    ...candidate,
+    deadline_ms: null,
+    invocation_protocol: "forge-owned-checkpoint-v3",
+    work_duration: {
+      protocol: "forge-work-duration-v2",
+      timeout_seconds: null,
+    },
+  };
+  expect(candidatePage({ ...page, items: [owned] }, context).items[0]).toEqual(
+    owned,
+  );
+  expect(candidatePage(page, context).items[0]).toEqual(candidate);
+  for (const change of [
+    { ...candidate, deadline_ms: null },
+    { ...owned, invocation_protocol: "unknown" },
+    {
+      ...owned,
+      work_duration: {
+        protocol: "forge-work-duration-v2",
+        timeout_seconds: 60,
+      },
+    },
+    {
+      ...owned,
+      work_duration: {
+        protocol: "forge-work-duration-v2",
+        timeout_seconds: null,
+        unexpected: true,
+      },
+    },
+  ])
+    expect(() =>
+      candidatePage({ ...page, items: [change] }, context),
+    ).toThrow();
+});
 it("stores and reads the exact original ID before POST; lost responses cannot create another admission", async () => {
   const saved = storage();
   const send = vi.fn(async () => {

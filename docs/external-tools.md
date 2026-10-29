@@ -81,7 +81,11 @@ Each receipt links the run, task, role, project, repository, source state, schem
 
 The broker makes one `tools/call` dispatch per invocation. It does not replay a lost response. An interrupted, rejected or unadmitted exchange remains unresolved until an operator records a reconciliation decision; unresolved outcomes block new mediated calls and source consolidation. See [Tool invocation evidence](tool-broker.md) for the durable outcome contract and explicit abandonment command.
 
-The MCP session has a 30-second total bound, 15-second request/read bounds, a 12-request protocol budget and a 1 MB response-stream bound. The admitted result is limited to 256 KB and must also fit the run's frozen tool-response limit. Schema review rejects remote and recursive references, regular expressions, invalid schemas, excessive depth and excessive node counts. Argument objects, arrays, strings and total bytes have independent bounds.
+Captures without `work_duration` retain the original 30-second session and 15-second request/read policy. New runs using `forge-work-duration-v2` pass their frozen optional work deadline to the adapter. A tool can wait for its result without a transport-imposed work deadline when that value is `null`. A chosen deadline includes initialization and is not restarted when the tool call begins. Cancellation closes the local exchange; it cannot undo a remote request already sent, so its outcome still requires reconciliation.
+
+Connection setup remains bounded to 30 seconds and catalog inspection to 15 seconds. HTTP connection, write and pool acquisition have 15-second bounds; local session cleanup also has a 15-second control window. These checks do not set the duration of the remote tool's work. The run's separately frozen broker operation policy still applies. A transport change does not rewrite an existing tool budget or renew spent usage.
+
+Each session has a 12-request protocol budget and a 1 MB response-stream bound. The admitted result is limited to 256 KB and must also fit the run's frozen tool-response limit. Schema review rejects remote and recursive references, regular expressions, invalid schemas, excessive depth and excessive node counts. Argument objects, arrays, strings and total bytes have independent bounds.
 
 Native tracing may add a bounded W3C `traceparent` to the request metadata. It does not alter the approved tool arguments or grant authority. Sampling, elicitation, host root listing, URL resource fetching, redirects and ambient proxy settings are not enabled by the adapter.
 

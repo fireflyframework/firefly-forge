@@ -16,7 +16,8 @@ import click
 
 from firefly_forge import __version__
 from firefly_forge.client import ForgeClient
-from firefly_forge.models import Command, RepositoryInput, RunInput
+from firefly_forge.models import NewWorkCommand, RepositoryInput, RunInput
+from firefly_forge.native_location_cli import native_locations
 
 if TYPE_CHECKING:
     from firefly_forge.model_profiles import ModelProfileInput
@@ -34,6 +35,40 @@ def display(value: Any) -> None:
 @click.version_option(__version__)
 def main() -> None:
     """Firefly Forge: turn product briefs into verified implementations."""
+
+
+main.add_command(native_locations)
+
+
+@main.group("final-outcome-continuations")
+def final_outcome_continuations() -> None:
+    """Review a final result that was already consumed and keep its original request."""
+
+
+@final_outcome_continuations.command("candidate")
+@click.argument("run_id")
+@click.argument("request_id")
+def final_outcome_candidate(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.final_outcome_continuation_candidate(run_id, request_id))
+
+
+@final_outcome_continuations.command("request")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.argument("action_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def request_final_outcome(run_id: str, request_id: str, action_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.request_final_outcome_continuation(run_id, request_id, action_id, json_document(document)))
+
+
+@final_outcome_continuations.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def final_outcome_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.final_outcome_continuation_status(run_id, request_id))
 
 
 @main.group("git-deliveries")
@@ -193,7 +228,7 @@ def list_repositories() -> None:
 @click.option("--review-model-profile", "review_model_profile_id", default=None)
 @click.option("--operation", default="build", type=click.Choice(["build", "maintain", "test"]))
 @click.option("--check", "checks", multiple=True, help="Verification command; may be repeated.")
-@click.option("--wait", is_flag=True, help="Wait for a terminal result (up to one hour).")
+@click.option("--wait", is_flag=True, help="Wait for a terminal result.")
 @click.option("--publish", is_flag=True, help="Create a pull request after passing checks.")
 def run(
     repository_id: str,
@@ -232,7 +267,7 @@ def run(
         }
     )
     if checks:
-        values["commands"] = [Command(argv=shlex.split(check)).model_dump() for check in checks]
+        values["commands"] = [NewWorkCommand(argv=shlex.split(check)).model_dump() for check in checks]
     if roles_file:
         values["roles"] = json_document(roles_file)
     if review_model_profile_id is not None:
@@ -241,7 +276,6 @@ def run(
     with client() as connection:
         result = connection.create_run(request)
         if wait:
-            deadline = time.monotonic() + 3600
             while result["status"] not in {
                 "succeeded",
                 "failed",
@@ -250,8 +284,6 @@ def run(
                 "paused",
                 "needs_reconciliation",
             }:
-                if time.monotonic() >= deadline:
-                    raise click.ClickException(f"Run {result['id']} is still active; use forge status to reconnect")
                 time.sleep(0.5)
                 result = connection.get_run(result["id"])
         display(result)

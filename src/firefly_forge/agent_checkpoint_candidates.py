@@ -4,14 +4,14 @@
 from __future__ import annotations
 
 import copy
-import time
 from typing import TYPE_CHECKING, Any
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, RestoreInput
+from firefly_forge.agent_checkpoint_models import OwnedInvocationBindingV3, RestoreInput
 from firefly_forge.agent_checkpoints import CHECKPOINT, CONSUME
 from firefly_forge.agentic_checkpoint_invocation import invocation_cut
 from firefly_forge.bridge_completion_models import validate_remote_snapshot
 from firefly_forge.bridge_completions import OBSERVATION, RESPONSE, _outside_unit
+from firefly_forge.checkpoint_work_duration import binding_deadline, binding_remaining, checkpoint_payload
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.store import identifier, prepared_credential_rejection
 
@@ -98,9 +98,7 @@ async def _read(service: AgentRestores, run: Data, page: Data) -> tuple[Data, li
         service.checkpoints._validate_checkpoint(checkpoint, intent)
         retained.extend([intent, checkpoint, consumed, observation, response])
         invocation = (
-            CheckpointPayloadV2.model_validate(checkpoint["payload"]).invocation
-            if checkpoint["payload"]["version"] == 2
-            else None
+            checkpoint_payload(checkpoint["payload"]).invocation if checkpoint["payload"]["version"] in {2, 3} else None
         )
         state = "legacy" if invocation is None else "held"
         observation_ref, result = None, None
@@ -144,15 +142,18 @@ async def _read(service: AgentRestores, run: Data, page: Data) -> tuple[Data, li
                 ):
                     raise ValueError("Consume receipt bindings differ")
                 state = "consumed"
-            elif invocation.deadline_ms <= int(time.time() * 1000):
-                state = "expired"
             else:
                 try:
-                    async with service.store._unit():
-                        await service.validate_db(run, invocation, intent, active=False)
-                    state = "ready" if result is not None else "awaiting_result"
+                    binding_remaining(invocation)
                 except ValueError:
-                    state = "held"
+                    state = "expired"
+                else:
+                    try:
+                        async with service.store._unit():
+                            await service.validate_db(run, invocation, intent, active=False)
+                        state = "ready" if result is not None else "awaiting_result"
+                    except ValueError:
+                        state = "held"
             if result is not None:
                 selection = RestoreInput.model_validate(
                     {
@@ -186,7 +187,7 @@ async def _read(service: AgentRestores, run: Data, page: Data) -> tuple[Data, li
                 "task": "implement",
                 "attempt": intent["payload"]["task_attempt"],
                 "ordinal": invocation.ordinal if invocation else None,
-                "deadline_ms": invocation.deadline_ms if invocation else None,
+                "deadline_ms": binding_deadline(invocation) if invocation else None,
                 "created_at": checkpoint["created_at"],
                 "state": state,
                 "result": result,
@@ -194,4 +195,9 @@ async def _read(service: AgentRestores, run: Data, page: Data) -> tuple[Data, li
                 "ticket": ticket_ref,
             }
         )
+        if isinstance(invocation, OwnedInvocationBindingV3):
+            items[-1].update(
+                invocation_protocol=invocation.protocol,
+                work_duration=invocation.work_duration.model_dump(mode="json"),
+            )
     return {**copy.deepcopy(page), "items": items, "state": "available" if items else "no_candidate"}, retained

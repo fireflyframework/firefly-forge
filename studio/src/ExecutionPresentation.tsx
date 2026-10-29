@@ -20,6 +20,7 @@ import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
 import { workerEvidenceImages } from "./WorkerEvidenceData";
 import { VerificationHandoff } from "./VerificationHandoff";
 import { ReadonlyObservationEvidence } from "./ReadonlyObservationEvidence";
+import { VerificationReuseEvidence } from "./VerificationReuse";
 
 export function TimelineEventView({
   event,
@@ -669,6 +670,24 @@ function ProviderRefusalEvidence({
   );
 }
 
+function monitorOutcome(payload: Record<string, unknown> | undefined) {
+  if (
+    payload?.process_group_drained !== true ||
+    !Number.isSafeInteger(payload.exit_code)
+  )
+    return "Cleanup not confirmed; reconciliation required";
+  return (
+    (
+      {
+        exited: "Exit observed; cleanup recorded",
+        cancelled: "Process cancelled; cleanup recorded",
+        lease_expired: "Lease expired; cleanup recorded",
+        output_limit: "Log limit reached; cleanup recorded",
+      } as Record<string, string>
+    )[String(payload.status)] ?? "Process requires reconciliation"
+  );
+}
+
 export function EvidenceView({
   value,
   title,
@@ -684,6 +703,59 @@ export function EvidenceView({
   advanced?: boolean;
   omitFields?: string[];
 }) {
+  if (
+    kind &&
+    [
+      "runner_monitor_spawn_intent",
+      "runner_monitor_started",
+      "runner_monitor_terminal",
+    ].includes(kind)
+  ) {
+    const record = asRecord(value),
+      request = asRecord(record?.request);
+    if (
+      record?.version !== 1 ||
+      typeof record.monitor_id !== "string" ||
+      !/^[a-f0-9]{32}$/.test(record.monitor_id) ||
+      typeof record.owner_epoch !== "string" ||
+      !/^[a-f0-9]{32}$/.test(record.owner_epoch)
+    )
+      return (
+        <section className="record-evidence">
+          <p role="status">
+            Process evidence is incomplete. Review the retained record before
+            continuing.
+          </p>
+          {advanced && <AdvancedRecord value={value} />}
+        </section>
+      );
+    const label =
+      kind === "runner_monitor_terminal"
+        ? monitorOutcome(record)
+        : kind === "runner_monitor_started"
+          ? "Process started"
+          : "Process requested";
+    return (
+      <section className="record-evidence">
+        <h4>{label}</h4>
+        <EvidenceView
+          value={{
+            monitor: record.monitor_id,
+            owner_epoch: record.owner_epoch,
+            ...(request ? { request } : {}),
+            ...(Number.isSafeInteger(record.exit_code)
+              ? { exit_code: record.exit_code }
+              : {}),
+            ...(Number.isSafeInteger(record.output_bytes)
+              ? { output_bytes: record.output_bytes }
+              : {}),
+          }}
+          advanced={false}
+        />
+        {advanced && <AdvancedRecord value={value} />}
+      </section>
+    );
+  }
   if (kind === "provider_rejection_recovery")
     return <ProviderRefusalEvidence value={value} advanced={advanced} />;
   if (kind === "readonly_observation_recovery")
@@ -776,6 +848,16 @@ export function EvidenceView({
       </section>
     );
   }
+  if (
+    kind === "verification_reuse_intent" ||
+    kind === "verification_reuse_receipt"
+  )
+    return (
+      <>
+        <VerificationReuseEvidence kind={kind} value={value} />
+        {advanced && <AdvancedRecord value={value} />}
+      </>
+    );
   if (
     kind?.startsWith("verification_handoff_") ||
     kind === "verification_continuation_intent"
@@ -1542,6 +1624,12 @@ export function journalDisposition(
   entry: JournalIdentity,
   entries: JournalIdentity[],
 ) {
+  if (entry.kind === "runner_monitor_terminal")
+    return monitorOutcome(asRecord(entry.payload));
+  if (entry.kind === "runner_monitor_started")
+    return "Process started; cleanup pending";
+  if (entry.kind === "runner_monitor_spawn_intent")
+    return "Process request recorded; start not inferred";
   if (
     [
       "agentic_tool_intent",

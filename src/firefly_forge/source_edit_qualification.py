@@ -14,8 +14,8 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 25
-LOADER_PROFILE = "codex-exec-restricted-source/v26"
+REGISTRY_VERSION = 26
+LOADER_PROFILE = "codex-exec-restricted-source/v27"
 LOADER_MODULES = (
     "source_budget_allowances.py",
     "source_budget_output.py",
@@ -39,6 +39,7 @@ LOADER_MODULES = (
     "resources/prompts/v1/coding-runtime/source-read-1.0.1.yaml",
     "resources/prompts/v1/coding-runtime/source-search-1.0.2.yaml",
     "checkpoint_source_identity.py",
+    "work_duration_models.py",
 )
 NATIVE_CAPABILITIES = (
     ("apply_patch", "custom"),
@@ -227,6 +228,7 @@ def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
             (22, "codex-exec-restricted-source/v23"),
             (23, "codex-exec-restricted-source/v24"),
             (24, "codex-exec-restricted-source/v25"),
+            (25, "codex-exec-restricted-source/v26"),
         }
         or profile.proof.contract_digest != profile_contract_digest(profile)
     ):

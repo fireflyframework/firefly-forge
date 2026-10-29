@@ -54,6 +54,10 @@ CAPTURE_PRODUCERS = {
     "studio/tests/development-workflow.spec.ts",
     "studio/tests/framework-knowledge.spec.ts",
     "studio/tests/invalid-read-recovery.spec.ts",
+    "studio/tests/runner-setup.spec.ts",
+    "studio/tests/final-outcome-recovery.spec.ts",
+    "studio/tests/verification-reuse.spec.ts",
+    "studio/tests/verification-adoption.spec.ts",
 }
 
 
@@ -164,8 +168,28 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("checkpoint-continuation-") and stage not in checkpoint_stages:
             raise ValueError("Unknown checkpoint continuation capture stage: " + name)
+        runner_stages = {"runner-setup-execution", "runner-setup-processes", "runner-setup-review"}
+        if stage.startswith("runner-setup-") and stage not in runner_stages:
+            raise ValueError("Unknown runner setup capture stage: " + name)
+        final_stages = {"final-outcome-review", "final-outcome-status"}
+        if stage.startswith("final-outcome-") and stage not in final_stages:
+            raise ValueError("Unknown final result capture stage: " + name)
+        reuse_stages = {"verification-reuse-checks", "verification-reuse-journal"}
+        if stage.startswith("verification-reuse-") and stage not in reuse_stages:
+            raise ValueError("Unknown verification reuse capture stage: " + name)
+        approval_stages = {"verification-approval-choose", "verification-approval-review", "verification-approval-recorded"}
+        if stage.startswith("verification-approval-") and stage not in approval_stages:
+            raise ValueError("Unknown verification approval capture stage: " + name)
         expected_producer = (
-            "studio/tests/invalid-read-recovery.spec.ts"
+            "studio/tests/verification-adoption.spec.ts"
+            if stage in approval_stages
+            else "studio/tests/verification-reuse.spec.ts"
+            if stage in reuse_stages
+            else "studio/tests/final-outcome-recovery.spec.ts"
+            if stage in final_stages
+            else "studio/tests/runner-setup.spec.ts"
+            if stage in runner_stages
+            else "studio/tests/invalid-read-recovery.spec.ts"
             if stage in recovery_stages | checkpoint_stages
             else "studio/tests/framework-knowledge.spec.ts"
             if stage in framework_stages
@@ -181,6 +205,12 @@ def _load_walkthrough(config, root=ROOT):
         )
         if producer != expected_producer:
             raise ValueError("Walkthrough screenshot stage differs from its producer: " + name)
+        if (
+            stage in reuse_stages
+            and (record.get("observation_only") is not True or record.get("action") is not None or record.get("captured_action") is not None)
+            or stage not in reuse_stages and "observation_only" in record
+        ):
+            raise ValueError("Invalid verification reuse observation: " + name)
         if record.get("path") != "assets/screenshots/" + name or ".." in Path(name).parts:
             raise ValueError("Invalid walkthrough screenshot path: " + name)
         png = (Path(config["docs_dir"]) / record["path"]).read_bytes()

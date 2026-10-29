@@ -1,0 +1,136 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.runner-setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  min-width: 0;
+}
+.runner-repository {
+  grid-column: 1;
+  grid-row: 1;
+  margin-bottom: 0;
+}
+.runner-setup > .runner-toolbar {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+}
+.runner-setup > :not(.runner-repository):not(.runner-toolbar) {
+  grid-column: 1 / -1;
+}
+.runner-repository label,
+.runner-toolbar,
+.runner-process-flow,
+.runner-check > p {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.runner-toolbar {
+  flex-wrap: wrap;
+}
+.runner-toolbar > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.runner-introduction,
+.runner-check {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.runner-introduction p,
+.runner-check p,
+.runner-help,
+.runner-wizard .wizard-guide p {
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.7;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.runner-introduction ol {
+  padding-left: 22px;
+  line-height: 1.9;
+}
+.runner-wizard .wizard-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.runner-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.runner-monitor-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.runner-monitor-choice > span {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.runner-monitor-choice > span > span {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.runner-monitor-choice > input {
+  margin-top: 4px;
+  flex: none;
+}
+.runner-process-flow {
+  flex-wrap: wrap;
+  margin-block: 16px;
+}
+.runner-guide-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.runner-guide-heading h3 {
+  margin: 0;
+}
+.runner-process-flow > span {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.runner-wizard .wizard-summary dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.runner-wizard .wizard-guide > svg,
+.runner-process-flow svg {
+  color: var(--accent-ink);
+}
+@media (max-width: 640px) {
+  .runner-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .runner-setup > .runner-toolbar {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .runner-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .runner-monitor-choice {
+    padding: 16px;
+  }
+  .runner-introduction,
+  .runner-check {
+    padding: 20px;
+  }
+}

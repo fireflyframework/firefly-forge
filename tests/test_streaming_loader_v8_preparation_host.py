@@ -18,7 +18,8 @@ def test_current_streaming_loader_requires_a_new_v9_measurement():
     assert historical.version < qualification.REGISTRY_VERSION
     assert f"codex-exec-restricted-source/v{qualification.REGISTRY_VERSION + 1}" == qualification.LOADER_PROFILE
     assert tuple(name for name, _ in qualification.loader_hashes()) == qualification.LOADER_MODULES
-    assert len(qualification.LOADER_MODULES) == 22
+    assert len(qualification.LOADER_MODULES) == 23
+    assert "work_duration_models.py" in qualification.LOADER_MODULES
 
 
 def test_three_historical_literals_and_provenance_remain_exact(monkeypatch):

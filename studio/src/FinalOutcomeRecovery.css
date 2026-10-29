@@ -1,0 +1,73 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.final-outcome-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.final-outcome-heading svg {
+  flex: 0 0 auto;
+  color: var(--accent-ink);
+}
+.final-outcome-heading h3,
+.final-outcome-heading h4 {
+  margin: 0;
+}
+.final-outcome-recovery button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.final-outcome-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  padding: 16px 0;
+  gap: 16px;
+  border-block: 1px solid var(--line);
+}
+.final-outcome-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 0;
+}
+.final-outcome-steps li[aria-current="step"] {
+  color: var(--text);
+  font-weight: 600;
+}
+.final-outcome-steps span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.final-outcome-steps [aria-current="step"] span {
+  background: var(--amber);
+  color: var(--charcoal);
+  border-color: var(--amber);
+}
+.final-outcome-recovery p,
+.final-outcome-recovery li {
+  overflow-wrap: anywhere;
+}
+.final-outcome-recovery ul {
+  padding-left: 22px;
+  line-height: 1.7;
+}
+.final-outcome-recovery > p,
+.final-outcome-recovery .agent-checkpoint-review > p {
+  margin-block: 12px;
+  line-height: 1.6;
+}
+@media (max-width: 640px) {
+  .final-outcome-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}

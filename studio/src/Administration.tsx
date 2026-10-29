@@ -6,6 +6,7 @@ import {
   GitBranch,
   Globe,
   GraduationCap,
+  Server,
   Settings2,
   ShieldCheck,
   Users,
@@ -23,6 +24,7 @@ export type AdministrationPage =
   | "search"
   | "learning"
   | "analytics"
+  | "runners"
   | "browser-connections"
   | "external-tools";
 export function Administration({
@@ -37,6 +39,14 @@ export function Administration({
     session?.memberships.some((item) => item.permissions.includes("members")),
   );
   const cards = [
+    {
+      page: "runners" as const,
+      icon: Server,
+      title: "Runners & processes",
+      body: "Configure repository execution and owned process waits for new runs.",
+      allowed: administrator,
+      scope: "Factory administrator",
+    },
     {
       page: "analytics" as const,
       icon: Database,

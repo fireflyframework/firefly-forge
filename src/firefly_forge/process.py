@@ -22,7 +22,7 @@ class ProcessResult:
 
 
 async def execute(
-    argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None
+    argv: list[str], cwd: Path, timeout: int | None = 300, *, env: dict[str, str] | None = None
 ) -> ProcessResult:
     with execution_environment(runtime_environment(env)) as environment:
         process = await asyncio.create_subprocess_exec(

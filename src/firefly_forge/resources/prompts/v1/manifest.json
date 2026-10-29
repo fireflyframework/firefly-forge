@@ -1344,6 +1344,22 @@
       "variables": {}
     },
     {
+      "id": "mcp/get_final_outcome_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_final_outcome_candidate.yaml",
+      "sha256": "f31cb31a0289d7ff1cf1c6243b3c35a9673238eae2dde17c77f15aece6598391",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_final_outcome_status",
+      "version": "1.0.0",
+      "path": "mcp/get_final_outcome_status.yaml",
+      "sha256": "e3dd53c9d919248b424fedf8f10f5df58ce6d86752fb47cab025d186bca5445a",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/get_git_deliveries",
       "version": "1.0.0",
       "path": "mcp/get_git_deliveries.yaml",
@@ -2096,6 +2112,14 @@
       "variables": {}
     },
     {
+      "id": "mcp/request_final_outcome_continuation",
+      "version": "1.0.0",
+      "path": "mcp/request_final_outcome_continuation.yaml",
+      "sha256": "5b6738527fbf8feb2a62d83859f61927e195e1e2f959d3a81b3d07045958e73c",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/request_git_delivery",
       "version": "1.0.0",
       "path": "mcp/request_git_delivery.yaml",
@@ -2549,6 +2573,14 @@
       "variables": {}
     },
     {
+      "id": "tools/cancel_process",
+      "version": "1.0.0",
+      "path": "tools/cancel_process.yaml",
+      "sha256": "9ca4b6344505916b386cc3750afe90458771ff72ce0dc346064cb9391ee27d03",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "tools/edit_lines",
       "version": "1.0.0",
       "path": "tools/edit_lines.yaml",
@@ -2641,6 +2673,22 @@
       "variables": {}
     },
     {
+      "id": "tools/process_logs",
+      "version": "1.0.0",
+      "path": "tools/process_logs.yaml",
+      "sha256": "8f9626bbc7caa6511a945e55c46c8048d87afeae0ed86bebda1e1ba402f5d5be",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/process_status",
+      "version": "1.0.0",
+      "path": "tools/process_status.yaml",
+      "sha256": "b902f74a17374c6e5aa4a651a2510ae1b5881ebc1df5d0d8e23cf2056b674576",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "tools/profile_php",
       "version": "1.0.0",
       "path": "tools/profile_php.yaml",
@@ -2697,10 +2745,26 @@
       "variables": {}
     },
     {
+      "id": "tools/start_process",
+      "version": "1.0.0",
+      "path": "tools/start_process.yaml",
+      "sha256": "fe026c1f8476b249d30ec7d035d49eb62c07151ae75c382ad689933e3ccc84b0",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "tools/trace_python",
       "version": "1.0.0",
       "path": "tools/trace_python.yaml",
       "sha256": "cdad7806a7bb0aa81f5c7ff46f38432ace70f5fbed0fe1f0394865ad2d3e64b9",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "tools/wait_process",
+      "version": "1.0.0",
+      "path": "tools/wait_process.yaml",
+      "sha256": "4e41d595e3d9cdcbea5d494510c9c87231a1799527a902c86a05084e9cb50a5d",
       "field": "user",
       "variables": {}
     },

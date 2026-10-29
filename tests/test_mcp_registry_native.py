@@ -70,8 +70,9 @@ async def test_native_run_freezes_grant_and_broker_records_scope_without_key(sto
     broker = ToolInvocationBroker(store, Journal(store), store.path.parent)
     broker.external_mcp = service
     broker.credential_registry = service.credentials
+    await store.acquire_ownership()
     await broker.journal.intent(run["id"], "implement")
-    await store.update(run["id"], status="generating")
+    await store.update(run["id"], status="developing", attempt=1)
     args = {
         "connector": "github",
         "tool": "get_file_contents",

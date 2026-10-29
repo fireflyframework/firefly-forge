@@ -33,7 +33,7 @@ from firefly_forge.diagnostic_recipes import (
 )
 from firefly_forge.git_diff_models import GitDiffBudget
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
-from firefly_forge.models import Command
+from firefly_forge.models import Command, NewWorkCommand, configured_commands
 from firefly_forge.php_diagnostics import PHPProfileRequest, build_php_profile_argv, php_profile_observation
 from firefly_forge.php_diagnostics import profile_configuration as php_profile_configuration
 from firefly_forge.policies import inject_policy_snapshot, policy_commands
@@ -46,6 +46,7 @@ from firefly_forge.secrets import contains_known_credential, redact_environment
 from firefly_forge.skills import DEFAULT_SKILLS, inject_skills
 from firefly_forge.source_snapshot import SourceDiffSnapshotV1, snapshot_run_fields
 from firefly_forge.store import TERMINAL, ExecutionOwnerBusy, Store, now
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 
@@ -57,7 +58,7 @@ async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[s
     return await process_checked(trusted_git(argv), cwd, timeout, env=git_environment(env) if argv[0] == "git" else env)
 
 
-async def execute(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> Any:
+async def execute(argv: list[str], cwd: Path, timeout: int | None = 300, *, env: dict[str, str] | None = None) -> Any:
     return await process_execute(trusted_git(argv), cwd, timeout, env=git_environment(env) if argv[0] == "git" else env)
 
 
@@ -65,26 +66,45 @@ def redact(value: str) -> str:
     return redact_environment(value)
 
 
-def default_commands(workspace: Path) -> list[Command]:
+def default_commands(
+    workspace: Path, *, work_duration: WorkDurationPolicyV2 | None = None
+) -> list[Command | NewWorkCommand]:
+    def command(argv: list[str]) -> Command | NewWorkCommand:
+        return Command(argv=argv, timeout=600) if work_duration is None else NewWorkCommand(argv=argv)
+
     makefile = workspace / "Makefile"
     if makefile.is_file() and re.search(r"^check\s*:", makefile.read_text(), re.MULTILINE):
-        return [Command(argv=["make", "check"], timeout=600)]
+        return [command(["make", "check"])]
     package = workspace / "package.json"
     if package.is_file():
         scripts = json.loads(package.read_text()).get("scripts", {})
         if "check" in scripts:
-            return [Command(argv=["npm", "run", "check"], timeout=600)]
+            return [command(["npm", "run", "check"])]
         if "test" in scripts:
-            return [Command(argv=["npm", "test"], timeout=600)]
+            return [command(["npm", "test"])]
     if (workspace / "pyproject.toml").is_file() and (workspace / "tests").is_dir():
-        return [Command(argv=["uv", "run", "pytest"], timeout=600)]
+        return [command(["uv", "run", "pytest"])]
     if (workspace / "artisan").is_file() and (workspace / "vendor").is_dir():
-        return [Command(argv=["php", "artisan", "test"], timeout=600)]
+        return [command(["php", "artisan", "test"])]
     if (workspace / "package.json").is_file():
         from firefly_forge.profiles import verification_commands
 
-        return [Command(argv=argv, timeout=600) for argv in verification_commands(workspace, "none", "react")]
+        return [command(argv) for argv in verification_commands(workspace, "none", "react")]
     raise ValueError("No verification command found; supply commands or add an executable make check target")
+
+
+def framework_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
+    if not run.get("framework_knowledge_pin"):
+        return []
+    from firefly_forge.framework_knowledge_conformance import conformance_commands
+
+    duration = run.get("work_duration")
+    if duration is not None:
+        WorkDurationPolicyV2.model_validate(duration)
+    return [
+        Command(argv=argv, timeout=600) if duration is None else NewWorkCommand(argv=argv)
+        for argv in conformance_commands(run["framework_knowledge_pin"])
+    ]
 
 
 def private_path(path: str) -> bool:
@@ -585,6 +605,12 @@ class Engine:
                 provider = get_provider(run["agent"], settings if run.get("config_revision") else None)
             else:
                 provider = self.provider_factory(run["agent"])
+            if hasattr(provider, "configure_work_duration"):
+                provider.configure_work_duration(
+                    WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None
+                )
             if run["agent"] in {"agentic", "bridge", "api"} and hasattr(provider, "configure_runtime"):
                 from firefly_forge.agent_roles import stage_allowed_tools
                 from firefly_forge.qa import JourneyEvidence
@@ -598,7 +624,7 @@ class Engine:
                     else set()
                 )
 
-                async def command_executor(argv: list[str], timeout: int) -> Any:
+                async def command_executor(argv: list[str], timeout: int | None) -> Any:
                     return await self._project_command(identifier, run, workspace, argv, timeout, "implement")
 
                 async def python_profile(request: PythonProfileRequest) -> dict[str, Any]:
@@ -689,6 +715,7 @@ class Engine:
                     if self.tool_broker is None or self.external_mcp is None:
                         raise ValueError("A durable registered tool broker is required for external MCP")
                     from firefly_forge.agent_roles import roles_for_stage
+                    from firefly_forge.checkpoint_work_duration import selected_work_duration
 
                     roles = [item["id"] for item in roles_for_stage(run["role_snapshot"], "implement")]
                     source = await self._inspect_workspace(identifier, workspace, settings)
@@ -704,6 +731,7 @@ class Engine:
                                 roles=roles,
                                 stage="implement",
                                 run_id=identifier,
+                                work_duration=selected_work_duration(run),
                             ),
                         )
 
@@ -735,8 +763,22 @@ class Engine:
 
                         await assert_active_mode(self.journal, identifier)
 
+                monitor_grants = {"start_process", "process_status", "process_logs", "wait_process", "cancel_process"}
+                process_monitor = (
+                    await self.sandbox.monitor(identifier, scope, "implement")
+                    if self.sandbox
+                    and "execute_command" in (grants or ())
+                    and monitor_grants.intersection(grants or ())
+                    and run.get("sandbox_snapshot", {}).get("configuration", {}).get("process_monitor") is True
+                    and settings.get("FORGE_AGENTIC_CHECKPOINTS") != "required"
+                    else None
+                )
+
                 provider.configure_runtime(
                     scope_root=scope,
+                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None,
                     read_run_evidence=read_run_evidence if "read_run_evidence" in (grants or ()) else None,
                     repository_root=workspace,
                     allowed_tools=frozenset(grants or ()),
@@ -752,6 +794,7 @@ class Engine:
                     and "external_mcp" in (grants or ())
                     else None,
                     command_executor=command_executor if self.sandbox and "execute_command" in (grants or ()) else None,
+                    process_monitor=process_monitor,
                     python_profile=python_profile
                     if self.sandbox
                     and {"execute_command", "profile_python"}.issubset(grants or ())
@@ -792,7 +835,7 @@ class Engine:
                 )
                 source_brief += "\n\n" + prompt_text(
                     "implementation/verification-contract",
-                    commands=json.dumps([Command.model_validate(command).model_dump() for command in run["commands"]]),
+                    commands=json.dumps([command.model_dump() for command in configured_commands(run)]),
                     policy_checks=json.dumps(
                         [
                             command.model_dump()
@@ -992,8 +1035,11 @@ class Engine:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, implementation_limit + 1):
+                from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
+
                 run = await self.store.get_run(identifier)
                 restored_receipt = restoration
+                known_final = isinstance(restoration, FinalOutcomeExecution)
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
                 await self.store.admit_credentials(brief)
@@ -1002,7 +1048,10 @@ class Engine:
                     recovery
                     if recovery is not None
                     else (
-                        {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
+                        {
+                            "idempotency_key": restoration.intent["payload"]["task_key"],
+                            "disposition": "completed" if isinstance(restoration, FinalOutcomeExecution) else "execute",
+                        }
                         if restoration is not None
                         else await self._begin_task(
                             identifier, "implement", workspace, settings, implementation_failures
@@ -1124,6 +1173,12 @@ class Engine:
                                 from firefly_forge.providers import get_provider
 
                                 dispatch_provider = get_provider(run["agent"], selected)
+                                if hasattr(dispatch_provider, "configure_work_duration"):
+                                    dispatch_provider.configure_work_duration(
+                                        WorkDurationPolicyV2.model_validate(run["work_duration"])
+                                        if run.get("work_duration") is not None
+                                        else None
+                                    )
                                 adopted_executable = adoption["path"]
                             if current.get("source_edit_continuation"):
                                 from firefly_forge.source_edit_continuations import source_edit_receipt
@@ -1345,6 +1400,20 @@ class Engine:
                     await self._worker_feedback(
                         identifier, workspace, result, attempt, safe_data, restoration=restored_receipt
                     )
+                if isinstance(restoration, FinalOutcomeExecution):
+                    try:
+                        await self._worker_feedback(
+                            identifier,
+                            workspace,
+                            await restoration.result(),
+                            attempt,
+                            safe_data,
+                            restoration=restoration,
+                        )
+                    except Exception:
+                        if not (await self.store.get_run(identifier)).get("bridge_completion_hold"):
+                            restoration = None
+                        raise
                 qa_report = (await self.store.get_run(identifier)).get("usage", {}).get("qa_report")
                 if qa_report is not None:
                     from firefly_forge.qa import QAReport
@@ -1368,6 +1437,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if known_final:
+                    # Native acceptance owns the consumed output; later QA is ordinary execution.
+                    restoration = None
                 if self.provider_recoveries and recovery is not None:
                     await self.provider_recoveries.complete(identifier, active_key)
                     recovery = None
@@ -1380,16 +1452,14 @@ class Engine:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
                 (await self.store.update(identifier, **snapshot_run_fields(files, diff), status="validating"))
-                commands = [Command.model_validate(command) for command in run["commands"]] or default_commands(
-                    self.component_directory(run, workspace)
+                commands = configured_commands(run) or default_commands(
+                    self.component_directory(run, workspace),
+                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None,
                 )
                 commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-                if run.get("framework_knowledge_pin"):
-                    from firefly_forge.framework_knowledge_conformance import conformance_commands
-
-                    commands += [
-                        Command(argv=argv, timeout=600) for argv in conformance_commands(run["framework_knowledge_pin"])
-                    ]
+                commands += framework_commands(run)
                 if len(commands) > 20:
                     raise ValueError("Selected policies exceed the 20 verification-command limit")
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)
@@ -1406,24 +1476,44 @@ class Engine:
                     saved_tree = retained.get("source_tree") or saved_task.get("evidence", {}).get("source_tree")
                     if not final or saved_tree != tree:
                         raise ReconciliationRequired("Retained verification does not match the resumed source tree")
+                reuse = None
+                if verification["disposition"] != "completed" and self.journal and active_key:
+                    from firefly_forge.verification_result_reuse import prepare_verification_reuse
+
+                    reuse = await prepare_verification_reuse(
+                        self, await self.store.get_run(identifier), workspace, active_key, commands
+                    )
+                    if reuse is not None:
+                        await reuse.begin()
+                fresh_ordinal = 0
                 for check_index, command in enumerate(
                     [] if verification["disposition"] == "completed" else commands, 1
                 ):
-                    await emit("validating", f"Attempt {attempt}: {' '.join(command.argv)}")
-                    check = await self._project_command(
-                        identifier, run, workspace, command.argv, command.timeout, "verify", ordinal=check_index
-                    )
-                    evidence = {
-                        "argv": command.argv,
-                        "exit_code": check.exit_code,
-                        "output": safe(check.output[-32000:]),
-                        "created_at": now(),
-                        "attempt": attempt,
-                    }
+                    reused_evidence = reuse.check(check_index) if reuse else None
+                    if reused_evidence is None:
+                        fresh_ordinal += 1
+                        await emit("validating", f"Attempt {attempt}: {' '.join(command.argv)}")
+                        check = await self._project_command(
+                            identifier, run, workspace, command.argv, command.timeout, "verify", ordinal=fresh_ordinal
+                        )
+                        evidence = {
+                            "argv": command.argv,
+                            "exit_code": check.exit_code,
+                            "output": safe(check.output[-32000:]),
+                            "created_at": now(),
+                            "attempt": attempt,
+                        }
+                        if reuse is not None:
+                            evidence["configured_check_index"] = check_index
+                    else:
+                        evidence = reused_evidence
+                        await emit("validating", "Reused a prior source check under its unchanged recorded scope")
                     final.append(evidence)
                     evidence_list = (await self.store.get_run(identifier))["verification"]
                     evidence_list.append(evidence)
                     (await self.store.update(identifier, verification=evidence_list))
+                if reuse is not None:
+                    await reuse.revalidate()
                 failures = [check for check in final if check["exit_code"] != 0]
                 final_files, final_diff, final_tree = await self._snapshot(
                     workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
@@ -1472,7 +1562,13 @@ class Engine:
                             "repair_context": repair_context,
                         },
                     )
+                    if reuse is not None:
+                        await reuse.finish(final)
                 active_key = None
+                if known_final and failures:
+                    raise ValueError(
+                        "Retained final output was accepted; review its failed verification before new coding"
+                    )
                 if (
                     failures
                     and self.learning
@@ -2132,7 +2228,7 @@ class Engine:
         run: dict[str, Any],
         workspace: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         stage: str,
         *,
         ordinal: int | None = None,
@@ -2167,6 +2263,8 @@ class Engine:
             )
         if _diagnostic_snapshot is not None:
             raise ValueError("Isolated diagnostics cannot execute without their runner")
+        if getattr(self.store, "native_location_state", None) is not None:
+            raise ValueError("Relocated execution requires its native runner and physical dispatch receipt")
         if run.get("sandbox_snapshot", {}).get("mode") in {"docker", "pool"}:
             raise ValueError("The selected Docker runner is unavailable; execution cannot fall back to the host")
         return await execute(argv, directory, timeout)
@@ -2313,8 +2411,11 @@ class Engine:
         )
         (await self.store.update(identifier, status="validating", attempt=1))
         await emit("validating", "Testing existing source without a coding provider")
-        commands = [Command.model_validate(command) for command in run["commands"]] or default_commands(
-            self.component_directory(run, workspace)
+        commands = configured_commands(run) or default_commands(
+            self.component_directory(run, workspace),
+            work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+            if run.get("work_duration") is not None
+            else None,
         )
         commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
         if len(commands) > 20:

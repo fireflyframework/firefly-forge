@@ -5,6 +5,7 @@ import importlib
 from uuid import uuid4
 
 import pytest
+from runner_duration_native_fixtures import runner_snapshot
 
 from firefly_forge.journal import Journal
 from firefly_forge.models import RepositoryInput, RunInput
@@ -21,8 +22,11 @@ async def seed(store):
     repository = await store.add_repository(
         RepositoryInput(name="Owned source", url="https://example.invalid/owned.git")
     )
-    run = await store.create_run(RunInput(repository_id=repository["id"], brief="Owned source transfer"))
-    await store.update(run["id"], status="running")
+    run = await store.create_run(
+        RunInput(repository_id=repository["id"], brief="Owned source transfer"),
+        prepared_runner=runner_snapshot(command_limit=50),
+    )
+    await store.update(run["id"], status="validating")
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "verify")
@@ -63,6 +67,7 @@ async def test_repository_read_and_project_execute_are_rechecked_after_membershi
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.projects import Projects
     from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
     module = authority_module()
     repository = await store.add_repository(
@@ -91,12 +96,17 @@ async def test_repository_read_and_project_execute_are_rechecked_after_membershi
                 component_id="service",
                 brief="Scoped transfer",
                 agent="agentic",
-                sandbox=SandboxInput(mode="docker", image="example/worker@sha256:" + "a" * 64, context="owned-context"),
+                sandbox=SandboxInput(
+                    mode="docker",
+                    image="example/worker@sha256:" + "a" * 64,
+                    context="owned-context",
+                    work_duration=WorkDurationPolicyV2(timeout_seconds=300),
+                ),
             ),
         )
     finally:
         CURRENT_PRINCIPAL.reset(context)
-    await store.update(run["id"], status="running")
+    await store.update(run["id"], status="validating")
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "verify")

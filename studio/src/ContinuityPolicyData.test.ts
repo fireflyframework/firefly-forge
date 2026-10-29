@@ -22,6 +22,28 @@ const context = {
   actor: "1".repeat(32),
   authentication: "local_bootstrap",
 };
+it("supports final-result recovery without changing an absent legacy flag", () => {
+  const retained = continuityPolicy(settings);
+  expect(retained).not.toHaveProperty("allow_final_outcome_continuation");
+  const enabled = continuityPolicy({
+    ...settings,
+    allow_final_outcome_continuation: true,
+  });
+  expect(sameContinuityPolicy(retained, enabled)).toBe(false);
+  expect(sameContinuityPolicy(enabled, retained)).toBe(false);
+  expect(
+    sameContinuityPolicy(
+      retained,
+      continuityPolicy({
+        ...settings,
+        allow_final_outcome_continuation: false,
+      }),
+    ),
+  ).toBe(true);
+  expect(() =>
+    continuityPolicy({ ...settings, allow_final_outcome_continuation: 1 }),
+  ).toThrow();
+});
 it("keeps every saved policy option when editing the checkpoint switch and window", () => {
   const p = continuityPolicy(settings);
   const next = continuityPolicy({

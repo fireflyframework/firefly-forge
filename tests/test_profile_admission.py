@@ -4,6 +4,7 @@
 import copy
 
 import pytest
+from diagnostic_legacy_fixtures import create_retained_diagnostic_run
 
 from firefly_forge import diagnostic_recipes as recipes
 from firefly_forge.sandbox_models import capture_sandbox
@@ -52,7 +53,9 @@ async def test_dispatch_rechecks_diagnostic_policy_before_any_intent(store, tmp_
     await store.acquire_ownership()
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
     config = None if policy is None else SandboxInput.model_validate(snapshot(**policy)["configuration"])
-    run = await store.create_run(RunInput(repository_id=repo["id"], brief="Observe owned workload", sandbox=config))
+    run = await create_retained_diagnostic_run(
+        store, RunInput(repository_id=repo["id"], brief="Observe owned workload", sandbox=config)
+    )
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "implement")
@@ -106,7 +109,8 @@ async def test_engine_profile_observation_binds_exact_command_and_preserves_work
     from firefly_forge.workspace_tools import tool_catalog
 
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"],
             brief="Observe owned workload",
@@ -158,10 +162,11 @@ async def test_profile_without_executor_or_grants_never_uses_host(store, tmp_pat
     from firefly_forge.sandbox_models import SandboxInput
 
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"], brief="Observe", sandbox=SandboxInput.model_validate(snapshot()["configuration"])
-        )
+        ),
     )
     (tmp_path / "workload.py").write_text("raise AssertionError('must not execute')")
     engine = Engine(store, tmp_path / "jobs")
@@ -219,10 +224,11 @@ async def test_retained_command_yields_exact_receipt_without_execution_or_wal_ch
 
     await store.acquire_ownership()
     repo = await store.add_repository(RepositoryInput(name="owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"], brief="Observe", sandbox=SandboxInput.model_validate(snapshot()["configuration"])
-        )
+        ),
     )
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
@@ -311,7 +317,8 @@ async def test_current_actor_revocation_and_cancellation_prevent_profile_dispatc
     await acl.set_membership(projects[0]["id"], actor, "developer")
     token = CURRENT_PRINCIPAL.set(actor)
     try:
-        run = await store.create_run(
+        run = await create_retained_diagnostic_run(
+            store,
             RunInput(
                 repository_id=repo["id"],
                 project_id=projects[0]["id"],
@@ -361,7 +368,8 @@ async def test_engine_supplies_the_optional_profile_hook_to_the_native_worker(st
     from firefly_forge.workspace_tools import tool_catalog
 
     initial = await fixture_run(store, tmp_path)
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=initial["repository_id"],
             brief="Inspect optional diagnostic binding",

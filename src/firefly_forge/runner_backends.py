@@ -17,11 +17,26 @@ from firefly_forge.process import ProcessResult
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.secrets import runtime_environment
 
+UNCAPPED_DOCKER_REASON = "Uncapped Docker work requires an independently verified owner watchdog"
+
+
+def uncapped_docker_reason(config: SandboxInput) -> str | None:
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+    duration = config.model_dump(mode="json").get("work_duration")
+    if (
+        config.mode == "docker"
+        and duration is not None
+        and WorkDurationPolicyV2.model_validate(duration).timeout_seconds is None
+    ):
+        return UNCAPPED_DOCKER_REASON
+    return None
+
 
 async def _bounded_process(
     argv: list[str],
     cwd: Path,
-    timeout: int,
+    timeout: int | None,
     max_output_bytes: int,
     *,
     input_data: bytes | None = None,
@@ -75,7 +90,7 @@ async def _bounded_process(
 
 
 async def bounded_process(
-    argv: list[str], cwd: Path, timeout: int, max_output_bytes: int, *, input_data: bytes | None = None
+    argv: list[str], cwd: Path, timeout: int | None, max_output_bytes: int, *, input_data: bytes | None = None
 ) -> ProcessResult:
     code, output = await _bounded_process(argv, cwd, timeout, max_output_bytes, input_data=input_data)
     return ProcessResult(argv, code, output.decode("utf-8", errors="replace"))
@@ -92,7 +107,7 @@ class RunnerBackend(Protocol):
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -103,7 +118,7 @@ class RunnerBackend(Protocol):
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -122,7 +137,7 @@ class HostRunnerBackend:
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,
@@ -134,7 +149,7 @@ class HostRunnerBackend:
         config: SandboxInput,
         argv: list[str],
         cwd: Path,
-        timeout: int,
+        timeout: int | None,
         max_output_bytes: int,
         *,
         input_data: bytes | None = None,

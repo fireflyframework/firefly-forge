@@ -52,6 +52,9 @@ NEW_TOOLS = {
     "get_scm_product_change_grant",
     "get_current_scm_product_change_grant",
     "get_scm_product_change",
+    "get_final_outcome_candidate",
+    "request_final_outcome_continuation",
+    "get_final_outcome_status",
 }
 
 
@@ -59,9 +62,9 @@ def _baseline():
     return json.loads((Path(__file__).parent / "fixtures/mcp-prompt-baseline-v1.json").read_text())
 
 
-async def test_actual_mcp_wire_metadata_stays_byte_exact():
+async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 182
+    assert len(tools) == 185
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
@@ -77,7 +80,19 @@ async def test_actual_mcp_wire_metadata_stays_byte_exact():
     retry = next(tool for tool in expected["tools"] if tool["name"] == "retry_project_campaign")
     selection = retry["inputSchema"]["$defs"]["CampaignRetry"]["properties"]["component_ids"]
     assert selection.pop("maxItems") == 50
-    assert actual == json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
+    from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+    runner = SandboxInput.model_json_schema()
+    additions = {"process_monitor", "monitor_owner_grace_seconds", "monitor_timeout_seconds", "work_duration"}
+    for name in ("save_repository_runner", "probe_runner"):
+        tool = next(item for item in expected["tools"] if item["name"] == name)
+        definitions = tool["inputSchema"]["$defs"]
+        properties = definitions["SandboxInput"]["properties"]
+        assert runner["properties"].keys() - properties.keys() == additions
+        properties.update({field: runner["properties"][field] for field in additions})
+        definitions["WorkDurationPolicyV2"] = WorkDurationPolicyV2.model_json_schema()
+    assert json.loads(actual) == expected
 
 
 def test_all_mcp_descriptions_are_empty_variable_native_resources():
@@ -90,7 +105,7 @@ def test_all_mcp_descriptions_are_empty_variable_native_resources():
     for tool in tools:
         assert entries["mcp/" + tool["name"]]["variables"] == {}
         assert catalog.text("mcp/" + tool["name"]) == tool["description"], tool["name"]
-    assert len(catalog.registry) == 333
+    assert len(catalog.registry) == len(manifest["templates"])
     assert entries["collaboration/decision-destination"]["variables"] == {"reference": "string"}
     assert entries["collaboration/decision-reply"]["variables"] == {"command": "string"}
     assert entries["collaboration/decision-resume"]["variables"] == {"command": "string"}

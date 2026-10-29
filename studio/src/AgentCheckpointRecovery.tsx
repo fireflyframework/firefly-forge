@@ -430,16 +430,30 @@ export function AgentCheckpointRecovery({
                   <dd>{new Date(candidate.created_at).toLocaleString()}</dd>
                 </div>
                 <div>
-                  <dt>Original deadline</dt>
+                  <dt>
+                    {candidate.invocation_protocol ===
+                    "forge-owned-checkpoint-v3"
+                      ? "Work deadline"
+                      : "Original deadline"}
+                  </dt>
                   <dd>
                     {candidate.deadline_ms
                       ? new Date(candidate.deadline_ms).toLocaleString()
-                      : "Unavailable for this earlier checkpoint"}
+                      : candidate.invocation_protocol ===
+                          "forge-owned-checkpoint-v3"
+                        ? "No work deadline"
+                        : "Unavailable for this earlier checkpoint"}
                   </dd>
                 </div>
                 <div>
                   <dt>Result state</dt>
-                  <dd>{labels[candidate.state]}</dd>
+                  <dd>
+                    {candidate.invocation_protocol ===
+                      "forge-owned-checkpoint-v3" &&
+                    candidate.state === "expired"
+                      ? "Work deadline passed"
+                      : labels[candidate.state]}
+                  </dd>
                 </div>
               </dl>
               {candidate.ticket && (

@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from pyfly.container import service
@@ -19,11 +21,19 @@ from firefly_forge.process import ProcessResult
 from firefly_forge.project_models import component_path
 from firefly_forge.runner_controller_client import RunnerControllerClient
 from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
-from firefly_forge.runner_factory_models import validate_factory_pool
+from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON, uncapped_pool_reason, validate_factory_pool
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
 from firefly_forge.runner_pool_artifacts import ArtifactKind, RunnerPoolArtifacts, validate_artifact_receipt
 from firefly_forge.runner_pool_bundle import frame_project_archives
 from firefly_forge.runner_pool_models import RunnerProjectInvocation, pool_digest
+from firefly_forge.runner_run_liveness import (
+    RUN_ADMISSION_PROTOCOL,
+    RUN_LIVENESS_PROTOCOL,
+    RunLivenessBindingV1,
+    run_cut_digest,
+    run_digest,
+    validate_run_ack,
+)
 from firefly_forge.sandbox import collect_workspace, pack_workspace
 from firefly_forge.sandbox_models import bounded_argv
 from firefly_forge.secrets import contains_known_credential
@@ -53,11 +63,22 @@ class RunnerPoolWorker:
         }
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.waiting: dict[str, dict[str, Any]] = {}
+        self.run_clock: Callable[[], float] = time.monotonic
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         policy = validate_factory_pool(snapshot)
+        if reason := uncapped_pool_reason(policy):
+            return {"available": False, "mode": "pool", "status": "not_implemented", "reason": reason}
         policy.require_transport(self.client.transport)
         profile = await self.client.profile()
+        if policy.profile.run_liveness is not None and RUN_LIVENESS_PROTOCOL not in profile.get(
+            "run_liveness_protocols", []
+        ):
+            raise RuntimeError("Frozen run ownership protocol is unsupported by this controller")
+        if policy.profile.run_liveness is not None and RUN_ADMISSION_PROTOCOL not in profile.get(
+            "run_admission_protocols", []
+        ):
+            raise RuntimeError("Frozen run-owned admission renewal is unsupported by this controller")
         if (
             profile.get("profile") != policy.profile.model_dump(mode="json")
             or profile.get("revision") != policy.profile.revision
@@ -221,7 +242,7 @@ class RunnerPoolWorker:
         workspace: Path,
         cwd: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         task_id: str,
         *,
         ordinal: int | None = None,
@@ -230,7 +251,7 @@ class RunnerPoolWorker:
 
         assert_command_boundary()
         bounded_argv(argv)
-        if type(timeout) is not int or timeout < 1:
+        if timeout is not None and (type(timeout) is not int or timeout < 1):
             raise ValueError("Command timeout must be a positive integer")
         if contains_known_credential(argv, self.artifacts.credential_registry()):
             raise ValueError("Pool command cannot contain configured credentials")
@@ -239,13 +260,27 @@ class RunnerPoolWorker:
             run, attempt = scope["run"], scope["attempt"]
             snapshot = run.get("sandbox_snapshot")
             policy = validate_factory_pool(snapshot or {})
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
+
+            if policy.work_duration is None:
+                if timeout is None:
+                    raise ValueError("A legacy pool requires its finite command timeout")
+                work_timeout: int | None = min(timeout, policy.timeout)
+            else:
+                if policy.profile.work_duration is None:
+                    raise ValueError("The administrator pool has not admitted the new work-duration policy")
+                work_timeout = effective_work_timeout(
+                    timeout, policy.work_duration.timeout_seconds, policy.profile.work_duration.timeout_seconds
+                )
+                if work_timeout is None and policy.profile.run_liveness != RUN_LIVENESS_PROTOCOL:
+                    raise ValueError(UNCAPPED_POOL_REASON)
             if ordinal is not None and (type(ordinal) is not int or not 1 <= ordinal <= policy.command_limit):
                 raise ValueError("Frozen command budget is exhausted")
             relative = self._workspace(run, workspace, cwd)
             command = {
                 "argv": argv,
                 "cwd": relative,
-                "timeout": min(timeout, policy.timeout),
+                "timeout": work_timeout,
                 "workspace": str(workspace),
                 "snapshot_digest": snapshot["digest"],
             }
@@ -299,7 +334,23 @@ class RunnerPoolWorker:
                     cpus=policy.cpus,
                     memory_mb=policy.memory_mb,
                     pids_limit=policy.pids_limit,
-                    timeout=min(timeout, policy.timeout),
+                    timeout=work_timeout,
+                    work_duration=None
+                    if policy.work_duration is None
+                    else WorkDurationPolicyV2(timeout_seconds=work_timeout),
+                    run_liveness=RunLivenessBindingV1.model_validate(
+                        {
+                            "task_id": task_id,
+                            "attempt": attempt,
+                            "snapshot_digest": snapshot["digest"],
+                            "actor_digest": run_digest(run.get("execution_actor")),
+                            "run_cut_digest": run_cut_digest(run),
+                            "factory_fence_digest": run_digest(scope["fence"].model_dump(mode="json")),
+                            "worker_epoch": uuid4().hex,
+                        }
+                    )
+                    if policy.profile.run_liveness is not None
+                    else None,
                     max_output_bytes=policy.max_output_bytes,
                 )
                 payload = {
@@ -357,8 +408,24 @@ class RunnerPoolWorker:
                 "cwd": cwd,
             }
             try:
-                await self.client.submit(invocation, scope["fence"], archive)
-                async with asyncio.timeout(policy.profile.admission_seconds + invocation.timeout + 120):
+                submitted = await self.client.submit(invocation, scope["fence"], archive)
+                run_ack: dict[str, Any] | None = None
+                renew_at = 0.0
+                if invocation.run_liveness is not None:
+                    run_ack = validate_run_ack(
+                        submitted.get("run_lease"),
+                        pool_digest(invocation.model_dump(mode="json")),
+                        invocation.run_liveness,
+                        sequence=0,
+                    )
+                    renew_at = (
+                        self.run_clock() + min(policy.profile.admission_seconds, policy.profile.lease_seconds) / 3
+                    )
+                async with asyncio.timeout(
+                    None
+                    if invocation.run_liveness is not None or invocation.timeout is None
+                    else policy.profile.admission_seconds + invocation.timeout + 120
+                ):
                     while True:
                         await self._current(run_id, task_id, scope)
                         try:
@@ -384,6 +451,22 @@ class RunnerPoolWorker:
                             "draining",
                         }:
                             raise RuntimeError("Controller invocation requires reconciliation")
+                        if run_ack is not None and self.run_clock() >= renew_at:
+                            await self._current(run_id, task_id, scope)
+                            acknowledged = await self.client.renew_run(invocation, scope["fence"], run_ack)
+                            assert invocation.run_liveness is not None
+                            run_ack = validate_run_ack(
+                                acknowledged,
+                                pool_digest(invocation.model_dump(mode="json")),
+                                invocation.run_liveness,
+                                sequence=run_ack["sequence"] + 1,
+                                controller_epoch=run_ack["controller_epoch"],
+                            )
+                            await self._current(run_id, task_id, scope)
+                            renew_at = (
+                                self.run_clock()
+                                + min(policy.profile.admission_seconds, policy.profile.lease_seconds) / 3
+                            )
                         await asyncio.sleep(0.1)
                 receipt = observed.get("receipt") or {}
                 if receipt.get("drained") is not True or type(receipt.get("exit_code")) is not int:
@@ -413,6 +496,10 @@ class RunnerPoolWorker:
                     await self.client.cancel(invocation, fence)
                 raise
             except Exception:
+                if policy.work_duration is not None:
+                    with suppress(Exception):
+                        fence = await self.authority.exclusive_fence()
+                        await self.client.cancel(invocation, fence)
                 raise RuntimeError(
                     "Factory submission or observation requires reconciliation; no automatic replay"
                 ) from None

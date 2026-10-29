@@ -1,5 +1,5 @@
 ---
-description: Configure bounded host or Docker execution, command policies, source transfer and honest runner capability checks.
+description: Configure execution boundaries, optional work deadlines, process ownership, source transfer and runner capability checks.
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
@@ -11,11 +11,81 @@ Choose a runner before queueing a run. firefly forge freezes its configuration, 
 
 | Mode | Behavior |
 | --- | --- |
-| `host` | Commands run as the development service account with a filtered environment, timeout and output limit. The operating system account can access other host files and networks. |
+| `host` | Commands run as the development service account with a filtered environment, the selected duration policy and an output limit. The operating system account can access other host files and networks. |
 | `docker` | Commands run in a digest-pinned image with the component workspace mounted, a read-only root filesystem, dropped capabilities and resource limits. An unavailable image or context fails execution. |
 | `pool` | Administrator opt-in command execution through an authenticated local controller, with frozen profiles, durable admission quotas and archive transport. Requires a separately configured Factory worker. |
 
 The runner applies to independent verification and the native Firefly Agentic `execute_command` tool. Native Codex and Claude Code processes use their official CLI policies. Their own file, command and network tools execute outside this Docker runner. Native Python tool grants cannot enforce restrictions inside those CLIs.
+
+## Set up a repository in Studio
+
+Open **Administration → Runners & processes**, then choose a registered repository. The wizard loads its saved defaults before allowing changes. Factory administrator access is required in Studio.
+
+1. **Execution:** choose trusted host or Docker execution. Docker needs an image pinned by SHA256 and an explicit context. Leave **Set a work deadline** off when the duration is unknown, or choose a deadline for this repository. Review the log size; existing command budgets and other saved controls are preserved. Switching to host removes Docker-only settings. A saved pool remains read-only in this form.
+2. **Processes:** optionally enable process monitoring for eligible host runs. This is off by default and requires fresh agent tool grants as well as command permission. Docker, pool and required-checkpoint execution do not support this first monitor implementation. Existing runs keep their original tools and policy.
+3. **Review:** inspect the proposed settings and save them for future runs. If the save response is uncertain, reload the saved version before making another request. The form rereads the revision before saving; the server does not yet provide a conditional update, so coordinate concurrent administration changes.
+
+![Execution settings for a repository, showing the environment and runner limits.](assets/screenshots/runner-setup-execution-desktop-light.png)
+
+*The execution step loads the selected repository's saved policy. This walkthrough uses fixture data.*
+
+![The process monitoring step with the opt-in control, supported conditions and execution boundary.](assets/screenshots/runner-setup-processes-desktop-light.png)
+
+*Enable the capability first, then review the implementer's tool requests under Agents & skills. This setting does not itself grant tools.*
+
+![Mobile review of the environment, process setting, optional work deadline and log size.](assets/screenshots/runner-setup-review-mobile-light.png)
+
+*Review the values before saving. The actions remain inside the scrollable content above the footer.*
+
+Use **Check availability** after saving. A successful check establishes that the worker can use the runner; it does not prove that project dependencies, a server or Playwright work. An API-only replica reports worker availability as unverified. Verify the actual [tool prerequisites](tooling-prerequisites.md) before starting implementation.
+
+### Work duration and process ownership
+
+Newly admitted runs capture the explicit `forge-work-duration-v2` policy, including runs that use older repository defaults. Its `timeout_seconds` is `null` by default: work continues until completion, cancellation or loss of execution authority. If a project or an individual operation explicitly chooses a deadline, the earliest chosen deadline applies. There is no fixed one-hour ceiling on a chosen work deadline.
+
+```json
+{
+  "work_duration": {
+    "protocol": "forge-work-duration-v2",
+    "timeout_seconds": null
+  }
+}
+```
+
+Work duration and owner liveness answer different questions. A renewable heartbeat confirms that the authorized controller still owns a process. Losing that controller starts orphan cleanup; a healthy heartbeat does not extend an explicitly chosen work deadline. Control requests, readiness checks and cleanup retain their own finite timeouts, so a broken connection cannot leave a control operation waiting indefinitely.
+
+Saving new defaults does not rewrite an existing run, checkpoint or command receipt. An existing captured run without `work_duration` follows its original finite-duration contract. Recovery preserves that captured contract and its remaining usage. For new runs, choose a deadline through `work_duration` when one is required; the old runner `timeout` field and legacy provider timeout defaults do not silently supply a new work deadline.
+
+Work without a deadline also needs an execution boundary that supports it. Plain Docker execution currently refuses an uncapped command before recording a command intent: losing the Docker client does not guarantee that its container stops. Choose a work deadline or use a supported host path; forge never inserts a hidden deadline or switches runners. Pool execution without a deadline requires the explicit run-bound ownership profile described below. Check runner availability before starting the project. Ordinary host commands retain their documented crash-reconciliation limitation; the optional host process monitor has its own guardian and owner heartbeats.
+
+### Wait for a condition during development
+
+The optional native process tools let an agent start an owned background process, inspect its state and bounded logs, wait for a condition, and cancel it. Conditions cover process exit, a literal log message, or a confined workspace file with an optional content hash. Waiting occurs inside the tool call, so a pending condition does not require repeated model requests.
+
+Follow [Wait for an owned process](runner-monitors.md) for the tool requests, ownership checks and cleanup receipts.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Owned process lifecycle" aria-describedby="owned-process-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    A["Start owned<br/>process"] --> B["Record WAL<br/>handoff"]
+    B --> C["Wait for<br/>condition"]
+    C --> D["Read observed<br/>evidence"]
+    D --> E["Run next<br/>authorized tool"]
+    E --> F["Cancel and<br/>record cleanup"]
+```
+
+</div>
+<p class="forge-flow-caption" id="owned-process-flow-guide">Follow the process from left to right. On a small screen, focus the diagram and scroll horizontally to keep the labels readable.</p>
+
+An observed exit includes the actual exit code; it does not establish that the task succeeded. Waiting has no time limit by default. An explicitly chosen wait timeout returns control while the owned process continues; a chosen work deadline stops the process. Owner heartbeats continue during the wait. Explicit process cancellation or the end of the agent invocation drains owned processes. A service restart never silently adopts or redispatches a retained handle. Unknown ownership or cleanup remains a reconciliation condition.
+
+This wait is separate from durable agent parking and distributed event subscriptions. Those continuations require their own persisted history, usage, event cursor and wakeup contract; enabling process monitoring does not provide them. Logs in this first implementation are bounded redacted snapshots, not incremental cursor reads.
 
 Cloud provisioning and deployment commands use the separately configured [deployment target and credentials](deployment.md). Their credential workflows are outside this code runner.
 
@@ -107,6 +177,20 @@ Project commands use network `none`, a read-only source volume, bounded writable
 The pool supervisor reaps adopted child processes while the command runs. Before publishing its authenticated completion status, it terminates and reaps remaining descendants, including children that started a separate session. The original supervisor deadline remains active during this drain; an incomplete drain cannot produce a completion receipt. This controls processes inside the local command container. External services and effects already performed by the command remain outside this lifecycle boundary.
 
 Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
+
+### Run-bound command ownership
+
+An administrator may explicitly select `run_liveness: forge-run-owned-liveness-v1` on a new pool profile that also selects `work_duration`. The resulting invocation seals the original run, implementation or verification stage, stage attempt and deterministic original task key, actor, component and runner snapshot, Factory fence and fresh worker epoch. Profiles and invocations without this selector retain their existing serialized contract.
+
+The worker renews one controller lease only after rechecking the current run and stage authority. The private authenticated `POST /runner/v1/renew-run` control accepts the exact invocation, Factory fence, controller epoch, next sequence and one-use challenge. A controller rechecks the original command start WAL, journal chain and current actor permissions before granting renewal. Factory-wide health cannot renew a specific run. Cancellation, a changed stage or actor, expired ownership and lost acknowledgements stop that run's renewal; another healthy run keeps its own lease.
+
+For the selected protocol, each PID1 owner message authenticates the entire invocation digest and a new worker grant sequence. Status observation cannot refresh the owner alarm. A fresh grant's remaining time is measured from the peer challenge, so transport delay cannot restart its grace period. The owner heartbeat bounds loss of authorization; it is separate from the explicitly chosen work deadline. Cleanup uses the existing finite drain window and exact resource labels.
+
+A healthy queued command renews a separate security lease using database time. Each renewal retains the original request, Factory fence, worker and controller epochs, sequence and one-use challenge. The worker renews at one third of the shorter admission or owner interval; waiting does not acquire a work-age maximum. Expired or canceled queued work cannot be revived. A command that has already been claimed cannot extend its old waiting admission. Untagged profiles retain their original finite queue expiry. The worker also requires the matching `forge-run-owned-admission-v1` controller capability before dispatch.
+
+A restarted controller has no authority to recreate the volatile grant. It quarantines retained commands without a live matching controller epoch, and repeat submission or implicit continuation cannot redispatch them. Keep uncertain outcomes for observation and reconciliation.
+
+A pool profile that explicitly selects both `forge-run-owned-liveness-v1` and `forge-work-duration-v2` can preserve a null work deadline through admission, execution and result collection. The worker verifies the matching authenticated controller capability before dispatch. Fresh ownership grants keep healthy work running; cancellation, revocation or owner loss withdraws that authority. Untagged profiles and plain Docker remain unavailable for uncapped work. Ordinary foreground host commands retain their crash-reconciliation limitation. A child wait that preserves the active run and task does not revoke ownership; a wait marker cannot grant renewal. Paused verification handoffs require their separate custody protocol and remain unavailable through this pool selector.
 
 ### Continue one queued command after a controller restart
 

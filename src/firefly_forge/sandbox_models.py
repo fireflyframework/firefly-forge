@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
 
 def pinned_image(value: str) -> str:
     if not re.fullmatch(r"[a-z0-9][a-z0-9._:/-]{0,255}@sha256:[a-f0-9]{64}", value) or "://" in value:
@@ -82,10 +84,18 @@ class SandboxInput(BaseModel):
     command_limit: int = Field(default=50, ge=1, le=100, strict=True)
     browser: BrowserInput | None = None
     internet_search: bool = False
+    process_monitor: bool = Field(default=False, strict=True)
+    monitor_owner_grace_seconds: int = Field(default=30, ge=1, strict=True)
+    monitor_timeout_seconds: int | None = Field(default=None, ge=1, strict=True)
+    work_duration: WorkDurationPolicyV2 | None = None
     pool_binding: RunnerPoolBinding | None = None
 
     @model_validator(mode="after")
     def mode_controls(self) -> SandboxInput:
+        if self.process_monitor and self.mode != "host":
+            raise ValueError("Process monitors currently require an explicit host runner")
+        if self.process_monitor and self.work_duration is None:
+            raise ValueError("Process monitors require an explicit version-two work-duration policy")
         if self.pool_binding is not None and (
             self.mode != "docker" or self.workspace_transport != "archive" or self.network != "none"
         ):
@@ -108,7 +118,21 @@ def capture_sandbox(value: SandboxInput | dict[str, Any] | None) -> dict[str, An
     configuration = config.model_dump(mode="json")
     if config.pool_binding is None:
         configuration.pop("pool_binding")
-    controls = ["timeout", "output"]
+    if not config.process_monitor:
+        configuration.pop("process_monitor")
+    if config.monitor_owner_grace_seconds == 30:
+        configuration.pop("monitor_owner_grace_seconds")
+    if config.monitor_timeout_seconds is None:
+        configuration.pop("monitor_timeout_seconds")
+    if config.work_duration is None:
+        configuration.pop("work_duration")
+    controls = (
+        ["output"]
+        if config.work_duration is not None and config.work_duration.timeout_seconds is None
+        else ["timeout", "output"]
+    )
+    if config.process_monitor:
+        controls.append("process_monitor_owner_liveness")
     if config.mode == "docker":
         controls += [
             "workspace_archive" if config.workspace_transport == "archive" else "workspace_mount",

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
+from firefly_forge.invalid_read_continuity import _bytes
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_worker_completion_proof import (
     PreparedWorkerCompletion,
@@ -39,6 +40,7 @@ class NativeAcceptance:
         checkpoint: Data | None,
         ownership: object,
         restored: Any = None,
+        retained_source: Any = None,
     ) -> None:
         self.journal, self.store = journal, journal.store
         self.run, self.task, self.prepared = run, task, prepared
@@ -46,9 +48,12 @@ class NativeAcceptance:
         self.actor = CURRENT_PRINCIPAL.get()
         self.ownership = ownership
         self.restored = restored
+        self.retained_source = retained_source
         self.completions = BridgeCompletions(self.store, journal)
 
     async def before(self) -> None:
+        if self.retained_source is not None:
+            self.retained_source.fence()
         await self.store.assert_ownership()
         if self.store.execution_ownership_token is not self.ownership or CURRENT_PRINCIPAL.get() != self.actor:
             raise AccessDenied("Native terminal acceptance lost its original execution lease or context")
@@ -71,8 +76,8 @@ class NativeAcceptance:
         task = _task(await self.journal._task(current["id"], "implement"))
         entries = _entries(await self.journal.records.find_for_run(identifier(current["id"])), current["id"])
         if (
-            current != self.run
-            or task != self.task
+            _bytes(current) != _bytes(self.run)
+            or _bytes(task) != _bytes(self.task)
             or len(entries) != self.prepared.prefix_count
             or digest({"entries": entries}) != self.prepared.prefix_digest
             or _prepared_digest(self.prepared) != self.prepared.seal
@@ -81,6 +86,8 @@ class NativeAcceptance:
         self.store.reject_credentials(self.prepared.report)
 
     async def commit(self, acceptance: Data) -> None:
+        if self.retained_source is not None:
+            self.retained_source.fence()
         current = await self.store.get_run(self.run["id"])
         if current.get("checkpoint_mode_adoption"):
             from firefly_forge.checkpoint_mode_runtime import assert_active_mode
@@ -95,10 +102,10 @@ class NativeAcceptance:
             _prepared_digest(prepared) != prepared.seal
             or _scope(current, task) != prepared.scope_digest
             or digest({"entries": entries[: prepared.prefix_count]}) != prepared.prefix_digest
-            or (current.get("usage") or {}).get("runtime_report") != prepared.report
+            or _bytes((current.get("usage") or {}).get("runtime_report")) != _bytes(prepared.report)
             or acceptance.get("kind") != self.kind
             or acceptance.get("idempotency_key") != self.key
-            or acceptance.get("payload") != self.payload
+            or _bytes(acceptance.get("payload")) != _bytes(self.payload)
             or len([entry for entry in entries if entry["digest"] == acceptance["digest"]]) != 1
             or any(
                 entry != acceptance
@@ -115,8 +122,8 @@ class NativeAcceptance:
         if self.kind == "worker_feedback":
             if (
                 not prepared.feedback
-                or current.get("worker_feedback") != prepared.feedback
-                or self.payload != prepared.feedback
+                or _bytes(current.get("worker_feedback")) != _bytes(prepared.feedback)
+                or _bytes(self.payload) != _bytes(prepared.feedback)
             ):
                 raise ValueError("Native terminal feedback differs from its real sanitized acceptance")
         elif (
@@ -146,6 +153,11 @@ class NativeAcceptance:
             "source_checkpoint": self.checkpoint,
             "verification": "native_terminal_output_known_only",
         }
+        if self.retained_source is not None:
+            retained = self.retained_source.proof.model_dump(mode="json")
+            if _bytes(current["usage"].get("retained_source")) != _bytes(retained):
+                raise ValueError("Native terminal retained-source authority changed")
+            proof["retained_source"] = retained
         proof["digest"] = digest(proof)
         payload = NativeTerminalReceiptV1.model_validate(
             {
@@ -234,9 +246,15 @@ async def _native_terminal_acceptance(
         ownership = store.execution_ownership_token
         actor = CURRENT_PRINCIPAL.get()
         await BridgeCompletions(store, journal)._execution(run, actor)
-        from firefly_forge.native_terminal_restore_proof import prepare_restore_acceptance
+        from firefly_forge.final_outcome_acceptance import PreparedFinalAcceptance, prepare_final_acceptance
+        from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
+        from firefly_forge.native_terminal_restore_proof import PreparedRestoreAcceptance, prepare_restore_acceptance
 
-        restored = await prepare_restore_acceptance(restoration) if restoration is not None else None
+        restored: PreparedFinalAcceptance | PreparedRestoreAcceptance | None
+        if isinstance(restoration, FinalOutcomeExecution):
+            restored = await prepare_final_acceptance(restoration)
+        else:
+            restored = await prepare_restore_acceptance(restoration) if restoration is not None else None
         await journal.entries(run_id)
         async with store._unit():
             current = await store.get_run(run_id)
@@ -246,18 +264,38 @@ async def _native_terminal_acceptance(
             raise ValueError("Native terminal run changed during credential admission")
         if kind == "receipt" and (task["idempotency_key"] != key or not checkpoint):
             raise ValueError("Normal terminal completion requires its actual task and source checkpoint")
-        prepared = prepare_worker_completion(
-            run,
-            task,
-            entries,
-            feedback=payload if kind == "worker_feedback" else None,
-            terminal_report=run["usage"]["runtime_report"],
-            restored=restored,
+        prepared = (
+            restored.prepared
+            if isinstance(restored, PreparedFinalAcceptance)
+            else prepare_worker_completion(
+                run,
+                task,
+                entries,
+                feedback=payload if kind == "worker_feedback" else None,
+                terminal_report=run["usage"]["runtime_report"],
+                restored=restored,
+            )
         )
+        retained_source = None
+        if run["usage"].get("retained_source") is not None:
+            from pathlib import Path
+
+            from firefly_forge.checkpoint_work_duration import checkpoint_payload
+            from firefly_forge.retained_verified_source import prepare_retained_source
+
+            current_checkpoint = next(e for e in reversed(entries) if e["kind"] == "agent_checkpoint")
+            binding = checkpoint_payload(current_checkpoint["payload"]).invocation
+            retained_source = await prepare_retained_source(store, journal, run, Path(binding.workspace["path"]))
+            if _bytes(retained_source.proof.model_dump(mode="json")) != _bytes(run["usage"]["retained_source"]):
+                raise ValueError("Native terminal retained-source proof changed after runtime return")
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})
         if CURRENT_PRINCIPAL.get() != actor:
             raise AccessDenied("Native terminal execution context changed during preparation")
-        yield NativeAcceptance(journal, run, task, prepared, kind, key, payload, checkpoint, ownership, restored)
+        if retained_source is not None:
+            await retained_source.revalidate()
+        yield NativeAcceptance(
+            journal, run, task, prepared, kind, key, payload, checkpoint, ownership, restored, retained_source
+        )
 
 
 async def _admit_duplicate(

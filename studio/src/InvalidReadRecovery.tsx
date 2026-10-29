@@ -8,6 +8,7 @@ import {
   type ForgeRun,
 } from "./api";
 import type { IdentitySession } from "./Identity";
+import { FinalOutcomeRecovery } from "./FinalOutcomeRecovery";
 import {
   candidate,
   recoveryInput,
@@ -86,6 +87,13 @@ export function InvalidReadRecovery(props: Props) {
         : null;
   if (typeof requestId !== "string" || !/^[a-f0-9]{32}$/.test(requestId))
     return null;
+  if (
+    props.run.implementation_pending === false &&
+    props.run.usage?.runtime_report &&
+    typeof props.run.usage.runtime_report === "object" &&
+    !Array.isArray(props.run.usage.runtime_report)
+  )
+    return <FinalOutcomeRecovery {...props} requestId={requestId} />;
   return <Recovery {...props} requestId={requestId} />;
 }
 function Recovery({

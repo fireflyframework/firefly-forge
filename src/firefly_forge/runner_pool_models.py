@@ -10,10 +10,20 @@ from pathlib import PurePosixPath
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from firefly_forge.runner_bundle_models import ProjectBundleIdentity
+from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL, RunLivenessBindingV1
 from firefly_forge.sandbox_models import bounded_argv, pinned_image
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 
 def pool_digest(value: Any) -> str:
@@ -53,7 +63,9 @@ class RunnerInvocation(BaseModel):
     cpus: float = Field(default=1, ge=0.1, le=4, allow_inf_nan=False)
     memory_mb: int = Field(default=512, ge=128, le=8192, strict=True)
     pids_limit: int = Field(default=128, ge=32, le=512, strict=True)
-    timeout: int = Field(default=300, ge=1, le=3600, strict=True)
+    timeout: int | None = Field(default=300, ge=1, strict=True)
+    work_duration: WorkDurationPolicyV2 | None = None
+    run_liveness: RunLivenessBindingV1 | None = None
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
 
     _image = field_validator("image")(pinned_image)
@@ -74,9 +86,25 @@ class RunnerInvocation(BaseModel):
 
     @model_validator(mode="after")
     def stdin_identity(self) -> RunnerInvocation:
+        if self.run_liveness is not None and self.work_duration is None:
+            raise ValueError("Run ownership requires the explicit new work-duration policy")
+        if self.work_duration is None:
+            if self.timeout is None or self.timeout > 3600:
+                raise ValueError("A legacy invocation requires its finite duration")
+        elif self.timeout != self.work_duration.timeout_seconds:
+            raise ValueError("Invocation timeout differs from its explicit work duration")
         if (self.stdin_bytes == 0) != (self.stdin_digest is None):
             raise ValueError("Nonempty command stdin requires its immutable digest")
         return self
+
+    @model_serializer(mode="wrap")
+    def retained_duration(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        value: dict[str, Any] = handler(self)
+        if self.work_duration is None:
+            value.pop("work_duration")
+        if self.run_liveness is None:
+            value.pop("run_liveness")
+        return value
 
     @property
     def project_key(self) -> str:
@@ -124,6 +152,8 @@ class RunnerPoolProfile(BaseModel):
     max_memory_mb: int = Field(default=1024, ge=128, le=8192, strict=True)
     max_pids: int = Field(default=128, ge=32, le=512, strict=True)
     max_timeout: int = Field(default=300, ge=1, le=3600, strict=True)
+    work_duration: WorkDurationPolicyV2 | None = None
+    run_liveness: Literal["forge-run-owned-liveness-v1"] | None = None
     max_source_bytes: int = Field(default=67_108_864, ge=1_048_576, le=268_435_456, strict=True)
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
     waiting_limit: int = Field(default=100, ge=1, le=1000, strict=True)
@@ -143,15 +173,28 @@ class RunnerPoolProfile(BaseModel):
 
     @model_validator(mode="after")
     def capacity(self) -> RunnerPoolProfile:
+        if self.run_liveness is not None and self.work_duration is None:
+            raise ValueError("Run ownership requires an explicit administrator work-duration policy")
         if self.project_slots > self.slots:
             raise ValueError("Project quota exceeds total slots")
         return self
+
+    @model_serializer(mode="wrap")
+    def retained_duration(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        value: dict[str, Any] = handler(self)
+        if self.work_duration is None:
+            value.pop("work_duration")
+        if self.run_liveness is None:
+            value.pop("run_liveness")
+        return value
 
     @property
     def revision(self) -> str:
         return pool_digest(self.model_dump(mode="json"))
 
     def validate_invocation(self, value: RunnerInvocation) -> None:
+        if (self.run_liveness == RUN_LIVENESS_PROTOCOL) != (value.run_liveness is not None):
+            raise ValueError("Invocation run ownership differs from the immutable administrator profile")
         if value.profile_id != self.profile_id or value.profile_revision != self.revision:
             raise ValueError("Invocation does not select this immutable profile")
         self.validate_budget(
@@ -160,6 +203,7 @@ class RunnerPoolProfile(BaseModel):
             memory_mb=value.memory_mb,
             pids_limit=value.pids_limit,
             timeout=value.timeout,
+            work_duration=value.work_duration,
             source_bytes=value.source_bytes,
             max_output_bytes=value.max_output_bytes,
         )
@@ -171,17 +215,29 @@ class RunnerPoolProfile(BaseModel):
         cpus: float,
         memory_mb: int,
         pids_limit: int,
-        timeout: int,
+        timeout: int | None,
+        work_duration: WorkDurationPolicyV2 | None = None,
         source_bytes: int,
         max_output_bytes: int,
     ) -> None:
         if image not in self.approved_images:
             raise ValueError("Invocation image is not approved")
+        if work_duration is None:
+            if timeout is None or timeout > self.max_timeout:
+                raise ValueError("Invocation exceeds administrator duration budget")
+        elif (
+            self.work_duration is None
+            or timeout != work_duration.timeout_seconds
+            or (
+                self.work_duration.timeout_seconds is not None
+                and (timeout is None or timeout > self.work_duration.timeout_seconds)
+            )
+        ):
+            raise ValueError("Invocation exceeds administrator work-duration policy")
         bounds = (
             (cpus, min(self.max_cpus, self.cpu_budget, self.project_cpu_budget)),
             (memory_mb, min(self.max_memory_mb, self.memory_budget_mb, self.project_memory_budget_mb)),
             (pids_limit, self.max_pids),
-            (timeout, self.max_timeout),
             (source_bytes, self.max_source_bytes),
             (max_output_bytes, self.max_output_bytes),
         )

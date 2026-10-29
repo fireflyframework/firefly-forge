@@ -5,7 +5,33 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
-## 0.2.47 — implementation preview
+## 0.2.48
+
+Stopped combined installations can move their private storage and selected verification runtimes through [offline location maintenance](runtime-roles.md#move-a-stopped-local-installation). A reviewed, authenticated receipt binds the new physical paths while preserving original topology, command arguments, source evidence and counters. A new verification environment requires fresh checks; maintenance itself starts no model or project work.
+
+Partial-source recovery accepts the current checkpoint binding through its compact source identity. The receipt still hashes the complete invocation and validates its retained work policy before any Git operation.
+
+New runs record a versioned work policy. The default has no fixed work deadline. Operators can choose a positive deadline when a project needs one; request waits and ownership heartbeats are configured separately. Old runs retain their captured policy. The CLI and automatic framework checks use the same distinction. See [runner configuration](sandbox.md).
+
+Trusted-host process tools can start a command, inspect its output, wait for a condition and cancel the owned process group. A waiting observation can finish while the process continues. Process monitoring remains unavailable for Docker, pool and required-checkpoint invocations; unsupported grants are refused before dispatch.
+
+Separately, distributed commands can select an explicit run-owned pool profile with a version-two work policy. Healthy queued commands renew their original admission without a fixed waiting-age ceiling. A chosen command deadline starts at execution. The controller requires the current run, task, actor and worker ownership; expired or canceled admissions cannot be revived. Plain Docker and untagged pool profiles retain their documented restrictions.
+
+Authenticated status exchanges advance their sequence through every draining and drained response. Slow cleanup can therefore require several polls without producing a stale-frame rejection. Those acknowledgements do not extend the work deadline or owner alarm.
+
+Checkpoint version 3 retains the selected work policy. Provider negotiation requires an advertised compatible protocol; the factory refuses an unsupported request instead of selecting a hidden deadline.
+
+Acknowledged-command custody follows the native implementation intent and receipt. A model response can update progress before its terminal receipt commits; this interval retains its unfinished native phase for the existing acknowledgement proof. Unknown command outcomes and spent budgets remain unchanged.
+
+An already-consumed final report has a separate reviewed continuation. Its worker records native acceptance from the retained typed response without another model call, response consumption or completed effect. Studio distinguishes accepting that report from completing the run, and retains one action identity through reloads and uncertain submission responses. The three corresponding operator MCP tools bring the catalog to 185. See [saved final results](checkpoint-continuations.md#accept-an-already-consumed-final-result).
+
+Verification distinguishes retained check results from fresh executions. Reuse requires explicit declarations and captured source, dependency and execution evidence. Frontend builds that need generated-output metadata execute fresh and consume their normal allowance; they cannot be selected for reuse. The runtime guard can measure an exact-empty npm builtin configuration bound to its admitted executable and package, while the build process still cannot read private npm configuration. See [verification results](checkpoint-continuations.md#read-reused-verification-results).
+
+Explicit version-two work policies also reach external MCP calls. Connection, catalog and cleanup operations keep separate finite control windows; a selected work deadline is measured from the original call and does not restart after the handshake. The broker renews a separate native ownership lease while the admitted operation remains authorized. A late result after revocation or owner loss stays unresolved and cannot trigger automatic resubmission. An older capture retains its original timeout contract.
+
+Source-profile registration, package validation and installed acceptance cover execution compatibility. They do not establish delivery of a generated product. Managed subagent delegation is a separate capability and is not enabled by these runner tools. Follow [agent lifecycle](agent-lifecycle.md) and [run evidence](run-evidence.md) when reviewing a delivery.
+
+## 0.2.47
 
 Official framework references have immutable corpus identities, bounded refresh operations, version checks and generation pins. Binary reference exclusions do not grant authority to corrupt private cache bytes. The catalog retains its original 322 prompt entries and adds eleven framework templates; the MCP surface has 182 tools. See [framework reference refresh](framework-knowledge-refresh.md).
 
@@ -19,7 +45,7 @@ A separately registered SDK migration handles the known historical checkpoint fo
 
 After cancellation, a current administrator can observe a framework refresh whose source write has an uncertain outcome. Observation uses retained source identities and GET requests; it keeps the operation cancelled and cannot submit another source or activate a corpus. Revoked administrator access stops observation.
 
-Native CLI metadata discovery uses the caller's finite timeout without a model request. Studio and walkthrough metadata identify version 0.2.47. The composed source still requires independent current-profile registration, native PostgreSQL/controller qualification and exact original-custody review before retained-run admission. Host controls and fixture screenshots do not establish a published release, live provider quality or delivered CRM.
+Native CLI metadata discovery uses the caller's finite timeout without a model request. Studio and walkthrough metadata identify version 0.2.47. This release completed source-profile registration, controlled native qualification, package validation and source and installed configuration-RPC checks. Its published wheel and source archive match the qualified distributions, and the release workflow, documentation site and container publication were verified. Those proofs do not establish delivered CRM, live external-provider quality or a deployed service.
 
 ## 0.2.46 — changes included in the 0.2.47 preview
 

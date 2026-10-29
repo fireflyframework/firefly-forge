@@ -63,6 +63,126 @@ assert value['protocol']=='forge-runner-exit-v1'
 print(json.dumps(value))
 """
 
+OWNER_READER = """import ctypes,json,os,socket,struct,sys
+assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0
+payload=sys.stdin.buffer.read(4097)
+assert 0<len(payload)<=4096
+client=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+client.settimeout(1)
+client.connect('/tmp/forge-owner.sock')
+pid,uid,gid=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+assert pid==1 and uid==os.getuid() and gid==os.getgid()
+client.sendall(payload)
+client.shutdown(socket.SHUT_WR)
+data=bytearray()
+while chunk:=client.recv(4096):
+ data.extend(chunk)
+ assert len(data)<=4096
+value=json.loads(data)
+assert value['protocol'] in ('forge-runner-owner-status-v2','forge-runner-owner-status-v3')
+print(json.dumps(value))
+"""
+
+
+def owned_launcher() -> str:
+    """Embed the tested ownership reducer; no project imports or keys enter argv."""
+    import inspect
+
+    from firefly_forge.runner_pool_owner import OwnerLiveness, _owner_body
+    from firefly_forge.runner_run_owner import RunOwnerLiveness, _run_owner_body
+
+    prefix = (
+        "from __future__ import annotations\n"
+        "import ctypes,hashlib,hmac,json,math,os,re,secrets,shutil,signal,socket,subprocess,sys,threading,time\n"
+    )
+    reducer = "\n".join(
+        inspect.getsource(value) for value in (_owner_body, OwnerLiveness, _run_owner_body, RunOwnerLiveness)
+    )
+    program = """
+assert os.getpid()==1
+assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0
+def terminate(signum,frame): os._exit(124 if signum==signal.SIGALRM else 143)
+for signum in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT): signal.signal(signum,terminate)
+signal.alarm(120)
+assert b'GNU coreutils' in subprocess.check_output(['/usr/bin/timeout','--version'],timeout=5)
+with open('/forge-input/invocation.json','r') as source: config=json.load(source)
+assert config['work_duration']=={'protocol':'forge-work-duration-v2','timeout_seconds':config['timeout']}
+assert type(config['max_output_bytes']) is int and 1024<=config['max_output_bytes']<=2000000
+shutil.copytree('/forge-input/source','/workspace',dirs_exist_ok=True,symlinks=True)
+def create_owner():
+ if 'run_liveness_sha256' in config:
+  return RunOwnerLiveness(
+   config['execution_id'],config['run_liveness_sha256'],secrets.token_bytes(32),
+   config['owner_grace_seconds'],signal.alarm)
+ return OwnerLiveness(config['execution_id'],secrets.token_bytes(32),config['owner_grace_seconds'],signal.alarm)
+owner=create_owner()
+released=threading.Event()
+server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+server.bind('/tmp/forge-owner.sock')
+os.chmod('/tmp/forge-owner.sock',0o600)
+server.listen(8)
+def serve():
+ while True:
+  connection,_=server.accept()
+  connection.settimeout(1)
+  try:
+   data=bytearray()
+   while chunk:=connection.recv(4096):
+    data.extend(chunk)
+    if len(data)>4096: raise ValueError('Owner message exceeds its bound')
+   reply=owner.handle(json.loads(data))
+   connection.sendall(json.dumps(reply).encode())
+   if reply['state']=='running': released.set()
+  except (ValueError,KeyError,TypeError,OSError): pass
+  finally: connection.close()
+threading.Thread(target=serve,daemon=True).start()
+released.wait()
+argv=config['argv']
+if config['timeout'] is not None:
+ assert type(config['timeout']) is int and config['timeout']>0
+ argv=['/usr/bin/timeout','--signal=TERM','--kill-after=2s',str(config['timeout']),*argv]
+stdin=open('/forge-input/stdin.bin','rb')
+process=subprocess.Popen(argv,cwd='/workspace/'+config['cwd'],stdin=stdin,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+output_failed=threading.Event()
+def output():
+ try:
+  size=0
+  while chunk:=process.stdout.read(65536):
+   remaining=config['max_output_bytes']-size
+   sys.stdout.buffer.write(chunk[:remaining]); sys.stdout.buffer.flush()
+   size+=len(chunk)
+   if size>config['max_output_bytes']:
+    try: os.killpg(process.pid,signal.SIGKILL)
+    except ProcessLookupError: pass
+    return
+ except BaseException:
+  output_failed.set()
+  try: os.killpg(process.pid,signal.SIGKILL)
+  except ProcessLookupError: pass
+reader=threading.Thread(target=output,daemon=True)
+reader.start()
+while True:
+ child,wait_status=os.waitpid(-1,0)
+ if child==process.pid:
+  code=process.returncode=os.waitstatus_to_exitcode(wait_status)
+  break
+owner.begin_drain()
+try: os.killpg(process.pid,signal.SIGKILL)
+except ProcessLookupError: pass
+while True:
+ with open('/proc/self/task/1/children') as children: adopted=children.read().split()
+ for child in adopted:
+  try: os.kill(int(child),signal.SIGKILL)
+  except ProcessLookupError: pass
+ try: os.waitpid(-1,0)
+ except ChildProcessError: break
+reader.join(timeout=5)
+if reader.is_alive() or output_failed.is_set(): os._exit(125)
+owner.finish(code)
+while True: signal.pause()
+"""
+    return prefix + reducer + program
+
 
 def workspace_collector(limit: int) -> str:
     """Use the audited reader itself, without importing image or project packages."""

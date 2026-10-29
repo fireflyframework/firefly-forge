@@ -134,20 +134,27 @@ async def test_sandbox_wal_rejects_changed_request_and_nonstage_effects(store):
 async def test_docker_selected_runner_does_not_fall_back_to_host_when_unavailable(store, tmp_path, monkeypatch):
     from firefly_forge.journal import Journal
     from firefly_forge.models import RepositoryInput, RunInput
-    from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 
     try:
         from firefly_forge.sandbox import SandboxExecutor
     except ImportError as exc:
         raise AssertionError("Bounded Docker executor is missing") from exc
     repo = await store.add_repository(RepositoryInput(name="product", url="https://github.com/team/product.git"))
+    sandbox = SandboxInput(mode="docker", context="missing", image="example/test@sha256:" + "a" * 64)
     run = await store.create_run(
         RunInput(
             repository_id=repo["id"],
             brief="Verify",
-            sandbox=SandboxInput(mode="docker", context="missing", image="example/test@sha256:" + "a" * 64),
-        )
+            sandbox=sandbox,
+        ),
+        prepared_runner={
+            "sandbox_snapshot": capture_sandbox(sandbox),
+            "runner_config_revision": None,
+            "search_snapshot": None,
+        },
     )
+    assert "work_duration" not in run and run["sandbox_snapshot"] == capture_sandbox(sandbox)
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "verify")

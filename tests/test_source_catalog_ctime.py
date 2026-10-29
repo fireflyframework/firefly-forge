@@ -94,7 +94,7 @@ async def test_unchanged_file_identity_does_not_read_payload_again(tmp_path, mon
     await catalog.revalidate_source_catalog(source, storage, reference, assert_current=current)
 
 
-@pytest.mark.parametrize("payload", [b"", b"\x00\xffpublic\x80" * 3000])
+@pytest.mark.parametrize("payload", [b"", b"\x00\xffpublic\x80" * 3000], ids=["empty", "large-binary"])
 async def test_ctime_only_empty_and_binary_files_keep_original_hash(tmp_path, payload):
     source, storage, path, reference = await prepared(tmp_path, payload)
     await change_ctime(path)

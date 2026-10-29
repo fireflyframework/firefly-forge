@@ -129,4 +129,9 @@ describe("authenticated API client", () => {
     ]);
     expect(() => parseCommands('["npm test"]')).toThrow();
   });
+  it("leaves new-work command durations open until a project explicitly limits them", () => {
+    expect(
+      parseCommands('[["uv","run","pytest"]]', { workDurationV2: true }),
+    ).toEqual([{ argv: ["uv", "run", "pytest"], timeout: null }]);
+  });
 });

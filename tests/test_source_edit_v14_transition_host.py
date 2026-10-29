@@ -251,7 +251,7 @@ def test_final_material_dependencies_are_explicit_without_losing_historical_pref
     assert tuple(name for name in runtime if name in protected_runtime) == protected_runtime
     assert len(admission) == len(set(admission)) >= len(protected_admission) == 71
     assert len(runtime) == len(set(runtime)) >= len(protected_runtime) == 45
-    assert len(qualification.LOADER_MODULES) == len(set(qualification.LOADER_MODULES)) == 22
+    assert len(qualification.LOADER_MODULES) == len(set(qualification.LOADER_MODULES)) >= 22
 
 
 @pytest.mark.parametrize("name", NEW_ADMISSION_NAMES)

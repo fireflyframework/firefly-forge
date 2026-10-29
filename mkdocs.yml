@@ -115,6 +115,7 @@ nav:
       - Files in AI conversations: assistant-files.md
       - Configure provider access: configuration.md
       - Configure execution runners: sandbox.md
+      - Wait for owned processes: runner-monitors.md
       - Review browser journeys: browser-qa.md
       - Project and central policies: policies.md
       - Agent bridge connection: bridge.md
