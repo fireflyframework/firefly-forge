@@ -43,6 +43,8 @@ Read the run's [retained evidence](docs/run-evidence.md) to distinguish coding-p
 
 ## Choose how the factory executes work
 
+New runs record their work-duration policy. Work has no fixed deadline by default; choose one when the project needs it. The [runner guide](docs/sandbox.md) explains ownership heartbeats, independent request waits and trusted-host process tools. Runner and provider capabilities determine which combinations can execute; captured older runs retain their original policy.
+
 The default combined service admits and executes work. A split installation separates API replicas from headless workers: one execution leader runs the jobs while other workers wait as standbys. Processes share the PostgreSQL ledger and retained private storage. Standbys provide takeover; they do not add a distributed pool of active workers. See [runtime roles](docs/runtime-roles.md) and [factory infrastructure](docs/factory-infrastructure.md).
 
 Choose and verify the execution environment before admitting a run. Git workspaces protect the consumer checkout; host commands still run with the worker's operating-system identity. Project users require isolated execution, while host coding and host verification require current administrator authority. [Runner configuration](docs/sandbox.md) and [security](docs/security.md) describe the enforced boundaries.

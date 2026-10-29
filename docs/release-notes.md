@@ -5,6 +5,18 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.48 — implementation preview
+
+New runs record a versioned work policy. The default has no fixed work deadline. Operators can choose a positive deadline when a project needs one; request waits and ownership heartbeats are configured separately. Old runs retain their captured policy. The CLI and automatic framework checks use the same distinction. See [runner configuration](sandbox.md).
+
+Trusted-host process tools can start a command, inspect its output, wait for a condition and cancel the owned process group. A waiting observation can finish while the process continues. The runner reports unsupported container, pool and required-checkpoint combinations before dispatch. This preview does not establish uncapped execution in those environments.
+
+Checkpoint version 3 retains the selected work policy. Provider negotiation requires an advertised compatible protocol; the factory refuses an unsupported request instead of selecting a hidden deadline.
+
+Acknowledged-command custody follows the native implementation intent and receipt. A model response can update progress before its terminal receipt commits; this interval retains its unfinished native phase for the existing acknowledgement proof. Unknown command outcomes and spent budgets remain unchanged.
+
+The combined source still requires fresh native qualification, package validation and installed acceptance. Distributed ownership and managed subagent delegation require their own verification before they can be enabled. Follow [agent lifecycle](agent-lifecycle.md) and [run evidence](run-evidence.md) when reviewing a delivery.
+
 ## 0.2.47 — implementation preview
 
 Official framework references have immutable corpus identities, bounded refresh operations, version checks and generation pins. Binary reference exclusions do not grant authority to corrupt private cache bytes. The catalog retains its original 322 prompt entries and adds eleven framework templates; the MCP surface has 182 tools. See [framework reference refresh](framework-knowledge-refresh.md).

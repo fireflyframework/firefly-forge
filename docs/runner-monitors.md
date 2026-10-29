@@ -58,24 +58,29 @@ A start request may include `timeout_seconds` when that job needs a deadline. Th
 
 The wait returns typed evidence with `condition`, `outcome`, and `observation`. `outcome` is `satisfied`, `timeout`, `process_ended`, or `unavailable`. Unverified terminal custody reports `unavailable`; it cannot satisfy an exit condition. A verified exit condition can be satisfied by a failed process: inspect `exit_code` to decide what to do next. A wait timeout or cancellation of the wait itself leaves the service running. Call `cancel_process` with its monitor ID when finished; cancellation or completion of the whole agent invocation also drains its owned monitors.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Process readiness and cleanup sequence" aria-describedby="process-readiness-guide" tabindex="0" markdown="1">
+
 ```mermaid
 sequenceDiagram
     participant Agent
     participant Runner
     participant Service
-    Agent->>Runner: start_process(argv, optional work timeout)
+    Agent->>Runner: start_process(argv)<br/>Optional work deadline
     Runner->>Service: Start owned process group
     Runner-->>Agent: Running handoff and monitor ID
-    Note over Runner,Service: Ownership heartbeats continue while the owner and its authority remain current
-    Agent->>Runner: wait_process(readiness condition)
+    Note over Runner,Service: Renew ownership<br/>while authority is current
+    Agent->>Runner: wait_process()<br/>Readiness condition
     Service-->>Runner: Output or confined file event
     Runner-->>Agent: Condition evidence
-    Agent->>Runner: execute_command(test client)
+    Agent->>Runner: execute_command()<br/>Test client
     Runner-->>Agent: Actual command result
     Agent->>Runner: cancel_process(monitor ID)
     Runner->>Service: Drain reserved process group
-    Runner-->>Agent: Terminal receipt and real exit code
+    Runner-->>Agent: Terminal receipt<br/>and real exit code
 ```
+
+</div>
+<p class="forge-flow-caption" id="process-readiness-guide">The agent waits for observed readiness before testing the service, then closes its owned process. Scroll horizontally on a small screen to follow the exchanges.</p>
 
 ## Read status and output
 

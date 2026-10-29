@@ -2,6 +2,14 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.48 — Unreleased
+
+- Give newly admitted runs an explicit work-duration policy. Work has no fixed deadline by default; an optional chosen deadline remains separate from ownership, request waiting and cleanup. Preserve captured legacy policies.
+- Add trusted-host process tools to start work, inspect logs, wait for a result and cancel its owned process group. Advertise their supported runner and checkpoint modes before dispatch.
+- Remove implicit deadlines from new CLI checks, CLI observation and automatic framework conformance. Keep explicit project policies and existing command accounting.
+- Bind checkpoint version 3 to the selected work policy and provider capability. Refuse unsupported uncapped container or pool execution before starting work.
+- Derive acknowledged-command custody from the current native implementation intent and receipt, including the interval after a model responds and before the terminal receipt commits. Preserve unknown outcomes, previous acknowledgements and spent budgets.
+
 ## 0.2.47 — Unreleased
 
 - Add immutable, version-isolated official framework references, bounded refresh operations, verified private-cache reads, and generation target pins. Extend the prompt catalog with eleven entries while retaining the original 322, and expose 182 MCP tools.

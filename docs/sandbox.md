@@ -64,14 +64,24 @@ The optional native process tools let an agent start an owned background process
 
 Follow [Wait for an owned process](runner-monitors.md) for the tool requests, ownership checks and cleanup receipts.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Owned process lifecycle" aria-describedby="owned-process-flow-guide" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
 flowchart LR
-    A[Start owned process] --> B[Record handoff in WAL]
-    B --> C[Wait for condition]
-    C --> D[Return observed evidence]
-    D --> E[Run the next authorized tool]
-    E --> F[Cancel and record cleanup]
+    A["Start owned<br/>process"] --> B["Record WAL<br/>handoff"]
+    B --> C["Wait for<br/>condition"]
+    C --> D["Read observed<br/>evidence"]
+    D --> E["Run next<br/>authorized tool"]
+    E --> F["Cancel and<br/>record cleanup"]
 ```
+
+</div>
+<p class="forge-flow-caption" id="owned-process-flow-guide">Follow the process from left to right. On a small screen, focus the diagram and scroll horizontally to keep the labels readable.</p>
 
 An observed exit includes the actual exit code; it does not establish that the task succeeded. Waiting has no time limit by default. An explicitly chosen wait timeout returns control while the owned process continues; a chosen work deadline stops the process. Owner heartbeats continue during the wait. Explicit process cancellation or the end of the agent invocation drains owned processes. A service restart never silently adopts or redispatches a retained handle. Unknown ownership or cleanup remains a reconciliation condition.
 
