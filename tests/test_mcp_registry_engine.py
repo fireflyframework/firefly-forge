@@ -27,6 +27,7 @@ from firefly_forge.workspace_tools import WorkspaceTools, tool_catalog
 async def test_actual_engine_routes_reviewed_mcp_and_unknown_response_prevents_consolidation(
     store, tmp_path, monkeypatch, unknown
 ):
+    await store.acquire_ownership()
     initial = await fixture_run(store, tmp_path)
     local = await store.repository(initial["repository_id"])
     repo = await store.add_repository(

@@ -27,6 +27,14 @@ class ForgeToolInvocationEntity(BaseEntity):
 
 @repository
 class ForgeToolInvocationRepository(Repository[ForgeToolInvocationEntity, UUID]):
+    async def invocation(self, run_id: UUID, correlation_id: str) -> ForgeToolInvocationEntity | None:
+        return await self._require_session().scalar(
+            select(ForgeToolInvocationEntity).where(
+                ForgeToolInvocationEntity.run_id == run_id,
+                ForgeToolInvocationEntity.correlation_id == correlation_id,
+            )
+        )
+
     async def for_run(self, run_id: UUID) -> list[ForgeToolInvocationEntity]:
         return list(
             await self._require_session().scalars(

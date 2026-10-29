@@ -203,6 +203,11 @@ def runtime_contract() -> str:
                     "runner_run_authority.py",
                     "runner_run_owner.py",
                     "mcp_registry.py",
+                    "tool_operation_models.py",
+                    "tool_operation_lease.py",
+                    "tool_operations.py",
+                    "tool_persistence.py",
+                    "project_access.py",
                 )
             },
         }

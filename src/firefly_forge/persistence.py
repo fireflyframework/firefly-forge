@@ -323,6 +323,17 @@ class ForgeTaskRepository(Repository[ForgeTaskEntity, UUID]):
 
 @repository
 class ForgeJournalRepository(Repository[ForgeJournalEntity, UUID]):
+    async def task_record(self, run_id: UUID, key: str, kind: str) -> ForgeJournalEntity | None:
+        if kind not in {"intent", "receipt"}:
+            raise ValueError("Select an original native task intent or receipt")
+        return await self._require_session().scalar(
+            select(ForgeJournalEntity).where(
+                ForgeJournalEntity.run_id == run_id,
+                ForgeJournalEntity.idempotency_key == key,
+                ForgeJournalEntity.kind == kind,
+            )
+        )
+
     async def bridge_budget(self, run_id: UUID) -> dict[str, int]:
         row = (
             await self._require_session().execute(
