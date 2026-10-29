@@ -455,3 +455,53 @@ async def test_terminal_observation_waits_for_verified_drain_and_commit(tmp_path
             assert waited["outcome"] == "unavailable"
         else:
             assert final["exit_code"] == 3
+
+
+async def test_parallel_owned_processes_keep_waits_logs_and_cancellation_independent(tmp_path, recorded):
+    rows, record = recorded
+    identities = ("d" * 32, "e" * 32)
+    async with OwnedProcessMonitor(tmp_path, record=record, owner_grace_seconds=1) as manager:
+        await asyncio.gather(
+            *(
+                manager.start(
+                    identity,
+                    MonitorStartInput(
+                        argv=python(
+                            "from pathlib import Path; import time; "
+                            f"print('{identity[0]} ready'); "
+                            f"\nwhile not Path('{identity[0]}.finish').exists(): time.sleep(.01)"
+                            f"\nprint('{identity[0]} done')"
+                        )
+                    ),
+                )
+                for identity in identities
+            )
+        )
+        ready = await asyncio.gather(
+            *(
+                manager.wait(
+                    MonitorWaitInput(
+                        monitor_id=identity,
+                        condition={"kind": "output", "text": identity[0] + " ready"},
+                    )
+                )
+                for identity in identities
+            )
+        )
+        assert all(result["outcome"] == "satisfied" for result in ready)
+        assert all(result["observation"]["work_deadline_ms"] is None for result in ready)
+        first = await manager.cancel(identities[0])
+        assert first["status"] == "cancelled"
+        assert first["exit_code"] is not None
+        assert (await manager.status(identities[1]))["status"] == "running"
+        assert (await manager.logs(identities[1]))["output"] == "e ready\n"
+        (tmp_path / "e.finish").write_text("continue")
+        second = await manager.wait(MonitorWaitInput(monitor_id=identities[1], condition={"kind": "exit"}))
+        assert second["outcome"] == "satisfied"
+        assert second["observation"]["exit_code"] == 0
+        assert (await manager.logs(identities[1]))["output"] == "e ready\ne done\n"
+        for identity in identities:
+            records = [(kind, value) for kind, value in rows if value["monitor_id"] == identity]
+            assert [kind for kind, _ in records] == ["monitor_spawn_intent", "monitor_started", "monitor_terminal"]
+            assert records[-1][1]["process_group_drained"] is True
+            assert records[0][1]["work_deadline_ms"] is None
