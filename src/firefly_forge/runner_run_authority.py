@@ -69,27 +69,40 @@ def validate_run_authority(
     if policy.profile.run_liveness != RUN_LIVENESS_PROTOCOL or snapshot.get("digest") != binding.snapshot_digest:
         raise ValueError("Run ownership differs from the explicit frozen runner policy")
     policy.profile.validate_invocation(invocation)
-    payload = wal.get("request") or {}
-    command = payload.get("command") or {}
+    payload = wal.get("request")
+    if (
+        type(payload) is not dict
+        or type(payload.get("command")) is not dict
+        or type(payload.get("request")) is not dict
+    ):
+        raise ValueError("Run ownership requires its original JSON command and request")
+    command = payload["command"]
+    expected_command = {
+        "argv": list(invocation.argv),
+        "cwd": invocation.cwd,
+        "timeout": invocation.timeout,
+        "snapshot_digest": binding.snapshot_digest,
+    }
+    expected_request_digest = run_digest(invocation.model_dump(mode="json"))
     if (
         wal.get("execution_id") != invocation.execution_id
         or wal.get("run_id") != invocation.run_id.hex
         or wal.get("task_id") != binding.task_id
         or wal.get("status") != "running"
-        or wal.get("parent_attempt") != binding.attempt
+        or type(wal.get("parent_attempt")) is not int
+        or wal["parent_attempt"] != binding.attempt
         or wal.get("snapshot_digest") != binding.snapshot_digest
         or type(wal.get("ordinal")) is not int
         or not 1 <= wal["ordinal"] <= policy.command_limit
-        or payload.get("ordinal") != wal["ordinal"]
-        or payload.get("parent_attempt") != binding.attempt
+        or type(payload.get("ordinal")) is not int
+        or payload["ordinal"] != wal["ordinal"]
+        or type(payload.get("parent_attempt")) is not int
+        or payload["parent_attempt"] != binding.attempt
         or payload.get("snapshot_digest") != binding.snapshot_digest
-        or payload.get("factory_fence") != fence.model_dump(mode="json")
-        or payload.get("request") != invocation.model_dump(mode="json")
-        or payload.get("request_digest") != run_digest(invocation.model_dump(mode="json"))
-        or command.get("argv") != list(invocation.argv)
-        or command.get("cwd") != invocation.cwd
-        or command.get("timeout") != invocation.timeout
-        or command.get("snapshot_digest") != binding.snapshot_digest
+        or run_digest(payload.get("factory_fence")) != run_digest(fence.model_dump(mode="json"))
+        or run_digest(payload["request"]) != expected_request_digest
+        or payload.get("request_digest") != expected_request_digest
+        or run_digest({key: command.get(key) for key in expected_command}) != run_digest(expected_command)
         or wal.get("effects", {}).get("start", {}).get("status") != "intent"
         or "cleanup" in wal.get("effects", {})
     ):

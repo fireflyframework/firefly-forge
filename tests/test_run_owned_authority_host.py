@@ -297,3 +297,25 @@ def test_run_top_level_work_policy_change_revokes_the_original_owner():
     run["work_duration"] = {"protocol": "forge-work-duration-v2", "timeout_seconds": 12}
     with pytest.raises(ValueError):
         validator()(request, fence, run, task, wal)
+
+
+@pytest.mark.parametrize(
+    "changed", ["ordinal_bool", "stdin_bool", "command_float", "fence_float", "attempt_float", "wal_attempt_float"]
+)
+def test_raw_wal_json_cannot_coerce_values_while_retaining_the_original_digest(changed):
+    request, fence, run, task, wal = copy.deepcopy(case())
+    payload = wal["request"]
+    if changed == "ordinal_bool":
+        payload["ordinal"] = True
+    elif changed == "stdin_bool":
+        payload["request"]["stdin_bytes"] = False
+    elif changed == "command_float":
+        payload["command"]["timeout"] = float(request.timeout)
+    elif changed == "fence_float":
+        payload["factory_fence"]["pid"] = float(fence.pid)
+    elif changed == "attempt_float":
+        payload["parent_attempt"] = float(payload["parent_attempt"])
+    else:
+        wal["parent_attempt"] = float(wal["parent_attempt"])
+    with pytest.raises(ValueError):
+        validator()(request, fence, run, task, wal)
