@@ -22,7 +22,7 @@ async def seed(store):
         RepositoryInput(name="Owned source", url="https://example.invalid/owned.git")
     )
     run = await store.create_run(RunInput(repository_id=repository["id"], brief="Owned source transfer"))
-    await store.update(run["id"], status="running")
+    await store.update(run["id"], status="validating")
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "verify")
@@ -96,7 +96,7 @@ async def test_repository_read_and_project_execute_are_rechecked_after_membershi
         )
     finally:
         CURRENT_PRINCIPAL.reset(context)
-    await store.update(run["id"], status="running")
+    await store.update(run["id"], status="validating")
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
     await journal.intent(run["id"], "verify")
