@@ -350,6 +350,7 @@ def admission_contract_digest() -> str:
                 "delegation_sources.py",
                 "delegation_ledger.py",
                 "factory_delegations.py",
+                "delegation_lifecycle.py",
             )
         }
     )
