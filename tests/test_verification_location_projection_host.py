@@ -2,6 +2,7 @@
 """Maintenance projection binds new QA inputs without rewriting logical history."""
 
 import copy
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,8 @@ from test_verification_scope_commit_host import build_scope_case as build_scope_
 
 from firefly_forge.journal import digest
 from firefly_forge.native_location_projection import project_native_argv
+
+requires_darwin_scope = pytest.mark.skipif(sys.platform != "darwin", reason="Confined build scope requires Darwin host")
 
 
 @pytest.fixture
@@ -76,6 +79,7 @@ def relocated_scope(build_scope_case, tmp_path, monkeypatch):
     return c
 
 
+@requires_darwin_scope
 async def test_new_scope_binds_logical_and_physical_commands_and_maintenance_receipt(relocated_scope):
     from firefly_forge.verification_scope_attestation import mapped_argv, prepare_build_scope, scope_record
 
@@ -102,6 +106,7 @@ async def test_new_scope_binds_logical_and_physical_commands_and_maintenance_rec
 
 
 @pytest.mark.parametrize("change", ["revoked", "changed_record"])
+@requires_darwin_scope
 async def test_relocated_scope_fence_refuses_lost_or_replaced_live_authority(relocated_scope, change):
     from firefly_forge.verification_scope_attestation import prepare_build_scope
 
@@ -119,6 +124,7 @@ async def test_relocated_scope_fence_refuses_lost_or_replaced_live_authority(rel
 
 
 @pytest.mark.parametrize("change", ["physical_argv", "workspace", "raw_type"])
+@requires_darwin_scope
 async def test_retained_scope_rejects_tampered_physical_mapping(relocated_scope, change):
     from firefly_forge.verification_scope_attestation import prepare_build_scope, scope_record
 
@@ -139,6 +145,7 @@ async def test_retained_scope_rejects_tampered_physical_mapping(relocated_scope,
         scope_record(c.run, c.intent, [handoff, dict(kind="verification_build_scope", payload=wire, sequence=2)])
 
 
+@requires_darwin_scope
 async def test_no_maintenance_keeps_v1_wire_and_new_baseline_cannot_equal_old_scope(build_scope_case, monkeypatch):
     from firefly_forge import verification_scope_attestation as scope
 
@@ -158,6 +165,7 @@ async def test_no_maintenance_keeps_v1_wire_and_new_baseline_cannot_equal_old_sc
     assert "physical_argv" not in wire["checks"][0]
 
 
+@requires_darwin_scope
 async def test_reuse_rejects_predecessor_scope_after_runtime_baseline_selection(relocated_scope):
     from firefly_forge import verification_scope_attestation as scope
 
@@ -178,6 +186,7 @@ async def test_reuse_rejects_predecessor_scope_after_runtime_baseline_selection(
         await scope.assert_scope_location(c.store, old)
 
 
+@requires_darwin_scope
 async def test_unscoped_database_command_projects_exact_executable_without_build_wrapper(relocated_scope):
     from firefly_forge.verification_scope_attestation import mapped_argv, prepare_build_scope
 
@@ -199,6 +208,7 @@ async def test_unscoped_database_command_projects_exact_executable_without_build
     assert [check.command_index for check in prepared.witness.checks] == [1]
 
 
+@requires_darwin_scope
 async def test_new_declared_runtime_baseline_is_bound_even_when_paths_and_package_bytes_match(relocated_scope):
     from firefly_forge.verification_scope_attestation import prepare_build_scope
 
@@ -224,6 +234,7 @@ async def test_new_declared_runtime_baseline_is_bound_even_when_paths_and_packag
         await original.fence()
 
 
+@requires_darwin_scope
 async def test_new_physical_handoff_workspace_projection_is_idempotent(relocated_scope):
     from firefly_forge.verification_scope_attestation import prepare_build_scope, scope_record
 
@@ -256,6 +267,7 @@ def test_explicit_native_handoff_without_reusable_scope_projects_frozen_command(
         mapped_argv(c.run, c.intent, [], 0)
 
 
+@requires_darwin_scope
 async def test_reusable_scope_must_match_its_exact_native_handoff_record(relocated_scope):
     from firefly_forge.verification_scope_attestation import mapped_argv, prepare_build_scope, scope_record
 
