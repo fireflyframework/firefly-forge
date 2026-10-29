@@ -79,7 +79,7 @@ while chunk:=client.recv(4096):
  data.extend(chunk)
  assert len(data)<=4096
 value=json.loads(data)
-assert value['protocol']=='forge-runner-owner-status-v2'
+assert value['protocol'] in ('forge-runner-owner-status-v2','forge-runner-owner-status-v3')
 print(json.dumps(value))
 """
 
@@ -89,12 +89,15 @@ def owned_launcher() -> str:
     import inspect
 
     from firefly_forge.runner_pool_owner import OwnerLiveness, _owner_body
+    from firefly_forge.runner_run_owner import RunOwnerLiveness, _run_owner_body
 
     prefix = (
         "from __future__ import annotations\n"
-        "import ctypes,hashlib,hmac,json,os,re,secrets,shutil,signal,socket,subprocess,sys,threading,time\n"
+        "import ctypes,hashlib,hmac,json,math,os,re,secrets,shutil,signal,socket,subprocess,sys,threading,time\n"
     )
-    reducer = inspect.getsource(_owner_body) + "\n" + inspect.getsource(OwnerLiveness)
+    reducer = "\n".join(
+        inspect.getsource(value) for value in (_owner_body, OwnerLiveness, _run_owner_body, RunOwnerLiveness)
+    )
     program = """
 assert os.getpid()==1
 assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0
@@ -106,7 +109,13 @@ with open('/forge-input/invocation.json','r') as source: config=json.load(source
 assert config['work_duration']=={'protocol':'forge-work-duration-v2','timeout_seconds':config['timeout']}
 assert type(config['max_output_bytes']) is int and 1024<=config['max_output_bytes']<=2000000
 shutil.copytree('/forge-input/source','/workspace',dirs_exist_ok=True,symlinks=True)
-owner=OwnerLiveness(config['execution_id'],secrets.token_bytes(32),config['owner_grace_seconds'],signal.alarm)
+def create_owner():
+ if 'run_liveness_sha256' in config:
+  return RunOwnerLiveness(
+   config['execution_id'],config['run_liveness_sha256'],secrets.token_bytes(32),
+   config['owner_grace_seconds'],signal.alarm)
+ return OwnerLiveness(config['execution_id'],secrets.token_bytes(32),config['owner_grace_seconds'],signal.alarm)
+owner=create_owner()
 released=threading.Event()
 server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
 server.bind('/tmp/forge-owner.sock')

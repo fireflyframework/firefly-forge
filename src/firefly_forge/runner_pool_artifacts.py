@@ -233,6 +233,8 @@ class RunnerPoolArtifacts:
             configuration["work_duration"] = invocation.work_duration.model_dump(mode="json")
             configuration["owner_grace_seconds"] = profile.lease_seconds
             configuration["max_output_bytes"] = invocation.max_output_bytes
+        if invocation.run_liveness is not None:
+            configuration["run_liveness_sha256"] = pool_digest(invocation.model_dump(mode="json"))
         command = json.dumps(configuration).encode()
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as stream:

@@ -168,6 +168,18 @@ The pool supervisor reaps adopted child processes while the command runs. Before
 
 Factory records a local preparation receipt and durable start intent before its single submission. A lost response leaves that start uncertain; repeat calls never resubmit. Returned archives and output are retained before atomic publication. Concurrent host edits reject publication while preserving the returned artifact and host source. Restart recovery observes or cancels the original controller identity, records interruption and drains observed resources without automatically importing source or replaying commands.
 
+### Run-bound command ownership
+
+An administrator may explicitly select `run_liveness: forge-run-owned-liveness-v1` on a new pool profile that also selects `work_duration`. The resulting invocation seals the original run, implementation or verification stage, stage attempt and deterministic original task key, actor, component and runner snapshot, Factory fence and fresh worker epoch. Profiles and invocations without this selector retain their existing serialized contract.
+
+The worker renews one controller lease only after rechecking the current run and stage authority. The private authenticated `POST /runner/v1/renew-run` control accepts the exact invocation, Factory fence, controller epoch, next sequence and one-use challenge. A controller rechecks the original command start WAL, journal chain and current actor permissions before granting renewal. Factory-wide health cannot renew a specific run. Cancellation, a changed stage or actor, expired ownership and lost acknowledgements stop that run's renewal; another healthy run keeps its own lease.
+
+For the selected protocol, each PID1 owner message authenticates the entire invocation digest and a new worker grant sequence. Status observation cannot refresh the owner alarm. A fresh grant's remaining time is measured from the peer challenge, so transport delay cannot restart its grace period. The owner heartbeat bounds loss of authorization; it is separate from the explicitly chosen work deadline. Cleanup uses the existing finite drain window and exact resource labels.
+
+A restarted controller has no authority to recreate the volatile grant. It quarantines retained commands without a live matching controller epoch, and repeat submission or implicit continuation cannot redispatch them. Keep uncertain outcomes for observation and reconciliation.
+
+Uncapped pool and plain Docker work remain unavailable pending native proof of the complete execution boundary. The run-bound protocol currently requires an effective explicit project or administrator work deadline. Controlled POSIX process-group tests establish local alarm and sibling-isolation behavior; they do not establish Linux PID1, Docker, PostgreSQL or distributed native acceptance. Ordinary foreground host commands retain their crash-reconciliation limitation. A child wait that preserves the active run and task does not revoke ownership; a wait marker cannot grant renewal. Paused verification handoffs require their separate custody protocol and remain unavailable through this pool selector.
+
 ### Continue one queued command after a controller restart
 
 A currently authorized operator may request continuation of one original pool command while its Factory worker is still waiting. The Factory run and stage must remain active under the original database owner. This does not resume an interrupted run or submit a replacement command.

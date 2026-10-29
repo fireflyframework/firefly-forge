@@ -82,13 +82,24 @@ class DockerPoolDispatcher:
                 raise RuntimeError("Approved runner images must already be cached on the pinned daemon")
 
     async def fenced_control(
-        self, argv: list[str], guard: Guard, *, timeout: int = 30, limit: int = 500_000, input_data: bytes | None = None
+        self,
+        argv: list[str],
+        guard: Guard,
+        *,
+        timeout: int = 30,
+        limit: int = 500_000,
+        input_data: bytes | None = None,
+        input_factory: Callable[[], bytes] | None = None,
     ) -> tuple[int, bytes]:
+        if input_data is not None and input_factory is not None:
+            raise ValueError("Owned runner control must select one immutable input")
         await guard()
         await self.verify_daemon()
         # This check closes loss during identity validation. An in-flight daemon
         # request still has an unknown outcome on fence/transport loss; never retry it.
         await guard()
+        if input_factory is not None:
+            input_data = input_factory()
         return await self.transport(argv, timeout, limit, input_data)
 
     def name(self, invocation: RunnerInvocation) -> str:

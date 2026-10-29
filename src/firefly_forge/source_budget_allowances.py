@@ -344,6 +344,15 @@ def admission_contract_digest() -> str:
                 "runner_monitor_custody.py",
                 "runner_monitors.py",
                 "checkpoint_work_duration.py",
+                "runner_controller.py",
+                "runner_pools.py",
+                "runner_pool_persistence.py",
+                "runner_factory_authority.py",
+                "runner_pool_models.py",
+                "runner_factory_models.py",
+                "runner_run_liveness.py",
+                "runner_run_authority.py",
+                "runner_run_owner.py",
             )
         }
     )

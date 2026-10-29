@@ -23,6 +23,15 @@ MATERIAL = (
     "runner_pool_execution.py",
     "runner_pool_artifacts.py",
     "runner_controller_client.py",
+    "runner_controller.py",
+    "runner_pools.py",
+    "runner_pool_persistence.py",
+    "runner_factory_authority.py",
+    "runner_pool_models.py",
+    "runner_factory_models.py",
+    "runner_run_liveness.py",
+    "runner_run_authority.py",
+    "runner_run_owner.py",
 )
 
 
