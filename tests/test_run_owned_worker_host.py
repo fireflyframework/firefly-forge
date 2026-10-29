@@ -16,10 +16,11 @@ from firefly_forge.runner_run_liveness import RunLease, RunRenewalV1, run_digest
 
 @pytest.mark.parametrize("failure", [None, "revoked", "foreign_ack", "lost_renew"])
 @pytest.mark.parametrize("work_cap", [None, 864000])
+@pytest.mark.parametrize("admission_seconds", [1, 120])
 async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmission(
-    tmp_path, monkeypatch, failure, work_cap
+    tmp_path, monkeypatch, failure, work_cap, admission_seconds
 ):
-    _, fence, run, *_ = case(work_cap=work_cap)
+    _, fence, run, *_ = case(work_cap=work_cap, admission_seconds=admission_seconds)
     workspace = tmp_path / run["id"]
     workspace.mkdir()
     scope = {"run": run, "attempt": 2, "fence": fence}
@@ -71,6 +72,8 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
 
     async def observe(invocation):
         done = any(kind == "renew" for kind, _ in events)
+        if admission_seconds == 1 and not done:
+            assert ticks["now"] < 1, "Healthy waiting owner missed its explicit one-second security lease"
         return {
             "request": invocation.model_dump(mode="json"),
             "status": "finished" if done else "running",
@@ -96,7 +99,7 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
 
     def clock():
         before = ticks["now"]
-        ticks["now"] += 5
+        ticks["now"] += 0.05 if admission_seconds == 1 else 5
         return before
 
     monkeypatch.setattr(module, "pack_workspace", lambda *args, **kwargs: (source, "fixture"))
@@ -110,6 +113,14 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
     )
     worker.artifacts = SimpleNamespace(directory=tmp_path, credential_registry=lambda: {}, retain=lambda *args: None)
     worker.git_snapshot, worker.probe = SimpleNamespace(build=metadata), probe
+    timers = []
+    original_timeout = asyncio.timeout
+
+    def timeout(value):
+        timers.append(value)
+        return original_timeout(value)
+
+    monkeypatch.setattr(asyncio, "timeout", timeout)
     with pytest.raises(RuntimeError, match="reconciliation"):
         await worker.execute(run["id"], workspace, workspace, ["fixture"], work_cap, "verify")
     assert events.count(("submit", "b" * 32)) == 1
@@ -117,6 +128,7 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
     assert events.count(("cancel", "b" * 32)) == 1
     assert state["wal"]["request"]["run_liveness"]["worker_epoch"]
     assert worker.waiting == {}
+    assert timers == ([] if failure == "foreign_ack" else [None])
 
 
 def run_digest_bytes(value):
@@ -150,4 +162,7 @@ async def test_probe_requires_exact_controller_renewal_capability_before_dispatc
     with pytest.raises(RuntimeError, match="ownership|liveness|unsupported"):
         await worker.probe(snapshot)
     response["run_liveness_protocols"] = ["forge-run-owned-liveness-v1"]
+    with pytest.raises(RuntimeError, match="admission"):
+        await worker.probe(snapshot)
+    response["run_admission_protocols"] = ["forge-run-owned-admission-v1"]
     assert (await worker.probe(snapshot))["available"] is True

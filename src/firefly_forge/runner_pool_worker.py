@@ -27,6 +27,7 @@ from firefly_forge.runner_pool_artifacts import ArtifactKind, RunnerPoolArtifact
 from firefly_forge.runner_pool_bundle import frame_project_archives
 from firefly_forge.runner_pool_models import RunnerProjectInvocation, pool_digest
 from firefly_forge.runner_run_liveness import (
+    RUN_ADMISSION_PROTOCOL,
     RUN_LIVENESS_PROTOCOL,
     RunLivenessBindingV1,
     run_cut_digest,
@@ -74,6 +75,10 @@ class RunnerPoolWorker:
             "run_liveness_protocols", []
         ):
             raise RuntimeError("Frozen run ownership protocol is unsupported by this controller")
+        if policy.profile.run_liveness is not None and RUN_ADMISSION_PROTOCOL not in profile.get(
+            "run_admission_protocols", []
+        ):
+            raise RuntimeError("Frozen run-owned admission renewal is unsupported by this controller")
         if (
             profile.get("profile") != policy.profile.model_dump(mode="json")
             or profile.get("revision") != policy.profile.revision
@@ -413,9 +418,13 @@ class RunnerPoolWorker:
                         invocation.run_liveness,
                         sequence=0,
                     )
-                    renew_at = self.run_clock() + policy.profile.lease_seconds / 3
+                    renew_at = (
+                        self.run_clock() + min(policy.profile.admission_seconds, policy.profile.lease_seconds) / 3
+                    )
                 async with asyncio.timeout(
-                    None if invocation.timeout is None else policy.profile.admission_seconds + invocation.timeout + 120
+                    None
+                    if invocation.run_liveness is not None or invocation.timeout is None
+                    else policy.profile.admission_seconds + invocation.timeout + 120
                 ):
                     while True:
                         await self._current(run_id, task_id, scope)
@@ -454,7 +463,10 @@ class RunnerPoolWorker:
                                 controller_epoch=run_ack["controller_epoch"],
                             )
                             await self._current(run_id, task_id, scope)
-                            renew_at = self.run_clock() + policy.profile.lease_seconds / 3
+                            renew_at = (
+                                self.run_clock()
+                                + min(policy.profile.admission_seconds, policy.profile.lease_seconds) / 3
+                            )
                         await asyncio.sleep(0.1)
                 receipt = observed.get("receipt") or {}
                 if receipt.get("drained") is not True or type(receipt.get("exit_code")) is not int:

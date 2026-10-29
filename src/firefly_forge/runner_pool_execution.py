@@ -85,16 +85,23 @@ class RunnerPoolExecutions:
                     raise RuntimeError("Project bundle controller capability is inactive")
                 await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
             self.artifacts.retain(self.profile, invocation, "stdin", stdin)
-            result = await self.pools.submit(self.profile, invocation, fence=fence)
-            if invocation.run_liveness is not None:
-                await self._authorize_run(invocation, fence)
-                lease = RunLease(
+            lease = (
+                RunLease(
                     run_digest(invocation.model_dump(mode="json")),
                     invocation.run_liveness,
                     self.owner,
                     self.profile.lease_seconds,
                     clock=self.run_clock,
                 )
+                if invocation.run_liveness is not None
+                else None
+            )
+            result = await self.pools.submit(
+                self.profile, invocation, fence=fence, **({"run_lease": lease.ack()} if lease is not None else {})
+            )
+            if lease is not None:
+                await self._authorize_run(invocation, fence)
+                lease.remaining()
                 self.run_leases[invocation.execution_id] = lease
                 result = {**result, "run_lease": lease.ack()}
             self.fence = fence
@@ -134,12 +141,15 @@ class RunnerPoolExecutions:
         try:
             await self.pools.check_factory_fence(fence)
             await self._assert_run_current(invocation, fence)
+            acknowledgement = lease.renew(request)
+            await self.pools.renew_run_admission(self.profile, invocation, fence, request, acknowledgement)
+            await self._assert_run_current(invocation, fence)
         except Exception:
             lease.stop()
             with suppress(Exception):
                 await self.cancel(invocation.execution_id, fence)
             raise
-        return lease.renew(request)
+        return acknowledgement
 
     def _run_owner_channel(self, invocation: RunnerInvocation, container_id: str, guard: Guard) -> RunOwnerChannel:
         async def exchange(materialize: Callable[[], bytes]) -> bytes:

@@ -47,7 +47,7 @@ from firefly_forge.runner_pool_persistence import (
     ForgeRunnerPoolRepository,
 )
 from firefly_forge.runner_pools import RunnerPools
-from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL, RunRenewalV1
+from firefly_forge.runner_run_liveness import RUN_ADMISSION_PROTOCOL, RUN_LIVENESS_PROTOCOL, RunRenewalV1
 from firefly_forge.secrets import contains_known_credential
 
 UPLOAD_DEADLINE_SECONDS = 30
@@ -208,7 +208,7 @@ class RunnerControllerService:
         return {
             **({"workspace_protocols": ["forge-project-bundle-v1"]} if self.executions.git_snapshot else {}),
             **(
-                {"run_liveness_protocols": [RUN_LIVENESS_PROTOCOL]}
+                {"run_liveness_protocols": [RUN_LIVENESS_PROTOCOL], "run_admission_protocols": [RUN_ADMISSION_PROTOCOL]}
                 if self.settings.authority.profile.run_liveness
                 else {}
             ),

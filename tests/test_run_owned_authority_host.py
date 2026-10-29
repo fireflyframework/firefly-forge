@@ -18,9 +18,14 @@ from firefly_forge.runner_run_liveness import RunLivenessBindingV1, run_cut_dige
 from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 
-def case(*, lease_seconds=30, work_cap=864000):
+def case(*, lease_seconds=30, work_cap=864000, admission_seconds=120):
     duration = WorkDurationPolicyV2(timeout_seconds=work_cap)
-    pool = profile(work_duration=duration, run_liveness="forge-run-owned-liveness-v1", lease_seconds=lease_seconds)
+    pool = profile(
+        work_duration=duration,
+        run_liveness="forge-run-owned-liveness-v1",
+        lease_seconds=lease_seconds,
+        admission_seconds=admission_seconds,
+    )
     snapshot = capture_factory_pool(
         FactoryPoolSelection(profile=pool, image=pool.approved_images[0], work_duration=duration)
     )

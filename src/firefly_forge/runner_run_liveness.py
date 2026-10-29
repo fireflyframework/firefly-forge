@@ -15,6 +15,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import BaseModel, ConfigDict, Field
 
 RUN_LIVENESS_PROTOCOL = "forge-run-owned-liveness-v1"
+RUN_ADMISSION_PROTOCOL = "forge-run-owned-admission-v1"
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 Epoch = Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
 
