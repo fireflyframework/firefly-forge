@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
+from firefly_forge.invalid_read_continuity import _bytes
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_worker_completion_proof import (
     PreparedWorkerCompletion,
@@ -71,8 +72,8 @@ class NativeAcceptance:
         task = _task(await self.journal._task(current["id"], "implement"))
         entries = _entries(await self.journal.records.find_for_run(identifier(current["id"])), current["id"])
         if (
-            current != self.run
-            or task != self.task
+            _bytes(current) != _bytes(self.run)
+            or _bytes(task) != _bytes(self.task)
             or len(entries) != self.prepared.prefix_count
             or digest({"entries": entries}) != self.prepared.prefix_digest
             or _prepared_digest(self.prepared) != self.prepared.seal
@@ -95,10 +96,10 @@ class NativeAcceptance:
             _prepared_digest(prepared) != prepared.seal
             or _scope(current, task) != prepared.scope_digest
             or digest({"entries": entries[: prepared.prefix_count]}) != prepared.prefix_digest
-            or (current.get("usage") or {}).get("runtime_report") != prepared.report
+            or _bytes((current.get("usage") or {}).get("runtime_report")) != _bytes(prepared.report)
             or acceptance.get("kind") != self.kind
             or acceptance.get("idempotency_key") != self.key
-            or acceptance.get("payload") != self.payload
+            or _bytes(acceptance.get("payload")) != _bytes(self.payload)
             or len([entry for entry in entries if entry["digest"] == acceptance["digest"]]) != 1
             or any(
                 entry != acceptance
@@ -115,8 +116,8 @@ class NativeAcceptance:
         if self.kind == "worker_feedback":
             if (
                 not prepared.feedback
-                or current.get("worker_feedback") != prepared.feedback
-                or self.payload != prepared.feedback
+                or _bytes(current.get("worker_feedback")) != _bytes(prepared.feedback)
+                or _bytes(self.payload) != _bytes(prepared.feedback)
             ):
                 raise ValueError("Native terminal feedback differs from its real sanitized acceptance")
         elif (
