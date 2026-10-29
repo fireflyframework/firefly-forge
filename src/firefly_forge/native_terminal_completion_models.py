@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from firefly_forge.final_outcome_models import RetainedVerifiedSourceV1
 from firefly_forge.journal import digest
 from firefly_forge.known_worker_completion_models import CompletionCustodyV1, CompletionHoldV1
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
@@ -48,6 +49,7 @@ class NativeTerminalProofV1(StrictContract):
     accepted_payload_sha256: Digest
     source_checkpoint: dict[str, Any] | None
     verification: Literal["native_terminal_output_known_only"]
+    retained_source: RetainedVerifiedSourceV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     digest: Digest
 
     @model_validator(mode="after")
@@ -108,6 +110,10 @@ def validate_native_receipt(entry: dict[str, Any], entries: list[dict[str, Any]]
                 or consumed[0]["payload"].get("generation") != closure.generation
             ):
                 raise ValueError("Known final receipt changed the previously consumed native claim")
+    if value.proof.retained_source is not None:
+        from firefly_forge.retained_verified_source import validate_retained_source_receipt
+
+        validate_retained_source_receipt(value.proof.retained_source, entry, entries)
     matches = [record for record in entries if record["digest"] == value.proof.acceptance_record_digest]
     if (
         entry["kind"] != "terminal_completion_receipt"

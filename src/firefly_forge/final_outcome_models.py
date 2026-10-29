@@ -3,7 +3,7 @@
 
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
 
@@ -75,3 +75,32 @@ class FinalOutcomeStatusV1(StrictContract):
     original_admission_seal: Digest
     lease: dict[str, Any] | None
     run_status: str
+
+
+class RetainedVerifiedSourceV1(StrictContract):
+    version: Literal[1]
+    kind: Literal["retained_verified_final_source"]
+    run_id: NativeID
+    request_id: NativeID
+    attempt: int = Field(ge=2, strict=True)
+    parent_attempt: int = Field(ge=1, strict=True)
+    task_key: NativeID
+    final_outcome_witness_digest: Digest
+    terminal_receipt_digest: Digest
+    verification_custody_digest: Digest
+    handoff_intent_digest: Digest
+    handoff_outcome_digest: Digest
+    continuation_intent_digest: Digest
+    source_digest: Digest
+    commands_digest: Digest
+    sandbox_digest: Digest
+    scope_digest: Digest
+    digest: Digest
+
+    @model_validator(mode="after")
+    def exact_source(self) -> "RetainedVerifiedSourceV1":
+        from firefly_forge.journal import digest
+
+        if self.attempt != self.parent_attempt + 1 or digest(self.model_dump(exclude={"digest"})) != self.digest:
+            raise ValueError("Retained source differs from its exact native verification continuation")
+        return self

@@ -617,8 +617,18 @@ async def execute_agentic(
         await invocation.guard()
         invocation.remaining()
     feedback = result.output.worker_feedback
+    retained_source = None
     if not tools.files_written and (feedback is None or feedback.disposition not in {"blocked", "clarification"}):
-        raise RuntimeError("Firefly Agentic returned without writing any project source")
+        if invocation is None:
+            raise RuntimeError("Firefly Agentic returned without writing any project source")
+        from firefly_forge.retained_verified_source import prepare_retained_source
+
+        try:
+            retained_source = await prepare_retained_source(
+                invocation.store, invocation.journal, await invocation.store.get_run(invocation.run["id"]), workspace
+            )
+        except ValueError as error:
+            raise RuntimeError("Firefly Agentic returned without writing any project source") from error
     usage = result.usage
     recorded_usage = {
         "input_tokens": usage.input_tokens,
@@ -626,6 +636,8 @@ async def execute_agentic(
         "requests": usage.requests,
         "files_written": sorted(tools.files_written),
     }
+    if retained_source is not None:
+        recorded_usage["retained_source"] = retained_source.proof.model_dump(mode="json")
     if feedback is not None:
         recorded_usage["worker_feedback"] = feedback.model_dump(mode="json")
     if result.output.qa_report is not None:

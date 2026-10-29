@@ -246,6 +246,7 @@ def admission_contract_digest() -> str:
                 "final_outcome_models.py",
                 "final_outcome_continuations.py",
                 "final_outcome_acceptance.py",
+                "retained_verified_source.py",
                 "final_outcome_controllers.py",
                 "native_terminal_completion_models.py",
                 "native_terminal_completions.py",

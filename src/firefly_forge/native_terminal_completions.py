@@ -40,6 +40,7 @@ class NativeAcceptance:
         checkpoint: Data | None,
         ownership: object,
         restored: Any = None,
+        retained_source: Any = None,
     ) -> None:
         self.journal, self.store = journal, journal.store
         self.run, self.task, self.prepared = run, task, prepared
@@ -47,9 +48,12 @@ class NativeAcceptance:
         self.actor = CURRENT_PRINCIPAL.get()
         self.ownership = ownership
         self.restored = restored
+        self.retained_source = retained_source
         self.completions = BridgeCompletions(self.store, journal)
 
     async def before(self) -> None:
+        if self.retained_source is not None:
+            self.retained_source.fence()
         await self.store.assert_ownership()
         if self.store.execution_ownership_token is not self.ownership or CURRENT_PRINCIPAL.get() != self.actor:
             raise AccessDenied("Native terminal acceptance lost its original execution lease or context")
@@ -82,6 +86,8 @@ class NativeAcceptance:
         self.store.reject_credentials(self.prepared.report)
 
     async def commit(self, acceptance: Data) -> None:
+        if self.retained_source is not None:
+            self.retained_source.fence()
         current = await self.store.get_run(self.run["id"])
         if current.get("checkpoint_mode_adoption"):
             from firefly_forge.checkpoint_mode_runtime import assert_active_mode
@@ -147,6 +153,11 @@ class NativeAcceptance:
             "source_checkpoint": self.checkpoint,
             "verification": "native_terminal_output_known_only",
         }
+        if self.retained_source is not None:
+            retained = self.retained_source.proof.model_dump(mode="json")
+            if current["usage"].get("retained_source") != retained:
+                raise ValueError("Native terminal retained-source authority changed")
+            proof["retained_source"] = retained
         proof["digest"] = digest(proof)
         payload = NativeTerminalReceiptV1.model_validate(
             {
@@ -265,10 +276,26 @@ async def _native_terminal_acceptance(
                 restored=restored,
             )
         )
+        retained_source = None
+        if run["usage"].get("retained_source") is not None:
+            from pathlib import Path
+
+            from firefly_forge.checkpoint_work_duration import checkpoint_payload
+            from firefly_forge.retained_verified_source import prepare_retained_source
+
+            current_checkpoint = next(e for e in reversed(entries) if e["kind"] == "agent_checkpoint")
+            binding = checkpoint_payload(current_checkpoint["payload"]).invocation
+            retained_source = await prepare_retained_source(store, journal, run, Path(binding.workspace["path"]))
+            if retained_source.proof.model_dump(mode="json") != run["usage"]["retained_source"]:
+                raise ValueError("Native terminal retained-source proof changed after runtime return")
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})
         if CURRENT_PRINCIPAL.get() != actor:
             raise AccessDenied("Native terminal execution context changed during preparation")
-        yield NativeAcceptance(journal, run, task, prepared, kind, key, payload, checkpoint, ownership, restored)
+        if retained_source is not None:
+            await retained_source.revalidate()
+        yield NativeAcceptance(
+            journal, run, task, prepared, kind, key, payload, checkpoint, ownership, restored, retained_source
+        )
 
 
 async def _admit_duplicate(
