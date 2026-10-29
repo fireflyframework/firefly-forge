@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import shutil
+import stat
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -21,7 +23,7 @@ from firefly_forge.journal import digest
 from firefly_forge.private_identity import private_identity
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.secrets import runtime_environment
-from firefly_forge.source_catalog import _json, _private
+from firefly_forge.source_catalog import _json, _private, _stamp
 from firefly_forge.verification_dependencies import prepare_dependency_capture, prepare_public_source_cut
 from firefly_forge.verification_scope import SANDBOX_EXEC, build_check_kind, build_profile, wrap_build_argv
 from firefly_forge.verification_source_preparation import verification_catalog_root
@@ -147,6 +149,68 @@ def _runtime_boundary_guard(
     workspace_paths = aliases(workspace)
     state_paths = aliases(private_state) if private_state is not None else set()
     runtime_paths = {alias for root in runtime_roots or [] for alias in aliases(root)}
+    npm_builtins: dict[Path, list[tuple[Path, list[int]]]] = {}
+
+    def empty_npm_builtin(path: Path) -> bool:
+        if path.name != ".npmrc" or path != path.resolve():
+            return False
+        if path not in npm_builtins:
+            for executable in runtime_roots or []:
+                if executable.name != "npm" or executable.parent.name != "bin":
+                    continue
+                prefix = executable.parent.parent
+                package = prefix / "lib" / "node_modules" / "npm"
+                cli, manifest, node = package / "bin" / "npm-cli.js", package / "package.json", prefix / "bin" / "node"
+                if (
+                    path != package / ".npmrc"
+                    or cli not in (runtime_roots or [])
+                    or prefix not in (runtime_roots or [])
+                    or executable.resolve() != cli
+                ):
+                    continue
+                captured: list[tuple[Path, list[int]]] = []
+                for selected in (path, package, executable, cli, manifest, node):
+                    info = selected.lstat()
+                    if (
+                        selected != executable
+                        and selected != selected.resolve()
+                        or info.st_uid not in {0, os.getuid()}
+                        or getattr(info, "st_flags", 0) & getattr(stat, "SF_DATALESS", 0)
+                        or (selected == package and not stat.S_ISDIR(info.st_mode))
+                        or (selected not in {package, executable} and not stat.S_ISREG(info.st_mode))
+                        or (selected != package and info.st_nlink != 1)
+                        or (selected == path and info.st_size != 0)
+                        or (selected == node and not info.st_mode & stat.S_IXUSR)
+                    ):
+                        return False
+                    captured.append((selected, [*_stamp(info), getattr(info, "st_flags", 0)]))
+                descriptor = os.open(manifest, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                with os.fdopen(descriptor, "r") as stream:
+                    expected = dict(captured)[manifest]
+                    opened = os.fstat(stream.fileno())
+                    if [*_stamp(opened), getattr(opened, "st_flags", 0)] != expected:
+                        raise ValueError("Admitted npm package identity changed before opening")
+                    metadata = json.load(stream)
+                    after = os.fstat(stream.fileno())
+                    if [*_stamp(after), getattr(after, "st_flags", 0)] != expected:
+                        raise ValueError("Admitted npm package identity changed while reading")
+                if (
+                    not isinstance(metadata, dict)
+                    or metadata.get("name") != "npm"
+                    or not isinstance(metadata.get("bin"), dict)
+                    or metadata["bin"].get("npm") != "bin/npm-cli.js"
+                ):
+                    return False
+                npm_builtins[path] = captured
+                break
+        identities = npm_builtins.get(path)
+        if identities is None:
+            return False
+        for selected, expected in identities:
+            info = selected.lstat()
+            if [*_stamp(info), getattr(info, "st_flags", 0)] != expected:
+                raise ValueError("Admitted empty npm builtin runtime identity changed")
+        return True
 
     def relative(path: Path, root: Path) -> Path | None:
         value, boundary = str(path), str(root)
@@ -206,13 +270,13 @@ def _runtime_boundary_guard(
         if matches:
             closest = min(matches, key=lambda item: len(item.parts))
             anchor = lexical.parents[len(closest.parts) - 1] if closest.parts else lexical
-        if private_name(lexical, full=False):
-            raise ValueError("Build runtime inputs cannot read private configuration")
-        for part in (lexical, *lexical.parents):
+        for part in lexical.parents:
             if part == anchor:
                 break
             if part.name and private_name(part, full=full_private):
                 raise ValueError("Build runtime inputs cannot read private source or runtime configuration")
+        if private_name(lexical, full=full_private) and (in_workspace or not empty_npm_builtin(lexical)):
+            raise ValueError("Build runtime inputs cannot read private configuration")
         if not root:
             return
         # Root/target boundaries use current native identity; ordinary entries already
@@ -240,6 +304,11 @@ def _runtime_boundary_guard(
         ):
             raise ValueError("Build runtime roots cannot grant private owner, source or state ancestors")
 
+    for executable in runtime_roots or []:
+        if executable.name == "npm" and executable.parent.name == "bin":
+            builtin = executable.parent.parent / "lib" / "node_modules" / "npm" / ".npmrc"
+            if builtin.exists():
+                allowed(builtin, False)
     return allowed
 
 
