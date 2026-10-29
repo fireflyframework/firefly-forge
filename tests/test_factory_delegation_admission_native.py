@@ -6,14 +6,17 @@ import asyncio
 import pytest
 
 from firefly_forge.delegation_contract import team_capture
-from firefly_forge.delegation_models import DelegationStartInput
+from firefly_forge.delegation_models import DelegationStartInput, FactoryTeamV1, FamilyBudget
 from firefly_forge.factory_delegations import FactoryDelegations
 from firefly_forge.journal import Journal
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.process import checked
+from firefly_forge.project_models import ProjectDefinition
+from firefly_forge.projects import Projects
+from firefly_forge.sandbox_models import SandboxInput
 
 
-async def seed(store, tmp_path):
+async def seed(store, tmp_path, *, team=None):
     await store.acquire_ownership()
     source = tmp_path / "source"
     source.mkdir()
@@ -34,8 +37,36 @@ async def seed(store, tmp_path):
         source,
     )
     repository = await store.add_repository(RepositoryInput(name="Fictional team", url=str(source)))
+    selected = {}
+    if team is not None:
+        project = await Projects(store).configure(
+            ProjectDefinition.model_validate(
+                {
+                    "name": "Fictional team",
+                    "description": "Explicit approved family policy",
+                    "topology": "monorepo",
+                    "owners": ["Fixture"],
+                    "components": [
+                        {
+                            "id": "api",
+                            "name": "API",
+                            "repository_id": repository["id"],
+                            "responsibility": "Inspect approved source",
+                        }
+                    ],
+                    "factory_team": team.model_dump(mode="json"),
+                }
+            )
+        )
+        selected = {"project_id": project["id"], "component_id": "api"}
     run = await store.create_run(
-        RunInput(repository_id=repository["id"], agent="agentic", brief="Review fictional source")
+        RunInput(
+            repository_id=repository["id"],
+            agent="agentic",
+            brief="Review fictional source",
+            sandbox=SandboxInput(command_limit=2),
+            **selected,
+        )
     )
     await store.update(run["id"], factory_team=team_capture(run), status="developing", attempt=1)
     journal = Journal(store)
@@ -108,3 +139,53 @@ async def test_missing_selected_journey_is_reported_before_origin_or_native_admi
         await session.start(DelegationStartInput(request_id="a" * 32, task_id="inspect", brief="Inspect source"))
     assert len(await store.runs()) == 1
     assert list(manager.sources.iterdir()) == []
+
+
+async def test_native_parallel_command_reservations_and_dispatch_cas_share_one_original_allowance(store, tmp_path):
+    session, manager, _ = await seed(store, tmp_path)
+    claims = await asyncio.gather(
+        *(manager.ledger.reserve(session.run_id, session.run_id, f"command:{i}", "commands") for i in range(3)),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(item, ValueError) for item in claims) == 1
+    assert (await manager.ledger.state(session.run_id))["remaining"]["commands"] == 0
+    first = next(item for item in claims if not isinstance(item, BaseException))
+    dispatches = await asyncio.gather(
+        *(manager.ledger.observe(session.run_id, first["key"], "budget_dispatched") for _ in range(2)),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(item, ValueError) for item in dispatches) == 1
+    await manager.ledger.observe(session.run_id, first["key"], "budget_unknown")
+    with pytest.raises(ValueError):
+        await manager.ledger.observe(session.run_id, first["key"], "budget_dispatched")
+    state = await manager.ledger.state(session.run_id)
+    assert state["charged"]["commands"] == 2 and state["attempted"]["commands"] == 1
+    assert state["unknown"]["commands"] == 1
+    assert Journal.verify_chain(await manager.journal.entries(session.run_id))
+
+
+@pytest.mark.parametrize("limit", [None, 2**40])
+async def test_native_project_approved_nullable_and_large_budgets_survive_fresh_ledger_without_child_multiplication(
+    store, tmp_path, limit
+):
+    team = FactoryTeamV1(
+        budget=FamilyBudget(requests=limit, tool_calls=limit, commands=2, broker_calls=None), broker_per_tool_limit=2
+    )
+    session, manager, _ = await seed(store, tmp_path, team=team)
+    child = await session.start(DelegationStartInput(request_id="a" * 32, task_id="inspect", brief="Inspect source"))
+    members = [session.run_id, child["delegation_id"]]
+    await asyncio.gather(
+        *(manager.ledger.reserve(session.run_id, members[i % 2], f"model:{i}", "requests") for i in range(4))
+    )
+    from firefly_forge.delegation_ledger import FamilyLedger
+
+    state = await FamilyLedger(store, Journal(store)).state(session.run_id)
+    assert state["approved"]["requests"] == limit and state["charged"]["requests"] == 4
+    assert state["remaining"]["requests"] == (None if limit is None else limit - 4)
+    assert state["approved"]["broker_calls"] is None
+    for i, member in enumerate(members):
+        await manager.ledger.reserve(session.run_id, member, f"broker:{i}", "broker_calls", tool="external_mcp")
+    with pytest.raises(ValueError):
+        await manager.ledger.reserve(session.run_id, members[1], "broker:overflow", "broker_calls", tool="external_mcp")
+    state = await manager.ledger.state(session.run_id)
+    assert state["charged"]["broker_calls"] == 2 and state["per_tool_charged"] == {"external_mcp": 2}

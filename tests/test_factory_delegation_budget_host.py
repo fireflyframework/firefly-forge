@@ -132,3 +132,19 @@ def test_nullable_or_large_explicit_envelopes_keep_exact_shared_charges(limit):
     assert state["charged"]["requests"] == 2**36
     assert state["remaining"]["requests"] == (None if limit is None else limit - 2**36)
     assert state["approved"]["requests"] == limit
+
+
+def test_broker_per_tool_identity_preserves_registered_mcp_connector_and_tool():
+    team = FactoryTeamV1(
+        budget=FamilyBudget(requests=None, tool_calls=None, commands=None, broker_calls=None), broker_per_tool_limit=1
+    )
+    entries = []
+    for key, tool in [("first", "external_mcp:approved:status"), ("second", "external_mcp:approved:result")]:
+        append(
+            entries,
+            "budget_reserved",
+            key,
+            {"member_run_id": ROOT, "resource": "broker_calls", "units": 1, "tool": tool},
+        )
+    state = derive_family_budget(ROOT, team, entries)
+    assert state["per_tool_charged"] == {"external_mcp:approved:status": 1, "external_mcp:approved:result": 1}

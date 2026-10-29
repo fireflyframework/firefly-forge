@@ -133,7 +133,7 @@ def test_sdk_and_broker_envelopes_remain_distinct_existing_approval_layers():
     assert captured["broker_per_tool_limit"] == 10
 
 
-def test_project_approved_nullable_sdk_budget_is_frozen_without_lifting_other_layers():
+def test_explicit_project_family_policy_retains_nullable_and_large_limits_exactly():
     run = parent()
     run["component_snapshot"] = {
         "project_factory_team": {
@@ -144,8 +144,10 @@ def test_project_approved_nullable_sdk_budget_is_frozen_without_lifting_other_la
         }
     }
     captured = team_capture(run)
-    assert captured["budget"] == {"requests": None, "tool_calls": 2**40, "commands": 22, "broker_calls": 30}
-    assert captured["broker_per_tool_limit"] == 10
+    assert captured["budget"] == {"requests": None, "tool_calls": 2**40, "commands": None, "broker_calls": None}
+    assert captured["broker_per_tool_limit"] is None
+    assert run["tool_policy_snapshot"]["settings"] == {"calls_limit": 30, "per_tool_limit": 10}
+    assert run["sandbox_snapshot"]["configuration"]["command_limit"] == 22
 
 
 def test_child_preserves_parent_framework_target_without_reusing_its_run_scoped_receipt():

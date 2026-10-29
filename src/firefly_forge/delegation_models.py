@@ -116,3 +116,17 @@ class DelegationJoinInput(ChildSelection):
 class DelegationCancelInput(VersionedRecord):
     request_id: Identity
     delegation_id: Identity
+
+
+class FamilyScheduling(VersionedRecord):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    waiting_parents: frozenset[Identity] = frozenset()
+    ready_children: tuple[Identity, ...] = ()
+
+    @model_validator(mode="after")
+    def distinct_owned_states(self) -> FamilyScheduling:
+        if len(self.ready_children) != len(set(self.ready_children)) or self.waiting_parents.intersection(
+            self.ready_children
+        ):
+            raise ValueError("Factory scheduling requires distinct current child and waiting-parent states")
+        return self

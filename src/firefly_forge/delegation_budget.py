@@ -80,7 +80,11 @@ def derive_family_budget(family_id: str, frozen: FactoryTeamV1 | Data | None, en
                 resource, units = payload["resource"], payload["units"]
                 if resource in {"tool_calls", "broker_calls"}:
                     tool = payload["tool"]
-                    if type(tool) is not str or re.fullmatch(r"[a-z][a-z0-9_]*", tool) is None:
+                    if (
+                        type(tool) is not str
+                        or re.fullmatch(r"[a-z][a-z0-9_]*|external_mcp:[a-z][a-z0-9-]{0,30}:[a-z][a-z0-9_]{0,80}", tool)
+                        is None
+                    ):
                         raise ValueError("Invalid shared tool identity")
                     if resource == "broker_calls":
                         per_tool_charged[tool] = per_tool_charged.get(tool, 0) + units

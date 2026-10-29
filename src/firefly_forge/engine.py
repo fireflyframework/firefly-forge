@@ -190,6 +190,21 @@ class Engine:
         self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
         self.worker_evidence: Any = None
+        self.factory_delegations: Any = None
+
+    def provider_for_run(self, run: dict[str, Any], settings: dict[str, str]) -> Any:
+        from firefly_forge.checkpoint_work_duration import selected_work_duration
+
+        duration = selected_work_duration(run)
+        if self.configured_provider:
+            from firefly_forge.providers import get_provider
+
+            provider = get_provider(run["agent"], dict(settings) if run.get("config_revision") else None)
+        else:
+            provider = self.provider_factory(run["agent"])
+        if hasattr(provider, "configure_work_duration"):
+            provider.configure_work_duration(duration)
+        return provider
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:
@@ -336,29 +351,49 @@ class Engine:
         self.active_projects = {
             identifier: project for identifier, project in self.active_projects.items() if identifier in self.active
         }
-        available = max(0, self.concurrency - len(self.active))
+        from firefly_forge.delegation_models import FamilyScheduling
+
+        coordinator = self.factory_delegations
+        family = await coordinator.scheduling_scope() if coordinator is not None else FamilyScheduling()
+        if not isinstance(family, FamilyScheduling):
+            raise ValueError("Factory scheduling requires its verified typed native scope")
+        waiting = family.waiting_parents.intersection(self.active)
+        available = max(0, self.concurrency - (len(self.active) - len(waiting)))
         if not available:
             return
         occupied = set(self.active_projects.values())
-        eligible: dict[str, tuple[str, bool]] = {}
+        eligible: dict[str, tuple[str, str, bool, bool]] = {}
         verification = await self.verification_handoffs.ready() if self.verification_handoffs else []
-        for identifier in [*verification, *await self.store.queued()]:
+        children = set(family.ready_children)
+        for identifier in [*verification, *await self.store.queued(), *family.ready_children]:
             if identifier in self.active:
                 continue
             run = await self.store.get_run(identifier)
             project = run["repository_id"]
-            if project not in occupied:
-                eligible.setdefault(project, (identifier, identifier in verification))
+            child = identifier in children
+            if run.get("factory_context") and not child:
+                continue
+            if child and not run.get("factory_context"):
+                raise ValueError("Factory scheduling cannot replace ordinary repository ownership")
+            if child or project not in occupied:
+                group = f"{project}:{identifier}" if child else project
+                eligible.setdefault(group, (identifier, project, identifier in verification, child))
         projects = list(eligible)
         if self.last_project in projects:
             pivot = projects.index(self.last_project) + 1
             projects = projects[pivot:] + projects[:pivot]
         for project in projects[:available]:
-            identifier, handoff = eligible[project]
-            self.active_projects[identifier] = project
-            action = self.verification_handoffs.execute(identifier) if handoff else self.execute_run(identifier)
+            identifier, repository, handoff, child = eligible[project]
+            self.active_projects[identifier] = repository
+            action = (
+                coordinator.execute_child(identifier, self.execute_run)
+                if child
+                else self.verification_handoffs.execute(identifier)
+                if handoff
+                else self.execute_run(identifier)
+            )
             self.active[identifier] = asyncio.create_task(action)
-            self.last_project = project
+            self.last_project = repository
 
     async def cancel(self, identifier: str) -> None:
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
@@ -599,18 +634,7 @@ class Engine:
                     run, workspace, base, (run.get("component_snapshot") or {}).get("path", ".")
                 )
                 credential_scopes.enter_context(framework_target_scope(run["framework_knowledge_pin"]))
-            if self.configured_provider:
-                from firefly_forge.providers import get_provider
-
-                provider = get_provider(run["agent"], settings if run.get("config_revision") else None)
-            else:
-                provider = self.provider_factory(run["agent"])
-            if hasattr(provider, "configure_work_duration"):
-                provider.configure_work_duration(
-                    WorkDurationPolicyV2.model_validate(run["work_duration"])
-                    if run.get("work_duration") is not None
-                    else None
-                )
+            provider = self.provider_for_run(run, settings)
             if run["agent"] in {"agentic", "bridge", "api"} and hasattr(provider, "configure_runtime"):
                 from firefly_forge.agent_roles import stage_allowed_tools
                 from firefly_forge.qa import JourneyEvidence

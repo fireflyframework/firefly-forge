@@ -57,21 +57,7 @@ def team_capture(run: Data) -> Data | None:
             budget=FamilyBudget(requests=100, tool_calls=300, commands=commands, broker_calls=limits["calls_limit"]),
             broker_per_tool_limit=limits["per_tool_limit"],
         ).model_dump(mode="json")
-    approved = FactoryTeamV1.model_validate(selected)
-
-    def bounded(*values: int | None) -> int | None:
-        finite = [value for value in values if value is not None]
-        return min(finite) if finite else None
-
-    return FactoryTeamV1(
-        budget=FamilyBudget(
-            requests=approved.budget.requests,
-            tool_calls=approved.budget.tool_calls,
-            commands=bounded(commands, approved.budget.commands),
-            broker_calls=bounded(limits["calls_limit"], approved.budget.broker_calls),
-        ),
-        broker_per_tool_limit=bounded(limits["per_tool_limit"], approved.broker_per_tool_limit),
-    ).model_dump(mode="json")
+    return FactoryTeamV1.model_validate(selected).model_dump(mode="json")
 
 
 def child_run(parent: Data, request: DelegationStartInput, source: Data) -> Data:
