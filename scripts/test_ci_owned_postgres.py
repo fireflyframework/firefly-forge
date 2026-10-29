@@ -73,6 +73,87 @@ class OwnedPostgresGuards(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 validate_container(raw, state)
 
+    def test_access_time_only_change_is_not_payload_or_identity_drift(self):
+        from scripts import ci_owned_postgres as module
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder).resolve() / "evidence"
+            path.write_bytes(b"retained")
+            path.chmod(0o600)
+            observed = path.lstat()
+            fields = {name: getattr(observed, name) for name in dir(observed) if name.startswith("st_")}
+            before = SimpleNamespace(**fields)
+            after = SimpleNamespace(
+                **{**fields, "st_atime": fields["st_atime"] + 1, "st_atime_ns": fields["st_atime_ns"] + 1_000_000_000}
+            )
+            with patch.object(Path, "lstat", side_effect=[before, after]):
+                self.assertEqual(module.owned_file(path, 8), b"retained")
+
+    def test_descriptor_metadata_drift_is_rejected_at_both_read_boundaries(self):
+        from scripts import ci_owned_postgres as module
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder).resolve() / "evidence"
+            path.write_bytes(b"retained")
+            path.chmod(0o600)
+            original = os.fstat
+            named = path.lstat()
+            for boundary in (1, 2):
+                for field in (
+                    "st_uid",
+                    "st_gid",
+                    "st_mode",
+                    "st_nlink",
+                    "st_size",
+                    "st_mtime_ns",
+                    "st_ctime_ns",
+                    "st_flags",
+                ):
+                    calls = 0
+
+                    def descriptor(fd, selected_boundary=boundary, selected_field=field):
+                        nonlocal calls
+                        calls += 1
+                        value = original(fd)
+                        if calls != selected_boundary:
+                            return value
+                        fields = {name: getattr(value, name) for name in dir(value) if name.startswith("st_")}
+                        fields[selected_field] = fields.get(selected_field, 0) + 1
+                        return SimpleNamespace(**fields)
+
+                    with (
+                        self.subTest(boundary=boundary, field=field),
+                        patch.object(Path, "lstat", return_value=named),
+                        patch.object(module.os, "fstat", side_effect=descriptor),
+                        self.assertRaises(ValueError),
+                    ):
+                        module.owned_file(path, 8)
+
+    def test_payload_change_during_descriptor_read_is_rejected(self):
+        from contextlib import contextmanager
+
+        from scripts import ci_owned_postgres as module
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder).resolve() / "evidence"
+            path.write_bytes(b"retained")
+            path.chmod(0o600)
+            original = os.fdopen
+
+            @contextmanager
+            def opened(fd, *args, **kwargs):
+                with original(fd, *args, **kwargs) as stream:
+
+                    def read(size):
+                        value = stream.read(size)
+                        path.write_bytes(b"modified")
+                        return value
+
+                    yield SimpleNamespace(fileno=stream.fileno, read=read)
+
+            with patch.object(module.os, "fdopen", side_effect=opened), self.assertRaises(ValueError):
+                module.owned_file(path, 8)
+
     def test_real_file_shape_binds_sql_identity_and_container_pid_without_host_signals(self):
         import sys
 

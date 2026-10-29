@@ -110,8 +110,24 @@ def validate_container(raw: dict[str, Any], state: dict[str, Any]) -> str:
     return cid
 
 
+def stable_identity(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_uid,
+        value.st_gid,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+        getattr(value, "st_flags", 0),
+    )
+
+
 def owned_file(path: Path, limit: int) -> bytes:
     before = path.lstat()
+    identity = stable_identity(before)
     if (
         path.resolve() != path
         or not stat.S_ISREG(before.st_mode)
@@ -125,10 +141,12 @@ def owned_file(path: Path, limit: int) -> bytes:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as source:
         opened = os.fstat(source.fileno())
-        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+        if stable_identity(opened) != identity:
             raise ValueError("CI PostgreSQL evidence changed before opening")
         value = source.read(limit + 1)
-    if len(value) > limit or path.lstat() != before:
+        if stable_identity(os.fstat(source.fileno())) != identity:
+            raise ValueError("CI PostgreSQL evidence changed while reading")
+    if len(value) > limit or path.resolve() != path or stable_identity(path.lstat()) != identity:
         raise ValueError("CI PostgreSQL evidence changed while reading")
     return value
 
