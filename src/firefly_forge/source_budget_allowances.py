@@ -365,6 +365,8 @@ def admission_contract_digest() -> str:
                 "tool_operations.py",
                 "model_operation_client.py",
                 "tool_persistence.py",
+                "runner_continuations.py",
+                "runner_continuation_authority.py",
             )
         }
     )

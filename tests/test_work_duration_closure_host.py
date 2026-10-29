@@ -32,6 +32,8 @@ MATERIAL = (
     "runner_run_liveness.py",
     "runner_run_authority.py",
     "runner_run_owner.py",
+    "runner_continuations.py",
+    "runner_continuation_authority.py",
 )
 
 
