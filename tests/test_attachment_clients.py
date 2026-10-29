@@ -149,7 +149,10 @@ def test_cli_turn_preserves_inherit_detach_and_explicit_selection(monkeypatch, f
             ],
         )
         assert result.exit_code == 0, result.output
-    assert seen[0][2]["attachment_ids"] == expected
+    session_path = f"/api/v1/repositories/{REPOSITORY}/assistant/conversations/{CONVERSATION}"
+    assert [(method, path) for method, path, _ in seen] == [("GET", session_path), ("POST", session_path + "/turns")]
+    assert seen[0][2] is None
+    assert seen[1][2]["attachment_ids"] == expected
 
 
 async def test_mcp_file_schemas_and_real_invocation_are_metadata_only(monkeypatch):
@@ -179,7 +182,13 @@ async def test_mcp_file_schemas_and_real_invocation_are_metadata_only(monkeypatc
             },
         )
         assert not result.is_error
-    assert seen[0][2] == upload() and seen[1][2]["attachment_ids"] == []
+    session_path = f"/api/v1/repositories/{REPOSITORY}/assistant/conversations/{CONVERSATION}"
+    assert [(method, path) for method, path, _ in seen] == [
+        ("POST", session_path + "/attachments"),
+        ("GET", session_path),
+        ("POST", session_path + "/turns"),
+    ]
+    assert seen[0][2] == upload() and seen[1][2] is None and seen[2][2]["attachment_ids"] == []
 
 
 async def test_mcp_rejected_oversized_upload_never_reflects_base64_content(monkeypatch):
