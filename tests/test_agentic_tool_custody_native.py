@@ -27,21 +27,37 @@ from firefly_forge.journal import Journal
 from firefly_forge.project_access import AccessDenied
 from firefly_forge.workspace_tools import ToolRuntimeContext
 
+LEGACY_TOOLS = frozenset(
+    {
+        "list_files",
+        "read_file",
+        "search_text",
+        "git_diff",
+        "write_file",
+        "edit_lines",
+        "execute_command",
+        "knowledge_lookup",
+        "read_run_evidence",
+    }
+)
+
 
 @asynccontextmanager
 async def native_custody(store, tmp_path):
+    assert EFFECTS.keys() >= LEGACY_TOOLS
     async with prepared(store, tmp_path) as (_, actor, run, journal, _, _, _, _):
         roles = RoleRegistry(tmp_path / "custody-roles")
         catalog = roles.tools()
         for tool in catalog:
-            if tool["id"] in EFFECTS:
+            if tool["id"] in LEGACY_TOOLS:
                 tool["availability"] = "worker_unverified"
         await store.update(
             run["id"],
             status="developing",
             attempt=1,
             role_snapshot=roles.snapshot(
-                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": sorted(EFFECTS)}), tool_catalog=catalog
+                ProjectRoles(disabled=["docs"], allowed_tools={"implementer": sorted(LEGACY_TOOLS)}),
+                tool_catalog=catalog,
             ),
         )
         run = await store.get_run(run["id"])
@@ -56,7 +72,7 @@ async def native_custody(store, tmp_path):
 
 
 async def native_call(env, callback, *, call_id="exact-native-call", arguments=None, name="list_files"):
-    return await AgenticToolCapability(env.custody, frozenset(EFFECTS)).wrap_tool_execute(
+    return await AgenticToolCapability(env.custody, LEGACY_TOOLS).wrap_tool_execute(
         SimpleNamespace(run_step=1, messages=[]),
         call=ToolCallPart(name, arguments or {}, tool_call_id=call_id),
         tool_def=SimpleNamespace(name=name),
@@ -123,7 +139,7 @@ async def test_native_public_agentic_all_nine_tools_have_exact_durable_results(s
                 runtime_context=ToolRuntimeContext(
                     env.workspace,
                     env.workspace,
-                    frozenset(EFFECTS),
+                    LEGACY_TOOLS,
                     command,
                     knowledge_lookup=knowledge,
                     read_run_evidence=evidence,
@@ -140,7 +156,7 @@ async def test_native_public_agentic_all_nine_tools_have_exact_durable_results(s
             assert result["payload"]["intent_digest"] == intent["digest"]
             assert intent["idempotency_key"] == result["idempotency_key"] == intent["payload"]["custody_id"]
             assert result["payload"]["status"] == "retained"
-        assert usage["agentic_tool_custody"]["captured_tools"] == sorted(EFFECTS)
+        assert usage["agentic_tool_custody"]["captured_tools"] == sorted(LEGACY_TOOLS)
 
 
 @pytest.mark.parametrize("cut", ["before_intent", "after_intent", "after_callback", "after_result", "credential"])

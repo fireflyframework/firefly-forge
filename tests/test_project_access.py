@@ -222,26 +222,32 @@ async def test_project_user_cannot_execute_on_factory_host(store, tmp_path):
 async def admitted_api_run(store, tmp_path, **options):
     from firefly_forge.models import RunInput
     from firefly_forge.project_access import CURRENT_PRINCIPAL
-    from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 
     repo, projects = await seed(store, tmp_path)
     user = principal()
     await ProjectAccess(store).set_membership(projects[0]["id"], user, "developer")
+    sandbox = SandboxInput(mode="docker", context="colima-forge-tests", image="firefly-forge@sha256:" + "a" * 64)
     context = CURRENT_PRINCIPAL.set(user)
     try:
-        return await store.create_run(
+        run = await store.create_run(
             RunInput(
                 repository_id=repo["id"],
                 project_id=projects[0]["id"],
                 component_id="service",
                 brief="Reservation change",
                 agent="agentic",
-                sandbox=SandboxInput(
-                    mode="docker", context="colima-forge-tests", image="firefly-forge@sha256:" + "a" * 64
-                ),
+                sandbox=sandbox,
                 **options,
-            )
+            ),
+            prepared_runner={
+                "sandbox_snapshot": capture_sandbox(sandbox),
+                "runner_config_revision": None,
+                "search_snapshot": None,
+            },
         )
+        assert "work_duration" not in run and run["sandbox_snapshot"] == capture_sandbox(sandbox)
+        return run
     finally:
         CURRENT_PRINCIPAL.reset(context)
 
