@@ -6,6 +6,7 @@ export type ContinuityPolicy = {
   allow_pre_admission_recovery: boolean;
   allow_readonly_observation_recovery: boolean;
   allow_checkpoint_continuation: boolean;
+  allow_final_outcome_continuation?: boolean;
   max_window_seconds: number;
   max_tickets_per_run: number;
   max_pending_tickets: number;
@@ -50,6 +51,9 @@ export function continuityPolicy(value: unknown): ContinuityPolicy {
   keys(p, [
     "version",
     ...flags,
+    ...("allow_final_outcome_continuation" in p
+      ? ["allow_final_outcome_continuation"]
+      : []),
     "max_window_seconds",
     "max_tickets_per_run",
     "max_pending_tickets",
@@ -57,6 +61,8 @@ export function continuityPolicy(value: unknown): ContinuityPolicy {
   requireValue(
     p.version === 1 &&
       flags.every((k) => typeof p[k] === "boolean") &&
+      (!("allow_final_outcome_continuation" in p) ||
+        typeof p.allow_final_outcome_continuation === "boolean") &&
       integer(p.max_window_seconds, 7200) &&
       integer(p.max_tickets_per_run) &&
       integer(p.max_pending_tickets),
@@ -78,8 +84,14 @@ export function continuityPolicyView(value: unknown): ContinuityPolicyView {
   return p as ContinuityPolicyView;
 }
 export function sameContinuityPolicy(a: ContinuityPolicy, b: ContinuityPolicy) {
-  return Object.entries(a).every(
-    ([k, v]) => b[k as keyof ContinuityPolicy] === v,
+  return (
+    !!a.allow_final_outcome_continuation ===
+      !!b.allow_final_outcome_continuation &&
+    Object.entries(a).every(
+      ([k, v]) =>
+        k === "allow_final_outcome_continuation" ||
+        b[k as keyof ContinuityPolicy] === v,
+    )
   );
 }
 export function pendingPolicyKey(c: PolicyContext) {

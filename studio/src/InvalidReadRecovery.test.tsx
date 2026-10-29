@@ -89,3 +89,20 @@ it("does not offer recovery for unknown request identity", () => {
     ),
   ).toBe("");
 });
+it("uses final-result recovery when the response is already consumed and a report is retained", () => {
+  vi.stubGlobal("localStorage", { getItem: () => null });
+  const html = renderToStaticMarkup(
+    <InvalidReadRecovery
+      run={{
+        ...run,
+        status: "failed",
+        implementation_pending: false,
+        usage: { runtime_report: { feedback: [] } },
+      }}
+      session={session}
+      connection={connection}
+    />,
+  );
+  expect(html).toContain("Saved agent result");
+  expect(html).not.toContain("Check current admission");
+});

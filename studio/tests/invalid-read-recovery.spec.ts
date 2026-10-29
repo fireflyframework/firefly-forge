@@ -4,6 +4,38 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
+
+test("administrator enables final-result recovery without changing retained policy options", async ({
+  page,
+}) => {
+  const state = await setup(page, "valid", "light");
+  await navigate(page, "Connections");
+  const settings = page.getByRole("region", {
+    name: "Saved-work recovery settings",
+    exact: true,
+  });
+  await settings
+    .getByRole("button", { name: "Review continuation settings", exact: true })
+    .click();
+  const control = settings.getByLabel(
+    "Allow reviewed final-result continuations",
+    { exact: true },
+  );
+  await expect(control).not.toBeChecked();
+  await control.check();
+  await settings
+    .getByRole("button", { name: "Save continuation settings", exact: true })
+    .click();
+  await expect(settings.getByRole("status")).toContainText("Settings saved");
+  expect(
+    (state.policy.settings as Record<string, unknown>)
+      .allow_final_outcome_continuation,
+  ).toBe(true);
+  expect(state.policy.settings.max_window_seconds).toBe(180);
+  expect(state.policyWrites).toBe(1);
+  expect(state.posts).toBe(0);
+  expect(state.checkpointPosts).toBe(0);
+});
 const run = {
   id: "2".repeat(32),
   repository_id: "3".repeat(32),

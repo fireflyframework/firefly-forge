@@ -36,6 +36,8 @@ export type ForgeRun = {
   attempt?: number;
   provider_recovery?: unknown;
   invalid_read_continuity?: unknown;
+  usage?: Record<string, unknown>;
+  implementation_pending?: boolean;
   backend?: string;
   frontend?: string;
   agent?: string;
