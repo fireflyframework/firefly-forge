@@ -15,8 +15,11 @@ from firefly_forge.runner_run_liveness import RunLease, RunRenewalV1, run_digest
 
 
 @pytest.mark.parametrize("failure", [None, "revoked", "foreign_ack", "lost_renew"])
-async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmission(tmp_path, monkeypatch, failure):
-    _, fence, run, *_ = case()
+@pytest.mark.parametrize("work_cap", [None, 864000])
+async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmission(
+    tmp_path, monkeypatch, failure, work_cap
+):
+    _, fence, run, *_ = case(work_cap=work_cap)
     workspace = tmp_path / run["id"]
     workspace.mkdir()
     scope = {"run": run, "attempt": 2, "fence": fence}
@@ -42,7 +45,7 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
     async def submit(invocation, selected, data):
         assert invocation.run_liveness is not None
         assert invocation.run_liveness.task_id == "verify" and invocation.run_liveness.attempt == 2
-        assert invocation.timeout == 864000
+        assert invocation.timeout == work_cap
         events.append(("submit", invocation.execution_id))
         state["submitted"] = invocation
         state["lease"] = RunLease(
@@ -108,7 +111,7 @@ async def test_worker_seals_run_binding_and_renews_once_without_reset_or_resubmi
     worker.artifacts = SimpleNamespace(directory=tmp_path, credential_registry=lambda: {}, retain=lambda *args: None)
     worker.git_snapshot, worker.probe = SimpleNamespace(build=metadata), probe
     with pytest.raises(RuntimeError, match="reconciliation"):
-        await worker.execute(run["id"], workspace, workspace, ["fixture"], 864000, "verify")
+        await worker.execute(run["id"], workspace, workspace, ["fixture"], work_cap, "verify")
     assert events.count(("submit", "b" * 32)) == 1
     assert events.count(("renew", "b" * 32)) == (0 if failure in {"revoked", "foreign_ack"} else 1)
     assert events.count(("cancel", "b" * 32)) == 1
@@ -120,8 +123,9 @@ def run_digest_bytes(value):
     return hashlib.sha256(value).hexdigest()
 
 
-async def test_probe_requires_exact_controller_renewal_capability_without_enabling_uncapped_pool():
-    _, _, run, *_ = case()
+@pytest.mark.parametrize("work_cap", [None, 864000])
+async def test_probe_requires_exact_controller_renewal_capability_before_dispatch(work_cap):
+    _, _, run, *_ = case(work_cap=work_cap)
     snapshot = run["sandbox_snapshot"]
     profile = snapshot["configuration"]["profile"]
     response = {

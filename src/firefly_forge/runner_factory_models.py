@@ -19,6 +19,7 @@ from pyfly.core.config import Config
 
 from firefly_forge.runner_controller_config import RunnerWorkerTransport, absolute_path, private_tls_file
 from firefly_forge.runner_pool_models import RunnerPoolProfile, pool_digest
+from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL
 from firefly_forge.sandbox_models import pinned_image
 from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
 
@@ -54,6 +55,8 @@ class FactoryPoolSelection(BaseModel):
 
     @model_validator(mode="after")
     def bounded_policy(self) -> FactoryPoolSelection:
+        if self.profile.run_liveness is not None and self.work_duration is None:
+            raise ValueError("Run-owned pool selection requires the explicit new work-duration policy")
         self.profile.validate_budget(
             image=self.image,
             cpus=self.cpus,
@@ -99,6 +102,7 @@ def capture_factory_pool(value: FactoryPoolSelection) -> dict[str, Any]:
 def uncapped_pool_reason(value: FactoryPoolSelection) -> str | None:
     if (
         value.work_duration is not None
+        and value.profile.run_liveness != RUN_LIVENESS_PROTOCOL
         and effective_work_timeout(
             value.work_duration.timeout_seconds,
             value.profile.work_duration.timeout_seconds if value.profile.work_duration is not None else None,
