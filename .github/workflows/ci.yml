@@ -13,19 +13,9 @@ jobs:
     env:
       # Dump stalled test stacks for diagnosis without terminating the test.
       PYTEST_ADDOPTS: '-n 2 --dist=loadfile --max-worker-restart=0 -v --durations=20 -o faulthandler_timeout=120 -o faulthandler_exit_on_timeout=False'
+      POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
       FORGE_TEST_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
       FORGE_DATABASE_URL: postgresql+asyncpg://forge_test:ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/forge_test
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: forge_test
-          POSTGRES_PASSWORD: ci-only-postgresql-${{ github.run_id }}-${{ github.run_attempt }}
-          POSTGRES_DB: forge_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U forge_test -d forge_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: astral-sh/setup-uv@v7
@@ -34,7 +24,29 @@ jobs:
       - name: Check the existing PHP recipe fixture
         run: make php-fixture-check
       - run: uv sync --locked --group dev --group docs --extra analytics
+      - name: Check runner-owned PostgreSQL lifecycle guards
+        run: python3 -m unittest scripts.test_ci_owned_postgres
+      - name: Start runner-owned PostgreSQL 17 with native control files
+        run: |
+          docker pull postgres:17
+          python3 scripts/ci_owned_postgres.py start
       - run: make python-check
+      - name: Drain the exact owned PostgreSQL container
+        if: ${{ always() }}
+        run: python3 scripts/ci_owned_postgres.py stop
+      - name: Retain owned PostgreSQL diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-owned-postgresql-diagnostics
+          path: |
+            ${{ runner.temp }}/forge-python-postgres-*/reservation.json
+            ${{ runner.temp }}/forge-python-postgres-*/state.json
+            ${{ runner.temp }}/forge-python-postgres-*/ready.json
+            ${{ runner.temp }}/forge-python-postgres-*/cleanup.json
+            ${{ runner.temp }}/forge-python-postgres-*/postgres.log
+          retention-days: 3
+          if-no-files-found: ignore
   studio:
     runs-on: ubuntu-24.04
     steps:
