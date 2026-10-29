@@ -20,6 +20,7 @@ from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.source_catalog import _json
 from firefly_forge.store import identifier
 from firefly_forge.verification_models import check_verification_authority
+from firefly_forge.verification_scope import fresh_build_check
 from firefly_forge.verification_scope_attestation import PreparedBuildScope, prepare_build_scope, scope_record
 from firefly_forge.verification_source_preparation import (
     PreparedVerificationSource,
@@ -31,6 +32,8 @@ Data = dict[str, Any]
 
 
 def retained_check(argv: list[str], index: int, attempt: int, record: Data, value: Data) -> Data:
+    if fresh_build_check(argv):
+        raise ValueError("Build commands that inspect derived output metadata must execute fresh")
     effect = value["effects"]["start"]
     result = effect.get("evidence", {})
     if effect.get("status") != "done" or type(result.get("exit_code")) is not int or result["exit_code"] != 0:
@@ -229,6 +232,8 @@ async def prepare_verification_reuse(
         raise ValueError("Build scope changed; prior verification results cannot be reused")
     selected = {}
     for check in old_scope.checks:
+        if fresh_build_check(check.argv):
+            continue
         index = check.command_index
         if index > len(commands) or _json(commands[index - 1].model_dump()) != _json(run["commands"][index - 1]):
             continue

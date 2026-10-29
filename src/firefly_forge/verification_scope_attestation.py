@@ -25,7 +25,13 @@ from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.secrets import runtime_environment
 from firefly_forge.source_catalog import _json, _private, _stamp
 from firefly_forge.verification_dependencies import prepare_dependency_capture, prepare_public_source_cut
-from firefly_forge.verification_scope import SANDBOX_EXEC, build_check_kind, build_profile, wrap_build_argv
+from firefly_forge.verification_scope import (
+    SANDBOX_EXEC,
+    build_check_kind,
+    build_profile,
+    fresh_build_check,
+    wrap_build_argv,
+)
 from firefly_forge.verification_source_preparation import verification_catalog_root
 
 Data = dict[str, Any]
@@ -109,6 +115,7 @@ def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationSc
                     Path(intent["workspace"]),
                     [Path(p) for p in scope.dependency_roots],
                     Path(scope.scratch) / str(check.command_index),
+                    fresh_build=fresh_build_check(check.argv),
                 ),
             )
         ):
@@ -424,7 +431,7 @@ async def prepare_build_scope(
             command_index=index + 1, kind=kind, argv=command["argv"], wrapped_argv=wrap_build_argv(command["argv"])
         )
         for index, command in enumerate(run["commands"])
-        if digest(command) in declared
+        if (digest(command) in declared or (declared and fresh_build_check(command["argv"])))
         and (kind := build_check_kind(command["argv"], Path(intent["workspace"]))) is not None
     ]
     if not checks:
@@ -504,7 +511,13 @@ async def prepare_build_scope(
             c.model_copy(
                 update={
                     "wrapped_argv": wrap_build_argv(
-                        c.argv, build_profile(Path(intent["workspace"]), roots, scratch / str(c.command_index))
+                        c.argv,
+                        build_profile(
+                            Path(intent["workspace"]),
+                            roots,
+                            scratch / str(c.command_index),
+                            fresh_build=fresh_build_check(c.argv),
+                        ),
                     )
                 }
             )

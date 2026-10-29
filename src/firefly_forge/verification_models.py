@@ -196,8 +196,15 @@ def automatic_verification_grant(snapshot: dict[str, Any] | None) -> AutomaticVe
 
 
 def verification_build_declarations(run: dict[str, Any]) -> list[ReusableBuildDeclaration]:
+    from firefly_forge.verification_scope import fresh_build_check
+
     adoption = run.get("verification_adoption", {})
     if adoption:
-        return VerificationAdoption.model_validate(adoption["request"]).reusable_build_checks
-    policy = automatic_verification_grant(run.get("tool_policy_snapshot"))
-    return policy.reusable_build_checks if policy else []
+        selected = VerificationAdoption.model_validate(adoption["request"]).reusable_build_checks
+    else:
+        policy = automatic_verification_grant(run.get("tool_policy_snapshot"))
+        selected = policy.reusable_build_checks if policy else []
+    fresh = {digest(command) for command in run.get("commands", []) if fresh_build_check(command["argv"])}
+    if any(item.command_digest in fresh for item in selected):
+        raise ValueError("Build commands that inspect derived output metadata must execute fresh")
+    return selected

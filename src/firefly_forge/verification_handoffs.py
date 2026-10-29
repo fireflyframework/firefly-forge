@@ -22,6 +22,7 @@ from firefly_forge.verification_models import (
     automatic_verification_grant,
     check_verification_authority,
     check_verification_cut,
+    verification_build_declarations,
     verification_provider,
     verification_scope,
     verification_source,
@@ -119,8 +120,6 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         "workspace": str(workspace.resolve()),
         "cwd": (run.get("component_snapshot") or {}).get("path", "."),
     }
-    from firefly_forge.verification_models import verification_build_declarations
-
     declarations = verification_build_declarations(run)
     if declarations:
         intent["reusable_build_declaration_digest"] = digest(
@@ -218,6 +217,7 @@ class VerificationHandoffs:
 
     async def _adopt(self, run_id: str, body: VerificationAdoption) -> Data:
         run = await self._operator(run_id)
+        verification_build_declarations({**run, "verification_adoption": {"request": body.model_dump()}})
         entries = await self.journal.entries(run_id)
         existing = next(
             (

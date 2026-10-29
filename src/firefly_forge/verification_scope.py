@@ -23,7 +23,7 @@ PLATFORM_READ_ROOTS = (
 )
 
 
-def build_profile(workspace: Path, dependencies: list[Path], scratch: Path) -> str:
+def build_profile(workspace: Path, dependencies: list[Path], scratch: Path, *, fresh_build: bool = False) -> str:
     roots = sorted({str(workspace), str(scratch), *PLATFORM_READ_ROOTS})
     root_values = " ".join(json.dumps(p) for p in roots)
     dependency_values = " ".join(json.dumps(str(p)) for p in dependencies)
@@ -56,7 +56,7 @@ def build_profile(workspace: Path, dependencies: list[Path], scratch: Path) -> s
             "[" + c.lower() + c.upper() + "]" if c.isalpha() else "[.]" if c == "." else re.escape(c) for c in value
         )
 
-    names = "|".join(folded(name) for name in private_names)
+    names = "|".join(folded(name) for name in private_names if not fresh_build or name != "dist")
     workspace_prefix = "^" + re.escape(str(workspace)) + r"(/[^/]+)*"
     examples = "|".join(folded(name) for name in ("example", "sample", "template"))
     private = workspace_prefix + "/(" + names + r"|[^/]*[.](" + folded("pem") + "|" + folded("key") + r"))(/|$)"
@@ -67,6 +67,22 @@ def build_profile(workspace: Path, dependencies: list[Path], scratch: Path) -> s
         + "(require-not (apply subpath dependency-roots)) (regex "
         + json.dumps(private)
         + ")))"
+    )
+    derived_outputs = (
+        (
+            " (deny file-read-data (require-all (require-not (vnode-type DIRECTORY)) (subpath "
+            + json.dumps(str(workspace))
+            + ") (require-not (apply subpath dependency-roots)) (regex "
+            + json.dumps(workspace_prefix + "/" + folded("dist") + r"(/|$)")
+            + ")))"
+            + " (deny file-read-xattr (require-all (subpath "
+            + json.dumps(str(workspace))
+            + ") (require-not (apply subpath dependency-roots)) (regex "
+            + json.dumps(workspace_prefix + "/" + folded("dist") + r"(/|$)")
+            + ")))"
+        )
+        if fresh_build
+        else ""
     )
     sensitive_names = tuple(
         name
@@ -143,6 +159,7 @@ def build_profile(workspace: Path, dependencies: list[Path], scratch: Path) -> s
         + writes
         + ' (literal "/dev/null") (subpath "/dev/fd"))))'
         + excluded
+        + derived_outputs
         + sensitive_writes
         + bytecode_reads
         + runtime_config_reads
@@ -154,6 +171,15 @@ def wrap_build_argv(argv: list[str], profile: str = DENY_NETWORK_PROFILE) -> lis
     from firefly_forge.sandbox_models import bounded_argv
 
     return bounded_argv([str(SANDBOX_EXEC), "-p", profile, *argv])
+
+
+def fresh_build_check(argv: list[str]) -> bool:
+    return (
+        len(argv) == 5
+        and Path(argv[0]).name in {"npm", "npm.cmd"}
+        and argv[1] == "--prefix"
+        and argv[3:] == ["run", "build"]
+    )
 
 
 def build_check_kind(argv: list[str], workspace: Path) -> Literal["python_static", "node_build"] | None:
@@ -212,5 +238,5 @@ def eligible_build_checks(run: dict[str, Any], workspace: Path) -> list[dict[str
             requires_declaration=True,
         )
         for index, command in enumerate(run.get("commands", []))
-        if build_check_kind(command["argv"], workspace) is not None
+        if build_check_kind(command["argv"], workspace) is not None and not fresh_build_check(command["argv"])
     ]
