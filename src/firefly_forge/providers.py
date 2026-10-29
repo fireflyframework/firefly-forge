@@ -654,7 +654,7 @@ class ClaudeProvider(ConfiguredProvider):
 
 
 class APIProvider(ConfiguredProvider):
-    def model(self, *, single_request: bool = False) -> Any:
+    def model(self, *, single_request: bool = False, http_client: Any = None) -> Any:
         model: Any = None
         base_url = self.settings.get("FORGE_AGENTIC_BASE_URL")
         if base_url:
@@ -675,6 +675,26 @@ class APIProvider(ConfiguredProvider):
             raise ProviderError(
                 "Unsupported native model family; use OpenAI, Anthropic, Google GLA or an explicit compatible endpoint"
             )
+        selected_work = self.work_duration is not None
+        if selected_work:
+            from firefly_forge.model_operation_client import ModelOperationClient
+
+            if http_client is None:
+                http_client = ModelOperationClient()
+            if not isinstance(http_client, ModelOperationClient):
+                raise ValueError("New model work requires its owned transport policy")
+            single_request = True
+        elif http_client is not None:
+            raise ValueError("Legacy model captures retain their original HTTP client policy")
+        client_options = {"http_client": http_client} if selected_work else {}
+
+        def model_provider(provider_type: type[Any], **options: Any) -> Any:
+            if not selected_work:
+                return provider_type(**options)
+            from firefly_forge.model_operation_client import owned_model_provider
+
+            return owned_model_provider(provider_type, http_client, **options)
+
         if base_url or key:
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider
@@ -689,7 +709,9 @@ class APIProvider(ConfiguredProvider):
                 if single_request:
                     from anthropic import AsyncAnthropic
 
-                    selected_anthropic = AnthropicProvider(anthropic_client=AsyncAnthropic(api_key=key, max_retries=0))
+                    selected_anthropic = model_provider(
+                        AnthropicProvider, anthropic_client=AsyncAnthropic(api_key=key, max_retries=0, **client_options)
+                    )
                 else:
                     selected_anthropic = AnthropicProvider(api_key=key)
                 model = AnthropicModel(name, provider=selected_anthropic)
@@ -698,19 +720,33 @@ class APIProvider(ConfiguredProvider):
                 from pydantic_ai.models.google import GoogleModel
                 from pydantic_ai.providers.google import GoogleProvider
 
-                model = GoogleModel(
-                    name,
-                    provider=GoogleProvider(
+                if selected_work:
+                    from google.genai import Client
+                    from google.genai.types import HttpOptions
+
+                    selected_google = model_provider(
+                        GoogleProvider,
+                        client=Client(
+                            api_key=key,
+                            http_options=HttpOptions(
+                                httpx_async_client=http_client, retry_options=HttpRetryOptions(attempts=1)
+                            ),
+                        ),
+                    )
+                else:
+                    selected_google = GoogleProvider(
                         api_key=key, retry_options=HttpRetryOptions(attempts=1) if single_request else None
-                    ),
-                )
+                    )
+                model = GoogleModel(name, provider=selected_google)
             elif model_name.startswith("openai-responses:") and not base_url:
                 from pydantic_ai.models.openai import OpenAIResponsesModel
 
                 if single_request:
                     from openai import AsyncOpenAI
 
-                    selected_openai = OpenAIProvider(openai_client=AsyncOpenAI(api_key=key, max_retries=0))
+                    selected_openai = model_provider(
+                        OpenAIProvider, openai_client=AsyncOpenAI(api_key=key, max_retries=0, **client_options)
+                    )
                 else:
                     selected_openai = OpenAIProvider(api_key=key)
                 model = OpenAIResponsesModel(name, provider=selected_openai)
@@ -718,33 +754,44 @@ class APIProvider(ConfiguredProvider):
                 if single_request:
                     from openai import AsyncOpenAI
 
-                    selected_chat = OpenAIProvider(
-                        openai_client=AsyncOpenAI(base_url=base_url, api_key=key, max_retries=0)
+                    selected_chat = model_provider(
+                        OpenAIProvider,
+                        openai_client=AsyncOpenAI(base_url=base_url, api_key=key, max_retries=0, **client_options),
                     )
                 else:
                     selected_chat = OpenAIProvider(base_url=base_url, api_key=key)
                 model = OpenAIChatModel(name, provider=selected_chat)
         return model
 
+    @asynccontextmanager
+    async def model_scope(self) -> AsyncIterator[Any]:
+        if self.work_duration is None:
+            yield self.model()
+            return
+        model = self.model()
+        async with model:
+            yield model
+
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         from firefly_forge.agentic_runtime import execute_agentic
         from firefly_forge.workspace_tools import ToolRuntimeContext
 
-        summary, usage = await execute_agentic(
-            workspace,
-            brief,
-            backend,
-            frontend,
-            emit,
-            model=self.model(),
-            settings=self.settings,
-            runtime_context=self.runtime_context
-            or (
-                ToolRuntimeContext(workspace, workspace, work_duration=self.work_duration)
-                if self.work_duration
-                else None
-            ),
-        )
+        async with self.model_scope() as model:
+            summary, usage = await execute_agentic(
+                workspace,
+                brief,
+                backend,
+                frontend,
+                emit,
+                model=model,
+                settings=self.settings,
+                runtime_context=self.runtime_context
+                or (
+                    ToolRuntimeContext(workspace, workspace, work_duration=self.work_duration)
+                    if self.work_duration
+                    else None
+                ),
+            )
         return AgentResult(summary, "agentic", usage)
 
 
