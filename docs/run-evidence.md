@@ -26,7 +26,13 @@ Use `--kind journal`, `--task-id implement` or `--text 'literal text'` to narrow
 forge evidence query RUN_ID --expected-cut CUT_DIGEST --record-id journal:3
 ```
 
-The query and its output are bounded. Exact records can be at most 1 MiB. A page has at most 50 records and 1 MiB of JSON. The full cut permits 2,048 journal entries, 4,096 activity entries, 1,000 tool rows, 128 tasks, 128 artifact references and 16 MiB of source JSON, with a ten-second snapshot timeout. Oversized or inconsistent evidence is withheld. A cut that changes before another page or export returns `evidence_cut_changed`; read a new cut explicitly. The server does not keep a separate history of these query snapshots.
+The query and its output are bounded. Exact records can be at most 1 MiB. A page has at most 50 records and 1 MiB of JSON. The full cut permits 2,048 journal entries, 4,096 activity entries, 1,000 tool rows, 128 tasks, 128 artifact references and 16 MiB of source JSON, with a ten-second snapshot timeout. Each plan revision needs a distinct ordered WAL anchor, so plan history shares the existing journal capture budget and source JSON limit. Oversized or inconsistent evidence is withheld. A cut that changes before another page or export returns `evidence_cut_changed`; read a new cut explicitly. The server does not keep a separate history of these query snapshots.
+
+## Let an agent read its run history
+
+A role with the `read_run_evidence` grant can inspect the executing run through Native Agentic or the bridge. The model receives a strict `{"query": {...}}` schema. Worker pages default to ten records and accept at most ten; the operator API retains its separate fifty-record page limit.
+
+Unknown fields, invalid types, malformed JSON and incomplete pagination cursors return a fixed `invalid_query` tool result before the evidence service runs. That result contains no evidence and must not be treated as an empty page. The agent can correct the query within its existing request and tool-call budgets; the result remains compatible with checkpoint capture and restoration. A corrected query still passes the original run, identity and role checks. An authorization failure, inconsistent evidence or an unresolved effect stops execution; validation feedback grants no access or permission to replay work.
 
 ## Export the reviewed cut
 
@@ -38,7 +44,21 @@ The output file must not already exist. The ZIP contains `manifest.json`, `run.j
 
 The WAL retains its original payloads and chain hashes. Activity and task rows carry observed state; they do not become immutable receipts merely by appearing in an export. The plan includes an explicit projection and the original plan digest. An execution actor copied from the run is labeled `observed_run_row` rather than presented as an immutable historical attribution.
 
+When a resume or provider selection creates another native plan revision, existing tasks can retain their original plan foreign keys. The reader checks every retained plan's native identity, run, revision, full-data digest and scope, then verifies its ordered WAL evidence. It keeps the initial immutable plan as the basis of `plan.json` and `plan_digest`; a later observed selection does not replace that anchor or rewrite task bindings.
+
+For multiple revisions, the export also contains `plans.json`, and the manifest includes `plan_history` with the latest observed revision and each task's native plan binding. A plan whose complete digest appears in a matching plan WAL entry is labeled `immutable_wal_plan`, with `full_plan_digest_in_wal: true`. A native selection successor without that entry is labeled `observed_native_plan_with_selection_handoff`, with `full_plan_digest_in_wal: false`. That successor must preserve the preceding plan's task contract and match an ordered `resume` or `handoff` WAL entry for its previous and selected provider, configuration revision and model selection. This establishes native-row and selection-event lineage; it does not claim that the successor's complete contents were sealed by the WAL. Missing, changed, foreign or ambiguous lineage withholds the whole cut.
+
+Plan history exports the same bounded plan projection as `plan.json`, excluding raw execution configurations. A single-plan run retains the existing manifest and ZIP member layout. Both forms are read-only observations with current access and credential checks; plan history grants no execution authority.
+
 `artifacts.json` contains references. A reference is `receipt_bound` only when its SHA256 appears in a matching immutable receipt. Older `changes.zip` records have no historical byte hash and are labeled `not_historically_bound`. Their bytes are not copied, rebuilt or certified by this export. The existing source ZIP endpoint remains available separately.
+
+## Inspect native agent tool calls
+
+In **Run details > Plan**, the write-ahead journal separates a tool call from its retained result. Each agent tool card names the operation, shows the exact model call ID and presents arguments and output as readable fields. Source text and patches use the existing code and diff views. The full canonical payload and its technical bindings remain under **Advanced record**.
+
+**Result retained** means that the factory recorded the callback result. It does not mean that a business operation succeeded, a check passed or the product was accepted. An unavailable result stays visibly distinct. The factory does not repeat an uncertain callback automatically.
+
+An intent links to a result only through its exact custody identity, model call, task, attempt, invocation, request step, argument digest, authority binding and original intent digest. Conflicting records require review. A similar tool name or nearby timestamp cannot supply a missing result.
 
 ## Read complete provider activity
 
@@ -118,6 +138,6 @@ Forge checks current credentials before returning a page or download and recheck
 
 `ForgeClient.run_evidence` and `export_run_evidence` use the same authenticated endpoints. The factory MCP tool `query_run_evidence` supports the typed query, including exact record reads.
 
-The native Agentic tool `read_run_evidence` is an explicit implementation-stage role grant for API and Bridge workers. Existing default workspace grants stay unchanged. Its callback is bound to the current run and task by the server, checks that task's frozen grant, the original execution identity and current read permissions, and limits output to ten records and 32 KiB. It accepts no alternate actor, project, run or task. Independent review and design providers do not receive this callback. Larger records remain available to authorized operators through the bounded HTTP reader. This tool reads retained records without invoking ToolBroker callbacks or writing query events into the WAL it reads.
+The native Agentic tool `read_run_evidence` is an explicit implementation-stage role grant for API and Bridge workers. Existing default workspace grants stay unchanged. Its callback is bound to the current run and task by the server, checks that task's frozen grant, the original execution identity and current read permissions, and limits output to ten records and 32 KiB. It accepts no alternate actor, project, run or task. Independent review and design providers do not receive this callback. Larger records remain available to authorized operators through the bounded HTTP reader. The reader does not invoke ToolBroker callbacks. In a captured native Agentic invocation, the outer capability records the exact call intent before the reader opens its snapshot and retains the result after that snapshot closes. The returned cut can contain its intent, but cannot contain its own later result. Reading a record does not execute its original tool.
 
 An evidence export describes the retained records and their stated verification boundary. It does not establish live provider execution, certify unbound artifact bytes or restore an interrupted Agentic graph.

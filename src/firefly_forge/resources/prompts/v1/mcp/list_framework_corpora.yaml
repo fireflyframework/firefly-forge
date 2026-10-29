@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_framework_corpora
+version: 1.0.0
+description: Forge framework knowledge MCP tool description.
+system_template: ''
+user_template: Browse immutable version/commit-specific framework corpora using next_cursor until it is
+  absent. Page size is a response window, not a complete-corpus limit.
+required_variables: []
+metadata:
+  defaults: {}

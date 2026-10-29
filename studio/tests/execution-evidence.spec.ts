@@ -48,6 +48,96 @@ const run = {
     },
   ],
 };
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 375, height: 600 },
+])
+  for (const theme of ["light", "dark"])
+    test(`unavailable read recovery remains readable at ${viewport.width}px ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await openRun(page, [
+        {
+          sequence: 1,
+          task_id: "implement",
+          kind: "readonly_observation_recovery",
+          created_at: "2026-10-28T00:00:00Z",
+          digest: "b".repeat(64),
+          previous_hash: "0".repeat(64),
+          idempotency_key: "2".repeat(32),
+          payload: {
+            version: 1,
+            kind: "reviewed_readonly_observation_continuation",
+            run_id: "1".repeat(32),
+            request_id: "a".repeat(32),
+            recovery_id: "2".repeat(32),
+            read_proof_digest: "3".repeat(64),
+            request: {
+              version: 1,
+              candidate_digest: "4".repeat(64),
+              valid_for_seconds: 120,
+              acknowledge_unavailable_observation: true,
+              acknowledge_no_original_callback_replay: true,
+              acknowledge_same_request_attempt_and_budgets: true,
+              acknowledge_finite_ownership_lease: true,
+            },
+            candidate: {
+              version: 1,
+              kind: "readonly_observation_recovery_candidate",
+              run_id: "1".repeat(32),
+              request_id: "a".repeat(32),
+              admission: "READY",
+              execution_authorized: false,
+              review_basis: "administrator_reviewed_unavailable_read",
+              digest: "4".repeat(64),
+              read_proof_digest: "3".repeat(64),
+            },
+            checkpoint: "CONTROLLED_CHECKPOINT_NOT_INITIAL_COPY",
+          },
+        },
+      ]);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      const row = page.getByRole("tabpanel").locator(".journal-entries>li");
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText("Unavailable read reviewed");
+      await expect(row).toContainText(
+        "original unknown result remains unknown",
+      );
+      await expect(row.locator(".record-advanced[open]")).toHaveCount(0);
+      await expect(
+        row.getByText("CONTROLLED_CHECKPOINT_NOT_INITIAL_COPY", {
+          exact: true,
+        }),
+      ).not.toBeVisible();
+      const summary = row.locator(".record-advanced>summary");
+      await summary.focus();
+      const box = await summary.boundingBox();
+      const footer = await page.locator(".workspace-main>footer").boundingBox();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(footer!.y);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+      await row
+        .getByRole("heading", {
+          name: "Unavailable read reviewed",
+          exact: true,
+        })
+        .scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath("unavailable-read-recovery.png"),
+        fullPage: true,
+      });
+      await summary.focus();
+      await page.keyboard.press("Enter");
+      await expect(row.locator(".record-advanced")).toHaveAttribute("open", "");
+      await expect(row).toContainText("CONTROLLED_CHECKPOINT_NOT_INITIAL_COPY");
+    });
+
 async function openRun(
   page: Page,
   toolEntries?: Record<string, unknown>[],
@@ -1175,3 +1265,84 @@ for (const viewport of [
       });
     });
   }
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 700 },
+])
+  for (const theme of ["light", "dark"])
+    test(`agent tool custody is readable at ${viewport.width}px ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      const shared = {
+        version: 1,
+        custody_id: "a".repeat(64),
+        tool_call_id: "call_source_7",
+        tool: "read_file",
+        effect: "source_read",
+        invocation_id: "request-3",
+        task_key: "implement",
+        task_attempt: 2,
+        request_step: 7,
+        arguments_sha256: "b".repeat(64),
+        binding_sha256: "c".repeat(64),
+      };
+      const entries = [
+        {
+          kind: "agentic_tool_intent",
+          digest: "d".repeat(64),
+          payload: { ...shared, arguments: { path: "src/customer.py" } },
+        },
+        {
+          kind: "agentic_tool_result",
+          digest: "e".repeat(64),
+          payload: {
+            ...shared,
+            intent_digest: "d".repeat(64),
+            status: "retained",
+            result: {
+              content:
+                "class Customer:\n    pass\n<img src=x onerror=window.injected=true>",
+            },
+            result_sha256: "f".repeat(64),
+          },
+        },
+      ].map((entry, index) => ({
+        ...entry,
+        sequence: index + 1,
+        task_id: "implement",
+        idempotency_key: shared.custody_id,
+        created_at: "2026-10-27T14:00:00Z",
+      }));
+      await page.setViewportSize(viewport);
+      await openRun(page, entries);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      const rows = page.getByRole("tabpanel").locator(".journal-entries>li");
+      await expect(rows).toHaveCount(2);
+      await expect(rows.nth(0)).toContainText("Result retained");
+      await expect(rows.nth(1).getByLabel("Agent tool evidence")).toContainText(
+        "Read a source file",
+      );
+      await expect(rows.nth(1)).toContainText("class Customer");
+      await expect(rows.locator("img,script")).toHaveCount(0);
+      await expect(rows.locator(".record-advanced[open]")).toHaveCount(0);
+      const copy = rows
+        .nth(1)
+        .getByRole("button", { name: "Copy full output", exact: true })
+        .first();
+      await copy.focus();
+      const box = await copy.boundingBox();
+      const footer = await page.locator(".workspace-main>footer").boundingBox();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(footer!.y);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `tool-custody-${viewport.width}-${theme}.png`,
+        ),
+      });
+    });

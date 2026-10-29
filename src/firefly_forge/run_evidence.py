@@ -456,6 +456,8 @@ class RunEvidence:
             raise EvidenceUnavailable("evidence_integrity") from exc
 
     async def _snapshot(self, run_id: str) -> EvidenceSnapshot:
+        from firefly_forge.run_evidence_plans import snapshot_with_plans
+
         async with self.store._unit():
             unit = current_unit_of_work()
             assert unit is not None
@@ -484,17 +486,13 @@ class RunEvidence:
             )
             plans = await self._rows(
                 session,
-                select(ForgePlanEntity)
-                .where(ForgePlanEntity.run_id == run.id)
-                .order_by(ForgePlanEntity.revision.desc())
-                .limit(1),
-                1,
+                select(ForgePlanEntity).where(ForgePlanEntity.run_id == run.id).order_by(ForgePlanEntity.revision),
+                LIMITS["journal"],
                 remaining,
             )
             if not plans:
                 raise EvidenceUnavailable("plan_not_observed")
             plan = plans[0]
-            require(plan.data.get("revision") == plan.revision and digest(plan.data) == plan.digest)
             journals = await self._rows(
                 session,
                 select(ForgeJournalEntity)
@@ -524,7 +522,6 @@ class RunEvidence:
                 LIMITS["tasks"],
                 remaining,
             )
-            require(all(row.plan_id == plan.id for row in tasks))
             tools = await self._rows(
                 session,
                 select(ForgeToolInvocationEntity)
@@ -555,12 +552,30 @@ class RunEvidence:
                 )
                 require(len(revisions) == 1)
                 historical = revisions[0].data
-            return build_evidence(
+            return snapshot_with_plans(
                 run=run.data,
-                plan={**plan.data, "digest": plan.digest},
+                plans=[
+                    {
+                        "id": row.id.hex,
+                        "run_id": row.run_id.hex,
+                        "revision": row.revision,
+                        "digest": row.digest,
+                        "data": row.data,
+                    }
+                    for row in plans
+                ],
                 journal=[r.data for r in journals],
                 tasks=[
-                    {"id": r.task_id, "attempt": r.attempt, "observed_status": r.status, "data": r.data} for r in tasks
+                    {
+                        "id": row.id.hex,
+                        "run_id": row.run_id.hex,
+                        "plan_id": row.plan_id.hex,
+                        "task_id": row.task_id,
+                        "attempt": row.attempt,
+                        "status": row.status,
+                        "data": row.data,
+                    }
+                    for row in tasks
                 ],
                 tools=[
                     {

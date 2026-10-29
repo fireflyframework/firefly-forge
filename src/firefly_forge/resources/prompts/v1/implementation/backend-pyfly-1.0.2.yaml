@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-pyfly
+version: 1.0.2
+description: Exact retained pyfly release and installed API contract.
+system_template: ''
+user_template: |-
+  Use pyfly {{ framework_version }} with Python 3.13+ and native dependency injection, controllers, typed contracts, async services and repositories. Pin this exact framework release in the dependency manifest and lock file. Consult only the retained version's official documentation, examples and API citations for framework APIs. Verify imports against the installed pyfly package; do not invent decorators, exports or method signatures. Add behavioral tests and run the product's tests, lint and type checks. Citation retrieval is reference evidence and does not replace executable product verification.
+required_variables:
+- framework_version
+metadata:
+  defaults: {}

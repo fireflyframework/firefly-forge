@@ -247,6 +247,7 @@ async def test_mcp_model_profile_rejects_inline_credential_before_http(monkeypat
 def test_native_task_profiles_handoff_lifecycle_and_assistant_sdk_mcp_parity(tmp_path, postgres_schema, monkeypatch):
     import asyncio
 
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
     from test_collaboration import product
 
@@ -273,6 +274,7 @@ def test_native_task_profiles_handoff_lifecycle_and_assistant_sdk_mcp_parity(tmp
         headers={"Authorization": "Bearer " + token},
         client=("127.0.0.1", 50000),
     ) as http:
+        http.portal.call(activate_native_client_target, app.state.store, tmp_path / "framework-prerequisite")
         client = ForgeClient("http://127.0.0.1", token)
         client.http.close()
         client.http = http

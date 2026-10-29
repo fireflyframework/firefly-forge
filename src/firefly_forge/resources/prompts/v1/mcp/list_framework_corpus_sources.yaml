@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/list_framework_corpus_sources
+version: 1.0.0
+description: Forge framework knowledge MCP tool description.
+system_template: ''
+user_template: Browse all source metadata for one exact framework corpus. Retains original paths, hashes,
+  citations, ingestion states and explicit exclusions. Continue with next_cursor to inspect the complete
+  inventory.
+required_variables: []
+metadata:
+  defaults: {}

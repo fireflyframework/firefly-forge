@@ -63,3 +63,35 @@
     justify-content: center;
   }
 }
+.checkpoint-continuation-review,
+.checkpoint-continuation-result {
+  max-width: 76ch;
+  margin-top: 20px;
+}
+.checkpoint-continuation-review p,
+.checkpoint-continuation-result p {
+  margin-block: 12px;
+  line-height: 1.6;
+}
+.checkpoint-continuation-review small {
+  display: block;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.agent-checkpoint-recovery details {
+  margin-top: 20px;
+}
+.agent-checkpoint-recovery summary {
+  cursor: pointer;
+}
+.agent-checkpoint-recovery pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  margin-top: 12px;
+}

@@ -135,6 +135,10 @@ def native_poll(tmp_path, postgres_schema, monkeypatch, request):
         resources.callback(http.portal.call, client.aclose)
 
         async def seed():
+            if implementation:
+                from native_client_knowledge_fixtures import activate_native_client_target
+
+                await activate_native_client_target(store, tmp_path / "framework-prerequisite")
             key = (
                 rsa.generate_private_key(public_exponent=65537, key_size=2048)
                 .private_bytes(

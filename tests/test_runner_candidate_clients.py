@@ -103,7 +103,7 @@ def test_candidate_path_injection_is_rejected_before_io(monkeypatch, interface):
 async def test_candidate_tool_is_explicitly_read_only_and_requires_only_run_identity():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     tool = tools[TOOL]
-    assert len(tools) == 174
+    assert len(tools) == 182
     assert tool.input_schema["required"] == ["identifier"]
     assert set(tool.input_schema["properties"]) == {"identifier"}
     assert tool.annotations.read_only_hint is True
@@ -114,6 +114,7 @@ async def test_candidate_tool_is_explicitly_read_only_and_requires_only_run_iden
 
 @pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
 def test_native_candidate_clients_read_role_api_without_dispatch(postgres_schema, tmp_path, monkeypatch, interface):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
     from test_runner_continuation_candidates import command_fixture
 
@@ -144,6 +145,7 @@ def test_native_candidate_clients_read_role_api_without_dispatch(postgres_schema
         (store.path.parent / "workspaces").rmdir()  # Only the empty directory created by this owned API fixture.
 
         async def seed():
+            await activate_native_client_target(store, tmp_path / "framework-prerequisite")
             fixture = await command_fixture(store, ["git", "diff"])
             CURRENT_PRINCIPAL.reset(fixture[6])
             return fixture

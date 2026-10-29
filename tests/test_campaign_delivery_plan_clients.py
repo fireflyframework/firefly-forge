@@ -84,6 +84,8 @@ async def test_mcp_nested_plan_schema_is_usable_and_validation_remains_credentia
 
 @pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
 def test_reporting_clients_traverse_native_api_di_without_execution(tmp_path, postgres_schema, monkeypatch, interface):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     from firefly_forge.campaign_delivery_plan_controllers import CampaignDeliveryPlanController
     from firefly_forge.campaign_delivery_plans import CampaignDeliveryPlans
 
@@ -107,7 +109,12 @@ def test_reporting_clients_traverse_native_api_di_without_execution(tmp_path, po
         assert context.get_bean(CampaignDeliveryPlanController).manager is plans
         assert plans.store is http.app.state.store and plans.history.reports is plans.reports
         assert plans.store.runtime_roles.role == "api" and plans.reports.campaigns.poller is None
-        project, manager, journal, campaign = http.portal.call(one_component, http.app.state.store, tmp_path)
+
+        async def seed():
+            await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
+            return await one_component(http.app.state.store, tmp_path)
+
+        project, manager, journal, campaign = http.portal.call(seed)
         with ForgeClient("http://testserver", token) as connection:
             connection.http.close()
             connection.http = http

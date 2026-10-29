@@ -80,6 +80,13 @@ class MemoryStore:
         self.events = []
         self.created = []
         self.finish = MethodType(Store.finish, self)
+        self.owned = True
+        self.ownership_checks = 0
+
+    async def assert_ownership(self):
+        self.ownership_checks += 1
+        if not self.owned:
+            raise RuntimeError("Controlled memory ownership lost")
 
     @asynccontextmanager
     async def _unit(self):

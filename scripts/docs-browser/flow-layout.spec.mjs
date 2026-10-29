@@ -8,6 +8,10 @@ const { test, expect } = createRequire(
 
 const flows = [
   {
+    path: "invalid-read-continuity/",
+    nodes: ["Original", "Inspect", "Migration", "Reconstruction", "Admission"],
+  },
+  {
     path: "git-diff-archive/",
     nodes: ["A", "B", "C", "D", "E", "F"],
   },

@@ -33,12 +33,30 @@ class PreparedRestoreAcceptance:
             "events": list(self.events),
             "result_record": self.result_record,
             "response_sha256": hashlib.sha256(self.body).hexdigest(),
+            **(
+                {
+                    "selection": self.restoration.request.model_dump(mode="json"),
+                    "witness": self.restoration.witness["digest"],
+                }
+                if checkpoint_handoff(self.restoration)
+                else {}
+            ),
         }
 
     async def current(self) -> None:
         service = self.restoration.service
         row = await service.requests.records.find_by_id(identifier(self.ticket["id"]), lock=LockMode.PESSIMISTIC_WRITE)
         events = await service.requests.events(self.ticket["id"])
+        if checkpoint_handoff(self.restoration):
+            if (
+                digest(self.identity()) != self.seal
+                or row is None
+                or row.data != self.ticket
+                or events != list(self.events)
+            ):
+                raise ValueError("Checkpoint handoff acceptance changed")
+            await service.acceptance_current(self.restoration)
+            return
         if (
             digest(self.identity()) != self.seal
             or row is None
@@ -61,6 +79,23 @@ async def prepare_restore_acceptance(restoration: Any) -> PreparedRestoreAccepta
     service = restoration.service
     ticket = await service.requests.get(restoration.ticket["id"])
     events = await service.requests.events(ticket["id"])
+    if checkpoint_handoff(restoration):
+        if ticket != restoration.ticket:
+            raise ValueError("Checkpoint handoff worker changed")
+        from dataclasses import replace
+
+        bundle = await service.checkpoints.restore_bundle(
+            restoration.run_id, restoration.request_id, restoration.request
+        )
+        if bundle != (restoration.intent, restoration.record, restoration.result_record, restoration.body):
+            raise ValueError("Checkpoint handoff original response changed")
+        value = PreparedRestoreAcceptance(
+            restoration, copy.deepcopy(ticket), tuple(copy.deepcopy(events)), copy.deepcopy(bundle[2]), bundle[3], ""
+        )
+        value = replace(value, seal=digest(value.identity()))
+        async with service.store._unit():
+            await value.current()
+        return value
     if (
         ticket != restoration.ticket
         or ticket["status"] != "executing"
@@ -103,7 +138,16 @@ def restored_result(
         raise ValueError("Prepared native restore custody changed")
     value = ConsumePayloadV2.model_validate(consume["payload"])
     ticket = prepared.ticket
-    request = RestoreInput.model_validate(ticket["request"]["input"])
+    request = (
+        prepared.restoration.request
+        if checkpoint_handoff(prepared.restoration)
+        else RestoreInput.model_validate(ticket["request"]["input"])
+    )
+    completion_id = (
+        prepared.restoration.request_id
+        if checkpoint_handoff(prepared.restoration)
+        else ticket["request"]["completion_request_id"]
+    )
     if (
         value.request_id != intent["idempotency_key"]
         or value.intent_digest != intent["digest"]
@@ -113,7 +157,7 @@ def restored_result(
         or response != prepared.result_record
         or value.restore_request_id != ticket["id"]
         or value.generation != ticket["generation"]
-        or ticket["request"]["completion_request_id"] != value.request_id
+        or completion_id != value.request_id
         or request.expected_intent_digest != intent["digest"]
         or request.expected_checkpoint_digest != checkpoint["digest"]
         or value.response_sha256 != hashlib.sha256(prepared.body).hexdigest()
@@ -130,3 +174,9 @@ def restored_result(
         "restore_ticket_digest": digest(ticket),
         "restore_events_digest": digest({"events": list(prepared.events)}),
     }
+
+
+def checkpoint_handoff(restoration: Any) -> bool:
+    from firefly_forge.checkpoint_continuations import CheckpointContinuationExecution
+
+    return isinstance(restoration, CheckpointContinuationExecution)

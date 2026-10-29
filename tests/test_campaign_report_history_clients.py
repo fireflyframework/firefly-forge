@@ -79,6 +79,8 @@ async def test_mcp_cursor_cannot_coerce_non_integer_inputs_before_sdk_validation
 
 @pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
 def test_all_archive_clients_use_actual_native_di_routes(tmp_path, postgres_schema, monkeypatch, interface):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     from firefly_forge.campaign_report_history import CampaignReportHistory
     from firefly_forge.campaign_report_history_controllers import CampaignReportHistoryController
 
@@ -102,7 +104,12 @@ def test_all_archive_clients_use_actual_native_di_routes(tmp_path, postgres_sche
         assert context.get_bean(CampaignReportHistoryController).manager is history
         assert history.store is http.app.state.store
         assert history.store.runtime_roles.role == "api" and history.reports.campaigns.poller is None
-        project, manager, journal, campaign = http.portal.call(one_component, http.app.state.store, tmp_path)
+
+        async def seed():
+            await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
+            return await one_component(http.app.state.store, tmp_path)
+
+        project, manager, journal, campaign = http.portal.call(seed)
         with ForgeClient("http://testserver", token) as connection:
             connection.http.close()
             connection.http = http

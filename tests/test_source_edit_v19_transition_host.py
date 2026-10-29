@@ -33,9 +33,10 @@ def test_v19_recovery_repository_is_an_explicit_material_input():
     root = Path(q.__file__).parent
     admission = declared_names(root / "source_budget_allowances.py", "admission_contract_digest", 79)
     runtime = declared_names(root / "agentic_checkpoint_invocation.py", "runtime_contract", 54)
-    assert admission[79] == runtime[54] == "persistence.py"
+    assert "persistence.py" in admission and "persistence.py" in runtime
     assert len(admission) == len(set(admission)) >= 80
     assert len(runtime) == len(set(runtime)) >= 55
     if q.REGISTRY_VERSION == 18:
+        assert admission[79] == runtime[54] == "persistence.py"
         assert len(admission) == 80 and len(runtime) == 55
     assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) == 22

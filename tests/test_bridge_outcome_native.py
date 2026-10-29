@@ -7,6 +7,7 @@ import httpx2
 import pytest
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 from pydantic_ai.models import ModelRequestParameters
+from test_bridge_completion_native import mock_model_requests
 from test_execution import seed_repository
 
 from firefly_forge import providers
@@ -47,13 +48,16 @@ async def test_unusable_bridge_completion_survives_store_restart_without_resubmi
     class OfflineBridgeWorker:
         async def execute(self, workspace, *args):
             (workspace / "partial.txt").write_text("Retain partial source until reconciliation")
-            if stream:
-                async with model.request_stream(
-                    [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
-                ):
-                    pytest.fail("An empty stream cannot provide a completion")
-            else:
-                await model.request([ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters())
+            with mock_model_requests(model):
+                if stream:
+                    async with model.request_stream(
+                        [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+                    ):
+                        pytest.fail("An empty stream cannot provide a completion")
+                else:
+                    await model.request(
+                        [ModelRequest(parts=[UserPromptPart("Offline")])], None, ModelRequestParameters()
+                    )
 
     journal = Journal(store)
     engine = Engine(store, tmp_path / "workspaces", lambda _: OfflineBridgeWorker(), journal=journal)
@@ -161,10 +165,26 @@ async def test_cancelled_inflight_bridge_submission_survives_restart_without_ret
     monkeypatch.setattr(provider, "model", lambda **kwargs: model)
     journal = Journal(store)
     engine = Engine(store, tmp_path / "workspaces", lambda _: provider, journal=journal)
-    execution = asyncio.create_task(engine.execute_run(run["id"]))
+    await store.acquire_ownership()
+
+    async def controlled_execution():
+        with mock_model_requests(model):
+            await engine.execute_run(run["id"])
+
+    execution = asyncio.create_task(controlled_execution())
     engine.active[run["id"]] = execution
     try:
-        await asyncio.wait_for(submitted.wait(), 10)
+        waiting = asyncio.create_task(submitted.wait())
+        try:
+            await asyncio.wait({waiting, execution}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+            observed = await store.get_run(run["id"])
+            assert submitted.is_set(), (
+                {key: observed.get(key) for key in ("status", "error", "pause", "active_task", "attempt")},
+                execution.exception() if execution.done() else None,
+            )
+        finally:
+            waiting.cancel()
+            await asyncio.gather(waiting, return_exceptions=True)
         run_ids = {item["id"] for item in await store.runs()}
         await engine.cancel_effect(run["id"])
         assert execution.done() and execution.cancelled()

@@ -816,6 +816,17 @@
   font-size: 13px;
   line-height: 1.6;
 }
+.assistant-history-popover .feature-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-bottom: 0;
+}
+.assistant-history-popover .feature-toolbar > button {
+  min-width: 0;
+  width: 100%;
+}
 
 .product-assistant-panel .product-assistant > header {
   margin-bottom: 8px;

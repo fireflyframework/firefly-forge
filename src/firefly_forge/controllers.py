@@ -95,6 +95,9 @@ class RunService:
 
     async def retry(self, identifier: str) -> dict[str, Any]:
         run = await self.store.get_run(identifier)
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+        await assert_generic_dispatch_allowed(self.store, getattr(self.engine, "journal", None), run)
         if run.get("git_delivery_policy", {}).get("enabled"):
             deliveries = getattr(self.engine, "git_deliveries", None)
             if deliveries is None:
@@ -108,6 +111,10 @@ class RunService:
             raise ValueError("Retry this component through its project campaign to preserve frozen admission")
         if run["status"] not in {"failed", "cancelled", "interrupted"}:
             raise ValueError("Only failed, cancelled or interrupted runs can be retried")
+        current = await self.store.get_run(identifier)
+        if current != run:
+            raise ValueError("Run or invalid-read continuity changed before retry; inspect its current receipts")
+        await assert_generic_dispatch_allowed(self.store, getattr(self.engine, "journal", None), current)
         request = RunInput.model_validate({key: run[key] for key in RunInput.model_fields if key in run})
         return await self.store.create_run(request)
 

@@ -109,6 +109,11 @@ async def observe_context(
                 version = versions[0].removeprefix("v")
     except (ValueError, TypeError, KeyError):
         version = "unknown"
+    if run.get("framework_knowledge_pin"):
+        pin = run["framework_knowledge_pin"]
+        if pin["framework"] != framework:
+            raise ValueError("Learning context differs from the retained framework target")
+        version = pin["framework_version"]
     return LearningContext.model_validate(
         {
             "repository_id": run["repository_id"],
@@ -122,6 +127,11 @@ async def observe_context(
                     "backend": backend,
                     "frontend": run["frontend"],
                     "sandbox": run.get("sandbox_snapshot"),
+                    **(
+                        {"framework_target_digest": run["framework_knowledge_pin"]["digest"]}
+                        if run.get("framework_knowledge_pin")
+                        else {}
+                    ),
                 }
             ),
             "source_tree": association.source_tree,

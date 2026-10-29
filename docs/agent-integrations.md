@@ -124,6 +124,12 @@ Publication and cancellation are worker-mediated requests. Python `execution_req
 
 Python `reconcile_execution_request(run_id, request_id, reconciliation_id)`, MCP `reconcile_execution_request`, and CLI `forge reconcile-execution-request` ask the server to match existing evidence. They accept a stable 32-character hexadecimal reconciliation ID and no caller-supplied outcome. They do not dispatch delivery or repeat an uncertain effect. Read [delivery request recovery](recovery.md#reconcile-worker-delivery-requests) for authority checks, idempotency and unknown-result handling.
 
+## Retained checkpoint continuations
+
+Use `checkpoint_continuation_candidate(run_id, request_id)` to inspect an existing ticket. After reviewing a ready candidate, `request_checkpoint_continuation(run_id, request_id, action_id, request)` saves one explicitly acknowledged finite continuation. Read `checkpoint_continuation_status(run_id, request_id)` after an uncertain response and match the saved action ID. The typed input is `CheckpointContinuationInputV1`; all identifiers and acknowledgements are validated before transport.
+
+These methods preserve the original attempt, history, completed effects and remaining budgets. A retained response is consumed once, and completed effects are reused from their original receipts. See [retained checkpoint continuation](checkpoint-continuations.md) for policy, eligibility, input fields and status meanings.
+
 ## Exact observation attempts
 
 V2 source-verification attempts can distinguish an immutable local refusal from an uncertain operation. They read an existing flycanon source and its citations; they do not create or ingest a source. The original observation and verified-receipt APIs remain available with their existing UUID request identifiers.

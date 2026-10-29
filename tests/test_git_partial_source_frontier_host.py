@@ -96,9 +96,9 @@ async def test_known_response_without_consume_is_still_not_settled(frontier_case
     from firefly_forge.git_partial_source_checkpoints import stored_frontier_proof
 
     run, task, entries = await frontier_case.run_frontier()
-    assert entries[-1]["kind"] == "agent_consume"
+    consume = max(index for index, entry in enumerate(entries) if entry["kind"] == "agent_consume")
     with pytest.raises(ValueError, match="completion closure"):
-        stored_frontier_proof(run, task, entries[:-1])
+        stored_frontier_proof(run, task, entries[:consume])
 
 
 async def test_old_runtime_contract_is_not_accepted_by_a_current_reader(frontier_case, monkeypatch):
@@ -138,7 +138,17 @@ async def partial_service(frontier_case, monkeypatch, request):
         git(env.partial_remote, "init", "--bare", "-q")
         git(env.workspace, "remote", "add", "origin", str(env.partial_remote))
         env.store.run.data["git_metadata_digest"] = metadata_digest(env.workspace)
-    await env.run_frontier()
+    if getattr(request, "param", None) == "compressed":
+        from firefly_forge import agentic_tool_custody
+
+        # This legacy compressed-history fixture predates separate tool-result receipts.
+        lookup = agentic_tool_custody.current_agentic_tool_custody
+        with monkeypatch.context() as historical:
+            historical.setattr(agentic_tool_custody, "current_agentic_tool_custody", lambda: None)
+            await env.run_frontier()
+        assert agentic_tool_custody.current_agentic_tool_custody is lookup
+    else:
+        await env.run_frontier()
     state = {"allowed": True}
 
     async def authorize(run, actor, permission):

@@ -66,6 +66,7 @@ import { KnowledgeExplorer, Knowledge } from "./Knowledge";
 import { FactoryFloor, type FactorySelection } from "./FactoryFloor";
 import { ContinueRun, ExecutionRecord } from "./ExecutionRecord";
 import { CommunicationSettings } from "./CommunicationSettings";
+import { ContinuityPolicySettings } from "./ContinuityPolicySettings";
 import { linkedRun } from "./RunQuestionLink";
 import { WorkerDialogue } from "./WorkerDialogue";
 import {
@@ -1153,6 +1154,7 @@ export default function App() {
             <Connections
               current={connection}
               canConfigure={!!identity.session?.global_admin}
+              session={identity.session}
               connected={connected}
               providers={providers}
               loading={loading}
@@ -2468,6 +2470,7 @@ function ProfileInfo({
 
 function Connections({
   current,
+  session,
   canConfigure,
   connected,
   providers,
@@ -2481,6 +2484,7 @@ function Connections({
 }: {
   doneLabel?: string;
   canConfigure: boolean;
+  session: IdentitySession | null;
   current: Connection;
   connected: boolean;
   providers: unknown;
@@ -2649,6 +2653,9 @@ function Connections({
             </button>
           </div>
         </Wizard>
+      )}
+      {connected && (
+        <ContinuityPolicySettings connection={current} session={session} />
       )}
     </>
   );

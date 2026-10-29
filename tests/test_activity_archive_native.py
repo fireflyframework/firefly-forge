@@ -124,7 +124,7 @@ async def test_native_populated_schema29_upgrade_is_additive_and_does_not_backfi
     assert spec and spec.loader
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
-    assert legacy.SCHEMA_REVISION == 29 and SCHEMA_REVISION == 30
+    assert legacy.SCHEMA_REVISION == 29 and SCHEMA_REVISION == 31
     monkeypatch.setattr(module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema29/factory.db")
     from firefly_forge.models import RepositoryInput, RunInput
@@ -146,7 +146,7 @@ async def test_native_populated_schema29_upgrade_is_additive_and_does_not_backfi
         await migrate(session, store.schema)
         assert list(await session.scalars(text("SELECT revision FROM forge_schema_migrations ORDER BY revision"))) == [
             29,
-            30,
+            SCHEMA_REVISION,
         ]
         assert await session.scalar(select(func.count()).select_from(ForgeEventContentEntity)) == 0
         assert await session.scalar(select(ForgeEventEntity.data).where(ForgeEventEntity.id == event_id)) == legacy_data

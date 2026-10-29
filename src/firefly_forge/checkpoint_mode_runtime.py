@@ -286,6 +286,9 @@ async def prepare_current_mode(journal: Any, run_id: str) -> PreparedModeAdoptio
     from firefly_forge.original_selection_runtime import prepare_readmitted_selection
 
     selection = await prepare_readmitted_selection(journal, current, entries)
+    from firefly_forge.invalid_read_epochs import mode_epoch
+
+    policy, acknowledgement = mode_epoch(current, selection, policy, acknowledgement)
     async with journal.store._unit():
         if (
             await journal.store.get_run(run_id) != current
@@ -338,7 +341,12 @@ def provider_modes_match(store: Any, run: Data, intent: Data) -> bool:
 
 def acknowledgement_policy_matches(run: Data, record: Data, current_policy: str) -> bool:
     prepared = prepared_mode(run)
-    if prepared is None or prepared.acknowledgement_policy_digest != current_policy:
+    from firefly_forge.invalid_read_epochs import acknowledgement_epoch_matches
+
+    if prepared is None or (
+        prepared.acknowledgement_policy_digest != current_policy
+        and not acknowledgement_epoch_matches(run, prepared, current_policy)
+    ):
         return False
     receipt = CheckpointModeReceiptV1.model_validate(prepared.record["payload"])
     return any(

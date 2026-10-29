@@ -139,6 +139,7 @@ async def test_evidence_replay_and_failed_binding_do_not_change_native_question_
 def test_real_native_api_di_serves_only_authenticated_hash_bound_question_images(
     tmp_path, postgres_schema, monkeypatch
 ):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
 
     from firefly_forge.api import create_application
@@ -151,6 +152,7 @@ def test_real_native_api_di_serves_only_authenticated_hash_bound_question_images
     with TestClient(
         app, base_url="http://127.0.0.1", headers={"Authorization": "Bearer " + token}, client=("127.0.0.1", 50000)
     ) as http:
+        http.portal.call(activate_native_client_target, app.state.store, tmp_path / "framework-prerequisite")
         repository = http.post(
             "/api/v1/repositories", json=RepositoryInput(name="Native preview fixture", url=str(tmp_path)).model_dump()
         ).json()

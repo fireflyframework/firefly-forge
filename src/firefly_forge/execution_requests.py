@@ -58,6 +58,7 @@ class ExecutionRequests:
         self.journal = journal or ForgeExecutionRequestEventRepository()
         self.runner_continuations: RunnerContinuations | None = None
         self.agent_restores: Any = None
+        self.invalid_read_continuities: Any = None
         self.git_deliveries: Any = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
@@ -583,6 +584,8 @@ class ExecutionRequests:
             await self.runner_continuations.recover()
         if self.agent_restores is not None:
             await self.agent_restores.recover()
+        if self.invalid_read_continuities is not None:
+            await self.invalid_read_continuities.recover()
         if self.git_deliveries is not None:
             await self.git_deliveries.recover()
         self.poller = asyncio.create_task(self._poll())
@@ -610,6 +613,10 @@ class ExecutionRequests:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="agent_restore")
                     ]
+                if self.invalid_read_continuities is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="invalid_read")
+                    ]
                 if self.git_deliveries is not None:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="git_delivery")
@@ -622,6 +629,8 @@ class ExecutionRequests:
                         action = self.git_deliveries.execute
                     elif row["kind"] == "agent_restore":
                         action = self.agent_restores.execute
+                    elif row["kind"] == "invalid_read":
+                        action = self.invalid_read_continuities.execute
                     elif row["kind"] == "runner_continue":
                         if self.runner_continuations is None:
                             continue

@@ -57,7 +57,7 @@ Mount factory state only on the control-plane API and trusted worker processes t
 
 ## 4. Configure secrets and images
 
-Select a reviewed forge revision and immutable image digest. Keep the Flycanon server environment separate from forge's native [pyfly](https://fireflyframework.org/frameworks/python/) environment; the SDK and server are separate packages with their own dependency requirements. Pin flycanon server 26.10.5 or a reviewed compatible build. The managed local stack uses a local embedding model, without a paid provider API key.
+Select a reviewed forge revision and immutable image digest. Keep the Flycanon server environment separate from forge's native [pyfly](https://fireflyframework.org/frameworks/python/) environment; the SDK and server are separate packages with their own dependency requirements. Pin flycanon server 26.10.6 or a reviewed compatible build. The managed local stack uses a local embedding model, without a paid provider API key.
 
 Store factory database credentials, OIDC client secrets, the shared identity-encryption key, Flycanon service keys and certificates in the installation's secret manager. Rotate them through a planned procedure that preserves queued configuration revisions. Kubernetes Secrets need the cluster's access controls and encryption policy; putting a value into a Secret does not by itself establish that policy.
 

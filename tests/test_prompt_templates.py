@@ -166,7 +166,7 @@ def test_reviewed_defaults_and_composed_profiles_stay_literal():
     from firefly_forge.qa import qa_instructions
     from firefly_forge.skills import inject_skills, skill_catalog
 
-    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v2.json").read_text())
+    baseline = json.loads((Path(__file__).parent / "fixtures/prompt-baseline-v3.json").read_text())
     assert profile_catalog() == baseline["profile_catalog"]
     assert skill_catalog() == baseline["skill_catalog"]
     assert _default_document().model_dump(mode="json") == baseline["role_document"]
@@ -191,7 +191,7 @@ def test_every_packaged_resource_matches_its_reviewed_text_vector():
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
-    assert len(catalog.registry) == 321
+    assert len(catalog.registry) == 333
     for vector in fixture["vectors"]:
         assert (
             catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]

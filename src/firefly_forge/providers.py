@@ -739,7 +739,7 @@ class BridgeProvider(ConfiguredProvider):
             pass
         return {"status": "unverified"}
 
-    def model(self, *, image_capability: dict[str, Any] | None = None) -> Any:
+    def model(self, *, image_capability: dict[str, Any] | None = None, http_client: Any = None) -> Any:
         from openai import AsyncOpenAI
         from pydantic_ai.models.openai import OpenAIChatModel, OpenAIStreamedResponse
         from pydantic_ai.profiles.openai import OpenAIModelProfile
@@ -978,7 +978,13 @@ class BridgeProvider(ConfiguredProvider):
         return BridgeChatModel(
             name,
             provider=OpenAIProvider(
-                openai_client=BridgeClient(base_url=endpoint, api_key=token, default_headers=headers, max_retries=0)
+                openai_client=BridgeClient(
+                    base_url=endpoint,
+                    api_key=token,
+                    default_headers=headers,
+                    max_retries=0,
+                    **({"http_client": http_client} if http_client is not None else {}),
+                )
             ),
             # Subscription CLIs cannot implement an OpenAI output-token cap.
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),

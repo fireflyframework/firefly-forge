@@ -5,6 +5,7 @@
 import hashlib
 import html
 import json
+import math
 import re
 import struct
 import subprocess
@@ -43,6 +44,7 @@ CAPTURE_HELPERS = {
     "studio/tests/coding-check-grant-fixture.json",
     "studio/tests/coding-check-recovery-browser-fixture.ts",
     "studio/tests/git-delivery-contract-fixture.json",
+    "studio/tests/framework-knowledge-fixture.ts",
 }
 CAPTURE_PRODUCERS = {
     "studio/tests/docs-walkthrough.spec.ts",
@@ -50,6 +52,8 @@ CAPTURE_PRODUCERS = {
     "studio/tests/docs-provider-allowance.spec.ts",
     "studio/tests/docs-coding-check-recovery.spec.ts",
     "studio/tests/development-workflow.spec.ts",
+    "studio/tests/framework-knowledge.spec.ts",
+    "studio/tests/invalid-read-recovery.spec.ts",
 }
 
 
@@ -143,8 +147,29 @@ def _load_walkthrough(config, root=ROOT):
         }
         if stage.startswith("development-workflow-") and stage not in workflow_stages:
             raise ValueError("Unknown development workflow capture stage: " + name)
+        framework_stages = {
+            "framework-generation-review": "desktop",
+            "framework-generation-candidates": "mobile",
+            "framework-generation-confirmation": "mobile",
+        }
+        if stage.startswith("framework-generation-") and framework_stages.get(stage) != device:
+            raise ValueError("Unknown framework generation capture stage: " + name)
+        recovery_stages = {"continuity-recovery-intro", "continuity-recovery-review", "continuity-recovery-queued"}
+        if stage.startswith("continuity-recovery-") and stage not in recovery_stages:
+            raise ValueError("Unknown continuity recovery capture stage: " + name)
+        checkpoint_stages = {
+            "checkpoint-continuation-policy",
+            "checkpoint-continuation-review",
+            "checkpoint-continuation-status",
+        }
+        if stage.startswith("checkpoint-continuation-") and stage not in checkpoint_stages:
+            raise ValueError("Unknown checkpoint continuation capture stage: " + name)
         expected_producer = (
-            "studio/tests/development-workflow.spec.ts"
+            "studio/tests/invalid-read-recovery.spec.ts"
+            if stage in recovery_stages | checkpoint_stages
+            else "studio/tests/framework-knowledge.spec.ts"
+            if stage in framework_stages
+            else "studio/tests/development-workflow.spec.ts"
             if stage in workflow_stages
             else "studio/tests/external-tools.spec.ts"
             if stage.startswith("external-")
@@ -162,7 +187,41 @@ def _load_walkthrough(config, root=ROOT):
         if hashlib.sha256(png).hexdigest() != record["sha256"]:
             raise ValueError("Walkthrough screenshot changed: " + name)
         width, height = struct.unpack(">II", png[16:24])
-        if {"width": width, "height": height} != record["viewport"]:
+        section = record.get("section_capture")
+        if stage in framework_stages or section is not None:
+            selectors = {
+                "framework-generation-review": ".framework-generation-review",
+                "framework-generation-candidates": ".framework-generation-review",
+                "framework-generation-confirmation": ".framework-activation-confirm",
+            }
+            if stage not in selectors or not isinstance(section, dict) or section.get("selector") != selectors[stage]:
+                raise ValueError("Invalid walkthrough section capture: " + name)
+            bounds, viewport = section.get("bounds"), record.get("viewport")
+            if not isinstance(bounds, dict) or not isinstance(viewport, dict):
+                raise ValueError("Missing walkthrough section bounds: " + name)
+            numbers = [bounds.get(key) for key in ("x", "y", "width", "height")]
+            numbers += [viewport.get(key) for key in ("width", "height")]
+            if any(
+                isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                for value in numbers
+            ):
+                raise ValueError("Invalid walkthrough section bounds: " + name)
+            # Element screenshots include the enclosing whole-pixel rectangle.
+            raster_width = math.ceil(bounds["x"] + bounds["width"]) - math.floor(bounds["x"])
+            raster_height = math.ceil(bounds["y"] + bounds["height"]) - math.floor(bounds["y"])
+            if (
+                bounds["x"] < 0
+                or bounds["y"] < 0
+                or bounds["width"] <= 0
+                or bounds["height"] <= 0
+                or bounds["x"] + bounds["width"] > viewport["width"]
+                or bounds["y"] + bounds["height"] > viewport["height"]
+                or width != raster_width
+                or height != raster_height
+                or section.get("image_size") != {"width": width, "height": height}
+            ):
+                raise ValueError("Walkthrough section raster differs from its bounds: " + name)
+        elif {"width": width, "height": height} != record["viewport"]:
             raise ValueError("Walkthrough screenshot viewport differs: " + name)
     if manifest.get("studio_version") != json.loads((root / "studio/package.json").read_text())["version"]:
         raise ValueError("Walkthrough has stale Studio version")
@@ -190,7 +249,7 @@ def on_page_markdown(markdown, page, config, files=None):
             record = captures[filename]
             url = html.escape(get_relative_url(record["path"], page.url), quote=True)
             label = html.escape(alt, quote=True)
-            size = record["viewport"]
+            size = record.get("section_capture", {}).get("image_size", record["viewport"])
             links.append(
                 f'<a class="forge-shot__link theme-{theme}" href="{url}" '
                 f'aria-label="Open full screenshot: {label}"><img src="{url}" alt="{label}" '

@@ -1,0 +1,280 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.framework-releases {
+  max-width: 1120px;
+  margin-inline: auto;
+}
+.framework-release-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-block: 1.5rem;
+}
+.framework-release-intro > div {
+  max-width: 72ch;
+}
+.framework-release-intro > button {
+  flex-shrink: 0;
+}
+.framework-releases button,
+.framework-version-detail a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.framework-release-intro h2 {
+  margin-bottom: 0.5rem;
+}
+.framework-corpus-selector {
+  margin-block: 1rem 1.5rem;
+}
+.framework-corpus-selector .field {
+  max-width: 48rem;
+  min-width: 0;
+}
+.framework-corpus-selector select {
+  width: 100%;
+  min-width: 0;
+}
+.framework-corpus-selector p,
+.framework-corpus-record p,
+.framework-corpus-record .feature-meta span,
+.framework-corpus-record code,
+.framework-corpus-record h3 {
+  overflow-wrap: anywhere;
+}
+.framework-corpus-record .feature-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+.framework-corpus-record .feature-list > article,
+.framework-corpus-record .feature-list header > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.framework-release-row {
+  border-top: 1px solid var(--line);
+  padding-block: 1.5rem 2rem;
+}
+.framework-release-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.framework-release-heading h3 {
+  font-size: 1.35rem;
+  margin: 0 0 0.4rem;
+}
+.framework-release-heading p {
+  color: var(--muted);
+  margin: 0;
+}
+.framework-version-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-block: 1.5rem 1rem;
+}
+.framework-version-comparison dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+.framework-version-comparison dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.framework-version-comparison .framework-version-detail {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.framework-releases code,
+.framework-provenance dd,
+.framework-operation dd {
+  overflow-wrap: anywhere;
+}
+.framework-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.framework-refresh-review .framework-actions {
+  margin-top: calc(var(--space) * 4);
+}
+.framework-counts {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.framework-refresh-review,
+.framework-operation,
+.framework-generation-target {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1.25rem;
+}
+.framework-refresh-review h4,
+.framework-operation h4,
+.framework-generation-target h4 {
+  margin: 0 0 0.7rem;
+}
+.framework-refresh-review p,
+.framework-operation p,
+.framework-generation-review p,
+.framework-generation-target p {
+  max-width: 75ch;
+  line-height: 1.6;
+}
+.framework-provenance {
+  margin-top: 1.3rem;
+}
+.framework-provenance summary,
+.framework-operation summary {
+  cursor: pointer;
+  width: fit-content;
+  padding-block: 0.35rem;
+}
+.framework-provenance dl,
+.framework-operation dl,
+.framework-activation-confirm dl,
+.framework-candidate-details {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+.framework-provenance dd,
+.framework-operation dd,
+.framework-activation-confirm dd,
+.framework-candidate-details dd {
+  margin: 0;
+}
+.framework-full-commit {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.framework-budget-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.framework-budget-fields .field,
+.framework-budget-fields input {
+  min-width: 0;
+  width: 100%;
+}
+.framework-control-review,
+.framework-operation-controls details,
+.framework-generation-review {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.framework-generation-review fieldset {
+  min-width: 0;
+  margin: 1rem 0;
+  padding: 0;
+  border: 0;
+}
+.framework-generation-review .field input,
+.framework-generation-review .field select {
+  min-width: 0;
+  width: 100%;
+}
+.framework-generation-review code,
+.framework-activation-confirm dd,
+.framework-candidate-details dd {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .framework-budget-fields {
+    grid-template-columns: 1fr;
+  }
+  .framework-release-intro {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .framework-release-heading {
+    flex-direction: column;
+  }
+  .framework-version-comparison {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  .framework-provenance dl,
+  .framework-operation dl,
+  .framework-activation-confirm dl,
+  .framework-candidate-details {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+  .framework-provenance dd,
+  .framework-operation dd,
+  .framework-activation-confirm dd,
+  .framework-candidate-details dd {
+    margin-bottom: 0.5rem;
+  }
+  .framework-actions button {
+    flex: 1 1 auto;
+  }
+}
+
+.framework-generation-review .field {
+  min-width: 0;
+}
+.framework-generation-candidates {
+  margin-bottom: 1rem;
+}
+.framework-generation-candidates .field {
+  max-width: 48rem;
+}
+
+.framework-selected-commit {
+  white-space: nowrap;
+}
+.framework-selected-provenance {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+.framework-selected-provenance summary {
+  cursor: pointer;
+}
+.framework-generation-review,
+.framework-activation-confirm {
+  scroll-margin-block: 1rem;
+}
+.framework-generation-review[open] {
+  max-width: 56rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.framework-generation-review > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.framework-generation-review legend {
+  font-weight: 600;
+}
+.framework-activation-confirm {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-subtle);
+}
+.framework-reference-part {
+  display: inline-block;
+}
+.framework-activation-confirm h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}

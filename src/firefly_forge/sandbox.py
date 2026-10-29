@@ -1021,9 +1021,10 @@ class SandboxExecutor:
                         effect="start",
                         evidence={"exit_code": result.exit_code, "output": result.output},
                     )
-                    return result
                 finally:
                     await asyncio.shield(self._cleanup_host(run_id, task_id, execution_id, payload))
+                self._capture_diagnostic(_receipt_sink, execution_id, payload)
+                return result
             observed = None
             if created["disposition"] == "needs_reconciliation":
                 observed = await self._inspect(config, payload["container_name"], labels)
@@ -1184,7 +1185,7 @@ class SandboxExecutor:
                     "execution_id": execution_id,
                     "request_digest": payload["request_digest"],
                     "snapshot_digest": payload["snapshot_digest"],
-                    "workspace_digest": payload["request"]["workspace_digest"],
+                    "workspace_digest": payload["request"].get("workspace_digest"),
                     "start_key": execution_id + ":start",
                     "cleanup_key": execution_id + ":cleanup",
                 }

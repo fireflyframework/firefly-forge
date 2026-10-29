@@ -234,6 +234,7 @@ class Store:
         self.vault_source_patch_admission: Callable[[Any], Awaitable[None]] | None = None
         self.vault_source_diff_history: Callable[[], Awaitable[CredentialHistorySnapshot]] | None = None
         self.task_router: Any = None
+        self.framework_knowledge: Any = None
         self.runtime_roles: Any = None
         self.execution_requests: Any = None
         self.runners: Any = None
@@ -691,6 +692,10 @@ class Store:
                 if field not in request.model_fields_set:
                     fields[field] = architecture[field]
         RunInput.model_validate(fields)
+        if self.framework_knowledge is not None:
+            target_request = await self.framework_knowledge.prepare_target_request(fields)
+            if target_request is not None:
+                runner["framework_knowledge_request"] = target_request
         branding = self.configuration._read(
             self.configuration.directory / f"product-brand-{product_repository_id}.json"
         )

@@ -21,9 +21,9 @@ _BACKENDS = [
     {
         "id": "pyfly",
         "name": "pyfly · Python",
-        "version": "26.10.6 · Python 3.13+",
+        "version": "26.10.11 candidate · Python 3.13+",
         "detail": "Native PyFly DI, controllers, typed contracts and async services; Starlette ASGI.",
-        "source": "https://github.com/fireflyframework/fireflyframework-pyfly/releases/tag/v26.10.06",
+        "source": "https://github.com/fireflyframework/fireflyframework-pyfly/releases/tag/v26.10.11",
         "instruction": prompt_text("implementation/backend-pyfly", version="1.0.1"),
     },
     {
@@ -37,9 +37,9 @@ _BACKENDS = [
     {
         "id": "larafly",
         "name": "larafly · PHP",
-        "version": "26.10.1 · PHP 8.3+ · Laravel 13",
+        "version": "26.10.4 candidate · PHP 8.5.12+ · Laravel/Illuminate 13.38+",
         "detail": "Laravel-native Firefly attributes, services, repositories, CQRS and typed contracts.",
-        "source": "https://github.com/fireflyframework/fireflyframework-php/blob/main/composer.json",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/blob/8379ef8ed1d8a15ea13adba762815b900a937bc4/composer.json",
         "instruction": prompt_text("implementation/backend-larafly"),
     },
     {
@@ -115,16 +115,30 @@ def profile_catalog() -> dict[str, list[dict[str, Any]]]:
             if live
             else "Upstream contract inspected; live product verification pending"
         )
+        candidate = profile["id"] in {"pyfly", "larafly"}
+        if candidate:
+            validation = (
+                "Official stable release metadata verified; generation requires a ready exact corpus, "
+                "native runtime prerequisites and installed-framework/product checks. "
+                "Historical live fixture results do not qualify this new release."
+            )
         return {
             **{k: v for k, v in profile.items() if k != "instruction"},
-            "validation_state": "live_fixture_verified" if live else "contract_inspected",
+            "validation_state": "requires_run_validation"
+            if candidate
+            else "live_fixture_verified"
+            if live
+            else "contract_inspected",
             "validation": validation if profile["id"] != "none" else "Not applicable",
         }
 
     return {"backends": [public(p) for p in ordered], "frontends": [public(p) for p in _FRONTENDS]}
 
 
-def build_instruction(brief: str, backend: str, frontend: str) -> str:
+def build_instruction(brief: str, backend: str, frontend: str, *, target: dict[str, Any] | None = None) -> str:
+    from firefly_forge.framework_knowledge_targets import CURRENT_FRAMEWORK_TARGET
+
+    target = target or CURRENT_FRAMEWORK_TARGET.get()
     if frontend == "next":
         frontend = "nextjs"
     selected = []
@@ -132,7 +146,33 @@ def build_instruction(brief: str, backend: str, frontend: str) -> str:
         match = next((p for p in catalog if p["id"] == value), None)
         if match is None:
             raise ValueError(f"Unknown {kind} profile: {value}")
-        selected.append(match["instruction"])
+        if kind == "backend" and target and target.get("framework") == backend:
+            selected.append(
+                prompt_text(
+                    "implementation/backend-" + backend,
+                    version="1.0.2" if backend == "pyfly" else "1.0.1",
+                    framework_version=target["framework_version"],
+                    **(
+                        {
+                            "runtime_requirement": "PHP "
+                            + target["runtime_requirements"]["runtime_requirement"]
+                            + "; Laravel/Illuminate "
+                            + json.dumps(
+                                {
+                                    k: v
+                                    for k, v in target["runtime_requirements"]["dependencies"].items()
+                                    if k.startswith("illuminate/")
+                                },
+                                sort_keys=True,
+                            )
+                        }
+                        if backend == "larafly"
+                        else {}
+                    ),
+                )
+            )
+        else:
+            selected.append(match["instruction"])
     if backend == frontend == "none":
         raise ValueError("Select at least one backend or frontend profile")
     return "\n\n".join(

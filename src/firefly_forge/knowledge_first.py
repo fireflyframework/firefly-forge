@@ -74,6 +74,10 @@ class KnowledgeFirst:
             and refresh_request_id is not None
         ):
             raise ValueError("Explicit refresh requires its own stable 32-character request identity")
+        if run.get("framework_knowledge_request"):
+            if self.knowledge is None or self.knowledge.frameworks is None:
+                raise ValueError("Required version-isolated framework knowledge is unavailable")
+            await self.knowledge.frameworks.assert_run_pin(run)
         context = await observe_context(run, source, workspace, query)
         async with self.store._unit():
             current = await self.journal._run(run_id)
@@ -90,6 +94,11 @@ class KnowledgeFirst:
                     "policy": policy["digest"],
                     "search": run.get("search_snapshot"),
                     "knowledge": run.get("knowledge_snapshot"),
+                    **(
+                        {"framework_target": run["framework_knowledge_pin"]["digest"]}
+                        if run.get("framework_knowledge_pin")
+                        else {}
+                    ),
                     "external": allow_external,
                     "refresh": refresh_request_id,
                 }

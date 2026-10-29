@@ -12,6 +12,7 @@ import { ProviderRecoveryAllowance } from "./ProviderRecoveryAllowance";
 import { CodingCheckRecovery } from "./CodingCheckRecovery";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
+import { InvalidReadRecovery } from "./InvalidReadRecovery";
 import { RunGitDeliveries } from "./RunGitDeliveries";
 import type { IdentitySession } from "./Identity";
 import { asRecord } from "./ExecutionFormat";
@@ -236,28 +237,51 @@ export function ExecutionRecord({
             value={run.verification_refusal}
           />
         )}
+      {session &&
+        (!run.invalid_read_continuity ||
+          run.status === "running" ||
+          run.worker_request?.status === "pending") && (
+          <RunnerContinuation
+            key={JSON.stringify([
+              "runner-continuation",
+              connection.base,
+              connection.token,
+              session.user.id,
+              session.global_admin,
+              session.memberships,
+              run.id,
+              run.repository_id,
+              run.project_id,
+              run.publish,
+              run.status,
+              run.cancel_request?.status,
+            ])}
+            run={run}
+            connection={connection}
+            session={session}
+          />
+        )}
       {session && (
-        <RunnerContinuation
+        <InvalidReadRecovery
           key={JSON.stringify([
-            "runner-continuation",
+            "invalid-read-recovery",
             connection.base,
             connection.token,
-            session.user.id,
-            session.global_admin,
-            session.memberships,
+            session,
             run.id,
             run.repository_id,
             run.project_id,
             run.publish,
             run.status,
             run.cancel_request?.status,
+            run.invalid_read_continuity,
           ])}
           run={run}
           connection={connection}
           session={session}
         />
       )}
-      {session && (
+      {session && run.invalid_read_continuity == null && (
         <AgentCheckpointRecovery
           key={JSON.stringify([
             "agent-checkpoint-recovery",
@@ -415,7 +439,7 @@ export function ExecutionRecord({
         )}
         <ol className="journal-entries">
           {journal?.entries?.map((entry) => (
-            <li key={entry.sequence}>
+            <li key={entry.sequence} id={"journal-record-" + entry.digest}>
               <div className="record-ledger-heading">
                 <span
                   className="record-sequence"
@@ -444,6 +468,10 @@ export function ExecutionRecord({
                 "tool_receipt",
                 "tool_unknown",
                 "tool_reconciled",
+                "agentic_tool_intent",
+                "agentic_tool_result",
+                "agentic_tool_unknown",
+                "agentic_tool_effect_link",
               ].includes(entry.kind) ? (
                 <ToolEvidence
                   kind={entry.kind}

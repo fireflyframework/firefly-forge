@@ -393,12 +393,13 @@ def test_current_v10_declares_entire_new_allowance_module_without_relabeling_his
     from firefly_forge import source_edit_qualification as qualification
     from firefly_forge.source_edit_supported_profiles import PROFILES
 
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v19"
-    assert qualification.REGISTRY_VERSION == 18
+    assert f"codex-exec-restricted-source/v{qualification.REGISTRY_VERSION + 1}" == qualification.LOADER_PROFILE
+    assert tuple(name for name, _ in qualification.loader_hashes()) == qualification.LOADER_MODULES
     assert len(qualification.LOADER_MODULES) == 22
     assert "source_budget_output.py" in qualification.LOADER_MODULES
     assert "known_completed_output_finite_activation" in qualification.SOURCE_BUDGET_CHECKS
     historical = {profile.loader_profile: profile for profile in PROFILES}
+    assert historical["codex-exec-restricted-source/v9"].version < qualification.REGISTRY_VERSION
     assert historical["codex-exec-restricted-source/v5"].proof.artifact_sha256 == (
         "5a29bcea8327bf04ee2aedbac99e15603e3aca8709ae9f40c60da965cf92f078"
     )

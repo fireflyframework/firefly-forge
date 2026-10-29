@@ -183,6 +183,7 @@ class KnowledgeManager:
         self.engine = engine
         self.private = store.configuration
         self.transport = transport
+        self.frameworks: Any = None
         self.connection = connection or KnowledgeConnection(self.private)
         self.journal: Any = None
         self.readiness: dict[str, Any] = {
@@ -335,12 +336,19 @@ class KnowledgeManager:
     async def search(self, repository_id: str, query: str, *, run: dict[str, Any] | None = None) -> dict[str, Any]:
         await self.store.repository(repository_id)
         settings = self.settings(run)
+        scoped = bool(run and run.get("framework_knowledge_request"))
+        if scoped:
+            assert run is not None
+        if scoped and (self.frameworks is None or not (run or {}).get("framework_knowledge_pin")):
+            raise ValueError("A retained exact official framework target is required before retrieval")
         if not settings["enabled"]:
+            if scoped:
+                raise ValueError("Required version-isolated framework knowledge is disabled")
             return {"hits": [], "warnings": [], "context": "", "citations": []}
         if not settings["endpoint"] or not (settings["api_key"] or settings["agent_token"]):
             raise ValueError("Initialize required flycanon knowledge before starting product work")
         workspaces = [project_workspace(repository_id)]
-        if settings["framework_workspace"] and settings["framework_workspace"] not in workspaces:
+        if not scoped and settings["framework_workspace"] and settings["framework_workspace"] not in workspaces:
             workspaces.append(settings["framework_workspace"])
         if self.private._read(self.private.directory / "managed-knowledge.json") and settings["api_key"]:
             try:
@@ -399,10 +407,18 @@ class KnowledgeManager:
                     f"Knowledge retrieval unavailable for workspace {workspace}; no context obtained from that scope"
                 )
         hits = hits[:16]
+        if scoped:
+            official = await self.frameworks.search_for_run(run, query)
+            hits = official["hits"] + hits
         citations = [{key: value for key, value in hit.items() if key != "content"} for hit in hits]
         context = ""
         if hits:
-            context = prompt_text("tools/knowledge-evidence", hits=json.dumps(hits, ensure_ascii=False)[:40000])
+            if scoped:
+                from firefly_forge.framework_knowledge_evidence import evidence_context
+
+                context = evidence_context(official["hits"], hits[len(official["hits"]) :])
+            else:
+                context = prompt_text("tools/knowledge-evidence", hits=json.dumps(hits, ensure_ascii=False)[:40000])
         return {"hits": hits, "warnings": warnings, "citations": citations, "context": context}
 
     async def retrieve(self, run: dict[str, Any]) -> dict[str, Any]:

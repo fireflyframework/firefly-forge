@@ -2,6 +2,24 @@
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
+## 0.2.47 — Unreleased
+
+- Add immutable, version-isolated official framework references, bounded refresh operations, verified private-cache reads, and generation target pins. Extend the prompt catalog with eleven entries while retaining the original 322, and expose 182 MCP tools.
+- Prepare same-attempt continuity for one already consumed, statically rejected evidence read through offline SDK reconstruction, explicit compatible policy/tool-contract migration, and a finite ownership lease. Preserve original receipts, scope, history and limits; charge new native commands once against their existing lifetime ledger.
+- Add separately acknowledged version-2 continuity for unavailable pinned source-read observations. Keep the policy disabled by default and preserve singleton version-1 requests and historical receipts.
+- Retain exact native Agentic call intents and results for nine implementation tools across API and Bridge providers, including raw and validated arguments, large JSON artifacts and nested effect links. Hold uncertain writes and commands before further work; show explicit uncaptured-tool coverage.
+- Present native tool calls and retained output as structured Studio cards with original-record links and technical detail kept separately.
+- Recognize the registered historical SDK checkpoint format through a separate migration witness. Preserve usage counters, exact source telemetry values and each tool's original optional-field presence; ordinary checkpoint restoration still requires its original supported runtime.
+- Reconcile uncertain framework-source writes after cancellation through administrator-authorized observation. Preserve the cancelled state and refuse new source submissions or corpus activation during that observation.
+- Honor the caller's finite metadata timeout for native CLI discovery without submitting a model request.
+- Compose the current Studio guides and 550 registered walkthrough rasters. The successor source/profile, PostgreSQL/controller and actual retained-run qualification remain separate gates; this entry does not claim publication or CRM delivery.
+
+## 0.2.46 — changes included in the 0.2.47 preview
+
+- Give `read_run_evidence` a strict model-facing query schema. Validate fields, types and pagination before the native callback; return checkpoint-safe `invalid_query` results so malformed queries can be corrected within existing execution budgets.
+- Default worker evidence pages to ten records, matching the native worker limit. Keep the operator API's separate page size and all authorization, integrity and unknown-effect checks.
+- Bind the worker query and evidence reader to the source admission and checkpoint runtime inventories. Historical native profiles remain unchanged; the new runtime requires fresh qualification before admission.
+
 ## 0.2.45 — 2026-10-25
 
 - Page project and campaign data without a fixed project-count ceiling, retain revision-bound references, and configure finite campaign execution windows with durable usage accounting.

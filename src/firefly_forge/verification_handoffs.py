@@ -260,10 +260,23 @@ class VerificationHandoffs:
 
     async def execute(self, run_id: str) -> None:
         from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
 
         # The active repository slot owns implementation; this existing lock excludes checkpoint writes.
-        async with self.engine.publication_lock, mode_execution_scope(self.journal, run_id):
-            await self._execute(run_id)
+        async with self.engine.publication_lock:
+            run = await self.store.get_run(run_id)
+            admitted = False
+            try:
+                await self.engine.assert_ownership()
+                await assert_generic_dispatch_allowed(self.store, self.journal, run)
+                async with mode_execution_scope(self.journal, run_id):
+                    admitted = True
+                    await self._execute(run_id)
+            except (ValueError, AccessDenied):
+                if admitted:
+                    raise
+                await self.engine.assert_ownership()
+                await self.journal.verification_refuse(run_id, digest(run.get("worker_request", {})))
 
     async def _execute(self, run_id: str) -> None:
         intent: Data | None = None

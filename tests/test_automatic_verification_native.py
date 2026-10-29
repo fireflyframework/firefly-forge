@@ -197,6 +197,7 @@ async def test_native_manual_and_held_rows_do_not_starve_later_eligible_work(sto
 
 
 def test_native_registered_legacy_adoption_exact_readback_and_disabled_identity(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
 
     from firefly_forge.agent_roles import WorkerFeedback, WorkerRequest
@@ -211,6 +212,7 @@ def test_native_registered_legacy_adoption_exact_readback_and_disabled_identity(
     ) as http:
         assert http.post("/api/v1/auth/login", json={"token": token}).status_code == 200
         store = http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         engine = http.app.state.runtime.context.get_bean(Engine)
         journal = http.app.state.runtime.context.get_bean(Journal)
 

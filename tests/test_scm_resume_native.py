@@ -104,6 +104,10 @@ def native_resume(tmp_path, postgres_schema, request):
         resources.callback(http.portal.call, provider_client.aclose)
 
         async def seed():
+            if implementation:
+                from native_client_knowledge_fixtures import activate_native_client_target
+
+                await activate_native_client_target(store, tmp_path / "framework-prerequisite")
             scm = service.authority.scm
             key = (
                 rsa.generate_private_key(public_exponent=65537, key_size=2048)

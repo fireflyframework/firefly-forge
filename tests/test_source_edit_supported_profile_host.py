@@ -4,6 +4,7 @@
 from dataclasses import replace
 
 import pytest
+from source_edit_qualification_fixtures import register_fixture_profile
 
 from firefly_forge import source_edit_qualification as q
 
@@ -16,7 +17,7 @@ def registered_profile(loader_profile):
 
 def test_package_owns_measured_profile():
     profiles = q._profiles()
-    assert {profile.loader_profile for profile in profiles} == {
+    historical_loaders = {
         "codex-exec-restricted-source/v5",
         "codex-exec-restricted-source/v6",
         "codex-exec-restricted-source/v7",
@@ -31,9 +32,17 @@ def test_package_owns_measured_profile():
         "codex-exec-restricted-source/v16",
         "codex-exec-restricted-source/v17",
         "codex-exec-restricted-source/v18",
-        q.LOADER_PROFILE,
+        "codex-exec-restricted-source/v19",
+        "codex-exec-restricted-source/v20",
+        "codex-exec-restricted-source/v21",
+        "codex-exec-restricted-source/v22",
+        "codex-exec-restricted-source/v23",
+        "codex-exec-restricted-source/v24",
+        "codex-exec-restricted-source/v25",
     }
-    assert len(profiles) == 15
+    loaders = {profile.loader_profile for profile in profiles}
+    assert historical_loaders <= loaders <= historical_loaders | {q.LOADER_PROFILE}
+    assert len(profiles) == len(loaders) in (21, 22)
     profile = registered_profile("codex-exec-restricted-source/v5")
     assert profile.profile_id == "codex-0163-darwin-arm64-source-v5"
     assert profile.executable_sha256 == "8813367285524ac798dd96d1b071aea30d58708c7226fd236cd275cf1cfdee31"
@@ -59,7 +68,7 @@ def test_historical_loader_and_policy_keep_their_exact_provenance():
     )
     assert profile.loader_hashes != q.loader_hashes()
     assert profile.loader_profile == "codex-exec-restricted-source/v5"
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v19"
+    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v26"
     assert profile.policy_digest == q.policy_digest()
     with pytest.raises(ValueError, match="qualified"):
         q.require_profile(profile)
@@ -79,21 +88,49 @@ def test_historical_v6_budget_and_receipt_remain_immutable():
         q.require_profile(profile)
 
 
+def test_previous_registered_v21_is_historical_without_granting_current_authority():
+    profile = registered_profile("codex-exec-restricted-source/v21")
+    seal = q.historical_profile_seal(profile)
+    assert seal["registry_version"] == 20
+    assert seal["loader_profile"] == profile.loader_profile
+    assert seal["profile_digest"] == q.digest(q.profile_payload(profile))
+    assert seal["proof_sha256"] == profile.proof.artifact_sha256
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(profile)
+    with pytest.raises(ValueError, match="registered provenance"):
+        q.historical_profile_seal(replace(profile, version=q.REGISTRY_VERSION, loader_profile=q.LOADER_PROFILE))
+
+
+def test_previous_registered_v22_is_historical_without_granting_current_authority():
+    profile = registered_profile("codex-exec-restricted-source/v22")
+    seal = q.historical_profile_seal(profile)
+    assert seal["registry_version"] == 21 and seal["loader_profile"] == profile.loader_profile
+    assert seal["profile_digest"] == q.digest(q.profile_payload(profile))
+    assert seal["proof_sha256"] == profile.proof.artifact_sha256
+    with pytest.raises(ValueError, match="qualified"):
+        q.require_profile(profile)
+    with pytest.raises(ValueError, match="registered provenance"):
+        q.historical_profile_seal(replace(profile, loader_profile=q.LOADER_PROFILE))
+
+
 @pytest.fixture
-def measured_runtime(monkeypatch):
-    profile = registered_profile(q.LOADER_PROFILE)
+def fixture_runtime(tmp_path, monkeypatch):
+    executable = tmp_path / "explicit-test-executable"
+    executable.write_text("#!/bin/sh\nexit 0\n")
+    executable.chmod(0o700)
+    profile = register_fixture_profile(monkeypatch, executable)
     monkeypatch.setattr(q.platform, "system", lambda: profile.system)
     monkeypatch.setattr(q.platform, "machine", lambda: profile.machine)
     monkeypatch.setattr(q, "runtime_versions", lambda: profile.runtime_versions)
     return profile
 
 
-def test_current_runtime_must_match_measured_profile_before_admission(measured_runtime):
-    profile = measured_runtime
+def test_current_runtime_must_match_explicit_fixture_before_admission(fixture_runtime):
+    profile = fixture_runtime
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
     assert q.qualified_profile(identity, profile.model) == profile
-    assert profile.version == q.REGISTRY_VERSION == 18
-    assert profile.profile_id == "codex-0163-darwin-arm64-source-v19"
+    assert profile.version == q.REGISTRY_VERSION == 25
+    assert profile.profile_id == "explicit-public-test-fixture"
     from firefly_forge.source_budget_allowances import admission_contract_digest
 
     assert profile.admission_contract_digest == admission_contract_digest()
@@ -102,31 +139,31 @@ def test_current_runtime_must_match_measured_profile_before_admission(measured_r
     assert profile.runtime_versions == q.runtime_versions()
     assert profile.proof.contract_digest == q.profile_contract_digest(profile)
     assert profile.proof.artifact_sha256 != "e0a21355651f9f0cff58a19e162c85a0d6eb1bc2bc0f52d0575e156ce05ed516"
-    assert profile.proof.requests == 251
+    assert profile.proof.requests == 154
     assert profile.proof.outcome_checks == q.NATIVE_OUTCOMES
     assert profile.proof.filesystem_checks == q.FILESYSTEM_CHECKS
     assert profile.proof.budget_checks == q.SOURCE_BUDGET_CHECKS
     assert profile.proof.budget_limits == profile.source_budget_limits
-    assert q.source_budget_limits(profile) == {"read_file_lifetime_limit": 20, "activation_ceiling": 6}
+    assert q.source_budget_limits(profile) == {"read_file_lifetime_limit": 20, "activation_ceiling": 5}
     assert q.profile_seal(profile)["proof_sha256"] == profile.proof.artifact_sha256
 
 
 @pytest.mark.parametrize("drift", ["system", "machine", "runtime"])
-def test_measured_profile_refuses_foreign_runtime(measured_runtime, monkeypatch, drift):
-    profile = measured_runtime
+def test_fixture_profile_refuses_foreign_runtime(fixture_runtime, monkeypatch, drift):
+    profile = fixture_runtime
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
     if drift == "system":
-        monkeypatch.setattr(q.platform, "system", lambda: "Linux")
+        monkeypatch.setattr(q.platform, "system", lambda: "other-system")
     elif drift == "machine":
-        monkeypatch.setattr(q.platform, "machine", lambda: "x86_64")
+        monkeypatch.setattr(q.platform, "machine", lambda: "other-machine")
     else:
         monkeypatch.setattr(q, "runtime_versions", lambda: (("python", "3.13.17"),))
     with pytest.raises(ValueError, match="qualified"):
         q.qualified_profile(identity, profile.model)
 
 
-def test_profile_refuses_runtime_drift_and_unknown_build_model(monkeypatch):
-    profile = registered_profile(q.LOADER_PROFILE)
+def test_profile_refuses_runtime_drift_and_unknown_build_model(fixture_runtime, monkeypatch):
+    profile = fixture_runtime
     identity = {"sha256": profile.executable_sha256, "size": profile.executable_size}
     for changed, model in (
         (identity | {"sha256": "f" * 64}, profile.model),
@@ -140,15 +177,15 @@ def test_profile_refuses_runtime_drift_and_unknown_build_model(monkeypatch):
         q.qualified_profile(identity, profile.model)
 
 
-def test_valid_looking_caller_profile_is_not_registered():
-    profile = registered_profile(q.LOADER_PROFILE)
+def test_valid_looking_caller_profile_is_not_registered(fixture_runtime):
+    profile = fixture_runtime
     caller_supplied = replace(profile, profile_id="unregistered-caller-profile")
     with pytest.raises(ValueError, match="registered"):
         q.require_profile(caller_supplied)
 
 
-def test_registered_profile_refuses_loader_drift(monkeypatch):
-    profile = registered_profile(q.LOADER_PROFILE)
+def test_registered_profile_refuses_loader_drift(fixture_runtime, monkeypatch):
+    profile = fixture_runtime
     name, _ = profile.loader_hashes[0]
     changed = ((name, "f" * 64), *profile.loader_hashes[1:])
     monkeypatch.setattr(q, "loader_hashes", lambda: changed)
@@ -171,8 +208,8 @@ def test_registered_profile_refuses_loader_drift(monkeypatch):
         ("budget_limits", (("read_file_lifetime_limit", 21), ("activation_ceiling", 6))),
     ],
 )
-def test_registered_profile_refuses_proof_drift(monkeypatch, field, value):
-    profile = registered_profile(q.LOADER_PROFILE)
+def test_registered_profile_refuses_proof_drift(fixture_runtime, monkeypatch, field, value):
+    profile = fixture_runtime
     changed = replace(profile, proof=replace(profile.proof, **{field: value}))
     profiles = tuple(changed if candidate == profile else candidate for candidate in q._profiles())
     monkeypatch.setattr(q, "_profiles", lambda: profiles)
@@ -181,8 +218,8 @@ def test_registered_profile_refuses_proof_drift(monkeypatch, field, value):
 
 
 @pytest.mark.parametrize("limits", [(20, 7), (21, 6), (True, 6)])
-def test_registered_profile_cannot_expand_measured_budget(monkeypatch, limits):
-    profile = registered_profile(q.LOADER_PROFILE)
+def test_registered_profile_cannot_expand_measured_budget(fixture_runtime, monkeypatch, limits):
+    profile = fixture_runtime
     changed = replace(
         profile,
         source_budget_limits=(("read_file_lifetime_limit", limits[0]), ("activation_ceiling", limits[1])),

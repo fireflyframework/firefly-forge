@@ -24,10 +24,23 @@ if TYPE_CHECKING:
     from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
     from firefly_forge.campaign_execution_budget import CampaignBudgetRenewalV1, CampaignExecutionPolicyInputV1
     from firefly_forge.campaign_report_history import CampaignReportArchiveInput
+    from firefly_forge.checkpoint_continuation_models import CheckpointContinuationInputV1
     from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
+    from firefly_forge.framework_knowledge_models import (
+        FrameworkBudgetRenewalInput,
+        FrameworkCheckUpdatesInput,
+        FrameworkGenerationTargetInput,
+        FrameworkRefreshCancelInput,
+        FrameworkRefreshInput,
+        FrameworkRefreshResumeInput,
+        FrameworkSearchInput,
+    )
     from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
     from firefly_forge.git_diff_models import GitDiffIndexPageV1, GitDiffPageV1
+    from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
+    from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
+    from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -35,6 +48,7 @@ if TYPE_CHECKING:
     from firefly_forge.project_campaigns import CampaignAction, CampaignLaunch, CampaignRetry
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowanceInput
+    from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1, ReviewedProviderRejectionV1
     from firefly_forge.reverse_engineering import AnalysisReview
     from firefly_forge.run_creation_models import RunCreationCancelInput, RunCreationInput
     from firefly_forge.runner_continuations import RunnerContinuationInput
@@ -327,6 +341,180 @@ class ForgeClient:
         path = self._agent_checkpoint_restore_path(identifier, completion_id)
         return dict(self.request("GET", path + "/" + self._recovery_identifier(request_id)))
 
+    def invalid_read_continuity_candidate(self, identifier: str) -> dict[str, Any]:
+        """Inspect a held same-attempt candidate without admitting or dispatching it."""
+        return dict(
+            self.request("GET", f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity/candidate")
+        )
+
+    def request_invalid_read_continuity(
+        self,
+        identifier: str,
+        request_id: str,
+        request: InvalidReadAdmissionInputV1 | InvalidReadAdmissionInputV2 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit once; unavailable observations require the explicit version-2 acknowledgement."""
+        from firefly_forge.invalid_read_continuity_models import ADMISSION
+
+        body = ADMISSION.validate_python(request.model_dump() if isinstance(request, BaseModel) else request)
+        namespace = "requests" if body.version == 1 else "requests-v2"
+        base = f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity"
+        path = f"{base}/{namespace}/{self._recovery_identifier(request_id)}"
+        return dict(self.request("POST", path, json=body.model_dump(mode="json")))
+
+    def invalid_read_continuity(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the original one-use ticket after a lost response; never repeat admission."""
+        base = f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity"
+        path = f"{base}/requests/{self._recovery_identifier(request_id)}"
+        return dict(self.request("GET", path))
+
+    def _invalid_read_recovery_path(self, identifier: str, request_id: str) -> str:
+        return (
+            f"runs/{self._recovery_identifier(identifier)}/invalid-read-continuity/requests/"
+            + self._recovery_identifier(request_id)
+        )
+
+    def invalid_read_recovery_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect whether the exact original request failed before any worker claim."""
+        return dict(
+            self.request("GET", self._invalid_read_recovery_path(identifier, request_id) + "/recovery-candidate")
+        )
+
+    def request_invalid_read_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: InvalidReadRecoveryInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit one explicit lease recovery action; retain its ID for readback."""
+        from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        body = self._recovery_body(InvalidReadRecoveryInputV1, request)
+        return dict(self.request("POST", path, json=body))
+
+    def invalid_read_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved recovery witness without submitting another action."""
+        return dict(self.request("GET", self._invalid_read_recovery_path(identifier, request_id) + "/recovery"))
+
+    def rejected_boundary_recovery_candidate(
+        self, identifier: str, request_id: str, evidence: ReviewedProviderRejectionV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Preview an administrator-reviewed exact provider rejection; this grants no dispatch."""
+        from firefly_forge.provider_rejection_models import ReviewedProviderRejectionV1
+
+        body = self._recovery_body(ReviewedProviderRejectionV1, evidence)
+        path = self._invalid_read_recovery_path(identifier, request_id) + "/rejected-boundary-candidate"
+        return dict(self.request("POST", path, json=body))
+
+    def request_rejected_boundary_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: RejectedBoundaryRecoveryInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Admit once on the original ticket; retain the action ID for readback after a lost response."""
+        from firefly_forge.provider_rejection_models import RejectedBoundaryRecoveryInputV1
+
+        body = self._recovery_body(RejectedBoundaryRecoveryInputV1, request)
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/rejected-boundary-recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        return dict(self.request("POST", path, json=body))
+
+    def rejected_boundary_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the original rejected-boundary action without resubmitting it."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/rejected-boundary-recovery"
+            )
+        )
+
+    def readonly_observation_recovery_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect a consumed read turn; this does not grant dispatch or retry its callback."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/readonly-observation-candidate"
+            )
+        )
+
+    def request_readonly_observation_recovery(
+        self,
+        identifier: str,
+        request_id: str,
+        recovery_id: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save one reviewed unavailable observation on the existing request."""
+        from firefly_forge.readonly_observation_models import ReadonlyObservationRecoveryInputV1
+
+        body = self._recovery_body(ReadonlyObservationRecoveryInputV1, request)
+        path = (
+            self._invalid_read_recovery_path(identifier, request_id)
+            + "/readonly-observation-recoveries/"
+            + self._recovery_identifier(recovery_id)
+        )
+        return dict(self.request("POST", path, json=body))
+
+    def readonly_observation_recovery(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved action after a lost response without another submission."""
+        return dict(
+            self.request(
+                "GET", self._invalid_read_recovery_path(identifier, request_id) + "/readonly-observation-recovery"
+            )
+        )
+
+    def _checkpoint_continuation_path(self, identifier: str, request_id: str) -> str:
+        return (
+            f"runs/{self._recovery_identifier(identifier)}/checkpoint-continuations/requests/"
+            + self._recovery_identifier(request_id)
+        )
+
+    def checkpoint_continuation_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect the retained checkpoint and original ticket without admitting work."""
+        return dict(self.request("GET", self._checkpoint_continuation_path(identifier, request_id) + "/candidate"))
+
+    def request_checkpoint_continuation(
+        self,
+        identifier: str,
+        request_id: str,
+        action_id: str,
+        request: CheckpointContinuationInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save one finite same-ticket continuation; retain its action ID for readback."""
+        from firefly_forge.checkpoint_continuation_models import CheckpointContinuationInputV1
+
+        path = (
+            self._checkpoint_continuation_path(identifier, request_id)
+            + "/actions/"
+            + self._recovery_identifier(action_id)
+        )
+        body = self._recovery_body(CheckpointContinuationInputV1, request)
+        return dict(self.request("POST", path, json=body))
+
+    def checkpoint_continuation_status(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved action and worker status without submitting another action."""
+        return dict(self.request("GET", self._checkpoint_continuation_path(identifier, request_id) + "/status"))
+
+    def invalid_read_continuity_policy(self) -> dict[str, Any]:
+        return dict(self.request("GET", "invalid-read-continuity/policy"))
+
+    def configure_invalid_read_continuity_policy(
+        self, request: ContinuityLeasePolicyV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
+
+        body = self._recovery_body(ContinuityLeasePolicyV1, request)
+        return dict(self.request("PUT", "invalid-read-continuity/policy", json=body))
+
     def get_run(self, identifier: str) -> dict[str, Any]:
         return dict(self.request("GET", f"runs/{identifier}"))
 
@@ -395,6 +583,129 @@ class ForgeClient:
 
     def search_knowledge(self, repository_id: str, query: str) -> dict[str, Any]:
         return dict(self.request("POST", "knowledge/search", json={"repository_id": repository_id, "query": query}))
+
+    @staticmethod
+    def _framework_name(framework: str) -> str:
+        if type(framework) is not str or framework not in {"pyfly", "larafly"}:
+            raise ValueError("Select pyfly or larafly framework knowledge")
+        return framework
+
+    @staticmethod
+    def _framework_page(cursor: str | None, page_size: int) -> dict[str, str | int]:
+        if type(page_size) is not int or not 1 <= page_size <= 200:
+            raise ValueError("Choose a framework response page size between 1 and 200")
+        if cursor is not None and (type(cursor) is not str or not cursor):
+            raise ValueError("Use the original framework page cursor")
+        return {"page_size": page_size, **({"cursor": cursor} if cursor is not None else {})}
+
+    def framework_knowledge_status(self) -> dict[str, Any]:
+        return dict(self.request("GET", "knowledge/frameworks/status"))
+
+    def check_framework_updates(
+        self, framework: str, request: FrameworkCheckUpdatesInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.framework_knowledge_models import FrameworkCheckUpdatesInput
+
+        framework = self._framework_name(framework)
+        body = self._recovery_body(FrameworkCheckUpdatesInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/check-updates", json=body))
+
+    def refresh_framework_knowledge(
+        self, framework: str, request_id: str, request: FrameworkRefreshInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; after an uncertain response, read the same retained operation."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}", json=body))
+
+    def framework_knowledge_refresh(self, framework: str, request_id: str) -> dict[str, Any]:
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/refreshes/{request_id}"))
+
+    def observe_framework_knowledge_refresh(self, framework: str, request_id: str) -> dict[str, Any]:
+        """Observe this operation once without resubmitting an uncertain source write."""
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/observe"))
+
+    def renew_framework_knowledge_budget(
+        self, framework: str, request_id: str, request: FrameworkBudgetRenewalInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Extend reviewed totals on the same operation, preserving all spent work."""
+        from firefly_forge.framework_knowledge_models import FrameworkBudgetRenewalInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkBudgetRenewalInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/budget", json=body))
+
+    def cancel_framework_knowledge_refresh(
+        self, framework: str, request_id: str, request: FrameworkRefreshCancelInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Cancel the reviewed operation without erasing uncertain submissions or receipts."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshCancelInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshCancelInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/cancel", json=body))
+
+    def resume_framework_knowledge_refresh(
+        self, framework: str, request_id: str, request: FrameworkRefreshResumeInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Resume the same reviewed import; uncertain submissions need observation first."""
+        from firefly_forge.framework_knowledge_models import FrameworkRefreshResumeInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkRefreshResumeInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/refreshes/{request_id}/resume", json=body))
+
+    def framework_corpora(self, framework: str, *, cursor: str | None = None, page_size: int = 50) -> dict[str, Any]:
+        framework = self._framework_name(framework)
+        params = self._framework_page(cursor, page_size)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/corpora", params=params))
+
+    def framework_generation_candidates(
+        self, framework: str, corpus_ref: str, *, cursor: str | None = None, page_size: int = 50
+    ) -> dict[str, Any]:
+        """List canonical validation evidence for this exact corpus before activation."""
+        framework, corpus_ref = self._framework_name(framework), self._recovery_identifier(corpus_ref)
+        cursor = self._recovery_identifier(cursor) if cursor is not None else None
+        params = {"corpus_ref": corpus_ref, **self._framework_page(cursor, page_size)}
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/generation-candidates", params=params))
+
+    def activate_framework_generation_target(
+        self, framework: str, request_id: str, request: FrameworkGenerationTargetInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Activate a validated release once; read the same request after uncertainty."""
+        from firefly_forge.framework_knowledge_models import FrameworkGenerationTargetInput
+
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        body = self._recovery_body(FrameworkGenerationTargetInput, request)
+        return dict(
+            self.request("POST", f"knowledge/frameworks/{framework}/generation-targets/{request_id}", json=body)
+        )
+
+    def get_framework_generation_target(self, framework: str, request_id: str) -> dict[str, Any]:
+        framework, request_id = self._framework_name(framework), self._recovery_identifier(request_id)
+        return dict(self.request("GET", f"knowledge/frameworks/{framework}/generation-targets/{request_id}"))
+
+    def framework_corpus_sources(
+        self, framework: str, corpus_ref: str, *, cursor: str | None = None, page_size: int = 50
+    ) -> dict[str, Any]:
+        framework, corpus_ref = self._framework_name(framework), self._recovery_identifier(corpus_ref)
+        params = self._framework_page(cursor, page_size)
+        return dict(
+            self.request("GET", f"knowledge/frameworks/{framework}/corpora/{corpus_ref}/sources", params=params)
+        )
+
+    def search_framework_knowledge(
+        self, framework: str, request: FrameworkSearchInput | dict[str, Any]
+    ) -> dict[str, Any]:
+        from firefly_forge.framework_knowledge_models import FrameworkSearchInput
+
+        framework = self._framework_name(framework)
+        body = self._recovery_body(FrameworkSearchInput, request)
+        return dict(self.request("POST", f"knowledge/frameworks/{framework}/search", json=body))
 
     def index_source(self, identifier: str, paths: list[str]) -> dict[str, Any]:
         return dict(self.request("POST", f"runs/{identifier}/knowledge/index", json={"paths": paths}))

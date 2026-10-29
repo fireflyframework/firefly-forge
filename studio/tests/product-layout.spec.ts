@@ -483,3 +483,100 @@ for (const theme of ["light", "dark"]) {
     await expect(trigger).toBeFocused();
   });
 }
+
+test("assistant history keeps its conversation selector readable and its actions reachable across panel sizes", async ({
+  browser,
+}, info) => {
+  test.setTimeout(90_000);
+  for (const colorScheme of ["light", "dark"] as const)
+    for (const viewport of [
+      { width: 320, height: 568 },
+      { width: 390, height: 844 },
+      { width: 1440, height: 900 },
+    ]) {
+      const context = await browser.newContext({
+        baseURL: info.project.use.baseURL,
+        viewport: { width: 1440, height: 900 },
+        colorScheme,
+      });
+      try {
+        await context.route("**/*", (route) => {
+          const url = new URL(route.request().url());
+          return url.origin === new URL(info.project.use.baseURL!).origin &&
+            !url.pathname.startsWith("/api")
+            ? route.continue()
+            : route.abort("blockedbyclient");
+        });
+        const page = await context.newPage();
+        await openProduct(page, true);
+        await page.setViewportSize(viewport);
+        if (viewport.width < 1100)
+          await page
+            .getByRole("button", { name: "Open design assistant", exact: true })
+            .click();
+        await page.getByText("History", { exact: true }).click();
+        const popover = page.locator(".assistant-history-popover");
+        const selector = popover.getByLabel("Recorded conversation", {
+          exact: true,
+        });
+        await selector.scrollIntoViewIfNeeded();
+        const field = await selector.boundingBox();
+        const label = await popover
+          .locator('label[for="design-conversation"]')
+          .boundingBox();
+        expect
+          .soft(field!.width, `${viewport.width} ${colorScheme} selector`)
+          .toBeGreaterThanOrEqual(180);
+        expect
+          .soft(label!.height, `${viewport.width} ${colorScheme} label`)
+          .toBeLessThanOrEqual(24);
+        expect
+          .soft(
+            await popover.evaluate(
+              (element) => element.scrollWidth <= element.clientWidth + 1,
+            ),
+          )
+          .toBe(true);
+        for (const name of ["Refresh record", "Configure AI"]) {
+          const action = popover.getByRole("button", { name, exact: true });
+          await action.scrollIntoViewIfNeeded();
+          const box = await action.boundingBox();
+          expect
+            .soft(box!.height, `${viewport.width} ${colorScheme} ${name}`)
+            .toBeGreaterThanOrEqual(40);
+          expect
+            .soft(box!.height, `${viewport.width} ${colorScheme} ${name}`)
+            .toBeLessThanOrEqual(50);
+          expect
+            .soft(
+              await action.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return (
+                  box.top >= 0 &&
+                  box.bottom <= innerHeight &&
+                  document
+                    .elementFromPoint(
+                      box.x + box.width / 2,
+                      box.y + box.height / 2,
+                    )
+                    ?.closest("button") === element
+                );
+              }),
+            )
+            .toBe(true);
+        }
+        await selector.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: info.outputPath(`history-${viewport.width}-${colorScheme}.png`),
+        });
+        await page.getByText("History", { exact: true }).click();
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+      } finally {
+        await context.close();
+      }
+    }
+});

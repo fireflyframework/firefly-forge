@@ -723,3 +723,168 @@ it("retains an unknown legacy structured event in closed accessible details", ()
   expect(html).not.toContain("<script>");
   expect(html).not.toContain("<details open");
 });
+
+describe("reviewed provider refusal", () => {
+  const witness = () => ({
+    version: 1,
+    kind: "reviewed_pre_admission_continuation",
+    request_id: "a".repeat(32),
+    request: {
+      version: 1,
+      valid_for_seconds: 120,
+      acknowledge_reviewed_provider_epoch: true,
+      acknowledge_no_original_response_or_tool_replay: true,
+      acknowledge_same_request_attempt_and_budgets: true,
+      acknowledge_finite_ownership_lease: true,
+      evidence: {
+        version: 1,
+        provider: "bridge",
+        classification: "request_refused_before_admission",
+        model: "bridge/default",
+        http_status: 400,
+        admissions: 0,
+        jobs: 0,
+        provider_dispatches: 0,
+        tool_callbacks: 0,
+      },
+    },
+    candidate: {
+      version: 1,
+      kind: "claimed_pre_admission_recovery_candidate",
+      request_id: "a".repeat(32),
+      admission: "READY",
+      execution_authorized: false,
+      review_basis: "administrator_reviewed_exact_provider_epoch",
+      usage: {
+        requests: 1,
+        request_limit: 100,
+        tool_calls: 2,
+        tool_calls_limit: 300,
+        commands: 11,
+        command_limit: 22,
+      },
+    },
+    failed_ticket: { checkpoint: "SEALED_CHECKPOINT_BYTES" },
+  });
+
+  it("summarizes consent and charged usage while keeping checkpoint data in closed details", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="provider_rejection_recovery" value={witness()} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Provider refusal reviewed");
+    expect(initial).toContain("Worker receipts show subsequent execution");
+    expect(initial).toContain("bridge/default");
+    expect(initial).toContain("120 seconds");
+    expect(initial).toContain("1 of 100");
+    expect(initial).toContain("2 of 300");
+    expect(initial).toContain("11 of 22");
+    expect(initial).not.toContain("SEALED_CHECKPOINT_BYTES");
+    expect(initial).not.toContain("Outcome not recorded");
+    expect(html).toContain("Advanced record");
+    expect(html).toContain("SEALED_CHECKPOINT_BYTES");
+    expect(html).not.toContain("<details open");
+  });
+
+  it.each([
+    "unknown refusal",
+    "missing acknowledgement",
+    "unreviewed candidate",
+  ])("does not present %s as approved", (mutation) => {
+    const value = witness();
+    if (mutation === "unknown refusal")
+      value.request.evidence.classification = "outcome_unknown";
+    else if (mutation === "missing acknowledgement")
+      value.request.acknowledge_same_request_attempt_and_budgets = false;
+    else value.candidate.review_basis = "inferred_from_error";
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="provider_rejection_recovery" value={value} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Provider refusal review is incomplete");
+    expect(initial).not.toContain("Provider refusal reviewed");
+    expect(initial).not.toContain("SEALED_CHECKPOINT_BYTES");
+    expect(html).toContain("Advanced record");
+  });
+});
+
+describe("reviewed unavailable read", () => {
+  const witness = () => ({
+    version: 1,
+    kind: "reviewed_readonly_observation_continuation",
+    run_id: "1".repeat(32),
+    request_id: "a".repeat(32),
+    recovery_id: "2".repeat(32),
+    read_proof_digest: "3".repeat(64),
+    request: {
+      version: 1,
+      candidate_digest: "4".repeat(64),
+      valid_for_seconds: 120,
+      acknowledge_unavailable_observation: true,
+      acknowledge_no_original_callback_replay: true,
+      acknowledge_same_request_attempt_and_budgets: true,
+      acknowledge_finite_ownership_lease: true,
+    },
+    candidate: {
+      version: 1,
+      kind: "readonly_observation_recovery_candidate",
+      run_id: "1".repeat(32),
+      request_id: "a".repeat(32),
+      admission: "READY",
+      execution_authorized: false,
+      review_basis: "administrator_reviewed_unavailable_read",
+      digest: "4".repeat(64),
+      read_proof_digest: "3".repeat(64),
+    },
+    checkpoint: "PRIVATE_CHECKPOINT_BYTES",
+  });
+
+  it("distinguishes unavailable observation approval from actual execution", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="readonly_observation_recovery" value={witness()} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Unavailable read reviewed");
+    expect(initial).toContain("Previously recorded results are reused");
+    expect(initial).toContain("original unknown result remains unknown");
+    expect(initial).toContain("Worker receipts show subsequent execution");
+    expect(initial).toContain("120 seconds");
+    expect(initial).not.toContain("PRIVATE_CHECKPOINT_BYTES");
+    expect(initial).not.toContain("Outcome not recorded");
+    expect(html).toContain("Advanced record");
+    expect(html).toContain("PRIVATE_CHECKPOINT_BYTES");
+    expect(html).not.toContain("<details open");
+  });
+
+  it.each([
+    "unreviewed read",
+    "missing consent",
+    "different request",
+    "different proof",
+    "different candidate",
+    "held candidate",
+    "invalid duration",
+  ])("withholds an approval claim for %s", (mutation) => {
+    const value = witness();
+    if (mutation === "unreviewed read")
+      value.candidate.review_basis = "inferred_from_error";
+    else if (mutation === "missing consent")
+      value.request.acknowledge_unavailable_observation = false;
+    else if (mutation === "different request")
+      value.candidate.request_id = "b".repeat(32);
+    else if (mutation === "different proof")
+      value.read_proof_digest = "5".repeat(64);
+    else if (mutation === "different candidate")
+      value.request.candidate_digest = "6".repeat(64);
+    else if (mutation === "held candidate") value.candidate.admission = "HOLD";
+    else value.request.valid_for_seconds = 0;
+    const html = renderToStaticMarkup(
+      <EvidenceView kind="readonly_observation_recovery" value={value} />,
+    );
+    const initial = html.split('<details class="record-advanced">')[0];
+    expect(initial).toContain("Unavailable read review is incomplete");
+    expect(initial).not.toContain("Unavailable read reviewed");
+    expect(initial).not.toContain("PRIVATE_CHECKPOINT_BYTES");
+    expect(html).toContain("Advanced record");
+  });
+});

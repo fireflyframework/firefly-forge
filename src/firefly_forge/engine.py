@@ -570,6 +570,15 @@ class Engine:
                 await self._test(identifier, workspace, base, run, safe, emit, settings)
                 await self._remember_knowledge(identifier, emit)
                 return
+            if run.get("framework_knowledge_request"):
+                if self.knowledge is None or getattr(self.knowledge, "frameworks", None) is None:
+                    raise ValueError("Required version-isolated framework knowledge is unavailable")
+                from firefly_forge.framework_knowledge_targets import framework_target_scope
+
+                run = await self.knowledge.frameworks.freeze_run_target(
+                    run, workspace, base, (run.get("component_snapshot") or {}).get("path", ".")
+                )
+                credential_scopes.enter_context(framework_target_scope(run["framework_knowledge_pin"]))
             if self.configured_provider:
                 from firefly_forge.providers import get_provider
 
@@ -891,7 +900,19 @@ class Engine:
                     source_brief += prompt_text("implementation/resume")
                     if previous:
                         source_brief += prompt_text("implementation/previous-checks", checks=safe(json.dumps(previous)))
+                if run.get("framework_knowledge_pin"):
+                    source_brief += prompt_text(
+                        "implementation/framework-knowledge-pin", pin=json.dumps(run["framework_knowledge_pin"])
+                    )
                 if self.knowledge and "knowledge_context" in run:
+                    if run.get("framework_knowledge_pin"):
+                        await self.knowledge.frameworks.assert_run_pin(run)
+                        if run.get("knowledge_context_pin_digest") != run["framework_knowledge_pin"][
+                            "digest"
+                        ] or hashlib.sha256(run["knowledge_context"].encode()).hexdigest() != run.get(
+                            "knowledge_context_digest"
+                        ):
+                            raise ValueError("Cached knowledge context does not match the retained framework target")
                     source_brief += run["knowledge_context"]
                 elif self.knowledge:
                     retrieved = await self.knowledge.retrieve(run)
@@ -901,6 +922,11 @@ class Engine:
                         knowledge_warnings=retrieved["warnings"],
                         knowledge_context=retrieved["context"],
                         knowledge_context_digest=hashlib.sha256(retrieved["context"].encode()).hexdigest(),
+                        **(
+                            {"knowledge_context_pin_digest": run["framework_knowledge_pin"]["digest"]}
+                            if run.get("framework_knowledge_pin")
+                            else {}
+                        ),
                     )
                     for warning in retrieved["warnings"]:
                         await emit("knowledge", warning)
@@ -988,6 +1014,13 @@ class Engine:
                     if completed_rounds >= implementation_limit:
                         raise ValueError("The frozen implementation attempt budget is exhausted")
                     await self.store.update(identifier, implementation_pending=True)
+                    if run.get("framework_knowledge_pin") and restoration is None:
+                        from firefly_forge.framework_knowledge_conformance import attest_runtime
+
+                        if not isinstance(active_key, str):
+                            raise ValueError("Native framework runtime prerequisite requires its implementation task")
+                        await attest_runtime(self, run, workspace, self.component_directory(run, workspace), active_key)
+                        run = await self.store.get_run(identifier)
                     if restoration is None:
                         await self._materialize_design(identifier, workspace)
                         await self._materialize_branding(identifier, workspace, settings)
@@ -1018,6 +1051,7 @@ class Engine:
                         checkpoint_invocation,
                         invocation_cut,
                     )
+                    from firefly_forge.agentic_tool_custody import AgenticToolCustody, agentic_tool_custody_scope
 
                     frozen_cut = invocation_cut(current)
                     restored_execution = restoration
@@ -1247,6 +1281,13 @@ class Engine:
                         with (
                             bridge_completion_scope(completion_scope),
                             checkpoint_invocation(native_invocation),
+                            agentic_tool_custody_scope(
+                                AgenticToolCustody(
+                                    self.store, self.journal, current, implementation, workspace, checkpoint_guard
+                                )
+                                if self.journal and run["agent"] in {"api", "bridge"}
+                                else None
+                            ),
                             cli_dispatch_scope(
                                 launch_guard if official_dispatch else None, executable=adopted_executable
                             ),
@@ -1343,6 +1384,12 @@ class Engine:
                     self.component_directory(run, workspace)
                 )
                 commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
+                if run.get("framework_knowledge_pin"):
+                    from firefly_forge.framework_knowledge_conformance import conformance_commands
+
+                    commands += [
+                        Command(argv=argv, timeout=600) for argv in conformance_commands(run["framework_knowledge_pin"])
+                    ]
                 if len(commands) > 20:
                     raise ValueError("Selected policies exceed the 20 verification-command limit")
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)
@@ -1587,7 +1634,15 @@ class Engine:
         else:
             retained_images = None
         if restoration is not None:
-            await self.journal.worker_feedback(identifier, feedback, evidence=retained_images, restoration=restoration)
+            from firefly_forge.invalid_read_tickets import InvalidReadExecution
+
+            if isinstance(restoration, InvalidReadExecution):
+                await restoration.guard()
+                await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
+            else:
+                await self.journal.worker_feedback(
+                    identifier, feedback, evidence=retained_images, restoration=restoration
+                )
         elif retained_images is not None:
             await self.journal.worker_feedback(identifier, feedback, evidence=retained_images)
         else:

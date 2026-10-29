@@ -30,7 +30,8 @@ export async function captureWalkthrough(
     resetFields?: boolean;
     actionSelector?: string;
     focusSelector?: string;
-    boundary?: "dialog";
+    boundary?: "dialog" | "section";
+    sectionSelector?: string;
     framing?: "initial";
   } = {},
 ) {
@@ -49,6 +50,19 @@ export async function captureWalkthrough(
       "coding-check-reserved",
     ],
   };
+  const sectionStages: Record<string, string> = {
+    "framework-generation-review": ".framework-generation-review",
+    "framework-generation-candidates": ".framework-generation-review",
+    "framework-generation-confirmation": ".framework-activation-confirm",
+  };
+  if (
+    options.boundary === "section" &&
+    (options.producer !== "studio/tests/framework-knowledge.spec.ts" ||
+      options.sectionSelector !== sectionStages[stage])
+  )
+    throw new Error("Unknown framework generation section capture boundary");
+  if (options.sectionSelector !== undefined && options.boundary !== "section")
+    throw new Error("Section capture selectors require a section boundary");
   if (
     options.boundary === "dialog" &&
     !dialogStages[options.producer ?? ""]?.includes(stage)
@@ -307,10 +321,37 @@ export async function captureWalkthrough(
   if (selected && !selected.includes(stage)) return;
   mkdirSync(assets, { recursive: true });
   const name = `${stage}-${device}-${theme}.png`;
-  const png = await page.screenshot({
-    path: resolve(assets, name),
-    fullPage: false,
-  });
+  const section =
+    options.boundary === "section"
+      ? page.locator(options.sectionSelector!)
+      : null;
+  const sectionBounds = section ? await section.boundingBox() : null;
+  const viewport = page.viewportSize();
+  if (section) {
+    if (!sectionBounds || !viewport)
+      throw new Error("Section capture bounds are unavailable");
+    expect(sectionBounds.x).toBeGreaterThanOrEqual(0);
+    expect(sectionBounds.y).toBeGreaterThanOrEqual(0);
+    expect(sectionBounds.x + sectionBounds.width).toBeLessThanOrEqual(
+      viewport.width,
+    );
+    expect(sectionBounds.y + sectionBounds.height).toBeLessThanOrEqual(
+      viewport.height,
+    );
+  }
+  const png = section
+    ? await section.screenshot({ path: resolve(assets, name) })
+    : await page.screenshot({ path: resolve(assets, name), fullPage: false });
+  const sectionCapture = sectionBounds
+    ? {
+        selector: options.sectionSelector,
+        bounds: sectionBounds,
+        image_size: {
+          width: png.readUInt32BE(16),
+          height: png.readUInt32BE(20),
+        },
+      }
+    : undefined;
   const capturedAction = (await action.isVisible())
     ? await action.evaluate((button, dialogBoundary) => {
         const box = button.getBoundingClientRect(),
@@ -400,6 +441,7 @@ export async function captureWalkthrough(
     "studio/tests/coding-check-grant-fixture.json",
     "studio/tests/coding-check-recovery-browser-fixture.ts",
     "studio/tests/git-delivery-contract-fixture.json",
+    "studio/tests/framework-knowledge-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",
@@ -407,6 +449,8 @@ export async function captureWalkthrough(
     "studio/tests/docs-provider-allowance.spec.ts",
     "studio/tests/docs-coding-check-recovery.spec.ts",
     "studio/tests/development-workflow.spec.ts",
+    "studio/tests/framework-knowledge.spec.ts",
+    "studio/tests/invalid-read-recovery.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {
@@ -442,6 +486,7 @@ export async function captureWalkthrough(
     device,
     fixture: true,
     viewport: page.viewportSize(),
+    ...(sectionCapture ? { section_capture: sectionCapture } : {}),
     sha256: digest(png),
     action: control,
     captured_action: capturedAction,

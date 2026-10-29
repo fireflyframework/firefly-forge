@@ -39,6 +39,7 @@ LOCAL_TASKS = {"prepare", "implement", "verify", "checkpoint"}
 FAILURE_ALIASES = {"rate_limited": "rate_limit", "insufficient_credits": "quota", "missing_auth": "authentication"}
 RECOVERY_REASON = "Worker stopped without a durable receipt; inspect the retained source and external target"
 _RECOVERY_CLAIMS = {
+    "invalid_read_claim": "invalid_read_claim_digest",
     "checkpoint_mode_claim": "checkpoint_mode_claim_digest",
     "original_selection_claim": "original_selection_claim_digest",
 }
@@ -194,6 +195,9 @@ class Journal:
         return found
 
     async def _append(self, run_id: str, task_id: str, key: str, kind: str, payload: Data) -> Data:
+        from firefly_forge.agentic_tool_custody import nested_effect_parent
+
+        parent = nested_effect_parent(kind)
         run_id = identifier(run_id).hex
         current = await self.store.get_run(run_id)
         if current.get("bridge_completion_hold"):
@@ -233,6 +237,15 @@ class Journal:
                 data=data,
             )
         )
+        if parent is not None:
+            effect = {name: data[name] for name in ("kind", "idempotency_key", "digest")}
+            await self._append(
+                run_id,
+                task_id,
+                digest({"parent": parent, "effect": effect}),
+                "agentic_tool_effect_link",
+                {"version": 1, "custody_id": parent, "effect": effect},
+            )
         return data
 
     async def git_delivery_append(self, run_id: str, kind: str, key: str, payload: Data) -> Data:
@@ -440,10 +453,8 @@ class Journal:
             scope = self._worker_scope(run)
             if run.get("bridge_completion_hold"):
                 await self._bridge_read_bound(run_id)
-            entries = [
-                {**copy.deepcopy(entry.data), "digest": entry.digest}
-                for entry in await self.records.find_for_run(identifier(run_id))
-            ]
+            native_records = await self.records.find_for_run(identifier(run_id))
+            entries = [{**copy.deepcopy(entry.data), "digest": entry.digest} for entry in native_records]
             protected = [
                 entry["payload"]
                 for entry in entries
@@ -457,6 +468,11 @@ class Journal:
                     "bridge_request_response",
                     "agent_checkpoint",
                     "agent_consume",
+                    "agentic_tool_intent",
+                    "agentic_tool_result",
+                    "agentic_tool_unknown",
+                    "provider_rejection_recovery",
+                    "readonly_observation_recovery",
                 }
             ]
             if protected:
@@ -465,8 +481,14 @@ class Journal:
             return entries
 
         checkpoint_payloads = [entry["payload"] for entry in entries if entry["kind"] == "agent_checkpoint"]
+        rejection_entries = [entry for entry in entries if entry["kind"] == "provider_rejection_recovery"]
+        observation_entries = [entry for entry in entries if entry["kind"] == "readonly_observation_recovery"]
+        if len(observation_entries) > 100:
+            raise ValueError("Journal observation custody exceeds its retained request bound")
         if len(checkpoint_payloads) > 100:
             raise ValueError("Journal checkpoint history exceeds its retained bound")
+        if len(rejection_entries) > 100:
+            raise ValueError("Journal rejection custody exceeds its retained request bound")
 
         async def checked(value: Any) -> None:
             async with self.store._unit():
@@ -478,15 +500,44 @@ class Journal:
 
         async def admitted() -> None:
             from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
+            from firefly_forge.known_worker_completions import _entries
+
+            try:
+                historical_custody = _entries(native_records, run_id) == entries
+            except (AttributeError, KeyError, ValueError):
+                historical_custody = False
 
             with prepared_credential_rejection(self.store):
                 await self.store.admit_credentials(protected)
                 await checked(protected)
-                for payload in checkpoint_payloads:
-                    checkpoint = BoundaryCheckpoint.decode(
-                        payload["snapshot"].encode("utf-8"), payload["checkpoint_digest"]
+                for entry in observation_entries:
+                    from firefly_forge.readonly_observation_recoveries import settled_observation
+
+                    if not historical_custody:
+                        raise ValueError("Observation credential inspection requires intact native custody")
+                    settled_observation(entry, entries)
+                    p = entry["payload"]
+                    canonical = BoundaryCheckpoint.credential_text(p["checkpoint"].encode(), p["checkpoint_digest"])
+                    await self.store.admit_credentials(canonical)
+                    await checked(canonical)
+                for entry in rejection_entries:
+                    from firefly_forge.provider_rejection_recoveries import settled_rejection
+
+                    if not historical_custody:
+                        raise ValueError("Rejection credential inspection requires intact native custody")
+                    settled_rejection(entry, entries)
+                    ticket = entry["payload"]["failed_ticket"]
+                    canonical = BoundaryCheckpoint.credential_text(
+                        ticket["checkpoint"].encode("utf-8"), ticket["checkpoint_digest"]
                     )
-                    canonical = checkpoint.canonical_payload.decode("utf-8")
+                    await self.store.admit_credentials(canonical)
+                    await checked(canonical)
+                for payload in checkpoint_payloads:
+                    canonical = BoundaryCheckpoint.credential_text(
+                        payload["snapshot"].encode("utf-8"),
+                        payload["checkpoint_digest"],
+                        historical_custody=historical_custody,
+                    )
                     await self.store.admit_credentials(canonical)
                     await checked(canonical)
 
@@ -1897,10 +1948,18 @@ class Journal:
         async with self.store._unit():
             run = await self._run(run_id)
             request = run.data.get("worker_request", {})
+            handoff = run.data.get("verification_handoff", {})
+            completed = (
+                request.get("status") == "answered"
+                and request.get("response_source") == "factory_verification"
+                and handoff.get("status") == "completed"
+                and handoff.get("request_id") == request.get("id")
+            )
             if (
                 run.status not in {"paused", "needs_reconciliation"}
-                or request.get("status") != "pending"
+                or not (request.get("status") == "pending" or completed)
                 or digest(request) != request_digest
+                or run.data.get("verification_refusal", {}).get("request_digest") == request_digest
             ):
                 return
             refusal = {
@@ -2082,8 +2141,12 @@ class Journal:
     async def reconcile(self, run_id: str, key: str, *, evidence: Data, outcome: str) -> Data:
         if outcome not in {"retry", "completed"} or not evidence:
             raise ValueError("Reconciliation requires an observed outcome and evidence")
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+        await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
         async with self.store._unit():
             run = await self._run(run_id)
+            await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
             task = await self._effect_task(run_id, key)
             if task.status != "needs_reconciliation":
                 raise ValueError("Task does not need reconciliation")
@@ -2116,6 +2179,9 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+        await assert_generic_dispatch_allowed(self.store, self, current)
         if current.get("bridge_completion_hold"):
             raise ValueError("Bridge completion history needs a graph checkpoint before resuming or handoff")
         if current.get("pause", {}).get("kind") in {"provider_outcome_unknown", "bridge_admission_refused"}:
@@ -2273,6 +2339,9 @@ class Journal:
                     raise AccessDenied("The clarification resume identity is unavailable or inconsistent")
             await self.store.assert_campaign_current(current, action_id=campaign_action_id)
             run = await self._run(run_id)
+            from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
+
+            await assert_generic_dispatch_allowed(self.store, self, await self.store.get_run(run_id))
             if (
                 settings_generation is not None
                 and self.store.configuration.settings_generation is not settings_generation

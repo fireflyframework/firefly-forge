@@ -170,6 +170,7 @@ async def test_native_api_candidates_route_precedes_exact_request_and_is_split_r
     postgres_schema, tmp_path
 ):
     import httpx
+    from native_client_knowledge_fixtures import activate_native_client_target
 
     from firefly_forge.api import create_application
     from firefly_forge.runner_continuations import RunnerContinuations
@@ -180,6 +181,7 @@ async def test_native_api_candidates_route_precedes_exact_request_and_is_split_r
     async with app.router.lifespan_context(app):
         store = app.state.runtime.context.get_bean(Store)
         (store.path.parent / "workspaces").rmdir()  # Empty directory created by this owned API fixture.
+        await activate_native_client_target(store, tmp_path / "framework-prerequisite")
         fixture = await command_fixture(store, ["git", "diff"])
         try:
             service = app.state.runtime.context.get_bean(RunnerContinuations)

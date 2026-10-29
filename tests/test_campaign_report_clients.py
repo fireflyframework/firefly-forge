@@ -23,6 +23,8 @@ from firefly_forge.store import Store
 
 @pytest.mark.parametrize("interface", ["sdk", "cli", "mcp"])
 def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_schema, monkeypatch, interface):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -50,6 +52,7 @@ def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_sch
         assert reports.campaigns.poller is None
 
         async def seed():
+            await activate_native_client_target(http.app.state.store, tmp_path / "framework-prerequisite")
             return await one_component(http.app.state.store, tmp_path)
 
         project, manager, journal, campaign = http.portal.call(seed)
@@ -85,7 +88,7 @@ def test_native_report_di_and_authenticated_client_routes(tmp_path, postgres_sch
 async def test_report_tool_is_read_only_bounded_and_requires_both_scope_ids():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     tool = tools["get_project_campaign_report"]
-    assert len(tools) == 174
+    assert len(tools) == 182
     assert tool.input_schema["required"] == ["project_id", "campaign_id"]
     assert tool.annotations.read_only_hint is True and tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False and tool.annotations.destructive_hint is False

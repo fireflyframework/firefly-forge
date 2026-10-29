@@ -78,11 +78,14 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-grant-fixture.json": "fixture coding grant",
                 "studio/tests/coding-check-recovery-browser-fixture.ts": "fixture coding routes",
                 "studio/tests/git-delivery-contract-fixture.json": "fixture Git delivery contract",
+                "studio/tests/framework-knowledge-fixture.ts": "fixture exact framework corpus",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
                 "studio/tests/docs-coding-check-recovery.spec.ts": "fixture coding producer",
                 "studio/tests/development-workflow.spec.ts": "fixture development workflow producer",
+                "studio/tests/framework-knowledge.spec.ts": "fixture framework generation producer",
+                "studio/tests/invalid-read-recovery.spec.ts": "fixture continuity recovery producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -133,6 +136,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/coding-check-grant-fixture.json",
                     "studio/tests/coding-check-recovery-browser-fixture.ts",
                     "studio/tests/git-delivery-contract-fixture.json",
+                    "studio/tests/framework-knowledge-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -172,6 +176,80 @@ class WalkthroughTests(unittest.TestCase):
 
             save()
             hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            for stage in (
+                "checkpoint-continuation-policy",
+                "checkpoint-continuation-review",
+                "checkpoint-continuation-status",
+            ):
+                name = stage + "-mobile-light.png"
+                (asset.parent / name).write_bytes(asset.read_bytes())
+                capture = {
+                    **record,
+                    "stage": stage,
+                    "path": "assets/screenshots/" + name,
+                    "producer": "studio/tests/invalid-read-recovery.spec.ts",
+                    "producer_sha256": producers["studio/tests/invalid-read-recovery.spec.ts"],
+                }
+                manifest["captures"][name] = capture
+                save()
+                with self.subTest(checkpoint_stage=stage):
+                    hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                capture["producer"] = "studio/tests/docs-walkthrough.spec.ts"
+                capture["producer_sha256"] = producers[capture["producer"]]
+                save()
+                with self.assertRaisesRegex(ValueError, "stage differs from its producer"):
+                    hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                del manifest["captures"][name]
+            unknown_name = "checkpoint-continuation-unknown-mobile-light.png"
+            (asset.parent / unknown_name).write_bytes(asset.read_bytes())
+            manifest["captures"][unknown_name] = {
+                **record,
+                "stage": "checkpoint-continuation-unknown",
+                "path": "assets/screenshots/" + unknown_name,
+                "producer": "studio/tests/invalid-read-recovery.spec.ts",
+                "producer_sha256": producers["studio/tests/invalid-read-recovery.spec.ts"],
+            }
+            save()
+            with self.assertRaisesRegex(ValueError, "Unknown checkpoint continuation capture stage"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][unknown_name]
+            save()
+            section_name = "framework-generation-confirmation-mobile-light.png"
+            section_asset = asset.parent / section_name
+            section_asset.write_bytes(bytes(16) + (265).to_bytes(4, "big") + (526).to_bytes(4, "big"))
+            section_record = {
+                **record,
+                "stage": "framework-generation-confirmation",
+                "path": "assets/screenshots/" + section_name,
+                "producer": "studio/tests/framework-knowledge.spec.ts",
+                "viewport": {"width": 390, "height": 1000},
+                "sha256": sha(section_asset),
+                "section_capture": {
+                    "selector": ".framework-activation-confirm",
+                    "bounds": {"x": 20, "y": 120, "width": 265, "height": 526},
+                    "image_size": {"width": 265, "height": 526},
+                },
+            }
+            section_record["producer_sha256"] = producers[section_record["producer"]]
+            manifest["captures"][section_name] = section_record
+            save()
+            hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            section_record["section_capture"]["bounds"] = {"x": 20.5, "y": 120.9, "width": 264, "height": 524.6}
+            save()
+            hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            for field, wrong in (
+                ("selector", ".unrelated-section"),
+                ("bounds", {"x": 20, "y": 900, "width": 265, "height": 526}),
+                ("image_size", {"width": 390, "height": 1000}),
+            ):
+                original = section_record["section_capture"][field]
+                section_record["section_capture"][field] = wrong
+                save()
+                with self.subTest(section_field=field), self.assertRaisesRegex(ValueError, "section"):
+                    hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                section_record["section_capture"][field] = original
+            del manifest["captures"][section_name]
+            save()
             for name, error in [
                 ("studio/tests/walkthrough-capture.ts", "capture helper"),
                 ("studio/tests/learning-record-fixture.ts", "capture helper"),
@@ -186,6 +264,7 @@ class WalkthroughTests(unittest.TestCase):
                 ("studio/tests/docs-walkthrough.spec.ts", "capture producer"),
                 ("studio/tests/docs-provider-allowance.spec.ts", "capture producer"),
                 ("studio/tests/development-workflow.spec.ts", "capture producer"),
+                ("studio/tests/invalid-read-recovery.spec.ts", "capture producer"),
                 ("studio/tests/git-delivery-contract-fixture.json", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-fixture.ts", "capture helper"),
                 ("studio/tests/provider-recovery-allowance-browser-fixture.ts", "capture helper"),
@@ -361,6 +440,29 @@ class WalkthroughTests(unittest.TestCase):
         finally:
             hook._walkthrough = previous
 
+    def test_section_capture_renders_its_raster_dimensions_without_upscaling_to_the_viewport(self):
+        previous = hook._walkthrough
+        try:
+            hook._walkthrough = {
+                "captures": {
+                    f"framework-generation-candidates-mobile-{theme}.png": {
+                        "path": f"assets/screenshots/framework-generation-candidates-mobile-{theme}.png",
+                        "viewport": {"width": 320, "height": 1152},
+                        "section_capture": {"image_size": {"width": 265, "height": 872}},
+                    }
+                    for theme in ("light", "dark")
+                }
+            }
+            output = hook.on_page_markdown(
+                "![Choose a validation](assets/screenshots/framework-generation-candidates-mobile-light.png)",
+                SimpleNamespace(url="framework-knowledge-refresh/"),
+                {},
+            )
+            self.assertEqual(output.count('width="265" height="872"'), 2)
+            self.assertNotIn('width="320"', output)
+        finally:
+            hook._walkthrough = previous
+
     def test_theme_pair_never_invents_a_missing_captured_appearance(self):
         previous = hook._walkthrough
         try:
@@ -432,6 +534,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-grant-fixture.json",
                 "studio/tests/coding-check-recovery-browser-fixture.ts",
                 "studio/tests/git-delivery-contract-fixture.json",
+                "studio/tests/framework-knowledge-fixture.ts",
             ]
             for name in operator_inputs:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
@@ -444,6 +547,10 @@ class WalkthroughTests(unittest.TestCase):
             coding_capture.write_text("fixture coding producer")
             workflow_capture = root / "studio/tests/development-workflow.spec.ts"
             workflow_capture.write_text("fixture development workflow producer")
+            framework_capture = root / "studio/tests/framework-knowledge.spec.ts"
+            framework_capture.write_text("fixture framework knowledge producer")
+            recovery_capture = root / "studio/tests/invalid-read-recovery.spec.ts"
+            recovery_capture.write_text("fixture continuity recovery producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -465,6 +572,8 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/docs-provider-allowance.spec.ts": sha(allowance_capture),
                     "studio/tests/docs-coding-check-recovery.spec.ts": sha(coding_capture),
                     "studio/tests/development-workflow.spec.ts": sha(workflow_capture),
+                    "studio/tests/framework-knowledge.spec.ts": sha(framework_capture),
+                    "studio/tests/invalid-read-recovery.spec.ts": sha(recovery_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

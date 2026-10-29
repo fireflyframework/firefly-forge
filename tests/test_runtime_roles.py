@@ -476,6 +476,7 @@ async def test_native_request_receipts_require_exact_project_read_scope(postgres
     from uuid import uuid4
 
     import httpx
+    from native_client_knowledge_fixtures import activate_native_client_target
 
     from firefly_forge.api import create_application
     from firefly_forge.identity import IdentityService, Principal
@@ -487,6 +488,7 @@ async def test_native_request_receipts_require_exact_project_read_scope(postgres
         from test_project_access import seed
 
         store = app.state.store
+        await activate_native_client_target(store, tmp_path / "framework-prerequisite")
         repository, projects = await seed(store, tmp_path, count=2)
         viewer = Principal(uuid4(), "https://identity.example/realms/forge", uuid4().hex)
         await ProjectAccess(store).set_membership(projects[0]["id"], viewer, "owner")

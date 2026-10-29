@@ -3,6 +3,7 @@
 
 import importlib
 import io
+import json
 import zipfile
 
 import pytest
@@ -105,3 +106,54 @@ async def test_readable_pdf_supplies_actual_extracted_customer_text():
     result = await decode("customer.pdf", output.getvalue())
     assert result["mime_type"] == "application/pdf" and "Reserve inventory" in result["text"]
     assert not result["truncated"] and result["image"] is None
+
+
+async def test_isolated_real_image_decoder_disables_bytecode_writes(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from PIL import Image
+
+    module = importlib.import_module("firefly_forge.attachment_decode")
+    flag = tmp_path / "child-flags.json"
+    cache = tmp_path / "owned-python-cache"
+    probe = tmp_path / "probe.py"
+    source = str(Path(module.__file__).resolve())
+    probe.write_text(
+        "# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0\n"
+        "import json, pathlib, runpy, sys\n"
+        + "pathlib.Path("
+        + repr(str(flag))
+        + ").write_text(json.dumps({"
+        + "'dont_write_bytecode':sys.dont_write_bytecode,'isolated':sys.flags.isolated,"
+        + "'pycache_prefix':sys.pycache_prefix}))\n"
+        + "runpy.run_path("
+        + repr(source)
+        + ", run_name='__main__')\n"
+    )
+    create = module.asyncio.create_subprocess_exec
+
+    async def observe(*argv, **kwargs):
+        index = argv.index(source)
+        # Redirect any RED-side cache writes into this test's owned directory.
+        return await create(
+            argv[0],
+            "-X",
+            "pycache_prefix=" + str(cache),
+            *argv[1:index],
+            str(probe),
+            *argv[index + 1 :],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", observe)
+    content = io.BytesIO()
+    Image.new("RGB", (16, 16), "white").save(content, format="PNG")
+    result = await module.decode_attachment("wireframe.png", content.getvalue())
+    assert result["kind"] == "image" and result["mime_type"] == "image/png"
+    with Image.open(io.BytesIO(result["image"])) as image:
+        assert image.size == (16, 16)
+    observed = json.loads(flag.read_text())
+    assert observed["isolated"] == 1
+    assert observed["pycache_prefix"] == str(cache)
+    assert observed["dont_write_bytecode"] is True
+    assert list(cache.rglob("*.pyc")) == []

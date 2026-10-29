@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/check_framework_updates
+version: 1.0.0
+description: Forge framework knowledge MCP tool description.
+system_template: ''
+user_template: Check the official stable release or an exact published pyfly/larafly version. Records
+  release, immutable commit and license provenance; does not index content or upgrade dependencies. Requires
+  factory administration.
+required_variables: []
+metadata:
+  defaults: {}

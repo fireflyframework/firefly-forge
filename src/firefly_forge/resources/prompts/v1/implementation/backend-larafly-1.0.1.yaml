@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: implementation/backend-larafly
+version: 1.0.1
+description: Exact retained larafly release and installed API contract.
+system_template: ''
+user_template: |-
+  Use fireflyframework/larafly {{ framework_version }} with {{ runtime_requirement }}. Pin this exact release in composer.json and composer.lock. Consult the retained version's official skeleton, CLI stubs, documentation, examples and API citations for namespaces and attributes. Reuse the native container, services, controllers and repositories. Add behavioral Pest/PHPUnit tests and configure PHPStan/Larastan and Laravel Pint. Check actual installed APIs and run product verification; citation retrieval does not establish correct code or replace tests.
+required_variables:
+- framework_version
+- runtime_requirement
+metadata:
+  defaults: {}

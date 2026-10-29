@@ -2774,6 +2774,109 @@
       "sha256": "355936bd4a2fdbcc8e9cf232c25fc874eef83eef18135ac2cc7b72f650c7710c",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "tools/read_run_evidence",
+      "version": "1.0.1",
+      "path": "tools/read_run_evidence-1.0.1.yaml",
+      "sha256": "1fd9adc5f5d8d38439fde968c53a21418d1fda07e00c4b613b69c56b39d41dff",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_framework_knowledge_status",
+      "version": "1.0.0",
+      "path": "mcp/get_framework_knowledge_status.yaml",
+      "sha256": "123edf45a59a092148c762debc24212c537da8cfd21d023367a74c9c7ec91e43",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/check_framework_updates",
+      "version": "1.0.0",
+      "path": "mcp/check_framework_updates.yaml",
+      "sha256": "83a29ff9b50fa192875fd80e87b5d731c9638784621a70989650df3a3f5014a2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/refresh_framework_knowledge",
+      "version": "1.0.0",
+      "path": "mcp/refresh_framework_knowledge.yaml",
+      "sha256": "189df2bb6b38ae56426f992b439d532c9f11aadaf8092ce52a28d284eaf845ff",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_framework_knowledge_refresh",
+      "version": "1.0.0",
+      "path": "mcp/get_framework_knowledge_refresh.yaml",
+      "sha256": "8d4c1df479284b470fcbb29a60064c4f05eeaff7e5f2cc8f8ceda40d0942b766",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_framework_knowledge_refresh",
+      "version": "1.0.0",
+      "path": "mcp/observe_framework_knowledge_refresh.yaml",
+      "sha256": "878a5c770666dc8c62582ea21f13d99139a8d5ec2a8a2da0f55325ba3c01732b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_framework_corpora",
+      "version": "1.0.0",
+      "path": "mcp/list_framework_corpora.yaml",
+      "sha256": "e28ebe788e90483b408bc04dff7cd731a26bfba7e8d940f9585fefa1ec154927",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/list_framework_corpus_sources",
+      "version": "1.0.0",
+      "path": "mcp/list_framework_corpus_sources.yaml",
+      "sha256": "7ea95287ba076bde50c7bfb75334a0373403c36b6b981d631f0f65c2d270afc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/search_framework_knowledge",
+      "version": "1.0.0",
+      "path": "mcp/search_framework_knowledge.yaml",
+      "sha256": "d2214ac77bbf1329d80590df67f0f70ebf43e04b22093c974097d7fefec1d7a4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "implementation/backend-pyfly",
+      "version": "1.0.2",
+      "path": "implementation/backend-pyfly-1.0.2.yaml",
+      "sha256": "1546197087bea339db1144a903342837ff08837508f23a17df37f88124f73935",
+      "field": "user",
+      "variables": {
+        "framework_version": "string"
+      }
+    },
+    {
+      "id": "implementation/backend-larafly",
+      "version": "1.0.1",
+      "path": "implementation/backend-larafly-1.0.1.yaml",
+      "sha256": "54fc797bd936480a3c1a2fe86fcc05d36358d64ecc10e7ba16ecb9809be77284",
+      "field": "user",
+      "variables": {
+        "framework_version": "string",
+        "runtime_requirement": "string"
+      }
+    },
+    {
+      "id": "implementation/framework-knowledge-pin",
+      "version": "1.0.0",
+      "path": "implementation/framework-knowledge-pin.yaml",
+      "sha256": "5d43598df455771163ef65d0557760b6a9a3713bf08529fb17ac9fbabc3b9706",
+      "field": "user",
+      "variables": {
+        "pin": "string"
+      }
     }
   ]
 }

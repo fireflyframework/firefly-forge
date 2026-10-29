@@ -118,6 +118,15 @@ async def activated(tmp_path, monkeypatch):
     store._unit = unit
 
     class Requests(Rows):
+        async def for_key(self, run, kind, key):
+            return next((r for r in self.rows if r.run_id == run and r.kind == kind and r.request_key == key), None)
+
+        async def count_for_run(self, run, kind):
+            return sum(r.run_id == run and r.kind == kind for r in self.rows)
+
+        async def active_for_run(self, run):
+            return any(r.run_id == run and r.status in {"queued", "executing"} for r in self.rows)
+
         async def for_run(self, run, kind):
             return [r for r in self.rows if r.run_id == run and r.kind == kind]
 
@@ -391,6 +400,60 @@ async def queue_original(env, monkeypatch, *, source="bridge_observation", next_
     finally:
         env.principal_context.reset(token)
     return posts, intent, checkpoint, body, request
+
+
+async def test_restore_api_admission_reads_source_without_execution_ownership(tmp_path, monkeypatch):
+    from firefly_forge.agentic_checkpoint_invocation import workspace_cut
+
+    env = await activated(tmp_path, monkeypatch)
+    ownership_calls = []
+    restore_bundle = env.restores.checkpoints.restore_bundle
+
+    async def api_has_no_execution_owner():
+        ownership_calls.append(True)
+        raise RuntimeError("PostgreSQL execution ownership was lost")
+
+    async def selected_bundle(*args, **kwargs):
+        result = await restore_bundle(*args, **kwargs)
+        monkeypatch.setattr(env.store, "assert_ownership", api_has_no_execution_owner)
+        return result
+
+    monkeypatch.setattr(env.restores.checkpoints, "restore_bundle", selected_bundle)
+    try:
+        posts, _, _, _, request = await queue_original(env, monkeypatch, source="http_response")
+        assert (await env.requests.get(request.request_id))["status"] == "queued"
+        assert not ownership_calls and len(posts) == 2
+        with pytest.raises(RuntimeError, match="execution ownership"):
+            await workspace_cut(env.store, env.workspace)
+        assert ownership_calls == [True]
+    finally:
+        await env.model.client.close()
+
+
+async def test_restore_api_refuses_remote_running_task_before_source_inspection(tmp_path, monkeypatch):
+    env = await activated(tmp_path, monkeypatch)
+    source_scans = []
+    restore_bundle = env.restores.checkpoints.restore_bundle
+    scanner = env.store.source_patch_scanner
+
+    async def observed_scanner(*args, **kwargs):
+        source_scans.append(True)
+        return await scanner(*args, **kwargs)
+
+    async def selected_bundle(*args, **kwargs):
+        result = await restore_bundle(*args, **kwargs)
+        task = await env.journal._task(RUN, "implement")
+        task.status = "running"
+        monkeypatch.setattr(env.store, "source_patch_scanner", observed_scanner)
+        return result
+
+    monkeypatch.setattr(env.restores.checkpoints, "restore_bundle", selected_bundle)
+    try:
+        with pytest.raises(ValueError):
+            await queue_original(env, monkeypatch, source="http_response")
+        assert not source_scans and not env.requests.records.rows and not env.engine.active
+    finally:
+        await env.model.client.close()
 
 
 @pytest.mark.parametrize("drift", ["operator", "source", "generation", "owner", "deadline"])
@@ -710,3 +773,24 @@ async def test_required_checkpoint_cannot_post_through_an_unactivated_provider(t
         assert posts == []
     finally:
         await model.client.close()
+
+
+async def test_restore_api_concurrent_identical_ticket_returns_readback_without_new_claim(tmp_path, monkeypatch):
+    env = await activated(tmp_path, monkeypatch)
+    restore_bundle = env.restores.checkpoints.restore_bundle
+    raced = False
+
+    async def concurrent_bundle(*args, **kwargs):
+        nonlocal raced
+        if not raced:
+            raced = True
+            await env.restores.request(*args, **kwargs)
+        return await restore_bundle(*args, **kwargs)
+
+    monkeypatch.setattr(env.restores.checkpoints, "restore_bundle", concurrent_bundle)
+    try:
+        posts, _, _, _, request = await queue_original(env, monkeypatch, source="http_response")
+        assert raced and (await env.requests.get(request.request_id))["status"] == "queued"
+        assert len(env.requests.records.rows) == 1 and len(posts) == 2
+    finally:
+        await env.model.client.close()

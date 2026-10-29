@@ -267,6 +267,9 @@ class ToolInvocationBroker:
                     if completion_guard is not None:
                         completion_guard()
                     await self._authorize_result(previous, "succeeded")
+                    from firefly_forge.agentic_tool_custody import link_retained_broker_effects
+
+                    await link_retained_broker_effects(self.journal, run_id, correlation_id)
                     return copy.deepcopy(previous.data["result"])
                 if previous.status == "rejected":
                     error = previous.data["error"]

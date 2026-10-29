@@ -21,6 +21,8 @@ from firefly_forge.mcp_server import create_server
 
 
 def test_native_lost_response_exact_receipt_and_three_read_clients(tmp_path, postgres_schema, monkeypatch):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     async def idle(_self):
         await asyncio.Event().wait()
 
@@ -50,7 +52,8 @@ def test_native_lost_response_exact_receipt_and_three_read_clients(tmp_path, pos
 
         async def seed():
             store = http.app.state.store
-            engine, run = await completed(store, tmp_path, scoped=True)
+            remote = await activate_native_client_target(store, tmp_path / "framework-prerequisite")
+            engine, run = await completed(store, tmp_path, scoped=True, framework_remote=remote)
             ledger = LearningLedger(store, engine.journal)
             ledger.engine = engine
             return await ledger.capture_outcome(run["id"])

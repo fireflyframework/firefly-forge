@@ -122,6 +122,7 @@ async def decode_attachment(filename: str, content: bytes) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="forge-file-") as task_directory:
         process = await asyncio.create_subprocess_exec(
             sys.executable,
+            "-B",
             "-I",
             str(Path(__file__).resolve()),
             filename,

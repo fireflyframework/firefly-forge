@@ -7,6 +7,8 @@ description: Recover paused and interrupted runs with persisted task state, expl
 
 Use the durable plan and journal to determine what happened before continuing a run. The same run can retain partial source, provider and policy snapshots, earlier failed checks, a real checkpoint commit and remote-effect receipts.
 
+When an existing continuation stops at a later retained checkpoint, review [checkpoint continuation](checkpoint-continuations.md). It preserves the same execution request and task attempt, including completed work and charged consumption. Its candidate and status reads start no work.
+
 ## Settle an uncertain run submission
 
 Run creation has a separate identity from the run it may admit. `POST /api/v1/run-creation-requests/{request_id}` accepts the original `{"version":1,"input":...}` envelope under a retained 32-character hexadecimal request ID. A new admission returns HTTP201; an exact replay by the original user and authentication method returns HTTP200 with the unchanged receipt. The legacy `POST /api/v1/runs` route remains a separate operation.
@@ -588,6 +590,20 @@ The execution owner claims that ticket once, repeats current operator and execut
 
 The original deadline includes downtime. Changed or missing workspaces, unsupported state, current permission loss, cancellation and stale claim generations refuse. This requires the same retained local workspace; it does not reconstruct source on another host or make filesystem checks atomic against unrelated local processes. A workspace that cannot be treated as exclusively owned is ineligible. A crash after consumption, including before delivery to the parser or before the next checkpoint, cannot re-arm that boundary. Executing tickets recovered after owner loss need reconciliation and are never automatically requeued. Generic completion holds remain in place, including for old unknown runs without an eligible checkpoint. This is continuation at the supported model boundary, not arbitrary graph or Python-stack restoration.
 
+### Continue a consumed, rejected evidence read
+
+A sole `read_run_evidence` call rejected by its pinned historical validator can use [same-attempt continuity](invalid-read-continuity.md) when its original request, checkpoint, response and consume receipt are intact. The candidate verifies a registered source/SDK epoch and the complete frozen scope. It reconstructs only the known `invalid_query` result through a sealed local transport, preserving the original consumption and lifetime allowances.
+
+Ordinary restore keeps its exact SDK-version and original-deadline checks. The separate continuity path can derive a checkpoint for the registered 2.58.0-to-2.55.0 SDK pair. The original bytes remain unchanged. Its witness binds the original checkpoint and both contract hashes, and retains the exact empty-or-unknown telemetry provenance. Both inclusive usage counters remain preserved. Nonempty provenance or any other unapproved contract change remains held.
+
+A factory administrator first enables the finite continuity policy. An authorized execution operator then reviews the candidate and submits its exact digests with the three required acknowledgements. A current qualified profile covering the complete migration implementation is required. Read back the same request identity after a lost response; do not create a replacement continuation or replay the original completion.
+
+Historical credential inspection remains a read operation. It screens the original canonical record under native custody and current credentials, while ordinary restore still refuses an unsupported version. An inspection result supplies no continuation claim.
+
+A separately enabled [version-2 observation policy](invalid-read-continuity.md#unavailable-pure-source-observations) can close granted pure `list_files` siblings when their original results were not retained. It requires an explicit observation acknowledgement and records `observation_unavailable`, preserving the unknown original read outcome. It does not replay the read or manufacture success. The original response and both tool-call charges stay preserved; writable, network, unsupported and unresolved effects remain held.
+
+A claimed continuation whose first provider request was refused before remote admission has a [separate reviewed recovery](invalid-read-continuity.md#a-provider-request-refused-before-admission). Its default-off policy requires the current original administrator to review matching executable and validation evidence, the exact wire and the complete native claim history. Forge resumes only a byte-identical pending checkpoint under the same ticket and task attempt. It preserves the refused request, failed claim and spent counters; new responses, tools and commands use the remaining allowances. HTTP errors or missing jobs alone cannot authorize this action.
+
 ## Internal run-admission boundary
 
 Run admission prepares runner capabilities, provider settings, policies, roles and reviewed design files before taking the insertion locks. `Store.prepare_run` retains immutable bytes and original field presence. The locked insert checks the current native actor, project/component and repository/product cuts, then saves the queued run and its first event together. Campaign and incident admissions prepare before entering their own atomic write.
@@ -630,6 +646,8 @@ Source-only execution uses a named native permissions profile bound to the curre
 Filesystem policy version 2 also inspects current workspace names before configuration or launch. The bounded scan adds literal deny paths for existing private objects, without reading file contents or following dependency symlinks. It does not descend private directories. Hardlinks, special files, unstable entries or exceeded scan limits hold admission. A changed set of private names changes the permissions digest and invalidates earlier metadata; actual lowercase environment examples remain available.
 
 The fixed no-model metadata operation initializes the native app server, waits for initialization, then reads effective configuration and managed requirements before closing stdin. Its version-5 proof retains only configuration, profile and permissions fingerprints. The pinned native agents representation must contain exactly `enabled: false` and its six unused options as null, with no role declarations or extra fields. Missing responses, unexpected capabilities, enabled autoloading, telemetry or incompatible mandatory requirements hold admission. The native API does not expose every utility switch; the qualified catalog and invocation checks establish their absence. Raw configuration, native error bodies and managed requirement values never enter activity logs or the retained proof.
+
+Metadata qualification uses the caller's finite positive timeout, including a shorter remaining window when supplied. It does not impose a separate five-second ceiling. Invalid durations fail before a child process starts. The same initialization order, effective permissions and process-cleanup checks still apply; this metadata operation does not start a model request or consume a paid dispatch.
 
 Governed file tools check both the requested relative name and the actual opened file or directory before reading contents, truncating a file or creating descendants. This prevents a case-insensitive filesystem from treating an allowed spelling such as `.env.example` as an alias for the private `.env.EXAMPLE`. Real lowercase `.example`, `.sample` and `.template` suffixes remain available. Unsupported descriptor-path verification fails closed.
 

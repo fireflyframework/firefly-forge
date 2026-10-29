@@ -9,6 +9,7 @@ import hashlib
 import json
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
@@ -144,6 +145,76 @@ class AgentRestores:
         await access.authorize_execution(run)
         await self.store.assert_campaign_current(run)
 
+    async def source_read_guard(
+        self, run: dict[str, Any], reader: Principal, *, task_attempt: int, invalid_read: bool = False
+    ) -> Callable[[], Awaitable[None]]:
+        """Bind an API source inspection to native read custody, without claiming a worker lease."""
+        from firefly_forge.checkpoint_mode_runtime import effective_revision
+        from firefly_forge.known_worker_completions import _entries, _task
+
+        _outside_unit()
+        expected_run = copy.deepcopy(run)
+        actor = ProjectAccess.actor_snapshot(reader)
+        generation = self.store.configuration.settings_generation
+        revision = effective_revision(run)
+        if not isinstance(revision, str):
+            raise ValueError("Source inspection requires its original frozen configuration")
+        frozen_settings = digest(self.store.configuration.load_snapshot(revision))
+        current_settings = digest(self.store.configuration.resolve("bridge"))
+
+        def configuration_current() -> None:
+            if (
+                self.store.configuration.settings_generation is not generation
+                or digest(self.store.configuration.load_snapshot(revision)) != frozen_settings
+                or digest(self.store.configuration.resolve("bridge")) != current_settings
+            ):
+                raise ValueError("Source inspection configuration changed")
+
+        async def state() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+            if CURRENT_PRINCIPAL.get() != reader:
+                raise AccessDenied("Source inspection caller changed")
+            current = await self.completions._reader(run["id"], reader, execute=True)
+            await self.access(current, actor)
+            active = self.engine.active.get(run["id"])
+            if (
+                self.engine.stopping
+                or active is not None
+                and not active.done()
+                or (current.get("cancel_request") or {}).get("status") == "requested"
+            ):
+                raise ValueError("Source inspection requires the same quiescent execution")
+            async with self.store._unit():
+                task = _task(await self.journal._task(run["id"], "implement"))
+                entries = _entries(await self.journal.records.find_for_run(identifier(run["id"])), run["id"])
+                active_claim = await self.requests.records.active_for_run(identifier(run["id"]))
+            if (
+                current.get("agent") != "bridge"
+                or current.get("status")
+                not in ({"failed"} if invalid_read else {"needs_reconciliation", "interrupted"})
+                or not current.get("bridge_completion_hold")
+                or task["attempt"] != task_attempt
+                or task["status"]
+                not in ({"running", "needs_reconciliation"} if invalid_read else {"needs_reconciliation"})
+                or active_claim
+            ):
+                raise ValueError("Source inspection requires its held task and no active native execution request")
+            if CURRENT_PRINCIPAL.get() != reader:
+                raise AccessDenied("Source inspection caller changed")
+            return current, task, entries
+
+        baseline = await state()
+        if baseline[0] != expected_run:
+            raise ValueError("Source inspection execution changed before its native cut")
+        configuration_current()
+
+        async def guard() -> None:
+            configuration_current()
+            if await state() != baseline:
+                raise ValueError("Source inspection run, task or journal changed")
+            configuration_current()
+
+        return guard
+
     async def validate_db(
         self, run: dict[str, Any], context: InvocationBinding, intent: dict[str, Any], *, active: bool
     ) -> None:
@@ -266,7 +337,22 @@ class AgentRestores:
 
         async with mode_execution_scope(self.journal, identifier(run_id).hex):
             with prepared_credential_rejection(self.store):
-                return await self._request(run_id, completion_id, body)
+                try:
+                    return await self._request(run_id, completion_id, body)
+                except ValueError:
+                    reader = CURRENT_PRINCIPAL.get()
+                    async with self.store._unit():
+                        retained = await self.requests.records.find_by_id(identifier(body.request_id))
+                    incoming = {
+                        "run_id": identifier(run_id).hex,
+                        "completion_request_id": _request_id(completion_id),
+                        "input": body.model_dump(mode="json"),
+                        "actor": ProjectAccess.actor_snapshot(reader) if reader is not None else None,
+                    }
+                    # A concurrent admission closes read custody; only its exact existing receipt may be returned.
+                    if retained is not None and retained.kind == KIND and retained.data["request"] == incoming:
+                        return await self.get(run_id, completion_id, body.request_id)
+                    raise
 
     async def _request(self, run_id: str, completion_id: str, body: RestoreInput) -> dict[str, Any]:
         _outside_unit()
@@ -293,12 +379,16 @@ class AgentRestores:
         context = CheckpointPayloadV2.model_validate(bundle[1]["payload"]).invocation
         if context.contract != runtime_contract() or context.deadline_ms <= int(time.time() * 1000):
             raise ValueError("Original checkpoint contract changed or deadline expired")
-        if await workspace_cut(self.store, self.workspace(run_id)) != context.workspace:
+        read_guard = await self.source_read_guard(run, reader, task_attempt=context.round)
+        if await workspace_cut(self.store, self.workspace(run_id), assert_current=read_guard) != context.workspace:
             raise ValueError("Retained workspace drifted; no restore ticket admitted")
         credentials = [incoming, bundle[:3], self.checkpoints.credential_payload(bundle[1])]
         await self.store.admit_credentials(credentials)
         if CURRENT_PRINCIPAL.get() != reader:
             raise AccessDenied("Restore caller changed during admission")
+        await read_guard()
+        if context.contract != runtime_contract() or context.deadline_ms <= int(time.time() * 1000):
+            raise ValueError("Original checkpoint contract changed or deadline expired")
         async with self.store._unit() as session:
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
@@ -309,6 +399,9 @@ class AgentRestores:
             current = {**copy.deepcopy(locked.data), "id": run_id, "status": locked.status}
             await self.access(current, actor)
             await self.validate_db(current, context, bundle[0], active=False)
+            await read_guard()
+            if context.deadline_ms <= int(time.time() * 1000):
+                raise ValueError("Original checkpoint deadline expired during native admission")
             old = await self.requests.records.find_by_id(identifier(body.request_id))
             if old is not None:
                 if old.data["request"] != incoming or old.kind != KIND or old.run_id.hex != run_id:

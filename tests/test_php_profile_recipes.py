@@ -125,13 +125,33 @@ def test_option_like_filename_is_executed_as_the_bound_source_not_php_code(tmp_p
 
 
 @pytest.mark.parametrize("ending,code", [("exit(7);", 7), ("owned_missing_function();", 255)])
-def test_runtime_recipe_keeps_original_exit_and_fatal_error(tmp_path, ending, code):
-    result = run_recipe(tmp_path, '<?php echo "before failure\\n"; ' + ending)
-    assert result.returncode == code
-    assert result.stdout.startswith("before failure\n")
-    assert summary(result)["observation_only"] is True
+@pytest.mark.parametrize("error_stream", ["stdout", "stderr"])
+def test_runtime_recipe_keeps_original_exit_and_fatal_error(tmp_path, ending, code, error_stream):
+    source = (
+        "<?php ini_set('log_errors', '0'); ini_set('html_errors', '0'); "
+        f"ini_set('display_errors', '{error_stream}'); "
+        'echo "before failure\\n"; fwrite(STDERR, "owned diagnostic\\n"); ' + ending
+    )
+    result = run_recipe(tmp_path, source)
+    native = subprocess.run(
+        [php_fixture(), "-n", "-f", "workload.php"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+    assert native.returncode == result.returncode == code
+    assert result.stdout.partition("\nFORGE_PHP_PROFILE_V1\n")[0] == native.stdout
+    assert result.stderr == native.stderr
+    assert native.stdout.startswith("before failure\n")
+    assert native.stderr.startswith("owned diagnostic\n")
+    observed = summary(result)
+    assert observed["observation_only"] is True and observed["complete"] is True
+    assert observed["workload_exit_code"] == code and observed["metrics"] is not None
     if code == 255:
-        assert "owned_missing_function" in result.stderr
+        selected, other = (result.stdout, result.stderr) if error_stream == "stdout" else (result.stderr, result.stdout)
+        assert "Call to undefined function owned_missing_function()" in selected
+        assert "owned_missing_function" not in other
 
 
 def test_closed_workload_stdout_does_not_replace_exit_or_shutdown_metrics(tmp_path):

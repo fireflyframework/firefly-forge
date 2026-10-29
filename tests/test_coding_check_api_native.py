@@ -23,6 +23,8 @@ from firefly_forge.provider_recovery_allowances import ProviderRecoveryAllowance
 
 
 def test_native_coding_check_http_di_candidate_grant_current_revoke_and_exact_receipt(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
+
     token = "public-native-coding-check-api-fixture"
     with TestClient(
         create_application(tmp_path / "api", token, role="api"),
@@ -32,6 +34,7 @@ def test_native_coding_check_http_di_candidate_grant_current_revoke_and_exact_re
     ) as http:
         assert http.post("/api/v1/auth/login", json={"token": token}).status_code == 200
         context, store = http.app.state.runtime.context, http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         engine, recoveries = context.get_bean(Engine), context.get_bean(ProviderRecoveries)
         grants = context.get_bean(CodingCheckGrants)
         assert engine.coding_checks is grants and recoveries.coding_checks is grants

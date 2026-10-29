@@ -199,6 +199,7 @@ async def test_native_cli_adoption_is_one_dispatch_and_preserves_frozen_configur
 
 
 def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_path, postgres_schema):
+    from native_client_knowledge_fixtures import activate_native_client_target
     from starlette.testclient import TestClient
 
     from firefly_forge.api import create_application
@@ -212,6 +213,7 @@ def test_native_registered_recovery_api_exact_receipt_and_revoked_operator(tmp_p
     ) as http:
         assert http.post("/api/v1/auth/login", json={"token": token}).status_code == 200
         store = http.app.state.store
+        http.portal.call(activate_native_client_target, store, tmp_path / "framework-prerequisite")
         engine = http.app.state.runtime.context.get_bean(Engine)
         recoveries = http.app.state.runtime.context.get_bean(ProviderRecoveries)
         assert recoveries.engine is engine and engine.provider_recoveries is recoveries
