@@ -52,7 +52,11 @@ def test_patch_history_remains_authenticated_across_a_large_complete_scan():
     assert service.contains_source_patch(SourcePatch("x" * 1140000 + "secret"), [packet])
 
 
-@pytest.mark.parametrize("value", ["x" * (4 * 1024 * 1024 + 1), "\ud800", b"bytes", True])
+@pytest.mark.parametrize(
+    "value",
+    ["x" * (4 * 1024 * 1024 + 1), "\ud800", b"bytes", True],
+    ids=["oversized", "surrogate", "bytes", "boolean"],
+)
 def test_patch_requires_bounded_valid_unicode(value):
     with pytest.raises((TypeError, ValueError)):
         SourcePatch(value)
