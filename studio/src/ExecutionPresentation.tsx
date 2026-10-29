@@ -20,6 +20,7 @@ import { isPHPProfile, PHPProfileEvidence } from "./PHPProfileEvidence";
 import { workerEvidenceImages } from "./WorkerEvidenceData";
 import { VerificationHandoff } from "./VerificationHandoff";
 import { ReadonlyObservationEvidence } from "./ReadonlyObservationEvidence";
+import { VerificationReuseEvidence } from "./VerificationReuse";
 
 export function TimelineEventView({
   event,
@@ -847,6 +848,16 @@ export function EvidenceView({
       </section>
     );
   }
+  if (
+    kind === "verification_reuse_intent" ||
+    kind === "verification_reuse_receipt"
+  )
+    return (
+      <>
+        <VerificationReuseEvidence kind={kind} value={value} />
+        {advanced && <AdvancedRecord value={value} />}
+      </>
+    );
   if (
     kind?.startsWith("verification_handoff_") ||
     kind === "verification_continuation_intent"

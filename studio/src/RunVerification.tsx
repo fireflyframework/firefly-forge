@@ -4,6 +4,7 @@ import { request, type Connection, type ForgeRun } from "./api";
 import { asRecord } from "./ExecutionFormat";
 import { EvidenceView } from "./ExecutionPresentation";
 import { VerificationHandoff } from "./VerificationHandoff";
+import { ReusedCheckNotice, reusedCheck } from "./VerificationReuse";
 
 function handoffChecks(journal: unknown, handoff: Record<string, unknown>) {
   const value = asRecord(journal);
@@ -120,18 +121,36 @@ export function VerificationResults({
       <section aria-label="Final run checks">
         <h3>Final run checks</h3>
         {results.length ? (
-          results.map(([name, result], index) => (
-            <EvidenceView
-              key={index}
-              value={result}
-              title={
-                Array.isArray(asRecord(result)?.argv) ||
-                asRecord(result)?.command
-                  ? undefined
-                  : name
-              }
-            />
-          ))
+          results.map(([name, result], index) =>
+            asRecord(result)?.execution === "reused" ? (
+              <section key={index} aria-label="Reused prior check">
+                <ReusedCheckNotice value={result} />
+                {reusedCheck(result) && (
+                  <EvidenceView
+                    value={result}
+                    omitFields={[
+                      "execution",
+                      "source_execution_id",
+                      "source_record_digest",
+                      "verification_reuse_intent_digest",
+                      "created_at",
+                    ]}
+                  />
+                )}
+              </section>
+            ) : (
+              <EvidenceView
+                key={index}
+                value={result}
+                title={
+                  Array.isArray(asRecord(result)?.argv) ||
+                  asRecord(result)?.command
+                    ? undefined
+                    : name
+                }
+              />
+            ),
+          )
         ) : (
           <p className="subtle">
             No final run verification results recorded. Agent completion alone
