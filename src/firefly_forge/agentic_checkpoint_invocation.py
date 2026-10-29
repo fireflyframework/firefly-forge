@@ -206,6 +206,7 @@ def runtime_contract() -> str:
                     "tool_operation_models.py",
                     "tool_operation_lease.py",
                     "tool_operations.py",
+                    "model_operation_client.py",
                     "tool_persistence.py",
                     "project_access.py",
                 )
