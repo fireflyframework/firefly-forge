@@ -260,8 +260,9 @@ async def test_local_only_fresh_outcome_changed_after_lookup_cannot_be_admitted(
     broker = ToolInvocationBroker(store, engine.journal, store.path.parent)
     first = KnowledgeFirst(store, engine.journal, ledger, broker, SearchTools(tmp_path / "no-web-key"))
     first.knowledge = knowledge
+    await store.acquire_ownership()
     await engine.journal.intent(run["id"], "implement")
-    await store.update(run["id"], status="generating")
+    await store.update(run["id"], status="developing", attempt=1)
     workspace = engine.workspaces / origin["id"]
     source = await engine._inspect_workspace(origin["id"], workspace, {})
     native_lookup = ledger.lookup
