@@ -222,6 +222,8 @@ def runtime_contract() -> str:
                     "verification_source_preparation.py",
                     "secrets.py",
                     "private_identity.py",
+                    "product_assistant.py",
+                    "product_assistant_runtime.py",
                 )
             },
         }

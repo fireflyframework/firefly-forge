@@ -34,6 +34,8 @@ MATERIAL = (
     "runner_run_owner.py",
     "runner_continuations.py",
     "runner_continuation_authority.py",
+    "product_assistant.py",
+    "product_assistant_runtime.py",
 )
 
 

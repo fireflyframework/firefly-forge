@@ -373,6 +373,8 @@ def admission_contract_digest() -> str:
                 "verification_result_reuse.py",
                 "execution_environment.py",
                 "private_identity.py",
+                "product_assistant.py",
+                "product_assistant_runtime.py",
             )
         }
     )

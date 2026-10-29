@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, Self
@@ -18,6 +18,37 @@ logger = logging.getLogger(__name__)
 
 class ModelOperationCleanupUnavailable(RuntimeError):
     pass
+
+
+def _observe_unconfirmed_cleanup(task: asyncio.Task[None]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("Late owned model cleanup failed after its control deadline")
+
+
+async def bounded_model_cleanup(operation: Callable[[], Awaitable[None]], detail: str) -> None:
+    async def execute() -> None:
+        await operation()
+
+    task = asyncio.create_task(execute())
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + MODEL_CLEANUP_TIMEOUT_SECONDS
+    cancelled = False
+    while not task.done():
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            task.cancel()
+            task.add_done_callback(_observe_unconfirmed_cleanup)
+            raise ModelOperationCleanupUnavailable(detail)
+        try:
+            await asyncio.wait({task}, timeout=remaining)
+        except asyncio.CancelledError:
+            cancelled = True
+    try:
+        task.result()
+    except (Exception, asyncio.CancelledError) as exc:
+        raise ModelOperationCleanupUnavailable(detail) from exc
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 class ModelOperationClient(httpx2.AsyncClient):
@@ -53,22 +84,7 @@ class OwnedModelProvider:
         return self
 
     async def _close_operation(self) -> None:
-        unavailable = False
-        try:
-            async with asyncio.timeout(MODEL_CLEANUP_TIMEOUT_SECONDS):
-                if hasattr(self.client, "aio"):
-                    await self.client.aio.aclose()
-                else:
-                    await self.client.close()
-        except Exception:
-            unavailable = True
-        finally:
-            try:
-                await close_operation_http(self.operation_client)
-            except Exception:
-                unavailable = True
-        if unavailable:
-            raise ModelOperationCleanupUnavailable("Owned model cleanup was not confirmed")
+        await close_owned_model_client(self.client, self.operation_client)
 
     async def __aexit__(
         self,
@@ -83,6 +99,7 @@ class OwnedModelProvider:
             if self.operation_scopes:
                 return False
             self.operation_closed = True
+            self.operation_client.construction_refused = True
             cleanup = asyncio.create_task(self._close_operation())
         cancelled = False
         while not cleanup.done():
@@ -105,12 +122,35 @@ def owned_model_provider(provider_type: type[Any], http_client: ModelOperationCl
     return provider
 
 
-async def close_operation_http(client: ModelOperationClient) -> None:
+async def close_owned_model_client(client: Any, http_client: ModelOperationClient) -> None:
+    http_client.construction_refused = True
+    unavailable = False
+    cancelled = False
     try:
-        async with asyncio.timeout(MODEL_CLEANUP_TIMEOUT_SECONDS):
-            await client.aclose()
-    except Exception as exc:
-        raise ModelOperationCleanupUnavailable("Owned model HTTP cleanup was not confirmed") from exc
+        await bounded_model_cleanup(
+            client.aio.aclose if hasattr(client, "aio") else client.close,
+            "Owned model vendor cleanup was not confirmed",
+        )
+    except ModelOperationCleanupUnavailable:
+        unavailable = True
+    except asyncio.CancelledError:
+        cancelled = True
+    finally:
+        try:
+            await close_operation_http(http_client)
+        except ModelOperationCleanupUnavailable:
+            unavailable = True
+        except asyncio.CancelledError:
+            cancelled = True
+    if unavailable:
+        raise ModelOperationCleanupUnavailable("Owned model cleanup was not confirmed")
+    if cancelled:
+        raise asyncio.CancelledError
+
+
+async def close_operation_http(client: ModelOperationClient) -> None:
+    client.construction_refused = True
+    await bounded_model_cleanup(client.aclose, "Owned model HTTP cleanup was not confirmed")
 
 
 @contextmanager
