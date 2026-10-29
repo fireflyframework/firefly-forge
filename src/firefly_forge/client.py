@@ -76,6 +76,7 @@ if TYPE_CHECKING:
         UserInviteInput,
         UserProvisionInput,
     )
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
     from firefly_forge.worker_evidence import WorkerImage
     from firefly_forge.workspace_reconciliation_models import WorkspaceReconciliationInput
 
@@ -1438,6 +1439,7 @@ class ForgeClient:
         analysis_id: str | None = None,
         analysis_digest: str | None = None,
         analysis_component_ids: list[str] | None = None,
+        work_duration: WorkDurationPolicyV2 | None = None,
     ) -> dict[str, Any]:
         from firefly_forge.product_assistant import AssistantSessionInput
 
@@ -1452,6 +1454,7 @@ class ForgeClient:
                     "analysis_id": analysis_id,
                     "analysis_digest": analysis_digest,
                     "analysis_component_ids": analysis_component_ids,
+                    "work_duration": work_duration.model_dump() if work_duration is not None else None,
                 }.items()
                 if value is not None
             },
@@ -1476,8 +1479,12 @@ class ForgeClient:
         self, repository_id: str, conversation_id: str, request: AssistantTurnInput | dict[str, Any]
     ) -> dict[str, Any]:
         from firefly_forge.product_assistant import AssistantTurnInput
+        from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
         model = AssistantTurnInput.model_validate(request)
+        session = self.assistant_conversation(repository_id, conversation_id)
+        if "work_duration" in session:
+            WorkDurationPolicyV2.model_validate(session["work_duration"])
         return dict(
             self.request(
                 "POST",
@@ -1485,7 +1492,7 @@ class ForgeClient:
                 + self._id(conversation_id)
                 + "/turns",
                 json=model.model_dump(),
-                timeout=360,
+                timeout=None if "work_duration" in session else 360,
             )
         )
 

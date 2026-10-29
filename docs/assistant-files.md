@@ -46,6 +46,14 @@ For a model response with an uncertain outcome, inspect the retained turn and it
 
 Each active turn has a persisted owner, an ownership epoch and a renewable lease measured against PostgreSQL's clock. Reading it from another API instance leaves the active request alone. If the lease expires, an authorized editor can explicitly recover that epoch for reconciliation. Recovery fences late replies and records the observed expiry; it does not repeat the model call. See [Conversation recovery](recovery.md#recover-a-product-conversation).
 
+## Response duration
+
+New conversations freeze a versioned work-duration policy. The default has no model-work deadline. To choose one, include `work_duration: {"protocol": "forge-work-duration-v2", "timeout_seconds": 900}` when creating the conversation. A positive integer selects a deadline; `null` leaves it unlimited. The saved policy and creation receipt must agree before another turn can start. Changing repository settings does not change an existing conversation's policy.
+
+The owner keeps renewing its finite security lease and checking the editor's current permission while a new-policy response runs. Revocation or ownership loss stops the wait and retains an uncertain result for reconciliation. These checks do not impose a maximum response duration. New-policy requests do not automatically retry an uncertain model submission. Their owned model clients are closed after completion, failure or cancellation; if cleanup cannot be confirmed within its separate control budget, further sends are disabled and the result remains uncertain. A late cleanup attempt does not prove that a remote job stopped.
+
+Retained conversations without the policy marker keep the original model deadline, including the 300-second maximum. The Python SDK reads the frozen conversation policy before sending a turn: new-policy conversations have no fixed HTTP response-wait limit, while unmarked conversations retain the original 360-second SDK wait. Bridge-backed new conversations require Bridge's advertised versioned duration capability; an older Bridge is refused before a completion is submitted.
+
 ## HTTP contract
 
 All paths below begin with `/api/v1/repositories/{repository_id}/assistant/conversations/{conversation_id}` and require the caller's current conversation and project permissions.
