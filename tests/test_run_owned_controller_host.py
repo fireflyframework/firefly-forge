@@ -16,8 +16,8 @@ def renewal(ack):
     return RunRenewalV1.model_validate({**ack, "protocol": "forge-run-renewal-v1", "sequence": ack["sequence"] + 1})
 
 
-def controller(monkeypatch, *, records=None, lease_seconds=30):
-    invocation, fence, run, _, _ = case(lease_seconds=lease_seconds)
+def controller(monkeypatch, *, records=None, lease_seconds=30, work_cap=864000):
+    invocation, fence, run, _, _ = case(lease_seconds=lease_seconds, work_cap=work_cap)
     records = {} if records is None else records
     effects, cancellations, quarantine = [], [], []
     clock, permission = {"now": 0.0}, {"active": True, "revoked": set()}
@@ -81,8 +81,8 @@ def controller(monkeypatch, *, records=None, lease_seconds=30):
     return executor, invocation, fence, clock, permission, records, effects, cancellations, quarantine, authorize
 
 
-async def initialized(monkeypatch, *, lease_seconds=30):
-    result = controller(monkeypatch, lease_seconds=lease_seconds)
+async def initialized(monkeypatch, *, lease_seconds=30, work_cap=864000):
+    result = controller(monkeypatch, lease_seconds=lease_seconds, work_cap=work_cap)
     executor, _, _, clock, *_, authorize = result
     assert hasattr(executor, "run_leases") and hasattr(executor, "renew_run"), "Run-owned controller renewal is missing"
     monkeypatch.setattr(executor, "run_authority", SimpleNamespace(authorize=authorize))
@@ -165,10 +165,13 @@ async def test_known_finished_work_does_not_race_the_workers_final_renewal_readb
     assert (await executor.renew_run(invocation, fence, renewal(ack)))["sequence"] == 1
 
 
-async def test_restarted_controller_quarantines_an_already_claimed_run_before_dispatch(monkeypatch):
-    original, invocation, fence, _, _, records, *_ = await initialized(monkeypatch)
+@pytest.mark.parametrize("work_cap", [None, 864000])
+async def test_restarted_controller_quarantines_an_already_claimed_run_before_dispatch(monkeypatch, work_cap):
+    original, invocation, fence, _, _, records, *_ = await initialized(monkeypatch, work_cap=work_cap)
     await original.accept(invocation, fence, b"fixture", b"")
-    restarted, _, _, _, _, _, effects, _, quarantined, authorize = controller(monkeypatch, records=records)
+    restarted, _, _, _, _, _, effects, _, quarantined, authorize = controller(
+        monkeypatch, records=records, work_cap=work_cap
+    )
     monkeypatch.setattr(restarted, "run_authority", SimpleNamespace(authorize=authorize))
     claim = records[invocation.execution_id]
     claim.update(status="leased", owner_id=restarted.owner, epoch=2)

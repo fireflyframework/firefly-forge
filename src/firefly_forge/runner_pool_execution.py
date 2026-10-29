@@ -59,7 +59,7 @@ class RunnerPoolExecutions:
     async def accept(
         self, invocation: RunnerInvocation, fence: FactoryFence, archive: bytes, stdin: bytes
     ) -> dict[str, Any]:
-        if invocation.work_duration is not None and invocation.timeout is None:
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
             raise ValueError(UNCAPPED_POOL_REASON)
         if self.stopping:
             raise RuntimeError("Runner controller is stopping")
@@ -159,7 +159,7 @@ class RunnerPoolExecutions:
     async def continue_invocation(
         self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str
     ) -> dict[str, Any]:
-        if invocation.work_duration is not None and invocation.timeout is None:
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
             raise ValueError(UNCAPPED_POOL_REASON)
         if invocation.run_liveness is not None:
             raise RuntimeError("Run-owned controller continuation requires reconciliation; no implicit adoption")
@@ -238,7 +238,7 @@ class RunnerPoolExecutions:
             return
         if current["request"] != invocation.model_dump(mode="json"):
             raise ValueError("Invocation claim changed its immutable request")
-        if invocation.work_duration is not None and invocation.timeout is None:
+        if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
             await self.pools.quarantine(
                 self.profile, claim["id"], self.owner, claim["epoch"], {"reason": UNCAPPED_POOL_REASON}
             )

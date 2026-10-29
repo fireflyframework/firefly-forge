@@ -267,7 +267,7 @@ class RunnerPoolWorker:
                 work_timeout = effective_work_timeout(
                     timeout, policy.work_duration.timeout_seconds, policy.profile.work_duration.timeout_seconds
                 )
-                if work_timeout is None:
+                if work_timeout is None and policy.profile.run_liveness != RUN_LIVENESS_PROTOCOL:
                     raise ValueError(UNCAPPED_POOL_REASON)
             if ordinal is not None and (type(ordinal) is not int or not 1 <= ordinal <= policy.command_limit):
                 raise ValueError("Frozen command budget is exhausted")
