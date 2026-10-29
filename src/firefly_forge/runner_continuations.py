@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from threading import Event
 from time import monotonic
 from typing import TYPE_CHECKING, Any
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -22,7 +23,6 @@ from firefly_forge.project_models import component_path
 from firefly_forge.runner_factory_models import validate_factory_pool
 from firefly_forge.runner_pool_models import FactoryFence, RunnerProjectInvocation, pool_digest
 from firefly_forge.runner_pool_persistence import ForgeRunnerInvocationRepository
-from firefly_forge.runner_run_liveness import run_stage_active, run_task_key
 from firefly_forge.runtime_roles import RuntimeRoles
 from firefly_forge.sandbox import pack_workspace
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
@@ -80,7 +80,8 @@ def continuation_binding(run: dict[str, Any], wal: dict[str, Any], stage: dict[s
     )
     if (
         not (
-            run_stage_active(run, wal["task_id"])
+            run["status"] == {"implement": "developing", "verify": "validating"}.get(wal["task_id"])
+            and run.get("active_task") == wal["task_id"]
             or legacy
             and run["status"] == "running"
             and run.get("active_task") == wal["task_id"]
@@ -95,7 +96,8 @@ def continuation_binding(run: dict[str, Any], wal: dict[str, Any], stage: dict[s
         or type(payload["parent_attempt"]) is not int
         or wal["parent_attempt"] != stage["attempt"]
         or payload["parent_attempt"] != stage["attempt"]
-        or stage.get("idempotency_key") != run_task_key(run["id"], wal["task_id"], stage["attempt"])
+        or stage.get("idempotency_key")
+        != uuid5(NAMESPACE_URL, f"forge:{UUID(run['id']).hex}:{wal['task_id']}:{stage['attempt']}").hex
         or wal["status"] != "running"
         or effects.get("start") != {"status": "intent"}
         or "cleanup" in effects
