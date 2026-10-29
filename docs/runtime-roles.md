@@ -27,6 +27,67 @@ Before an older installation first adopts the marker, stop **all** existing runt
 
 The first startup records `combined` or `split` in PostgreSQL. Later processes cannot change that choice. Starting an API replica against an existing combined installation is rejected; a second combined execution owner is also rejected. There is no automatic topology conversion. Plan an explicit maintenance procedure and preserve the ledger and source together before changing an existing installation.
 
+## Move a stopped local installation
+
+Keep active configuration, workspaces and runtimes on a fully available local filesystem. Cloud-synchronized folders can leave file placeholders unavailable just when a worker needs them. Moving a folder also changes its storage binding: copying the identity marker or editing paths in old receipts does not authorize the new location.
+
+`forge native-locations` provides offline maintenance for an existing **combined** installation. Stop every factory process first. Keep the same PostgreSQL cluster, database, schema, operating-system owner and private `runtime-storage.identity`. The database must remain available for maintenance. This procedure does not convert a combined installation to split mode or move files for you.
+
+Use the upgraded release for every process after the move. Keep the former root and any retained identity copy out of service. Location receipts are enforced by the upgraded runtime; they do not prevent an obsolete binary from accepting an old topology at its former path. Restarting or failing over to that binary after transfer is unsupported.
+
+<div class="forge-flow" role="region" aria-label="Offline location maintenance diagram" aria-describedby="native-location-flow-guide" tabindex="0" markdown="1">
+
+```mermaid
+flowchart LR
+    A["Stop factory<br/>Verify files"] --> B["Prepare<br/>Review candidate"]
+    B --> C["Commit<br/>Restart factory"]
+```
+
+</div>
+
+<p class="forge-flow-caption" id="native-location-flow-guide">Follow the move from left to right. On a narrow screen, focus the diagram and scroll with the arrow keys.</p>
+
+Prepare three private JSON documents outside source control:
+
+| Document | Contents |
+| --- | --- |
+| Location plan | Version 1, exact `source_storage` and `target_storage`, selected `workspaces`, and any `verification_runtimes`. Each workspace retains its original run ID and relative directory. |
+| File manifest | Version 1, `required_files` with exact relative paths and SHA-256 values, and a separate `unavailable_files` inventory. Required inputs include the retained identity, provider and source-budget policy files, and every selected configuration revision and model-selection manifest. |
+| Acknowledgment | Version 1, a fresh `request_id`, the reviewed `candidate_digest`, and explicit `true` values for `acknowledge_stopped_runtime`, `acknowledge_history_preserved` and `acknowledge_no_execution_grant`. Create this after reviewing the candidate. |
+
+A runtime mapping declares either `byte_identical` content or an explicitly reviewed `verification_runtime_baseline`. The latter binds the new dependency environment and its approval digest; it cannot reuse checks from the old environment. Missing required bytes, placeholder files, aliases, changed source or a different Git identity stop preparation. Unavailable historical files remain unavailable; maintenance cannot turn them into empty files or default settings.
+
+With the existing database environment configured, prepare a candidate at the target storage root:
+
+```bash
+forge native-locations prepare \
+  --data-dir /srv/forge \
+  --postgres-data /srv/postgresql/data \
+  --plan /srv/maintenance/plan.json \
+  --files /srv/maintenance/files.json \
+  --scratch /srv/maintenance/scratch \
+  --output /srv/maintenance/candidate.json
+```
+
+All input files and the scratch and output directories must be private and owned by the operator. The candidate output must be a new file. Review its digest and selected paths, then write the matching acknowledgment before committing:
+
+```bash
+forge native-locations commit \
+  --data-dir /srv/forge \
+  --candidate /srv/maintenance/candidate.json \
+  --files /srv/maintenance/files.json \
+  --acknowledgment /srv/maintenance/acknowledgment.json \
+  --scratch /srv/maintenance/scratch
+
+forge native-locations status REQUEST_ID --data-dir /srv/forge
+```
+
+Commit remeasures the candidate, excludes a live execution owner and appends an authenticated intent/receipt pair. The original topology, WAL, command arguments and counters stay unchanged. Upgraded runtime startup accepts the completed current location and rejects the former root. Retained logical paths are linked to their reviewed physical paths in new execution evidence; scripts and historical records are not rewritten.
+
+If commit does not confirm, inspect **the same request ID** before doing anything else. An unknown outcome stays held. A completed repeat returns its saved receipt; it does not transfer the installation again. Maintenance grants no model, command, publication or deployment authority. Any later recovery or execution must pass its normal current permissions, source and budget checks.
+
+## Run standby workers
+
 In a split installation, additional headless workers remain in `standby` while the existing leader holds either ownership fence. A worker must acquire both the private storage lock and the PostgreSQL schema advisory lock before recovering retained work or starting any execution consumer. Standbys retry contention every half second; database, topology and configuration errors cause startup to fail. A stop signal cancels waiting startup without promoting the worker.
 
 After a leader exits, a standby can acquire the released fences, recover retained work and become the new leader. Recovery rechecks ownership between services. Interrupted work with an intent but no durable receipt requires reconciliation; promotion does not repeat uncertain commands or remote effects. Losing the database ownership session drains the old leader and stops its consumers before its storage fence is released. A stuck process or an unavailable shared filesystem can therefore delay promotion; supervisors must stop the old process and verify retained work.

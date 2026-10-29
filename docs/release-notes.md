@@ -7,6 +7,10 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 ## 0.2.48
 
+Stopped combined installations can move their private storage and selected verification runtimes through [offline location maintenance](runtime-roles.md#move-a-stopped-local-installation). A reviewed, authenticated receipt binds the new physical paths while preserving original topology, command arguments, source evidence and counters. A new verification environment requires fresh checks; maintenance itself starts no model or project work.
+
+Partial-source recovery accepts the current checkpoint binding through its compact source identity. The receipt still hashes the complete invocation and validates its retained work policy before any Git operation.
+
 New runs record a versioned work policy. The default has no fixed work deadline. Operators can choose a positive deadline when a project needs one; request waits and ownership heartbeats are configured separately. Old runs retain their captured policy. The CLI and automatic framework checks use the same distinction. See [runner configuration](sandbox.md).
 
 Trusted-host process tools can start a command, inspect its output, wait for a condition and cancel the owned process group. A waiting observation can finish while the process continues. Process monitoring remains unavailable for Docker, pool and required-checkpoint invocations; unsupported grants are refused before dispatch.

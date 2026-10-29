@@ -7,6 +7,8 @@ description: Recover paused and interrupted runs with persisted task state, expl
 
 Use the durable plan and journal to determine what happened before continuing a run. The same run can retain partial source, provider and policy snapshots, earlier failed checks, a real checkpoint commit and remote-effect receipts.
 
+If private storage or a verification runtime has moved, complete [offline location maintenance](runtime-roles.md#move-a-stopped-local-installation) before starting recovery. Preserve the original paths in retained records; the maintenance receipt binds their physical replacements without replaying work.
+
 When an existing continuation stops at a later retained checkpoint, review [checkpoint continuation](checkpoint-continuations.md). It preserves the same execution request and task attempt, including completed work and charged consumption. Its candidate and status reads start no work.
 
 ## Settle an uncertain run submission

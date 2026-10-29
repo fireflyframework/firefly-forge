@@ -4,6 +4,8 @@
 
 ## 0.2.48 — Unreleased
 
+- Add offline location maintenance for stopped combined installations. Preserve the original topology, retained source and command history while binding verified physical storage and verification runtimes through authenticated maintenance receipts.
+- Project current checkpoint bindings into the compact partial-source identity while retaining full invocation hashes and duration validation.
 - Give newly admitted runs an explicit work-duration policy. Work has no fixed deadline by default; an optional chosen deadline remains separate from ownership, request waiting and cleanup. Preserve captured legacy policies.
 - Add trusted-host process tools to start work, inspect logs, wait for a result and cancel its owned process group. Advertise their supported runner and checkpoint modes before dispatch.
 - Remove implicit deadlines from new CLI checks, CLI observation and automatic framework conformance. Keep explicit project policies and existing command accounting.
