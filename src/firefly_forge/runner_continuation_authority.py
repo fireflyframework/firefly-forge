@@ -78,7 +78,14 @@ class RunnerContinuationAuthority:
             if wal is None or task is None or wal.run_id != run.id:
                 raise ValueError("The original active Factory command is unavailable")
             binding = continuation_binding(
-                run.data, Journal._sandbox_data(wal), {"status": task.status, "attempt": task.attempt}
+                run.data,
+                Journal._sandbox_data(wal),
+                {
+                    "id": task.task_id,
+                    "status": task.status,
+                    "attempt": task.attempt,
+                    "idempotency_key": task.data.get("idempotency_key"),
+                },
             )
             if (
                 binding != {key: value for key, value in request.items() if key != "actor"}
