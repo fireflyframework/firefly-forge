@@ -2,6 +2,7 @@
 """Live authority is rechecked after the runner capacity queue, before effects."""
 
 import pytest
+from diagnostic_legacy_fixtures import create_retained_diagnostic_run
 
 IMAGE = "python@sha256:" + "a" * 64
 
@@ -26,7 +27,8 @@ async def queued_admission(store, tmp_path, change, *, dispatch=None, extra_gran
     await access.set_membership(projects[0]["id"], actor, "developer")
     token = CURRENT_PRINCIPAL.set(actor)
     try:
-        run = await store.create_run(
+        run = await create_retained_diagnostic_run(
+            store,
             RunInput(
                 repository_id=repo["id"],
                 project_id=projects[0]["id"],

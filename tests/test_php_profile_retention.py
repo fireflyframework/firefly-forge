@@ -6,6 +6,7 @@ import hashlib
 import uuid
 
 import pytest
+from diagnostic_legacy_fixtures import create_retained_diagnostic_run
 
 from firefly_forge.agent_roles import ProjectRoles
 from firefly_forge.engine import Engine
@@ -34,7 +35,8 @@ async def completed_php(store, tmp_path, *, cleanup=True, output=None, actor=Non
         repo = await store.add_repository(RepositoryInput(name="Owned PHP", url="https://github.com/test/owned.git"))
     context = CURRENT_PRINCIPAL.set(actor)
     try:
-        run = await store.create_run(
+        run = await create_retained_diagnostic_run(
+            store,
             RunInput(
                 **project,
                 repository_id=repo["id"],
@@ -197,7 +199,7 @@ async def test_full_command_marker_beyond_excerpt_keeps_exact_prefix_and_truncat
 async def test_diagnostic_receipt_from_another_run_cannot_be_retained(store, tmp_path):
     run, journal, request, observation, *_ = await completed_php(store, tmp_path)
     repo = await store.add_repository(RepositoryInput(name="Other", url="https://github.com/test/other.git"))
-    other = await store.create_run(RunInput(repository_id=repo["id"], brief="Other run"))
+    other = await create_retained_diagnostic_run(store, RunInput(repository_id=repo["id"], brief="Other run"))
     await journal.ensure_plan(other["id"])
     with pytest.raises(ValueError):
         await journal.php_diagnostic(other["id"], request, observation)

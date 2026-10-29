@@ -5,6 +5,7 @@ import copy
 from types import SimpleNamespace
 
 import pytest
+from diagnostic_legacy_fixtures import create_retained_diagnostic_run
 
 from firefly_forge import php_diagnostics as recipes
 from firefly_forge.sandbox_models import capture_sandbox
@@ -84,7 +85,8 @@ async def test_engine_php_observation_binds_original_source_image_and_command_re
     from firefly_forge.workspace_tools import tool_catalog
 
     repo = await store.add_repository(RepositoryInput(name="Owned PHP", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"],
             brief="Observe PHP fixture",
@@ -134,10 +136,11 @@ async def test_php_without_executor_or_grants_refuses_instead_of_using_host(stor
     from firefly_forge.sandbox_models import SandboxInput
 
     repo = await store.add_repository(RepositoryInput(name="Owned", url="https://github.com/test/owned.git"))
-    run = await store.create_run(
+    run = await create_retained_diagnostic_run(
+        store,
         RunInput(
             repository_id=repo["id"], brief="Observe", sandbox=SandboxInput.model_validate(snapshot()["configuration"])
-        )
+        ),
     )
     (tmp_path / "workload.php").write_text("<?php file_put_contents('unexpected-write', 'bad');")
     with pytest.raises(ValueError, match="PHP profiling"):
