@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import unquote, urlsplit
 
@@ -324,6 +325,35 @@ def _factory_verification(run: Data, handoff: Data) -> Data:
     return result
 
 
+def _reused_verification(check: Data) -> bool | None:
+    if "execution" not in check:
+        return False
+    if (
+        check["execution"] != "reused"
+        or check.get("exit_code") != 0
+        or not isinstance(check.get("argv"), list)
+        or not check["argv"]
+        or not all(isinstance(value, str) for value in check["argv"])
+        or not isinstance(check.get("output"), str)
+        or not isinstance(check.get("created_at"), str)
+        or any(
+            not isinstance(check.get(key), str) or re.fullmatch(pattern, check[key]) is None
+            for key, pattern in (
+                ("source_execution_id", r"[a-f0-9]{32}"),
+                ("source_record_digest", r"[a-f0-9]{64}"),
+                ("verification_reuse_intent_digest", r"[a-f0-9]{64}"),
+            )
+        )
+    ):
+        return None
+    try:
+        if datetime.fromisoformat(check["created_at"]).tzinfo is None:
+            return None
+    except ValueError:
+        return None
+    return True
+
+
 def communication_facts(
     run: Data | None,
     *,
@@ -570,6 +600,17 @@ def communication_facts(
             "failed": sum(check["exit_code"] != 0 for check in checks),
             "provenance": provenance,
         }
+        if any("execution" in check for check in checks):
+            reused = [_reused_verification(check) for check in checks]
+            facts["verification"]["provenance"] = "unknown" if None in reused else "retained"
+            if None not in reused:
+                facts["verification"].update(
+                    reused_results=sum(value is True for value in reused),
+                    new_executions=sum(
+                        value is False and check.get("attempt") == attempt
+                        for check, value in zip(checks, reused, strict=True)
+                    ),
+                )
     current_attempt = recovery["attempt"] if recovery else run.get("attempt")
     if "work" in facts and type(current_attempt) is int and 1 <= current_attempt <= 100:
         recorded = checks if isinstance(checks, list) else []
@@ -578,9 +619,14 @@ def communication_facts(
             and type(check.get("attempt")) is int
             and 1 <= check["attempt"] <= 100
             and type(check.get("exit_code")) is int
+            and _reused_verification(check) is not None
             for check in recorded
         )
-        current = sum(check["attempt"] == current_attempt for check in recorded) if known_attempts else None
+        current = (
+            sum(check["attempt"] == current_attempt and _reused_verification(check) is False for check in recorded)
+            if known_attempts
+            else None
+        )
         facts["check_status"] = {
             "current_attempt": current_attempt,
             "recorded": current,
