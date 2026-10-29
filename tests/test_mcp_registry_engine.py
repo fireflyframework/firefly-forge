@@ -18,6 +18,7 @@ from firefly_forge.process import checked
 from firefly_forge.projects import Projects
 from firefly_forge.providers import AgentResult, ConfiguredProvider
 from firefly_forge.tool_broker import ToolInvocationBroker, ToolReconciliationRequired
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 from firefly_forge.workspace_tools import WorkspaceTools, tool_catalog
 
 
@@ -42,6 +43,14 @@ async def test_actual_engine_routes_reviewed_mcp_and_unknown_response_prevents_c
 
     monkeypatch.setattr(engine_module, "clone", owned_clone)
     registry = ExternalMCPRegistry(store.path.parent)
+    original_call = registry.call
+    selected_work_policies = []
+
+    async def scoped_call(*args, **kwargs):
+        selected_work_policies.append(kwargs.get("work_duration"))
+        return await original_call(*args, **kwargs)
+
+    monkeypatch.setattr(registry, "call", scoped_call)
     registry.transport, calls = protocol()
     registry.configure("github", MCPConnectionInput(enabled=True, api_key=KEY))
     discovery = await registry.discover("github")
@@ -98,6 +107,7 @@ async def test_actual_engine_routes_reviewed_mcp_and_unknown_response_prevents_c
     engine.credential_registry = registry.credentials
     await engine.execute_run(run["id"])
     final = await store.get_run(run["id"])
+    assert selected_work_policies == [WorkDurationPolicyV2()]
     assert final["status"] == ("needs_reconciliation" if unknown else "succeeded"), final.get("error")
     records = await broker.invocations(run["id"])
     assert len(records) == 1 and records[0]["status"] == ("unknown" if unknown else "succeeded")

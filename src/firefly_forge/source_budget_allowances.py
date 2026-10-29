@@ -353,6 +353,7 @@ def admission_contract_digest() -> str:
                 "runner_run_liveness.py",
                 "runner_run_authority.py",
                 "runner_run_owner.py",
+                "mcp_registry.py",
             )
         }
     )

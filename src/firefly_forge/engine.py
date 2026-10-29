@@ -715,6 +715,7 @@ class Engine:
                     if self.tool_broker is None or self.external_mcp is None:
                         raise ValueError("A durable registered tool broker is required for external MCP")
                     from firefly_forge.agent_roles import roles_for_stage
+                    from firefly_forge.checkpoint_work_duration import selected_work_duration
 
                     roles = [item["id"] for item in roles_for_stage(run["role_snapshot"], "implement")]
                     source = await self._inspect_workspace(identifier, workspace, settings)
@@ -730,6 +731,7 @@ class Engine:
                                 roles=roles,
                                 stage="implement",
                                 run_id=identifier,
+                                work_duration=selected_work_duration(run),
                             ),
                         )
 

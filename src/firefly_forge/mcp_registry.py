@@ -10,7 +10,7 @@ import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -27,6 +27,7 @@ from firefly_forge.identity import Principal
 from firefly_forge.journal import digest
 from firefly_forge.oauth_resources import OAuthResources
 from firefly_forge.secrets import contains_known_credential
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 from firefly_forge.workspace_tools import _private_name
 
 Data = dict[str, Any]
@@ -482,6 +483,7 @@ class ExternalMCPRegistry:
         actor: Principal | None = None,
         authority: Callable[[], None] | None = None,
         repository_id: str | None = None,
+        work_duration: WorkDurationPolicyV2 | None = None,
     ) -> AsyncIterator[tuple[ClientSession, Data, list[Data]]]:
         definition = _connector(connector)
         _identifier(revision)
@@ -523,30 +525,56 @@ class ExternalMCPRegistry:
         else:
             raise MCPAdmissionError("Frozen MCP credential revision is unavailable")
         transport = _PinnedTransport(inner, endpoint, expected)
+        started = asyncio.get_running_loop().time()
+        chosen_timeout = work_duration.timeout_seconds if work_duration is not None else None
         try:
             async with (
-                asyncio.timeout(30),
-                httpx2.AsyncClient(
-                    transport=transport,
-                    timeout=15,
-                    trust_env=False,
-                    follow_redirects=False,
-                    headers=headers,
-                ) as http,
-                streamable_http_client(endpoint, http_client=http, max_sse_event_size=1_000_000) as streams,
-                ClientSession(streams[0], streams[1], read_timeout_seconds=15) as session,
+                asyncio.timeout(30 if work_duration is None else None) as lifetime,
+                AsyncExitStack() as stack,
             ):
-                initialized = await session.initialize()
-                info = initialized.server_info.model_dump(by_alias=True, exclude_none=True)
-                if len(json.dumps(info).encode()) > 1024:
-                    raise MCPAdmissionError("MCP server identity exceeds its bounds")
-                yield session, info, observations
-                if credential.get("oauth_binding"):
-                    assert self.resources is not None
-                    await self.resources._admission(
-                        credential["oauth_binding"], run_id=run_id, actor=actor, repository_id=repository_id
+                try:
+                    async with asyncio.timeout(min(30, chosen_timeout) if chosen_timeout is not None else 30):
+                        http = await stack.enter_async_context(
+                            httpx2.AsyncClient(
+                                transport=transport,
+                                timeout=15
+                                if work_duration is None
+                                else httpx2.Timeout(None, connect=15, write=15, pool=15),
+                                trust_env=False,
+                                follow_redirects=False,
+                                headers=headers,
+                            )
+                        )
+                        streams = await stack.enter_async_context(
+                            streamable_http_client(endpoint, http_client=http, max_sse_event_size=1_000_000)
+                        )
+                        session = await stack.enter_async_context(
+                            ClientSession(
+                                streams[0], streams[1], read_timeout_seconds=15 if work_duration is None else None
+                            )
+                        )
+                        initialized = await session.initialize()
+                        info = initialized.server_info.model_dump(by_alias=True, exclude_none=True)
+                        if len(json.dumps(info).encode()) > 1024:
+                            raise MCPAdmissionError("MCP server identity exceeds its bounds")
+                    remaining = (
+                        chosen_timeout - (asyncio.get_running_loop().time() - started)
+                        if chosen_timeout is not None
+                        else None
                     )
-                    current_connection()
+                    if remaining is not None and remaining <= 0:
+                        raise MCPAdmissionError("The chosen MCP work deadline expired before tool dispatch")
+                    async with asyncio.timeout(remaining):
+                        yield session, info, observations
+                        if credential.get("oauth_binding"):
+                            assert self.resources is not None
+                            await self.resources._admission(
+                                credential["oauth_binding"], run_id=run_id, actor=actor, repository_id=repository_id
+                            )
+                            current_connection()
+                finally:
+                    if work_duration is not None:
+                        lifetime.reschedule(asyncio.get_running_loop().time() + 15)
         except Exception as error:
             safe = _safe_error(error)
             raise safe or MCPAdmissionError(
@@ -775,7 +803,10 @@ class ExternalMCPRegistry:
         roles: list[str],
         stage: str,
         run_id: str | None = None,
+        work_duration: WorkDurationPolicyV2 | None = None,
     ) -> Data:
+        if work_duration is not None:
+            work_duration = WorkDurationPolicyV2.model_validate(work_duration)
         grant, args = self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
 
         def current_grant() -> None:
@@ -788,16 +819,18 @@ class ExternalMCPRegistry:
             run_id=run_id,
             authority=current_grant,
             repository_id=grant["repository_id"],
+            work_duration=work_duration,
         ) as (
             session,
             info,
             observations,
         ):
-            tools = await self._tools(session, connector)
+            async with asyncio.timeout(15):
+                tools = await self._tools(session, connector)
             if info != grant["server"] or tools.get(tool) != grant["tools"][tool]:
                 raise MCPAdmissionError("MCP server identity or schema changed; perform explicit discovery and review")
             self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
-            response = await session.call_tool(tool, args, read_timeout_seconds=15)
+            response = await session.call_tool(tool, args, read_timeout_seconds=15 if work_duration is None else None)
             self.authorize(snapshot, connector, tool, arguments, roles=roles, stage=stage)
             packet = response.model_dump(by_alias=True, exclude_none=True)
         if packet.get("isError") or len(json.dumps(packet).encode()) > 256_000:

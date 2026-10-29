@@ -197,6 +197,7 @@ def runtime_contract() -> str:
                     "runner_run_liveness.py",
                     "runner_run_authority.py",
                     "runner_run_owner.py",
+                    "mcp_registry.py",
                 )
             },
         }
