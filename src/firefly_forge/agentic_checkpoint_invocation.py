@@ -210,6 +210,8 @@ def runtime_contract() -> str:
                     "model_operation_client.py",
                     "tool_persistence.py",
                     "project_access.py",
+                    "runner_continuations.py",
+                    "runner_continuation_authority.py",
                 )
             },
         }
