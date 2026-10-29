@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from pyfly.container import service
 from sqlalchemy import text
@@ -27,7 +28,18 @@ class RunnerFactoryAuthority:
             raise ValueError("Pool commands require an implementation or verification stage")
         await self.store.assert_ownership()
         run = await self.store.get_run(run_id)
-        if run["status"] != "running" or run.get("cancel_request", {}).get("status") == "requested":
+        configuration = (run.get("sandbox_snapshot") or {}).get("configuration", {})
+        legacy = (
+            run.get("work_duration") is None
+            and configuration.get("work_duration") is None
+            and configuration.get("profile", {}).get("work_duration") is None
+        )
+        if (
+            run["status"] != {"implement": "developing", "verify": "validating"}[task_id]
+            and not (legacy and run["status"] == "running")
+            or run.get("active_task") != task_id
+            or run.get("cancel_request", {}).get("status") == "requested"
+        ):
             raise RuntimeError("Factory command dispatch is cancelled or the run is not active")
         project, component = run.get("project_id"), run.get("component_snapshot")
         if project and (
@@ -50,6 +62,9 @@ class RunnerFactoryAuthority:
         stage = next((value for value in (await self.journal.plan(run_id))["tasks"] if value["id"] == task_id), None)
         if stage is None or stage["status"] != "running":
             raise RuntimeError("Pool dispatch requires the retained active stage")
+        expected_key = uuid5(NAMESPACE_URL, f"forge:{identifier(run_id).hex}:{task_id}:{stage['attempt']}").hex
+        if stage.get("idempotency_key") != expected_key:
+            raise RuntimeError("Pool dispatch requires its exact original stage intent")
         fence = await self.exclusive_fence()
         return {"run": run, "attempt": stage["attempt"], "fence": fence}
 
