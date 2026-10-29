@@ -22,6 +22,7 @@ from firefly_forge.project_models import component_path
 from firefly_forge.runner_factory_models import validate_factory_pool
 from firefly_forge.runner_pool_models import FactoryFence, RunnerProjectInvocation, pool_digest
 from firefly_forge.runner_pool_persistence import ForgeRunnerInvocationRepository
+from firefly_forge.runner_run_liveness import run_stage_active, run_task_key
 from firefly_forge.runtime_roles import RuntimeRoles
 from firefly_forge.sandbox import pack_workspace
 from firefly_forge.sandbox_persistence import ForgeSandboxRepository
@@ -71,13 +72,30 @@ def continuation_binding(run: dict[str, Any], wal: dict[str, Any], stage: dict[s
         component.get("project_id") != run["project_id"] or component.get("repository_id") != run["repository_id"]
     ):
         raise ValueError("Original component no longer grants this project and repository")
+    configuration = (run.get("sandbox_snapshot") or {}).get("configuration", {})
+    legacy = (
+        run.get("work_duration") is None
+        and configuration.get("work_duration") is None
+        and configuration.get("profile", {}).get("work_duration") is None
+    )
     if (
-        run["status"] != "running"
+        not (
+            run_stage_active(run, wal["task_id"])
+            or legacy
+            and run["status"] == "running"
+            and run.get("active_task") == wal["task_id"]
+        )
         or run.get("cancel_request", {}).get("status") == "requested"
         or stage["status"] != "running"
+        or stage.get("id") != wal["task_id"]
         or wal["task_id"] not in {"implement", "verify"}
+        or type(stage["attempt"]) is not int
+        or stage["attempt"] < 1
+        or type(wal["parent_attempt"]) is not int
+        or type(payload["parent_attempt"]) is not int
         or wal["parent_attempt"] != stage["attempt"]
         or payload["parent_attempt"] != stage["attempt"]
+        or stage.get("idempotency_key") != run_task_key(run["id"], wal["task_id"], stage["attempt"])
         or wal["status"] != "running"
         or effects.get("start") != {"status": "intent"}
         or "cleanup" in effects
