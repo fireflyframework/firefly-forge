@@ -41,7 +41,19 @@ def controller(monkeypatch, *, records=None, lease_seconds=30, work_cap=864000):
                 "request": request.model_dump(mode="json"),
                 "receipt": None,
             }
+            if "run_lease" in kwargs:
+                records[request.execution_id]["run_admission_owner"] = kwargs["run_lease"]
             return records[request.execution_id]
+
+        async def renew_run_admission(self, profile, request, selected, renewal, acknowledgement):
+            assert selected == fence
+            row = records[request.execution_id]
+            if row["status"] != "queued":
+                return False
+            before = row["run_admission_owner"]
+            assert renewal.sequence == before["sequence"] + 1 and renewal.challenge == before["challenge"]
+            row["run_admission_owner"] = acknowledgement
+            return True
 
         async def quarantine(self, profile, identity, owner, epoch, receipt):
             quarantine.append(receipt)
