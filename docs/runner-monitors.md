@@ -82,6 +82,12 @@ sequenceDiagram
 </div>
 <p class="forge-flow-caption" id="process-readiness-guide">The agent waits for observed readiness before testing the service, then closes its owned process. Scroll horizontally on a small screen to follow the exchanges.</p>
 
+## Coordinate independent services
+
+Start each service once and keep its own `monitor_id`. The processes can run at the same time while the agent waits for each required readiness condition. Read status and logs by that identity. Cancelling one monitor leaves the other owned processes running; they retain their own exit results and terminal receipts. When the whole owning invocation ends, it drains all of its remaining monitors.
+
+For example, start an API and its frontend, wait for both readiness messages, then run a browser check against them. If the frontend fails, preserve its output and inspect the API separately before deciding which component needs a change. Each start still consumes its own durable command slot; parallel execution does not create another budget or refund a stopped service.
+
 ## Read status and output
 
 `process_status`, `process_logs`, and `cancel_process` take `monitor_id`. Statuses are `running`, `settling`, `exited`, `cancelled`, `timed_out`, `output_limit`, and `needs_reconciliation`. `settling` means cleanup or its durable terminal record is still pending; its exit code remains unavailable. A running handoff does not contain a successful exit code.
