@@ -5,6 +5,7 @@ import importlib
 from uuid import uuid4
 
 import pytest
+from runner_duration_native_fixtures import runner_snapshot
 
 from firefly_forge.journal import Journal
 from firefly_forge.models import RepositoryInput, RunInput
@@ -21,7 +22,10 @@ async def seed(store):
     repository = await store.add_repository(
         RepositoryInput(name="Owned source", url="https://example.invalid/owned.git")
     )
-    run = await store.create_run(RunInput(repository_id=repository["id"], brief="Owned source transfer"))
+    run = await store.create_run(
+        RunInput(repository_id=repository["id"], brief="Owned source transfer"),
+        prepared_runner=runner_snapshot(command_limit=50),
+    )
     await store.update(run["id"], status="validating")
     journal = Journal(store)
     await journal.ensure_plan(run["id"])
