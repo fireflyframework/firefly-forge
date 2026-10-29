@@ -695,72 +695,76 @@ class APIProvider(ConfiguredProvider):
 
             return owned_model_provider(provider_type, http_client, **options)
 
-        if base_url or key:
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.openai import OpenAIProvider
+        from firefly_forge.model_operation_client import model_client_construction
 
-            if not key:
-                raise ProviderError("Set FORGE_AGENTIC_API_KEY for the configured API endpoint")
-            name = model_name.split(":")[-1]
-            if model_name.startswith("anthropic:") and not base_url:
-                from pydantic_ai.models.anthropic import AnthropicModel
-                from pydantic_ai.providers.anthropic import AnthropicProvider
+        with model_client_construction(http_client if selected_work else None):
+            if base_url or key:
+                from pydantic_ai.models.openai import OpenAIChatModel
+                from pydantic_ai.providers.openai import OpenAIProvider
 
-                if single_request:
-                    from anthropic import AsyncAnthropic
+                if not key:
+                    raise ProviderError("Set FORGE_AGENTIC_API_KEY for the configured API endpoint")
+                name = model_name.split(":")[-1]
+                if model_name.startswith("anthropic:") and not base_url:
+                    from pydantic_ai.models.anthropic import AnthropicModel
+                    from pydantic_ai.providers.anthropic import AnthropicProvider
 
-                    selected_anthropic = model_provider(
-                        AnthropicProvider, anthropic_client=AsyncAnthropic(api_key=key, max_retries=0, **client_options)
-                    )
-                else:
-                    selected_anthropic = AnthropicProvider(api_key=key)
-                model = AnthropicModel(name, provider=selected_anthropic)
-            elif model_name.startswith("google") and not base_url:
-                from google.genai.types import HttpRetryOptions
-                from pydantic_ai.models.google import GoogleModel
-                from pydantic_ai.providers.google import GoogleProvider
+                    if single_request:
+                        from anthropic import AsyncAnthropic
 
-                if selected_work:
-                    from google.genai import Client
-                    from google.genai.types import HttpOptions
+                        selected_anthropic = model_provider(
+                            AnthropicProvider,
+                            anthropic_client=AsyncAnthropic(api_key=key, max_retries=0, **client_options),
+                        )
+                    else:
+                        selected_anthropic = AnthropicProvider(api_key=key)
+                    model = AnthropicModel(name, provider=selected_anthropic)
+                elif model_name.startswith("google") and not base_url:
+                    from google.genai.types import HttpRetryOptions
+                    from pydantic_ai.models.google import GoogleModel
+                    from pydantic_ai.providers.google import GoogleProvider
 
-                    selected_google = model_provider(
-                        GoogleProvider,
-                        client=Client(
+                    if selected_work:
+                        from google.genai import Client
+                        from google.genai.types import HttpOptions
+
+                        google_client = Client(
                             api_key=key,
                             http_options=HttpOptions(
                                 httpx_async_client=http_client, retry_options=HttpRetryOptions(attempts=1)
                             ),
-                        ),
-                    )
-                else:
-                    selected_google = GoogleProvider(
-                        api_key=key, retry_options=HttpRetryOptions(attempts=1) if single_request else None
-                    )
-                model = GoogleModel(name, provider=selected_google)
-            elif model_name.startswith("openai-responses:") and not base_url:
-                from pydantic_ai.models.openai import OpenAIResponsesModel
+                        )
+                        # The sync half is never used; close it before any async work.
+                        google_client.close()
+                        selected_google = model_provider(GoogleProvider, client=google_client)
+                    else:
+                        selected_google = GoogleProvider(
+                            api_key=key, retry_options=HttpRetryOptions(attempts=1) if single_request else None
+                        )
+                    model = GoogleModel(name, provider=selected_google)
+                elif model_name.startswith("openai-responses:") and not base_url:
+                    from pydantic_ai.models.openai import OpenAIResponsesModel
 
-                if single_request:
-                    from openai import AsyncOpenAI
+                    if single_request:
+                        from openai import AsyncOpenAI
 
-                    selected_openai = model_provider(
-                        OpenAIProvider, openai_client=AsyncOpenAI(api_key=key, max_retries=0, **client_options)
-                    )
+                        selected_openai = model_provider(
+                            OpenAIProvider, openai_client=AsyncOpenAI(api_key=key, max_retries=0, **client_options)
+                        )
+                    else:
+                        selected_openai = OpenAIProvider(api_key=key)
+                    model = OpenAIResponsesModel(name, provider=selected_openai)
                 else:
-                    selected_openai = OpenAIProvider(api_key=key)
-                model = OpenAIResponsesModel(name, provider=selected_openai)
-            else:
-                if single_request:
-                    from openai import AsyncOpenAI
+                    if single_request:
+                        from openai import AsyncOpenAI
 
-                    selected_chat = model_provider(
-                        OpenAIProvider,
-                        openai_client=AsyncOpenAI(base_url=base_url, api_key=key, max_retries=0, **client_options),
-                    )
-                else:
-                    selected_chat = OpenAIProvider(base_url=base_url, api_key=key)
-                model = OpenAIChatModel(name, provider=selected_chat)
+                        selected_chat = model_provider(
+                            OpenAIProvider,
+                            openai_client=AsyncOpenAI(base_url=base_url, api_key=key, max_retries=0, **client_options),
+                        )
+                    else:
+                        selected_chat = OpenAIProvider(base_url=base_url, api_key=key)
+                    model = OpenAIChatModel(name, provider=selected_chat)
         return model
 
     @asynccontextmanager

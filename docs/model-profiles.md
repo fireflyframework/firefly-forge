@@ -36,7 +36,7 @@ Use your provider's actual model identifier. This example deliberately reuses th
 
 For an OpenAI-compatible gateway, configure the `agentic` profile's HTTPS endpoint and its own API key. HTTPS is required except for loopback development. Embedded URL credentials, query parameters and fragments are rejected. Native hosted OpenAI, Anthropic and Google model families use their respective SDK providers when no gateway endpoint is configured.
 
-New runs with an explicit `forge-work-duration-v2` policy use that policy's optional work timeout. A null timeout has no fixed work deadline. Their direct API model clients leave response reads uncapped and disable SDK POST retries; connection, write and pool waits keep finite transport bounds. The owning invocation enforces any chosen work deadline. A failed transport request can still have an unknown provider outcome. Runs without that policy retain their original SDK defaults and profile timeout behavior.
+New runs with an explicit `forge-work-duration-v2` policy use that policy's optional work timeout. A null timeout has no fixed work deadline. Their direct API model clients leave response reads uncapped and disable SDK POST retries; connection, write and pool waits keep finite transport bounds. The owning invocation enforces any chosen work deadline. Client cleanup uses separate finite control windows; an unconfirmed cleanup remains unavailable. A failed transport request can still have an unknown provider outcome. Runs without that policy retain their original SDK defaults and profile timeout behavior.
 
 ## Test the connection
 

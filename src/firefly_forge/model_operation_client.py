@@ -4,14 +4,30 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, Self
 
 import httpx2
 
+MODEL_CLEANUP_TIMEOUT_SECONDS = 10
+logger = logging.getLogger(__name__)
+
+
+class ModelOperationCleanupUnavailable(RuntimeError):
+    pass
+
 
 class ModelOperationClient(httpx2.AsyncClient):
+    construction_refused = False
+    construction_claimed = False
+    construction_cleanup: asyncio.Task[None] | None = None
+
     async def send(self, request: httpx2.Request, **kwargs: Any) -> httpx2.Response:
+        if self.construction_refused:
+            raise ValueError("A refused model construction cannot dispatch")
         # Some SDKs send a scalar timeout on every request, overriding client defaults.
         # The owning invocation enforces the original chosen work deadline instead.
         request.extensions["timeout"] = {"connect": 10, "read": None, "write": 30, "pool": 10}
@@ -37,14 +53,22 @@ class OwnedModelProvider:
         return self
 
     async def _close_operation(self) -> None:
+        unavailable = False
         try:
-            if hasattr(self.client, "aio"):
-                await self.client.aio.aclose()
-                self.client.close()
-            else:
-                await self.client.close()
+            async with asyncio.timeout(MODEL_CLEANUP_TIMEOUT_SECONDS):
+                if hasattr(self.client, "aio"):
+                    await self.client.aio.aclose()
+                else:
+                    await self.client.close()
+        except Exception:
+            unavailable = True
         finally:
-            await self.operation_client.aclose()
+            try:
+                await close_operation_http(self.operation_client)
+            except Exception:
+                unavailable = True
+        if unavailable:
+            raise ModelOperationCleanupUnavailable("Owned model cleanup was not confirmed")
 
     async def __aexit__(
         self,
@@ -79,3 +103,39 @@ def owned_model_provider(provider_type: type[Any], http_client: ModelOperationCl
     provider = owned_type(**options)
     provider.bind_operation_client(http_client)
     return provider
+
+
+async def close_operation_http(client: ModelOperationClient) -> None:
+    try:
+        async with asyncio.timeout(MODEL_CLEANUP_TIMEOUT_SECONDS):
+            await client.aclose()
+    except Exception as exc:
+        raise ModelOperationCleanupUnavailable("Owned model HTTP cleanup was not confirmed") from exc
+
+
+@contextmanager
+def model_client_construction(client: ModelOperationClient | None) -> Iterator[None]:
+    if client is not None:
+        if client.construction_claimed or client.construction_refused or client.is_closed:
+            raise ValueError("This operation HTTP client is already owned or unavailable")
+        client.construction_claimed = True
+    try:
+        yield
+    except BaseException:
+        if client is not None:
+            # Construction cannot issue an async model POST. Refuse any later use and
+            # release the unstarted transport without a global client/task registry.
+            client.construction_refused = True
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(close_operation_http(client))
+            else:
+                client.construction_cleanup = loop.create_task(close_operation_http(client))
+
+                def observed(task: asyncio.Task[None]) -> None:
+                    if task.cancelled() or task.exception() is not None:
+                        logger.error("Undispatched model construction cleanup was not confirmed")
+
+                client.construction_cleanup.add_done_callback(observed)
+        raise
