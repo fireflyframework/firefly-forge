@@ -458,9 +458,11 @@ async def test_terminal_observation_waits_for_verified_drain_and_commit(tmp_path
 
 
 async def test_parallel_owned_processes_keep_waits_logs_and_cancellation_independent(tmp_path, recorded):
+    import time
+
     rows, record = recorded
     identities = ("d" * 32, "e" * 32)
-    async with OwnedProcessMonitor(tmp_path, record=record, owner_grace_seconds=1) as manager:
+    async with OwnedProcessMonitor(tmp_path, record=record) as manager:
         await asyncio.gather(
             *(
                 manager.start(
@@ -477,6 +479,8 @@ async def test_parallel_owned_processes_keep_waits_logs_and_cancellation_indepen
                 for identity in identities
             )
         )
+        # Model transient parent scheduling pressure without assigning a work deadline.
+        time.sleep(1.25)
         ready = await asyncio.gather(
             *(
                 manager.wait(
@@ -488,7 +492,7 @@ async def test_parallel_owned_processes_keep_waits_logs_and_cancellation_indepen
                 for identity in identities
             )
         )
-        assert all(result["outcome"] == "satisfied" for result in ready)
+        assert all(result["outcome"] == "satisfied" for result in ready), ready
         assert all(result["observation"]["work_deadline_ms"] is None for result in ready)
         first = await manager.cancel(identities[0])
         assert first["status"] == "cancelled"
