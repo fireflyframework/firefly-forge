@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import httpx2
 import pytest
 from pydantic_ai import models
+from runner_duration_native_fixtures import runner_snapshot
 from test_agentic_checkpoint_activation_host import result
 from test_agentic_restore_receipt_native import seed_restore_workspace
 from test_bridge_completion_callbacks import CAPABILITY
@@ -41,7 +42,8 @@ async def known_native(store, tmp_path, monkeypatch, *, unknown=False, automatic
                 agent="bridge",
                 brief="Controlled known worker outcome",
                 skills=[],
-            )
+            ),
+            prepared_runner=runner_snapshot(command_limit=50),
         )
         run_id = run["id"]
         await store.update(

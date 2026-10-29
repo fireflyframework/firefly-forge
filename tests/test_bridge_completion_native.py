@@ -14,6 +14,7 @@ import httpx
 import httpx2
 import pytest
 from pydantic_ai.models import override_allow_model_requests
+from runner_duration_native_fixtures import runner_snapshot
 from test_bridge_completion_callbacks import CAPABILITY
 from test_identity import fixture as oidc_fixture
 from test_identity import request as identity_request
@@ -50,7 +51,7 @@ def mock_model_requests(model):
 
 
 @asynccontextmanager
-async def prepared(store, tmp_path, *, review=False):
+async def prepared(store, tmp_path, *, review=False, work_duration=None, runner_timeout=300):
     identity, _, _, _, issue = await oidc_fixture(store)
     token = None
     try:
@@ -87,7 +88,8 @@ async def prepared(store, tmp_path, *, review=False):
                 agent="bridge",
                 brief="Native recovery control",
                 assurance={"review_agent": "bridge" if review else None},
-            )
+            ),
+            prepared_runner=runner_snapshot(policy=work_duration, command_limit=50, timeout=runner_timeout),
         )
         journal = Journal(store)
         await journal.ensure_plan(run["id"])

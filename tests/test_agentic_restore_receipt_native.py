@@ -16,6 +16,7 @@ import pytest
 from pydantic_ai import models
 from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.data.transaction import current_unit_of_work
+from runner_duration_native_fixtures import runner_snapshot
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_agentic_checkpoint_activation_host import CutAfterPost, controlled_source_snapshot, next_result, result
@@ -72,7 +73,7 @@ def seed_restore_workspace(workspace):
 
 @asynccontextmanager
 async def native_restoration(
-    store, tmp_path, monkeypatch, *, repair=False, outcome="success", grants=None, next_tool=False
+    store, tmp_path, monkeypatch, *, repair=False, outcome="success", grants=None, next_tool=False, work_duration=None
 ):
     async with prepared(store, tmp_path) as (_, actor, seeded, _, _, _, _, _):
         store.configuration.update("bridge", ProviderConfiguration(values={"checkpoints": "required"}))
@@ -83,7 +84,8 @@ async def native_restoration(
                 component_id="api",
                 agent="bridge",
                 brief="Native original receipt and repair control",
-            )
+            ),
+            prepared_runner=runner_snapshot(policy=work_duration, command_limit=50),
         )
         run_id = run["id"]
         roles = RoleRegistry(tmp_path / "native-roles")
@@ -109,6 +111,7 @@ async def native_restoration(
         for repository in (journal.records, journal.tasks):
             repository._bind_transaction_managers(registry)
         provider = BridgeProvider(store.configuration.load_snapshot((await store.get_run(run_id))["config_revision"]))
+        provider.configure_work_duration(work_duration)
         model = provider.model()
         monkeypatch.setattr(provider, "model", lambda **kwargs: model)
         engine = Engine(store, tmp_path / "native-owned", lambda _: provider, journal=journal)
@@ -188,7 +191,15 @@ async def native_restoration(
 
         def transport(request):
             if request.method == "GET":
-                return httpx2.Response(200, json={"completionRecovery": CAPABILITY})
+                status = {"completionRecovery": CAPABILITY}
+                if work_duration is not None:
+                    status["workDuration"] = {
+                        "version": 1,
+                        "protocol": "firefly-bridge-work-duration-v1",
+                        "nullableTimeout": True,
+                        "frozenAtAdmission": True,
+                    }
+                return httpx2.Response(200, json=status)
             assert request.method == "POST"
             posts.append(request.content)
             if len(posts) == 1:
