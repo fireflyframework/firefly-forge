@@ -5,11 +5,11 @@ import copy
 from types import SimpleNamespace
 
 import pytest
+from test_native_location_ledger_host import events, ledger_case
+from test_verification_scope_commit_host import build_scope_case as build_scope_case
 
 from firefly_forge.journal import digest
 from firefly_forge.native_location_projection import project_native_argv
-from tests.test_native_location_ledger_host import events, ledger_case
-from tests.test_verification_scope_commit_host import build_scope_case as build_scope_case
 
 
 @pytest.fixture

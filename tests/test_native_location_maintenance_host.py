@@ -6,12 +6,12 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from test_native_location_ledger_host import events
+from test_native_location_ledger_host import ledger_case as _ledger_case
 
 from firefly_forge.journal import digest
 from firefly_forge.native_location_maintenance import native_location_rows, topology_base
 from firefly_forge.native_location_runtime import location_record_id
-from tests.test_native_location_ledger_host import events
-from tests.test_native_location_ledger_host import ledger_case as _ledger_case
 
 
 @pytest.fixture(name="ledger_case")

@@ -4,11 +4,11 @@
 import copy
 
 import pytest
+from test_native_location_ledger_host import events
+from test_native_location_ledger_host import ledger_case as _ledger_case
 
 from firefly_forge.journal import digest
 from firefly_forge.native_location_projection import project_native_argv, workspace_matches
-from tests.test_native_location_ledger_host import events
-from tests.test_native_location_ledger_host import ledger_case as _ledger_case
 
 
 @pytest.fixture
