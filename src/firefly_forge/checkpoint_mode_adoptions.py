@@ -32,6 +32,45 @@ from firefly_forge.verification_source_preparation import (
 Data = dict[str, Any]
 
 
+def _acknowledgement_phase(run: Data, task: Data, entries: list[Data], tasks: list[Any]) -> tuple[Data, str | None]:
+    from uuid import NAMESPACE_URL, uuid5
+
+    attempt = run.get("attempt")
+    current = [item for item in tasks if item.task_id == "implement" and item.attempt == task["attempt"]]
+    if type(attempt) is not int or attempt != task["attempt"] or len(current) != 1:
+        raise ValueError("Acknowledged continuation requires its exact current implementation attempt")
+    key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:implement:{attempt}").hex
+    intents = [entry for entry in entries if entry["kind"] == "intent" and entry["idempotency_key"] == key]
+    receipts = [entry for entry in entries if entry["kind"] == "receipt" and entry["idempotency_key"] == key]
+    pending, rounds = run.get("implementation_pending"), run.get("implementation_rounds")
+    if (
+        current[0].data.get("idempotency_key") != key
+        or len(intents) != 1
+        or intents[0]["run_id"] != run["id"]
+        or intents[0]["task_id"] != "implement"
+        or len(receipts) > 1
+        or any(
+            entry["run_id"] != run["id"]
+            or entry["task_id"] != "implement"
+            or type(entry["payload"].get("implementation_round")) is not int
+            or entry["payload"]["implementation_round"] != attempt
+            or entry["sequence"] <= intents[0]["sequence"]
+            for entry in receipts
+        )
+        or type(pending) is not bool
+        or type(rounds) is not int
+        or rounds != attempt - int(pending)
+        or (receipts and current[0].status != "done")
+        or (not receipts and current[0].status not in {"queued", "running", "paused", "failed", "needs_reconciliation"})
+    ):
+        raise ValueError("Acknowledged continuation requires unambiguous native implementation phase")
+    # Provider completion updates run progress before the native task receipt commits.
+    return (
+        {**run, "implementation_pending": not receipts, "implementation_rounds": attempt - int(not receipts)},
+        None if receipts else "implement",
+    )
+
+
 @service
 class CheckpointModeAdoptions:
     def __init__(self, store: Store, journal: Journal, engine: Any) -> None:
@@ -128,17 +167,6 @@ class CheckpointModeAdoptions:
         async with self.store._unit():
             rows = await self.journal.sandboxes.for_run(identifier(run["id"]))
             tasks = await self.journal.tasks.find_for_run(identifier(run["id"]))
-            projected = [
-                SimpleNamespace(
-                    task_id=item.task_id,
-                    attempt=item.attempt,
-                    data=copy.deepcopy(item.data),
-                    status="running"
-                    if item.task_id == "implement" and item.attempt == task["attempt"]
-                    else item.status,
-                )
-                for item in tasks
-            ]
             values = {row.id.hex: _canonical(row, entries, run["id"]) for row in rows}
             verification = validate_completed_handoff(run, entries, rows, values)
             bound = []
@@ -153,6 +181,18 @@ class CheckpointModeAdoptions:
                     continue
                 if len(handoffs) != 1 or not handoffs[0]["payload"].get("adoption_request_id"):
                     raise ValueError("Unfinished command custody requires its exact current verification adoption")
+                lineage_run, phase = _acknowledgement_phase(run, task, entries, tasks)
+                projected = [
+                    SimpleNamespace(
+                        task_id=item.task_id,
+                        attempt=item.attempt,
+                        data=copy.deepcopy(item.data),
+                        status="running"
+                        if phase == "implement" and item.task_id == "implement" and item.attempt == task["attempt"]
+                        else item.status,
+                    )
+                    for item in tasks
+                ]
                 candidates = [
                     entry
                     for entry in entries
@@ -165,7 +205,7 @@ class CheckpointModeAdoptions:
                 for entry in candidates:
                     receipt = UnknownCommandReceiptV1.model_validate(entry["payload"])
                     actor = acknowledged_continuation(
-                        row, values, rows, entries, run, projected, "implement", receipt.candidate.policy_digest
+                        row, values, rows, entries, lineage_run, projected, phase, receipt.candidate.policy_digest
                     )
                     if actor is not None and actor == receipt.actor.model_dump():
                         matches.append((entry, receipt))
