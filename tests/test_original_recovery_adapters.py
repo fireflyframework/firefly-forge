@@ -130,6 +130,9 @@ NEW_TOOLS = {case[1] for case in CASES} | {
     "get_scm_polling_functional_grant",
     "get_current_scm_polling_functional_grant",
     "review_scm_polling_functional",
+    "get_final_outcome_candidate",
+    "request_final_outcome_continuation",
+    "get_final_outcome_status",
 }
 PRESENCE_CASES = [
     (*CASES[0][:4], {"version": 1, "input": {**ENVELOPE["input"], "skills": []}}, *CASES[0][5:]),
@@ -317,9 +320,21 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
         }
         array.clear()
         array.update(retained)
+    from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+    runner = SandboxInput.model_json_schema()
+    additions = {"process_monitor", "monitor_owner_grace_seconds", "monitor_timeout_seconds", "work_duration"}
+    for name in ("save_repository_runner", "probe_runner"):
+        tool = next(item for item in expected["tools"] if item["name"] == name)
+        definitions = tool["inputSchema"]["$defs"]
+        properties = definitions["SandboxInput"]["properties"]
+        for field in additions:
+            assert properties.pop(field) == runner["properties"][field]
+        assert definitions.pop("WorkDurationPolicyV2") == WorkDurationPolicyV2.model_json_schema()
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 182
+    assert len(tools) == 185
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}
