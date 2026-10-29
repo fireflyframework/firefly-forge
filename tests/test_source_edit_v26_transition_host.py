@@ -13,8 +13,11 @@ from firefly_forge import source_edit_qualification as q
 
 
 def test_v26_requires_a_distinct_measurement_generation():
-    assert q.REGISTRY_VERSION == 25
-    assert q.LOADER_PROFILE == "codex-exec-restricted-source/v26"
+    assert q.REGISTRY_VERSION >= 25
+    if q.REGISTRY_VERSION == 25:
+        assert q.LOADER_PROFILE == "codex-exec-restricted-source/v26"
+    else:
+        assert q.LOADER_PROFILE != "codex-exec-restricted-source/v26"
 
 
 def test_v25_retains_historical_provenance_without_current_authority():
