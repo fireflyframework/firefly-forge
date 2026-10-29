@@ -181,6 +181,8 @@ The **Verification** tab distinguishes a new command from a reused result. A reu
 
 Reuse requires the same source and recorded execution conditions. Source checks need evidence captured before the handoff, including their dependencies and enforced network restrictions. Checks that depend on changing services, such as a PostgreSQL integration suite, need a fresh execution unless that service state has its own accepted freshness evidence. Changed source, incomplete custody or an unknown outcome cannot establish a passed check.
 
+A frontend build also runs fresh when it needs to inspect generated output directories. The scoped `npm --prefix <directory> run build` command can copy files and inspect output metadata, but it cannot read stale output contents, private configuration or files outside its admitted roots. It is excluded from reusable-check candidates, and an explicit declaration cannot make it reusable. Other reusable checks retain the stricter profile that also denies output metadata. Each fresh build consumes its normal command allowance.
+
 <figure class="forge-shot">
 <picture class="forge-shot__link theme-light">
   <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-reuse-checks-mobile-light.png">
