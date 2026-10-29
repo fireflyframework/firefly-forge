@@ -75,7 +75,10 @@ Engine consumer and never executes commands in the HTTP request.
 The Python SDK exposes `verification_handoff_candidates`,
 `adopt_verification_handoff` and `verification_handoff_adoption`. These methods
 perform one explicit request each and do not create IDs, apply a fallback or
-resume a run implicitly.
+resume a run implicitly. An optional `reusable_build_checks` selection declares
+specific source checks for a new confined handoff. See [reuse passed source
+checks](checkpoint-continuations.md#reuse-passed-source-checks) for the exact body,
+supported runner and receipt boundaries.
 
 ### Unknown command acknowledgements
 

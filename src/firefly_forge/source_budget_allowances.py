@@ -367,6 +367,12 @@ def admission_contract_digest() -> str:
                 "final_outcome_controllers.py",
                 "runner_continuations.py",
                 "runner_continuation_authority.py",
+                "verification_dependencies.py",
+                "verification_scope.py",
+                "verification_scope_attestation.py",
+                "verification_result_reuse.py",
+                "execution_environment.py",
+                "private_identity.py",
             )
         }
     )

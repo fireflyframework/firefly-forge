@@ -155,7 +155,7 @@ class NativeAcceptance:
         }
         if self.retained_source is not None:
             retained = self.retained_source.proof.model_dump(mode="json")
-            if current["usage"].get("retained_source") != retained:
+            if _bytes(current["usage"].get("retained_source")) != _bytes(retained):
                 raise ValueError("Native terminal retained-source authority changed")
             proof["retained_source"] = retained
         proof["digest"] = digest(proof)
@@ -286,7 +286,7 @@ async def _native_terminal_acceptance(
             current_checkpoint = next(e for e in reversed(entries) if e["kind"] == "agent_checkpoint")
             binding = checkpoint_payload(current_checkpoint["payload"]).invocation
             retained_source = await prepare_retained_source(store, journal, run, Path(binding.workspace["path"]))
-            if retained_source.proof.model_dump(mode="json") != run["usage"]["retained_source"]:
+            if _bytes(retained_source.proof.model_dump(mode="json")) != _bytes(run["usage"]["retained_source"]):
                 raise ValueError("Native terminal retained-source proof changed after runtime return")
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})
         if CURRENT_PRINCIPAL.get() != actor:

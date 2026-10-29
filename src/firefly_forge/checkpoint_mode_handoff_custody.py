@@ -179,9 +179,12 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
             raise ValueError("Verification requires canonical known completion and cleanup")
         frozen = value["request"]
         invocation = frozen["request"]
+        from firefly_forge.verification_scope_attestation import mapped_argv, scope_record
+
+        scope = scope_record(run, intent, entries)
         if (
             frozen["snapshot_digest"] != intent["sandbox_digest"]
-            or invocation.get("argv") != commands[index].argv
+            or invocation.get("argv") != mapped_argv(run, intent, entries, index)
             or invocation.get("timeout") != timeouts[index]
             or invocation.get("workspace") != intent["workspace"]
             or invocation.get("cwd") != intent["cwd"]
@@ -199,6 +202,15 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
             if len(pair) != 2 or pair[0]["kind"] != "sandbox_intent" or pair[1]["kind"] == "sandbox_intent":
                 raise ValueError("Verification command effect custody is incomplete")
             effects.extend(pair)
+        if scope is not None:
+            witness = next(
+                e
+                for e in entries
+                if e["kind"] == "verification_build_scope"
+                and e["payload"]["handoff_intent_digest"] == handoff["digest"]
+            )
+            if witness["sequence"] >= effects[0]["sequence"]:
+                raise ValueError("Build scope cannot be retrofitted after a command started")
         record = _one(entries, "verification_handoff_command", handoff_id + ":" + str(index))
         exit_code = value["effects"]["start"]["evidence"]["exit_code"]
         if (

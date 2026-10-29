@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from firefly_forge.journal import digest
 
@@ -14,10 +14,27 @@ if TYPE_CHECKING:
     from firefly_forge.verification_source_preparation import PreparedVerificationSource
 
 
+class ReusableBuildDeclaration(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    command_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    purpose: Literal["source_build"]
+    independent_of_time_and_external_state: Literal[True]
+
+    @field_validator("independent_of_time_and_external_state", mode="before")
+    @classmethod
+    def explicit_declaration(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("Reuse requires an explicit trusted source-check declaration")
+        return value
+
+
 class AutomaticVerificationPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = Field(default=True, strict=True)
     max_continuations: int = Field(default=1, ge=1, strict=True)
+    reusable_build_checks: list[ReusableBuildDeclaration] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
 
 
 class VerificationAdoption(BaseModel):
@@ -29,6 +46,9 @@ class VerificationAdoption(BaseModel):
     policy_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     provider_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     agent: Literal["codex", "claude", "bridge", "agentic"]
+    reusable_build_checks: list[ReusableBuildDeclaration] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
 
 
 def verification_scope(run: dict[str, Any]) -> str:
@@ -131,6 +151,12 @@ def check_verification_authority(store: Any, run: dict[str, Any], intent: dict[s
         or (run.get("cancel_request") or {}).get("status") == "requested"
     ):
         raise ValueError("Automatic verification scope, policy or provider changed")
+    if (
+        intent.get("reusable_build_declaration_digest") is not None
+        and digest({"checks": [item.model_dump(mode="json") for item in verification_build_declarations(run)]})
+        != intent["reusable_build_declaration_digest"]
+    ):
+        raise ValueError("Verification source-build declaration changed")
     request = run.get("worker_request", {})
     if (
         request.get("id") != intent["request_id"]
@@ -167,3 +193,11 @@ def automatic_verification_grant(snapshot: dict[str, Any] | None) -> AutomaticVe
         return None
     policy = AutomaticVerificationPolicy.model_validate(settings["automatic_verification"])
     return policy if policy.enabled else None
+
+
+def verification_build_declarations(run: dict[str, Any]) -> list[ReusableBuildDeclaration]:
+    adoption = run.get("verification_adoption", {})
+    if adoption:
+        return VerificationAdoption.model_validate(adoption["request"]).reusable_build_checks
+    policy = automatic_verification_grant(run.get("tool_policy_snapshot"))
+    return policy.reusable_build_checks if policy else []

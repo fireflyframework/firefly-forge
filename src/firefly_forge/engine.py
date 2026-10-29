@@ -1476,24 +1476,44 @@ class Engine:
                     saved_tree = retained.get("source_tree") or saved_task.get("evidence", {}).get("source_tree")
                     if not final or saved_tree != tree:
                         raise ReconciliationRequired("Retained verification does not match the resumed source tree")
+                reuse = None
+                if verification["disposition"] != "completed" and self.journal and active_key:
+                    from firefly_forge.verification_result_reuse import prepare_verification_reuse
+
+                    reuse = await prepare_verification_reuse(
+                        self, await self.store.get_run(identifier), workspace, active_key, commands
+                    )
+                    if reuse is not None:
+                        await reuse.begin()
+                fresh_ordinal = 0
                 for check_index, command in enumerate(
                     [] if verification["disposition"] == "completed" else commands, 1
                 ):
-                    await emit("validating", f"Attempt {attempt}: {' '.join(command.argv)}")
-                    check = await self._project_command(
-                        identifier, run, workspace, command.argv, command.timeout, "verify", ordinal=check_index
-                    )
-                    evidence = {
-                        "argv": command.argv,
-                        "exit_code": check.exit_code,
-                        "output": safe(check.output[-32000:]),
-                        "created_at": now(),
-                        "attempt": attempt,
-                    }
+                    reused_evidence = reuse.check(check_index) if reuse else None
+                    if reused_evidence is None:
+                        fresh_ordinal += 1
+                        await emit("validating", f"Attempt {attempt}: {' '.join(command.argv)}")
+                        check = await self._project_command(
+                            identifier, run, workspace, command.argv, command.timeout, "verify", ordinal=fresh_ordinal
+                        )
+                        evidence = {
+                            "argv": command.argv,
+                            "exit_code": check.exit_code,
+                            "output": safe(check.output[-32000:]),
+                            "created_at": now(),
+                            "attempt": attempt,
+                        }
+                        if reuse is not None:
+                            evidence["configured_check_index"] = check_index
+                    else:
+                        evidence = reused_evidence
+                        await emit("validating", "Reused a prior source check under its unchanged recorded scope")
                     final.append(evidence)
                     evidence_list = (await self.store.get_run(identifier))["verification"]
                     evidence_list.append(evidence)
                     (await self.store.update(identifier, verification=evidence_list))
+                if reuse is not None:
+                    await reuse.revalidate()
                 failures = [check for check in final if check["exit_code"] != 0]
                 final_files, final_diff, final_tree = await self._snapshot(
                     workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
@@ -1542,6 +1562,8 @@ class Engine:
                             "repair_context": repair_context,
                         },
                     )
+                    if reuse is not None:
+                        await reuse.finish(final)
                 active_key = None
                 if known_final and failures:
                     raise ValueError(

@@ -212,6 +212,16 @@ def runtime_contract() -> str:
                     "project_access.py",
                     "runner_continuations.py",
                     "runner_continuation_authority.py",
+                    "verification_dependencies.py",
+                    "verification_scope.py",
+                    "verification_scope_attestation.py",
+                    "verification_result_reuse.py",
+                    "verification_models.py",
+                    "execution_environment.py",
+                    "source_catalog.py",
+                    "verification_source_preparation.py",
+                    "secrets.py",
+                    "private_identity.py",
                 )
             },
         }

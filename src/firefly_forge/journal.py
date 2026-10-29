@@ -1643,11 +1643,14 @@ class Journal:
         ):
             raise ValueError("Automatic verification slot is outside its admitted handoff")
         index = intent["ordinals"].index(payload["ordinal"])
+        from firefly_forge.verification_scope_attestation import mapped_argv
+
+        expected_argv = mapped_argv(run.data, intent, [e.data for e in entries], index)
         request = payload.get("request", {})
         if (
             task_id != "implement"
             or payload.get("parent_attempt") != intent["parent_attempt"]
-            or request.get("argv") != run.data["commands"][index]["argv"]
+            or request.get("argv") != expected_argv
             or request.get("workspace") != intent["workspace"]
             or request.get("cwd") != intent["cwd"]
             or request.get("timeout") != intent["timeouts"][index]

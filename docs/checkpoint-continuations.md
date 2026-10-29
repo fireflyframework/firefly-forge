@@ -234,3 +234,27 @@ Use the strict `FinalOutcomeContinuationInputV1` body:
 Choose a claim window within `maximum_window_seconds`. Persist the caller-owned action ID and exact input before submitting once. After an uncertain response, read status and match the saved action ID; do not generate a replacement action. Identical repeats read the same receipt. A reused identity with changed input is rejected.
 
 The Python client provides `final_outcome_continuation_candidate`, `request_final_outcome_continuation` and `final_outcome_continuation_status`. The CLI exposes `forge final-outcome-continuations candidate RUN REQUEST`, `request RUN REQUEST ACTION DOCUMENT` and `status RUN REQUEST`. MCP exposes `get_final_outcome_candidate`, `request_final_outcome_continuation` and `get_final_outcome_status`. These adapters validate input before transport, submit once and leave execution to the worker role.
+
+## Reuse passed source checks
+
+After a saved final result requests verification, the next worker may need to finish its report and enter normal QA. Some source checks can use their earlier passed results. Their original executions remain charged to the same command budget. Database integration tests and checks of a deployment or external service still need a current execution.
+
+Review the pending verification handoff before its commands start. The candidate's `reusable_build_candidates` lists checks supported by the current runner, with their original command index, arguments and command digest. Selecting a check is an explicit declaration that it tests the retained source and build inputs independently of time or external state. A recognized command name alone does not establish that property.
+
+The existing `VerificationAdoption` input accepts an optional `reusable_build_checks` list. Each selected entry has this shape:
+
+```json
+{
+  "command_digest": "<digest from the current handoff candidate>",
+  "purpose": "source_build",
+  "independent_of_time_and_external_state": true
+}
+```
+
+Keep the other adoption fields and submit the saved request once through `adopt_verification_handoff` or the existing HTTP adoption route. An omitted or empty list preserves the earlier behavior. A changed command, duplicate selection or coerced acknowledgement is rejected.
+
+The current confined transport supports Darwin host runners. Before the new handoff runs, Forge records a `verification_build_scope` witness. The actual command runs through `sandbox-exec` with network access denied, restricted filesystem inputs and private scratch directories. Descendants inherit those restrictions. Dependency bytes, the effective environment, private prerequisite and credential identities, runner configuration and current runtime are bound to that witness. Private file contents stay out of the journal. Current source and authority are checked again before accepting the results. This path relies on the declared source-check purpose and the trusted platform runtime; it does not certify arbitrary tests as independent of external state.
+
+A later QA task can reuse only successful, completed commands that actually ran under that matching scope. Earlier unrestricted receipts cannot acquire this evidence afterward. Changed source or inputs, failed checks and uncertain effects prevent reuse. Any required new commands must fit within the original remaining budget.
+
+The new verify task records `verification_reuse_intent` and `verification_reuse_receipt`, linked to its own native completion receipt. Each reused check preserves its original arguments, output, timestamp, attempt and source execution references. Studio labels those results as reused. The reuse receipt's `new_execution_count: 0` applies to its referenced checks; other checks in the same QA task can execute normally and keep their own receipts.
