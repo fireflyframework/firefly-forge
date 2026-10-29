@@ -242,12 +242,6 @@ def admission_contract_digest() -> str:
                 "known_worker_completion_models.py",
                 "known_worker_completion_proof.py",
                 "known_worker_completions.py",
-                "known_final_outcome_proof.py",
-                "final_outcome_models.py",
-                "final_outcome_continuations.py",
-                "final_outcome_acceptance.py",
-                "retained_verified_source.py",
-                "final_outcome_controllers.py",
                 "native_terminal_completion_models.py",
                 "native_terminal_completions.py",
                 "native_terminal_restore_proof.py",
@@ -365,6 +359,12 @@ def admission_contract_digest() -> str:
                 "tool_operations.py",
                 "model_operation_client.py",
                 "tool_persistence.py",
+                "known_final_outcome_proof.py",
+                "final_outcome_models.py",
+                "final_outcome_continuations.py",
+                "final_outcome_acceptance.py",
+                "retained_verified_source.py",
+                "final_outcome_controllers.py",
             )
         }
     )
