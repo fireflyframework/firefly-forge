@@ -23,9 +23,9 @@ function counters(value: Record<string, unknown>) {
   return { total, completed, failed };
 }
 
-function identified(value: Record<string, unknown>) {
+function identified(value: Record<string, unknown>, workDurationV2 = false) {
   return (
-    value.version === 1 &&
+    (value.version === 1 || (workDurationV2 && value.version === 2)) &&
     typeof value.id === "string" &&
     /^[a-f0-9]{32}$/.test(value.id) &&
     typeof value.request_id === "string" &&
@@ -45,7 +45,7 @@ export function verificationInProgress(value: unknown) {
   const record = asRecord(value);
   return Boolean(
     record &&
-    identified(record) &&
+    identified(record, true) &&
     limited(record) &&
     counters(record) &&
     ["pending", "running"].includes(String(record.status)),
@@ -144,7 +144,17 @@ export function VerificationHandoff({
       </section>
     );
   }
-  if (!identified(record)) return incomplete;
+  if (
+    !identified(
+      record,
+      [
+        "state",
+        "verification_handoff_intent",
+        "verification_handoff_outcome",
+      ].includes(kind),
+    )
+  )
+    return incomplete;
 
   if (kind === "verification_continuation_intent") {
     if (

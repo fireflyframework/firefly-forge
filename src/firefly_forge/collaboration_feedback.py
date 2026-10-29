@@ -108,7 +108,7 @@ def verification_handoff(run: Data) -> Data:
     request = run.get("worker_request") or {}
     if (
         type(value.get("version")) is not int
-        or value.get("version") != 1
+        or value.get("version") not in {1, 2}
         or value.get("request_id") != request.get("id")
         or not value.get("id")
         or run.get("status") in TERMINAL

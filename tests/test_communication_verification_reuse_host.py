@@ -71,3 +71,25 @@ def test_incomplete_reuse_custody_keeps_execution_provenance_unknown(key, invali
     assert value["verification"]["provenance"] == "unknown"
     assert "new_executions" not in value["verification"]
     assert value["check_status"] == {"current_attempt": 3, "recorded": None, "provenance": "unknown"}
+
+
+def test_version_two_handoff_remains_visible_to_AI_feedback_without_changing_command_receipt_version():
+    from firefly_forge.collaboration_feedback import verification_handoff
+
+    value = {
+        "status": "paused",
+        "worker_request": {"id": "request"},
+        "verification_handoff": {
+            "version": 2,
+            "id": "a" * 32,
+            "request_id": "request",
+            "status": "running",
+            "commands_count": 7,
+            "completed_commands": 2,
+            "failed_commands": 0,
+        },
+    }
+    assert verification_handoff(value) == {"id": "a" * 32, "status": "running"}
+    for unsupported in (True, 3):
+        value["verification_handoff"]["version"] = unsupported
+        assert verification_handoff(value) == {}
