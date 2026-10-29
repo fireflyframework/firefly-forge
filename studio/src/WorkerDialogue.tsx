@@ -32,6 +32,7 @@ import {
   type WorkerThread,
 } from "./WorkerDialogueData";
 import "./WorkerDialogue.css";
+import { VerificationAdoption } from "./VerificationAdoption";
 import { WorkerEvidencePreview } from "./WorkerEvidencePreview";
 import {
   activeVerificationRequest,
@@ -367,9 +368,29 @@ export function WorkerDialogue({
         </p>
       )}
       {busy && <p role="status">Reading the recorded conversation…</p>}
-      {loaded && !threads.length && (
-        <p>No agent has requested a decision for this run.</p>
-      )}
+      {loaded &&
+        !threads.length &&
+        run.worker_request?.kind !== "verification" && (
+          <p>No agent has requested a decision for this run.</p>
+        )}
+      {run.status === "paused" &&
+        run.worker_request?.kind === "verification" &&
+        run.worker_request.status === "pending" &&
+        !automaticVerification && (
+          <VerificationAdoption
+            key={JSON.stringify([
+              scope,
+              session.user.authentication_method,
+              run.worker_request.id,
+              canReply,
+              session.global_admin,
+              run.cancel_request?.status,
+            ])}
+            run={run}
+            connection={connection}
+            session={session}
+          />
+        )}
       {threads.map((thread) => (
         <article key={thread.question.id} className="worker-thread">
           <div className="worker-thread-meta">

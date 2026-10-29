@@ -241,6 +241,56 @@ After a saved final result requests verification, the next worker may need to fi
 
 Review the pending verification handoff before its commands start. The candidate's `reusable_build_candidates` lists checks supported by the current runner, with their original command index, arguments and command digest. Selecting a check is an explicit declaration that it tests the retained source and build inputs independently of time or external state. A recognized command name alone does not establish that property.
 
+### Approve verification in Studio
+
+Open the paused run's **Agent questions** tab and find **Approve factory verification**. Choose the configured coding provider, then select **Read approved checks**. Approval requires current execute access and release access when publishing. Codex CLI and Claude Code CLI also require factory administrator access.
+
+In **Choose reuse**, select only eligible source and build checks whose result is independent of time, changing data and external services. Check numbers follow the frozen command list, starting at 1. All frozen checks run during this handoff; the selection permits possible reuse in later final QA when the source and execution conditions still match. Leave every check unselected when it needs a fresh result.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-choose-mobile-light.png">
+  <img src="../assets/screenshots/verification-approval-choose-desktop-light.png" alt="Choose reuse step listing a backend-eligible source check and its frozen command number" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-choose-mobile-dark.png">
+  <img src="../assets/screenshots/verification-approval-choose-desktop-dark.png" alt="Choose reuse step in dark mode with an explicit source-check selection" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Controlled API fixture: choose from the backend's eligible commands. This selection does not establish a passed check.</figcaption>
+</figure>
+
+Select **Review verification approval**, review the number of selected checks and confirm the acknowledgement. **Save verification approval** sends the frozen request and any selected declarations once. Studio first saves its request identity and exact input in browser storage. If storage cannot retain them, the approval stays blocked and no submission is sent. Earlier results cannot gain reusable-check evidence through this approval.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-review-mobile-light.png">
+  <img src="../assets/screenshots/verification-approval-review-desktop-light.png" alt="Verification approval review with the selected-check count and acknowledgement before saving" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-review-mobile-dark.png">
+  <img src="../assets/screenshots/verification-approval-review-desktop-dark.png" alt="Dark-mode approval review with the explicit declaration of independence from time and external state" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Controlled API fixture: the acknowledgement approves the frozen checks and declares the selected checks' independence from time and external state.</figcaption>
+</figure>
+
+After an uncertain response or reload, use **Read saved verification approval**. Keep the original identity; Studio never retries the submission automatically. It confirms the receipt only when its request digest, operator and policy match the saved input. An access refusal clears the private review and preserves any saved submission. **Verification approval recorded** confirms the native approval receipt. Follow **Verification** and the journal for execution results.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-recorded-mobile-light.png">
+  <img src="../assets/screenshots/verification-approval-recorded-desktop-light.png" alt="Recorded verification approval with a read-only control for the saved receipt and guidance to inspect execution results" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-approval-recorded-mobile-dark.png">
+  <img src="../assets/screenshots/verification-approval-recorded-desktop-dark.png" alt="Recorded verification approval in dark mode, distinguished from successful verification results" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Controlled API fixture: a saved approval is not evidence that an original customer run recovered, passed QA or delivered a commit or pull request.</figcaption>
+</figure>
+
+### Declare reuse through the API
+
+Read `GET /api/v1/runs/{run_id}/verification-handoffs/candidates?agent={agent}` for the selected `agentic`, `bridge`, `codex` or `claude` provider. Copy the candidate's exact `pending_request_digest`, `source_digest`, `commands_digest`, `policy_digest` and `provider_digest`, along with its `agent`. Save that input and a new 32-character lowercase hexadecimal `request_id` before one `POST /api/v1/runs/{run_id}/verification-handoffs/adoptions`. After an uncertain response, read `GET /api/v1/runs/{run_id}/verification-handoffs/adoptions/{request_id}` and verify the saved request, actor and policy before proceeding.
+
 The existing `VerificationAdoption` input accepts an optional `reusable_build_checks` list. Each selected entry has this shape:
 
 ```json

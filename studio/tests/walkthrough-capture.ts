@@ -522,6 +522,7 @@ export async function captureWalkthrough(
     "studio/tests/runner-setup.spec.ts",
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
+    "studio/tests/verification-adoption.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

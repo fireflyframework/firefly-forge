@@ -57,6 +57,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/runner-setup.spec.ts",
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
+    "studio/tests/verification-adoption.spec.ts",
 }
 
 
@@ -176,8 +177,13 @@ def _load_walkthrough(config, root=ROOT):
         reuse_stages = {"verification-reuse-checks", "verification-reuse-journal"}
         if stage.startswith("verification-reuse-") and stage not in reuse_stages:
             raise ValueError("Unknown verification reuse capture stage: " + name)
+        approval_stages = {"verification-approval-choose", "verification-approval-review", "verification-approval-recorded"}
+        if stage.startswith("verification-approval-") and stage not in approval_stages:
+            raise ValueError("Unknown verification approval capture stage: " + name)
         expected_producer = (
-            "studio/tests/verification-reuse.spec.ts"
+            "studio/tests/verification-adoption.spec.ts"
+            if stage in approval_stages
+            else "studio/tests/verification-reuse.spec.ts"
             if stage in reuse_stages
             else "studio/tests/final-outcome-recovery.spec.ts"
             if stage in final_stages

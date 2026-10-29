@@ -89,6 +89,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/runner-setup.spec.ts": "fixture runner setup producer",
                 "studio/tests/final-outcome-recovery.spec.ts": "fixture final result producer",
                 "studio/tests/verification-reuse.spec.ts": "fixture verification reuse producer",
+                "studio/tests/verification-adoption.spec.ts": "fixture verification approval producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -190,9 +191,14 @@ class WalkthroughTests(unittest.TestCase):
                 "final-outcome-status",
                 "verification-reuse-checks",
                 "verification-reuse-journal",
+                "verification-approval-choose",
+                "verification-approval-review",
+                "verification-approval-recorded",
             ):
                 producer = (
-                    "studio/tests/verification-reuse.spec.ts"
+                    "studio/tests/verification-adoption.spec.ts"
+                    if stage.startswith("verification-approval-")
+                    else "studio/tests/verification-reuse.spec.ts"
                     if stage.startswith("verification-reuse-")
                     else "studio/tests/runner-setup.spec.ts"
                     if stage.startswith("runner-setup-")
@@ -592,6 +598,8 @@ class WalkthroughTests(unittest.TestCase):
             final_capture.write_text("fixture final result producer")
             reuse_capture = root / "studio/tests/verification-reuse.spec.ts"
             reuse_capture.write_text("fixture verification reuse producer")
+            approval_capture = root / "studio/tests/verification-adoption.spec.ts"
+            approval_capture.write_text("fixture verification approval producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -618,6 +626,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/runner-setup.spec.ts": sha(runner_capture),
                     "studio/tests/final-outcome-recovery.spec.ts": sha(final_capture),
                     "studio/tests/verification-reuse.spec.ts": sha(reuse_capture),
+                    "studio/tests/verification-adoption.spec.ts": sha(approval_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),
