@@ -365,6 +365,8 @@ def admission_contract_digest() -> str:
                 "final_outcome_acceptance.py",
                 "retained_verified_source.py",
                 "final_outcome_controllers.py",
+                "runner_continuations.py",
+                "runner_continuation_authority.py",
             )
         }
     )
