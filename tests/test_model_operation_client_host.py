@@ -334,3 +334,100 @@ async def test_native_agent_keeps_original_chosen_work_cap_while_http_reads_rema
     assert len(posts) == 1 and drained.is_set()
     assert posts[0].extensions["timeout"]["read"] is None
     assert len(clients) == 1 and clients[0].is_closed
+
+
+@pytest.mark.parametrize("google_style", [False, True])
+async def test_stalled_vendor_cleanup_is_finite_and_always_attempts_owned_http_close(monkeypatch, google_style):
+    from types import SimpleNamespace
+
+    from firefly_forge import model_operation_client as module
+
+    monkeypatch.setattr(module, "MODEL_CLEANUP_TIMEOUT_SECONDS", 0.02, raising=False)
+    http_client = module.ModelOperationClient()
+    attempted = asyncio.Event()
+
+    async def stalled():
+        attempted.set()
+        await asyncio.sleep(0.12)
+
+    vendor = (
+        SimpleNamespace(aio=SimpleNamespace(aclose=stalled), close=lambda: None)
+        if google_style
+        else SimpleNamespace(close=stalled)
+    )
+
+    class PublicProvider:
+        def __init__(self, client):
+            self.client = client
+
+    provider = module.owned_model_provider(PublicProvider, http_client, client=vendor)
+    with pytest.raises(RuntimeError, match="cleanup"):
+        async with asyncio.timeout(1):
+            async with provider:
+                pass
+    assert attempted.is_set() and http_client.is_closed
+
+
+async def test_failed_sdk_construction_closes_undispatched_client_without_global_cache(tmp_path, monkeypatch):
+    from firefly_forge import model_operation_client as module
+
+    clients = []
+    original = module.ModelOperationClient
+
+    class ObservedClient(original):
+        def __init__(self):
+            super().__init__()
+            clients.append(self)
+
+    def refused(*args, **kwargs):
+        raise ValueError("Controlled constructor refusal")
+
+    monkeypatch.setattr(module, "ModelOperationClient", ObservedClient)
+    monkeypatch.setattr(module, "owned_model_provider", refused)
+    provider = APIProvider({"FORGE_AGENTIC_MODEL": "openai-chat:gpt-fixture", "FORGE_AGENTIC_API_KEY": "fictional-key"})
+    provider.configure_work_duration(WorkDurationPolicyV2())
+    with pytest.raises(ValueError, match="constructor refusal"):
+        provider.model()
+    assert len(clients) == 1 and clients[0].construction_cleanup is not None
+    await clients[0].construction_cleanup
+    assert clients[0].is_closed and clients[0].construction_refused
+
+
+async def test_one_operation_http_client_cannot_be_reowned_by_a_second_model():
+    from firefly_forge.model_operation_client import ModelOperationClient
+
+    client = ModelOperationClient()
+    provider = APIProvider({"FORGE_AGENTIC_MODEL": "openai-chat:gpt-fixture", "FORGE_AGENTIC_API_KEY": "fictional-key"})
+    provider.configure_work_duration(WorkDurationPolicyV2())
+    model = provider.model(http_client=client)
+    try:
+        with pytest.raises(ValueError, match="owned"):
+            provider.model(http_client=client)
+        assert not client.is_closed
+    finally:
+        async with model:
+            pass
+    assert client.is_closed
+
+
+def test_synchronous_failed_construction_closes_undispatched_client_without_running_loop(monkeypatch):
+    from firefly_forge import model_operation_client as module
+
+    clients = []
+    original = module.ModelOperationClient
+
+    class ObservedClient(original):
+        def __init__(self):
+            super().__init__()
+            clients.append(self)
+
+    def refused(*args, **kwargs):
+        raise ValueError("Controlled synchronous constructor refusal")
+
+    monkeypatch.setattr(module, "ModelOperationClient", ObservedClient)
+    monkeypatch.setattr(module, "owned_model_provider", refused)
+    provider = APIProvider({"FORGE_AGENTIC_MODEL": "openai-chat:gpt-fixture", "FORGE_AGENTIC_API_KEY": "fictional-key"})
+    provider.configure_work_duration(WorkDurationPolicyV2())
+    with pytest.raises(ValueError, match="synchronous constructor refusal"):
+        provider.model()
+    assert len(clients) == 1 and clients[0].is_closed and clients[0].construction_refused
