@@ -22,6 +22,7 @@ from firefly_forge.git_partial_source_models import (
     PartialSourceAdmissionV1,
     PartialSourceCandidateV1,
     PartialSourceFrontierV1,
+    PartialSourceInvocationV1,
 )
 from firefly_forge.journal import Journal, digest
 
@@ -164,7 +165,7 @@ def stored_frontier_proof(run: Data, task: Data, entries: list[Data]) -> Data:
             "invocation": {
                 key: value
                 for key, value in previous.invocation.model_dump(mode="json").items()
-                if key not in {"brief", "backend", "frontend", "deadline_ms"}
+                if key in PartialSourceInvocationV1.model_fields
             }
             if previous is not None
             else None,

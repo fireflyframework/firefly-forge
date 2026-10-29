@@ -28,8 +28,10 @@ from firefly_forge.git_delivery_controllers import GitDeliveryController
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
 from firefly_forge.git_delivery_policy import GitDeliveryPolicies
 from firefly_forge.git_delivery_requests import GitDeliveryRequests
+from firefly_forge.git_partial_source_checkpoints import stored_frontier_proof
+from firefly_forge.git_partial_source_models import PartialSourceInvocationV1
 from firefly_forge.identity_persistence import ForgeIdentityUserRepository
-from firefly_forge.journal import Journal
+from firefly_forge.journal import Journal, digest
 from firefly_forge.models import RunInput
 from firefly_forge.providers import BridgeProvider
 from firefly_forge.runtime_roles import RuntimeRoles
@@ -188,6 +190,12 @@ async def native_partial(store, root, monkeypatch):
 
 async def test_native_partial_source_queue_commits_without_resuming_or_resetting_parent(store, tmp_path, monkeypatch):
     async with native_partial(store, tmp_path, monkeypatch) as c:
+        invocation = [e for e in c.prefix if e["kind"] == "agent_checkpoint"][-1]["payload"]["invocation"]
+        assert invocation["protocol"] == "forge-owned-checkpoint-v3"
+        task = next(t for t in (await c.journal.plan(c.run_id))["tasks"] if t["id"] == "implement")
+        proof = stored_frontier_proof(c.parent, task, c.prefix)
+        assert set(proof["invocation"]) == set(PartialSourceInvocationV1.model_fields)
+        assert proof["invocation_digest"] == digest(invocation)
         queued = await c.controller.partial_source_request(c.run_id, c.body)
         assert queued["status"] == "queued"
         await asyncio.create_task(c.tickets.execute(c.body.request_id), context=Context())
