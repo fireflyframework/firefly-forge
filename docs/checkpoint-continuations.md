@@ -175,6 +175,38 @@ After acceptance, **Read saved action** reads its status without submitting agai
 <figcaption>Read the run's next handoff and later QA receipts. Report acceptance alone establishes no successful test, commit or pull request.</figcaption>
 </figure>
 
+### Read reused verification results
+
+The **Verification** tab distinguishes a new command from a reused result. A reused check retains its original output and execution time and displays **Reused prior verified result**. It does not count as another command execution. The factory records which prior execution supplied the result and which native receipt accepted it; those references are available in the advanced record.
+
+Reuse requires the same source and recorded execution conditions. Source checks need evidence captured before the handoff, including their dependencies and enforced network restrictions. Checks that depend on changing services, such as a PostgreSQL integration suite, need a fresh execution unless that service state has its own accepted freshness evidence. Changed source, incomplete custody or an unknown outcome cannot establish a passed check.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-reuse-checks-mobile-light.png">
+  <img src="../assets/screenshots/verification-reuse-checks-desktop-light.png" alt="Verification check with its original execution time and an explicit notice that no new command was run" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-reuse-checks-mobile-dark.png">
+  <img src="../assets/screenshots/verification-reuse-checks-desktop-dark.png" alt="Reused verification result in dark mode, with the saved output preserved" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Controlled API fixture: the notice identifies a saved result. It is not evidence that a customer run has recovered or passed QA.</figcaption>
+</figure>
+
+In **Plan**, the journal records a reuse intent and its later acceptance receipt. **New executions for referenced checks: 0** applies only to the checks listed in that receipt. Other checks may have run again; inspect their individual results in **Verification**. Neither the reuse request nor its receipt establishes a successful run, commit or pull request on its own.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-reuse-journal-mobile-light.png">
+  <img src="../assets/screenshots/verification-reuse-journal-desktop-light.png" alt="Formatted journal receipt showing referenced reused checks and zero new executions for that subset" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/verification-reuse-journal-mobile-dark.png">
+  <img src="../assets/screenshots/verification-reuse-journal-desktop-dark.png" alt="Dark-mode journal receipt with technical references available separately" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Controlled API fixture: read the referenced subset separately from fresh final checks and the run's eventual delivery result.</figcaption>
+</figure>
+
 ### API and operator tools
 
 All three routes begin with `/api/v1/runs/{run_id}/final-outcome-continuations/requests/{request_id}`:

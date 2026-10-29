@@ -88,6 +88,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/invalid-read-recovery.spec.ts": "fixture continuity recovery producer",
                 "studio/tests/runner-setup.spec.ts": "fixture runner setup producer",
                 "studio/tests/final-outcome-recovery.spec.ts": "fixture final result producer",
+                "studio/tests/verification-reuse.spec.ts": "fixture verification reuse producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -187,9 +188,13 @@ class WalkthroughTests(unittest.TestCase):
                 "runner-setup-review",
                 "final-outcome-review",
                 "final-outcome-status",
+                "verification-reuse-checks",
+                "verification-reuse-journal",
             ):
                 producer = (
-                    "studio/tests/runner-setup.spec.ts"
+                    "studio/tests/verification-reuse.spec.ts"
+                    if stage.startswith("verification-reuse-")
+                    else "studio/tests/runner-setup.spec.ts"
                     if stage.startswith("runner-setup-")
                     else "studio/tests/final-outcome-recovery.spec.ts"
                     if stage.startswith("final-outcome-")
@@ -204,10 +209,21 @@ class WalkthroughTests(unittest.TestCase):
                     "producer": producer,
                     "producer_sha256": producers[producer],
                 }
+                if stage.startswith("verification-reuse-"):
+                    capture.update(observation_only=True, action=None, captured_action=None)
                 manifest["captures"][name] = capture
                 save()
                 with self.subTest(checkpoint_stage=stage):
                     hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                if stage.startswith("verification-reuse-"):
+                    for key, invalid in (("observation_only", False), ("observation_only", 1), ("action", {}), ("captured_action", {})):
+                        previous = capture[key]
+                        capture[key] = invalid
+                        save()
+                        with self.subTest(reuse_stage=stage, invalid_key=key, invalid=invalid):
+                            with self.assertRaisesRegex(ValueError, "Invalid verification reuse observation"):
+                                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                        capture[key] = previous
                 capture["producer"] = "studio/tests/docs-walkthrough.spec.ts"
                 capture["producer_sha256"] = producers[capture["producer"]]
                 save()
@@ -227,6 +243,11 @@ class WalkthroughTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unknown checkpoint continuation capture stage"):
                 hook._load_walkthrough({"docs_dir": str(docs)}, root)
             del manifest["captures"][unknown_name]
+            record["observation_only"] = True
+            save()
+            with self.assertRaisesRegex(ValueError, "Invalid verification reuse observation"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del record["observation_only"]
             save()
             section_name = "framework-generation-confirmation-mobile-light.png"
             section_asset = asset.parent / section_name
@@ -569,6 +590,8 @@ class WalkthroughTests(unittest.TestCase):
             runner_capture.write_text("fixture runner setup producer")
             final_capture = root / "studio/tests/final-outcome-recovery.spec.ts"
             final_capture.write_text("fixture final result producer")
+            reuse_capture = root / "studio/tests/verification-reuse.spec.ts"
+            reuse_capture.write_text("fixture verification reuse producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -594,6 +617,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/invalid-read-recovery.spec.ts": sha(recovery_capture),
                     "studio/tests/runner-setup.spec.ts": sha(runner_capture),
                     "studio/tests/final-outcome-recovery.spec.ts": sha(final_capture),
+                    "studio/tests/verification-reuse.spec.ts": sha(reuse_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

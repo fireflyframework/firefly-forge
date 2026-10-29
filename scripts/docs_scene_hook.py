@@ -56,6 +56,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/invalid-read-recovery.spec.ts",
     "studio/tests/runner-setup.spec.ts",
     "studio/tests/final-outcome-recovery.spec.ts",
+    "studio/tests/verification-reuse.spec.ts",
 }
 
 
@@ -172,8 +173,13 @@ def _load_walkthrough(config, root=ROOT):
         final_stages = {"final-outcome-review", "final-outcome-status"}
         if stage.startswith("final-outcome-") and stage not in final_stages:
             raise ValueError("Unknown final result capture stage: " + name)
+        reuse_stages = {"verification-reuse-checks", "verification-reuse-journal"}
+        if stage.startswith("verification-reuse-") and stage not in reuse_stages:
+            raise ValueError("Unknown verification reuse capture stage: " + name)
         expected_producer = (
-            "studio/tests/final-outcome-recovery.spec.ts"
+            "studio/tests/verification-reuse.spec.ts"
+            if stage in reuse_stages
+            else "studio/tests/final-outcome-recovery.spec.ts"
             if stage in final_stages
             else "studio/tests/runner-setup.spec.ts"
             if stage in runner_stages
@@ -193,6 +199,12 @@ def _load_walkthrough(config, root=ROOT):
         )
         if producer != expected_producer:
             raise ValueError("Walkthrough screenshot stage differs from its producer: " + name)
+        if (
+            stage in reuse_stages
+            and (record.get("observation_only") is not True or record.get("action") is not None or record.get("captured_action") is not None)
+            or stage not in reuse_stages and "observation_only" in record
+        ):
+            raise ValueError("Invalid verification reuse observation: " + name)
         if record.get("path") != "assets/screenshots/" + name or ".." in Path(name).parts:
             raise ValueError("Invalid walkthrough screenshot path: " + name)
         png = (Path(config["docs_dir"]) / record["path"]).read_bytes()

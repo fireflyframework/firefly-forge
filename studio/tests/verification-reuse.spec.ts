@@ -3,6 +3,7 @@
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { captureWalkthrough } from "./walkthrough-capture";
 
 const runId = "2".repeat(32),
   repositoryId = "3".repeat(32);
@@ -123,6 +124,16 @@ for (const width of [1440, 390])
           .first()
           .evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
       ).toBe(true);
+      await captureWalkthrough(
+        page,
+        "verification-reuse-checks",
+        theme,
+        width === 390 ? "mobile" : "desktop",
+        {
+          producer: "studio/tests/verification-reuse.spec.ts",
+          observationOnly: true,
+        },
+      );
       await page.screenshot({
         path: info.outputPath(`reused-checks-${width}-${theme}.png`),
       });
@@ -154,6 +165,16 @@ for (const width of [1440, 390])
         };
       });
       expect(bounds).toEqual({ aboveFooter: true, noOverflow: true });
+      await captureWalkthrough(
+        page,
+        "verification-reuse-journal",
+        theme,
+        width === 390 ? "mobile" : "desktop",
+        {
+          producer: "studio/tests/verification-reuse.spec.ts",
+          observationOnly: true,
+        },
+      );
       await page.screenshot({
         path: info.outputPath(`reused-journal-${width}-${theme}.png`),
       });

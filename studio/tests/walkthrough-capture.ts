@@ -33,8 +33,20 @@ export async function captureWalkthrough(
     boundary?: "dialog" | "section";
     sectionSelector?: string;
     framing?: "initial";
+    observationOnly?: boolean;
   } = {},
 ) {
+  const observationOnly =
+    options.observationOnly === true &&
+    options.producer === "studio/tests/verification-reuse.spec.ts" &&
+    ["verification-reuse-checks", "verification-reuse-journal"].includes(
+      stage,
+    ) &&
+    options.boundary === undefined &&
+    options.actionSelector === undefined &&
+    options.framing === undefined;
+  if (options.observationOnly !== undefined && !observationOnly)
+    throw new Error("Unknown observation-only capture");
   const dialogStages: Record<string, string[]> = {
     "studio/tests/docs-walkthrough.spec.ts": ["agent-question-preview"],
     "studio/tests/docs-provider-allowance.spec.ts": [
@@ -253,7 +265,12 @@ export async function captureWalkthrough(
       ).toBe(true);
     }
   }
-  if (!questionInitial && !runnerInitial && (await action.isVisible())) {
+  if (
+    !observationOnly &&
+    !questionInitial &&
+    !runnerInitial &&
+    (await action.isVisible())
+  ) {
     await action.scrollIntoViewIfNeeded();
     if (options.focusSelector) {
       await page.locator(options.focusSelector).evaluate((element) => {
@@ -399,40 +416,44 @@ export async function captureWalkthrough(
         },
       }
     : undefined;
-  const capturedAction = (await action.isVisible())
-    ? await action.evaluate((button, dialogBoundary) => {
-        const box = button.getBoundingClientRect(),
-          footer = document
-            .querySelector(".workspace-main > footer")!
-            .getBoundingClientRect();
-        const dialog = button.closest("dialog:modal");
-        const boundaryTop = dialogBoundary
-          ? Math.max(0, dialog?.getBoundingClientRect().top ?? Infinity)
-          : 0;
-        const boundaryBottom = dialogBoundary
-          ? Math.min(innerHeight, dialog?.getBoundingClientRect().bottom ?? -1)
-          : footer.top;
-        return {
-          top: box.top,
-          bottom: box.bottom,
-          footerTop: footer.top,
-          boundaryTop,
-          boundaryBottom,
-          boundary: dialogBoundary ? "dialog" : "footer",
-          in_frame: box.top >= boundaryTop && box.bottom <= boundaryBottom,
-          hit: button.contains(
-            document.elementFromPoint(
-              box.x + box.width / 2,
-              dialogBoundary ? box.y + box.height / 2 : box.bottom - 2,
+  const capturedAction =
+    !observationOnly && (await action.isVisible())
+      ? await action.evaluate((button, dialogBoundary) => {
+          const box = button.getBoundingClientRect(),
+            footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+          const dialog = button.closest("dialog:modal");
+          const boundaryTop = dialogBoundary
+            ? Math.max(0, dialog?.getBoundingClientRect().top ?? Infinity)
+            : 0;
+          const boundaryBottom = dialogBoundary
+            ? Math.min(
+                innerHeight,
+                dialog?.getBoundingClientRect().bottom ?? -1,
+              )
+            : footer.top;
+          return {
+            top: box.top,
+            bottom: box.bottom,
+            footerTop: footer.top,
+            boundaryTop,
+            boundaryBottom,
+            boundary: dialogBoundary ? "dialog" : "footer",
+            in_frame: box.top >= boundaryTop && box.bottom <= boundaryBottom,
+            hit: button.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                dialogBoundary ? box.y + box.height / 2 : box.bottom - 2,
+              ),
             ),
-          ),
-          textFits:
-            !dialogBoundary ||
-            (button.scrollHeight <= button.clientHeight &&
-              button.scrollWidth <= button.clientWidth),
-        };
-      }, options.boundary === "dialog")
-    : null;
+            textFits:
+              !dialogBoundary ||
+              (button.scrollHeight <= button.clientHeight &&
+                button.scrollWidth <= button.clientWidth),
+          };
+        }, options.boundary === "dialog")
+      : null;
   if (capturedAction?.in_frame) expect(capturedAction.hit).toBe(true);
   if (capturedAction?.in_frame) expect(capturedAction.textFits).toBe(true);
   const manifestPath = resolve(assets, "walkthrough-manifest.json");
@@ -500,6 +521,7 @@ export async function captureWalkthrough(
     "studio/tests/invalid-read-recovery.spec.ts",
     "studio/tests/runner-setup.spec.ts",
     "studio/tests/final-outcome-recovery.spec.ts",
+    "studio/tests/verification-reuse.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {
@@ -534,6 +556,7 @@ export async function captureWalkthrough(
     theme,
     device,
     fixture: true,
+    ...(observationOnly ? { observation_only: true } : {}),
     viewport: page.viewportSize(),
     ...(sectionCapture ? { section_capture: sectionCapture } : {}),
     sha256: digest(png),
