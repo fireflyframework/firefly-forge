@@ -65,6 +65,7 @@ async def _capture(
     hash_payload: bool,
     public: bool = False,
     validate_path: Callable[[Path, bool], None] | None = None,
+    portable_root: Path | None = None,
 ) -> tuple[str, str]:
     temporary_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="verification-dependencies-", dir=temporary_root) as directory:
@@ -223,7 +224,17 @@ async def _capture(
                 result = hashlib.sha256()
                 metadata = hashlib.sha256()
                 for value in _records(folder, run, work):
-                    result.update(_json(value["entry"]) + b"\n")
+                    entry = dict(value["entry"])
+                    if portable_root is not None:
+                        for key in ("path", "target"):
+                            selected = Path(entry[key]) if key in entry else None
+                            if (
+                                selected is not None
+                                and selected.is_absolute()
+                                and selected.is_relative_to(portable_root)
+                            ):
+                                entry[key] = selected.relative_to(portable_root).as_posix()
+                    result.update(_json(entry) + b"\n")
                     metadata.update(_json(_cut_record(value)) + b"\n")
                 await authority()
                 return result.hexdigest(), metadata.hexdigest()
@@ -295,12 +306,22 @@ async def prepare_dependency_capture(
     current: Callable[[], Awaitable[None]],
     *,
     validate_path: Callable[[Path, bool], None] | None = None,
+    portable_root: Path | None = None,
 ) -> PreparedDependencyCapture:
     declared = list(roots)
+    if portable_root is not None and (not portable_root.is_absolute() or portable_root.resolve() != portable_root):
+        raise ValueError("Portable dependency identity requires its exact real root")
 
     async def operation(authority: Callable[[], Awaitable[None]], cancelled: threading.Event) -> tuple[str, str]:
         return await _capture(
-            declared, temporary_root, budget, authority, cancelled, hash_payload=True, validate_path=validate_path
+            declared,
+            temporary_root,
+            budget,
+            authority,
+            cancelled,
+            hash_payload=True,
+            validate_path=validate_path,
+            portable_root=portable_root,
         )
 
     digest, metadata = await _offloop(operation, current)

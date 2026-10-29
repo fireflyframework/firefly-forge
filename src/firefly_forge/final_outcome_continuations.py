@@ -30,6 +30,7 @@ from firefly_forge.invalid_read_recoveries import MUTABLE
 from firefly_forge.invalid_read_tickets import protected_scope, verify_ticket
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_final_outcome_proof import PreparedFinalOutcome, prepare_final_outcome
+from firefly_forge.native_location_projection import current_native_location, source_workspace_matches
 from firefly_forge.store import identifier, now, prepared_credential_rejection
 
 Data = dict[str, Any]
@@ -227,7 +228,10 @@ class FinalOutcomeExecution(RestoreExecution):
 
     async def guard_source(self) -> None:
         await self.guard()
-        if await workspace_cut(self.service.store, self.service.workspace(self.run_id)) != self.binding.workspace:
+        actual = await workspace_cut(self.service.store, self.service.workspace(self.run_id))
+        if digest(actual) != self.witness["payload"]["candidate"][
+            "source_digest"
+        ] or not await source_workspace_matches(self.service.store, self.run_id, actual, self.binding.workspace):
             raise ValueError("Known final source changed")
         await self.guard()
 
@@ -334,7 +338,13 @@ class FinalOutcomeContinuations:
             invalid_read=run["status"] == "failed",
         )
         cp = checkpoint_payload(data["checkpoint"]["payload"])
-        if await workspace_cut(self.store, self.workspace(run_id), assert_current=guard) != cp.invocation.workspace:
+        actual_source = await workspace_cut(self.store, self.workspace(run_id), assert_current=guard)
+        location = (
+            await current_native_location(self.store)
+            if getattr(self.store, "native_location_state", None) is not None
+            else None
+        )
+        if not await source_workspace_matches(self.store, run_id, actual_source, cp.invocation.workspace):
             raise ValueError("Known final source differs from its original checkpoint")
         feedback = data["report"]["worker_feedback"]
         outcome = (feedback or {}).get("disposition", "completed")
@@ -358,7 +368,7 @@ class FinalOutcomeContinuations:
             consume_record_digest=data["consume"]["digest"],
             report_digest=digest(data["report"]),
             final_outcome_digest=prepared.digest,
-            source_digest=digest(cp.invocation.workspace),
+            source_digest=digest(actual_source),
             current_runtime_contract=runtime_contract(),
             current_profile=profile,
             policy_digest=policy["digest"],
@@ -389,6 +399,7 @@ class FinalOutcomeContinuations:
             policy=policy,
             epoch=epoch,
             prepared=prepared,
+            native_location=location,
         )
 
     async def candidate(self, run_id: str, request_id: str) -> Data:
@@ -445,6 +456,8 @@ class FinalOutcomeContinuations:
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                 {"key": "forge:execution-request-admission:" + self.store.schema},
             )
+            if prepared["native_location"] is not None:
+                await prepared["native_location"].assert_current()
             await self.journal._run(run_id)
             row = await self.requests.records.find_by_id(identifier(request_id), lock=LockMode.PESSIMISTIC_WRITE)
             if row is None or not _same(row.data, prepared["ticket"]) or row.status != "needs_reconciliation":
@@ -622,7 +635,10 @@ class FinalOutcomeContinuations:
                 if prepared.digest != p["candidate"]["final_outcome_digest"]:
                     raise ValueError("Known final immutable projection changed")
                 cp = checkpoint_payload(prepared.data["checkpoint"]["payload"])
-                if await workspace_cut(self.store, self.workspace(ticket["run_id"])) != cp.invocation.workspace:
+                actual_source = await workspace_cut(self.store, self.workspace(ticket["run_id"]))
+                if digest(actual_source) != p["candidate"]["source_digest"] or not await source_workspace_matches(
+                    self.store, ticket["run_id"], actual_source, cp.invocation.workspace
+                ):
                     raise ValueError("Known final source changed before claim")
                 async with self.store._unit():
                     locked = await self.journal._run(ticket["run_id"])

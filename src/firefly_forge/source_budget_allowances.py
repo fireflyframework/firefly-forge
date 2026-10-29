@@ -375,6 +375,16 @@ def admission_contract_digest() -> str:
                 "private_identity.py",
                 "product_assistant.py",
                 "product_assistant_runtime.py",
+                "native_location_cli.py",
+                "native_location_files.py",
+                "native_location_maintenance.py",
+                "native_location_models.py",
+                "native_location_projection.py",
+                "native_location_proof.py",
+                "native_location_runtime.py",
+                "runtime_roles.py",
+                "runtime_role_persistence.py",
+                "policies.py",
             )
         }
     )

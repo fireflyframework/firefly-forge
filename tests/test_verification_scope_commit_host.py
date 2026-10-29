@@ -28,6 +28,11 @@ def build_scope_case(tmp_path, monkeypatch):
     prerequisite = tmp_path / "config.private.json"
     prerequisite.write_text('{"version":1}\n')
     monkeypatch.setenv("QA_REUSE_INPUT_FILE", str(prerequisite))
+
+    async def no_location(store):
+        return None
+
+    monkeypatch.setattr(scope, "current_native_location", no_location)
     monkeypatch.setattr(scope, "_roots", lambda *args: [dependencies])
     commands = [dict(argv=["/fictional/python", "-B", "-m", "ruff", "check", "source.py"], timeout=5)]
     declarations = [

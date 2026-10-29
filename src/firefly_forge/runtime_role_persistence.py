@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import BaseEntity, Repository
-from sqlalchemy import String
+from sqlalchemy import String, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,4 +19,13 @@ class ForgeRuntimeTopologyEntity(BaseEntity):
 
 @repository
 class ForgeRuntimeTopologyRepository(Repository[ForgeRuntimeTopologyEntity, UUID]):
-    pass
+    async def native_locations(self) -> list[ForgeRuntimeTopologyEntity]:
+        return list(
+            await self._require_session().scalars(
+                select(ForgeRuntimeTopologyEntity)
+                .where(
+                    ForgeRuntimeTopologyEntity.data["kind"].as_string().startswith("native_location_", autoescape=True)
+                )
+                .order_by(ForgeRuntimeTopologyEntity.data["sequence"].as_integer())
+            )
+        )

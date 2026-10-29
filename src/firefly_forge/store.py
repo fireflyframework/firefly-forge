@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode, SessionProvider
@@ -34,6 +34,10 @@ from firefly_forge.collaboration_persistence import ForgeProductDefinitionReposi
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.migrations import migrate
 from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_commands, configured_commands
+
+if TYPE_CHECKING:
+    from firefly_forge.native_location_runtime import NativeLocationState
+
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
     ForgeDeploymentRepository,
@@ -226,11 +230,16 @@ class Store:
         product_records: ForgeProductDefinitionRepository | None = None,
         campaign_records: ForgeCampaignRepository | None = None,
         campaign_children: ForgeCampaignChildRepository | None = None,
+        existing_only: bool = False,
     ) -> None:
         self.path = path or Path(os.environ.get("FORGE_DATA_DIR", ".forge")) / "factory.db"
-        self.configuration = ConfigurationStore(self.path.parent)
-        self.policies = PolicyCatalog(self.path.parent)
-        self.roles = RoleRegistry(self.path.parent)
+        if existing_only:
+            from firefly_forge.native_location_files import read_storage_identity
+
+            read_storage_identity(self.path.parent)
+        self.configuration = ConfigurationStore(self.path.parent, existing_only=existing_only)
+        self.policies = PolicyCatalog(self.path.parent, existing_only=existing_only)
+        self.roles = RoleRegistry(self.path.parent, existing_only=existing_only)
         self.credential_registry: Callable[[], dict[str, str]] = dict
         self.vault_credential_admission: Callable[[Any], Awaitable[None]] | None = None
         self.vault_source_patch_admission: Callable[[Any], Awaitable[None]] | None = None
@@ -238,6 +247,7 @@ class Store:
         self.task_router: Any = None
         self.framework_knowledge: Any = None
         self.runtime_roles: Any = None
+        self.native_location_state: NativeLocationState | None = None
         self.execution_requests: Any = None
         self.runners: Any = None
         self.connections: Any = None
@@ -248,7 +258,8 @@ class Store:
         self.scm_polling: Any = None
         self.scm_poll_functional: Any = None
         self.scm_resume_authorities: dict[str, Any] = {}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not existing_only:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.schema = schema or os.environ.get("FORGE_DATABASE_SCHEMA", "forge")
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", self.schema):
             raise ValueError("PostgreSQL schema must be a lowercase identifier of at most 63 characters")
@@ -276,7 +287,7 @@ class Store:
     async def stop(self) -> None:
         await self.close()
 
-    async def initialize(self) -> None:
+    async def initialize(self, *, existing_only: bool = False) -> None:
         if self._initialized:
             return
         if self.session_provider is None:
@@ -294,7 +305,16 @@ class Store:
             self.session_provider = SessionProvider(registry)
         assert self.session_provider is not None
         async with self.session_provider.unit() as session:
-            await migrate(session, self.schema)
+            if existing_only:
+                from firefly_forge.migrations import SCHEMA_REVISION
+
+                await session.execute(text(f'SET LOCAL search_path TO "{self.schema}"'))
+                revision = await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations"))
+                topology = await session.scalar(text("SELECT to_regclass('forge_runtime_topology')"))
+                if revision != SCHEMA_REVISION or topology is None:
+                    raise ValueError("Offline maintenance requires the existing current native schema and topology")
+            else:
+                await migrate(session, self.schema)
         self._initialized = True
 
     async def close(self) -> None:

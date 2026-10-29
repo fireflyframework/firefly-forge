@@ -21,7 +21,12 @@ from firefly_forge.source_catalog import _json
 from firefly_forge.store import identifier
 from firefly_forge.verification_models import check_verification_authority
 from firefly_forge.verification_scope import fresh_build_check
-from firefly_forge.verification_scope_attestation import PreparedBuildScope, prepare_build_scope, scope_record
+from firefly_forge.verification_scope_attestation import (
+    PreparedBuildScope,
+    assert_scope_location,
+    prepare_build_scope,
+    scope_record,
+)
 from firefly_forge.verification_source_preparation import (
     PreparedVerificationSource,
     prepare_verification_source,
@@ -204,6 +209,7 @@ async def prepare_verification_reuse(
         if len(commands) > available:
             raise ValueError("No fresh reusable build scope; remaining original command budget is insufficient")
         return None
+    await assert_scope_location(store, old_scope)
     requests = store.execution_requests
     ticket = await requests.get(proof.request_id)
     events = await read_recovery_events(requests, ticket["id"], maximum=LIMITS["journal"])

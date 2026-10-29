@@ -131,22 +131,40 @@ def redact_secrets(value: str, settings: dict[str, str]) -> str:
 
 @service
 class ConfigurationStore:
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, *, existing_only: bool = False) -> None:
         self.directory = directory / "configuration"
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if self.directory.is_symlink():
-            raise ValueError("Configuration directory must be a real directory")
-        self.directory.chmod(0o700)
-        self.path = self.directory / "providers.json"
         self.revisions = self.directory / "revisions"
-        self.revisions.mkdir(exist_ok=True, mode=0o700)
-        if self.revisions.is_symlink():
-            raise ValueError("Revision directory must be a real directory")
-        self.revisions.chmod(0o700)
+        if existing_only:
+            try:
+                for folder in (self.directory, self.revisions):
+                    info = folder.lstat()
+                    if (
+                        folder.resolve() != folder
+                        or not stat.S_ISDIR(info.st_mode)
+                        or info.st_uid != os.getuid()
+                        or stat.S_IMODE(info.st_mode) != 0o700
+                        or getattr(info, "st_flags", 0) & 0x40000000
+                    ):
+                        raise ValueError("Offline maintenance requires existing private configuration directories")
+            except FileNotFoundError:
+                raise ValueError("Offline maintenance requires existing private configuration directories") from None
+        else:
+            self._prepare_directories()
+        self.path = self.directory / "providers.json"
         self.lock = FileLock(str(self.directory / "settings.lock"))
         self._generation_key = str(self.directory.resolve())
         _write_generations.setdefault(self._generation_key, object())
         _settings_generations.setdefault(self._generation_key, object())
+
+    def _prepare_directories(self) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if self.directory.is_symlink():
+            raise ValueError("Configuration directory must be a real directory")
+        self.directory.chmod(0o700)
+        self.revisions.mkdir(exist_ok=True, mode=0o700)
+        if self.revisions.is_symlink():
+            raise ValueError("Revision directory must be a real directory")
+        self.revisions.chmod(0o700)
 
     @property
     def write_generation(self) -> object:

@@ -122,8 +122,8 @@ class PolicySync(BaseModel):
 
 @service
 class PolicyCatalog:
-    def __init__(self, directory: Path) -> None:
-        self.private = ConfigurationStore(directory)
+    def __init__(self, directory: Path, *, existing_only: bool = False) -> None:
+        self.private = ConfigurationStore(directory, existing_only=existing_only)
         self.path = self.private.directory / "policies.json"
 
     @staticmethod

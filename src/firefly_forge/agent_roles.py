@@ -194,8 +194,8 @@ def _default_document() -> RoleDocument:
 
 @service
 class RoleRegistry:
-    def __init__(self, directory: Path) -> None:
-        self.private = ConfigurationStore(directory)
+    def __init__(self, directory: Path, *, existing_only: bool = False) -> None:
+        self.private = ConfigurationStore(directory, existing_only=existing_only)
         self.path = self.private.directory / "roles.json"
         self.credential_registry: Callable[[], dict[str, str]] = dict
 

@@ -20,6 +20,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from firefly_forge.agentic_checkpoint_invocation import runtime_contract
 from firefly_forge.journal import digest
+from firefly_forge.native_location_models import NativeLocationProjectionRecordV1
+from firefly_forge.native_location_projection import current_native_location, project_native_argv
 from firefly_forge.private_identity import private_identity
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.secrets import runtime_environment
@@ -50,8 +52,8 @@ class BuildCheckV1(_Strict):
     wrapped_argv: list[str] = Field(min_length=4)
 
 
-class VerificationScopeV1(_Strict):
-    version: Literal[1] = 1
+class _ScopeFields(_Strict):
+    version: int
     kind: Literal["verification_build_scope"] = "verification_build_scope"
     run_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     handoff_intent_digest: str = Field(pattern=_HEX)
@@ -67,7 +69,6 @@ class VerificationScopeV1(_Strict):
     declaration_digest: str = Field(pattern=_HEX)
     dependency_roots: list[str] = Field(min_length=1)
     scratch: str
-    checks: list[BuildCheckV1] = Field(min_length=1)
 
     @field_validator("version", mode="before")
     @classmethod
@@ -77,10 +78,47 @@ class VerificationScopeV1(_Strict):
         return value
 
 
-def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationScopeV1 | None:
+class VerificationScopeV1(_ScopeFields):
+    version: Literal[1] = 1
+    checks: list[BuildCheckV1] = Field(min_length=1)
+
+
+class BuildCheckV2(BuildCheckV1):
+    physical_argv: list[str] = Field(min_length=1)
+
+
+class VerificationScopeV2(_ScopeFields):
+    version: Literal[2] = 2
+    workspace: str
+    native_location: NativeLocationProjectionRecordV1
+    checks: list[BuildCheckV2] = Field(min_length=1)
+
+
+VerificationScope = VerificationScopeV1 | VerificationScopeV2
+
+
+def _scope(value: Data) -> VerificationScope:
+    model = VerificationScopeV2 if type(value.get("version")) is int and value["version"] == 2 else VerificationScopeV1
+    scope = model.model_validate(value)
+    if _json(scope.model_dump(mode="json")) != _json(value):
+        raise ValueError("Build scope differs from its exact typed native record")
+    return scope
+
+
+async def assert_scope_location(store: Any, scope: VerificationScope) -> None:
+    location = await current_native_location(store)
+    if isinstance(scope, VerificationScopeV2):
+        if location is None or _json(location.record()) != _json(scope.native_location.model_dump(mode="json")):
+            raise ValueError("Verification scope changed its authenticated native location")
+        await location.assert_current()
+    elif location is not None:
+        raise ValueError("A predecessor verification scope cannot authorize a relocated runtime")
+
+
+def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationScope | None:
     records = [e for e in entries if e["kind"] == "verification_build_scope"]
     for record in records:
-        if VerificationScopeV1.model_validate(record["payload"]).run_id != run["id"]:
+        if _scope(record["payload"]).run_id != run["id"]:
             raise ValueError("Build scope belongs to another run")
     if not records:
         return None
@@ -93,7 +131,7 @@ def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationSc
     if len(matching) != 1:
         raise ValueError("Build scope requires one unique witness")
     record, handoff = matching[0], handoffs[0]
-    scope = VerificationScopeV1.model_validate(record["payload"])
+    scope = _scope(record["payload"])
     if (
         scope.run_id != run["id"]
         or scope.source_digest != intent["source_digest"]
@@ -104,15 +142,26 @@ def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationSc
         or len({c.command_index for c in scope.checks}) != len(scope.checks)
     ):
         raise ValueError("Build scope changed its frozen handoff boundary")
+    workspace = Path(intent["workspace"])
+    location = None
+    if isinstance(scope, VerificationScopeV2):
+        location = scope.native_location.model_dump(mode="json")
+        if intent.get("native_location") is not None and _json(intent["native_location"]) != _json(location):
+            raise ValueError("Build scope changed its exact native handoff location record")
+        workspace = Path(project_native_argv(location, run["id"], [intent["workspace"]])[0])
+        if scope.workspace != str(workspace):
+            raise ValueError("Build scope changed its reviewed physical workspace")
     for check in scope.checks:
+        physical = project_native_argv(location, run["id"], check.argv) if location is not None else check.argv
         if (
-            check.command_index > len(run["commands"])
+            (isinstance(check, BuildCheckV2) and check.physical_argv != physical)
+            or check.command_index > len(run["commands"])
             or check.argv != run["commands"][check.command_index - 1]["argv"]
             or check.wrapped_argv
             != wrap_build_argv(
-                check.argv,
+                physical,
                 build_profile(
-                    Path(intent["workspace"]),
+                    workspace,
                     [Path(p) for p in scope.dependency_roots],
                     Path(scope.scratch) / str(check.command_index),
                     fresh_build=fresh_build_check(check.argv),
@@ -126,7 +175,14 @@ def scope_record(run: Data, intent: Data, entries: list[Data]) -> VerificationSc
 def mapped_argv(run: Data, intent: Data, entries: list[Data], index: int) -> list[str]:
     scope = scope_record(run, intent, entries)
     selected = next((c for c in scope.checks if c.command_index == index + 1), None) if scope else None
-    return selected.wrapped_argv if selected else run["commands"][index]["argv"]
+    if selected is not None:
+        return selected.wrapped_argv
+    logical = run["commands"][index]["argv"]
+    if isinstance(scope, VerificationScopeV2):
+        return project_native_argv(scope.native_location.model_dump(mode="json"), run["id"], logical)
+    if intent.get("native_location") is not None:
+        return project_native_argv(intent["native_location"], run["id"], logical)
+    return cast(list[str], logical)
 
 
 def _runtime_boundary_guard(
@@ -392,8 +448,8 @@ def _prerequisite_files(environment: dict[str, str]) -> list[Path]:
 
 @dataclass(frozen=True)
 class PreparedBuildScope:
-    witness: VerificationScopeV1
-    _measure: Callable[[], Awaitable[VerificationScopeV1]]
+    witness: VerificationScope
+    _measure: Callable[[], Awaitable[VerificationScope]]
     _fence: Callable[[], Awaitable[None]]
     _environment: Callable[[], dict[str, str]]
 
@@ -425,6 +481,11 @@ async def prepare_build_scope(
         return None
     from firefly_forge.verification_models import verification_build_declarations
 
+    location = await current_native_location(store)
+    location_record = location.record() if location is not None else None
+    workspace = Path(
+        location.project_argv(run["id"], [intent["workspace"]])[0] if location is not None else intent["workspace"]
+    )
     declared = {item.command_digest for item in verification_build_declarations(run)}
     checks = [
         BuildCheckV1(
@@ -432,7 +493,7 @@ async def prepare_build_scope(
         )
         for index, command in enumerate(run["commands"])
         if (digest(command) in declared or (declared and fresh_build_check(command["argv"])))
-        and (kind := build_check_kind(command["argv"], Path(intent["workspace"]))) is not None
+        and (kind := build_check_kind(command["argv"], workspace)) is not None
     ]
     if not checks:
         return None
@@ -454,9 +515,9 @@ async def prepare_build_scope(
         return hmac.new(key, _json(value), hashlib.sha256).hexdigest()
 
     fences: list[Callable[[], Awaitable[None]]] = []
-    last_value: VerificationScopeV1 | None = None
+    last_value: VerificationScope | None = None
     expected_generation: object | None = None
-    witness: VerificationScopeV1 | None = None
+    witness: VerificationScope | None = None
     captured_environment: dict[str, str] = {}
 
     def environment_identity(environment: dict[str, str]) -> str:
@@ -477,6 +538,10 @@ async def prepare_build_scope(
         return dict(captured_environment)
 
     async def fence() -> None:
+        if witness is None:
+            raise ValueError("Verification build scope has no prepared witness")
+        await assert_scope_location(store, witness)
+
         def scalars() -> None:
             if (
                 witness is None
@@ -491,47 +556,52 @@ async def prepare_build_scope(
         for assert_metadata in list(fences):
             await assert_metadata()
         scalars()
+        await assert_scope_location(store, witness)
 
-    async def measure() -> VerificationScopeV1:
+    async def measure() -> VerificationScope:
         nonlocal fences, last_value, expected_generation, captured_environment
         await current()
         generation = store.configuration.settings_generation
         environment = runtime_environment()
-        roots = _roots(checks, Path(intent["workspace"]), environment, Path(store.path).parent)
+        if location is not None:
+            await location.assert_current()
+        physical_checks = [
+            c.model_copy(update={"argv": project_native_argv(location_record, run["id"], c.argv)})
+            if location_record is not None
+            else c
+            for c in checks
+        ]
+        roots = _roots(physical_checks, workspace, environment, Path(store.path).parent)
         dependencies = await prepare_dependency_capture(
             roots,
             root,
             journal.source_catalog_budget,
             current,
-            validate_path=_runtime_boundary_guard(
-                Path(intent["workspace"]), environment, Path(store.path).parent, roots
-            ),
+            validate_path=_runtime_boundary_guard(workspace, environment, Path(store.path).parent, roots),
         )
-        bound_checks = [
-            c.model_copy(
-                update={
-                    "wrapped_argv": wrap_build_argv(
-                        c.argv,
-                        build_profile(
-                            Path(intent["workspace"]),
-                            roots,
-                            scratch / str(c.command_index),
-                            fresh_build=fresh_build_check(c.argv),
-                        ),
-                    )
-                }
+        bound_checks = []
+        for logical, physical in zip(checks, physical_checks, strict=True):
+            wrapped = wrap_build_argv(
+                physical.argv,
+                build_profile(
+                    workspace, roots, scratch / str(logical.command_index), fresh_build=fresh_build_check(logical.argv)
+                ),
             )
-            for c in checks
-        ]
+            fields = {**logical.model_dump(mode="json"), "wrapped_argv": wrapped}
+            bound_checks.append(
+                BuildCheckV2(**fields, physical_argv=physical.argv)
+                if location_record is not None
+                else BuildCheckV1(**fields)
+            )
         prerequisite_files = await prepare_dependency_capture(
             _prerequisite_files(environment), root, journal.source_catalog_budget, current
         )
-        public_source = await prepare_public_source_cut(Path(intent["workspace"]), root, journal.source_catalog_budget)
+        public_source = await prepare_public_source_cut(workspace, root, journal.source_catalog_budget)
         registry = engine.sandbox.credential_registry()
         settings = store.configuration.load_snapshot(run["config_revision"])
         from firefly_forge.source_budget_allowances import admission_contract_digest
 
-        value = VerificationScopeV1(
+        fields = dict(
             run_id=run["id"],
             handoff_intent_digest=handoff["digest"],
             source_digest=intent["source_digest"],
@@ -551,6 +621,7 @@ async def prepare_build_scope(
                     policy=run.get("policy_snapshot"),
                     tools=run.get("tool_policy_snapshot"),
                     verification_adoption=run.get("verification_adoption"),
+                    **({"native_location": location_record} if location_record is not None else {}),
                 )
             ),
             declaration_digest=intent["reusable_build_declaration_digest"],
@@ -563,8 +634,18 @@ async def prepare_build_scope(
             ),
             dependency_roots=[str(p) for p in roots],
             scratch=str(scratch),
-            checks=bound_checks,
+            checks=[c.model_dump(mode="json") for c in bound_checks],
         )
+        value: VerificationScope = (
+            VerificationScopeV2(
+                **fields,
+                workspace=str(workspace),
+                native_location=NativeLocationProjectionRecordV1.model_validate(location_record),
+            )
+            if location_record is not None
+            else VerificationScopeV1(**fields)
+        )
+        await assert_scope_location(store, value)
         await current()
         if store.configuration.settings_generation is not generation:
             raise ValueError("Verification configuration changed during input capture")

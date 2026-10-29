@@ -867,7 +867,12 @@ class SandboxExecutor:
         if not argv or len(argv) > 64 or (timeout is not None and (type(timeout) is not int or timeout < 1)):
             raise ValueError("Runner command arguments or timeout are invalid")
         bounded_argv(argv)
-        if contains_known_credential(argv, self.credential_registry()):
+        logical_argv = argv
+        from firefly_forge.native_location_projection import runner_location
+
+        argv, location_evidence, location_guard = await runner_location(self.store, run_id, task_id, argv)
+        bounded_argv(argv)
+        if any(contains_known_credential(value, self.credential_registry()) for value in (logical_argv, argv)):
             raise ValueError("Runner arguments cannot contain configured credentials")
         if _browser_input is not None:
             if not _browser or len(_browser_input) > 2_100_000:
@@ -883,6 +888,8 @@ class SandboxExecutor:
         execution_identity: str | None = None
 
         async def admit() -> dict[str, Any]:
+            if location_guard is not None:
+                await location_guard()
             current = await self._admit_execution(run_id, task_id)
             if _invocation_guard is not None:
                 await _invocation_guard()
@@ -896,6 +903,8 @@ class SandboxExecutor:
         async with self._run_locks[run_id], self._capacity:
             run = await admit()
             snapshot = run.get("sandbox_snapshot") or capture_sandbox(None)
+            if location_evidence is not None and snapshot.get("mode") != "host":
+                raise ValueError("Native physical relocation requires its explicitly supported trusted host runner")
             if _diagnostic_snapshot is not None:
                 from firefly_forge.diagnostic_recipes import profile_configuration
 
@@ -911,6 +920,8 @@ class SandboxExecutor:
                     run_id, workspace, directory, argv, timeout, task_id, ordinal=ordinal
                 )
             config = validate_sandbox_snapshot(snapshot)
+            if location_evidence is not None and (config.mode != "host" or config.pool_binding is not None):
+                raise ValueError("Native physical relocation requires its explicitly supported trusted host runner")
             from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
 
             duration = snapshot["configuration"].get("work_duration")
@@ -952,6 +963,8 @@ class SandboxExecutor:
                 "timeout": work_timeout,
                 "git_root": str(git_root) if git_root else None,
             }
+            if location_evidence is not None:
+                request["native_location"] = location_evidence
             if config.workspace_transport == "archive":
                 if not self.transfer_image:
                     raise ValueError("Archive execution requires an administrator-configured pinned transfer image")

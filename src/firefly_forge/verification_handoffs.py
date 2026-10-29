@@ -121,6 +121,11 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         "cwd": (run.get("component_snapshot") or {}).get("path", "."),
     }
     declarations = verification_build_declarations(run)
+    from firefly_forge.native_location_projection import native_projection_record
+
+    location = native_projection_record(store)
+    if location is not None:
+        intent["native_location"] = location
     if declarations:
         intent["reusable_build_declaration_digest"] = digest(
             {"checks": [item.model_dump(mode="json") for item in declarations]}
@@ -491,6 +496,10 @@ class VerificationHandoffs:
             await ProjectAccess(self.store).authorize_execution(run)
             await self.store.assert_campaign_current(run)
             check_verification_authority(self.store, run, intent)
+
+            from firefly_forge.native_location_projection import assert_handoff_location
+
+            await assert_handoff_location(self.store, run_id, intent)
 
         prepared = current_verification_source(Path(intent["workspace"]))
         if prepared is not None:

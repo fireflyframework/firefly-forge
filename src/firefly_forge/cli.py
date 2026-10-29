@@ -17,6 +17,7 @@ import click
 from firefly_forge import __version__
 from firefly_forge.client import ForgeClient
 from firefly_forge.models import NewWorkCommand, RepositoryInput, RunInput
+from firefly_forge.native_location_cli import native_locations
 
 if TYPE_CHECKING:
     from firefly_forge.model_profiles import ModelProfileInput
@@ -34,6 +35,9 @@ def display(value: Any) -> None:
 @click.version_option(__version__)
 def main() -> None:
     """Firefly Forge: turn product briefs into verified implementations."""
+
+
+main.add_command(native_locations)
 
 
 @main.group("final-outcome-continuations")

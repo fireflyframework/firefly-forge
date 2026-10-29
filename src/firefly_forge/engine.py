@@ -2263,6 +2263,8 @@ class Engine:
             )
         if _diagnostic_snapshot is not None:
             raise ValueError("Isolated diagnostics cannot execute without their runner")
+        if getattr(self.store, "native_location_state", None) is not None:
+            raise ValueError("Relocated execution requires its native runner and physical dispatch receipt")
         if run.get("sandbox_snapshot", {}).get("mode") in {"docker", "pool"}:
             raise ValueError("The selected Docker runner is unavailable; execution cannot fall back to the host")
         return await execute(argv, directory, timeout)

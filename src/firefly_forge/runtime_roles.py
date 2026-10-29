@@ -86,6 +86,7 @@ class RuntimeRoles:
         mode = "combined" if self.role == "combined" else "split"
         storage = hashlib.sha256(str(self.store.path.parent.resolve()).encode()).hexdigest()
         owner_uid = os.getuid() if hasattr(os, "getuid") else None
+        relocated = None
         async with self.store._unit() as session:
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -112,42 +113,69 @@ class RuntimeRoles:
             else:
                 if row.mode != mode:
                     raise RuntimeError("This schema has another immutable topology; change it only through maintenance")
-                if row.data.get("storage_binding") != storage or row.data.get("owner_uid") != owner_uid:
-                    raise RuntimeError("All runtime nodes must use the same private storage root")
-                attestation: ForgeRuntimeTopologyEntity | None = row
-                if "storage_identity" not in row.data:
-                    attestation = await self.records.find_by_id(STORAGE_ATTESTATION_ID, lock=LockMode.PESSIMISTIC_WRITE)
-                    if attestation is None:
-                        fenced = await session.scalar(
-                            text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key,0))"),
-                            {"key": "forge:execution:" + self.store.schema},
+                locations = await self.records.native_locations()
+                if locations:
+                    from pathlib import Path
+
+                    from firefly_forge.native_location_files import read_storage_identity
+                    from firefly_forge.native_location_maintenance import (
+                        database_fingerprint,
+                        native_location_rows,
+                        topology_base,
+                    )
+                    from firefly_forge.native_location_runtime import resolve_native_location
+
+                    history = native_location_rows(locations)
+                    identity = read_storage_identity(self.store.path.parent)
+                    base = topology_base(row, await self.records.find_by_id(STORAGE_ATTESTATION_ID))
+                    fingerprint = await database_fingerprint(
+                        session, self.store.schema, Path(history[-1]["candidate"]["postgres_data_directory"])
+                    )
+                    relocated = resolve_native_location(base, history, identity, fingerprint)
+                    if relocated.storage_binding != storage:
+                        raise RuntimeError("Runtime storage is not the exclusive completed native location leaf")
+                else:
+                    if row.data.get("storage_binding") != storage or row.data.get("owner_uid") != owner_uid:
+                        raise RuntimeError("All runtime nodes must use the same private storage root")
+                    attestation: ForgeRuntimeTopologyEntity | None = row
+                    if "storage_identity" not in row.data:
+                        attestation = await self.records.find_by_id(
+                            STORAGE_ATTESTATION_ID, lock=LockMode.PESSIMISTIC_WRITE
                         )
-                        if not fenced:
-                            raise RuntimeError("Stop all legacy runtime nodes before adopting private storage identity")
-                        attestation = ForgeRuntimeTopologyEntity(
-                            id=STORAGE_ATTESTATION_ID,
-                            mode=mode,
-                            data={
-                                "revision": 1,
-                                "topology_id": TOPOLOGY_ID.hex,
-                                "mode": mode,
-                                "storage_binding": storage,
-                                "owner_uid": owner_uid,
-                                "storage_identity": self._storage_identity(),
-                                "created_at": now(),
-                            },
-                        )
-                        await self.records.save(attestation)
-                    if (
-                        attestation.mode != mode
-                        or attestation.data.get("topology_id") != TOPOLOGY_ID.hex
-                        or attestation.data.get("storage_binding") != storage
-                        or attestation.data.get("owner_uid") != owner_uid
-                    ):
-                        raise RuntimeError("Private storage attestation does not match the immutable topology")
-                assert attestation is not None
-                if attestation.data.get("storage_identity") != self._storage_identity():
-                    raise RuntimeError("Runtime nodes have different retained private storage identity")
+                        if attestation is None:
+                            fenced = await session.scalar(
+                                text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key,0))"),
+                                {"key": "forge:execution:" + self.store.schema},
+                            )
+                            if not fenced:
+                                raise RuntimeError(
+                                    "Stop all legacy runtime nodes before adopting private storage identity"
+                                )
+                            attestation = ForgeRuntimeTopologyEntity(
+                                id=STORAGE_ATTESTATION_ID,
+                                mode=mode,
+                                data={
+                                    "revision": 1,
+                                    "topology_id": TOPOLOGY_ID.hex,
+                                    "mode": mode,
+                                    "storage_binding": storage,
+                                    "owner_uid": owner_uid,
+                                    "storage_identity": self._storage_identity(),
+                                    "created_at": now(),
+                                },
+                            )
+                            await self.records.save(attestation)
+                        if (
+                            attestation.mode != mode
+                            or attestation.data.get("topology_id") != TOPOLOGY_ID.hex
+                            or attestation.data.get("storage_binding") != storage
+                            or attestation.data.get("owner_uid") != owner_uid
+                        ):
+                            raise RuntimeError("Private storage attestation does not match the immutable topology")
+                    assert attestation is not None
+                    if attestation.data.get("storage_identity") != self._storage_identity():
+                        raise RuntimeError("Runtime nodes have different retained private storage identity")
+        self.store.native_location_state = relocated
         self.started = True
 
     async def stop(self) -> None:
