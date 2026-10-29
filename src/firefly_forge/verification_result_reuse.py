@@ -96,8 +96,9 @@ class PreparedVerificationReuse:
             raise ValueError("Verification reuse changed its original final-result admission")
 
     async def revalidate(self) -> None:
-        await self.source.revalidate(assert_current=self.current)
         await self.scope.revalidate()
+        await self.source.revalidate(assert_current=self.current)
+        await self.scope.fence()
         await self.current()
 
     async def begin(self) -> None:
@@ -105,6 +106,7 @@ class PreparedVerificationReuse:
         async with self.engine.store._unit():
             await self.engine.journal._run(self.run["id"])
             await self.current()
+            await self.scope.fence()
             entries = await self.engine.journal.entries(self.run["id"])
             existing = [
                 e for e in entries if e["kind"] == "verification_reuse_intent" and e["idempotency_key"] == self.key
@@ -118,6 +120,8 @@ class PreparedVerificationReuse:
                     self.run["id"], "verify", self.key, "verification_reuse_intent", self.payload
                 )
             self.source.fence()
+            await self.scope.fence()
+            await self.current()
 
     def check(self, index: int) -> Data | None:
         value = self.checks.get(index)
@@ -131,6 +135,7 @@ class PreparedVerificationReuse:
         if self.record is None:
             raise ValueError("Verification reuse has no committed intent")
         await self.current(completed=True)
+        await self.scope.fence()
         self.source.fence()
         entries = await self.engine.journal.entries(self.run["id"])
         receipts = [
@@ -154,6 +159,8 @@ class PreparedVerificationReuse:
         if old and (len(old) != 1 or _json(old[0]["payload"]) != _json(payload)):
             raise ValueError("Verification reuse receipt cannot be replaced")
         await self.engine.journal._append(self.run["id"], "verify", self.key, "verification_reuse_receipt", payload)
+        await self.scope.fence()
+        await self.current(completed=True)
 
 
 async def prepare_verification_reuse(

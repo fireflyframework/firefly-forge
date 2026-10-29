@@ -8,15 +8,18 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 _BUILD_SCRATCH: ContextVar[Path | None] = ContextVar("forge_build_scratch", default=None)
+_BUILD_ENVIRONMENT: ContextVar[dict[str, str] | None] = ContextVar("forge_build_environment", default=None)
 
 
 @contextmanager
-def build_execution_environment(scratch: Path) -> Iterator[None]:
+def build_execution_environment(scratch: Path, environment: dict[str, str] | None = None) -> Iterator[None]:
     token = _BUILD_SCRATCH.set(scratch)
+    environment_token = _BUILD_ENVIRONMENT.set(dict(environment) if environment is not None else None)
     try:
         yield
     finally:
         _BUILD_SCRATCH.reset(token)
+        _BUILD_ENVIRONMENT.reset(environment_token)
 
 
 def container_python_environment() -> dict[str, str]:
@@ -26,6 +29,9 @@ def container_python_environment() -> dict[str, str]:
 @contextmanager
 def execution_environment(environment: dict[str, str]) -> Iterator[dict[str, str]]:
     scratch = _BUILD_SCRATCH.get()
+    captured = _BUILD_ENVIRONMENT.get()
+    if captured is not None:
+        environment = dict(captured)
     if scratch is not None:
         environment = {
             **environment,

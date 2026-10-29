@@ -9,7 +9,7 @@ import json
 import math
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from pyfly.container import service
@@ -1717,11 +1717,20 @@ class Journal:
             check_current(run.data)
             return copy.deepcopy(state)
 
-    async def verification_finish(self, run_id: str, intent: Data, *, check_current: Callable[[Data], None]) -> Data:
+    async def verification_finish(
+        self,
+        run_id: str,
+        intent: Data,
+        *,
+        check_current: Callable[[Data], None],
+        assert_inputs: Callable[[], Awaitable[None]] | None = None,
+    ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if assert_inputs is not None:
+                await assert_inputs()
             state = run.data.get("verification_handoff", {})
             if (
                 state.get("id") != intent["id"]
@@ -1810,6 +1819,8 @@ class Journal:
             await self.store.assert_ownership()
             await ProjectAccess(self.store).authorize_execution(run.data)
             check_current(run.data)
+            if assert_inputs is not None:
+                await assert_inputs()
             return copy.deepcopy(state)
 
     async def verification_assert_current(self, run_id: str) -> None:

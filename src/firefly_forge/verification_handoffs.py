@@ -401,6 +401,7 @@ class VerificationHandoffs:
                         await self._authorize(run_id, intent)
                         if build_scope is not None:
                             await build_current()
+                            await build_scope.fence()
                         directory = self.engine.component_directory(run, workspace)
                         from firefly_forge.execution_environment import build_execution_environment
 
@@ -425,7 +426,11 @@ class VerificationHandoffs:
                             and any(any((scratch / part).iterdir()) for part in ("home", "tmp"))
                         ):
                             raise ValueError("A new reusable check requires its empty owned scratch inputs")
-                        with build_execution_environment(scratch) if scratch else nullcontext():
+                        with (
+                            build_execution_environment(scratch, build_scope.environment())
+                            if scratch is not None and build_scope is not None
+                            else nullcontext()
+                        ):
                             await self.engine.sandbox.execute(
                                 run_id,
                                 workspace,
@@ -437,6 +442,8 @@ class VerificationHandoffs:
                                 git_root=workspace,
                             )
                         await self._authorize(run_id, intent)
+                        if build_scope is not None:
+                            await build_scope.fence()
                         await self.journal.verification_command(
                             run_id,
                             intent,
@@ -446,11 +453,21 @@ class VerificationHandoffs:
                     await self._authorize(run_id, intent)
                     if build_scope is not None:
                         await build_scope.revalidate()
-                    await self.journal.verification_finish(
-                        run_id,
-                        intent,
-                        check_current=lambda current: check_verification_cut(self.store, current, intent),
-                    )
+                        await self._authorize(run_id, intent)
+                        await build_scope.fence()
+                    if build_scope is None:
+                        await self.journal.verification_finish(
+                            run_id,
+                            intent,
+                            check_current=lambda current: check_verification_cut(self.store, current, intent),
+                        )
+                    else:
+                        await self.journal.verification_finish(
+                            run_id,
+                            intent,
+                            check_current=lambda current: check_verification_cut(self.store, current, intent),
+                            assert_inputs=build_scope.fence,
+                        )
                 await self._authorize(run_id, intent)
                 await self.journal.resume(
                     run_id,

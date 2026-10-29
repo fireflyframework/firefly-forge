@@ -21,8 +21,8 @@ from firefly_forge.journal import digest
 from firefly_forge.private_identity import private_identity
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.secrets import runtime_environment
-from firefly_forge.source_catalog import _json
-from firefly_forge.verification_dependencies import dependency_fingerprint
+from firefly_forge.source_catalog import _json, _private
+from firefly_forge.verification_dependencies import prepare_dependency_capture, prepare_public_source_cut
 from firefly_forge.verification_scope import SANDBOX_EXEC, build_check_kind, build_profile, wrap_build_argv
 from firefly_forge.verification_source_preparation import verification_catalog_root
 
@@ -120,25 +120,158 @@ def mapped_argv(run: Data, intent: Data, entries: list[Data], index: int) -> lis
     return selected.wrapped_argv if selected else run["commands"][index]["argv"]
 
 
-def _roots(checks: list[BuildCheckV1], workspace: Path, environment: dict[str, str]) -> list[Path]:
+def _runtime_boundary_guard(
+    workspace: Path,
+    environment: dict[str, str],
+    private_state: Path | None,
+    runtime_roots: list[Path] | None = None,
+) -> Callable[[Path, bool], None]:
+    owners = {Path.home(), Path(environment.get("HOME", str(Path.home())))}
+    boundaries = owners | {workspace} | ({private_state} if private_state is not None else set())
+    private = {
+        owner / name
+        for owner in owners
+        for name in (".ssh", ".codex", ".claude", ".aws", ".azure", ".kube", ".gnupg", ".config")
+    }
+
+    def aliases(path: Path) -> set[Path]:
+        return {Path(os.path.abspath(path)), path.resolve()}
+
+    def identity(path: Path) -> tuple[int, int] | None:
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            return None
+        return info.st_dev, info.st_ino
+
+    workspace_paths = aliases(workspace)
+    state_paths = aliases(private_state) if private_state is not None else set()
+    runtime_paths = {alias for root in runtime_roots or [] for alias in aliases(root)}
+
+    def relative(path: Path, root: Path) -> Path | None:
+        value, boundary = str(path), str(root)
+        if value == boundary:
+            return Path(".")
+        if value.startswith(boundary + os.sep):
+            return Path(value[len(boundary) + 1 :])
+        folded_value, folded_boundary = value.casefold(), boundary.casefold()
+        if folded_value != folded_boundary and not folded_value.startswith(folded_boundary + os.sep):
+            return None
+        prefix = Path(*path.parts[: len(root.parts)])
+        prefix_id = identity(prefix)
+        if prefix_id is None or prefix_id != identity(root):
+            return None
+        return path.relative_to(prefix)
+
+    def private_name(path: Path, *, full: bool) -> bool:
+        def selected(name: str) -> bool:
+            return (
+                _private(name)
+                if full
+                else (
+                    name
+                    in {
+                        ".git",
+                        ".codex",
+                        ".claude",
+                        ".forge",
+                        ".ssh",
+                        ".npmrc",
+                        ".pypirc",
+                        "credentials.json",
+                        "id_rsa",
+                        "id_ed25519",
+                    }
+                    or name == ".env"
+                    or (name.startswith(".env.") and name not in {".env.example", ".env.sample", ".env.template"})
+                )
+            )
+
+        if selected(path.name):
+            return True
+        folded = path.with_name(path.name.casefold())
+        return selected(folded.name) and identity(path) is not None and identity(path) == identity(folded)
+
+    def allowed(path: Path, root: bool) -> None:
+        lexical = Path(os.path.abspath(path)) if root else path
+        workspace_matches = [value for folder in workspace_paths if (value := relative(lexical, folder)) is not None]
+        runtime_matches = [value for folder in runtime_paths if (value := relative(lexical, folder)) is not None]
+        in_workspace = bool(workspace_matches)
+        if not in_workspace and any(relative(lexical, folder) is not None for folder in state_paths):
+            raise ValueError("Build runtime inputs cannot read private application state")
+        in_runtime = bool(runtime_matches)
+        full_private = in_workspace and runtime_roots is not None and not in_runtime
+        matches = runtime_matches or workspace_matches
+        anchor = None
+        if matches:
+            closest = min(matches, key=lambda item: len(item.parts))
+            anchor = lexical.parents[len(closest.parts) - 1] if closest.parts else lexical
+        if private_name(lexical, full=False):
+            raise ValueError("Build runtime inputs cannot read private configuration")
+        for part in (lexical, *lexical.parents):
+            if part == anchor:
+                break
+            if part.name and private_name(part, full=full_private):
+                raise ValueError("Build runtime inputs cannot read private source or runtime configuration")
+        if not root:
+            return
+        # Root/target boundaries use current native identity; ordinary entries already
+        # descend through the capture's no-follow directory descriptors.
+        candidates = aliases(path)
+        ancestors = {
+            parent for boundary in boundaries for alias in aliases(boundary) for parent in (alias, *alias.parents)
+        }
+        private_roots = {alias for folder in private for alias in aliases(folder)}
+        ancestor_ids = {native_id for parent in ancestors if (native_id := identity(parent)) is not None}
+        private_ids = {native_id for folder in private_roots if (native_id := identity(folder)) is not None}
+        parent_ids = {
+            native_id
+            for candidate in candidates
+            for parent in (candidate, *candidate.parents)
+            if (native_id := identity(parent)) is not None
+        }
+        state_ids = {native_id for folder in state_paths if (native_id := identity(folder)) is not None}
+        workspace_ids = {native_id for folder in workspace_paths if (native_id := identity(folder)) is not None}
+        if (
+            any(candidate in ancestors or identity(candidate) in ancestor_ids for candidate in candidates)
+            or any(candidate.is_relative_to(folder) for candidate in candidates for folder in private_roots)
+            or bool(parent_ids & private_ids)
+            or (bool(parent_ids & state_ids) and not parent_ids & workspace_ids)
+        ):
+            raise ValueError("Build runtime roots cannot grant private owner, source or state ancestors")
+
+    return allowed
+
+
+def _roots(
+    checks: list[BuildCheckV1], workspace: Path, environment: dict[str, str], private_state: Path | None = None
+) -> list[Path]:
+    allowed = _runtime_boundary_guard(workspace, environment, private_state)
     roots: set[Path] = {SANDBOX_EXEC}
     for check in checks:
         executable = Path(check.argv[0])
         if not executable.is_absolute():
             found = shutil.which(check.argv[0], path=environment.get("PATH"))
-            if found is None:
+            if found is None or not Path(found).is_absolute():
                 raise ValueError("A reusable build command requires its available explicit executable")
             executable = Path(found)
         roots.add(executable)
         if check.kind == "python_static":
             prefix = executable.parent.parent
-            roots.add(
-                prefix / "pyvenv.cfg" if (prefix / "pyvenv.cfg").is_file() else executable.resolve().parent.parent
-            )
+            base = executable.resolve().parent.parent
+            allowed(base, True)
+            if not any(
+                (library / "os.py").is_file() and (library / "encodings" / "__init__.py").is_file()
+                for library in (base / "lib").glob("python[0-9]*")
+            ):
+                raise ValueError("A reusable Python check requires a recognized local runtime layout")
+            roots.add(prefix / "pyvenv.cfg" if (prefix / "pyvenv.cfg").is_file() else base)
             if (prefix / "lib").is_dir():
                 roots.add(prefix / "lib")
+            if (prefix / "bin").is_dir():
+                roots.add(prefix / "bin")
             # The interpreter's own library is a separate input when a venv uses a linked binary.
-            roots.add(executable.resolve().parent.parent)
+            roots.add(base)
         else:
             roots.add(executable.resolve().parent.parent)
             node = shutil.which("node", path=environment.get("PATH"))
@@ -146,7 +279,28 @@ def _roots(checks: list[BuildCheckV1], workspace: Path, environment: dict[str, s
                 raise ValueError("A reusable Node build requires its current PATH-selected Node executable")
             roots.add(Path(node).resolve().parent.parent)
             roots.add(workspace / check.argv[2] / "node_modules")
-    return sorted(roots | {p.resolve(strict=True) for p in roots})
+    aliases: set[Path] = set()
+    pending, visited = list(roots), set()
+    while pending:
+        root = pending.pop()
+        if root in visited:
+            continue
+        visited.add(root)
+        component = Path(root.anchor)
+        for part in root.parts[1:]:
+            component /= part
+            if component.is_symlink():
+                aliases.add(component)
+                target = component.readlink()
+                target = target if target.is_absolute() else component.parent / target
+                target = Path(os.path.normpath(target))
+                if target not in visited:
+                    pending.append(target)
+                aliases.add(target)
+    resolved = roots | aliases | {p.resolve(strict=True) for p in roots | aliases}
+    for path in resolved:
+        allowed(path, True)
+    return sorted(resolved)
 
 
 def _prerequisite_files(environment: dict[str, str]) -> list[Path]:
@@ -164,6 +318,14 @@ def _prerequisite_files(environment: dict[str, str]) -> list[Path]:
 class PreparedBuildScope:
     witness: VerificationScopeV1
     _measure: Callable[[], Awaitable[VerificationScopeV1]]
+    _fence: Callable[[], Awaitable[None]]
+    _environment: Callable[[], dict[str, str]]
+
+    def environment(self) -> dict[str, str]:
+        return self._environment()
+
+    async def fence(self) -> None:
+        await self._fence()
 
     async def revalidate(self) -> None:
         if await self._measure() != self.witness:
@@ -215,11 +377,60 @@ async def prepare_build_scope(
     def sealed(value: Any) -> str:
         return hmac.new(key, _json(value), hashlib.sha256).hexdigest()
 
+    fences: list[Callable[[], Awaitable[None]]] = []
+    last_value: VerificationScopeV1 | None = None
+    expected_generation: object | None = None
+    witness: VerificationScopeV1 | None = None
+    captured_environment: dict[str, str] = {}
+
+    def environment_identity(environment: dict[str, str]) -> str:
+        return sealed(
+            {
+                **environment,
+                "HOME": "per-command-private-scratch",
+                "TMPDIR": "per-command-private-scratch",
+                "MYPY_CACHE_DIR": "per-command-private-scratch/mypy-cache",
+                "RUFF_CACHE_DIR": "per-command-private-scratch/ruff-cache",
+                "npm_config_cache": "per-command-private-scratch/npm-cache",
+            }
+        )
+
+    def execution_environment() -> dict[str, str]:
+        if witness is None or last_value != witness:
+            raise ValueError("Build execution requires its exact prepared environment")
+        return dict(captured_environment)
+
+    async def fence() -> None:
+        def scalars() -> None:
+            if (
+                witness is None
+                or last_value != witness
+                or store.configuration.settings_generation is not expected_generation
+                or environment_identity(runtime_environment()) != witness.environment_digest
+                or sealed(engine.sandbox.credential_registry()) != witness.credential_digest
+            ):
+                raise ValueError("Verification scalar inputs changed before native acceptance")
+
+        scalars()
+        for assert_metadata in list(fences):
+            await assert_metadata()
+        scalars()
+
     async def measure() -> VerificationScopeV1:
+        nonlocal fences, last_value, expected_generation, captured_environment
         await current()
+        generation = store.configuration.settings_generation
         environment = runtime_environment()
-        roots = _roots(checks, Path(intent["workspace"]), environment)
-        dependencies = await dependency_fingerprint(roots, root, journal.source_catalog_budget, current)
+        roots = _roots(checks, Path(intent["workspace"]), environment, Path(store.path).parent)
+        dependencies = await prepare_dependency_capture(
+            roots,
+            root,
+            journal.source_catalog_budget,
+            current,
+            validate_path=_runtime_boundary_guard(
+                Path(intent["workspace"]), environment, Path(store.path).parent, roots
+            ),
+        )
         bound_checks = [
             c.model_copy(
                 update={
@@ -230,11 +441,14 @@ async def prepare_build_scope(
             )
             for c in checks
         ]
-        prerequisite_files = await dependency_fingerprint(
+        prerequisite_files = await prepare_dependency_capture(
             _prerequisite_files(environment), root, journal.source_catalog_budget, current
         )
+        public_source = await prepare_public_source_cut(Path(intent["workspace"]), root, journal.source_catalog_budget)
         registry = engine.sandbox.credential_registry()
         settings = store.configuration.load_snapshot(run["config_revision"])
+        from firefly_forge.source_budget_allowances import admission_contract_digest
+
         value = VerificationScopeV1(
             run_id=run["id"],
             handoff_intent_digest=handoff["digest"],
@@ -242,22 +456,14 @@ async def prepare_build_scope(
             commands_digest=intent["commands_digest"],
             scope_digest=intent["scope_digest"],
             runtime_contract=runtime_contract(),
-            dependency_digest=sealed(dependencies),
-            environment_digest=sealed(
-                {
-                    **environment,
-                    "HOME": "per-command-private-scratch",
-                    "TMPDIR": "per-command-private-scratch",
-                    "MYPY_CACHE_DIR": "per-command-private-scratch/mypy-cache",
-                    "RUFF_CACHE_DIR": "per-command-private-scratch/ruff-cache",
-                    "npm_config_cache": "per-command-private-scratch/npm-cache",
-                }
-            ),
+            dependency_digest=sealed(dependencies.digest),
+            environment_digest=environment_identity(environment),
             credential_digest=sealed(registry),
             prerequisite_digest=sealed(
                 dict(
                     configuration=settings,
-                    neutral_file_inputs=prerequisite_files,
+                    admission_contract=admission_contract_digest(),
+                    neutral_file_inputs=prerequisite_files.digest,
                     sandbox=run["sandbox_snapshot"],
                     execution_actor=run.get("execution_actor"),
                     policy=run.get("policy_snapshot"),
@@ -278,9 +484,16 @@ async def prepare_build_scope(
             checks=bound_checks,
         )
         await current()
+        if store.configuration.settings_generation is not generation:
+            raise ValueError("Verification configuration changed during input capture")
+        fences = [dependencies.assert_current, prerequisite_files.assert_current, public_source.assert_current]
+        last_value = value
+        expected_generation = generation
+        captured_environment = dict(environment)
         return value
 
-    return PreparedBuildScope(await measure(), measure)
+    witness = await measure()
+    return PreparedBuildScope(witness, measure, fence, execution_environment)
 
 
 async def save_build_scope(journal: Any, intent: Data, prepared: PreparedBuildScope, current: Authority) -> Data:
@@ -295,6 +508,7 @@ async def save_build_scope(journal: Any, intent: Data, prepared: PreparedBuildSc
         run = await journal.store.get_run(payload["run_id"])
         await ProjectAccess(journal.store).authorize_execution(run)
         check_verification_authority(journal.store, run, intent)
+        await prepared.fence()
         entries = await journal.entries(run["id"])
         existing = [
             e
@@ -316,4 +530,5 @@ async def save_build_scope(journal: Any, intent: Data, prepared: PreparedBuildSc
         result = await journal._append(
             run["id"], "implement", intent["id"] + ":build-scope", "verification_build_scope", payload
         )
+        await prepared.fence()
         return cast(Data, result)

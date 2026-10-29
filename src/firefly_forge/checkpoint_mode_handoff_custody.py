@@ -128,13 +128,13 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         },
     }
     if (
-        answer["payload"] != response
+        digest(answer["payload"]) != digest(response)
         or response.get("id") != handoff_id
         or response.get("request_id") != intent["request_id"]
         or response.get("source") != "factory_verification"
         or response.get("verification_handoff_id") != handoff_id
         or response.get("actor") != "Forge verification"
-        or response.get("responding_actor") != responding_actor
+        or digest(response.get("responding_actor")) != digest(responding_actor)
         or WorkerResponse.model_validate({k: response[k] for k in ("id", "actor", "answer")}).answer
         != response["answer"]
         or resume["payload"].get("automatic") is not True
@@ -142,15 +142,17 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         or resume["task_id"] != resume["kind"]
         or resume["payload"].get("config_revision") != run["config_revision"]
         or implementation["payload"].get("config_revision") != run["config_revision"]
-        or coding["payload"]
-        != {
-            "version": 1,
-            "id": handoff_id,
-            "request_id": intent["request_id"],
-            "parent_round": intent["parent_round"],
-            "next_round": intent["parent_round"] + 1,
-            "provider_digest": intent["provider_digest"],
-        }
+        or digest(coding["payload"])
+        != digest(
+            {
+                "version": 1,
+                "id": handoff_id,
+                "request_id": intent["request_id"],
+                "parent_round": intent["parent_round"],
+                "next_round": intent["parent_round"] + 1,
+                "provider_digest": intent["provider_digest"],
+            }
+        )
         or not handoff["sequence"]
         < answer["sequence"]
         < outcome["sequence"]
@@ -175,7 +177,7 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
             raise ValueError("Verification command lost its unique native execution")
         row = matches[0]
         value = _canonical(row, entries, run["id"])
-        if value != values.get(row.id.hex) or not _complete(row, value):
+        if digest({"value": value}) != digest({"value": values.get(row.id.hex)}) or not _complete(row, value):
             raise ValueError("Verification requires canonical known completion and cleanup")
         frozen = value["request"]
         invocation = frozen["request"]
@@ -214,17 +216,19 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         record = _one(entries, "verification_handoff_command", handoff_id + ":" + str(index))
         exit_code = value["effects"]["start"]["evidence"]["exit_code"]
         if (
-            record["payload"]
-            != {
-                "version": 1,
-                "id": handoff_id,
-                "request_id": intent["request_id"],
-                "command_index": index + 1,
-                "ordinal": ordinal,
-                "execution_id": row.id.hex,
-                "exit_code": exit_code,
-                "outcome": "completed",
-            }
+            digest(record["payload"])
+            != digest(
+                {
+                    "version": 1,
+                    "id": handoff_id,
+                    "request_id": intent["request_id"],
+                    "command_index": index + 1,
+                    "ordinal": ordinal,
+                    "execution_id": row.id.hex,
+                    "exit_code": exit_code,
+                    "outcome": "completed",
+                }
+            )
             or not handoff["sequence"] < effects[0]["sequence"]
             or not all(a["sequence"] < b["sequence"] for a, b in zip(effects, effects[1:], strict=False))
             or not effects[-1]["sequence"] < record["sequence"] < answer["sequence"]
@@ -259,8 +263,8 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         "failed_commands": failures,
     }
     if (
-        state != expected_state
-        or outcome["payload"] != state
+        digest(state) != digest(expected_state)
+        or digest(outcome["payload"]) != digest(state)
         or any(type(state[k]) is not int for k in ("commands_count", "completed_commands", "failed_commands"))
     ):
         raise ValueError("Completed verification projection differs from its canonical outcome")

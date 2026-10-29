@@ -25,7 +25,7 @@ from firefly_forge.workspace_tools import WorkspaceTools
 pytest_plugins = ["test_invalid_read_continuity_native"]
 
 
-async def queued_build(c, monkeypatch, *, mixed):
+async def queued_build(c, monkeypatch, *, mixed, expect_held=False, failed_check=False):
     python = sys.executable
     commands = [
         dict(
@@ -61,6 +61,8 @@ def test_current_database_is_fresh():
         config.chmod(0o600)
         monkeypatch.setenv("QA_REUSE_INPUT_FILE", str(config))
         commands[0] = dict(argv=[python, "-B", "-m", "pytest", "-p", "no:cacheprovider", "-q", str(folder)], timeout=20)
+    if failed_check:
+        commands[-1]["argv"][-2] = "INVALID_RULE"
     await c.store.update(c.run_id, commands=commands, repair_budget=1)
     failed = await seed_consumed_final(c, monkeypatch)
     enable_final(c)
@@ -111,11 +113,15 @@ def test_current_database_is_fresh():
     monkeypatch.setattr(c.journal, "verification_hold", held)
     await handoff.execute(c.run_id)
     queued = await c.store.get_run(c.run_id)
+    if expect_held:
+        assert queued["verification_handoff"]["status"] == "held", holds
+        return calls, commands, copy.deepcopy(queued), copy.deepcopy(await c.journal.entries(c.run_id))
     assert queued["status"] == "queued" and queued["verification_handoff"]["status"] == "completed", holds
     assert len(calls) == 7 and len(await c.journal.sandbox_executions(c.run_id)) == 18
     assert all(argv[0] == "/usr/bin/sandbox-exec" for argv in calls[(1 if mixed else 0) :])
     observed = [r["effects"]["start"]["evidence"] for r in await c.journal.sandbox_executions(c.run_id)]
-    assert all(e["exit_code"] == 0 for e in observed), [e for e in observed if e["exit_code"] != 0]
+    assert sum(e["exit_code"] != 0 for e in observed) == int(failed_check), [e for e in observed if e["exit_code"] != 0]
+    assert queued["verification_handoff"]["failed_commands"] == int(failed_check)
     return calls, commands, copy.deepcopy(queued), copy.deepcopy(await c.journal.entries(c.run_id))
 
 

@@ -19,8 +19,8 @@ running application's OpenAPI document is the authoritative schema.
 
 New runs freeze `settings.automatic_verification` from `GET /tools/policy`.
 The factory default is `{"enabled": true, "max_continuations": 1}`. The configured
-window must be a positive finite integer. The existing administrator-only policy update accepts this
-setting with the other tool settings. A frozen snapshot without this setting
+handoff count must be a positive integer; it does not set a job deadline.
+The existing administrator-only policy update accepts this setting with the other tool settings. A frozen snapshot without this setting
 does not grant automatic execution.
 Older SDK/MCP policy writes that omit this setting preserve its current value.
 An explicit renewal changes the current policy and requires a new exact adoption;
