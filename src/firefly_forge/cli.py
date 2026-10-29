@@ -36,6 +36,37 @@ def main() -> None:
     """Firefly Forge: turn product briefs into verified implementations."""
 
 
+@main.group("final-outcome-continuations")
+def final_outcome_continuations() -> None:
+    """Review a final result that was already consumed and keep its original request."""
+
+
+@final_outcome_continuations.command("candidate")
+@click.argument("run_id")
+@click.argument("request_id")
+def final_outcome_candidate(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.final_outcome_continuation_candidate(run_id, request_id))
+
+
+@final_outcome_continuations.command("request")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.argument("action_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def request_final_outcome(run_id: str, request_id: str, action_id: str, document: Path) -> None:
+    with client() as connection:
+        display(connection.request_final_outcome_continuation(run_id, request_id, action_id, json_document(document)))
+
+
+@final_outcome_continuations.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def final_outcome_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.final_outcome_continuation_status(run_id, request_id))
+
+
 @main.group("git-deliveries")
 def git_deliveries() -> None:
     """Inspect factory checkpoints and request a quiescent intermediate delivery."""

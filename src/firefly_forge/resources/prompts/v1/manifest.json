@@ -1344,6 +1344,22 @@
       "variables": {}
     },
     {
+      "id": "mcp/get_final_outcome_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_final_outcome_candidate.yaml",
+      "sha256": "f31cb31a0289d7ff1cf1c6243b3c35a9673238eae2dde17c77f15aece6598391",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_final_outcome_status",
+      "version": "1.0.0",
+      "path": "mcp/get_final_outcome_status.yaml",
+      "sha256": "e3dd53c9d919248b424fedf8f10f5df58ce6d86752fb47cab025d186bca5445a",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "mcp/get_git_deliveries",
       "version": "1.0.0",
       "path": "mcp/get_git_deliveries.yaml",
@@ -2092,6 +2108,14 @@
       "version": "1.0.0",
       "path": "mcp/request_agent_checkpoint_restore.yaml",
       "sha256": "c075c879bd0d19d74318cb37537b4fa9d965457914915331d9117372ebf0d975",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_final_outcome_continuation",
+      "version": "1.0.0",
+      "path": "mcp/request_final_outcome_continuation.yaml",
+      "sha256": "5b6738527fbf8feb2a62d83859f61927e195e1e2f959d3a81b3d07045958e73c",
       "field": "user",
       "variables": {}
     },

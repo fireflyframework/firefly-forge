@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from firefly_forge.checkpoint_continuation_models import CheckpointContinuationInputV1
     from firefly_forge.checkpoint_mode_models import CheckpointModeAdoptionInput
     from firefly_forge.coding_check_models import CodingCheckGrantInput, CodingCheckRevocationInput
+    from firefly_forge.final_outcome_models import FinalOutcomeContinuationInputV1
     from firefly_forge.framework_knowledge_models import (
         FrameworkBudgetRenewalInput,
         FrameworkCheckUpdatesInput,
@@ -503,6 +504,33 @@ class ForgeClient:
     def checkpoint_continuation_status(self, identifier: str, request_id: str) -> dict[str, Any]:
         """Read the saved action and worker status without submitting another action."""
         return dict(self.request("GET", self._checkpoint_continuation_path(identifier, request_id) + "/status"))
+
+    def _final_outcome_path(self, identifier: str, request_id: str) -> str:
+        return (
+            f"runs/{self._recovery_identifier(identifier)}/final-outcome-continuations/requests/"
+            + self._recovery_identifier(request_id)
+        )
+
+    def final_outcome_continuation_candidate(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Inspect the consumed result and its original ticket without admitting work."""
+        return dict(self.request("GET", self._final_outcome_path(identifier, request_id) + "/candidate"))
+
+    def request_final_outcome_continuation(
+        self,
+        identifier: str,
+        request_id: str,
+        action_id: str,
+        request: FinalOutcomeContinuationInputV1 | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save one reviewed acceptance; preserve the action ID for uncertain-delivery readback."""
+        from firefly_forge.final_outcome_models import FinalOutcomeContinuationInputV1
+
+        path = self._final_outcome_path(identifier, request_id) + "/actions/" + self._recovery_identifier(action_id)
+        return dict(self.request("POST", path, json=self._recovery_body(FinalOutcomeContinuationInputV1, request)))
+
+    def final_outcome_continuation_status(self, identifier: str, request_id: str) -> dict[str, Any]:
+        """Read the saved final-outcome action without submitting it again."""
+        return dict(self.request("GET", self._final_outcome_path(identifier, request_id) + "/status"))
 
     def invalid_read_continuity_policy(self) -> dict[str, Any]:
         return dict(self.request("GET", "invalid-read-continuity/policy"))

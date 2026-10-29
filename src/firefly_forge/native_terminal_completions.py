@@ -234,9 +234,15 @@ async def _native_terminal_acceptance(
         ownership = store.execution_ownership_token
         actor = CURRENT_PRINCIPAL.get()
         await BridgeCompletions(store, journal)._execution(run, actor)
-        from firefly_forge.native_terminal_restore_proof import prepare_restore_acceptance
+        from firefly_forge.final_outcome_acceptance import PreparedFinalAcceptance, prepare_final_acceptance
+        from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
+        from firefly_forge.native_terminal_restore_proof import PreparedRestoreAcceptance, prepare_restore_acceptance
 
-        restored = await prepare_restore_acceptance(restoration) if restoration is not None else None
+        restored: PreparedFinalAcceptance | PreparedRestoreAcceptance | None
+        if isinstance(restoration, FinalOutcomeExecution):
+            restored = await prepare_final_acceptance(restoration)
+        else:
+            restored = await prepare_restore_acceptance(restoration) if restoration is not None else None
         await journal.entries(run_id)
         async with store._unit():
             current = await store.get_run(run_id)
@@ -246,13 +252,17 @@ async def _native_terminal_acceptance(
             raise ValueError("Native terminal run changed during credential admission")
         if kind == "receipt" and (task["idempotency_key"] != key or not checkpoint):
             raise ValueError("Normal terminal completion requires its actual task and source checkpoint")
-        prepared = prepare_worker_completion(
-            run,
-            task,
-            entries,
-            feedback=payload if kind == "worker_feedback" else None,
-            terminal_report=run["usage"]["runtime_report"],
-            restored=restored,
+        prepared = (
+            restored.prepared
+            if isinstance(restored, PreparedFinalAcceptance)
+            else prepare_worker_completion(
+                run,
+                task,
+                entries,
+                feedback=payload if kind == "worker_feedback" else None,
+                terminal_report=run["usage"]["runtime_report"],
+                restored=restored,
+            )
         )
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})
         if CURRENT_PRINCIPAL.get() != actor:

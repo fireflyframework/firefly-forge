@@ -19,6 +19,17 @@ class RestoredCompletionCustodyV2(CompletionCustodyV1):
     restore_events_digest: Digest
 
 
+class FinalOutcomeCompletionCustodyV1(CompletionCustodyV1):
+    consume_version: Literal[2]
+    custody: Literal["known_final_outcome_v1"]
+    source_kind: Literal["http_response", "bridge_observation"]
+    restore_request_id: NativeID
+    generation: NativeID
+    final_outcome_witness_digest: Digest
+    original_ticket_digest: Digest
+    original_events_digest: Digest
+
+
 class NativeTerminalProofV1(StrictContract):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1]
@@ -28,7 +39,7 @@ class NativeTerminalProofV1(StrictContract):
     task_key: str = Field(min_length=1, max_length=64)
     runtime_contract: Digest
     completion_count: int = Field(ge=1)
-    completions: list[CompletionCustodyV1 | RestoredCompletionCustodyV2]
+    completions: list[CompletionCustodyV1 | RestoredCompletionCustodyV2 | FinalOutcomeCompletionCustodyV1]
     terminal_report_sha256: Digest
     final_response_sha256: Digest
     observed_hold_digest: Digest
@@ -76,6 +87,27 @@ class NativeTerminalReceiptV1(StrictContract):
 
 def validate_native_receipt(entry: dict[str, Any], entries: list[dict[str, Any]]) -> NativeTerminalReceiptV1:
     value = NativeTerminalReceiptV1.model_validate(entry["payload"])
+    for closure in value.proof.completions:
+        if isinstance(closure, FinalOutcomeCompletionCustodyV1):
+            from firefly_forge.final_outcome_continuations import validate_witness
+
+            witnesses = [e for e in entries if e["digest"] == closure.final_outcome_witness_digest]
+            consumed = [e for e in entries if e["digest"] == closure.consume_record_digest]
+            if len(witnesses) != 1 or len(consumed) != 1:
+                raise ValueError("Known final receipt lost its original handoff or consumed response")
+            validate_witness(witnesses[0], entries)
+            p = witnesses[0]["payload"]
+            if (
+                witnesses[0]["sequence"] >= entry["sequence"]
+                or consumed[0]["sequence"] >= witnesses[0]["sequence"]
+                or digest(p["failed_ticket"]) != closure.original_ticket_digest
+                or digest({"events": p["events"]}) != closure.original_events_digest
+                or p["failed_ticket"]["id"] != closure.restore_request_id
+                or p["failed_ticket"]["generation"] != closure.generation
+                or consumed[0]["payload"].get("restore_request_id") != closure.restore_request_id
+                or consumed[0]["payload"].get("generation") != closure.generation
+            ):
+                raise ValueError("Known final receipt changed the previously consumed native claim")
     matches = [record for record in entries if record["digest"] == value.proof.acceptance_record_digest]
     if (
         entry["kind"] != "terminal_completion_receipt"

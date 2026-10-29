@@ -17,6 +17,7 @@ from firefly_forge.assistant_attachments import AttachmentInput
 from firefly_forge.campaign_delivery_plan_models import CampaignDeliveryPlanInput
 from firefly_forge.campaign_report_history import CampaignReportArchiveInput
 from firefly_forge.connection_oauth_models import OAuthConnectionInput
+from firefly_forge.final_outcome_models import FinalOutcomeContinuationInputV1
 from firefly_forge.framework_knowledge_models import (
     FrameworkCheckUpdatesInput,
     FrameworkRefreshInput,
@@ -76,6 +77,7 @@ CompletionIdentifier = Annotated[Any, WithJsonSchema({"type": "string", "pattern
 RunCreationRequest = SkipValidation[RunCreationInput]
 RunCreationCancelRequest = SkipValidation[RunCreationCancelInput]
 AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
+FinalOutcomeContinuationRequest = Annotated[Any, WithJsonSchema(FinalOutcomeContinuationInputV1.model_json_schema())]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
 GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
 GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
@@ -96,6 +98,47 @@ FrameworkSearchRequest = SkipValidation[FrameworkSearchInput]
 
 def create_server() -> MCPServer:
     server = MCPServer("firefly forge")
+
+    @server.tool(
+        description=prompt_text("mcp/get_final_outcome_candidate"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_final_outcome_candidate(identifier: RecoveryIdentifier, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.final_outcome_continuation_candidate(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/request_final_outcome_continuation"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def request_final_outcome_continuation(
+        identifier: RecoveryIdentifier,
+        request_id: RecoveryIdentifier,
+        action_id: RecoveryIdentifier,
+        request: FinalOutcomeContinuationRequest,
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_final_outcome_continuation(identifier, request_id, action_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_final_outcome_status"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_final_outcome_status(identifier: RecoveryIdentifier, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.final_outcome_continuation_status(identifier, request_id)
 
     @server.tool(description=prompt_text("mcp/list_repositories"))
     def list_repositories() -> list[dict[str, Any]]:

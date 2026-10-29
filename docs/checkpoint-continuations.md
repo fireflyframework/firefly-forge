@@ -132,3 +132,39 @@ A candidate has kind `checkpoint_continuation_candidate`. A status response has 
 | `needs_reconciliation` | Execution requires review of its retained outcome |
 
 The generic `execution_requests(run_id)` list covers publication and cancellation. Checkpoint-continuation status has its own route and client method. Use the durable journal and later worker receipts to assess progress; a saved lease alone establishes no model, tool or command result.
+
+## Accept an already-consumed final result
+
+A worker can finish its response and charge its usage, then lose authority before saving the native implementation receipt or worker feedback. **Saved final result** reviews that boundary on the existing execution request. The worker reads the retained response through its captured output schema and saves the ordinary native acceptance. It does not call the model again, consume the response again or repeat a completed tool or command.
+
+Enable `allow_final_outcome_continuation` explicitly in the saved-work recovery policy. It is off by default; saving other settings preserves its absence in older policies. Candidate review requires the original authenticated operator, current administrator access, an idle request that needs reconciliation, complete response and consume custody, unchanged source, and a qualified current implementation. Unknown effects, nonfinal responses, refusals, altered usage and missing custody remain unavailable.
+
+A candidate identifies its retained outcome as `complete`, `blocked`, `clarification` or `failed`, with `followup_kind` when the typed report requests one. Review those fields alongside the exact attempt, charged usage and existing limits. Accepting a blocked report preserves its question or verification request. A completed recovery action means the final report was accepted; it does not mean the run succeeded. An approved verification request proceeds through the existing verification handoff and its frozen commands and budgets. This action cannot authorize another coding attempt after failed verification.
+
+The time window is for **claiming this saved decision**. Its wire label is `admission_window_purpose: "claim_only"`. Once claimed, that window does not become a new job or QA deadline. An explicitly captured work deadline and all original execution limits still apply.
+
+All three routes begin with `/api/v1/runs/{run_id}/final-outcome-continuations/requests/{request_id}`:
+
+| Method | Suffix | Purpose |
+| --- | --- | --- |
+| GET | `/candidate` | Review the consumed final response and current eligibility without changing the request |
+| POST | `/actions/{action_id}` | Save one reviewed action on the same ticket; returns HTTP201 |
+| GET | `/status` | Read the saved action and its worker outcome |
+
+Use the strict `FinalOutcomeContinuationInputV1` body:
+
+```json
+{
+  "version": 1,
+  "candidate_digest": "<current candidate digest>",
+  "valid_for_seconds": 60,
+  "acknowledge_already_consumed_final_output": true,
+  "acknowledge_no_completed_effect_replay": true,
+  "acknowledge_same_request_attempt_and_budgets": true,
+  "acknowledge_finite_ownership_lease": true
+}
+```
+
+Choose a claim window within `maximum_window_seconds`. Persist the caller-owned action ID and exact input before submitting once. After an uncertain response, read status and match the saved action ID; do not generate a replacement action. Identical repeats read the same receipt. A reused identity with changed input is rejected.
+
+The Python client provides `final_outcome_continuation_candidate`, `request_final_outcome_continuation` and `final_outcome_continuation_status`. The CLI exposes `forge final-outcome-continuations candidate RUN REQUEST`, `request RUN REQUEST ACTION DOCUMENT` and `status RUN REQUEST`. MCP exposes `get_final_outcome_candidate`, `request_final_outcome_continuation` and `get_final_outcome_status`. These adapters validate input before transport, submit once and leave execution to the worker role.
