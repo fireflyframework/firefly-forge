@@ -55,6 +55,10 @@ _FIELDS = {
 }
 
 
+def _same(left: Any, right: Any) -> bool:
+    return _bytes(left) == _bytes(right)
+
+
 def validate_witness(entry: Data, entries: list[Data]) -> None:
     p = entry["payload"]
     if (
@@ -86,7 +90,7 @@ def validate_witness(entry: Data, entries: list[Data]) -> None:
         or not 1 <= body.valid_for_seconds <= policy.max_window_seconds
         or before["status"] != "needs_reconciliation"
         or before["id"] != p["request_id"]
-        or p["actor"] != before["request"]["actor"]
+        or not _same(p["actor"], before["request"]["actor"])
         or c["original_admission_seal"] != before["admission_seal"]
         or c["run_id"] != p["run"]["id"]
         or c["request_id"] != before["id"]
@@ -97,7 +101,7 @@ def validate_witness(entry: Data, entries: list[Data]) -> None:
         or c["events_digest"] != digest({"events": p["events"]})
         or c["journal_digest"] != digest({"entries": prefix})
         or c["policy_digest"] != p["lease_policy"]["digest"]
-        or p["run"].get("implementation_rounds") != c["attempt"]
+        or not _same(p["run"].get("implementation_rounds"), c["attempt"])
         or p["run"].get("implementation_pending") is not False
         or not p["events"]
         or not Journal.verify_chain(prefix)
@@ -111,7 +115,7 @@ def validate_witness(entry: Data, entries: list[Data]) -> None:
     if (
         set(lease) != {"purpose", "issued_at_ms", "expires_at_ms", "window_ms"}
         or lease["purpose"] != "claim_only"
-        or type(lease["issued_at_ms"]) is not int
+        or any(type(lease[key]) is not int for key in ("issued_at_ms", "expires_at_ms", "window_ms"))
         or lease["issued_at_ms"] < 1
         or lease["window_ms"] != body.valid_for_seconds * 1000
         or lease["expires_at_ms"] != lease["issued_at_ms"] + lease["window_ms"]
@@ -149,7 +153,7 @@ def final_record(ticket: Data, entries: list[Data], events: list[Data]) -> Data 
 
     if (
         not ExecutionRequests.verify_chain(events)
-        or events[: len(p["events"])] != p["events"]
+        or not _same(events[: len(p["events"])], p["events"])
         or _bytes({k: v for k, v in ticket.items() if k not in MUTABLE})
         != _bytes({k: v for k, v in before.items() if k not in MUTABLE})
     ):
@@ -182,7 +186,7 @@ def final_record(ticket: Data, entries: list[Data], events: list[Data]) -> Data 
     queued = (
         len(tail) == 1
         and ticket["status"] == "queued"
-        and all(ticket[k] == before[k] for k in ("generation", "owner_pid", "result"))
+        and all(_same(ticket[k], before[k]) for k in ("generation", "owner_pid", "result"))
     )
     executing = len(tail) == 2 and claim and ticket["status"] == "executing" and ticket["result"] is None
     terminal = (
@@ -192,11 +196,11 @@ def final_record(ticket: Data, entries: list[Data], events: list[Data]) -> Data 
                 not claim
                 and len(tail) == 2
                 and ticket["status"] == "failed"
-                and all(ticket[k] == before[k] for k in ("generation", "owner_pid"))
+                and all(_same(ticket[k], before[k]) for k in ("generation", "owner_pid"))
             )
         )
         and tail[-1]["kind"] == "worker_" + ticket["status"]
-        and tail[-1]["evidence"] == ticket["result"]
+        and _same(tail[-1]["evidence"], ticket["result"])
     )
     if not (queued or executing or terminal):
         raise ValueError("Final outcome lifecycle differs from native events")
@@ -235,7 +239,7 @@ class FinalOutcomeExecution(RestoreExecution):
 
         await self.guard_source()
         run = await self.service.store.get_run(self.run_id)
-        if run["usage"] != self.witness["payload"]["run"]["usage"]:
+        if not _same(run["usage"], self.witness["payload"]["run"]["usage"]):
             raise ValueError("Known final usage projection changed")
         return AgentResult(
             self.prepared.data["report"]["summary"], "known_final_outcome", usage=copy.deepcopy(run["usage"])
@@ -279,7 +283,8 @@ class FinalOutcomeContinuations:
             or task["status"] not in {"running", "needs_reconciliation"}
             or self.engine.stopping
             or run.get("implementation_pending") is not False
-            or run.get("implementation_rounds") != task["attempt"]
+            or not _same(run.get("implementation_rounds"), task["attempt"])
+            or not _same(run.get("attempt"), task["attempt"])
             or (run_id in self.engine.active and not self.engine.active[run_id].done())
         ):
             raise ValueError("Known final continuation requires its idle already-charged original task")
@@ -292,10 +297,10 @@ class FinalOutcomeContinuations:
         data = prepared.data
         usage = run.get("usage") or {}
         if (
-            usage.get("runtime_report") != data["report"]
-            or usage.get("requests") != data["usage"]["requests"]
-            or usage.get("input_tokens") != data["usage"]["input_tokens"]
-            or usage.get("output_tokens") != data["usage"]["output_tokens"]
+            not _same(usage.get("runtime_report"), data["report"])
+            or not _same(usage.get("requests"), data["usage"]["requests"])
+            or not _same(usage.get("input_tokens"), data["usage"]["input_tokens"])
+            or not _same(usage.get("output_tokens"), data["usage"]["output_tokens"])
             or sorted(usage.get("files_written", [])) != sorted(data["state"]["files_written"])
         ):
             raise ValueError("Known final outcome differs from the already-charged native run projection")
@@ -368,7 +373,9 @@ class FinalOutcomeContinuations:
         c = FinalOutcomeCandidateV1.model_validate(c).model_dump(mode="json")
         await self.store.admit_credentials([c, data])
         await guard()
-        if await self.base._ticket(run_id, request_id) != ticket or await self._events(request_id) != events:
+        if not _same(await self.base._ticket(run_id, request_id), ticket) or not _same(
+            await self._events(request_id), events
+        ):
             raise ValueError("Known final request changed during inspection")
         return dict(
             candidate=c,
@@ -406,7 +413,7 @@ class FinalOutcomeContinuations:
             if (
                 len(matches) != 1
                 or matches[0]["payload"]["request_id"] != request_id
-                or matches[0]["payload"]["request"] != body.model_dump(mode="json")
+                or not _same(matches[0]["payload"]["request"], body.model_dump(mode="json"))
             ):
                 raise ValueError("Known final action identity belongs to another input")
             status = await self.status(run_id, request_id)
@@ -440,13 +447,13 @@ class FinalOutcomeContinuations:
             )
             await self.journal._run(run_id)
             row = await self.requests.records.find_by_id(identifier(request_id), lock=LockMode.PESSIMISTIC_WRITE)
-            if row is None or row.data != prepared["ticket"] or row.status != "needs_reconciliation":
+            if row is None or not _same(row.data, prepared["ticket"]) or row.status != "needs_reconciliation":
                 raise ValueError("Known final ticket changed before admission")
             await self.base._operator(run_id, prepared["ticket"])
             if (
-                await self.base._native(run_id) != (prepared["run"], prepared["task"], prepared["entries"])
-                or await self._events(request_id) != prepared["events"]
-                or policy_snapshot(self.store.configuration) != prepared["policy"]
+                not _same(await self.base._native(run_id), (prepared["run"], prepared["task"], prepared["entries"]))
+                or not _same(await self._events(request_id), prepared["events"])
+                or not _same(policy_snapshot(self.store.configuration), prepared["policy"])
             ):
                 raise ValueError("Known final custody or current policy changed")
             issued = int(time.time() * 1000)
@@ -479,7 +486,7 @@ class FinalOutcomeContinuations:
             p["digest"] = digest(p)
             await self.store.admit_credentials(p)
             await self.base._operator(run_id, prepared["ticket"])
-            if policy_snapshot(self.store.configuration) != prepared["policy"]:
+            if not _same(policy_snapshot(self.store.configuration), prepared["policy"]):
                 raise ValueError("Known final policy changed during admission")
             record = await self.journal._append(run_id, "implement", "final-outcome:" + action_id, HANDOFF, p)
             validate_witness(record, [*prepared["entries"], record])
@@ -520,11 +527,12 @@ class FinalOutcomeContinuations:
         await self.access(run, ticket["request"]["actor"])
         await self.base._administrator(p["administrator"])
         if (
-            policy_snapshot(self.store.configuration) != p["lease_policy"]
+            not _same(policy_snapshot(self.store.configuration), p["lease_policy"])
             or protected_scope(run) != ticket["protected_scope_digest"]
-            or run.get("implementation_rounds") != p["run"]["implementation_rounds"]
-            or run.get("implementation_pending") != p["run"]["implementation_pending"]
-            or run.get("usage") != p["run"].get("usage")
+            or not _same(run.get("attempt"), p["run"].get("attempt"))
+            or not _same(run.get("implementation_rounds"), p["run"]["implementation_rounds"])
+            or not _same(run.get("implementation_pending"), p["run"]["implementation_pending"])
+            or not _same(run.get("usage"), p["run"].get("usage"))
             or task["attempt"] != p["task"]["attempt"]
             or task["idempotency_key"] != ticket["task_key"]
             or digest(self.store.configuration.resolve("bridge")) != ticket["settings_digest"]
@@ -547,8 +555,8 @@ class FinalOutcomeContinuations:
             await self.base._custody(ticket, run, task, entries, settlement)
         if not executing and (
             int(time.time() * 1000) >= p["lease"]["expires_at_ms"]
-            or run != p["run"]
-            or task != p["task"]
+            or not _same(run, p["run"])
+            or not _same(task, p["task"])
             or len(entries) != record["sequence"]
         ):
             raise ValueError("Known final admission expired or its idle frontier changed")
@@ -558,10 +566,10 @@ class FinalOutcomeContinuations:
         current = await self.base._ticket(ticket["run_id"], ticket["id"])
         _, _, entries = await self.base._native(ticket["run_id"])
         if (
-            current != ticket
+            not _same(current, ticket)
             or current["status"] != "executing"
             or current["owner_pid"] != self.store._ownership_pid
-            or final_record(current, entries, await self._events(ticket["id"])) != record
+            or not _same(final_record(current, entries, await self._events(ticket["id"])), record)
         ):
             raise ValueError("Known final worker lost its exact native ownership")
         await self._authority(ticket, record, executing=True)
@@ -574,14 +582,14 @@ class FinalOutcomeContinuations:
         run, task, entries = await self.base._native(execution.run_id)
         p = execution.witness["payload"]
         if (
-            ticket != execution.ticket
+            not _same(ticket, execution.ticket)
             or ticket["status"] != "executing"
             or ticket["owner_pid"] != self.store._ownership_pid
-            or final_record(ticket, entries, await self._events(ticket["id"])) != execution.witness
+            or not _same(final_record(ticket, entries, await self._events(ticket["id"])), execution.witness)
             or continuation_scope(run) != continuation_scope(p["run"])
-            or policy_snapshot(self.store.configuration) != p["lease_policy"]
+            or not _same(policy_snapshot(self.store.configuration), p["lease_policy"])
             or any(
-                run.get(key) != p["run"].get(key)
+                not _same(run.get(key), p["run"].get(key))
                 for key in (
                     "attempt",
                     "repair_attempts",
@@ -623,7 +631,7 @@ class FinalOutcomeContinuations:
                     )
                     if row is None or row.status != "queued":
                         return
-                    if row.data != ticket:
+                    if not _same(row.data, ticket):
                         raise ValueError("Queued final outcome changed")
                     await self._authority(ticket, record, executing=False)
                     task = await self.journal._effect_task(ticket["run_id"], ticket["task_key"])
