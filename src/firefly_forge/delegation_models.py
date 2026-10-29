@@ -31,9 +31,10 @@ class VersionedRecord(StrictRecord):
 class FamilyBudget(StrictRecord):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    requests: int = Field(gt=0)
-    tool_calls: int = Field(ge=0)
-    commands: int = Field(ge=0)
+    requests: int | None = Field(gt=0)
+    tool_calls: int | None = Field(ge=0)
+    commands: int | None = Field(ge=0)
+    broker_calls: int | None = Field(default=0, ge=0)
 
 
 class FactoryTeamV1(StrictRecord):
@@ -42,6 +43,7 @@ class FactoryTeamV1(StrictRecord):
     protocol: Literal["forge-factory-team-v1"] = "forge-factory-team-v1"
     automatic: Literal[True] = True
     budget: FamilyBudget
+    broker_per_tool_limit: int | None = Field(default=10, gt=0)
 
     @field_validator("automatic", mode="before")
     @classmethod

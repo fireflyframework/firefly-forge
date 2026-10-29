@@ -11,7 +11,7 @@ from firefly_forge.delegation_models import FactoryTeamV1
 from firefly_forge.journal import digest
 
 Data = dict[str, Any]
-RESOURCES = ("requests", "tool_calls", "commands")
+RESOURCES = ("requests", "tool_calls", "commands", "broker_calls")
 LIFECYCLE = {
     "child_source_ready",
     "child_claimed",
@@ -38,6 +38,7 @@ def derive_family_budget(family_id: str, frozen: FactoryTeamV1 | Data | None, en
         limits = team.budget.model_dump()
         charged, attempted, unknown = (dict.fromkeys(RESOURCES, 0) for _ in range(3))
         reservations: Data = {}
+        per_tool_charged: dict[str, int] = {}
         members, keys = {family_id}, set()
         previous = "0" * 64
         for sequence, entry in enumerate(entries, 1):
@@ -67,7 +68,9 @@ def derive_family_budget(family_id: str, frozen: FactoryTeamV1 | Data | None, en
                 members.add(payload["child_run_id"])
             elif kind == "budget_reserved":
                 if (
-                    set(payload) != {"member_run_id", "resource", "units"}
+                    set(payload)
+                    != {"member_run_id", "resource", "units"}
+                    | ({"tool"} if payload.get("resource") in {"tool_calls", "broker_calls"} else set())
                     or payload["member_run_id"] not in members
                     or payload["resource"] not in RESOURCES
                     or type(payload["units"]) is not int
@@ -75,8 +78,19 @@ def derive_family_budget(family_id: str, frozen: FactoryTeamV1 | Data | None, en
                 ):
                     raise ValueError("Invalid family resource reservation")
                 resource, units = payload["resource"], payload["units"]
+                if resource in {"tool_calls", "broker_calls"}:
+                    tool = payload["tool"]
+                    if type(tool) is not str or re.fullmatch(r"[a-z][a-z0-9_]*", tool) is None:
+                        raise ValueError("Invalid shared tool identity")
+                    if resource == "broker_calls":
+                        per_tool_charged[tool] = per_tool_charged.get(tool, 0) + units
+                        if (
+                            team.broker_per_tool_limit is not None
+                            and per_tool_charged[tool] > team.broker_per_tool_limit
+                        ):
+                            raise ValueError("Approved family broker per-tool budget exhausted")
                 charged[resource] += units
-                if charged[resource] > limits[resource]:
+                if limits[resource] is not None and charged[resource] > limits[resource]:
                     raise ValueError("Approved family budget exhausted")
                 reservations[entry["key"]] = {**payload, "state": "reserved"}
             elif kind in {"budget_dispatched", "budget_settled", "budget_unknown"}:
@@ -109,8 +123,9 @@ def derive_family_budget(family_id: str, frozen: FactoryTeamV1 | Data | None, en
         "charged": charged,
         "attempted": attempted,
         "unknown": unknown,
-        "remaining": {name: limits[name] - charged[name] for name in RESOURCES},
+        "remaining": {name: None if limits[name] is None else limits[name] - charged[name] for name in RESOURCES},
         "members": sorted(members),
         "reservations": copy.deepcopy(reservations),
+        "per_tool_charged": per_tool_charged,
         "journal_head": previous,
     }

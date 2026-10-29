@@ -344,6 +344,12 @@ def admission_contract_digest() -> str:
                 "runner_monitor_custody.py",
                 "runner_monitors.py",
                 "checkpoint_work_duration.py",
+                "delegation_models.py",
+                "delegation_budget.py",
+                "delegation_contract.py",
+                "delegation_sources.py",
+                "delegation_ledger.py",
+                "factory_delegations.py",
             )
         }
     )

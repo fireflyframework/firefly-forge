@@ -53,6 +53,11 @@ class PreparedProjectRevision:
             "product_repository_id": model.product_repository_id,
             "project_revision_ref": reference,
             "project_role_selection": model.roles.model_dump() if model.roles else None,
+            **(
+                {"project_factory_team": model.factory_team.model_dump(mode="json")}
+                if model.factory_team is not None
+                else {}
+            ),
         }
         return cls(
             json.dumps(metadata, separators=(",", ":"), ensure_ascii=False).encode(),

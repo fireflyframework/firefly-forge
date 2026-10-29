@@ -31,7 +31,10 @@ def child(entries):
 
 
 def reserve(entries, key, member=ROOT, resource="requests", units=1):
-    append(entries, "budget_reserved", key, {"member_run_id": member, "resource": resource, "units": units})
+    payload = {"member_run_id": member, "resource": resource, "units": units}
+    if resource in {"tool_calls", "broker_calls"}:
+        payload["tool"] = "read_file"
+    append(entries, "budget_reserved", key, payload)
 
 
 def test_absent_legacy_team_does_not_acquire_or_reset_an_envelope():
@@ -47,8 +50,8 @@ def test_parent_and_child_share_one_envelope_and_unknown_work_stays_charged():
     append(entries, "budget_unknown", "child-unknown", {"reservation_key": "child-request"})
     before = copy.deepcopy(entries)
     state = derive_family_budget(ROOT, TEAM, entries)
-    assert state["charged"] == {"requests": 2, "tool_calls": 0, "commands": 0}
-    assert state["remaining"] == {"requests": 1, "tool_calls": 4, "commands": 2}
+    assert state["charged"] == {"requests": 2, "tool_calls": 0, "commands": 0, "broker_calls": 0}
+    assert state["remaining"] == {"requests": 1, "tool_calls": 4, "commands": 2, "broker_calls": 0}
     assert state["attempted"]["requests"] == 1
     assert state["unknown"]["requests"] == 1
     assert derive_family_budget(ROOT, TEAM.model_dump(mode="json"), copy.deepcopy(entries)) == state
@@ -98,3 +101,34 @@ def test_terminal_observation_does_not_refund_or_allow_redispatch(terminal):
     append(entries, "budget_dispatched", "redispatch", {"reservation_key": "first"})
     with pytest.raises(ValueError):
         derive_family_budget(ROOT, TEAM, entries)
+
+
+def test_per_tool_limit_is_shared_across_every_child_not_copied_per_run():
+    team = FactoryTeamV1(
+        budget=FamilyBudget(requests=3, tool_calls=30, commands=2, broker_calls=4), broker_per_tool_limit=2
+    )
+    entries = []
+    child(entries)
+    reserve(entries, "parent-read", resource="broker_calls")
+    reserve(entries, "child-read", CHILD, resource="broker_calls")
+    state = derive_family_budget(ROOT, team, entries)
+    assert state["per_tool_charged"] == {"read_file": 2}
+    reserve(entries, "third-read", CHILD, resource="broker_calls")
+    with pytest.raises(ValueError):
+        derive_family_budget(ROOT, team, entries)
+
+
+@pytest.mark.parametrize("limit", [None, 2**40])
+def test_nullable_or_large_explicit_envelopes_keep_exact_shared_charges(limit):
+    team = FactoryTeamV1(
+        budget=FamilyBudget(requests=limit, tool_calls=limit, commands=limit, broker_calls=limit),
+        broker_per_tool_limit=None,
+    )
+    entries = []
+    child(entries)
+    reserve(entries, "parent-large", resource="requests", units=2**35)
+    reserve(entries, "child-large", CHILD, resource="requests", units=2**35)
+    state = derive_family_budget(ROOT, team, entries)
+    assert state["charged"]["requests"] == 2**36
+    assert state["remaining"]["requests"] == (None if limit is None else limit - 2**36)
+    assert state["approved"]["requests"] == limit

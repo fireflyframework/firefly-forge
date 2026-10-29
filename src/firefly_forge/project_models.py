@@ -7,9 +7,18 @@ from collections.abc import Iterator
 from pathlib import PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from firefly_forge.agent_roles import ProjectRoles
+from firefly_forge.delegation_models import FactoryTeamV1
 from firefly_forge.models import Backend, Command, Frontend
 
 
@@ -60,6 +69,14 @@ class ProjectDefinition(BaseModel):
     components: list[ProjectComponent] = Field(min_length=1)
     owners: list[str] = Field(min_length=1)
     roles: ProjectRoles | None = None
+    factory_team: FactoryTeamV1 | None = None
+
+    @model_serializer(mode="wrap")
+    def retained_project_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        value: dict[str, object] = handler(self)
+        if value.get("factory_team") is None:
+            value.pop("factory_team", None)
+        return value
 
     @model_validator(mode="after")
     def coherent_topology(self) -> ProjectDefinition:

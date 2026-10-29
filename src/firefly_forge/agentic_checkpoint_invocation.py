@@ -190,6 +190,14 @@ def runtime_contract() -> str:
                     "runner_monitors.py",
                     "checkpoint_work_duration.py",
                     "models.py",
+                    "project_models.py",
+                    "project_snapshot.py",
+                    "delegation_models.py",
+                    "delegation_budget.py",
+                    "delegation_contract.py",
+                    "delegation_sources.py",
+                    "delegation_ledger.py",
+                    "factory_delegations.py",
                 )
             },
         }
