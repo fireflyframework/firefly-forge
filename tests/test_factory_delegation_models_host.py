@@ -76,12 +76,15 @@ def test_family_budget_is_exact_positive_requests_and_nonnegative_effects(value)
 
 
 def test_wait_is_one_typed_observation_with_a_durable_cursor_and_optional_timeout():
-    value = DelegationWaitInput(delegation_ids=["a" * 32, "b" * 32], after_sequence=7)
+    value = DelegationWaitInput(request_id="e" * 32, delegation_ids=["a" * 32, "b" * 32], after_sequence=7)
     assert value.timeout_seconds is None
     assert value.after_sequence == 7
-    assert DelegationWaitInput(delegation_ids=["a" * 32], timeout_seconds=864000).timeout_seconds == 864000
+    assert (
+        DelegationWaitInput(request_id="e" * 32, delegation_ids=["a" * 32], timeout_seconds=864000).timeout_seconds
+        == 864000
+    )
     with pytest.raises(ValidationError):
-        DelegationWaitInput(delegation_ids=["a" * 32, "a" * 32])
+        DelegationWaitInput(request_id="e" * 32, delegation_ids=["a" * 32, "a" * 32])
 
 
 def test_join_and_cancel_preserve_exact_parent_chosen_child_identity():

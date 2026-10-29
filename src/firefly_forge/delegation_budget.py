@@ -15,12 +15,16 @@ RESOURCES = ("requests", "tool_calls", "commands", "broker_calls")
 LIFECYCLE = {
     "child_source_ready",
     "child_claimed",
+    "child_cancel_requested",
     "child_completed",
     "child_failed",
     "child_cancelled",
     "child_needs_reconciliation",
     "join",
     "wait_observed",
+    "wait_started",
+    "wait_result",
+    "wait_resumed",
 }
 
 

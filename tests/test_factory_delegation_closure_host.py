@@ -23,6 +23,9 @@ from firefly_forge.source_budget_allowances import admission_contract_digest
         "delegation_ledger.py",
         "factory_delegations.py",
         "delegation_lifecycle.py",
+        "delegation_runtime.py",
+        "delegation_waits.py",
+        "delegation_agent_budget.py",
     ],
 )
 def test_every_team_authority_module_is_sealed_once_and_changes_both_material_contracts(monkeypatch, name):

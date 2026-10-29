@@ -9,6 +9,7 @@ from uuid import UUID
 
 from firefly_forge.delegation_budget import derive_family_budget
 from firefly_forge.delegation_models import FactoryTeamV1
+from firefly_forge.delegation_waits import wait_history
 from firefly_forge.journal import Journal, digest
 
 Data = dict[str, Any]
@@ -61,6 +62,7 @@ class FamilyLedger:
                 raise ValueError("Frozen family approval changed")
             events.append(copy.deepcopy(payload["event"]))
         derive_family_budget(family_id, team, events)
+        wait_history(events)
         return team, events
 
     async def state(self, family_id: str) -> Data:
@@ -90,6 +92,7 @@ class FamilyLedger:
         }
         event["digest"] = digest(event)
         derive_family_budget(family_id, team, [*events, event])
+        wait_history([*events, event])
         await self.journal._append(
             family_id,
             "implement",

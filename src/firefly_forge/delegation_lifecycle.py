@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from firefly_forge.delegation_models import DelegationStartInput, Identity, StrictRecord
+from firefly_forge.delegation_models import DelegationCancelInput, DelegationStartInput, Identity, StrictRecord
 
 Data = dict[str, Any]
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
@@ -62,6 +62,12 @@ class ChildTerminal(StrictRecord):
     result: ChildResult | None
 
 
+class ChildCancelRequested(StrictRecord):
+    parent_task_key: Identity
+    request: DelegationCancelInput
+    claim_digest: Digest | None
+
+
 def child_lifecycle(events: list[Data]) -> dict[str, Data]:
     """FamilyLedger verifies the enclosing native scalar/hash chain before this reduction."""
     children: dict[str, Data] = {}
@@ -99,6 +105,15 @@ def child_lifecycle(events: list[Data]) -> dict[str, Data]:
                 ):
                     raise ValueError("A child claim selects its original unclaimed source admission")
                 child.update(state="running", claim_digest=event["digest"], claim=claim.model_dump(mode="json"))
+            elif kind == "child_cancel_requested":
+                cancellation = ChildCancelRequested.model_validate(payload)
+                child = children[cancellation.request.delegation_id]
+                if (
+                    child["state"] not in {"queued", "running"}
+                    or cancellation.parent_task_key != child["parent_task_key"]
+                    or cancellation.claim_digest != child["claim_digest"]
+                ):
+                    raise ValueError("Cancellation retains its original parent task and exact child claim")
             elif kind.startswith("child_") and kind.removeprefix("child_") in TERMINAL:
                 state = kind.removeprefix("child_")
                 terminal = ChildTerminal.model_validate(payload)

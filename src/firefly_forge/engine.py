@@ -359,6 +359,8 @@ class Engine:
             raise ValueError("Factory scheduling requires its verified typed native scope")
         waiting = family.waiting_parents.intersection(self.active)
         available = max(0, self.concurrency - (len(self.active) - len(waiting)))
+        if coordinator is not None and hasattr(coordinator, "reacquire"):
+            available -= await coordinator.reacquire(available)
         if not available:
             return
         occupied = set(self.active_projects.values())

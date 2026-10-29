@@ -199,6 +199,9 @@ def runtime_contract() -> str:
                     "delegation_ledger.py",
                     "factory_delegations.py",
                     "delegation_lifecycle.py",
+                    "delegation_runtime.py",
+                    "delegation_waits.py",
+                    "delegation_agent_budget.py",
                 )
             },
         }

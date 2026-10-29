@@ -15,7 +15,16 @@ from weakref import WeakValueDictionary
 from firefly_forge.delegation_contract import FROZEN_FIELDS, child_run
 from firefly_forge.delegation_ledger import FamilyLedger, verified_native_history
 from firefly_forge.delegation_lifecycle import TERMINAL, ChildResult, child_lifecycle
-from firefly_forge.delegation_models import DelegationStartInput, FactoryTeamV1
+from firefly_forge.delegation_models import (
+    ChildSelection,
+    DelegationCancelInput,
+    DelegationJoinInput,
+    DelegationStartInput,
+    DelegationWaitInput,
+    FactoryTeamV1,
+    FamilyScheduling,
+)
+from firefly_forge.delegation_runtime import DelegationRuntime
 from firefly_forge.delegation_sources import capture_child_source, verify_child_source
 from firefly_forge.journal import digest
 from firefly_forge.persistence import ForgeRunEntity
@@ -48,9 +57,21 @@ class FactoryDelegations:
             raise ValueError("Factory child origins require a private owned directory")
         self._locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
         self._claims: dict[tuple[str, str], object] = {}
+        self.runtime = DelegationRuntime(self)
 
     def bind(self, run_id: str, task_key: str, workspace: Path) -> DelegationSession:
-        return DelegationSession(self, run_id, task_key, workspace)
+        session = DelegationSession(self, run_id, task_key, workspace)
+        self.runtime.register(session)
+        return session
+
+    async def scheduling_scope(self) -> FamilyScheduling:
+        return await self.runtime.scheduling_scope()
+
+    async def execute_child(self, child_id: str, ordinary_callback: object = None) -> Data:
+        return await self.runtime.execute_child(child_id, ordinary_callback)
+
+    async def reacquire(self, available: int) -> int:
+        return await self.runtime.reacquire(available)
 
     async def authority(self, session: DelegationSession) -> Data:
         await self.store.assert_ownership()
@@ -349,4 +370,18 @@ class DelegationSession:
         self.manager, self.run_id, self.task_key, self.workspace = manager, run_id, task_key, workspace
 
     async def start(self, request: DelegationStartInput) -> Data:
-        return await self.manager.start(self, request)
+        result = await self.manager.start(self, request)
+        await self.manager.runtime.notify()
+        return result
+
+    async def wait(self, request: DelegationWaitInput) -> Data:
+        return await self.manager.runtime.wait(self, request)
+
+    async def join(self, request: DelegationJoinInput) -> Data:
+        return await self.manager.runtime.join(self, request)
+
+    async def status(self, request: ChildSelection) -> Data:
+        return await self.manager.observe(self, request.delegation_ids)
+
+    async def cancel(self, request: DelegationCancelInput) -> Data:
+        return await self.manager.runtime.cancel(self, request)

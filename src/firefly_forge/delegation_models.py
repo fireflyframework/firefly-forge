@@ -105,6 +105,7 @@ class ChildSelection(VersionedRecord):
 
 
 class DelegationWaitInput(ChildSelection):
+    request_id: Identity
     after_sequence: int = Field(default=0, ge=0)
     timeout_seconds: int | None = Field(default=None, gt=0)
 

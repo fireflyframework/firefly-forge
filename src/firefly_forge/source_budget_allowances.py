@@ -351,6 +351,9 @@ def admission_contract_digest() -> str:
                 "delegation_ledger.py",
                 "factory_delegations.py",
                 "delegation_lifecycle.py",
+                "delegation_runtime.py",
+                "delegation_waits.py",
+                "delegation_agent_budget.py",
             )
         }
     )
