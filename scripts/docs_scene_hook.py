@@ -55,6 +55,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/framework-knowledge.spec.ts",
     "studio/tests/invalid-read-recovery.spec.ts",
     "studio/tests/runner-setup.spec.ts",
+    "studio/tests/final-outcome-recovery.spec.ts",
 }
 
 
@@ -168,8 +169,13 @@ def _load_walkthrough(config, root=ROOT):
         runner_stages = {"runner-setup-execution", "runner-setup-processes", "runner-setup-review"}
         if stage.startswith("runner-setup-") and stage not in runner_stages:
             raise ValueError("Unknown runner setup capture stage: " + name)
+        final_stages = {"final-outcome-review", "final-outcome-status"}
+        if stage.startswith("final-outcome-") and stage not in final_stages:
+            raise ValueError("Unknown final result capture stage: " + name)
         expected_producer = (
-            "studio/tests/runner-setup.spec.ts"
+            "studio/tests/final-outcome-recovery.spec.ts"
+            if stage in final_stages
+            else "studio/tests/runner-setup.spec.ts"
             if stage in runner_stages
             else "studio/tests/invalid-read-recovery.spec.ts"
             if stage in recovery_stages | checkpoint_stages

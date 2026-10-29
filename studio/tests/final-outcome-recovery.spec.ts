@@ -3,6 +3,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { captureWalkthrough } from "./walkthrough-capture";
 const run = {
   id: "2".repeat(32),
   repository_id: "3".repeat(32),
@@ -233,11 +234,41 @@ for (const width of [1440, 390])
       await page.screenshot({
         path: info.outputPath(`saved-final-${width}-${theme}.png`),
       });
+      await captureWalkthrough(
+        page,
+        "final-outcome-review",
+        theme,
+        width === 1440 ? "desktop" : "mobile",
+        {
+          producer: "studio/tests/final-outcome-recovery.spec.ts",
+          actionSelector: ".final-outcome-recovery button.primary",
+        },
+      );
       await accept.click();
       await expect(
         panel.getByRole("heading", { name: "Saved result accepted" }),
       ).toBeVisible();
       await expect(panel).toContainText("paused for its recorded follow-up");
+      await panel.evaluate((node) => {
+        const main = node.closest("main")!;
+        main.scrollTop +=
+          node.getBoundingClientRect().top -
+          main.getBoundingClientRect().top -
+          16;
+      });
+      await expect(
+        panel.getByRole("heading", { name: "Saved agent result", exact: true }),
+      ).toBeVisible();
+      await captureWalkthrough(
+        page,
+        "final-outcome-status",
+        theme,
+        width === 1440 ? "desktop" : "mobile",
+        {
+          producer: "studio/tests/final-outcome-recovery.spec.ts",
+          actionSelector: ".final-outcome-recovery .card-actions button",
+        },
+      );
       expect(state.posts).toBe(1);
     });
 test("a lost POST keeps the same saved action across reload and exact readback", async ({

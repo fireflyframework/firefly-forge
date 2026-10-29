@@ -87,6 +87,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/framework-knowledge.spec.ts": "fixture framework generation producer",
                 "studio/tests/invalid-read-recovery.spec.ts": "fixture continuity recovery producer",
                 "studio/tests/runner-setup.spec.ts": "fixture runner setup producer",
+                "studio/tests/final-outcome-recovery.spec.ts": "fixture final result producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -184,10 +185,14 @@ class WalkthroughTests(unittest.TestCase):
                 "runner-setup-execution",
                 "runner-setup-processes",
                 "runner-setup-review",
+                "final-outcome-review",
+                "final-outcome-status",
             ):
                 producer = (
                     "studio/tests/runner-setup.spec.ts"
                     if stage.startswith("runner-setup-")
+                    else "studio/tests/final-outcome-recovery.spec.ts"
+                    if stage.startswith("final-outcome-")
                     else "studio/tests/invalid-read-recovery.spec.ts"
                 )
                 name = stage + "-mobile-light.png"
@@ -562,6 +567,8 @@ class WalkthroughTests(unittest.TestCase):
             recovery_capture.write_text("fixture continuity recovery producer")
             runner_capture = root / "studio/tests/runner-setup.spec.ts"
             runner_capture.write_text("fixture runner setup producer")
+            final_capture = root / "studio/tests/final-outcome-recovery.spec.ts"
+            final_capture.write_text("fixture final result producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -586,6 +593,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/framework-knowledge.spec.ts": sha(framework_capture),
                     "studio/tests/invalid-read-recovery.spec.ts": sha(recovery_capture),
                     "studio/tests/runner-setup.spec.ts": sha(runner_capture),
+                    "studio/tests/final-outcome-recovery.spec.ts": sha(final_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),

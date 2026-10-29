@@ -15,9 +15,13 @@ Checkpoint version 3 retains the selected work policy. Provider negotiation requ
 
 Acknowledged-command custody follows the native implementation intent and receipt. A model response can update progress before its terminal receipt commits; this interval retains its unfinished native phase for the existing acknowledgement proof. Unknown command outcomes and spent budgets remain unchanged.
 
+An already-consumed final report has a separate reviewed continuation. Its worker records native acceptance from the retained typed response without another model call, response consumption or completed effect. Studio distinguishes accepting that report from completing the run, and retains one action identity through reloads and uncertain submission responses. The three corresponding operator MCP tools bring the catalog to 185. See [saved final results](checkpoint-continuations.md#accept-an-already-consumed-final-result).
+
+Explicit version-two work policies also reach external MCP calls. Connection, catalog and cleanup operations keep separate finite control windows; a selected work deadline is measured from the original call and does not restart after the handshake. An older capture retains its original timeout contract.
+
 The combined source still requires fresh native qualification, package validation and installed acceptance. Distributed ownership and managed subagent delegation require their own verification before they can be enabled. Follow [agent lifecycle](agent-lifecycle.md) and [run evidence](run-evidence.md) when reviewing a delivery.
 
-## 0.2.47 — implementation preview
+## 0.2.47
 
 Official framework references have immutable corpus identities, bounded refresh operations, version checks and generation pins. Binary reference exclusions do not grant authority to corrupt private cache bytes. The catalog retains its original 322 prompt entries and adds eleven framework templates; the MCP surface has 182 tools. See [framework reference refresh](framework-knowledge-refresh.md).
 
@@ -31,7 +35,7 @@ A separately registered SDK migration handles the known historical checkpoint fo
 
 After cancellation, a current administrator can observe a framework refresh whose source write has an uncertain outcome. Observation uses retained source identities and GET requests; it keeps the operation cancelled and cannot submit another source or activate a corpus. Revoked administrator access stops observation.
 
-Native CLI metadata discovery uses the caller's finite timeout without a model request. Studio and walkthrough metadata identify version 0.2.47. The composed source still requires independent current-profile registration, native PostgreSQL/controller qualification and exact original-custody review before retained-run admission. Host controls and fixture screenshots do not establish a published release, live provider quality or delivered CRM.
+Native CLI metadata discovery uses the caller's finite timeout without a model request. Studio and walkthrough metadata identify version 0.2.47. This release completed source-profile registration, controlled native qualification, package validation and source and installed configuration-RPC checks. Its published wheel and source archive match the qualified distributions, and the release workflow, documentation site and container publication were verified. Those proofs do not establish delivered CRM, live external-provider quality or a deployed service.
 
 ## 0.2.46 — changes included in the 0.2.47 preview
 

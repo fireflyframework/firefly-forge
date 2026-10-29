@@ -135,13 +135,47 @@ The generic `execution_requests(run_id)` list covers publication and cancellatio
 
 ## Accept an already-consumed final result
 
-A worker can finish its response and charge its usage, then lose authority before saving the native implementation receipt or worker feedback. **Saved final result** reviews that boundary on the existing execution request. The worker reads the retained response through its captured output schema and saves the ordinary native acceptance. It does not call the model again, consume the response again or repeat a completed tool or command.
+A worker can finish its response and charge its usage, then lose authority before saving the native implementation receipt or worker feedback. **Saved agent result** reviews that boundary on the existing execution request. The worker reads the retained response through its captured output schema and saves the ordinary native acceptance. It does not call the model again, consume the response again or repeat a completed tool or command.
 
 Enable `allow_final_outcome_continuation` explicitly in the saved-work recovery policy. It is off by default; saving other settings preserves its absence in older policies. Candidate review requires the original authenticated operator, current administrator access, an idle request that needs reconciliation, complete response and consume custody, unchanged source, and a qualified current implementation. Unknown effects, nonfinal responses, refusals, altered usage and missing custody remain unavailable.
 
 A candidate identifies its retained outcome as `complete`, `blocked`, `clarification` or `failed`, with `followup_kind` when the typed report requests one. Review those fields alongside the exact attempt, charged usage and existing limits. Accepting a blocked report preserves its question or verification request. A completed recovery action means the final report was accepted; it does not mean the run succeeded. An approved verification request proceeds through the existing verification handoff and its frozen commands and budgets. This action cannot authorize another coding attempt after failed verification.
 
 The time window is for **claiming this saved decision**. Its wire label is `admission_window_purpose: "claim_only"`. Once claimed, that window does not become a new job or QA deadline. An explicitly captured work deadline and all original execution limits still apply.
+
+### Review in Studio
+
+In **Connections → Saved-work recovery**, a current factory administrator enables **Allow reviewed final-result continuations**. Open the original run's **Plan** tab and find **Saved agent result**. Select **Check saved result** to read the current candidate. Review the report's next step, original attempt and charged usage. A held candidate explains why the request cannot proceed.
+
+Review the configured claim window and confirm the acknowledgement before selecting **Accept saved result**. Studio saves the action identity and exact input before submission. These screenshots use controlled API fixtures; they show the review flow rather than a recovered customer run.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/final-outcome-review-mobile-light.png">
+  <img src="../assets/screenshots/final-outcome-review-desktop-light.png" alt="Review of a saved blocked report, its verification next step and the acknowledgement required before accepting it" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/final-outcome-review-mobile-dark.png">
+  <img src="../assets/screenshots/final-outcome-review-desktop-dark.png" alt="Saved report review in dark mode with its claim window and explicit acknowledgement" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>The claim window gives a worker time to take the saved decision. It does not impose a new deadline on the project or its QA.</figcaption>
+</figure>
+
+After acceptance, **Read saved action** reads its status without submitting again. Keep that saved identity if a submission loses its response or the page reloads. **Saved result accepted** means the native report was recorded. A run paused for verification still needs that verification and its later results.
+
+<figure class="forge-shot">
+<picture class="forge-shot__link theme-light">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/final-outcome-status-mobile-light.png">
+  <img src="../assets/screenshots/final-outcome-status-desktop-light.png" alt="Accepted saved result with the run still paused for its recorded verification follow-up" width="1440" height="900" loading="lazy">
+</picture>
+<picture class="forge-shot__link theme-dark">
+  <source media="(max-width: 640px)" srcset="../assets/screenshots/final-outcome-status-mobile-dark.png">
+  <img src="../assets/screenshots/final-outcome-status-desktop-dark.png" alt="Dark-mode status readback distinguishing an accepted report from successful run completion" width="1440" height="900" loading="lazy">
+</picture>
+<figcaption>Read the run's next handoff and later QA receipts. Report acceptance alone establishes no successful test, commit or pull request.</figcaption>
+</figure>
+
+### API and operator tools
 
 All three routes begin with `/api/v1/runs/{run_id}/final-outcome-continuations/requests/{request_id}`:
 
