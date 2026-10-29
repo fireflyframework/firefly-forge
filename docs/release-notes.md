@@ -5,11 +5,15 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
-## 0.2.48 — implementation preview
+## 0.2.48
 
 New runs record a versioned work policy. The default has no fixed work deadline. Operators can choose a positive deadline when a project needs one; request waits and ownership heartbeats are configured separately. Old runs retain their captured policy. The CLI and automatic framework checks use the same distinction. See [runner configuration](sandbox.md).
 
-Trusted-host process tools can start a command, inspect its output, wait for a condition and cancel the owned process group. A waiting observation can finish while the process continues. The runner reports unsupported container, pool and required-checkpoint combinations before dispatch. This preview does not establish uncapped execution in those environments.
+Trusted-host process tools can start a command, inspect its output, wait for a condition and cancel the owned process group. A waiting observation can finish while the process continues. Process monitoring remains unavailable for Docker, pool and required-checkpoint invocations; unsupported grants are refused before dispatch.
+
+Separately, distributed commands can select an explicit run-owned pool profile with a version-two work policy. Healthy queued commands renew their original admission without a fixed waiting-age ceiling. A chosen command deadline starts at execution. The controller requires the current run, task, actor and worker ownership; expired or canceled admissions cannot be revived. Plain Docker and untagged pool profiles retain their documented restrictions.
+
+Authenticated status exchanges advance their sequence through every draining and drained response. Slow cleanup can therefore require several polls without producing a stale-frame rejection. Those acknowledgements do not extend the work deadline or owner alarm.
 
 Checkpoint version 3 retains the selected work policy. Provider negotiation requires an advertised compatible protocol; the factory refuses an unsupported request instead of selecting a hidden deadline.
 
@@ -17,9 +21,9 @@ Acknowledged-command custody follows the native implementation intent and receip
 
 An already-consumed final report has a separate reviewed continuation. Its worker records native acceptance from the retained typed response without another model call, response consumption or completed effect. Studio distinguishes accepting that report from completing the run, and retains one action identity through reloads and uncertain submission responses. The three corresponding operator MCP tools bring the catalog to 185. See [saved final results](checkpoint-continuations.md#accept-an-already-consumed-final-result).
 
-Explicit version-two work policies also reach external MCP calls. Connection, catalog and cleanup operations keep separate finite control windows; a selected work deadline is measured from the original call and does not restart after the handshake. An older capture retains its original timeout contract.
+Explicit version-two work policies also reach external MCP calls. Connection, catalog and cleanup operations keep separate finite control windows; a selected work deadline is measured from the original call and does not restart after the handshake. The broker renews a separate native ownership lease while the admitted operation remains authorized. A late result after revocation or owner loss stays unresolved and cannot trigger automatic resubmission. An older capture retains its original timeout contract.
 
-The combined source still requires fresh native qualification, package validation and installed acceptance. Distributed ownership and managed subagent delegation require their own verification before they can be enabled. Follow [agent lifecycle](agent-lifecycle.md) and [run evidence](run-evidence.md) when reviewing a delivery.
+Source-profile registration, package validation and installed acceptance cover execution compatibility. They do not establish delivery of a generated product. Managed subagent delegation is a separate capability and is not enabled by these runner tools. Follow [agent lifecycle](agent-lifecycle.md) and [run evidence](run-evidence.md) when reviewing a delivery.
 
 ## 0.2.47
 
