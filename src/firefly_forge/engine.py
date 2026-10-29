@@ -1035,8 +1035,11 @@ class Engine:
                 raise ValueError("The frozen implementation attempt budget is exhausted")
             implementation_failures = repair_failures if start_round > completed_rounds else []
             for attempt in range(start_round, implementation_limit + 1):
+                from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
+
                 run = await self.store.get_run(identifier)
                 restored_receipt = restoration
+                known_final = isinstance(restoration, FinalOutcomeExecution)
                 if implementation_failures and self.journal:
                     await self._repair_proposal(identifier, workspace, settings, attempt)
                 await self.store.admit_credentials(brief)
@@ -1045,7 +1048,10 @@ class Engine:
                     recovery
                     if recovery is not None
                     else (
-                        {"idempotency_key": restoration.intent["payload"]["task_key"], "disposition": "execute"}
+                        {
+                            "idempotency_key": restoration.intent["payload"]["task_key"],
+                            "disposition": "completed" if isinstance(restoration, FinalOutcomeExecution) else "execute",
+                        }
                         if restoration is not None
                         else await self._begin_task(
                             identifier, "implement", workspace, settings, implementation_failures
@@ -1394,6 +1400,20 @@ class Engine:
                     await self._worker_feedback(
                         identifier, workspace, result, attempt, safe_data, restoration=restored_receipt
                     )
+                if isinstance(restoration, FinalOutcomeExecution):
+                    try:
+                        await self._worker_feedback(
+                            identifier,
+                            workspace,
+                            await restoration.result(),
+                            attempt,
+                            safe_data,
+                            restoration=restoration,
+                        )
+                    except Exception:
+                        if not (await self.store.get_run(identifier)).get("bridge_completion_hold"):
+                            restoration = None
+                        raise
                 qa_report = (await self.store.get_run(identifier)).get("usage", {}).get("qa_report")
                 if qa_report is not None:
                     from firefly_forge.qa import QAReport
@@ -1417,6 +1437,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if known_final:
+                    # Native acceptance owns the consumed output; later QA is ordinary execution.
+                    restoration = None
                 if self.provider_recoveries and recovery is not None:
                     await self.provider_recoveries.complete(identifier, active_key)
                     recovery = None
@@ -1520,6 +1543,10 @@ class Engine:
                         },
                     )
                 active_key = None
+                if known_final and failures:
+                    raise ValueError(
+                        "Retained final output was accepted; review its failed verification before new coding"
+                    )
                 if (
                     failures
                     and self.learning

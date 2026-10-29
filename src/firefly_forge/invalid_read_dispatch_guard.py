@@ -30,6 +30,34 @@ def _require(value: Any) -> None:
 
 
 def _completed(ticket: Data, entries: list[Data], events: list[Data]) -> None:
+    if any(event["kind"] == "final_outcome_continuation_admitted" for event in events):
+        from firefly_forge.final_outcome_continuations import final_record
+        from firefly_forge.native_terminal_completion_models import validate_native_receipt
+
+        record = final_record(ticket, entries, events)
+        if record is None:
+            raise ValueError(_MESSAGE)
+        _require(ticket["status"] == "completed")
+        result = ticket["result"]
+        _require(type(result) is dict and set(result) == {"run_status", "same_task_attempt", "outcome"})
+        _require(result["run_status"] in {"paused", "succeeded", "validating", "failed"})
+        _require(type(result["same_task_attempt"]) is int and result["same_task_attempt"] == ticket["binding"]["round"])
+        _require(result["outcome"] == record["payload"]["candidate"]["outcome"])
+        p = record["payload"]
+        terminal = [
+            e
+            for e in entries
+            if e["kind"] == "terminal_completion_receipt"
+            and e["sequence"] > record["sequence"]
+            and e["payload"]["proof"]["terminal_report_sha256"] == p["candidate"]["report_digest"]
+            and any(
+                c["consume_record_digest"] == p["candidate"]["consume_record_digest"]
+                for c in e["payload"]["proof"]["completions"]
+            )
+        ]
+        _require(len(terminal) == 1)
+        validate_native_receipt(terminal[0], entries)
+        return
     if any(event["kind"] == "checkpoint_continuation_admitted" for event in events):
         from firefly_forge.checkpoint_continuations import checkpoint_record
 
@@ -191,7 +219,7 @@ async def assert_generic_dispatch_allowed(store: Any, journal: Any, run: Data) -
 
             maximum = (
                 LIMITS["journal"]
-                if any(entry["kind"] == "checkpoint_continuation" for entry in entries)
+                if any(entry["kind"] in {"checkpoint_continuation", "final_outcome_continuation"} for entry in entries)
                 else 11
                 if any(entry["kind"] == "readonly_observation_recovery" for entry in entries)
                 else 8

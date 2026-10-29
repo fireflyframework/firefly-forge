@@ -112,6 +112,7 @@ class InvalidReadTickets:
     rejections: Any
     observations: Any
     checkpoints: Any
+    final_outcomes: Any
 
     async def _prepare(self, run_id: str) -> Data:
         raise NotImplementedError
@@ -149,6 +150,11 @@ class InvalidReadTickets:
         last = events[-1]
         if ticket["status"] == "queued":
             valid = last["kind"] == "request_admitted" and ticket["generation"] is None and ticket["result"] is None
+            if last["kind"] == "final_outcome_continuation_admitted":
+                from firefly_forge.final_outcome_continuations import final_record
+
+                _, _, entries = await self.recoveries._native(run_id)
+                valid = final_record(ticket, entries, await self.final_outcomes._events(request_id)) is not None
             if last["kind"] == "checkpoint_continuation_admitted":
                 run, task, entries = await self.recoveries._native(run_id)
                 from firefly_forge.checkpoint_continuations import checkpoint_record
@@ -170,8 +176,14 @@ class InvalidReadTickets:
             valid = last["kind"] == "worker_" + ticket["status"] and last["evidence"] == ticket["result"]
         if not valid:
             raise ValueError("Continuity ticket outcome differs from its immutable receipts")
+        final_outcomes = getattr(self, "final_outcomes", None)
         checkpoints = getattr(self, "checkpoints", None)
-        if checkpoints is not None and await checkpoints.has(ticket):
+        if final_outcomes is not None and await final_outcomes.has(ticket):
+            from firefly_forge.final_outcome_continuations import final_record
+
+            _, _, entries = await self.recoveries._native(run_id)
+            final_record(ticket, entries, await final_outcomes._events(request_id))
+        elif checkpoints is not None and await checkpoints.has(ticket):
             from firefly_forge.checkpoint_continuations import checkpoint_record
 
             _, _, entries = await self.recoveries._native(run_id)
@@ -523,6 +535,10 @@ class InvalidReadTickets:
     async def _execute(self, ticket: Data) -> None:
         from firefly_forge.invalid_read_epochs import epoch_scope, epoch_snapshot
 
+        final_outcomes = getattr(self, "final_outcomes", None)
+        if final_outcomes is not None and await final_outcomes.has(ticket):
+            await final_outcomes.execute(ticket)
+            return
         checkpoints = getattr(self, "checkpoints", None)
         if checkpoints is not None and await checkpoints.has(ticket):
             await checkpoints.execute(ticket)

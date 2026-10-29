@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_final_outcome_continuation
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Save one reviewed action to accept an already consumed final result
+  on its original request. Preserve the action ID and read its status after uncertain
+  delivery; do not submit again. Acceptance preserves typed blockers, completed effects,
+  counters, and existing grants.
+required_variables: []
+metadata:
+  defaults: {}

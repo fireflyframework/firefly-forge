@@ -24,6 +24,7 @@ class ContinuityLeasePolicyV1(StrictRecord):
     allow_pre_admission_recovery: bool = False
     allow_readonly_observation_recovery: bool = False
     allow_checkpoint_continuation: bool = False
+    allow_final_outcome_continuation: bool = Field(default=False, exclude_if=lambda value: value is False)
     max_window_seconds: int = Field(default=60, ge=1, le=7200)
     max_tickets_per_run: int = Field(default=50, ge=1)
     max_pending_tickets: int = Field(default=500, ge=1)
