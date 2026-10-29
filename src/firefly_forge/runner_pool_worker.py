@@ -19,7 +19,7 @@ from firefly_forge.process import ProcessResult
 from firefly_forge.project_models import component_path
 from firefly_forge.runner_controller_client import RunnerControllerClient
 from firefly_forge.runner_factory_authority import RunnerFactoryAuthority
-from firefly_forge.runner_factory_models import validate_factory_pool
+from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON, uncapped_pool_reason, validate_factory_pool
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
 from firefly_forge.runner_pool_artifacts import ArtifactKind, RunnerPoolArtifacts, validate_artifact_receipt
 from firefly_forge.runner_pool_bundle import frame_project_archives
@@ -56,6 +56,8 @@ class RunnerPoolWorker:
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         policy = validate_factory_pool(snapshot)
+        if reason := uncapped_pool_reason(policy):
+            return {"available": False, "mode": "pool", "status": "not_implemented", "reason": reason}
         policy.require_transport(self.client.transport)
         profile = await self.client.profile()
         if (
@@ -221,7 +223,7 @@ class RunnerPoolWorker:
         workspace: Path,
         cwd: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         task_id: str,
         *,
         ordinal: int | None = None,
@@ -230,7 +232,7 @@ class RunnerPoolWorker:
 
         assert_command_boundary()
         bounded_argv(argv)
-        if type(timeout) is not int or timeout < 1:
+        if timeout is not None and (type(timeout) is not int or timeout < 1):
             raise ValueError("Command timeout must be a positive integer")
         if contains_known_credential(argv, self.artifacts.credential_registry()):
             raise ValueError("Pool command cannot contain configured credentials")
@@ -239,13 +241,27 @@ class RunnerPoolWorker:
             run, attempt = scope["run"], scope["attempt"]
             snapshot = run.get("sandbox_snapshot")
             policy = validate_factory_pool(snapshot or {})
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
+
+            if policy.work_duration is None:
+                if timeout is None:
+                    raise ValueError("A legacy pool requires its finite command timeout")
+                work_timeout: int | None = min(timeout, policy.timeout)
+            else:
+                if policy.profile.work_duration is None:
+                    raise ValueError("The administrator pool has not admitted the new work-duration policy")
+                work_timeout = effective_work_timeout(
+                    timeout, policy.work_duration.timeout_seconds, policy.profile.work_duration.timeout_seconds
+                )
+                if work_timeout is None:
+                    raise ValueError(UNCAPPED_POOL_REASON)
             if ordinal is not None and (type(ordinal) is not int or not 1 <= ordinal <= policy.command_limit):
                 raise ValueError("Frozen command budget is exhausted")
             relative = self._workspace(run, workspace, cwd)
             command = {
                 "argv": argv,
                 "cwd": relative,
-                "timeout": min(timeout, policy.timeout),
+                "timeout": work_timeout,
                 "workspace": str(workspace),
                 "snapshot_digest": snapshot["digest"],
             }
@@ -299,7 +315,10 @@ class RunnerPoolWorker:
                     cpus=policy.cpus,
                     memory_mb=policy.memory_mb,
                     pids_limit=policy.pids_limit,
-                    timeout=min(timeout, policy.timeout),
+                    timeout=work_timeout,
+                    work_duration=None
+                    if policy.work_duration is None
+                    else WorkDurationPolicyV2(timeout_seconds=work_timeout),
                     max_output_bytes=policy.max_output_bytes,
                 )
                 payload = {
@@ -358,7 +377,9 @@ class RunnerPoolWorker:
             }
             try:
                 await self.client.submit(invocation, scope["fence"], archive)
-                async with asyncio.timeout(policy.profile.admission_seconds + invocation.timeout + 120):
+                async with asyncio.timeout(
+                    None if invocation.timeout is None else policy.profile.admission_seconds + invocation.timeout + 120
+                ):
                     while True:
                         await self._current(run_id, task_id, scope)
                         try:
@@ -413,6 +434,10 @@ class RunnerPoolWorker:
                     await self.client.cancel(invocation, fence)
                 raise
             except Exception:
+                if policy.work_duration is not None:
+                    with suppress(Exception):
+                        fence = await self.authority.exclusive_fence()
+                        await self.client.cancel(invocation, fence)
                 raise RuntimeError(
                     "Factory submission or observation requires reconciliation; no automatic replay"
                 ) from None

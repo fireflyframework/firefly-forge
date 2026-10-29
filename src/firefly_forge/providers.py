@@ -38,6 +38,7 @@ from firefly_forge.provider_recovery_models import ProviderProcessOutcome
 from firefly_forge.search_tools import SearchProviderError
 from firefly_forge.secrets import redact_environment, runtime_environment
 from firefly_forge.store import now
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 Emit = Callable[[str, str], Awaitable[None]]
 
@@ -92,6 +93,12 @@ class ProviderAdmissionRefused(ProviderError):
     def __init__(self, observation: dict[str, Any]) -> None:
         super().__init__("Bridge completion recovery retention is full; manual reconciliation is required")
         self.observation = observation
+
+
+class ProviderDurationUnavailable(ProviderAdmissionRefused):
+    def __init__(self, message: str) -> None:
+        ProviderError.__init__(self, message)
+        self.observation = {"scope": "work_duration", "submitted": False}
 
 
 class ProviderSubmissionCancelled(asyncio.CancelledError):
@@ -394,10 +401,32 @@ def _events(stdout: str) -> list[dict[str, Any]]:
     return output
 
 
+def _bridge_work_duration(policy: WorkDurationPolicyV2) -> dict[str, Any]:
+    milliseconds = None if policy.timeout_seconds is None else policy.timeout_seconds * 1000
+    if milliseconds is not None and milliseconds > 2**53 - 1:
+        raise ProviderDurationUnavailable("Bridge work duration exceeds its supported integer representation")
+    return {"version": 1, "timeoutMs": milliseconds}
+
+
+def _require_bridge_work_duration(status: Any) -> None:
+    value = status.get("workDuration") if type(status) is dict else None
+    if (
+        type(value) is not dict
+        or set(value) != {"version", "protocol", "nullableTimeout", "frozenAtAdmission"}
+        or type(value["version"]) is not int
+        or value["version"] != 1
+        or value["protocol"] != "firefly-bridge-work-duration-v1"
+        or value["nullableTimeout"] is not True
+        or value["frozenAtAdmission"] is not True
+    ):
+        raise ProviderDurationUnavailable("Bridge work-duration capability is unavailable; no completion was submitted")
+
+
 class ConfiguredProvider:
     def __init__(self, settings: dict[str, str] | None = None) -> None:
         self.settings = settings if settings is not None else dict(os.environ)
         self.runtime_context: Any = None
+        self.work_duration: WorkDurationPolicyV2 | None = None
         self.coding_checks: Any = None
         self.source_edits: Any = None
         self.source_edit_activation: Any = None
@@ -408,7 +437,18 @@ class ConfiguredProvider:
             from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
             return WorkDurationPolicyV2.model_validate(self.runtime_context.work_duration).timeout_seconds
+        if self.work_duration is not None:
+            return self.work_duration.timeout_seconds
         return float(self.settings.get("FORGE_PROVIDER_TIMEOUT", "1800"))
+
+    def configure_work_duration(self, policy: WorkDurationPolicyV2 | None) -> None:
+        from dataclasses import replace
+
+        from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+        self.work_duration = WorkDurationPolicyV2.model_validate(policy) if policy is not None else None
+        if self.runtime_context is not None:
+            self.runtime_context = replace(self.runtime_context, work_duration=self.work_duration)
 
     def configure_coding_checks(self, server: Any, instructions: str) -> None:
         from firefly_forge.coding_cli_channel import CodingCLIChannel
@@ -433,6 +473,7 @@ class ConfiguredProvider:
         if kwargs.get("allowed_tools") is not None:
             kwargs["allowed_tools"] = frozenset(kwargs["allowed_tools"])
         self.runtime_context = ToolRuntimeContext(**kwargs)
+        self.work_duration = self.runtime_context.work_duration
 
     async def image_input_capability(self, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
         return {"status": "unverified"}
@@ -687,6 +728,7 @@ class APIProvider(ConfiguredProvider):
 
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         from firefly_forge.agentic_runtime import execute_agentic
+        from firefly_forge.workspace_tools import ToolRuntimeContext
 
         summary, usage = await execute_agentic(
             workspace,
@@ -696,7 +738,12 @@ class APIProvider(ConfiguredProvider):
             emit,
             model=self.model(),
             settings=self.settings,
-            runtime_context=self.runtime_context,
+            runtime_context=self.runtime_context
+            or (
+                ToolRuntimeContext(workspace, workspace, work_duration=self.work_duration)
+                if self.work_duration
+                else None
+            ),
         )
         return AgentResult(summary, "agentic", usage)
 
@@ -747,6 +794,7 @@ class BridgeProvider(ConfiguredProvider):
         return {"status": "unverified"}
 
     def model(self, *, image_capability: dict[str, Any] | None = None, http_client: Any = None) -> Any:
+        from httpx2 import Timeout as BridgeTimeout
         from openai import AsyncOpenAI
         from pydantic_ai.models.openai import OpenAIChatModel, OpenAIStreamedResponse
         from pydantic_ai.profiles.openai import OpenAIModelProfile
@@ -760,6 +808,9 @@ class BridgeProvider(ConfiguredProvider):
         if not endpoint.endswith("/v1"):
             endpoint += "/v1"
         name = self.settings.get("FORGE_BRIDGE_MODEL", "bridge/default")
+        duration = WorkDurationPolicyV2.model_validate(self.work_duration) if self.work_duration is not None else None
+        bridge_duration = _bridge_work_duration(duration) if duration is not None else None
+        duration_options: dict[str, Any] = {"timeout": BridgeTimeout(None, connect=5)} if duration is not None else {}
         capability = (
             image_capability
             if image_capability is not None
@@ -784,6 +835,32 @@ class BridgeProvider(ConfiguredProvider):
         validate_completion_recovery(mode)
 
         class BridgeClient(AsyncOpenAI):
+            async def _duration_capability(self) -> None:
+                from httpx2 import HTTPError as BridgeHTTPError
+
+                try:
+                    async with asyncio.timeout(5):
+                        async with self._client.stream(
+                            "GET",
+                            endpoint + "/bridge/status",
+                            headers={"Authorization": "Bearer " + self.api_key},
+                            follow_redirects=False,
+                        ) as status:
+                            if status.status_code != 200:
+                                raise ProviderDurationUnavailable("Bridge work-duration capability is unavailable")
+                            content = bytearray()
+                            async for chunk in status.aiter_bytes():
+                                content.extend(chunk)
+                                if len(content) > 65536:
+                                    raise ProviderDurationUnavailable(
+                                        "Bridge work-duration capability exceeds its read bound"
+                                    )
+                    _require_bridge_work_duration(json.loads(content))
+                except (BridgeHTTPError, TimeoutError, ValueError):
+                    raise ProviderDurationUnavailable(
+                        "Bridge work-duration capability could not be read; no completion was submitted"
+                    ) from None
+
             async def _send_request(self, request: Any, **kwargs: Any) -> Any:
                 completion = request.method == "POST" and request.url.path.rstrip("/").endswith("/chat/completions")
                 attempt = _bridge_attempt.get()
@@ -831,6 +908,8 @@ class BridgeProvider(ConfiguredProvider):
                             "Bridge recovery capability could not be read; no completion was submitted"
                         ) from None
                     try:
+                        if duration is not None:
+                            _require_bridge_work_duration(json.loads(content))
                         recovery = RecoveryCapability.model_validate(json.loads(content)["completionRecovery"])
                     except (ValueError, KeyError, TypeError):
                         raise ProviderError("Required Bridge completion recovery capability is invalid") from None
@@ -853,6 +932,8 @@ class BridgeProvider(ConfiguredProvider):
                     request.headers["Idempotency-Key"] = request_id
                     request.headers["X-Bridge-Completion-Recovery"] = "1"
                     await scope.guard(intent, body)
+                elif completion and duration is not None:
+                    await self._duration_capability()
                 if completion and attempt is not None:
                     attempt.dispatch()
                 try:
@@ -915,6 +996,30 @@ class BridgeProvider(ConfiguredProvider):
                     ) from exc
 
         class BridgeChatModel(OpenAIChatModel):
+            def prepare_request(self, model_settings: Any, model_request_parameters: Any) -> Any:
+                settings, parameters = super().prepare_request(model_settings, model_request_parameters)
+                if bridge_duration is None:
+                    return settings, parameters
+                selected = dict(settings or {})
+                raw_extra = selected.get("extra_body")
+                if raw_extra is not None and type(raw_extra) is not dict:
+                    raise ProviderDurationUnavailable("Bridge work duration requires an object request body")
+                extra = dict(raw_extra or {})
+                raw_bridge = extra.get("bridge")
+                if raw_bridge is not None and type(raw_bridge) is not dict:
+                    raise ProviderDurationUnavailable("Bridge work duration requires an object policy")
+                bridge = dict(raw_bridge or {})
+                if "workDuration" in bridge and bridge["workDuration"] != bridge_duration:
+                    raise ProviderDurationUnavailable("Bridge work duration differs from the frozen Forge policy")
+                bridge["workDuration"] = dict(bridge_duration)
+                bridge.setdefault("waitTimeoutMs", None)
+                waiting = bridge["waitTimeoutMs"]
+                if waiting is not None and (type(waiting) is not int or not 1 <= waiting <= 2**53 - 1):
+                    raise ProviderDurationUnavailable("Bridge HTTP waiting duration is invalid")
+                extra["bridge"] = bridge
+                selected["extra_body"] = extra
+                return selected, parameters
+
             @property
             def _streamed_response_cls(self) -> type[OpenAIStreamedResponse]:
                 return BridgeStreamedResponse
@@ -990,6 +1095,7 @@ class BridgeProvider(ConfiguredProvider):
                     api_key=token,
                     default_headers=headers,
                     max_retries=0,
+                    **duration_options,
                     **({"http_client": http_client} if http_client is not None else {}),
                 )
             ),
@@ -999,6 +1105,7 @@ class BridgeProvider(ConfiguredProvider):
 
     async def execute(self, workspace: Path, brief: str, backend: str, frontend: str, emit: Emit) -> AgentResult:
         from firefly_forge.agentic_runtime import execute_agentic
+        from firefly_forge.workspace_tools import ToolRuntimeContext
 
         invocation = _BridgeInvocation()
         token = _bridge_invocation.set(invocation)
@@ -1013,7 +1120,12 @@ class BridgeProvider(ConfiguredProvider):
                 model=self.model(),
                 allow_output_token_cap=False,
                 settings=self.settings,
-                runtime_context=self.runtime_context,
+                runtime_context=self.runtime_context
+                or (
+                    ToolRuntimeContext(workspace, workspace, work_duration=self.work_duration)
+                    if self.work_duration
+                    else None
+                ),
             )
             return AgentResult(summary, "bridge", usage)
         except asyncio.CancelledError as exc:

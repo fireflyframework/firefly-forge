@@ -33,3 +33,19 @@ def test_explicit_cap_is_immutable_and_does_not_inherit_legacy_hour_ceiling():
         policy.timeout_seconds = 4
     with pytest.raises(ValidationError):
         WorkDurationPolicyV2(protocol="forge-work-duration-v1")
+
+
+def test_duration_policy_bytes_are_a_material_loader_dependency(monkeypatch):
+    from pathlib import Path
+
+    from firefly_forge import source_edit_qualification as qualification
+
+    assert qualification.LOADER_MODULES.count("work_duration_models.py") == 1
+    before = qualification.loader_hashes()
+    read = Path.read_bytes
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: read(path) + b"\nchanged\n" if path.name == "work_duration_models.py" else read(path),
+    )
+    assert qualification.loader_hashes() != before

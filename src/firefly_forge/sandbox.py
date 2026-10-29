@@ -27,7 +27,7 @@ from firefly_forge.configuration import redact_secrets
 from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.journal import Journal, digest
 from firefly_forge.process import ProcessResult
-from firefly_forge.runner_backends import RunnerBackends
+from firefly_forge.runner_backends import UNCAPPED_DOCKER_REASON, RunnerBackends, uncapped_docker_reason
 from firefly_forge.runner_backends import bounded_process as bounded_process
 from firefly_forge.sandbox_models import (
     SandboxInput,
@@ -494,7 +494,7 @@ class SandboxExecutor:
         self,
         config: SandboxInput,
         argv: list[str],
-        timeout: int = 30,
+        timeout: int | None = 30,
         limit: int = 500_000,
         *,
         input_data: bytes | None = None,
@@ -507,6 +507,10 @@ class SandboxExecutor:
 
     async def probe(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("mode") == "pool":
+            from firefly_forge.runner_factory_models import uncapped_pool_reason, validate_factory_pool
+
+            if reason := uncapped_pool_reason(validate_factory_pool(snapshot)):
+                return {"available": False, "mode": "pool", "status": "not_implemented", "reason": reason}
             if self.pool_worker is None:
                 return {"available": False, "mode": "pool", "reason": "Factory pool worker is not configured"}
             return await self.pool_worker.probe(snapshot)
@@ -518,6 +522,8 @@ class SandboxExecutor:
                 "status": "not_implemented",
                 "reason": "Runner pool execution is not enabled",
             }
+        if reason := uncapped_docker_reason(config):
+            return {"available": False, "mode": "docker", "status": "not_implemented", "reason": reason}
         if config.mode == "host":
             return {"available": True, "mode": "host", "reason": snapshot["reason"]}
         try:
@@ -842,7 +848,7 @@ class SandboxExecutor:
         workspace_root: Path,
         cwd: Path,
         argv: list[str],
-        timeout: int,
+        timeout: int | None,
         task_id: str,
         *,
         ordinal: int | None = None,
@@ -858,7 +864,7 @@ class SandboxExecutor:
         assert_command_boundary()
         if task_id not in {"implement", "verify"}:
             raise ValueError("Runner commands must belong to an implementation or verification stage")
-        if not argv or len(argv) > 64 or type(timeout) is not int or timeout < 1:
+        if not argv or len(argv) > 64 or (timeout is not None and (type(timeout) is not int or timeout < 1)):
             raise ValueError("Runner command arguments or timeout are invalid")
         bounded_argv(argv)
         if contains_known_credential(argv, self.credential_registry()):
@@ -905,6 +911,19 @@ class SandboxExecutor:
                     run_id, workspace, directory, argv, timeout, task_id, ordinal=ordinal
                 )
             config = validate_sandbox_snapshot(snapshot)
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
+
+            duration = snapshot["configuration"].get("work_duration")
+            if duration is None:
+                if timeout is None:
+                    raise ValueError("A legacy runner requires its finite command timeout")
+                work_timeout: int | None = min(timeout, config.timeout)
+            else:
+                work_timeout = effective_work_timeout(
+                    timeout, WorkDurationPolicyV2.model_validate(duration).timeout_seconds
+                )
+            if config.mode == "docker" and work_timeout is None:
+                raise ValueError(UNCAPPED_DOCKER_REASON)
             backend = self.backends.select(config)
             if _browser:
                 if config.mode != "docker" or config.browser is None:
@@ -930,7 +949,7 @@ class SandboxExecutor:
                 "cwd": directory.relative_to(workspace).as_posix(),
                 "workspace": str(workspace),
                 "configuration": capture_sandbox(config)["configuration"],
-                "timeout": min(timeout, config.timeout),
+                "timeout": work_timeout,
                 "git_root": str(git_root) if git_root else None,
             }
             if config.workspace_transport == "archive":
@@ -1024,9 +1043,7 @@ class SandboxExecutor:
                     if started["disposition"] != "execute":
                         raise SandboxReconciliationRequired("Unknown host command outcome cannot be replayed")
                     await admit()
-                    result = await backend.run(
-                        config, argv, directory, min(timeout, config.timeout), config.max_output_bytes
-                    )
+                    result = await backend.run(config, argv, directory, work_timeout, config.max_output_bytes)
                     result = self._safe_result(result)
                     await self.journal.sandbox_effect_receipt(
                         run_id,
@@ -1150,12 +1167,12 @@ class SandboxExecutor:
                         result = await self._docker(
                             config,
                             start_argv,
-                            min(timeout, config.timeout),
+                            work_timeout,
                             output_limit,
                             input_data=_browser_input,
                         )
                     else:
-                        result = await self._docker(config, start_argv, min(timeout, config.timeout), output_limit)
+                        result = await self._docker(config, start_argv, work_timeout, output_limit)
                     state = await self._inspect(config, payload["container_name"], labels)
                     if state is None or state["State"]["Status"] != "exited":
                         raise SandboxReconciliationRequired("Docker command completion could not be confirmed")

@@ -12,7 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, StrictInt, TypeAdapter, ValidationError
 
 from firefly_forge.agent_roles import WorkerFeedback
 from firefly_forge.configuration import redact_secrets
@@ -195,7 +195,7 @@ async def execute_agentic(
             raise ValueError("Command arguments or timeout exceed the tool bounds")
         return await run_command(argv, timeout)
 
-    async def execute_command_v2(argv: list[str], timeout: int | None = None) -> dict[str, Any]:
+    async def execute_command_v2(argv: list[str], timeout: StrictInt | None = None) -> dict[str, Any]:
         assert context.work_duration is not None
         return await run_command(argv, effective_work_timeout(context.work_duration.timeout_seconds, timeout))
 

@@ -234,6 +234,14 @@ class Assurance:
             from firefly_forge.providers import get_provider
 
             provider = get_provider(agent, settings)
+        if hasattr(provider, "configure_work_duration"):
+            from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+            provider.configure_work_duration(
+                WorkDurationPolicyV2.model_validate(run["work_duration"])
+                if run.get("work_duration") is not None
+                else None
+            )
         from firefly_forge.configuration import validate_checkpoints
 
         validate_checkpoints(settings, task="review", provider=agent)

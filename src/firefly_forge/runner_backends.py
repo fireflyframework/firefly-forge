@@ -17,6 +17,21 @@ from firefly_forge.process import ProcessResult
 from firefly_forge.sandbox_models import SandboxInput
 from firefly_forge.secrets import runtime_environment
 
+UNCAPPED_DOCKER_REASON = "Uncapped Docker work requires an independently verified owner watchdog"
+
+
+def uncapped_docker_reason(config: SandboxInput) -> str | None:
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
+
+    duration = config.model_dump(mode="json").get("work_duration")
+    if (
+        config.mode == "docker"
+        and duration is not None
+        and WorkDurationPolicyV2.model_validate(duration).timeout_seconds is None
+    ):
+        return UNCAPPED_DOCKER_REASON
+    return None
+
 
 async def _bounded_process(
     argv: list[str],

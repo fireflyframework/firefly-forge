@@ -134,7 +134,7 @@ def test_current_runtime_must_match_explicit_fixture_before_admission(fixture_ru
     from firefly_forge.source_budget_allowances import admission_contract_digest
 
     assert profile.admission_contract_digest == admission_contract_digest()
-    assert len(profile.loader_hashes) == 22
+    assert len(profile.loader_hashes) == len(q.LOADER_MODULES)
     assert profile.loader_hashes == q.loader_hashes()
     assert profile.runtime_versions == q.runtime_versions()
     assert profile.proof.contract_digest == q.profile_contract_digest(profile)

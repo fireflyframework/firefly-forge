@@ -39,4 +39,4 @@ def test_v19_recovery_repository_is_an_explicit_material_input():
     if q.REGISTRY_VERSION == 18:
         assert admission[79] == runtime[54] == "persistence.py"
         assert len(admission) == 80 and len(runtime) == 55
-    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) == 22
+    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) >= 22

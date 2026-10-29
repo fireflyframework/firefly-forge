@@ -98,3 +98,41 @@ def test_cli_provider_duration_uses_the_selected_work_policy_only(tmp_path):
         scope_root=tmp_path, repository_root=tmp_path, work_duration=WorkDurationPolicyV2(timeout_seconds=864000)
     )
     assert provider.execution_timeout() == 864000
+
+
+def test_provider_work_policy_can_be_selected_without_granting_workspace_tools():
+    from firefly_forge.providers import ConfiguredProvider
+
+    provider = ConfiguredProvider({"FORGE_PROVIDER_TIMEOUT": "23"})
+    provider.configure_work_duration(WorkDurationPolicyV2())
+    assert provider.execution_timeout() is None and provider.runtime_context is None
+    provider.configure_work_duration(None)
+    assert provider.execution_timeout() == 23 and provider.runtime_context is None
+
+
+async def test_api_role_without_a_native_runtime_context_has_no_hidden_outer_cap(tmp_path, monkeypatch):
+    from fireflyframework_agentic.agents import FireflyAgent
+
+    from firefly_forge.providers import APIProvider
+
+    deadlines = []
+    original = FireflyAgent.run
+
+    async def run(agent, *args, **kwargs):
+        deadlines.append(kwargs["timeout"])
+        return await original(agent, *args, **kwargs)
+
+    def model(messages, info):
+        if not any(isinstance(part, ToolReturnPart) for message in messages for part in message.parts):
+            return ModelResponse(parts=[ToolCallPart("write_file", {"path": "service.py", "content": "VALUE = 1"})])
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"summary": "done"})])
+
+    async def emit(*args):
+        pass
+
+    provider = APIProvider({"FORGE_PROVIDER_TIMEOUT": "1"})
+    provider.configure_work_duration(WorkDurationPolicyV2())
+    monkeypatch.setattr(provider, "model", lambda: FunctionModel(model))
+    monkeypatch.setattr(FireflyAgent, "run", run)
+    assert (await provider.execute(tmp_path, "Inspect", "pyfly", "none", emit)).summary == "done"
+    assert deadlines == [None]

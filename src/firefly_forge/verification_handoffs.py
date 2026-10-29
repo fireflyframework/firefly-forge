@@ -11,7 +11,7 @@ from typing import Any
 from pyfly.container import service
 
 from firefly_forge.journal import Journal, digest
-from firefly_forge.models import Command
+from firefly_forge.models import configured_commands
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.store import Store
@@ -32,6 +32,7 @@ from firefly_forge.verification_source_preparation import (
     verification_catalog_root,
     verification_source_scope,
 )
+from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
 
 Data = dict[str, Any]
 
@@ -73,8 +74,13 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
     current = tool_policy_snapshot(store.configuration)
     if current["digest"] != snapshot["digest"]:
         raise ValueError("Current automatic verification policy changed")
-    commands = [Command.model_validate(command).model_dump() for command in run["commands"]]
+    commands = [command.model_dump() for command in configured_commands(run)]
     config = validate_sandbox_snapshot(run["sandbox_snapshot"])
+    duration = run.get("work_duration")
+    if duration is not None:
+        duration = WorkDurationPolicyV2.model_validate(duration)
+        if run["sandbox_snapshot"]["configuration"].get("work_duration") != duration.model_dump(mode="json"):
+            raise ValueError("Verification work duration differs from the frozen runner")
     used = sum(entry["kind"] == "verification_handoff_intent" for entry in entries)
     if used >= grant.max_continuations:
         raise ValueError("Automatic verification continuation budget exhausted")
@@ -90,7 +96,7 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         raise ValueError("Frozen verification command budget is exhausted")
     selection = VerificationAdoption.model_validate(adoption["request"]) if adoption else None
     intent = {
-        "version": 1,
+        "version": 1 if duration is None else 2,
         "id": uuid.uuid4().hex,
         "request_id": request["id"],
         "request_digest": digest(request),
@@ -105,7 +111,9 @@ def verification_intent(store: Store, run: Data, workspace: Path, entries: list[
         "parent_attempt": request["attempt"],
         "parent_round": int(run.get("implementation_rounds", request["attempt"])),
         "ordinals": list(range(ordinal + 1, ordinal + 1 + len(commands))),
-        "timeouts": [min(command["timeout"], config.timeout) for command in commands],
+        "timeouts": [min(command["timeout"], config.timeout) for command in commands]
+        if duration is None
+        else [effective_work_timeout(command["timeout"], duration.timeout_seconds) for command in commands],
         "sandbox_digest": run["sandbox_snapshot"]["digest"],
         "workspace": str(workspace.resolve()),
         "cwd": (run.get("component_snapshot") or {}).get("path", "."),

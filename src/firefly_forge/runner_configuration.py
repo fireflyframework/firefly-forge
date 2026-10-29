@@ -17,14 +17,15 @@ from starlette.responses import Response
 from firefly_forge.browser_runner import BrowserRunner
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.diagnostic_recipes import profile_available
-from firefly_forge.runner_backends import require_available_runner
-from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
+from firefly_forge.runner_backends import require_available_runner, uncapped_docker_reason
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool, uncapped_pool_reason
 from firefly_forge.sandbox import SandboxExecutor
 from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.search_tools import SearchTools, search_domains
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store, identifier
 from firefly_forge.tool_broker import tool_policy_snapshot
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 from firefly_forge.workspace_tools import tool_catalog
 
 
@@ -94,7 +95,11 @@ class RunnerConfiguration:
         return await self.configuration(repository_id)
 
     async def capture_run(
-        self, repository_id: str, selected: FactoryPoolSelection | SandboxInput | None = None
+        self,
+        repository_id: str,
+        selected: FactoryPoolSelection | SandboxInput | None = None,
+        *,
+        for_execution: bool = True,
     ) -> dict[str, Any]:
         settings = await self.configuration(repository_id)
         saved = settings["sandbox"]
@@ -107,13 +112,22 @@ class RunnerConfiguration:
                 else SandboxInput.model_validate(saved)
             )
         )
+        duration = WorkDurationPolicyV2.model_validate(config.model_dump(mode="json").get("work_duration") or {})
+        config = type(config).model_validate(
+            {**config.model_dump(mode="json"), "work_duration": duration.model_dump(mode="json")}
+        )
         if isinstance(config, FactoryPoolSelection):
-            if self.executor.pool_worker is None:
+            if for_execution and (reason := uncapped_pool_reason(config)):
+                raise ValueError(reason)
+            if for_execution and self.executor.pool_worker is None:
                 raise RuntimeError("Factory pool worker is not configured")
-            config.require_transport(self.executor.pool_worker.client.transport)
+            if self.executor.pool_worker is not None:
+                config.require_transport(self.executor.pool_worker.client.transport)
             sandbox = capture_factory_pool(config)
         else:
             require_available_runner(config)
+            if for_execution and (reason := uncapped_docker_reason(config)):
+                raise ValueError(reason)
             sandbox = capture_sandbox(config)
         if contains_known_credential(sandbox, self.search.credential_registry()):
             raise ValueError("Runner configuration cannot contain configured credentials")
@@ -122,6 +136,7 @@ class RunnerConfiguration:
             raise ValueError("Internet search must be configured before enabling it for a run")
         snapshot = {
             "sandbox_snapshot": sandbox,
+            "work_duration": duration.model_dump(mode="json"),
             "runner_config_revision": settings["revision"] if selected is None else None,
             "search_snapshot": search,
             "tool_policy_snapshot": tool_policy_snapshot(self.store.path.parent),
@@ -131,17 +146,24 @@ class RunnerConfiguration:
     async def capabilities(self, snapshot: dict[str, Any], provider: str = "agentic") -> list[dict[str, Any]]:
         sandbox = snapshot["sandbox_snapshot"]
         configuration = sandbox["configuration"]
+        unavailable = (
+            uncapped_pool_reason(FactoryPoolSelection.model_validate(configuration))
+            if sandbox["mode"] == "pool"
+            else uncapped_docker_reason(SandboxInput.model_validate(configuration))
+        )
         if self.store.runtime_roles and self.store.runtime_roles.role == "api":
             tools = tool_catalog(
                 {
                     "read_run_evidence": True,
-                    "execute_command": True,
-                    "process_monitor": configuration.get("process_monitor") is True and sandbox["mode"] == "host",
+                    "execute_command": unavailable is None,
+                    "process_monitor": unavailable is None
+                    and configuration.get("process_monitor") is True
+                    and sandbox["mode"] == "host",
                     "profile_python": profile_available(sandbox),
                     "trace_python": profile_available(sandbox),
                     "profile_php": profile_available(sandbox),
-                    "browser_check": bool(configuration.get("browser")),
-                    "browser_journey": bool(configuration.get("browser")),
+                    "browser_check": unavailable is None and bool(configuration.get("browser")),
+                    "browser_journey": unavailable is None and bool(configuration.get("browser")),
                     "internet_search": bool((snapshot.get("search_snapshot") or {}).get("configured")),
                     "external_mcp": bool((snapshot.get("mcp_snapshot") or {}).get("grants")),
                     "knowledge_lookup": bool(
@@ -157,6 +179,20 @@ class RunnerConfiguration:
                 provider,
             )
             for tool in tools:
+                if (
+                    unavailable is not None
+                    and tool["availability"] != "unsupported"
+                    and tool["id"]
+                    in {
+                        "execute_command",
+                        "profile_python",
+                        "trace_python",
+                        "profile_php",
+                        "browser_check",
+                        "browser_journey",
+                    }
+                ):
+                    tool.update(availability="not_configured", reason=unavailable)
                 if tool["requires"] and tool["availability"] == "available":
                     tool.update(
                         availability="worker_unverified",
@@ -196,15 +232,23 @@ class RunnerConfiguration:
 
     async def readiness(self, repository_id: str) -> dict[str, Any]:
         configuration = await self.configuration(repository_id)
-        snapshot = await self.capture_run(repository_id)
+        snapshot = await self.capture_run(repository_id, for_execution=False)
+        sandbox = snapshot["sandbox_snapshot"]
+        reason = (
+            uncapped_pool_reason(FactoryPoolSelection.model_validate(sandbox["configuration"]))
+            if sandbox["mode"] == "pool"
+            else uncapped_docker_reason(SandboxInput.model_validate(sandbox["configuration"]))
+        )
         execution = (
-            {
+            {"available": False, "mode": sandbox["mode"], "status": "not_implemented", "reason": reason}
+            if reason is not None
+            else {
                 "available": False,
                 "status": "unknown",
                 "detail": "Physical runner availability is checked by the execution worker",
             }
             if self.store.runtime_roles and self.store.runtime_roles.role == "api"
-            else await self.executor.probe(snapshot["sandbox_snapshot"])
+            else await self.executor.probe(sandbox)
         )
         return {
             **configuration,

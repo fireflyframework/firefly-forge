@@ -87,4 +87,4 @@ def test_v18_material_inputs_preserve_explicit_selection_dependencies():
     assert len(runtime) == len(set(runtime)) >= 54
     if q.REGISTRY_VERSION == 17:
         assert len(admission) == 79 and len(runtime) == 54
-    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) == 22
+    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) >= 22

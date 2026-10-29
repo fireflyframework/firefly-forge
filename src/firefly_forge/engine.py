@@ -591,6 +591,12 @@ class Engine:
                 provider = get_provider(run["agent"], settings if run.get("config_revision") else None)
             else:
                 provider = self.provider_factory(run["agent"])
+            if hasattr(provider, "configure_work_duration"):
+                provider.configure_work_duration(
+                    WorkDurationPolicyV2.model_validate(run["work_duration"])
+                    if run.get("work_duration") is not None
+                    else None
+                )
             if run["agent"] in {"agentic", "bridge", "api"} and hasattr(provider, "configure_runtime"):
                 from firefly_forge.agent_roles import stage_allowed_tools
                 from firefly_forge.qa import JourneyEvidence
@@ -1145,6 +1151,12 @@ class Engine:
                                 from firefly_forge.providers import get_provider
 
                                 dispatch_provider = get_provider(run["agent"], selected)
+                                if hasattr(dispatch_provider, "configure_work_duration"):
+                                    dispatch_provider.configure_work_duration(
+                                        WorkDurationPolicyV2.model_validate(run["work_duration"])
+                                        if run.get("work_duration") is not None
+                                        else None
+                                    )
                                 adopted_executable = adoption["path"]
                             if current.get("source_edit_continuation"):
                                 from firefly_forge.source_edit_continuations import source_edit_receipt

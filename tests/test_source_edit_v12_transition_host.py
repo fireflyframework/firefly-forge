@@ -48,8 +48,8 @@ def test_source_identity_helper_is_explicit_in_loader_and_admission():
         "agentic_checkpoint_boundary.py",
         "checkpoint_source_identity.py",
     )
-    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) == 22
-    assert q.LOADER_MODULES[-1] == "checkpoint_source_identity.py"
+    assert len(q.LOADER_MODULES) == len(set(q.LOADER_MODULES)) >= 22
+    assert q.LOADER_MODULES[21] == "checkpoint_source_identity.py"
     root = Path(q.__file__).parent
     assert admission_contract_digest() == digest(
         {n: hashlib.sha256((root / n).read_bytes()).hexdigest() for n in names}

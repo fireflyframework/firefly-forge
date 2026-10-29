@@ -16,7 +16,7 @@ from pyfly.container import service
 
 from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.runner_backends import _bounded_process
-from firefly_forge.runner_pool_launcher import LAUNCHER, RESULT_READER
+from firefly_forge.runner_pool_launcher import LAUNCHER, OWNER_READER, RESULT_READER, owned_launcher
 from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile
 
 Guard = Callable[[], Awaitable[None]]
@@ -149,7 +149,8 @@ class DockerPoolDispatcher:
             command += ["--env=" + key + "=" + value]
         for key, value in self.labels(invocation).items():
             command += ["--label", key + "=" + value]
-        return [*command, "--entrypoint", "/app/.venv/bin/python", invocation.image, "-I", "-S", "-c", LAUNCHER]
+        launcher = LAUNCHER if invocation.work_duration is None else owned_launcher()
+        return [*command, "--entrypoint", "/app/.venv/bin/python", invocation.image, "-I", "-S", "-c", launcher]
 
     async def inspect(self, invocation: RunnerInvocation, name_or_id: str) -> dict[str, Any] | None:
         allowed_name = self.name(invocation)
@@ -222,6 +223,8 @@ class DockerPoolDispatcher:
 
     def release_plan(self, invocation: RunnerInvocation, container_id: str) -> list[str]:
         self.authority.profile.validate_invocation(invocation)
+        if invocation.work_duration is not None:
+            raise ValueError("New work requires authenticated ownership release")
         if not re.fullmatch(r"[a-f0-9]{64}", container_id):
             raise ValueError("Release requires an exact observed container identity")
         script = (
@@ -236,9 +239,17 @@ class DockerPoolDispatcher:
 
     def result_plan(self, invocation: RunnerInvocation, container_id: str) -> list[str]:
         self.authority.profile.validate_invocation(invocation)
+        if invocation.work_duration is not None:
+            raise ValueError("New work requires authenticated ownership status")
         if not re.fullmatch(r"[a-f0-9]{64}", container_id):
             raise ValueError("Result read requires an exact observed container identity")
         return ["exec", container_id, "/app/.venv/bin/python", "-I", "-S", "-c", RESULT_READER]
+
+    def owner_plan(self, invocation: RunnerInvocation, container_id: str) -> list[str]:
+        self.authority.profile.validate_invocation(invocation)
+        if invocation.work_duration is None or not re.fullmatch(r"[a-f0-9]{64}", container_id):
+            raise ValueError("Ownership read requires a new-work policy and exact observed container identity")
+        return ["exec", "--interactive", container_id, "/app/.venv/bin/python", "-I", "-S", "-c", OWNER_READER]
 
     def collect_plan(self, invocation: RunnerInvocation, container_id: str) -> list[str]:
         from firefly_forge.runner_pool_launcher import workspace_collector

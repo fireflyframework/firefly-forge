@@ -33,7 +33,7 @@ from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.collaboration_persistence import ForgeProductDefinitionRepository
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.migrations import migrate
-from firefly_forge.models import RepositoryInput, RunInput
+from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_commands, configured_commands
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
     ForgeDeploymentRepository,
@@ -47,14 +47,16 @@ from firefly_forge.persistence import (
 from firefly_forge.policies import PolicyCatalog
 from firefly_forge.project_campaign_persistence import ForgeCampaignChildRepository, ForgeCampaignRepository
 from firefly_forge.project_snapshot import PreparedProjectRevision, prepared_revision, snapshot_roles
-from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool
-from firefly_forge.sandbox_models import capture_sandbox
+from firefly_forge.runner_backends import uncapped_docker_reason
+from firefly_forge.runner_factory_models import FactoryPoolSelection, capture_factory_pool, uncapped_pool_reason
+from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.source_diff_admission import (
     CredentialHistorySnapshot,
     SourceDiffAdmission,
     prepare_source_diff_admission,
 )
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 Data = dict[str, Any]
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
@@ -584,21 +586,32 @@ class Store:
                 actor, request.project_id, "release" if request.publish else "execute"
             )
         await self.admit_credentials(request.model_dump())
+        fallback_runner: dict[str, Any] | None = None
+        if prepared_runner is None and self.runners is None:
+            fallback_sandbox = request.sandbox or SandboxInput()
+            duration = WorkDurationPolicyV2.model_validate(
+                fallback_sandbox.model_dump(mode="json").get("work_duration") or {}
+            )
+            fallback_sandbox = type(fallback_sandbox).model_validate(
+                {**fallback_sandbox.model_dump(mode="json"), "work_duration": duration.model_dump(mode="json")}
+            )
+            if isinstance(fallback_sandbox, SandboxInput) and (reason := uncapped_docker_reason(fallback_sandbox)):
+                raise ValueError(reason)
+            fallback_runner = {
+                "sandbox_snapshot": capture_factory_pool(fallback_sandbox)
+                if isinstance(fallback_sandbox, FactoryPoolSelection)
+                else capture_sandbox(fallback_sandbox),
+                "work_duration": duration.model_dump(mode="json"),
+                "search_snapshot": None,
+                "runner_config_revision": None,
+            }
         runner = (
             prepared_runner
             if prepared_runner is not None
             else (
                 await self.runners.capture_run(request.repository_id, request.sandbox)
                 if self.runners is not None
-                else {
-                    "sandbox_snapshot": (
-                        capture_factory_pool(request.sandbox)
-                        if isinstance(request.sandbox, FactoryPoolSelection)
-                        else capture_sandbox(request.sandbox)
-                    ),
-                    "search_snapshot": None,
-                    "runner_config_revision": None,
-                }
+                else fallback_runner
             )
         )
         if runner is None:
@@ -606,6 +619,19 @@ class Store:
         sandbox_snapshot = runner["sandbox_snapshot"]
         if not isinstance(sandbox_snapshot, dict):
             raise ValueError("The selected runner requires a frozen sandbox configuration")
+        if sandbox_snapshot.get("mode") == "pool":
+            if reason := uncapped_pool_reason(FactoryPoolSelection.model_validate(sandbox_snapshot["configuration"])):
+                raise ValueError(reason)
+        elif reason := uncapped_docker_reason(SandboxInput.model_validate(sandbox_snapshot["configuration"])):
+            raise ValueError(reason)
+        if runner.get("work_duration") != sandbox_snapshot.get("configuration", {}).get("work_duration"):
+            raise ValueError("The selected work duration differs from its frozen runner configuration")
+        configured_commands(
+            {
+                "work_duration": runner.get("work_duration"),
+                "commands": [command.model_dump() for command in request.commands],
+            }
+        )
         if actor is not None and not await ProjectAccess(self).current_administrator(actor):
             if sandbox_snapshot["mode"] not in {"docker", "pool"}:
                 raise ValueError(
@@ -680,6 +706,8 @@ class Store:
         if product_definition and product_definition["repository_id"] != product_repository_id:
             raise ValueError("Product snapshot must match the selected product's definition and design source")
         fields = request.model_dump()
+        if runner.get("work_duration") is not None:
+            fields["commands"] = capture_new_work_commands(request.commands)
         if component:
             fields["backend"], fields["frontend"] = component["backend"], component["frontend"]
             if "commands" not in request.model_fields_set:

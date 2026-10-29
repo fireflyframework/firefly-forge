@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from pyfly.container import service
 
+from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
 from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
 from firefly_forge.runner_pool_dispatch import DockerPoolDispatcher
@@ -49,6 +50,8 @@ class RunnerPoolExecutions:
     async def accept(
         self, invocation: RunnerInvocation, fence: FactoryFence, archive: bytes, stdin: bytes
     ) -> dict[str, Any]:
+        if invocation.work_duration is not None and invocation.timeout is None:
+            raise ValueError(UNCAPPED_POOL_REASON)
         if self.stopping:
             raise RuntimeError("Runner controller is stopping")
         await self.pools.check_factory_fence(fence)
@@ -67,6 +70,8 @@ class RunnerPoolExecutions:
     async def continue_invocation(
         self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str
     ) -> dict[str, Any]:
+        if invocation.work_duration is not None and invocation.timeout is None:
+            raise ValueError(UNCAPPED_POOL_REASON)
         from firefly_forge.runner_continuation_authority import RunnerContinuationAuthority
 
         async with self.admission_lock:
@@ -136,6 +141,11 @@ class RunnerPoolExecutions:
             return
         if current["request"] != invocation.model_dump(mode="json"):
             raise ValueError("Invocation claim changed its immutable request")
+        if invocation.work_duration is not None and invocation.timeout is None:
+            await self.pools.quarantine(
+                self.profile, claim["id"], self.owner, claim["epoch"], {"reason": UNCAPPED_POOL_REASON}
+            )
+            return
         heartbeat = asyncio.create_task(self._renew(claim))
         work = asyncio.create_task(
             self._execute(invocation, claim, fence)
@@ -264,6 +274,11 @@ class RunnerPoolExecutions:
         await guard()
         await self.pools.effect_intent(self.profile, claim["id"], self.owner, claim["epoch"], fence, "start")
         await control(["start", cid])
+        ready_script = (
+            "import os,stat;assert stat.S_ISFIFO(os.lstat('/tmp/forge-start').st_mode)"
+            if invocation.work_duration is None
+            else "import os,stat;assert stat.S_ISSOCK(os.lstat('/tmp/forge-owner.sock').st_mode)"
+        )
         async with asyncio.timeout(15):
             while True:
                 code, _ = await self.dispatcher.fenced_control(
@@ -274,7 +289,7 @@ class RunnerPoolExecutions:
                         "-I",
                         "-S",
                         "-c",
-                        "import os,stat;assert stat.S_ISFIFO(os.lstat('/tmp/forge-start').st_mode)",
+                        ready_script,
                     ],
                     guard,
                     timeout=5,
@@ -283,7 +298,49 @@ class RunnerPoolExecutions:
                 if code == 0:
                     break
                 await asyncio.sleep(0.1)
-        await control(self.dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
+        owner_key: bytes | None = None
+        owner_sequence = 0
+        owner_challenge: str | None = None
+
+        async def ownership(operation: str) -> dict[str, Any]:
+            from firefly_forge.runner_pool_owner import owner_reply, owner_request
+
+            nonlocal owner_sequence, owner_challenge
+            assert owner_key is not None and owner_challenge is not None
+            owner_sequence += 1
+            raw = await control(
+                self.dispatcher.owner_plan(invocation, cid),
+                timeout=3,
+                limit=4096,
+                input_data=owner_request(
+                    owner_key, invocation.execution_id, operation, owner_sequence, owner_challenge
+                ),
+            )
+            reply = owner_reply(raw, invocation.execution_id, sequence=owner_sequence)
+            owner_challenge = reply["challenge"]
+            return reply
+
+        if invocation.work_duration is None:
+            await control(self.dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
+        else:
+            from firefly_forge.runner_pool_owner import owner_reply
+
+            raw = await control(
+                self.dispatcher.owner_plan(invocation, cid),
+                timeout=5,
+                limit=4096,
+                input_data=json.dumps(
+                    {
+                        "protocol": "forge-runner-owner-v2",
+                        "execution_id": invocation.execution_id,
+                        "operation": "claim",
+                    }
+                ).encode(),
+            )
+            claimed = owner_reply(raw, invocation.execution_id, claim=True)
+            owner_key = bytes.fromhex(claimed["key"])
+            owner_challenge = claimed["challenge"]
+            await ownership("start")
         await self.pools.effect_receipt(
             self.profile,
             claim["id"],
@@ -293,11 +350,16 @@ class RunnerPoolExecutions:
             "start",
             {"container_id": cid, "released": True},
         )
-        async with asyncio.timeout(invocation.timeout + 5):
+        async with asyncio.timeout(None if invocation.timeout is None else invocation.timeout + 5):
             while True:
-                code, output = await self.dispatcher.fenced_control(
-                    self.dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
-                )
+                if invocation.work_duration is None:
+                    code, output = await self.dispatcher.fenced_control(
+                        self.dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
+                    )
+                else:
+                    owned = await ownership("renew")
+                    code = 0 if owned["state"] == "drained" else 1
+                    output = json.dumps(owned).encode()
                 if code == 0:
                     status = json.loads(output)
                     if (

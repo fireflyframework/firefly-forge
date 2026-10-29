@@ -39,6 +39,7 @@ LOADER_MODULES = (
     "resources/prompts/v1/coding-runtime/source-read-1.0.1.yaml",
     "resources/prompts/v1/coding-runtime/source-search-1.0.2.yaml",
     "checkpoint_source_identity.py",
+    "work_duration_models.py",
 )
 NATIVE_CAPABILITIES = (
     ("apply_patch", "custom"),

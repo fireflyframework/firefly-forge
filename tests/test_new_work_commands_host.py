@@ -34,3 +34,25 @@ def test_nullable_runtime_commands_require_explicit_frozen_new_work_policy():
     assert configured_commands(run)[0].timeout is None
     with pytest.raises(ValidationError):
         configured_commands({**run, "work_duration": {"protocol": "forged"}})
+
+
+def test_legacy_omitted_command_timeout_keeps_normalized_request_wire():
+    body = RunInput(repository_id="fixture", brief="Inspect", commands=[{"argv": ["fixture"]}])
+    assert body.model_dump()["commands"] == [{"argv": ["fixture"], "timeout": 300}]
+
+
+def test_new_capture_preserves_explicit_caps_and_removes_only_implicit_legacy_default():
+    from firefly_forge.models import capture_new_work_commands
+
+    values = [
+        Command(argv=["default"]),
+        Command(argv=["chosen"], timeout=300),
+        NewWorkCommand(argv=["unlimited"], timeout=None),
+    ]
+    before = [value.model_dump() for value in values]
+    assert capture_new_work_commands(values) == [
+        {"argv": ["default"], "timeout": None},
+        {"argv": ["chosen"], "timeout": 300},
+        {"argv": ["unlimited"], "timeout": None},
+    ]
+    assert [value.model_dump() for value in values] == before

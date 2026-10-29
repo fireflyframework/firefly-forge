@@ -223,14 +223,17 @@ class RunnerPoolArtifacts:
                 "sha256": invocation.stdin_digest or hashlib.sha256(b"").hexdigest(),
             },
         )
-        command = json.dumps(
-            {
-                "argv": list(invocation.argv),
-                "cwd": invocation.cwd,
-                "timeout": invocation.timeout,
-                "execution_id": invocation.execution_id,
-            }
-        ).encode()
+        configuration: dict[str, Any] = {
+            "argv": list(invocation.argv),
+            "cwd": invocation.cwd,
+            "timeout": invocation.timeout,
+            "execution_id": invocation.execution_id,
+        }
+        if invocation.work_duration is not None:
+            configuration["work_duration"] = invocation.work_duration.model_dump(mode="json")
+            configuration["owner_grace_seconds"] = profile.lease_seconds
+            configuration["max_output_bytes"] = invocation.max_output_bytes
+        command = json.dumps(configuration).encode()
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as stream:
             with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as incoming:

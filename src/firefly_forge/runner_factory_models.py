@@ -6,12 +6,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 from pyfly.core.config import Config
 
 from firefly_forge.runner_controller_config import RunnerWorkerTransport, absolute_path, private_tls_file
 from firefly_forge.runner_pool_models import RunnerPoolProfile, pool_digest
 from firefly_forge.sandbox_models import pinned_image
+from firefly_forge.work_duration_models import WorkDurationPolicyV2, effective_work_timeout
+
+UNCAPPED_POOL_REASON = "Uncapped pool work requires verified run-owned authorization liveness"
 
 
 class FactoryPoolSelection(BaseModel):
@@ -26,12 +37,20 @@ class FactoryPoolSelection(BaseModel):
     memory_mb: int = Field(default=512, ge=128, le=8192, strict=True)
     pids_limit: int = Field(default=128, ge=32, le=512, strict=True)
     timeout: int = Field(default=300, ge=1, le=3600, strict=True)
+    work_duration: WorkDurationPolicyV2 | None = None
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
     command_limit: int = Field(default=50, ge=1, le=100, strict=True)
     network: Literal["none"] = "none"
     internet_search: bool = False
 
     _image = field_validator("image")(pinned_image)
+
+    @model_serializer(mode="wrap")
+    def retained_duration(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        value: dict[str, Any] = handler(self)
+        if self.work_duration is None:
+            value.pop("work_duration")
+        return value
 
     @model_validator(mode="after")
     def bounded_policy(self) -> FactoryPoolSelection:
@@ -40,7 +59,20 @@ class FactoryPoolSelection(BaseModel):
             cpus=self.cpus,
             memory_mb=self.memory_mb,
             pids_limit=self.pids_limit,
-            timeout=self.timeout,
+            timeout=self.timeout
+            if self.work_duration is None
+            else effective_work_timeout(
+                self.work_duration.timeout_seconds,
+                self.profile.work_duration.timeout_seconds if self.profile.work_duration is not None else None,
+            ),
+            work_duration=None
+            if self.work_duration is None
+            else WorkDurationPolicyV2(
+                timeout_seconds=effective_work_timeout(
+                    self.work_duration.timeout_seconds,
+                    self.profile.work_duration.timeout_seconds if self.profile.work_duration is not None else None,
+                )
+            ),
             source_bytes=self.workspace_max_bytes,
             max_output_bytes=self.max_output_bytes,
         )
@@ -62,6 +94,12 @@ def capture_factory_pool(value: FactoryPoolSelection) -> dict[str, Any]:
         "enforced_controls": [],
         "reason": "Configured command pool policy; execution worker must verify the controller before execution",
     }
+
+
+def uncapped_pool_reason(value: FactoryPoolSelection) -> str | None:
+    if value.work_duration is not None and value.work_duration.timeout_seconds is None:
+        return UNCAPPED_POOL_REASON
+    return None
 
 
 def validate_factory_pool(snapshot: dict[str, Any]) -> FactoryPoolSelection:

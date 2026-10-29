@@ -95,6 +95,15 @@ def configured_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
     return [command_type.model_validate(value) for value in run.get("commands", [])]
 
 
+def capture_new_work_commands(commands: list[Command | NewWorkCommand]) -> list[dict[str, Any]]:
+    return [
+        NewWorkCommand(
+            argv=command.argv, timeout=command.timeout if "timeout" in command.model_fields_set else None
+        ).model_dump()
+        for command in commands
+    ]
+
+
 class AssuranceInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     review_agent: Literal["codex", "claude", "bridge", "agentic"] | None = None
@@ -112,7 +121,7 @@ class RunInput(BaseModel):
     frontend: Frontend = "react"
     agent: Literal["codex", "claude", "bridge", "agentic", "api"] = "codex"
     model_profile_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
-    commands: list[NewWorkCommand | Command] = Field(default_factory=list, max_length=20)
+    commands: list[Command | NewWorkCommand] = Field(default_factory=list, max_length=20)
     publish: bool = False
     operation: Literal["build", "maintain", "test"] = "build"
     assurance: AssuranceInput = Field(default_factory=AssuranceInput)
