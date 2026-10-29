@@ -115,19 +115,29 @@ async def test_new_pool_defaults_require_private_profile_binding_and_freeze_with
     from firefly_forge.models import RepositoryInput
     from firefly_forge.runner_configuration import RunnerDefaults
     from firefly_forge.runner_factory_models import FactoryPoolSelection
+    from firefly_forge.runner_pool_models import RunnerPoolProfile
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
-    worker, controller, run, journal, workspace = await fixture(store, tmp_path)
+    worker, controller, _, _, _ = await fixture(store, tmp_path)
+    duration = WorkDurationPolicyV2(timeout_seconds=300)
+    profile = RunnerPoolProfile.model_validate(
+        {**controller.profile_value.model_dump(mode="json"), "work_duration": duration.model_dump(mode="json")}
+    )
+    controller.profile_value = profile
+    controller.transport = type(controller.transport).model_validate(
+        {**controller.transport.model_dump(), "profile_revision": profile.revision}
+    )
     settings = await service(store, tmp_path)
     repo = await store.add_repository(RepositoryInput(name="Pool default", url="https://example.invalid/default.git"))
-    selection = FactoryPoolSelection.model_validate(
-        (await store.get_run(run["id"]))["sandbox_snapshot"]["configuration"]
-    )
+    selection = FactoryPoolSelection(profile=profile, image=profile.approved_images[0], work_duration=duration)
     with pytest.raises(RuntimeError, match="pool.*configured"):
         await settings.configure_repository(repo["id"], RunnerDefaults(sandbox=selection))
     settings.executor.pool_worker = worker
     await settings.configure_repository(repo["id"], RunnerDefaults(sandbox=selection))
     frozen = await settings.capture_run(repo["id"])
     assert frozen["sandbox_snapshot"]["mode"] == "pool"
+    assert frozen["work_duration"] == duration.model_dump(mode="json")
+    assert frozen["sandbox_snapshot"]["configuration"]["profile"]["work_duration"] == duration.model_dump(mode="json")
     assert "private-fixture-worker-token" not in str(frozen)
 
 

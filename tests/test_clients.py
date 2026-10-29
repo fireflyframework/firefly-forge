@@ -30,6 +30,9 @@ def test_client_carries_authentication_and_validated_run():
 async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
+        "get_final_outcome_candidate",
+        "request_final_outcome_continuation",
+        "get_final_outcome_status",
         "get_framework_knowledge_status",
         "check_framework_updates",
         "refresh_framework_knowledge",
@@ -237,6 +240,23 @@ async def test_mcp_tools_have_real_input_contracts():
     assert tools["configure_scm_actor_binding"].input_schema["required"] == ["project_id", "repository_id", "request"]
     assert tools["list_scm_actor_bindings"].input_schema["required"] == ["project_id", "repository_id"]
     assert tools["get_scm_actor_binding"].input_schema["required"] == ["project_id", "repository_id", "request_id"]
+    for name in ("get_final_outcome_candidate", "get_final_outcome_status"):
+        assert tools[name].input_schema["required"] == ["identifier", "request_id"]
+        assert tools[name].annotations.read_only_hint is True
+        assert tools[name].annotations.open_world_hint is False
+    final = tools["request_final_outcome_continuation"]
+    assert final.input_schema["required"] == ["identifier", "request_id", "action_id", "request"]
+    assert final.annotations.read_only_hint is False and final.annotations.idempotent_hint is True
+    final_request = final.input_schema["properties"]["request"]
+    assert final_request["additionalProperties"] is False
+    for flag in (
+        "acknowledge_already_consumed_final_output",
+        "acknowledge_no_completed_effect_replay",
+        "acknowledge_same_request_attempt_and_budgets",
+        "acknowledge_finite_ownership_lease",
+    ):
+        assert flag in final_request["required"]
+        assert final_request["properties"][flag]["const"] is True
 
 
 def test_cli_version_and_command_help():
