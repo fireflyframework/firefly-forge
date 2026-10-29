@@ -65,3 +65,41 @@ async def test_uncapped_plain_docker_is_readable_as_unavailable_but_not_admitted
     assert readiness["execution"]["available"] is False
     assert readiness["execution"]["reason"] == str(refused.value)
     assert saved["revision"] == "saved-only"
+
+
+async def test_scm_derived_new_run_captures_v2_without_an_assistant_consent_work_cap(tmp_path, monkeypatch):
+    from firefly_forge.collaboration import Collaboration
+
+    async def product(repository):
+        return None
+
+    request = await Collaboration._legacy_run_request(
+        SimpleNamespace(product=product),
+        "a" * 32,
+        {
+            "provider": "github",
+            "actor": "7",
+            "issue": {"kind": "issue", "number": 4},
+            "command": {"action": "run", "brief": "Implement the approved stock workflow"},
+        },
+        {"id": "b" * 32},
+        {"backend": "pyfly", "frontend": "none", "agent": "bridge", "publish": False, "test_commands": []},
+    )
+    assert request.sandbox is None
+    saved = {"sandbox": SandboxInput().model_dump(mode="json"), "revision": "retained-defaults"}
+    before = copy.deepcopy(saved)
+    service = RunnerConfiguration(
+        SimpleNamespace(path=tmp_path / "state"),
+        SimpleNamespace(),
+        SimpleNamespace(credential_registry=lambda: {}),
+        SimpleNamespace(),
+    )
+
+    async def configuration(repository):
+        return copy.deepcopy(saved)
+
+    monkeypatch.setattr(service, "configuration", configuration)
+    snapshot = await service.capture_run(request.repository_id, request.sandbox)
+    assert snapshot["work_duration"] == WorkDurationPolicyV2().model_dump(mode="json")
+    assert snapshot["sandbox_snapshot"]["configuration"]["timeout"] == 300
+    assert saved == before

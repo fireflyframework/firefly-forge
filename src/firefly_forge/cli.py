@@ -16,7 +16,7 @@ import click
 
 from firefly_forge import __version__
 from firefly_forge.client import ForgeClient
-from firefly_forge.models import Command, RepositoryInput, RunInput
+from firefly_forge.models import NewWorkCommand, RepositoryInput, RunInput
 
 if TYPE_CHECKING:
     from firefly_forge.model_profiles import ModelProfileInput
@@ -193,7 +193,7 @@ def list_repositories() -> None:
 @click.option("--review-model-profile", "review_model_profile_id", default=None)
 @click.option("--operation", default="build", type=click.Choice(["build", "maintain", "test"]))
 @click.option("--check", "checks", multiple=True, help="Verification command; may be repeated.")
-@click.option("--wait", is_flag=True, help="Wait for a terminal result (up to one hour).")
+@click.option("--wait", is_flag=True, help="Wait for a terminal result.")
 @click.option("--publish", is_flag=True, help="Create a pull request after passing checks.")
 def run(
     repository_id: str,
@@ -232,7 +232,7 @@ def run(
         }
     )
     if checks:
-        values["commands"] = [Command(argv=shlex.split(check)).model_dump() for check in checks]
+        values["commands"] = [NewWorkCommand(argv=shlex.split(check)).model_dump() for check in checks]
     if roles_file:
         values["roles"] = json_document(roles_file)
     if review_model_profile_id is not None:
@@ -241,7 +241,6 @@ def run(
     with client() as connection:
         result = connection.create_run(request)
         if wait:
-            deadline = time.monotonic() + 3600
             while result["status"] not in {
                 "succeeded",
                 "failed",
@@ -250,8 +249,6 @@ def run(
                 "paused",
                 "needs_reconciliation",
             }:
-                if time.monotonic() >= deadline:
-                    raise click.ClickException(f"Run {result['id']} is still active; use forge status to reconnect")
                 time.sleep(0.5)
                 result = connection.get_run(result["id"])
         display(result)

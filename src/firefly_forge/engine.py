@@ -93,6 +93,20 @@ def default_commands(
     raise ValueError("No verification command found; supply commands or add an executable make check target")
 
 
+def framework_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
+    if not run.get("framework_knowledge_pin"):
+        return []
+    from firefly_forge.framework_knowledge_conformance import conformance_commands
+
+    duration = run.get("work_duration")
+    if duration is not None:
+        WorkDurationPolicyV2.model_validate(duration)
+    return [
+        Command(argv=argv, timeout=600) if duration is None else NewWorkCommand(argv=argv)
+        for argv in conformance_commands(run["framework_knowledge_pin"])
+    ]
+
+
 def private_path(path: str) -> bool:
     parts = Path(path).parts
     return any(
@@ -1420,12 +1434,7 @@ class Engine:
                     else None,
                 )
                 commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-                if run.get("framework_knowledge_pin"):
-                    from firefly_forge.framework_knowledge_conformance import conformance_commands
-
-                    commands += [
-                        Command(argv=argv, timeout=600) for argv in conformance_commands(run["framework_knowledge_pin"])
-                    ]
+                commands += framework_commands(run)
                 if len(commands) > 20:
                     raise ValueError("Selected policies exceed the 20 verification-command limit")
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)

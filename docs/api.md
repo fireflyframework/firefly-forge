@@ -420,6 +420,10 @@ uv run forge status RUN_ID
 uv run forge export RUN_ID --output changes.zip
 ```
 
+New CLI checks inherit the selected run's optional work deadline. `--wait` observes
+the run until a terminal result without an implicit time limit. Ctrl-C ends local
+observation; use `forge cancel RUN_ID` to request cancellation of the run.
+
 `forge doctor` reads local provider and profile configuration. `forge cancel`,
 `forge retry` and `forge publish` operate on the named run. Publication is an
 explicit remote write; export writes a new local file and refuses an existing
