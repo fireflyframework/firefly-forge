@@ -67,6 +67,7 @@ async def test_repository_read_and_project_execute_are_rechecked_after_membershi
     from firefly_forge.project_models import ProjectDefinition
     from firefly_forge.projects import Projects
     from firefly_forge.sandbox_models import SandboxInput
+    from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
     module = authority_module()
     repository = await store.add_repository(
@@ -95,7 +96,12 @@ async def test_repository_read_and_project_execute_are_rechecked_after_membershi
                 component_id="service",
                 brief="Scoped transfer",
                 agent="agentic",
-                sandbox=SandboxInput(mode="docker", image="example/worker@sha256:" + "a" * 64, context="owned-context"),
+                sandbox=SandboxInput(
+                    mode="docker",
+                    image="example/worker@sha256:" + "a" * 64,
+                    context="owned-context",
+                    work_duration=WorkDurationPolicyV2(timeout_seconds=300),
+                ),
             ),
         )
     finally:

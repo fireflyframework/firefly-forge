@@ -23,6 +23,7 @@ from firefly_forge.project_models import ProjectDefinition
 from firefly_forge.projects import Projects
 from firefly_forge.providers import AgentResult
 from firefly_forge.sandbox_models import SandboxInput
+from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
 
 async def project(store, repository):
@@ -58,7 +59,12 @@ async def test_membership_revoked_after_prepare_prevents_coding_provider_dispatc
                 component_id="service",
                 brief="Implement a service",
                 agent="agentic",
-                sandbox=SandboxInput(mode="docker", context="colima-forge-tests", image="forge@sha256:" + "a" * 64),
+                sandbox=SandboxInput(
+                    mode="docker",
+                    context="colima-forge-tests",
+                    image="forge@sha256:" + "a" * 64,
+                    work_duration=WorkDurationPolicyV2(timeout_seconds=300),
+                ),
                 commands=[Command(argv=[sys.executable, "-c", "assert True"])],
             )
         )

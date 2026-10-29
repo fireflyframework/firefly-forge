@@ -67,7 +67,7 @@ def host_dependencies(tmp_path, monkeypatch, *, setup_failure=False):
         async def add_repository(self, request):
             return {"id": UUID(int=83).hex}
 
-        async def create_run(self, request):
+        async def create_run(self, request, *, prepared_runner):
             if setup_failure:
                 raise RuntimeError("Owned fixture setup refusal")
             self.run = {
@@ -76,6 +76,7 @@ def host_dependencies(tmp_path, monkeypatch, *, setup_failure=False):
                 "execution_actor": ProjectAccess.actor_snapshot(actor),
                 "status": "developing",
                 **self.configuration.snapshot("bridge"),
+                **prepared_runner,
             }
             return dict(self.run)
 
