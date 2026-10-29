@@ -16,6 +16,7 @@ from firefly_forge.runner_controller import invocation_scope
 from firefly_forge.runner_controller_config import RunnerWorkerTransport
 from firefly_forge.runner_pool_artifacts import validate_artifact_receipt
 from firefly_forge.runner_pool_models import FactoryFence, RunnerInvocation, pool_digest
+from firefly_forge.runner_run_liveness import RunLeaseAckV1, RunRenewalV1, validate_run_ack
 
 RPC_DEADLINE_SECONDS = 30
 
@@ -105,6 +106,33 @@ class RunnerControllerClient:
         if value.get("request") != invocation.model_dump(mode="json"):
             raise RuntimeError("Observed invocation differs from frozen worker request")
         return value
+
+    async def renew_run(
+        self, invocation: RunnerInvocation, fence: FactoryFence, previous: dict[str, Any]
+    ) -> dict[str, Any]:
+        if invocation.run_liveness is None:
+            raise ValueError("Run renewal requires an explicit frozen ownership binding")
+        before = RunLeaseAckV1.model_validate(previous)
+        identity = pool_digest(invocation.model_dump(mode="json"))
+        validate_run_ack(previous, identity, invocation.run_liveness, sequence=before.sequence)
+        renewal = RunRenewalV1.model_validate(
+            {**previous, "protocol": "forge-run-renewal-v1", "sequence": before.sequence + 1}
+        )
+        value = await self._request(
+            "renew-run",
+            {
+                **self._scope(invocation),
+                "fence": fence.model_dump(mode="json"),
+                "renewal": renewal.model_dump(mode="json"),
+            },
+        )
+        return validate_run_ack(
+            value,
+            identity,
+            invocation.run_liveness,
+            sequence=before.sequence + 1,
+            controller_epoch=before.controller_epoch,
+        )
 
     async def continue_invocation(
         self, invocation: RunnerInvocation, fence: FactoryFence, request_id: str, request_digest: str

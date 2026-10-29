@@ -123,3 +123,13 @@ async def test_controller_refuses_direct_uncapped_admission_and_quarantines_queu
     claim = {"request": value.model_dump(mode="json"), "id": "fixture", "epoch": 1}
     await controller.execute_claim(claim, None)
     assert len(quarantined) == 1 and "run-owned" in quarantined[0][-1]["reason"]
+
+
+@pytest.mark.parametrize("admin_cap,blocked", [(None, True), (864000, False)])
+def test_only_explicit_effective_new_work_caps_avoid_the_uncapped_gate(admin_cap, blocked):
+    from firefly_forge.runner_factory_models import uncapped_pool_reason
+
+    pool = profile(work_duration=WorkDurationPolicyV2(timeout_seconds=admin_cap))
+    factory = FactoryPoolSelection(profile=pool, image=invocation(pool).image, work_duration=WorkDurationPolicyV2())
+    assert pool.max_timeout == 300
+    assert (uncapped_pool_reason(factory) is not None) is blocked

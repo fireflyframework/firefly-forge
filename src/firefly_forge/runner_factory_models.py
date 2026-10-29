@@ -97,7 +97,14 @@ def capture_factory_pool(value: FactoryPoolSelection) -> dict[str, Any]:
 
 
 def uncapped_pool_reason(value: FactoryPoolSelection) -> str | None:
-    if value.work_duration is not None and value.work_duration.timeout_seconds is None:
+    if (
+        value.work_duration is not None
+        and effective_work_timeout(
+            value.work_duration.timeout_seconds,
+            value.profile.work_duration.timeout_seconds if value.profile.work_duration is not None else None,
+        )
+        is None
+    ):
         return UNCAPPED_POOL_REASON
     return None
 

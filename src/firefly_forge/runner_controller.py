@@ -47,6 +47,7 @@ from firefly_forge.runner_pool_persistence import (
     ForgeRunnerPoolRepository,
 )
 from firefly_forge.runner_pools import RunnerPools
+from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL, RunRenewalV1
 from firefly_forge.secrets import contains_known_credential
 
 UPLOAD_DEADLINE_SECONDS = 30
@@ -98,6 +99,10 @@ class PoolControl(PoolLookup):
 class PoolContinuation(PoolControl):
     request_id: str = Field(pattern=r"^[a-f0-9]{32}$", strict=True)
     request_digest: str = Field(pattern=r"^[a-f0-9]{64}$", strict=True)
+
+
+class PoolRunRenewal(PoolControl):
+    renewal: RunRenewalV1
 
 
 class PoolArtifact(PoolLookup):
@@ -202,6 +207,11 @@ class RunnerControllerService:
     def profile(self) -> dict[str, Any]:
         return {
             **({"workspace_protocols": ["forge-project-bundle-v1"]} if self.executions.git_snapshot else {}),
+            **(
+                {"run_liveness_protocols": [RUN_LIVENESS_PROTOCOL]}
+                if self.settings.authority.profile.run_liveness
+                else {}
+            ),
             "profile": self.settings.authority.profile.model_dump(mode="json"),
             "revision": self.settings.authority.profile.revision,
             "status": "ready" if self.ready else "runtime_unverified" if self.settings.active else "inactive",
@@ -244,6 +254,12 @@ class RunnerControllerService:
         await self.observe(request)
         return await self.executions.reconcile(request.execution_id, request.fence)
 
+    async def renew_run(self, request: PoolRunRenewal) -> dict[str, Any]:
+        if not self.settings.active or not self.ready:
+            raise RuntimeError("Administrator runner profile is inactive or runtime unverified")
+        observed = await self.observe(request)
+        return await self.executions.renew_run(parse_invocation(observed["request"]), request.fence, request.renewal)
+
     async def cancel(self, request: PoolControl) -> dict[str, Any]:
         await self.observe(request)
         return await self.executions.cancel(request.execution_id, request.fence)
@@ -278,6 +294,10 @@ class PoolController:
     @post_mapping("/reconcile")
     async def reconcile(self, request: Body[PoolControl]) -> dict[str, Any]:
         return await self.service.reconcile(request)
+
+    @post_mapping("/renew-run")
+    async def renew_run(self, request: Body[PoolRunRenewal]) -> dict[str, Any]:
+        return await self.service.renew_run(request)
 
     @post_mapping("/cancel")
     async def cancel(self, request: Body[PoolControl]) -> dict[str, Any]:

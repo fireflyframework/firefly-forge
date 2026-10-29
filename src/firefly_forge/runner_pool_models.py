@@ -21,6 +21,7 @@ from pydantic import (
 )
 
 from firefly_forge.runner_bundle_models import ProjectBundleIdentity
+from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL, RunLivenessBindingV1
 from firefly_forge.sandbox_models import bounded_argv, pinned_image
 from firefly_forge.work_duration_models import WorkDurationPolicyV2
 
@@ -64,6 +65,7 @@ class RunnerInvocation(BaseModel):
     pids_limit: int = Field(default=128, ge=32, le=512, strict=True)
     timeout: int | None = Field(default=300, ge=1, strict=True)
     work_duration: WorkDurationPolicyV2 | None = None
+    run_liveness: RunLivenessBindingV1 | None = None
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
 
     _image = field_validator("image")(pinned_image)
@@ -84,6 +86,8 @@ class RunnerInvocation(BaseModel):
 
     @model_validator(mode="after")
     def stdin_identity(self) -> RunnerInvocation:
+        if self.run_liveness is not None and self.work_duration is None:
+            raise ValueError("Run ownership requires the explicit new work-duration policy")
         if self.work_duration is None:
             if self.timeout is None or self.timeout > 3600:
                 raise ValueError("A legacy invocation requires its finite duration")
@@ -98,6 +102,8 @@ class RunnerInvocation(BaseModel):
         value: dict[str, Any] = handler(self)
         if self.work_duration is None:
             value.pop("work_duration")
+        if self.run_liveness is None:
+            value.pop("run_liveness")
         return value
 
     @property
@@ -147,6 +153,7 @@ class RunnerPoolProfile(BaseModel):
     max_pids: int = Field(default=128, ge=32, le=512, strict=True)
     max_timeout: int = Field(default=300, ge=1, le=3600, strict=True)
     work_duration: WorkDurationPolicyV2 | None = None
+    run_liveness: Literal["forge-run-owned-liveness-v1"] | None = None
     max_source_bytes: int = Field(default=67_108_864, ge=1_048_576, le=268_435_456, strict=True)
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
     waiting_limit: int = Field(default=100, ge=1, le=1000, strict=True)
@@ -166,6 +173,8 @@ class RunnerPoolProfile(BaseModel):
 
     @model_validator(mode="after")
     def capacity(self) -> RunnerPoolProfile:
+        if self.run_liveness is not None and self.work_duration is None:
+            raise ValueError("Run ownership requires an explicit administrator work-duration policy")
         if self.project_slots > self.slots:
             raise ValueError("Project quota exceeds total slots")
         return self
@@ -175,6 +184,8 @@ class RunnerPoolProfile(BaseModel):
         value: dict[str, Any] = handler(self)
         if self.work_duration is None:
             value.pop("work_duration")
+        if self.run_liveness is None:
+            value.pop("run_liveness")
         return value
 
     @property
@@ -182,6 +193,8 @@ class RunnerPoolProfile(BaseModel):
         return pool_digest(self.model_dump(mode="json"))
 
     def validate_invocation(self, value: RunnerInvocation) -> None:
+        if (self.run_liveness == RUN_LIVENESS_PROTOCOL) != (value.run_liveness is not None):
+            raise ValueError("Invocation run ownership differs from the immutable administrator profile")
         if value.profile_id != self.profile_id or value.profile_revision != self.revision:
             raise ValueError("Invocation does not select this immutable profile")
         self.validate_budget(

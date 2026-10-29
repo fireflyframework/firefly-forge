@@ -190,6 +190,13 @@ def runtime_contract() -> str:
                     "runner_monitors.py",
                     "checkpoint_work_duration.py",
                     "models.py",
+                    "runner_controller.py",
+                    "runner_pools.py",
+                    "runner_pool_persistence.py",
+                    "runner_factory_authority.py",
+                    "runner_run_liveness.py",
+                    "runner_run_authority.py",
+                    "runner_run_owner.py",
                 )
             },
         }
