@@ -75,3 +75,48 @@ async def test_expired_lease_cannot_claim_the_private_peer_key():
     with pytest.raises(ValueError):
         await channel.start()
     assert frames == []
+
+
+@pytest.mark.parametrize("polls", [1, 2, 5])
+async def test_repeated_drain_polls_preserve_the_control_sequence_without_renewing_work(polls):
+    live, clock = lease()
+    alarms = []
+    peer = module.RunOwnerLiveness(
+        "a" * 32, live.invocation_digest, bytes(range(32)), 30, alarms.append, clock=lambda: clock["now"]
+    )
+
+    async def exchange(factory):
+        return json.dumps(peer.handle(json.loads(factory()))).encode()
+
+    channel = module.RunOwnerChannel("a" * 32, live, exchange)
+    await channel.start()
+    peer.begin_drain()
+    deadline = peer.live_until
+    for _ in range(polls):
+        assert (await channel.status())["state"] == "draining"
+    peer.finish(0)
+    for _ in range(2):
+        assert (await channel.status())["exit_code"] == 0
+    assert alarms == [30, 60] and peer.live_until == deadline and peer.grant_sequence == 0
+
+
+async def test_drain_between_observe_and_renew_acknowledges_without_spending_the_new_grant():
+    live, clock = lease()
+    alarms = []
+    peer = module.RunOwnerLiveness(
+        "a" * 32, live.invocation_digest, bytes(range(32)), 30, alarms.append, clock=lambda: clock["now"]
+    )
+
+    async def exchange(factory):
+        frame = json.loads(factory())
+        if frame["operation"] == "renew":
+            peer.begin_drain()
+        return json.dumps(peer.handle(frame)).encode()
+
+    channel = module.RunOwnerChannel("a" * 32, live, exchange)
+    await channel.start()
+    live.renew(renewal(live))
+    assert (await channel.status())["state"] == "draining"
+    peer.finish(0)
+    assert (await channel.status())["exit_code"] == 0
+    assert alarms == [30, 60] and peer.grant_sequence == 0
