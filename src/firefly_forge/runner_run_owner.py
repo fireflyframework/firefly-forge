@@ -197,6 +197,8 @@ class RunOwnerLiveness(OwnerLiveness):
             if value["sequence"] != self.sequence + 1 or value["challenge"] != self.challenge:
                 raise ValueError("Run owner message is stale")
             if self.state in {"draining", "drained"}:
+                self.sequence = value["sequence"]
+                self._challenge()
                 return self._status()
             if self.clock() >= self.live_until:
                 raise ValueError("Run owner grant expired")

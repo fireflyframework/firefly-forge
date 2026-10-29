@@ -105,6 +105,29 @@ def test_drain_status_is_finite_and_never_returns_the_private_key():
     assert alarms == [30, 60]
 
 
+@pytest.mark.parametrize("finished", [False, True])
+@pytest.mark.parametrize("operation", ["observe", "renew"])
+def test_terminal_acknowledgements_advance_custody_but_never_extend_liveness(finished, operation):
+    value, alarms, _ = owner()
+    value.handle(message(value, "start", 1, 0, 30))
+    value.begin_drain()
+    if finished:
+        value.finish(0)
+    deadline = value.live_until
+    for sequence in range(2, 5):
+        before = value.challenge
+        frame = message(
+            value, operation, sequence, 0 if operation == "observe" else 1, None if operation == "observe" else 30
+        )
+        reply = value.handle(frame)
+        assert reply["sequence"] == sequence and reply["challenge"] != before
+        assert reply["grant_sequence"] == 0 and value.live_until == deadline
+        assert reply["state"] == ("drained" if finished else "draining")
+        with pytest.raises(ValueError, match="stale"):
+            value.handle(frame)
+    assert alarms == [30, 60]
+
+
 @pytest.mark.parametrize(
     "change",
     [
