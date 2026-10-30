@@ -10,7 +10,8 @@ from typing import Any
 from firefly_forge.secrets import redact_environment
 
 
-def _public_excerpt(value: str) -> tuple[str, bool] | None:
+def _public_excerpt(value: str, *, tail: bool) -> tuple[str, bool] | None:
+    """Filter before bounding text; unstructured API paths are not proven public."""
     if re.search(
         r"(?i)(?:[\w.-]*(?:password|secret|token|api[_-]?key|credential|authorization)[\w.-]*[\"']?\s*[:=])"
         r"|-----BEGIN [A-Z ]*PRIVATE KEY-----",
@@ -22,7 +23,19 @@ def _public_excerpt(value: str) -> tuple[str, bool] | None:
     value = re.sub(r"(?<!\w)(?:[A-Za-z]:\\|/)[^\s<>]+", "[local path omitted]", value)
     value = re.sub(r"\b[A-Z][A-Z0-9_]*=\S+", "[setting omitted]", value)
     value = re.sub(r"[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069]", "", value)
-    return value[:1800], len(value) > 1800
+    if not value.strip():
+        return None
+    if len(value) <= 1800:
+        return value, False
+    if not tail:
+        return value[:1800], True
+    end = len(value.rstrip())
+    start = max(0, end - 1800)
+    if start and value[start - 1] != "\n":
+        boundary = value.find("\n", start, end)
+        if boundary != -1:
+            start = boundary + 1
+    return value[start:end], True
 
 
 def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
@@ -60,7 +73,7 @@ def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
         for kind, value in values.items():
             if not isinstance(value, str) or not value.strip():
                 continue
-            excerpt = _public_excerpt(value)
+            excerpt = _public_excerpt(value, tail=kind == "output")
             if excerpt is None:
                 continue
             text, truncated = excerpt
@@ -80,4 +93,5 @@ def render_excerpt(value: dict[str, Any]) -> str:
     text = value["text"]
     longest = max((len(item) for item in re.findall(r"`+", text)), default=0)
     fence = "`" * max(3, longest + 1)
-    return f"{fence}text\n{text}\n{fence}"
+    notice = "[excerpt truncated]\n\n" if value.get("truncated") is True else ""
+    return f"{notice}{fence}text\n{text}\n{fence}"
