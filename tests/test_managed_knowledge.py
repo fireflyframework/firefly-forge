@@ -408,6 +408,7 @@ async def test_campaign_default_and_managed_knowledge_vector_matches_child_revis
     from firefly_forge.journal import Journal
     from firefly_forge.managed_knowledge import bootstrap_knowledge
     from firefly_forge.models import RepositoryInput, RunInput
+    from firefly_forge.project_access import AccessDenied
     from firefly_forge.project_campaigns import ProjectCampaigns
 
     repo = await store.add_repository(RepositoryInput(name="Campaign source", url=str(tmp_path)))
@@ -425,8 +426,44 @@ async def test_campaign_default_and_managed_knowledge_vector_matches_child_revis
         if managed:
             assert frozen["endpoint"] == "https://knowledge:8500" and frozen["api_key"]
         else:
-            with pytest.raises(ValueError, match="Initialize required flycanon"):
+            assert frozen["provider"] == "koinon" and frozen["version"] == 2
+            with pytest.raises(AccessDenied, match="current authenticated repository grant"):
                 await manager.retrieve(run)
+
+
+async def test_campaign_retained_knowledge_vector_preserves_external_settings(store, tmp_path):
+    from firefly_forge.engine import Engine
+    from firefly_forge.journal import Journal
+    from firefly_forge.managed_knowledge import bootstrap_knowledge
+    from firefly_forge.models import RepositoryInput, RunInput
+    from firefly_forge.project_campaigns import ProjectCampaigns
+
+    retained_configuration(store.configuration)
+    manager = KnowledgeManager(store)
+    manager.configure(
+        KnowledgeConfiguration(
+            values={
+                "enabled": True,
+                "required": True,
+                "auto_memory": True,
+                "endpoint": "https://canon.example",
+                "tenant_id": "existing",
+                "api_key": "retained-test-key",
+            }
+        )
+    )
+    path = store.configuration.directory / "knowledge.json"
+    before = path.read_bytes()
+    assert bootstrap_knowledge(store.configuration, tmp_path / "service")["state"] == "external"
+    assert path.read_bytes() == before and not (tmp_path / "service").exists()
+    repo = await store.add_repository(RepositoryInput(name="Retained campaign", url=str(tmp_path)))
+    campaigns = ProjectCampaigns(store, Engine(store, tmp_path / "jobs"), Journal(store))
+    vector = campaigns._configuration_vector(repo["id"], {"codex"})
+    run = await store.create_run(RunInput(repository_id=repo["id"], brief="Retain configured knowledge"))
+    campaigns._validate_admission_snapshots(run, vector)
+    frozen = manager.settings(run)
+    assert frozen["endpoint"] == "https://canon.example" and frozen["api_key"] == "retained-test-key"
+    assert frozen["enabled"] and frozen["required"] and frozen["auto_memory"]
 
 
 def test_old_campaign_admission_keeps_original_pre_ca_knowledge_digest(tmp_path):
