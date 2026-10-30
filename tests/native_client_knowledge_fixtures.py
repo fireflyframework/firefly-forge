@@ -57,6 +57,9 @@ class FrameworkFixtureBackend:
 
 
 def bind_framework_knowledge(engine, remote):
+    from test_knowledge import retained_configuration
+
+    retained_configuration(engine.store.configuration)
     knowledge = KnowledgeManager(engine.store, engine, transport=remote.transport())
     manager = FrameworkKnowledge(engine.store, knowledge, transport=official_fixture()[0])
     engine.store.framework_knowledge = manager
@@ -246,6 +249,9 @@ async def activate_native_client_target(store, directory: Path):
         )
         manager = bind_framework_knowledge(engine, remote)
         async with authenticated_operator(worker):
+            from test_knowledge import retained_configuration
+
+            retained_configuration(manager.knowledge.private)
             manager.knowledge.configure(
                 KnowledgeConfiguration(
                     values={

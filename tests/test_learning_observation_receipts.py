@@ -134,6 +134,9 @@ async def admitted_projection(
         )
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(remote) if remote_service is None else None)
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={

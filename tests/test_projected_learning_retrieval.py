@@ -113,8 +113,11 @@ async def test_projection_mapping_is_locked_and_rechecked_at_admission(store, tm
 
 @pytest.mark.asyncio
 async def test_frozen_target_equivalence_checks_credentials_without_changing_revisions(store):
+    from test_knowledge import retained_configuration
+
     from firefly_forge.knowledge import KnowledgeConfiguration, snapshot_knowledge
 
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store)
     values = {
         "enabled": True,
@@ -129,6 +132,9 @@ async def test_frozen_target_equivalence_checks_credentials_without_changing_rev
     projection = LearningProjection(store, Journal(store), LearningLedger(store, Journal(store)), knowledge)
     assert first["revision"] != second["revision"]
     assert projection._same_target({"knowledge_snapshot": second}, first)
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(KnowledgeConfiguration(values={"api_key": "fixture-private-target-second"}))
     third = snapshot_knowledge(store.configuration)
     assert not projection._same_target({"knowledge_snapshot": third}, first)
@@ -207,6 +213,9 @@ async def test_local_only_fresh_outcome_changed_after_lookup_cannot_be_admitted(
     knowledge = KnowledgeManager(
         store, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"elapsed_ms": 1, "hits": []}))
     )
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from test_knowledge import manager, memory_transport, repository, settings
+from test_knowledge import manager, memory_transport, repository, retained_configuration, settings
 
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.knowledge import KnowledgeManager, snapshot_knowledge
@@ -91,6 +91,7 @@ async def test_verified_memory_bounds_its_search_without_truncating_published_me
     store = SimpleNamespace(
         configuration=ConfigurationStore(tmp_path), repository=repository, get_run=get_run, update=update, _unit=unit
     )
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(
         store, SimpleNamespace(validated_workspace=validated_workspace), transport=httpx.MockTransport(handler)
     )

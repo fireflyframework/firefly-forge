@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from firefly_forge.configuration import ConfigurationStore
-from firefly_forge.knowledge import KnowledgeConfiguration, KnowledgeManager, snapshot_knowledge
+from firefly_forge.knowledge import KnowledgeConfiguration, KnowledgeManager, KnowledgeSettings, snapshot_knowledge
 
 
 async def repository(identifier):
@@ -17,7 +17,16 @@ async def repository(identifier):
 
 def manager(tmp_path, handler):
     store = SimpleNamespace(configuration=ConfigurationStore(tmp_path), repository=repository)
+    retained_configuration(store.configuration)
     return KnowledgeManager(store, transport=httpx.MockTransport(handler))
+
+
+def retained_configuration(private):
+    if (private.directory / "knowledge.json").exists():
+        return
+    private._write(
+        private.directory / "knowledge.json", {"revision": "0" * 32, "settings": KnowledgeSettings().model_dump()}
+    )
 
 
 def settings(**changes):
@@ -194,6 +203,7 @@ async def memory_manager(store, tmp_path, handler):
         assert identifier == run["id"]
         return tmp_path
 
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(
         store, SimpleNamespace(validated_workspace=validated_workspace), transport=httpx.MockTransport(handler)
     )

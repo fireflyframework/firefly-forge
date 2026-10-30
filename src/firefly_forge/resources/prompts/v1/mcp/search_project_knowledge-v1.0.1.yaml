@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/search_project_knowledge
+version: 1.0.1
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Retrieve cited references through the repository’s configured knowledge
+  platform and current mapped scopes.
+required_variables: []
+metadata:
+  defaults: {}

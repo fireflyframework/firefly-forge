@@ -2941,6 +2941,70 @@
       "variables": {
         "pin": "string"
       }
+    },
+    {
+      "id": "mcp/get_knowledge_configuration",
+      "version": "1.0.0",
+      "path": "mcp/get_knowledge_configuration.yaml",
+      "sha256": "8f1687aded6941dd5c78cb3557a00e156e58332f123f72d9b5b31c62225437cf",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_koinon_knowledge",
+      "version": "1.0.0",
+      "path": "mcp/configure_koinon_knowledge.yaml",
+      "sha256": "8d023a5a25aa031c7e8e4a191a9b700b8a081250aa627b66835e9bc951c3e8a1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/check_koinon_knowledge",
+      "version": "1.0.0",
+      "path": "mcp/check_koinon_knowledge.yaml",
+      "sha256": "6569c7267d88b77291c82f8b59a1c549641a0e33e5662ee5af7c0e7da5b78279",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_knowledge_schema",
+      "version": "1.0.0",
+      "path": "mcp/get_project_knowledge_schema.yaml",
+      "sha256": "ac81bc4fe7aec7025bed136d4a8998c6afa2c14e3e059ce0ac3729544b4f89e0",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/read_project_knowledge_chunks",
+      "version": "1.0.0",
+      "path": "mcp/read_project_knowledge_chunks.yaml",
+      "sha256": "13370ced42593d3fb487ef3651f0d6de0a62f819c4f18dc103883b609b8fe673",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/execute_project_knowledge_sql",
+      "version": "1.0.0",
+      "path": "mcp/execute_project_knowledge_sql.yaml",
+      "sha256": "f99735bad68cf4d1d0260caa5205c0c5e6a84f2dab8fe2cb960baa293cb24c87",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_project_knowledge_sql_request",
+      "version": "1.0.0",
+      "path": "mcp/get_project_knowledge_sql_request.yaml",
+      "sha256": "b17c3a9d70babc07bf845f1a74a3bc5e41df971967793a60e90ba547db59de1d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/search_project_knowledge",
+      "version": "1.0.1",
+      "path": "mcp/search_project_knowledge-v1.0.1.yaml",
+      "sha256": "55312f568fc3c39e055713df23d556c8c8920dd4916837b8180cc2ac172a949f",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

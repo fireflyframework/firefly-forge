@@ -67,6 +67,9 @@ async def cached_case(store, tmp_path, request):
         return httpx.Response(200, json={"elapsed_ms": 1, "hits": []})
 
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(response))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={

@@ -101,6 +101,9 @@ def test_cli_host_bootstrap_is_explicit_and_endpoint_changes_do_not_rotate_crede
         "--service-dir",
         str(tmp_path / "service"),
     ]
+    bootstrap_knowledge(
+        ConfigurationStore(tmp_path / "factory"), tmp_path / "service", endpoint="https://localhost:62665"
+    )
     cli = CliRunner()
     assert cli.invoke(main, [*args, "--endpoint", "https://localhost:62665"]).exit_code == 0
     before = fingerprints(tmp_path)

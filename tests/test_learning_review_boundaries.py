@@ -93,6 +93,9 @@ async def test_owner_loss_blocks_source_dispatch_or_admission(store, tmp_path, l
         )
 
     knowledge = KnowledgeManager(store, engine, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={
@@ -136,6 +139,9 @@ async def test_projection_unknown_or_verified_cannot_pivot_target_revision(store
         raise httpx.ReadTimeout("fixture ambiguous write", request=request)
 
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={
@@ -151,6 +157,9 @@ async def test_projection_unknown_or_verified_cannot_pivot_target_revision(store
     with pytest.raises(ValueError, match="unknown"):
         await projection.submit(record["id"], request_id=uuid4().hex)
     original = await projection.status(record["id"])
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(KnowledgeConfiguration(values={"tenant_id": "other", "api_key": "fixture-key-second"}))
     with pytest.raises(ValueError, match="reconciliation"):
         await projection.submit(record["id"], request_id=uuid4().hex)
@@ -208,6 +217,9 @@ async def test_review_revoked_during_workspace_read_prevents_source_post(store, 
         raise AssertionError("Revoked review authority dispatched a source")
 
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={

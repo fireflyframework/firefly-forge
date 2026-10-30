@@ -12,6 +12,13 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "get_knowledge_configuration",
+    "configure_koinon_knowledge",
+    "check_koinon_knowledge",
+    "get_project_knowledge_schema",
+    "read_project_knowledge_chunks",
+    "execute_project_knowledge_sql",
+    "get_project_knowledge_sql_request",
     "get_framework_knowledge_status",
     "check_framework_updates",
     "refresh_framework_knowledge",
@@ -64,7 +71,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 185
+    assert len(tools) == 192
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
@@ -92,6 +99,11 @@ async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extension
         assert runner["properties"].keys() - properties.keys() == additions
         properties.update({field: runner["properties"][field] for field in additions})
         definitions["WorkDurationPolicyV2"] = WorkDurationPolicyV2.model_json_schema()
+    search = next(tool for tool in expected["tools"] if tool["name"] == "search_project_knowledge")
+    assert search["description"] == "Retrieve cited project/framework references in the repository's flycanon scopes."
+    search["description"] = (
+        "Retrieve cited references through the repository’s configured knowledge platform and current mapped scopes."
+    )
     assert json.loads(actual) == expected
 
 
@@ -156,7 +168,9 @@ def test_mcp_descriptions_have_one_packaged_source():
                 ast.Call(
                     func=ast.Name(id="prompt_text", ctx=ast.Load()),
                     args=[ast.Constant("mcp/" + node.name)],
-                    keywords=[],
+                    keywords=[ast.keyword(arg="version", value=ast.Constant("1.0.1"))]
+                    if node.name == "search_project_knowledge"
+                    else [],
                 )
             )
             names.add(node.name)

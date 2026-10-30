@@ -9,6 +9,8 @@ import {
 } from "react";
 import { post, request, type Connection, type Repository } from "./api";
 import { KnowledgeUploads } from "./KnowledgeUploads";
+import { KoinonKnowledgeSettings } from "./KoinonKnowledgeSettings";
+import type { KoinonSettings } from "./KoinonKnowledgeData";
 import { LearningRecords } from "./LearningRecords";
 import type { IdentitySession } from "./Identity";
 import { safeExternalLink } from "./FeatureLinks";
@@ -25,7 +27,8 @@ import {
 } from "./FrameworkKnowledgeData";
 import "./StudioFeatures.css";
 
-type Settings = {
+type LegacySettings = {
+  provider?: undefined;
   enabled: boolean;
   endpoint: string;
   tenant_id: string;
@@ -37,7 +40,11 @@ type Settings = {
   top_k: number;
   readiness: { state: string; detail: string };
 };
+type Settings = LegacySettings | KoinonSettings;
 type Hit = {
+  title?: string;
+  source_version_id?: string | null;
+  provenance?: string;
   source_id?: string;
   source_title?: string;
   source_filename?: string;
@@ -156,7 +163,15 @@ export function Knowledge({
   }
   return (
     <div className="knowledge-setup">
-      {settings && (
+      {settings?.provider === "koinon" && (
+        <KoinonKnowledgeSettings
+          settings={settings}
+          connection={connection}
+          repositories={repositories}
+          onSaved={setSettings}
+        />
+      )}
+      {settings && settings.provider !== "koinon" && (
         <article className="integration-card">
           <div>
             <h3>flycanon knowledge and memory</h3>
@@ -311,7 +326,7 @@ export function Knowledge({
                 id="knowledge-query"
                 name="query"
                 required
-                maxLength={4000}
+                maxLength={settings.provider === "koinon" ? 8000 : 4000}
                 placeholder="How does this product validate reservations?"
               />
             </div>
@@ -330,6 +345,7 @@ export function Knowledge({
               >
                 <strong>
                   {hit.source_title ||
+                    hit.title ||
                     hit.source_filename ||
                     hit.source_id ||
                     "Retrieved source"}
@@ -337,6 +353,8 @@ export function Knowledge({
                 <p>{hit.content}</p>
                 <small>
                   Workspace: {hit.workspace_id}
+                  {settings.provider === "koinon" &&
+                    ` · ${hit.source_version_id ? "Source version: " + hit.source_version_id : "Source version not recorded"}`}
                   {typeof hit.score === "number"
                     ? ` · Score: ${hit.score.toFixed(3)}`
                     : ""}
@@ -356,8 +374,9 @@ export function Knowledge({
           </div>
           {searched && !hits.length && (
             <p className="integration-status">
-              No matching source was retrieved. Index verified project files or
-              add framework references in flycanon.
+              {settings.provider === "koinon"
+                ? "No matching source was retrieved from the mapped Koinon scopes. Check their indexed source and current access."
+                : "No matching source was retrieved. Index verified project files or add framework references in flycanon."}
             </p>
           )}
         </section>
@@ -680,14 +699,17 @@ export function KnowledgeExplorer({
                 Return to project knowledge
               </button>
             )}
-            {tab === "sources" && id && !corpus && (
-              <KnowledgeUploads
-                connection={connection}
-                repository={id}
-                enabled={Boolean(settings?.enabled && connected)}
-                onRefresh={() => setRefresh((value) => value + 1)}
-              />
-            )}
+            {tab === "sources" &&
+              id &&
+              !corpus &&
+              settings?.provider !== "koinon" && (
+                <KnowledgeUploads
+                  connection={connection}
+                  repository={id}
+                  enabled={Boolean(settings?.enabled && connected)}
+                  onRefresh={() => setRefresh((value) => value + 1)}
+                />
+              )}
             {((tab === "sources" && !corpus) || tab === "knowledge") && (
               <div className="field">
                 <label htmlFor="explorer-scope">Browse scope</label>

@@ -1896,7 +1896,7 @@ def mcp_server() -> None:
 
 @main.group()
 def knowledge() -> None:
-    """Install and verify the managed knowledge service."""
+    """Configure knowledge or inspect a retained legacy service."""
 
 
 @knowledge.command("bootstrap")
@@ -1909,7 +1909,15 @@ def knowledge_bootstrap(data_dir: Path, service_dir: Path, endpoint: str | None)
     from firefly_forge.managed_knowledge import bootstrap_knowledge
 
     try:
-        result = bootstrap_knowledge(ConfigurationStore(data_dir), service_dir, endpoint=endpoint)
+        from firefly_forge.knowledge import _current
+
+        private = ConfigurationStore(data_dir)
+        if _current(private)[0].get("provider") == "koinon":
+            raise ValueError(
+                "New knowledge connections use Koinon; configure its API address and explicit "
+                "project mappings in Studio or the authenticated API"
+            )
+        result = bootstrap_knowledge(private, service_dir, endpoint=endpoint)
         if result["state"] == "external":
             raise ValueError(
                 "Existing knowledge settings retained; use the existing service instead of the managed stack"
@@ -1928,11 +1936,17 @@ def knowledge_initialize(data_dir: Path) -> None:
     from pyfly.container import Container
 
     from firefly_forge.configuration import ConfigurationStore
-    from firefly_forge.knowledge import KnowledgeConnection
+    from firefly_forge.knowledge import KnowledgeConnection, _current
     from firefly_forge.managed_knowledge import ManagedKnowledgeProvisioner
 
+    private = ConfigurationStore(data_dir)
+    if _current(private)[0].get("provider") == "koinon":
+        raise click.ClickException(
+            "Check the mapped Koinon connection through the API; managed legacy "
+            "initialization does not migrate knowledge"
+        )
     container = Container()
-    container.register_instance(ConfigurationStore, ConfigurationStore(data_dir))
+    container.register_instance(ConfigurationStore, private)
     container.register(KnowledgeConnection)
     container.register(ManagedKnowledgeProvisioner)
     manager = container.resolve(ManagedKnowledgeProvisioner)

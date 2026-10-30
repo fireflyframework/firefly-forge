@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/check_koinon_knowledge
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Check current mapped Koinon catalog access for a repository. This starts
+  no retrieval, indexing, query or model generation.
+required_variables: []
+metadata:
+  defaults: {}

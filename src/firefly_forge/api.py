@@ -140,6 +140,7 @@ from firefly_forge.knowledge import (
 )
 from firefly_forge.knowledge_first import KnowledgeFirst
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
+from firefly_forge.knowledge_platform import KoinonConnectionInput, KoinonSqlInput
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
 from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController
 from firefly_forge.known_worker_completions import KnownWorkerCompletions
@@ -388,9 +389,14 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         ("/scm/connections/{id}/callback", "get", None),
         ("/knowledge/configuration", "get", None),
         ("/knowledge/configuration", "put", "KnowledgeConfiguration"),
+        ("/knowledge/koinon/configuration", "put", "KoinonConnectionInput"),
         ("/knowledge/status", "get", None),
         ("/knowledge/test", "post", "KnowledgeTest"),
         ("/knowledge/search", "post", "KnowledgeSearch"),
+        ("/knowledge/schema", "get", None),
+        ("/knowledge/chunks", "get", None),
+        ("/runs/{id}/knowledge/queries", "post", "KoinonSqlInput"),
+        ("/runs/{id}/knowledge/queries/{request_id}", "get", None),
         ("/runs/{id}/knowledge/index", "post", "KnowledgeIndex"),
         ("/runs/{id}/knowledge/remember", "post", None),
         ("/runs/{id}/plan", "get", None),
@@ -416,6 +422,8 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         KnowledgeSearch,
         KnowledgeIndex,
         KnowledgeTest,
+        KoinonSqlInput,
+        KoinonConnectionInput,
         ResumeRequest,
         VerificationAdoption,
     ]
@@ -452,6 +460,21 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
                     "schema": {"type": "string", "enum": ["codex", "claude", "bridge", "agentic"]},
                 }
             )
+        if path in {"/knowledge/schema", "/knowledge/chunks"}:
+            fields: list[tuple[str, bool, dict[str, Any]]] = [
+                ("repository_id", True, {"type": "string", "pattern": "^[a-f0-9]{32}$"})
+            ]
+            fields += [("dataset_id" if path.endswith("schema") else "document_id", True, {"type": "string"})]
+            if path.endswith("chunks"):
+                fields += [
+                    ("offset", False, {"type": "integer", "minimum": 0, "default": 0}),
+                    ("limit", False, {"type": "integer", "minimum": 1, "default": 50}),
+                    ("expected_identity", False, {"type": "string", "pattern": "^[a-f0-9]{64}$"}),
+                ]
+            operation["parameters"] = [
+                {"name": name, "in": "query", "required": required, "schema": schema}
+                for name, required, schema in fields
+            ]
         if model_name:
             operation["requestBody"] = {
                 "required": True,
@@ -1110,8 +1133,9 @@ class FactoryConfiguration:
         journal: Journal,
         connection: KnowledgeConnection,
         knowledge_first: KnowledgeFirst,
+        access: ProjectAccess,
     ) -> KnowledgeManager:
-        manager = KnowledgeManager(store, engine, connection=connection)
+        manager = KnowledgeManager(store, engine, connection=connection, access=access)
         manager.journal = journal
         engine.knowledge = manager
         knowledge_first.knowledge = manager

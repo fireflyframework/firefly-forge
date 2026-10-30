@@ -37,6 +37,7 @@ from firefly_forge.knowledge import (
     KnowledgeSearch,
     KnowledgeTest,
 )
+from firefly_forge.knowledge_platform import KoinonConnectionInput, KoinonSqlInput
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
 from firefly_forge.policies import PolicyCatalog, PolicySync, ProjectPolicies
@@ -384,6 +385,15 @@ class KnowledgeController:
     def configure(self, body: Body[KnowledgeConfiguration]) -> dict[str, Any]:
         return self.knowledge.configure(body)
 
+    @put_mapping("/knowledge/koinon/configuration")
+    def configure_koinon(self, body: Body[KoinonConnectionInput]) -> dict[str, Any]:
+        return self.knowledge.configure(
+            KnowledgeConfiguration(
+                values=body.settings.model_dump(mode="json"),
+                clear_secrets=["access_token"] if body.clear_access_token else [],
+            )
+        )
+
     @post_mapping("/knowledge/test")
     async def test(self, body: Body[KnowledgeTest]) -> dict[str, Any]:
         return await self.knowledge.test(body)
@@ -400,6 +410,31 @@ class KnowledgeController:
         offset: QueryParam[int] = 0,
     ) -> dict[str, Any]:
         return await self.knowledge.explore(repository_id, scope, offset)
+
+    @get_mapping("/knowledge/schema")
+    async def schema(self, repository_id: QueryParam[str], dataset_id: QueryParam[str]) -> dict[str, Any]:
+        return await self.knowledge.schema(repository_id, dataset_id)
+
+    @get_mapping("/knowledge/chunks")
+    async def chunks(
+        self,
+        repository_id: QueryParam[str],
+        document_id: QueryParam[str],
+        offset: QueryParam[int] = 0,
+        limit: QueryParam[int] = 50,
+        expected_identity: QueryParam[str | None] = None,
+    ) -> dict[str, Any]:
+        return await self.knowledge.chunks(
+            repository_id, document_id, offset=offset, limit=limit, expected_identity=expected_identity
+        )
+
+    @post_mapping("/runs/{id}/knowledge/queries")
+    async def query_sql(self, id: PathVar[str], body: Body[KoinonSqlInput]) -> dict[str, Any]:
+        return await self.knowledge.query_sql(id, body)
+
+    @get_mapping("/runs/{id}/knowledge/queries/{request_id}")
+    async def query_status(self, id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self.knowledge.query_status(id, request_id)
 
     @post_mapping("/runs/{id}/knowledge/index")
     async def index(self, id: PathVar[str], body: Body[KnowledgeIndex]) -> dict[str, Any]:

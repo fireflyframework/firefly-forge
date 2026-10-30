@@ -3,7 +3,9 @@ description: Configure a project's optional flyquery catalog explorer, inspect i
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Explore structured project data
+# Inspect retained structured project data
+
+New Koinon bindings use the [headless candidate schema and SQL interfaces](koinon-headless.md). This page describes the retained optional Flyquery adapter and its existing restrictions; it is not the Koinon configuration workflow.
 
 [flyquery](https://github.com/fireflyframework/flyquery) manages structured datasets and can answer questions through its own query pipeline. forge's optional integration reads a project's catalog, individual tables and known schema objects. Open **Administration → Structured analytics** to configure the connection or inspect the project scope you can read.
 

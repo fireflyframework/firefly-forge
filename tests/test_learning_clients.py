@@ -67,6 +67,9 @@ async def test_campaign_captures_knowledge_before_deriving_native_capabilities(s
     from firefly_forge.search_tools import SearchTools
 
     manager = KnowledgeManager(store)
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={

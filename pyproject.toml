@@ -25,6 +25,7 @@ dependencies = [
   "cryptography>=50.0.2,<51",
   "PyYAML>=6.0.3,<7",
   "pyfly[agentic,data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.16/pyfly-26.10.16-py3-none-any.whl",
+  "firefly-koinon-sdk @ git+https://github.com/fireflyframework/firefly-koinon.git@17871694c7d85cfcfa0313397bb8ebda85f63342#subdirectory=sdk/python",
   "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.6/flycanon_sdk-26.10.6-py3-none-any.whl",
   "fonttools[woff]>=4.62,<5",
   "pypdf>=6.20.1,<7",

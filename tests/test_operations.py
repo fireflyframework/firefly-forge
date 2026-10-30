@@ -399,6 +399,9 @@ async def test_target_rejects_ui_saved_coding_and_knowledge_credentials(store, t
     coordinator, _, repository = await verified_run(store, tmp_path)
     store.configuration.update("bridge", ProviderConfiguration(values={"token": "private-ui-bridge-token"}))
     knowledge = KnowledgeManager(store, coordinator)
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(KnowledgeConfiguration(values={"enabled": False, "api_key": "private-ui-knowledge-key"}))
     coordinator.knowledge = knowledge
     manager = DeploymentManager(store, coordinator)

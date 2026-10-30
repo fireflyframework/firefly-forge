@@ -126,6 +126,9 @@ async def test_explicit_admission_has_exact_source_body_scope_and_no_duplicate_r
         )
 
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(handler))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(knowledge.private)
     knowledge.configure(
         KnowledgeConfiguration(
             values={

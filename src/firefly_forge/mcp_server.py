@@ -24,6 +24,7 @@ from firefly_forge.framework_knowledge_models import (
     FrameworkSearchInput,
 )
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
+from firefly_forge.knowledge_platform import KoinonKnowledgeSettings, KoinonSqlInput
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
@@ -51,6 +52,8 @@ from firefly_forge.user_administration import (
 )
 
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
+KoinonSettingsRequest = SkipValidation[KoinonKnowledgeSettings]
+KoinonSqlRequest = SkipValidation[KoinonSqlInput]
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
 EligibleUserQuery = Annotated[str, WithJsonSchema({"type": "string", "minLength": 3, "maxLength": 120})]
 MembershipRequest = Annotated[Any, WithJsonSchema(MembershipInput.model_json_schema())]
@@ -430,7 +433,90 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.connect_granted_repository(provider, remote_id)
 
-    @server.tool(description=prompt_text("mcp/search_project_knowledge"))
+    @server.tool(
+        description=prompt_text("mcp/get_knowledge_configuration"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_knowledge_configuration() -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.knowledge_configuration()
+
+    @server.tool(description=prompt_text("mcp/configure_koinon_knowledge"))
+    def configure_koinon_knowledge(settings: KoinonSettingsRequest, clear_access_token: bool = False) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_koinon_knowledge(settings, clear_access_token=clear_access_token)
+
+    @server.tool(
+        description=prompt_text("mcp/check_koinon_knowledge"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def check_koinon_knowledge(repository_id: str) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.check_koinon_knowledge(repository_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_project_knowledge_schema"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_project_knowledge_schema(repository_id: str, dataset_id: str) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.knowledge_schema(repository_id, dataset_id)
+
+    @server.tool(
+        description=prompt_text("mcp/read_project_knowledge_chunks"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def read_project_knowledge_chunks(
+        repository_id: str, document_id: str, offset: int = 0, limit: int = 50, expected_identity: str | None = None
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.knowledge_chunks(
+                repository_id, document_id, offset=offset, limit=limit, expected_identity=expected_identity
+            )
+
+    @server.tool(
+        description=prompt_text("mcp/execute_project_knowledge_sql"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def execute_project_knowledge_sql(run_id: str, request: KoinonSqlRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.query_knowledge_sql(run_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_project_knowledge_sql_request"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_project_knowledge_sql_request(run_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.knowledge_sql_request(run_id, request_id)
+
+    @server.tool(description=prompt_text("mcp/search_project_knowledge", version="1.0.1"))
     def search_project_knowledge(repository_id: str, query: str) -> dict[str, Any]:
         from firefly_forge.cli import client
 
