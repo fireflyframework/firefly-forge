@@ -235,6 +235,7 @@ def runtime_contract() -> str:
                     "agent_roles.py",
                     "policies.py",
                     "completed_final_epoch.py",
+                    "personal_token_format.py",
                 )
             },
         }

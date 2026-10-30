@@ -11,7 +11,7 @@ cookie and CSRF protection. The explicitly enabled local bootstrap also accepts
 `Authorization: Bearer <FORGE_API_TOKEN>` from loopback clients. See
 [Sign in and manage project access](identity.md) for each mode.
 
-[Personal project API tokens](personal-api-tokens.md) provide a separate, read-only REST/SDK credential for selected projects. Their lifecycle requires the owner's OIDC browser session; they do not authorize MCP or execution.
+[Personal project API tokens](personal-api-tokens.md) provide a separate, read-only REST/SDK credential for selected projects. Their lifecycle requires the owner's OIDC browser session; they also support official stdio MCP observation tools that use those allowed reads, without authorizing execution or credential management.
 
 Request and response bodies use JSON unless a route downloads an artifact or
 file. Project permissions apply to the authenticated identity. The actual
