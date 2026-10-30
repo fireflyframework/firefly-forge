@@ -3017,6 +3017,30 @@
         "fact_ids": "string",
         "context": "string"
       }
+    },
+    {
+      "id": "mcp/get_consumed_terminal_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_candidate.yaml",
+      "sha256": "8a2ff5c79194d868e81acd3905dcdbb6eb64db100b285ee6e5bd64c8c8e3d8de",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_consumed_terminal",
+      "version": "1.0.0",
+      "path": "mcp/request_consumed_terminal.yaml",
+      "sha256": "99a0fc816425663c1b178f30ae402681da3fc7b5a91eb2aada85aadbdeb419f8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_status",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_status.yaml",
+      "sha256": "c0ba9b1240c8b8d2508b8fc0d36bb3166baee7cbed1a46efda5b9d654ea997d6",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

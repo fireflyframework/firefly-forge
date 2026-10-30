@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_consumed_terminal_status
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the exact saved version-2 consumed-terminal request receipt under
+  current authority. Queued or claimed is not accepted; accepted still does not mean
+  verified or released. This read does not repeat settlement or dispatch work.
+required_variables: []
+metadata:
+  defaults: {}
