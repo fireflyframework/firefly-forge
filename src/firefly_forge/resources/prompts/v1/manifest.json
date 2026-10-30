@@ -2941,6 +2941,34 @@
       "variables": {
         "pin": "string"
       }
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-system-1.0.6.yaml",
+      "sha256": "5148b2d2bb77094c18dc1f36e5374e37988640df396ec738638711e45b4322d2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.3",
+      "path": "collaboration/communication-review-system-1.0.3.yaml",
+      "sha256": "b75b99caacd0212f3a750d77dad534f92c6ac23b49b4fee78952c12c13c9c150",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-request",
+      "version": "1.0.3",
+      "path": "collaboration/communication-request-1.0.3.yaml",
+      "sha256": "ab0b2ed2d451152e26fee1a4b0af630528975ac4117a5cc55816e19e017a653e",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string",
+        "context": "string"
+      }
     }
   ]
 }

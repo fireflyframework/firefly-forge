@@ -53,6 +53,14 @@ GitHub and Bitbucket signatures are verified against raw bytes without JSON rese
 
 A provider user ID is separate from the factory session identity. Granting a comment author permission does not turn that author into a factory administrator or let a command replace operator-owned checks. A factory administrator should complete the full Studio setup and receipt-inspection journey; the repository policy API also enforces the narrower project permissions above.
 
+## Read the bot's updates
+
+The bot answers the current question before recapping the product. An update explains what changed, the relevant checks, the present blocker and any decision needed from you. The selected communication model writes the title and explanation, chooses useful headings or bullets, and passes through the Humanizer instructions and a separate factual and editorial review.
+
+When a recorded check helps explain a failure, the bot can include its command or an output excerpt in a code block. Those bytes come from the saved check, with privacy filtering; they are not code invented by the writer. Older results stay labeled as older results. If no diagnostic or cause is known, the bot must say what information is missing instead of guessing a faulty line. A status answer does not start another execution.
+
+Use **Plan** and **Verification** for the full run evidence. A failed automation step can coexist with passing checks, and passing checks do not replace the remaining product journeys. Ask a specific follow-up in the same issue when you need the next level of detail.
+
 ## First conversation, then reviewed work
 
 1. Finish repository connection, current account mapping and the scoped GitHub polling setup. The execution owner must be running; an API-only process does not process the conversation.
