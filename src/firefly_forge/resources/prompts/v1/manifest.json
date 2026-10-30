@@ -465,10 +465,26 @@
       "variables": {}
     },
     {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-review-system-1.0.1.yaml",
+      "sha256": "f3affd3e03244f57da602d1de829401b45a2ede11af71f3eb3a1b8110df01361",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/publication-system",
       "version": "1.0.0",
       "path": "collaboration/publication-system.yaml",
       "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-system-1.0.1.yaml",
+      "sha256": "bab42b526b30051917689256582236402f0280ebcab2efb7cc6cb78a20de16fe",
       "field": "user",
       "variables": {}
     },

@@ -958,7 +958,7 @@ class CommunicationWriter:
                 **({"context": json.dumps(context, sort_keys=True, ensure_ascii=False)} if not publication else {}),
             )
             instructions = inject_skills(
-                prompt_text("collaboration/publication-system")
+                prompt_text("collaboration/publication-system", version="1.0.1")
                 if publication
                 else prompt_text("collaboration/communication-system", version="1.0.8"),
                 ["humanizer"],
@@ -1026,7 +1026,7 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.0" if publication else "1.0.5",
+                    version="1.0.1" if publication else "1.0.5",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
