@@ -766,23 +766,29 @@ The writer and reviewer are separate `FireflyAgent` invocations using the same s
 
 ```mermaid
 flowchart LR
-    F["Recorded facts"] --> W["Draft complete card"]
-    W --> N["Check structure<br/>and exact quotation"]
-    N --> R["Review facts<br/>and reader checks"]
-    F --> R
-    R --> Q{"Review valid?"}
-    Q -->|No| H["Hold delivery"]
-    Q -->|Yes| V{"Facts supported<br/>and all reader checks pass?"}
-    V -->|Yes| C["Recheck current facts<br/>and authority"]
+    F["Facts and<br/>human question"] --> W["Draft and<br/>validate card"]
+    W --> R{"Valid<br/>review?"}
+    R -->|No| H["Hold<br/>delivery"]
+    R -->|Yes| S["Select<br/>response"]
+```
+
+```mermaid
+flowchart LR
+    R["Valid review"] --> V{"Facts supported<br/>and reader checks pass?"}
+    V -->|Yes| D["Keep draft"]
     V -->|No or uncertain| B["Correct once"]
-    B --> C
+```
+
+```mermaid
+flowchart LR
+    S["Selected<br/>response"] --> C["Recheck facts<br/>and authority"]
     C --> I["Retain body<br/>and write intent"]
-    I --> P["SCM write boundary"]
+    I --> P["SCM write<br/>boundary"]
 ```
 
 </div>
 
-<p class="forge-flow-caption" id="semantic-review-flow-guide">A valid factual review and explicit reader checks decide whether the draft needs its one correction. Current facts and authority are checked again before the write intent. Focus and scroll the diagram on a narrow screen.</p>
+<p class="forge-flow-caption" id="semantic-review-flow-guide">Read the three stages from top to bottom: validate the review, select or correct the response, then recheck authority and retain the write intent. Focus and scroll each stage on a narrow screen.</p>
 
 A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation. A supported factual verdict proceeds directly only when every reader check passes and there are no issues. Supported facts with a false reader check may carry editorial issues and trigger one correction; contradictory factual issues remain invalid. Unsupported claims or uncertainty also trigger that correction. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
 
