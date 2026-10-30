@@ -63,6 +63,7 @@ class IdentityConfiguration(BaseModel):
     client_id: str = ""
     client_secret: SecretStr = SecretStr("")
     api_audience: str = ""
+    trusted_id_token_audiences: tuple[str, ...] = ()
     redirect_uri: str = ""
     browser_origin: str = ""
     encryption_key: SecretStr = SecretStr("")
@@ -72,6 +73,8 @@ class IdentityConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def validate_configuration(self) -> IdentityConfiguration:
+        if any(not audience or audience != audience.strip() for audience in self.trusted_id_token_audiences):
+            raise ValueError("Trusted ID-token audiences must be exact nonempty client identifiers")
         if self.browser_origin:
             origin = urlsplit(self.browser_origin)
             if (
@@ -134,6 +137,7 @@ class IdentityConfiguration(BaseModel):
             "bootstrap_token": os.getenv("FORGE_API_TOKEN", ""),
         }
         try:
+            values["trusted_id_token_audiences"] = json.loads(os.getenv("FORGE_OIDC_TRUSTED_ID_TOKEN_AUDIENCES", "[]"))
             return cls.model_validate(values)
         except ValueError:
             raise ValueError(
@@ -211,6 +215,7 @@ class IdentityService:
             "issuer": self.config.issuer,
             "client_id": self.config.client_id,
             "api_audience": self.config.api_audience,
+            "trusted_id_token_audiences": list(self.config.trusted_id_token_audiences),
             "redirect_uri": self.config.redirect_uri,
             "browser_origin": self.config.browser_origin
             or (
@@ -508,6 +513,11 @@ class IdentityService:
                 },
             )
             id_claims = await self._claims(tokens["id_token"], self.config.client_id)
+            audiences = id_claims.get("aud")
+            audience_values = audiences if isinstance(audiences, list) else [audiences]
+            trusted = {self.config.client_id, *self.config.trusted_id_token_audiences}
+            if any(audience not in trusted for audience in audience_values):
+                raise ValueError("ID token contains an untrusted audience")
             if not hmac.compare_digest(str(id_claims.get("nonce", "")), native["oauth2_nonce"]):
                 raise ValueError("Nonce mismatch")
             if id_claims.get("azp", self.config.client_id) != self.config.client_id:
