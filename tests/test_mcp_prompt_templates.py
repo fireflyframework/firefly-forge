@@ -116,6 +116,19 @@ async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extension
         "Retain verified run evidence through its configured knowledge workflow; "
         "Koinon stages an external proposal for explicit private review."
     )
+    for name, description in {
+        "submit_learning_projection": (
+            "Submit retained local outcome evidence once through its frozen provider; "
+            "Koinon records positive outcomes and unclassified failure hints as versioned source evidence. "
+            "Unknown writes require readback without replay."
+        ),
+        "observe_learning_projection": (
+            "Read back the admitted source and scoped citations without another upload; "
+            "native operational evidence also requires exact source versions and extraction identities."
+        ),
+    }.items():
+        tool = next(item for item in expected["tools"] if item["name"] == name)
+        tool["description"] = description
     assert json.loads(actual) == expected
 
 
@@ -181,7 +194,13 @@ def test_mcp_descriptions_have_one_packaged_source():
                     func=ast.Name(id="prompt_text", ctx=ast.Load()),
                     args=[ast.Constant("mcp/" + node.name)],
                     keywords=[ast.keyword(arg="version", value=ast.Constant("1.0.1"))]
-                    if node.name in {"search_project_knowledge", "remember_verified_run"}
+                    if node.name
+                    in {
+                        "search_project_knowledge",
+                        "remember_verified_run",
+                        "submit_learning_projection",
+                        "observe_learning_projection",
+                    }
                     else [],
                 )
             )

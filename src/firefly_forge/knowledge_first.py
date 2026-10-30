@@ -143,10 +143,23 @@ class KnowledgeFirst:
 
                     return combined
                 return guard
+            hints = decision.get("observed_failure_hints", [])
+            if hints:
+                if self.projection is None:
+                    raise ValueError("Retained native failure hints require their projection service")
+                guards = [await self.projection.retain(run_id, context.model_dump(), hint) for hint in hints]
+
+                def retained_hints() -> None:
+                    for guard in guards:
+                        guard()
+
+                return retained_hints
             return None
 
         async def fresh(result: Data) -> Callable[[], None] | None:
             if result.get("knowledge_decision", {}).get("reason") == "verified_exact_match":
+                return await retained(result)
+            if result.get("knowledge_decision", {}).get("observed_failure_hints"):
                 return await retained(result)
             return None
 
@@ -170,6 +183,16 @@ class KnowledgeFirst:
                 web_provider_dispatched=False,
                 reference_citations=copy.deepcopy(references.get("citations", []))[:16],
             )
+            hints = []
+            if (
+                not refresh
+                and not decision["eligible"]
+                and self.projection is not None
+                and policy["settings"]["projected_retrieval"]
+            ):
+                hints = await self.projection.failure_hints(run_id, query, context.model_dump())
+                if hints:
+                    stamp["observed_failure_hints"] = hints
             observation["reason"] = decision["reason"]
             if decision["eligible"]:
                 outcome = decision["outcome"]
@@ -202,7 +225,17 @@ class KnowledgeFirst:
                     "untrusted": True,
                     "origin": "candidate_reference",
                     "knowledge_decision": stamp,
-                    "results": copy.deepcopy(references.get("hits", []))[: policy["settings"]["max_candidates"]],
+                    "results": [
+                        {
+                            "citation_id": "learning-failure-" + hint["record_id"],
+                            "statement": hint["statement"],
+                            "kind": "observed_failure",
+                            "failure_cause": "not_classified",
+                            "may_skip_independent_checks": False,
+                        }
+                        for hint in hints
+                    ]
+                    + copy.deepcopy(references.get("hits", []))[: policy["settings"]["max_candidates"]],
                 }
 
             def dispatched() -> None:
