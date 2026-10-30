@@ -12,11 +12,18 @@ Sign in through the configured OIDC provider before creating a token. Local boot
 
 ## Create and save a credential
 
-In Studio, open **Your account → Personal API tokens**. Choose **New token**, give it a useful name, select the projects it can read and choose an expiry in your local time zone. The screen shows only projects where your current session has read membership; the server checks membership again when issuing and using the credential.
+In Studio, open your account at the bottom of the sidebar, then choose **Personal API tokens**. On a small screen, open **Menu** first and select your account. Choose **New token**, give it a useful name, select the projects it can read and choose an expiry in your local time zone. The screen shows only projects where your current session has read membership; the server checks membership again when issuing and using the credential.
 
 Save the one-time secret in your secret manager, then choose **I saved this token**. Closing the account dialog, changing identity or leaving the screen discards the displayed secret. The browser does not save it in local or session storage. The list shows safe metadata and offers **Rotate** and **Revoke**, with confirmation before either change. Rotation revokes the old secret immediately, so update its consumers with the replacement. After a connection failure, refresh the list and inspect the outcome before making another request; the screen does not replay mutations automatically.
 
-The same lifecycle is available through the API:
+<figure class="forge-shot" markdown="1">
+
+![Choose a token name, current projects and expiry](assets/screenshots/personal-token-create-desktop-light.png)
+
+<figcaption>Choose a name, projects and an expiry before creating a token. This controlled fixture contains no issued credential; the server checks your current project memberships when you create one.</figcaption>
+</figure>
+
+### Create through the API
 
 1. Sign in and confirm that your account has a current membership in each intended project. Factory-administrator status alone does not grant a personal token access to every project.
 2. Use your authenticated browser session to send the request below to `POST /api/v1/identity/tokens`. Include the application's exact `Origin` and the native `X-XSRF-TOKEN` header with its matching CSRF cookie, as described in [browser login](identity.md#browser-login).
