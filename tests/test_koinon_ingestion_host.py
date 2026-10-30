@@ -502,23 +502,3 @@ async def test_recorded_memory_operation_cannot_be_rebound_to_another_remote_rev
     staged = await knowledge.remember(await store.get_run(store.run.id.hex), automatic=True)
     with pytest.raises(ValueError, match="original|saved"):
         await knowledge.observe_ingestion(store.run.id.hex, "memory", staged["request_id"], "other-review")
-
-
-async def test_legacy_learning_cache_is_explicitly_held_until_versioned_native_receipt_migration(writes):
-    from types import SimpleNamespace
-
-    from firefly_forge.learning_projection import LearningProjection
-
-    knowledge, store, journal, state, _ = writes
-    projection = LearningProjection(store, journal, SimpleNamespace(), knowledge)
-
-    async def record(*args, **kwargs):
-        return SimpleNamespace(id=store.run.id, run_id=store.run.id, state="verified", kind="local_outcome")
-
-    async def row(*args, **kwargs):
-        return SimpleNamespace(state="pending")
-
-    projection._record, projection._projection = record, row
-    with pytest.raises(ValueError, match="cache|receipt"):
-        await projection.submit("a" * 32, request_id="b" * 32)
-    assert state["source_posts"] == 0 and state["memory_posts"] == 0

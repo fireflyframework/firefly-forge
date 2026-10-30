@@ -3089,6 +3089,22 @@
         "fact_ids": "string",
         "context": "string"
       }
+    },
+    {
+      "id": "mcp/submit_learning_projection",
+      "version": "1.0.1",
+      "path": "mcp/submit_learning_projection-v1.0.1.yaml",
+      "sha256": "7e7a22eab7cae3cb6911117d656d9c08a5c818107d87ac7f699ce2549a950dc2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_learning_projection",
+      "version": "1.0.1",
+      "path": "mcp/observe_learning_projection-v1.0.1.yaml",
+      "sha256": "8dce2c5b974bc015159ab2a0f58eaacfa6e8e12efd4fb117bb9427d4be3544a7",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

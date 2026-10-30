@@ -64,12 +64,34 @@ class LearningLedger:
         await self.store.repository(repository_id)
 
     async def records(self, repository_id: str) -> list[Data]:
+        actor = CURRENT_PRINCIPAL.get()
         await self._scope(repository_id)
         async with self.store._unit():
             rows = await self.records_repository.for_repository(identifier(repository_id))
             origins = [await self.store.get_run(row.run_id.hex) for row in rows]
+            if any(
+                origin.get("id") != row.run_id.hex
+                or origin.get("repository_id") != row.repository_id.hex
+                or row.repository_id.hex != repository_id
+                or origin.get("project_id") != row.data["envelope"]["context"].get("project_id")
+                for row, origin in zip(rows, origins, strict=True)
+            ):
+                raise ValueError("Learning record origin does not match its retained scope")
             visible = {run["id"] for run in await ProjectAccess(self.store).filter_runs(origins)}
-            return [self._view(row) for row in rows if row.run_id.hex in visible]
+            await self._scope(repository_id)
+            if CURRENT_PRINCIPAL.get() != actor:
+                raise ValueError("Learning record reader changed during origin inspection")
+            return [
+                {
+                    **self._view(row),
+                    "knowledge_provider": "koinon"
+                    if isinstance(origin.get("knowledge_snapshot"), dict)
+                    and origin["knowledge_snapshot"].get("provider") == "koinon"
+                    else None,
+                }
+                for row, origin in zip(rows, origins, strict=True)
+                if row.run_id.hex in visible
+            ]
 
     async def _append(self, row: ForgeLearningRecordEntity, request_id: str, kind: str, payload: Data) -> Data:
         existing = await self.events.for_record(row.id)
@@ -91,7 +113,7 @@ class LearningLedger:
             "created_at": at.isoformat(),
             "previous_hash": existing[-1].digest if existing else "0" * 64,
         }
-        if kind in {"invalidation", "projection_observation"}:
+        if kind in {"invalidation", "projection_observation", "projection_observation_v2"}:
             actor = CURRENT_PRINCIPAL.get()
             event["actor_id"] = actor.id.hex if actor is not None else None
         event["digest"] = digest(event)

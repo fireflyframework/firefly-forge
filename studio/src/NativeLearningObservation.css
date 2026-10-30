@@ -1,0 +1,84 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.native-learning {
+  min-width: 0;
+}
+.native-learning p {
+  max-width: 70ch;
+  overflow-wrap: anywhere;
+}
+.native-learning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.native-learning-actions button {
+  min-height: 40px;
+}
+.native-learning-review,
+.native-learning-result,
+.native-learning-versions,
+.native-learning-identities {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.native-learning summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.native-learning-saved-scope {
+  margin-top: 16px;
+}
+.native-learning-result:focus-visible,
+.native-learning-version-scroll:focus-visible,
+.native-learning summary:focus-visible {
+  outline: 3px solid var(--accent-ink);
+  outline-offset: 4px;
+}
+.native-learning-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.native-learning-ack input {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  accent-color: var(--accent);
+}
+.native-learning-version-scroll {
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  margin-top: 12px;
+}
+.native-learning-version-scroll dl {
+  margin: 16px 0;
+  padding-right: 12px;
+}
+.native-learning-version-scroll dl + dl {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.native-learning .alert {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .native-learning-version-scroll {
+    max-height: 240px;
+  }
+  .native-learning-version-scroll .learning-record-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 12px;
+  }
+  .native-learning-actions {
+    flex-direction: column;
+  }
+  .native-learning-actions button {
+    width: 100%;
+  }
+}

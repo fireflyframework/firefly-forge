@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/observe_learning_projection
+version: 1.0.1
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read back the admitted source and scoped citations without another upload;
+  native operational evidence also requires exact source versions and extraction identities.
+required_variables: []
+metadata:
+  defaults: {}
