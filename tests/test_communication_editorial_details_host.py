@@ -276,3 +276,23 @@ def test_display_details_do_not_promote_arbitrary_errors_to_public_facts(error):
     facts = communication_facts({"status": "failed", "error": error})
     assert "blocker" not in facts
     assert error not in json.dumps(facts)
+
+
+@pytest.mark.parametrize("length", [30021, 40000, 40001])
+def test_admitted_SCM_question_keeps_exact_source_through_the_typed_conversation_bound(length):
+    from firefly_forge.scm_conversation_models import addressed_status
+
+    prefix, suffix = "@forge how is ", " going?"
+    question = prefix + "x" * (length - len(prefix) - len(suffix)) + suffix
+    admitted = addressed_status(question)
+    if length > 40000:
+        assert admitted is None
+        return
+    assert admitted is not None and admitted.intent == "status"
+    source_sha = hashlib.sha256(question.encode()).hexdigest()
+    assert admitted.source_body_sha256 == source_sha
+    value = CommunicationConversationV1(
+        selection="run", language="en", linked_runs=1, question=question, question_sha256=source_sha
+    )
+    assert value.question == question and len(value.question) == length
+    assert value.question_sha256 == source_sha

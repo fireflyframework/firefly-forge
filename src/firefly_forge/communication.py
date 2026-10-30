@@ -19,6 +19,7 @@ from firefly_forge.community_skills import community_catalog
 from firefly_forge.product_provenance import content_digest
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_authority_models import StrictContract
+from firefly_forge.scm_conversation_models import SCM_SOURCE_QUESTION_LIMIT
 from firefly_forge.skills import inject_skills
 
 Data = dict[str, Any]
@@ -86,7 +87,7 @@ class CommunicationConversationV1(StrictContract):
     selection: Literal["run", "missing", "ambiguous", "clarify"]
     language: Literal["en", "es"]
     linked_runs: int = Field(ge=0, le=200)
-    question: str | None = Field(default=None, min_length=1, max_length=30000)
+    question: str | None = Field(default=None, min_length=1, max_length=SCM_SOURCE_QUESTION_LIMIT)
     question_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")

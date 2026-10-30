@@ -1986,11 +1986,18 @@ class Collaboration:
                     source_sha256=hashlib.sha256(quotation.encode()).hexdigest(),
                 )
 
+            current_question = (data.get("source_snapshot") or {}).get("body")
             conversation_input = (
                 CommunicationConversationV1(
                     selection=conversation["selection"],
                     language=data["command"]["language"],
                     linked_runs=len(conversation["candidate_ids"]),
+                    question=current_question
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
+                    question_sha256=hashlib.sha256(current_question.encode()).hexdigest()
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
                 )
                 if conversation
                 else None

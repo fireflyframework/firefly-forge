@@ -908,3 +908,66 @@ async def test_nonproject_legacy_reply_context_preserves_repository_channel_sett
     run.pop("project_id")
     context = await service._feedback_context(row.data, run)
     assert context["_feedback_actions"] == ["respond", "cancel"]
+
+
+@pytest.mark.parametrize("transport", ["github_rest_poll_v1", "signed_webhook_v1"])
+@pytest.mark.parametrize("language", ["en", "es"])
+async def test_verified_conversation_quotation_reaches_writer_and_reviewer_for_both_transports(
+    delegated_feedback, tmp_path, signed_reply_binding, transport, language
+):
+    import json
+    from types import SimpleNamespace
+
+    from firefly_forge.product_provenance import content_digest
+    from firefly_forge.scm_actor_authority import SCMActorAuthority
+
+    service, row, run, sent, _ = delegated_feedback
+    body = "@forge ¿cómo va?" if language == "es" else "@forge how is this going?"
+    source_sha = hashlib.sha256(body.encode()).hexdigest()
+    service.store.task_router = (await configured_store(tmp_path)).task_router
+    run.update(status="queued", worker_request={})
+    received(row, "status")
+    row.data.update(
+        status="processed",
+        action_status="completed",
+        action_result={"status": "queued"},
+        run_id=run["id"],
+        feedback_status="pending",
+        conversation={"selection": "run", "candidate_ids": [run["id"]]},
+        source_snapshot={"body": body},
+        verification={"transport": transport},
+    )
+    row.data["command"]["language"] = language
+
+    async def authorize(delivery):
+        assert delivery["source_snapshot"]["body"] == body
+
+    async def head(*args):
+        return await SCMActorAuthority(service.store, service.scm)._head(*args)
+
+    if transport == "github_rest_poll_v1":
+        service.polling = SimpleNamespace(_head=head, authorize_feedback=authorize, authorize_feedback_local=authorize)
+    calls = []
+    service.communication_writer.model = reviewed_model(
+        {
+            "title": {"text": "Work status", "fact_ids": ["conversation"]},
+            "paragraphs": [{"text": "The request is queued.", "fact_ids": ["conversation", "state"]}],
+        },
+        calls=calls,
+    )
+    await service.feedback(RECEIPT)
+    evidence = row.data["feedback_intent"]["communication"]
+    assert evidence["facts"]["conversation"]["question_sha256"] == source_sha
+    assert evidence["facts_sha256"] == content_digest(evidence["facts"])
+    assert [phase for phase, *_ in calls] == ["draft", "review"]
+    for _, messages, _ in calls:
+        text = "\n".join(
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(getattr(part, "content", None), str)
+        )
+        assert json.dumps(body, ensure_ascii=False) in text and source_sha in text
+    assert row.data["feedback_status"] == "sent" and len(sent) == 1
+    await service.feedback(RECEIPT)
+    assert len(calls) == 2 and len(sent) == 1
