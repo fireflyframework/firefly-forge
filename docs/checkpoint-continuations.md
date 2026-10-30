@@ -255,6 +255,8 @@ The Python client provides `final_outcome_continuation_candidate`, `request_fina
 
 After a saved final result requests verification, the next worker may need to finish its report and enter normal QA. Some source checks can use their earlier passed results. Their original executions remain charged to the same command budget. Database integration tests and checks of a deployment or external service still need a current execution.
 
+After the approved checks pass, a fresh worker round can finish the unchanged source. Its model report and checkpoint keep that round's usage; the run's request and token totals carry forward the usage already spent. If an artifact or delivery step is interrupted, those counters and accepted results stay recorded. Inspect the interrupted step before continuing; do not resubmit a consumed model response.
+
 Review the pending verification handoff before its commands start. The candidate's `reusable_build_candidates` lists checks supported by the current runner, with their original command index, arguments and command digest. Selecting a check is an explicit declaration that it tests the retained source and build inputs independently of time or external state. A recognized command name alone does not establish that property.
 
 ### Approve verification in Studio
