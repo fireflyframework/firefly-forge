@@ -54,7 +54,10 @@ class SCMConversations:
         self.store = collaboration.store
 
     async def scopes(self, delivery: Data, *, remote: bool) -> list[Data]:
-        if (delivery.get("verification") or {}).get("transport") == "github_rest_poll_v1":
+        if (delivery.get("verification") or {}).get("transport") in {
+            "github_rest_poll_v1",
+            "github_repository_webhook_v1",
+        }:
             if self.collaboration.polling is None:
                 raise AccessDenied("The native polling conversation authority is unavailable")
             return [await self.collaboration.polling.conversation_scope(delivery, remote=remote)]
@@ -338,10 +341,7 @@ class SCMConversations:
         initial = await self.collaboration.receipt(receipt_id)
         if initial["status"] != "received":
             return initial
-        if (
-            initial["command"].get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}
-            and (initial.get("verification") or {}).get("transport") == "github_rest_poll_v1"
-        ):
+        if initial["command"].get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             from firefly_forge.scm_natural_effects import NaturalEffects
             from firefly_forge.scm_natural_tasks import SCMNaturalTasks
 
@@ -364,6 +364,22 @@ class SCMConversations:
                             action_status="not_dispatched",
                             reason="natural_current_read_authority_or_question_changed",
                         )
+                return await self.collaboration.receipt(receipt_id)
+            if (initial.get("verification") or {}).get("transport") != "github_rest_poll_v1":
+                resolution = (result.get("natural_turn") or {}).get("resolution") or {}
+                state = resolution.get("state")
+                pending = (
+                    "answer_pending_permission"
+                    if state in {"answer", "resume"}
+                    else "product_pending_permission"
+                    if state in {"product_answer", "product_request"}
+                    else "checkpoint_pending_permission"
+                    if state == "checkpoint"
+                    else None
+                )
+                if result["status"] == "processed" and pending is not None:
+                    result = await NaturalEffects(natural)._retain_state(receipt_id, pending, expected=result)
+                await self.collaboration.feedback(receipt_id)
                 return await self.collaboration.receipt(receipt_id)
             if result["status"] == "processed" and (result["natural_turn"].get("resolution") or {}).get("state") in {
                 "answer",

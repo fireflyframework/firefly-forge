@@ -1010,6 +1010,53 @@ class SCMPolling:
             actor, project, repository, await self._event(pointer, BINDING_KIND, project, repository)
         )
 
+    async def _conversation_observation(self, project: str, repository: str, receipt_id: str) -> Data:
+        from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1, SignedAddressedSourceV1
+
+        delivery = await self.collaboration.receipt(receipt_id)
+        if (delivery.get("verification") or {}).get("transport") != "github_repository_webhook_v1":
+            return await self._observation(project, repository, receipt_id)
+        proof = GitHubRepositoryWebhookReferenceV1.model_validate(delivery["verification"])
+        bound = SignedAddressedSourceV1.model_validate(delivery.get("addressed_source"))
+        source = delivery.get("source_snapshot") or {}
+        repo = await self.store.repository(repository)
+        if (
+            delivery.get("repository_id") != repository
+            or delivery.get("provider") != "github"
+            or (delivery.get("command") or {}).get("adapter") != "addressed_status_v1"
+            or delivery.get("source_conflict")
+            or proof.payload_digest != delivery.get("digest")
+            or bound.payload_digest != proof.payload_digest
+            or proof.source_digest != digest(source)
+            or bound.source_digest != proof.source_digest
+            or source.get("author_type") != "User"
+            or source.get("author_id") != proof.external_actor_id
+            or delivery.get("actor") != proof.external_actor_id
+            or bound.external_actor_id != proof.external_actor_id
+            or source.get("comment_id") != bound.comment_id
+            or source.get("issue_number") != bound.issue_number
+            or delivery["issue"]["number"] != bound.issue_number
+            or delivery["issue"]["kind"] != bound.resource_kind
+            or proof.connection.scope() != self.scm.delegation_scope(repo)
+            or not self.authority._key_current(repository, delivery["verification"])
+        ):
+            raise AccessDenied("The repository webhook read observation or current key changed")
+        if delivery.get("global_ingress"):
+            channel = self.store.configuration._read(self.store.configuration.directory / "channel-bootstrap.json").get(
+                "github", {}
+            )
+            if not channel.get("enabled") or delivery["actor"] not in channel.get("trusted_actors", []):
+                raise AccessDenied("The signed repository ingress actor is no longer enabled")
+        return dict(delivery)
+
+    @staticmethod
+    def _conversation_identity(delivery: Data) -> Data:
+        if (delivery.get("verification") or {}).get("transport") == "github_repository_webhook_v1":
+            from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+            return GitHubRepositoryWebhookReferenceV1.model_validate(delivery["verification"]).read_identity()
+        return dict(delivery["verification"])
+
     async def conversation_scope(self, delivery: Data, *, remote: bool = True) -> Data:
         """Authorize an observed status address without inventing a run or execution principal."""
         from firefly_forge.scm_conversation_models import AddressedStatusV1, ConversationReadScopeV1, addressed_status
@@ -1025,7 +1072,7 @@ class SCMPolling:
         policy, state = await self._policy(repository)
         project = policy["project_id"]
         repo = await self._scope(repository, policy)
-        original = await self._observation(project, repository, delivery["id"])
+        original = await self._conversation_observation(project, repository, delivery["id"])
         if original != delivery or delivery.get("source_conflict") or not state["cursor"]["ready"]:
             raise AccessDenied("The retained status observation or polling baseline changed")
         parsed = (
@@ -1042,7 +1089,7 @@ class SCMPolling:
         )
         if parsed != message:
             raise AccessDenied("The status address no longer binds its exact original human comment")
-        reference = delivery["verification"]
+        reference = self._conversation_identity(delivery)
         key = poll_key(project, reference)
         if key not in state["heads"]:
             raise AccessDenied("Current API-observed status consent is required")
@@ -1070,7 +1117,7 @@ class SCMPolling:
         if remote:
             await self._fresh(delivery, repo)
         await self._scope(repository, policy)
-        if await self._observation(project, repository, delivery["id"]) != original:
+        if await self._conversation_observation(project, repository, delivery["id"]) != original:
             raise AccessDenied("The original status observation changed during authorization")
         async with self.store._unit():
             user = await self.users.find_by_id(identifier(request["native_user_id"]))
@@ -1091,7 +1138,7 @@ class SCMPolling:
             ):
                 raise AccessDenied("The current status consent, actor or command changed")
         return ConversationReadScopeV1(
-            transport="github_rest_poll_v1",
+            transport=(delivery["verification"].get("transport", TRANSPORT)),
             project_id=project,
             repository_id=repository,
             native_user_id=user.id.hex,
@@ -1100,7 +1147,7 @@ class SCMPolling:
             binding_digest=receipt["digest"],
             binding_request_id=request["request_id"],
             verified_receipt_id=delivery["id"],
-            verified_reference_digest=digest(reference),
+            verified_reference_digest=digest(delivery["verification"]),
             project_binding_digest=digest(current_project),
             observation_digest=digest(
                 {

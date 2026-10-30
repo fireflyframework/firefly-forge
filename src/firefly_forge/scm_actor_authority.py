@@ -402,6 +402,11 @@ class SCMActorAuthority:
         for event_id, value, payload_digest in rows:
             if not isinstance(event_id, UUID):
                 raise ValueError("SCM candidate row identity is invalid")
+            if isinstance(value, dict) and value.get("transport") == "github_repository_webhook_v1":
+                from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                GitHubRepositoryWebhookReferenceV1.model_validate(value)
+                continue
             reference = VerifiedSCMReferenceV1.model_validate(value).model_dump(mode="json")
             if reference["payload_digest"] != payload_digest:
                 raise ValueError("The candidate does not bind its retained delivery")

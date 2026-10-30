@@ -8,9 +8,16 @@ import re
 import unicodedata
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
-from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
+from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract, exact_origin
 
 SCM_SOURCE_QUESTION_LIMIT = 40000
 
@@ -30,7 +37,7 @@ class ConversationReadScopeV1(StrictContract):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1] = 1
     action: Literal["status"] = "status"
-    transport: Literal["github_rest_poll_v1", "signed_webhook_v1"]
+    transport: Literal["github_rest_poll_v1", "signed_webhook_v1", "github_repository_webhook_v1"]
     project_id: NativeID
     repository_id: NativeID
     native_user_id: NativeID
@@ -42,6 +49,44 @@ class ConversationReadScopeV1(StrictContract):
     verified_reference_digest: Digest
     project_binding_digest: Digest
     observation_digest: Digest
+
+
+class ConfiguredGitHubReadConnectionV1(StrictContract):
+    """Server connection metadata, never an installation assertion in a webhook payload."""
+
+    provenance: Literal["configured_github_application_v1"] = "configured_github_application_v1"
+    provider: Literal["github"]
+    web_origin: str = Field(max_length=500)
+    api_origin: str = Field(max_length=500)
+    connection_revision: NativeID
+    connection_scope_digest: Digest
+    installation_id: str = Field(pattern=r"^[1-9][0-9]{0,39}$")
+    remote_repository_id: str = Field(pattern=r"^[1-9][0-9]{0,39}$")
+
+    @field_validator("web_origin", "api_origin")
+    @classmethod
+    def origin(cls, value: str) -> str:
+        return exact_origin(value)
+
+    def scope(self) -> dict[str, Any]:
+        return self.model_dump(mode="json", exclude={"provenance"})
+
+
+class GitHubRepositoryWebhookReferenceV1(StrictContract):
+    """Repository-key HMAC plus a separately tagged configured read connection."""
+
+    version: Literal[1] = 1
+    transport: Literal["github_repository_webhook_v1"] = "github_repository_webhook_v1"
+    provider: Literal["github"] = "github"
+    connection: ConfiguredGitHubReadConnectionV1
+    external_actor_id: str = Field(pattern=r"^[1-9][0-9]{0,39}$")
+    webhook_key_revision: NativeID
+    verification_method: Literal["repository_raw_body_hmac_sha256"] = "repository_raw_body_hmac_sha256"
+    payload_digest: Digest
+    source_digest: Digest
+
+    def read_identity(self) -> dict[str, Any]:
+        return {**self.connection.scope(), "external_actor_id": self.external_actor_id}
 
 
 class SignedAddressedSourceV1(StrictContract):

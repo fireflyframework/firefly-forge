@@ -136,7 +136,7 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     body = "@forge ¿cómo va?" if language == "es" else "@forge how is this going?"
     delivery = natural(c, body) if transport == "polling" else signed_natural(c, body)
     configure_ai(c)
-    coordinator_calls = native_coordinator(c, monkeypatch) if transport == "polling" else []
+    coordinator_calls = native_coordinator(c, monkeypatch)
     calls = []
     c.collaboration.communication_writer.model = reviewed_model(card(c, language), calls=calls)
     result = c.process(delivery)
@@ -147,13 +147,13 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     evidence = intent["communication"]
     from firefly_forge.product_provenance import content_digest
 
-    question = body.removeprefix("@forge ") if transport == "polling" else body
+    question = body.removeprefix("@forge ")
     current_facts = communication_facts(
         c.http.portal.call(c.store.get_run, c.run["id"]),
         conversation=CommunicationConversationV1(
             selection="run",
             language=language,
-            linked_runs=1 if transport == "polling" else len(result["conversation"]["candidate_ids"]),
+            linked_runs=1,
             question=question,
             question_sha256=hashlib.sha256(question.encode()).hexdigest(),
         ),
@@ -173,13 +173,12 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
         assert json.dumps(question, ensure_ascii=False) in prompt
         assert hashlib.sha256(question.encode()).hexdigest() in prompt
     assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
-    if transport == "polling":
-        assert evidence["natural_reply_source"] == "current_execution_facts"
-        assert len(coordinator_calls) == 1
-        assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
-        assert result["natural_turn"]["decision"]["language"] == language
-        assert result["natural_turn"]["human_message"] == question
-        assert result["natural_turn"]["reply"] not in intent["body"]
+    assert evidence["natural_reply_source"] == "current_execution_facts"
+    assert len(coordinator_calls) == 1
+    assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
+    assert result["natural_turn"]["decision"]["language"] == language
+    assert result["natural_turn"]["human_message"] == question
+    assert result["natural_turn"]["reply"] not in intent["body"]
     assert (
         result["source_snapshot"] == delivery["source_snapshot"] and result["verification"] == delivery["verification"]
     )
@@ -188,12 +187,12 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert c.process(delivery) == result
     c.http.portal.call(c.collaboration.sync_feedback)
     assert len(calls) == 2 and len(c.state["posts"]) == baseline + 1
-    assert len(coordinator_calls) == (0 if transport == "signed" else 1)
+    assert len(coordinator_calls) == 1
 
 
 @pytest.mark.parametrize("language", ["en", "es"])
 def test_native_signed_configured_current_fact_change_holds_without_template_post_or_model_repeat(
-    native_poll, language
+    native_poll, monkeypatch, language
 ):
     c = native_poll
     c.ready()
@@ -205,6 +204,7 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
     draft = card(c, language)
     calls = []
     configure_ai(c)
+    native_coordinator(c, monkeypatch)
 
     async def model(messages, info):
         phase = communication_phase(info)
@@ -242,7 +242,9 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
 
 
 @pytest.mark.parametrize("language,verdict", [("en", "unsupported"), ("es", "uncertain")])
-def test_native_signed_one_semantic_correction_is_published_once_without_second_veto(native_poll, language, verdict):
+def test_native_signed_one_semantic_correction_is_published_once_without_second_veto(
+    native_poll, monkeypatch, language, verdict
+):
     from firefly_forge.product_provenance import content_digest
 
     c = native_poll
@@ -264,6 +266,7 @@ def test_native_signed_one_semantic_correction_is_published_once_without_second_
         ],
     }
     configure_ai(c)
+    native_coordinator(c, monkeypatch)
     calls = []
     c.collaboration.communication_writer.model = reviewed_model(
         candidate, verdict=verdict, correction=corrected, calls=calls
