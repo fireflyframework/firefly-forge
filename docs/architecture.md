@@ -11,6 +11,168 @@ The factory itself uses [pyfly](https://fireflyframework.org/frameworks/python/)
 
 ## Components and dependency injection
 
+### Durable code and runner storage
+
+Git remotes and their confirmed commits remain the source of truth for delivered
+code. A runner's checkout is disposable execution state. Docker volumes, or a
+Kubernetes Job's ephemeral volumes, own that checkout's filesystem lifecycle;
+object storage is accessed through its object API, never mounted as a POSIX
+replacement. PostgreSQL owns metadata, WAL, current ACLs, leases and publication
+decisions. Losing a runner must not lose the committed source or a published
+artifact.
+
+| Data | Durable authority | Runner use |
+| --- | --- | --- |
+| Delivered source | Confirmed Git remote commit and repository identity | Fetch into a new isolated checkout. |
+| Uncommitted checkpoints and immutable source archives | Scoped object chunks plus a published PostgreSQL manifest | Verify and restore into runner-owned scratch. |
+| Results, attachments and log chunks | Scoped object chunks plus publication receipts | Stream verified bytes through the authorized controller. |
+| Ownership, grants, history and retention references | PostgreSQL records and WAL | Recheck current authority before and after external effects. |
+| Checkout, build cache and temporary files | Docker/Kubernetes volume lifecycle | Recreate or discard after owned cleanup. |
+
+The existing runner implementation has host and Docker backends. It does not
+currently contain a Kubernetes Job backend. `RunnerPoolWorker._workspace()`
+also binds source to a central absolute factory path. Adding object storage alone
+does not remove that dependency. A distributed workspace protocol must bind a
+logical workspace, source manifest, invocation and current lease, then restore
+that source into a fresh runner volume after rescheduling. Retained local
+bindings continue to identify their original storage; they are not silently
+converted or reset.
+
+The concrete artifact integration points are `RunnerPoolExecutions.accept()`
+(source and stdin), its result collection (output and result),
+`RunnerControllerService.artifact()` (authorized reads), and
+`RunnerPoolArtifacts` (archive custody and preparation). Their existing byte
+bundle protocol buffers complete archives through `pack_workspace()` and
+`DockerPoolDispatcher`. Chunking that byte string afterward cannot establish
+bounded memory at the producer. A streaming artifact-reference protocol must
+carry a size, SHA-256, ordered chunk manifest and immutable invocation identity
+without sending a complete base64 bundle. The retained byte protocol remains a
+separate compatibility path.
+
+PyFly's native `DocumentStoragePort` supplies asynchronous `upload(Document,
+bytes)`, `download(Document, version)` and `delete` operations. Its S3, Azure
+Blob and local filesystem adapters can store bounded chunk objects. MinIO uses
+the native S3 adapter with an explicitly configured S3 client and endpoint.
+GCS requires an installed PyFly release that exports its native
+`GoogleCloudStorageAdapter`; configuration fails closed when it is absent. An
+unknown or unavailable provider must fail configuration instead of selecting local storage.
+The ECM auto-configuration's in-memory metadata repository is unsuitable for
+Forge's durable publication ledger.
+
+Each object key must belong to a tenant and project, with invocation and artifact
+identity in PostgreSQL. The controller verifies a running SHA-256 while reading
+bounded chunks, verifies the native provider's receipt, and rechecks authority
+after upload. A manifest becomes readable only through an atomic PostgreSQL
+compare-and-set after every chunk is verified. Object ETags are not SHA-256
+evidence. A lost upload or publication reply requires explicit readback of its
+retained request; it must not trigger an automatic new write.
+
+Restoration verifies chunk order, lengths, checksums and the complete manifest
+before publishing a file into private runner scratch. Archive extraction keeps
+the existing no-link, no-traversal and credential checks. A partial restore never
+replaces an admitted checkout. Production retention must use PostgreSQL reachability
+and legal holds, reclaiming only unreferenced objects after an orphan grace
+period and a current-authority check. That retention worker is not implemented
+by this artifact slice. Storage credentials stay outside manifests and runner
+payloads; use scoped workload identities or private operator credentials with
+only the required bucket/container prefix permissions.
+
+Development and tests may use an explicit private local adapter or a dedicated
+local Docker MinIO deployment. Production uses object storage and PostgreSQL;
+local emulation does not demonstrate cloud availability, Kubernetes scheduling,
+cross-node restore or production retention acceptance.
+
+#### Configure and exercise the artifact path
+
+The runner controller's private configuration accepts `object_tenant_id` and
+`object_storage` alongside its existing TLS, PostgreSQL and Docker authority.
+For example, merge these fields into `forge.runner.controller`:
+
+```yaml
+object_tenant_id: 428e7fe2-39b5-4f11-af24-d07cd7fe605b
+object_storage:
+  provider: s3
+  mode: production
+  storage_id: 73744117-1ab1-4342-92eb-962287975ac8
+  bucket: forge-artifacts
+  region: eu-west-1
+  key_prefix: forge
+  chunk_bytes: 8388608
+```
+
+Tenant and storage identities are operator-managed deployment identities, not
+example grants. Use the actual tenant UUID and keep `storage_id` stable for that
+physical store. Changing bucket, prefix, endpoint or account requires an explicit
+new binding. Provider credentials are supplied through the provider's workload
+identity chain or private connection configuration. They do not travel with an
+invocation or object reference. S3/MinIO requires PyFly's `ecm-aws` extra; Azure
+requires `ecm-azure`, with `azure-identity` for workload identity. SDK upload
+retries are disabled in the configured clients; an uncertain write enters
+explicit readback.
+
+Enabling the object backend adds runner schema revision 2 and the native
+`forge_runner_artifact_publications` and `forge_runner_artifact_chunks`
+repositories. The controller records upload
+intent before each provider call and publishes the manifest with the exact
+factory fence and upload-owner compare-and-set. A published receipt is immutable.
+An unfinished intent refuses an automatic second upload. Explicit readback
+verifies its recorded chunk keys and aggregate hash before publishing, while
+preserving the original intent and fence. This operation grants no execution.
+
+The manifest root has constant-size counters, the content hash and a chunk-chain
+head. Each chunk has its own immutable sequence and descriptor row. Readers use
+keyset pages of at most 128 rows and verify the sequence, scope and digest chain
+while checking each object's bytes. Neither the writer nor PostgreSQL stores a
+full-file reference array in the root. The small ECM page utility is limited to
+128 descriptors and is not the full-file publication path. Source scanning and
+restoration use private ephemeral disk; their application buffers scale with the
+configured chunk width and a fixed metadata page, rather than the complete project. The existing
+invocation byte budgets still apply; this change does not remove the retained
+carrier's project-size bounds.
+
+`RunnerPoolExecutions` uses the selected backend for source, stdin, output and
+result custody. The existing artifact RPC can reconstruct a retained byte bundle
+after controller restart. The separate `object-artifacts/upload` RPC consumes a
+raw stream, with typed invocation/fence/length/hash metadata in the bounded
+`X-Forge-Artifact-Request` header. `RunnerControllerClient.upload_artifact_file()`
+reads a regular producer file in 64 KiB frames. It does not call `read_bytes()` or
+base64-encode the complete archive. The server validates the complete credential
+scan and aggregate hash in private ephemeral scratch before uploading chunks.
+
+`forge-runner-object-reference-v1` contains execution identity, invocation digest,
+artifact kind, byte count, content SHA-256 and the separate canonical receipt
+digest. It contains no paths, provider URI or credentials. The manifest stays in
+PostgreSQL. The `object-artifacts/read-reference` RPC resolves it only with the
+same authenticated invocation and an explicit current owner/epoch/factory-fence
+lease. It rechecks that lease while streaming. The command container receives
+neither object-store credentials nor a storage grant. Completed output/result
+reads use the existing authenticated observation scope separately from a live
+execution lease.
+
+For local emulation, [the dedicated MinIO Compose file](https://github.com/fireflyframework/firefly-forge/blob/main/compose.object-storage.local.yaml)
+uses a Docker-owned volume and loopback ports. Supply an already installed image
+pinned by digest and private administrator secret files, then use
+`docker compose -f compose.object-storage.local.yaml up --pull never -d`.
+Provision a bucket and a separate least-privilege application identity before
+configuring Forge. Do not give the controller MinIO's root credentials. Select
+`provider: minio`, `mode: development`, and
+`endpoint_url: http://127.0.0.1:9000` for a controller on that local host. No image
+download or VM creation is implicit in this recipe.
+
+The storage settings wizard, Kubernetes scheduling, a reference-native Docker
+carrier, production retention/GC and live provider acceptance are separate
+integration requirements. The current carrier and `RunnerPoolWorker` still use
+the retained central byte-bundle path. Existing local installations continue
+with that explicit binding when `object_storage` is absent; enabling a backend
+does not migrate or delete their files.
+
+The existing `SourceCatalogRefV1`, `SourceCatalogEntryV1` and `SourceCatalogPageV1`
+already provide paged immutable source metadata. A future file explorer should
+bind that catalog's source digest, paths, modes and hashes to retained object
+content, with the current project/run permission checked for every read. This
+artifact slice does not yet expose per-file content or grant access from an
+absolute local path or an object reference alone.
+
 <figure class="forge-shot forge-architecture-diagram" markdown="1">
 <picture>
   <source media="(max-width: 640px)" srcset="../diagrams/architecture-components-narrow.svg">
