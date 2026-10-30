@@ -24,7 +24,9 @@ def communication_phase(info):
     raise AssertionError("Controlled communication model received an unknown output schema")
 
 
-def reviewed_model(draft, *, verdict="supported", issues=None, fact_ids=None, calls=None, correction=None):
+def reviewed_model(
+    draft, *, verdict="supported", issues=None, fact_ids=None, calls=None, correction=None, reader_checks=None
+):
     reviewed = False
     candidate = None
 
@@ -53,6 +55,15 @@ def reviewed_model(draft, *, verdict="supported", issues=None, fact_ids=None, ca
                 }
             )
             payload = {
+                "reader_checks": reader_checks
+                if reader_checks is not None
+                else {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
                 "verdict": verdict,
                 "issues": (
                     [] if verdict == "supported" else ["uncertain" if verdict == "uncertain" else "unsupported_claim"]

@@ -54,7 +54,7 @@ def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
             else "retained"
         )
         argv = check.get("argv")
-        values = {"output": check.get("output")}
+        values = {"output": check.get("output")} if check["exit_code"] != 0 else {}
         if isinstance(argv, list) and argv and all(isinstance(arg, str) for arg in argv):
             values["command"] = shlex.join(argv)
         for kind, value in values.items():

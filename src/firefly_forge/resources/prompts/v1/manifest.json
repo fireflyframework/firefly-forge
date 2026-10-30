@@ -3105,6 +3105,54 @@
       "sha256": "8dce2c5b974bc015159ab2a0f58eaacfa6e8e12efd4fb117bb9427d4be3544a7",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-review-system-1.0.1.yaml",
+      "sha256": "f3affd3e03244f57da602d1de829401b45a2ede11af71f3eb3a1b8110df01361",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-system-1.0.1.yaml",
+      "sha256": "bab42b526b30051917689256582236402f0280ebcab2efb7cc6cb78a20de16fe",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-system-1.0.7.yaml",
+      "sha256": "fd749bfb5eb8bbf626dbdd2a3b927dc255d0d12be1c6f0db730e5ee405dc39f4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.8",
+      "path": "collaboration/communication-system-1.0.8.yaml",
+      "sha256": "06fd24f330ce4dc99193538d300e4248d217b77a92f6158a718d102a21e2906c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.4",
+      "path": "collaboration/communication-review-system-1.0.4.yaml",
+      "sha256": "c06dc7eda1286e73ec0ba7c578a2ee72a869e04cce5abcc41c523206a5c6c831",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.5",
+      "path": "collaboration/communication-review-system-1.0.5.yaml",
+      "sha256": "2c57f6e5bd35854a420f461c7e26f6a388567db0027db91caddbc4498d7bc653",
+      "field": "user",
+      "variables": {}
     }
   ]
 }
