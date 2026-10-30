@@ -28,11 +28,14 @@ class CommunicationParagraph(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=600)
     fact_ids: list[str] = Field(min_length=1, max_length=4)
+    heading: str | None = Field(default=None, min_length=1, max_length=100)
+    format: Literal["paragraph", "bullet"] = "paragraph"
+    diagnostic_id: str | None = Field(default=None, pattern=r"^check-[1-9][0-9]*-(?:command|output)$")
 
 
 class CommunicationDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    paragraphs: list[CommunicationParagraph] = Field(min_length=1, max_length=3)
+    paragraphs: list[CommunicationParagraph] = Field(min_length=1, max_length=6)
 
 
 class CommunicationDecision(BaseModel):
@@ -58,6 +61,8 @@ class CommunicationReview(BaseModel):
             "unrecorded_action",
             "changed_decision",
             "insufficient_context",
+            "unclear_language",
+            "poor_structure",
             "uncertain",
         ]
     ] = Field(max_length=8)
@@ -71,9 +76,15 @@ class CommunicationConversationV1(StrictContract):
     selection: Literal["run", "missing", "ambiguous", "clarify"]
     language: Literal["en", "es"]
     linked_runs: int = Field(ge=0, le=200)
+    question: str | None = Field(default=None, min_length=1, max_length=30000)
+    question_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")
     def consistent_selection(self) -> CommunicationConversationV1:
+        if (self.question is None) != (self.question_sha256 is None) or (
+            self.question is not None and hashlib.sha256(self.question.encode()).hexdigest() != self.question_sha256
+        ):
+            raise ValueError("Conversation question requires its exact source digest")
         expected = 1 if self.selection == "run" else 0
         if (self.selection == "ambiguous" and self.linked_runs < 2) or (
             self.selection != "ambiguous" and self.linked_runs != expected
@@ -375,7 +386,7 @@ def communication_facts(
         if (conversation.selection == "run") != (run is not None):
             raise ValueError("Conversation selection requires its actual selected execution or no execution")
         conversation_facts = {
-            **conversation.model_dump(exclude={"version"}),
+            **conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
             "next_step": {
                 "run": "explain_selected_execution",
                 "missing": "ask_for_ticket_execution_link",
@@ -510,6 +521,15 @@ def communication_facts(
             "cause": "not_established",
             "next_step": "review_native_configuration_and_scoped_adoption",
         }
+    elif status in {"failed", "needs_reconciliation"} and run.get("error") == (
+        "Original selection, configuration or reviewed policy epoch changed"
+    ):
+        facts["blocker"] = {
+            "kind": "execution_selection_guard",
+            "basis": "recorded_error",
+            "cause": "not_established",
+            "next_step": "review_execution_configuration_before_continuation",
+        }
     handoff = (
         verification_handoff(run)
         if isinstance(run.get("verification_handoff"), dict) and isinstance(run.get("worker_request"), dict)
@@ -632,40 +652,53 @@ def communication_facts(
             "recorded": current,
             "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
+    from firefly_forge.communication_diagnostics import check_diagnostics
+
+    if diagnostics := check_diagnostics(run):
+        facts["check_diagnostics"] = diagnostics
     return facts
 
 
 def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     """Validate framing and references; the separate model review evaluates meaning."""
     paragraphs = [draft.title, *draft.paragraphs] if isinstance(draft, CommunicationCard) else draft.paragraphs
+    if isinstance(draft, CommunicationCard) and (
+        draft.title.heading or draft.title.format != "paragraph" or draft.title.diagnostic_id
+    ):
+        raise ValueError("Communication title cannot contain a section or excerpt")
     for paragraph in paragraphs:
         if len(set(paragraph.fact_ids)) != len(paragraph.fact_ids) or set(paragraph.fact_ids) - facts.keys():
             raise ValueError("Communication contains an unknown fact reference")
-        prose = paragraph.text
+        if paragraph.diagnostic_id and (
+            "check_diagnostics" not in paragraph.fact_ids
+            or paragraph.diagnostic_id not in facts.get("check_diagnostics", {})
+        ):
+            raise ValueError("Communication excerpt must identify recorded check evidence")
+        prose = paragraph.text + (paragraph.heading or "")
         for path in sorted((facts.get("git_delivery") or {}).get("changed_files", []), key=len, reverse=True):
             if re.fullmatch(r"[\w./ -]+", path):
                 prose = prose.replace(path, "SOURCEPATH")
         if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", prose):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if (
-        {
-            "blocker",
-            "check_batch",
-            "factory_verification",
-            "conversation",
-            "publication",
-            "assistant",
-            "git_delivery",
-            "git_checkpoint",
-            "work",
-            "requested_work",
-            "product",
-            "audience",
-            "check_status",
-        }
-        & facts.keys()
-    ) - cited:
+    required = {
+        "blocker",
+        "check_batch",
+        "factory_verification",
+        "conversation",
+        "publication",
+        "assistant",
+        "git_delivery",
+        "git_checkpoint",
+        "work",
+        "requested_work",
+        "product",
+        "audience",
+        "check_status",
+    } & facts.keys()
+    if facts.get("conversation", {}).get("question_sha256"):
+        required -= {"work", "requested_work", "product", "audience"}
+    if required - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
@@ -748,7 +781,19 @@ def _render_card(
     elif draft.decision is not None:
         raise ValueError("Communication cannot invent a human decision")
     reject(narrative)
-    title, narrative = safe(narrative).split("\n\n", 1)
+    title = safe(draft.title.text)
+    from firefly_forge.communication_diagnostics import render_excerpt
+
+    blocks = []
+    for paragraph in draft.paragraphs:
+        parts = ["#### " + safe(paragraph.heading)] if paragraph.heading else []
+        parts.append(("- " if paragraph.format == "bullet" else "") + safe(paragraph.text))
+        if paragraph.diagnostic_id:
+            excerpt = facts["check_diagnostics"][paragraph.diagnostic_id]
+            reject(excerpt["text"])
+            parts.append(render_excerpt({**excerpt, "text": safe(excerpt["text"])}))
+        blocks.append("\n\n".join(parts))
+    narrative = "\n\n".join(blocks)
     decision_body = ""
     if draft.decision:
         decision_body = prompt_text(
@@ -814,6 +859,12 @@ class CommunicationWriter:
             audience=audience,
         )
         context: Data = {}
+        if conversation and conversation.question is not None:
+            context["conversation_question"] = {
+                "quotation": conversation.question,
+                "source_sha256": conversation.question_sha256,
+                "basis": "current_human_message_not_execution_authority",
+            }
         if "requested_work" in facts:
             assert run is not None
             context["requested_work"] = {**facts["requested_work"], "quotation": run["brief"]}
@@ -889,7 +940,7 @@ class CommunicationWriter:
             evidence["timeout_seconds"] = timeout
             prompt = prompt_text(
                 "collaboration/publication-request" if publication else "collaboration/communication-request",
-                version="1.0.0" if publication else "1.0.2",
+                version="1.0.0" if publication else "1.0.3",
                 facts=json.dumps(facts, sort_keys=True),
                 fact_ids=json.dumps(sorted(facts)),
                 **({"context": json.dumps(context, sort_keys=True, ensure_ascii=False)} if not publication else {}),
@@ -897,7 +948,7 @@ class CommunicationWriter:
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.5"),
+                else prompt_text("collaboration/communication-system", version="1.0.6"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -962,7 +1013,7 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.0" if publication else "1.0.2",
+                    version="1.0.0" if publication else "1.0.3",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]

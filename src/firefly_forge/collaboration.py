@@ -1996,11 +1996,18 @@ class Collaboration:
                 else None
             )
             if data.get("natural_turn") is not None:
+                current_question = data["natural_turn"].get("human_message")
                 conversation_input = CommunicationConversationV1(
                     selection="run" if run else "clarify",
                     language=(data["natural_turn"].get("decision") or {}).get("language")
                     or data["command"].get("language", "en"),
                     linked_runs=1 if run else 0,
+                    question=current_question
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
+                    question_sha256=hashlib.sha256(current_question.encode()).hexdigest()
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
                 )
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
