@@ -14,8 +14,8 @@ from typing import Any
 from firefly_forge.journal import digest
 from firefly_forge.source_edit_models import READ_TOOLS
 
-REGISTRY_VERSION = 28
-LOADER_PROFILE = "codex-exec-restricted-source/v29"
+REGISTRY_VERSION = 29
+LOADER_PROFILE = "codex-exec-restricted-source/v30"
 LOADER_MODULES = (
     "source_budget_allowances.py",
     "source_budget_output.py",
@@ -231,6 +231,7 @@ def historical_profile_seal(profile: CapabilityProfile) -> dict[str, Any]:
             (25, "codex-exec-restricted-source/v26"),
             (26, "codex-exec-restricted-source/v27"),
             (27, "codex-exec-restricted-source/v28"),
+            (28, "codex-exec-restricted-source/v29"),
         }
         or profile.proof.contract_digest != profile_contract_digest(profile)
     ):
