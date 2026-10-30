@@ -132,6 +132,15 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     assert consumed[-1]["kind"] == "agent_consume" and len(fresh_consumes) == len(fresh_posts) == 2
     assert consumed[: len(prefix)] == prefix
     task_attempt = failed["attempt"]
+    # A combined-service startup must preserve the failed final before any
+    # explicit candidate or operator settlement is requested.
+    startup_plan = copy.deepcopy(await c.journal.plan(c.run_id))
+    assert await c.journal.recover() == 0
+    assert await c.journal.recover() == 0
+    assert await c.store.get_run(c.run_id) == failed
+    assert await c.journal.entries(c.run_id) == consumed
+    assert await c.journal.plan(c.run_id) == startup_plan
+    assert len(fresh_posts) == len(fresh_consumes) == 2
     api = KnownWorkerCompletions(c.store, c.journal, c.engine)
     controller = KnownWorkerCompletionController(api)
     candidate = await controller.candidate(c.run_id)
