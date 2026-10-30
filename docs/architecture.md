@@ -35,6 +35,12 @@ The factory itself uses [pyfly](https://fireflyframework.org/frameworks/python/)
 
 Lifecycle ordering initializes `Store` before topology and execution consumers. The engine acquires ownership before recovering retained work. Worker supervision watches coding, delivery, deployment, campaign, channel and application-observation consumers. A stopped required consumer degrades execution readiness; shutdown closes dispatch and drains effects before releasing ownership. See [runtime roles](runtime-roles.md).
 
+### Personal observation credentials
+
+`FactoryConfiguration.personal_tokens()` wires native identity, membership, credential and event repositories into `PersonalTokens`. `IdentityService` delegates the distinct personal-token format to pyfly's native `ProviderManager` and `PersonalTokenAuthenticationProvider`; it does not attempt an OIDC fallback for an invalid personal credential. `ProjectAccess` rechecks the durable credential and current selected memberships. `AccessRoutes` permits only the documented GET/HEAD observation paths. All execution effects, unsafe methods, global configuration and MCP remain denied.
+
+Schema revision 32 adds `forge_personal_tokens` and `forge_personal_token_events`. The former retains only a secret digest, canonical issuer/subject binding, explicit project selection and lifecycle metadata. Owner-session issuance, revocation and rotation lock the current owner before the credential and commit their event together. A repeated creation request never retrieves a retained secret because no plaintext field exists. Historical actor, custody and human-decision contracts are unchanged. See [personal project API tokens](personal-api-tokens.md) for the lifecycle, denied capabilities and the separate PostgreSQL/live-OIDC qualification gates.
+
 ### Native knowledge services
 
 New configurations select the [Koinon headless candidate](koinon-headless.md). Its scoped source ingestion, external memory proposals and exact-version framework refresh use native durable records before remote writes. Memory approval stays in the upstream private application; a saved version requires exact receipt and version readback. Retained Flycanon/Flyquery bindings and the advanced legacy learned-outcome cache have separate migration boundaries. This candidate wiring does not establish live service, installed or source qualification.

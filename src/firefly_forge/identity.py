@@ -19,6 +19,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pyfly.container import service
+from pyfly.security.authentication import Authentication, AuthenticationProvider, ProviderManager
 from pyfly.security.oauth2.client import InMemoryClientRegistrationRepository, keycloak
 from pyfly.security.oauth2.login import OAuth2LoginHandler
 from pyfly.security.oauth2.resource_server import ClaimMappings, JWKSTokenValidator
@@ -49,11 +50,14 @@ class Principal:
     subject: str
     display_name: str | None = None
     email: str | None = None
-    authentication_method: Literal["oidc_session", "oidc_bearer", "local_bootstrap", "scm_mapping"] = "oidc_bearer"
+    authentication_method: Literal[
+        "oidc_session", "oidc_bearer", "local_bootstrap", "scm_mapping", "personal_token"
+    ] = "oidc_bearer"
     api_roles: frozenset[str] = field(default_factory=frozenset)
     kind: Literal["human", "service", "local_bootstrap"] = "human"
     api_audience: str | None = None
     scm_delegation: dict[str, Any] | None = None
+    personal_token_id: UUID | None = None
 
 
 class IdentityConfiguration(BaseModel):
@@ -173,6 +177,7 @@ class IdentityService:
         sessions: ForgeIdentitySessionRepository | None = None,
         attempts: ForgeIdentityAttemptRepository | None = None,
         client: httpx.AsyncClient | None = None,
+        personal_token_provider: AuthenticationProvider | None = None,
     ) -> None:
         self.store, self.config = store, config or IdentityConfiguration.from_environment()
         self.users, self.sessions = users or ForgeIdentityUserRepository(), sessions or ForgeIdentitySessionRepository()
@@ -197,6 +202,7 @@ class IdentityService:
             else None
         )
         self.validators: dict[str, JWKSTokenValidator] = {}
+        self.personal_token_manager = ProviderManager(personal_token_provider) if personal_token_provider else None
 
     async def stop(self) -> None:
         if self.owns_client:
@@ -595,6 +601,26 @@ class IdentityService:
             )
         try:
             if authorization:
+                if authorization.startswith("Bearer forge_pat_"):
+                    if self.personal_token_manager is None:
+                        return None
+                    authenticated = await self.personal_token_manager.authenticate(
+                        Authentication(
+                            principal="personal-token",
+                            credentials=authorization[7:],
+                            details={"credential_kind": "personal_token"},
+                        )
+                    )
+                    return Principal(
+                        UUID(authenticated.principal),
+                        authenticated.details["issuer"],
+                        authenticated.details["subject"],
+                        authenticated.details.get("display_name"),
+                        authenticated.details.get("email"),
+                        authentication_method="personal_token",
+                        kind="service",
+                        personal_token_id=UUID(authenticated.details["personal_token_id"]),
+                    )
                 if not authorization.startswith("Bearer ") or len(authorization) > 16391:
                     return None
                 claims = await self._access(authorization[7:])
