@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from firefly_forge.bridge_completions import _outside_unit
+from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
 from firefly_forge.checkpoint_mode_handoff_custody import validate_completed_handoff
 from firefly_forge.final_outcome_continuations import _same, final_record
 from firefly_forge.final_outcome_models import RetainedVerifiedSourceV1
@@ -47,15 +47,15 @@ class PreparedRetainedSource:
 async def prepare_retained_source(store: Any, journal: Any, run: Data, workspace: Path) -> PreparedRetainedSource:
     _outside_unit()
     await store.assert_ownership()
-    actor = CURRENT_PRINCIPAL.get()
-    if actor is None:
-        raise AccessDenied("Retained verified source requires its current authenticated worker")
+    reader = CURRENT_PRINCIPAL.get()
     ownership = store.execution_ownership_token
     expected = copy.deepcopy(run)
     requests = getattr(store, "execution_requests", None)
     marker = run.get("invalid_read_continuity") or {}
     if requests is None or requests.store is not store or not marker.get("request_id"):
         raise ValueError("Unchanged source requires its accepted native final-result action")
+    completions = BridgeCompletions(store, journal)
+    await completions._execution(expected, reader)
     await assert_generic_dispatch_allowed(store, journal, run)
     async with store._unit():
         ticket = await requests.get(marker["request_id"])
@@ -106,16 +106,17 @@ async def prepare_retained_source(store: Any, journal: Any, run: Data, workspace
 
     async def current() -> None:
         await store.assert_ownership()
-        if CURRENT_PRINCIPAL.get() != actor:
+        if CURRENT_PRINCIPAL.get() != reader:
             raise AccessDenied("Retained source worker context changed")
-        await ProjectAccess(store).authorize_actor(
-            ProjectAccess.actor_snapshot(actor), expected.get("project_id"), "execute"
-        )
+        await completions._execution(expected, reader)
+        if reader is not None:
+            await ProjectAccess(store).authorize_actor(
+                ProjectAccess.actor_snapshot(reader), expected.get("project_id"), "execute"
+            )
         if store.execution_ownership_token is not ownership or digest(await store.get_run(run["id"])) != digest(
             expected
         ):
             raise ValueError("Retained source lost its current worker ownership or scope")
-        await ProjectAccess(store).authorize_execution(expected)
         check_verification_authority(store, expected, intent)
         async with store._unit():
             if (
