@@ -577,7 +577,7 @@ this read-only conversation path.
 ### Receive natural questions through a signed GitHub repository webhook
 
 A repository webhook can deliver an addressed question such as `@forge what is
-blocked?` to `/webhooks/github/{repository_id}` without a slash command. Its
+blocked?` to `/api/v1/webhooks/github/{repository_id}` without a slash command. Its
 configured repository secret must verify the exact raw body. This transport is
 recorded as `github_repository_webhook_v1`: the configured App connection is
 separate metadata, not an installation assertion in the webhook payload. An App
