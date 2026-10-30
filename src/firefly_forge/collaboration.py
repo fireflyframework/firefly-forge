@@ -672,7 +672,12 @@ class Collaboration:
 
                     try:
                         scope = self.scm.delegation_scope(repo)
-                        installation = body.get("installation", {}).get("id") if provider == "github" else None
+                        installation_data = body.get("installation")
+                        installation = (
+                            installation_data.get("id")
+                            if provider == "github" and isinstance(installation_data, dict)
+                            else None
+                        )
                         if provider == "github" and type(installation) is not int:
                             raise ValueError("A GitHub App installation identifier is required")
                         verified_reference = VerifiedSCMReferenceV1.model_validate(
@@ -712,9 +717,23 @@ class Collaboration:
                         from firefly_forge.scm_comment_source import github_comment_source
                         from firefly_forge.scm_conversation_models import SignedAddressedSourceV1
 
-                        if provider != "github" or verified_reference is None:
-                            raise ValueError("Addressed status requires a qualified GitHub App signature")
+                        if provider != "github":
+                            raise ValueError("Addressed status requires a qualified GitHub source")
                         source = github_comment_source(body["comment"], repo, self.scm._api("github"))
+                        if verified_reference is None and "installation" not in body and key_revision:
+                            from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                            verified_reference = GitHubRepositoryWebhookReferenceV1.model_validate(
+                                {
+                                    "connection": self.scm.delegation_scope(repo),
+                                    "external_actor_id": event["actor"],
+                                    "webhook_key_revision": key_revision,
+                                    "payload_digest": digest,
+                                    "source_digest": source_digest(source),
+                                }
+                            ).model_dump(mode="json")
+                        if verified_reference is None:
+                            raise ValueError("Addressed status requires a qualified GitHub signature")
                         if (
                             source["author_type"] != "User"
                             or body["sender"].get("type") != "User"
@@ -813,9 +832,15 @@ class Collaboration:
 
                 authority = SCMActorAuthority(self.store, self.scm)
                 current_scope = self.scm.delegation_scope(current_repository)
-                if current_scope != {
-                    key: verified_reference[key] for key in current_scope
-                } or not authority._key_current(repository_id, verified_reference):
+                if verified_reference.get("transport") == "github_repository_webhook_v1":
+                    from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                    proof_scope = GitHubRepositoryWebhookReferenceV1.model_validate(
+                        verified_reference
+                    ).connection.scope()
+                else:
+                    proof_scope = {key: verified_reference[key] for key in current_scope}
+                if current_scope != proof_scope or not authority._key_current(repository_id, verified_reference):
                     reason = "verification_scope_changed"
                     verified_reference = None
             previous = await self.inbox.find_delivery(identifier(repository_id), provider, delivery_key)

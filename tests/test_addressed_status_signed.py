@@ -86,7 +86,7 @@ async def grant(c, delivery):
     )
 
 
-async def test_signed_status_uses_current_native_status_consent_without_an_invented_run(poll_case):
+async def test_signed_status_uses_current_native_status_consent_without_an_invented_run(poll_case, monkeypatch):
     async with poll_case() as c:
         delivery, comment = await signed_address(c)
         c.state["comments"].append(comment)
@@ -98,6 +98,9 @@ async def test_signed_status_uses_current_native_status_consent_without_an_inven
         assert scopes[0]["native_user_id"] == c.user_id and scopes[0]["component_ids"] == ["api"]
         assert "run_id" not in scopes[0]
         assert not c.db["journal"] and not c.state["posts"]
+        from test_addressed_status_polling import configured_status
+
+        await configured_status(c, monkeypatch)
         c.collaboration.polling = None
         result = await c.collaboration.process(delivery["id"])
         assert result["status"] == "processed" and result["run_id"] is None
@@ -128,13 +131,16 @@ async def test_signed_conversation_rechecks_current_authority_before_any_reply(p
         assert not c.db["journal"] and not c.state["posts"]
 
 
-async def test_signed_status_uses_authenticated_previous_ticket_receipt_for_api_created_run(poll_case):
+async def test_signed_status_uses_authenticated_previous_ticket_receipt_for_api_created_run(poll_case, monkeypatch):
     async with poll_case() as c:
         original, comment = await signed_address(c, body="/forge status " + json.dumps({"run_id": c.run_id}))
         c.state["comments"].append(comment)
         await grant(c, original)
         previous = await c.collaboration.process(original["id"])
         assert previous["status"] == "processed" and len(c.state["posts"]) == 1
+        from test_addressed_status_polling import configured_status
+
+        await configured_status(c, monkeypatch)
         delivery, comment = await signed_address(c, number=91)
         c.state["comments"].append(comment)
         result = await c.collaboration.process(delivery["id"])

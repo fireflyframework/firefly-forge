@@ -77,6 +77,10 @@ def natural_policy_digest() -> str:
         "resources/prompts/scm-natural-v1/feedback.yaml",
         "resources/prompts/scm-natural-v1/copy.yaml",
         "resources/prompts/scm-natural-v1/copy-1.0.1.yaml",
+        "scm_actor_authority.py",
+        "scm_authority_models.py",
+        "scm_connections.py",
+        "scm_comment_source.py",
     ):
         path = root / name
         metadata = path.lstat()
@@ -160,6 +164,11 @@ class SCMNaturalTasks:
     def __init__(self, collaboration: Any) -> None:
         self.collaboration, self.store = collaboration, collaboration.store
         self.conversations = SCMConversations(collaboration)
+
+    @staticmethod
+    def require_effect_transport(delivery: Data) -> None:
+        if (delivery.get("verification") or {}).get("transport") != "github_rest_poll_v1":
+            raise AccessDenied("Signed natural conversation read authority does not admit polling effects")
 
     async def _context(self, delivery: Data, scopes: list[Data]) -> Data:
         # Lookup verifies existing authenticated ticket links; it never searches briefs or global runs.
@@ -425,6 +434,12 @@ class SCMNaturalTasks:
         ):
             raise AccessDenied("The exact native read scope changed before natural feedback")
         if (turn.get("decision") or {}).get("intent") == "status":
+            status_context = turn["context"]["status_context"]
+            sealed = AddressedContextV1.model_validate({**status_context, "digest": digest(status_context)}).model_dump(
+                mode="json"
+            )
+            if current.get("conversation") != sealed or expected.get("conversation") != sealed:
+                raise AccessDenied("The retained natural status context or digest changed")
             latest = await self._context(current, scopes)
             selected = turn.get("resolution", {}).get("run_id")
             retained_rows = [row for row in turn["context"]["candidates"] if row.get("run_id") == selected]
@@ -444,8 +459,6 @@ class SCMNaturalTasks:
             if retained
             else AddressedStatusV1.model_validate(initial["command"])
         )
-        if (initial.get("verification") or {}).get("transport") != "github_rest_poll_v1":
-            raise AccessDenied("Natural task intake currently requires API-observed GitHub source")
         scopes = await self.conversations.scopes(initial, remote=True)
         context = await self._context(initial, scopes)
         source = initial["source_snapshot"]["body"]

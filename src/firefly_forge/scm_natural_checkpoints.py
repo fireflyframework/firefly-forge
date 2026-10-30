@@ -36,6 +36,7 @@ class SCMNaturalCheckpoints:
         if parent.get("natural_checkpoint") is not None:
             return dict(parent)
         try:
+            self.natural.require_effect_transport(parent)
             actor = await self.collaboration.polling.resolve_checkpoint(parent)
             run_id = parent["natural_turn"]["resolution"]["run_id"]
             run = await self.store.get_run(run_id)

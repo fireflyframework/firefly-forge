@@ -191,6 +191,7 @@ class NaturalProductContinuation:
         from firefly_forge.scm_polling import poll_key
 
         parent = await self.collaboration.receipt(receipt_id)
+        self.natural.require_effect_transport(parent)
         scopes, question = await self._question(parent, remote=remote)
         authority = self.collaboration.poll_functional_authority
         if authority is None:

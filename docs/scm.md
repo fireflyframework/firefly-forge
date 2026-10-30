@@ -592,6 +592,31 @@ operator reference. They are not the normal conversational UX. The finite
 available for its original explicit operations; its expiry is not extended by
 this read-only conversation path.
 
+### Receive natural questions through a signed GitHub repository webhook
+
+A repository webhook can deliver an addressed question such as `@forge what is
+blocked?` to `/webhooks/github/{repository_id}` without a slash command. Its
+configured repository secret must verify the exact raw body. This transport is
+recorded as `github_repository_webhook_v1`: the configured App connection is
+separate metadata, not an installation assertion in the webhook payload. An App
+webhook that supplies `installation.id` must still match its exact configured
+installation; a wrong or malformed value cannot fall back to the repository
+transport.
+
+This read path requires the existing current API-observed `status` consent for
+the same GitHub account, project and components, plus a configured communication
+profile. Forge checks the current comment, author, ticket, repository grant and
+native membership before classification and before feedback. The same comment
+shares one retained identity with polling, so a later observation or redelivery
+does not classify or answer it twice. Unknown model or remote outcomes remain
+held rather than falling back to the basic command handler.
+
+Signed questions use the same natural classifier as polling. This read
+transport does not admit answers, continuations, product turns or checkpoints;
+those outcomes remain pending their separate supported authority. GitLab and
+Bitbucket retain their existing typed webhook commands. Their natural read
+adapters and fresh-provider checks are not implemented by this GitHub change.
+
 ## Use GitHub issue comments from a local factory
 
 Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.

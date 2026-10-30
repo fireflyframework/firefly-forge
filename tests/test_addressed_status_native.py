@@ -85,7 +85,9 @@ def test_native_source_edit_during_issue_token_wait_stops_reply_and_preserves_un
     assert c.state["posts"] == []
 
 
-def test_native_signed_status_requires_actual_native_status_consent_and_retains_original_signature(native_poll):
+def test_native_signed_status_requires_actual_native_status_consent_and_retains_original_signature(
+    native_poll, monkeypatch
+):
     c = native_poll
     comment = c.comment(90, "@forge how is this going?")
     c.state["comments"].append(comment)
@@ -137,7 +139,9 @@ def test_native_signed_status_requires_actual_native_status_consent_and_retains_
             )
 
     bound = c.http.portal.call(consent)
+    coordinator_calls = native_coordinator(c, monkeypatch)
     result = c.process(delivery)
+    assert len(coordinator_calls) == 1
     assert result["status"] == "processed" and result["run_id"] is None
     assert result["conversation"]["scopes"][0]["binding_digest"] == bound["digest"]
     assert result["verification"] == original["verification"] and "transport" not in result["verification"]
