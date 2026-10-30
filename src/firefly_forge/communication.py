@@ -50,9 +50,19 @@ class CommunicationCard(CommunicationDraft):
     decision: CommunicationDecision | None = None
 
 
+class CommunicationReaderChecks(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    answers_question: bool = Field(description="Directly answers the current human question.")
+    relevant_detail: bool = Field(description="Includes useful context and omits irrelevant recaps or counters.")
+    no_redundancy: bool = Field(description="Does not repeat the title, result, check provenance or caveats.")
+    plain_language: bool = Field(description="Reads as an ordinary teammate reply rather than an internal audit.")
+    useful_excerpts: bool = Field(description="Any selected excerpts help answer the question; none are decorative.")
+
+
 class CommunicationReview(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     verdict: Literal["supported", "unsupported", "uncertain"]
+    reader_checks: CommunicationReaderChecks
     issues: list[
         Literal[
             "unsupported_claim",
@@ -529,6 +539,8 @@ def communication_facts(
             "basis": "recorded_error",
             "cause": "not_established",
             "next_step": "review_execution_configuration_before_continuation",
+            "recorded_condition": "execution_selection_configuration_or_reviewed_policy_no_longer_matches",
+            "review_scope": ["execution_selection", "execution_configuration", "reviewed_policy"],
         }
     handoff = (
         verification_handoff(run)
@@ -948,7 +960,7 @@ class CommunicationWriter:
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.6"),
+                else prompt_text("collaboration/communication-system", version="1.0.8"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -973,6 +985,7 @@ class CommunicationWriter:
             from fireflyframework_agentic.agents import FireflyAgent
             from fireflyframework_agentic.config import FireflyAgenticConfig
             from pydantic_ai import PromptedOutput
+            from pydantic_ai.exceptions import UnexpectedModelBehavior
             from pydantic_ai.usage import UsageLimits
 
             from firefly_forge.providers import APIProvider, BridgeProvider
@@ -1013,7 +1026,7 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.0" if publication else "1.0.3",
+                    version="1.0.0" if publication else "1.0.5",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
@@ -1046,31 +1059,39 @@ class CommunicationWriter:
                 when = deadline.when()
                 assert when is not None
                 remaining = max(0.001, when - asyncio.get_running_loop().time())
-                reviewed = await reviewer.run(
-                    review_prompt,
-                    timeout=remaining,
-                    usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=700),
-                )
                 try:
+                    reviewed = await reviewer.run(
+                        review_prompt,
+                        timeout=remaining,
+                        usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=700),
+                    )
                     review = CommunicationReview.model_validate(reviewed.output)
+                    reader_approved = all(review.reader_checks.model_dump().values())
                     references = set(review.fact_ids)
                     cited = {key for paragraph in [draft.title, *draft.paragraphs] for key in paragraph.fact_ids}
                     if (
                         len(references) != len(review.fact_ids)
                         or references - facts.keys()
                         or cited - references
-                        or (review.verdict == "supported" and review.issues)
+                        or (
+                            review.verdict == "supported"
+                            and review.issues
+                            and (
+                                reader_approved
+                                or set(review.issues) - {"insufficient_context", "unclear_language", "poor_structure"}
+                            )
+                        )
                         or (review.verdict != "supported" and not review.issues)
                     ):
                         raise ValueError("Communication review must bind the whole candidate to known facts")
                     self.store.reject_credentials(review.model_dump())
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, UnexpectedModelBehavior):
                     evidence["reason"] = "invalid_review"
                     return result
                 evidence["review"] = review.model_dump()
                 evidence["review_candidate_sha256"] = evidence["candidate_sha256"]
                 evidence["review_applies_to"] = "original_candidate"
-                if review.verdict != "supported":
+                if review.verdict != "supported" or not reader_approved:
                     repair_prompt = prompt_text(
                         "collaboration/communication-repair-request",
                         version="1.0.1",

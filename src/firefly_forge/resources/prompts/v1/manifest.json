@@ -2951,10 +2951,42 @@
       "variables": {}
     },
     {
+      "id": "collaboration/communication-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-system-1.0.7.yaml",
+      "sha256": "fd749bfb5eb8bbf626dbdd2a3b927dc255d0d12be1c6f0db730e5ee405dc39f4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.8",
+      "path": "collaboration/communication-system-1.0.8.yaml",
+      "sha256": "06fd24f330ce4dc99193538d300e4248d217b77a92f6158a718d102a21e2906c",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/communication-review-system",
       "version": "1.0.3",
       "path": "collaboration/communication-review-system-1.0.3.yaml",
       "sha256": "b75b99caacd0212f3a750d77dad534f92c6ac23b49b4fee78952c12c13c9c150",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.4",
+      "path": "collaboration/communication-review-system-1.0.4.yaml",
+      "sha256": "c06dc7eda1286e73ec0ba7c578a2ee72a869e04cce5abcc41c523206a5c6c831",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.5",
+      "path": "collaboration/communication-review-system-1.0.5.yaml",
+      "sha256": "2c57f6e5bd35854a420f461c7e26f6a388567db0027db91caddbc4498d7bc653",
       "field": "user",
       "variables": {}
     },

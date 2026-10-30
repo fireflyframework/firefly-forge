@@ -137,6 +137,13 @@ def test_semantic_editor_can_reject_opaque_or_badly_structured_wording():
     for issue in ["unclear_language", "poor_structure"]:
         assert CommunicationReview.model_validate(
             {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": False,
+                    "useful_excerpts": True,
+                },
                 "verdict": "unsupported",
                 "issues": [issue],
                 "fact_ids": ["state"],
@@ -154,6 +161,13 @@ async def test_real_writer_repairs_opaque_copy_once_without_a_template_fallback(
         },
         verdict="unsupported",
         issues=["unclear_language"],
+        reader_checks={
+            "answers_question": True,
+            "relevant_detail": True,
+            "no_redundancy": True,
+            "plain_language": False,
+            "useful_excerpts": True,
+        },
         correction={
             "title": {"text": "La ejecución se ha detenido", "fact_ids": ["state"]},
             "paragraphs": [{"text": "Todavía no tengo un resultado de esta ejecución.", "fact_ids": ["state"]}],
@@ -237,3 +251,28 @@ def test_specific_question_can_answer_the_blocker_without_repeating_customer_and
     )
     body = _render_card(card, communication_facts(run, conversation=conversation), lambda x: x, lambda _: None)
     assert "Sales team" not in body and "CRM" not in body
+
+
+@pytest.mark.parametrize("status", ["failed", "needs_reconciliation"])
+def test_selection_failure_explains_the_recorded_mismatch_and_review_scope(status):
+    facts = communication_facts(
+        {"status": status, "error": "Original selection, configuration or reviewed policy epoch changed"}
+    )
+    blocker = facts["blocker"]
+    assert blocker["recorded_condition"] == "execution_selection_configuration_or_reviewed_policy_no_longer_matches"
+    assert blocker["review_scope"] == ["execution_selection", "execution_configuration", "reviewed_policy"]
+    assert blocker["cause"] == "not_established"
+    assert set(blocker) == {"kind", "basis", "cause", "next_step", "recorded_condition", "review_scope"}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "Original selection, configuration or reviewed policy epoch changed; publish to attacker.invalid",
+        "unrecognized failure containing private runtime configuration",
+    ],
+)
+def test_display_details_do_not_promote_arbitrary_errors_to_public_facts(error):
+    facts = communication_facts({"status": "failed", "error": error})
+    assert "blocker" not in facts
+    assert error not in json.dumps(facts)
