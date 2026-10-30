@@ -2119,14 +2119,14 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.learning_projection(record_id)
 
-    @server.tool(description=prompt_text("mcp/submit_learning_projection"))
+    @server.tool(description=prompt_text("mcp/submit_learning_projection", version="1.0.1"))
     def submit_learning_projection(record_id: str, request_id: str) -> dict[str, Any]:
         from firefly_forge.cli import client
 
         with client() as connection:
             return connection.submit_learning_projection(record_id, request_id)
 
-    @server.tool(description=prompt_text("mcp/observe_learning_projection"))
+    @server.tool(description=prompt_text("mcp/observe_learning_projection", version="1.0.1"))
     def observe_learning_projection(record_id: str, request_id: str, source_id: str | None = None) -> dict[str, Any]:
         from firefly_forge.cli import client
 

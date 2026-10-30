@@ -91,6 +91,10 @@ class LearningProjection:
         async with self.store._unit():
             record = await self._record(record_id, review=True)
             event = await self.ledger.events.for_request(record.id, request_id)
+            if event is not None and event.data.get("kind") == "projection_observation_v2":
+                from firefly_forge.learning_native import NativeLearningProjection
+
+                return await NativeLearningProjection(self).observation_receipt(record_id, request_id)
             if event is None or event.data.get("kind") != "projection_observation":
                 raise KeyError("Learning projection observation request not observed")
             data = event.data
@@ -192,6 +196,13 @@ class LearningProjection:
     async def retrieve(self, run_id: str, query: str, observed: Data, candidate_id: str) -> Data:
         """Read only the exact eligible record's verified, frozen-scope projection."""
         async with self.store._unit():
+            native_run = await self.store.get_run(run_id)
+            native = self.knowledge.settings(native_run).get("provider") == "koinon"
+        if native:
+            from firefly_forge.learning_native import NativeLearningProjection
+
+            return await NativeLearningProjection(self).retrieve(run_id, query, observed, candidate_id)
+        async with self.store._unit():
             run = await self.store.get_run(run_id)
             policy = frozen_learning(run.get("learning_snapshot"))["settings"]
             if not policy.get("projected_retrieval", False):
@@ -263,6 +274,10 @@ class LearningProjection:
 
     async def retain(self, run_id: str, observed: Data, selected: Data) -> Callable[[], None]:
         """Lock order is local record (held by ledger.retain), then exact projection."""
+        if selected.get("version") == 2:
+            from firefly_forge.learning_native import NativeLearningProjection
+
+            return await NativeLearningProjection(self).retain(run_id, observed, selected)
         sessions = self.store.session_provider
         if sessions is None or sessions.current() is None:
             raise RuntimeError("Retained projected evidence requires an active admission unit")
@@ -305,8 +320,31 @@ class LearningProjection:
 
             return guard
 
+    async def failure_hints(self, run_id: str, query: str, observed: Data) -> list[Data]:
+        from firefly_forge.learning_native import NativeLearningProjection
+
+        return await NativeLearningProjection(self).failure_hints(run_id, query, observed)
+
     async def submit(self, record_id: str, *, request_id: str) -> Data:
         identifier(request_id)
+        async with self.store._unit():
+            native_record = await self._record(record_id, review=True)
+            native_run = await self.store.get_run(native_record.run_id.hex)
+            native_row = await self.ledger.projections.for_record(native_record.id)
+            native = self.knowledge.settings(native_run).get("provider") == "koinon" or (
+                native_row is not None and native_row.data.get("version") == 2
+            )
+        if native:
+            from koinon_sdk import ApiError
+
+            from firefly_forge.learning_native import NativeLearningProjection
+
+            try:
+                return await NativeLearningProjection(self).submit(record_id, request_id)
+            except (ApiError, httpx.HTTPError, ValidationError):
+                raise ValueError(
+                    "Native projection requires scoped service readiness; inspect its exact local status"
+                ) from None
         async with self.store._unit():
             record = await self._record(record_id, review=True)
             await self.journal._run(record.run_id.hex)
@@ -442,6 +480,20 @@ class LearningProjection:
                 )
 
     async def observe(self, record_id: str, *, source_id: str | None = None, request_id: str) -> Data:
+        async with self.store._unit():
+            native_record = await self._record(record_id, review=True)
+            native_row = await self.ledger.projections.for_record(native_record.id)
+        if native_row is not None and native_row.data.get("version") == 2:
+            from koinon_sdk import ApiError
+
+            from firefly_forge.learning_native import NativeLearningProjection
+
+            try:
+                return await NativeLearningProjection(self).observe(record_id, request_id, source_id)
+            except (ApiError, httpx.HTTPError, ValidationError):
+                raise ValueError(
+                    "Native source observation failed; check scoped access and service readiness"
+                ) from None
         try:
             async with asyncio.timeout(60):
                 return await self._observe(record_id, source_id=source_id, request_id=request_id)

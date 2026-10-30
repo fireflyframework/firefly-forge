@@ -1,8 +1,13 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import {
+  readNativeProjection,
+  type NativeLearningEvidence,
+} from "./NativeLearningData";
 export type LearningRecord = {
   id: string;
   state: "candidate" | "verified" | "invalidated" | "superseded";
   kind: "local_outcome" | "observed_failure" | "web_reference";
+  knowledge_provider?: "koinon" | null;
   observed_at?: string;
   verified_at?: string;
   expires_at: string;
@@ -109,6 +114,10 @@ export function readLearningRecords(
         "superseded",
       ] as const),
       kind,
+      knowledge_provider:
+        row.knowledge_provider == null
+          ? null
+          : choice(row.knowledge_provider, ["koinon"] as const),
       ...(row.observed_at != null
         ? { observed_at: timestamp(row.observed_at) }
         : {}),
@@ -188,6 +197,7 @@ export function readLearningRecords(
   });
 }
 export type LearningProjection = {
+  native?: NativeLearningEvidence;
   id: string;
   record_id: string;
   state:
@@ -209,9 +219,12 @@ export type LearningProjection = {
 export function readLearningProjection(
   value: unknown,
   record: string,
+  expected?: LearningRecord,
 ): LearningProjection {
   const row = object(value);
   if (row.record_id !== record || !id.test(record)) throw invalid();
+  if (row.version === 2) return readNativeProjection(row, record, expected);
+  if (row.version != null && row.version !== 1) throw invalid();
   const result: LearningProjection = {
     id: text(row.id, 32, id),
     record_id: record,
