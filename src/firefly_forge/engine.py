@@ -10,7 +10,7 @@ import os
 import re
 import uuid
 from collections.abc import Callable
-from contextlib import AsyncExitStack, ExitStack
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -419,7 +419,7 @@ class Engine:
         workspace = self.workspaces / identifier
         settings: dict[str, str] = {}
         active_key: str | None = None
-        credential_scopes = ExitStack()
+        credential_scopes = AsyncExitStack()
 
         def safe(message: str) -> str:
             return redact_secrets(redact_secrets(redact(message), self.credential_registry()), settings)
@@ -495,13 +495,10 @@ class Engine:
             if run.get("checkpoint_mode_adoption"):
                 from firefly_forge.checkpoint_mode_runtime import (
                     execution_settings,
-                    mode_adoption_scope,
-                    prepare_current_mode,
+                    mode_execution_scope,
                 )
 
-                prepared_mode = await prepare_current_mode(self.journal, identifier)
-                assert prepared_mode is not None
-                credential_scopes.enter_context(mode_adoption_scope(prepared_mode))
+                await credential_scopes.enter_async_context(mode_execution_scope(self.journal, identifier))
                 settings = execution_settings(self.store.configuration, run)
             elif run.get("model_selection"):
                 if self.store.task_router is None or run["agent"] != run["model_selection"]["provider"]:
@@ -1396,6 +1393,16 @@ class Engine:
                     usage = safe_data(getattr(result, "usage", {}))
                     if native_invocation is not None and not usage.get("runtime_report"):
                         raise ReconciliationRequired("Native checkpoint output requires its normalized RuntimeReport")
+                    if usage.get("retained_source") is not None:
+                        # The new round has its own SDK report; its accepted predecessor remains spent.
+                        previous_usage = (await self.store.get_run(identifier)).get("usage") or {}
+                        for key in ("requests", "input_tokens", "output_tokens"):
+                            if any(
+                                type(value) is not int or value < 0
+                                for value in (usage.get(key), previous_usage.get(key))
+                            ):
+                                raise ReconciliationRequired("Retained source requires exact spent usage counters")
+                            usage[key] += previous_usage[key]
                     (await self.store.update(identifier, summary=safe(result.summary), usage=usage))
                     await self._worker_feedback(
                         identifier, workspace, result, attempt, safe_data, restoration=restored_receipt
@@ -1675,7 +1682,7 @@ class Engine:
                 (await self.store.update(identifier, publication_error=safe(str(exc))))
                 await emit("publication", f"Publication failed: {exc}")
         finally:
-            credential_scopes.close()
+            await credential_scopes.aclose()
 
     async def _worker_feedback(
         self,

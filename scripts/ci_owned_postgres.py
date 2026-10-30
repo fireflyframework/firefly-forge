@@ -21,11 +21,15 @@ from uuid import uuid4
 
 LABEL = "org.firefly.forge.ci-postgres"
 IMAGE = "postgres:17"
-SQL = """SELECT json_build_object(
+# PostgreSQL assigns PgStartTime after the process-start value written to postmaster.pid.
+SQL = """WITH native AS (
+SELECT string_to_array(pg_read_file('postmaster.pid', 0, 8192), E'\\n') AS pid
+)
+SELECT json_build_object(
 'data_directory', current_setting('data_directory'), 'database', current_database(),
 'port', inet_server_port(), 'address', host(inet_server_addr()),
-'started', floor(extract(epoch FROM pg_postmaster_start_time()))::bigint,
-'system_identifier', (pg_control_system()).system_identifier::text)"""
+'started', pid[3]::bigint, 'postmaster_pid', pid[1]::integer,
+'system_identifier', (pg_control_system()).system_identifier::text) FROM native"""
 
 
 def docker(
@@ -177,6 +181,8 @@ def validate_native_files(state: dict[str, Any], sql: dict[str, Any]) -> dict[st
         or sql["port"] != state["port"]
         or type(sql.get("started")) is not int
         or sql["started"] != int(lines[2])
+        or type(sql.get("postmaster_pid")) is not int
+        or sql["postmaster_pid"] != int(lines[0])
         or not ipaddress.ip_address(sql.get("address", "")).is_loopback
         or sql.get("system_identifier") != str(int.from_bytes(control[:8], sys.byteorder))
     ):

@@ -69,3 +69,40 @@ it("points a held checkpoint to its original result flow and suppresses generic 
   expect(html).not.toContain("Resume run");
   expect(html).not.toContain("Hand off run");
 });
+
+it("does not show an unknown-result warning for a cleared Bridge hold on a failed run", () => {
+  const html = renderToStaticMarkup(
+    <ContinueRun
+      run={{
+        id: "a".repeat(32),
+        repository_id: "b".repeat(32),
+        brief: "",
+        status: "failed",
+        agent: "bridge",
+        bridge_completion_hold: {},
+      }}
+      connection={{ base: "https://forge.invalid", token: "fictional" }}
+      onUpdated={() => undefined}
+    />,
+  );
+  expect(html).toBe("");
+});
+
+it("keeps ordinary paused-run controls after the Bridge hold is cleared", () => {
+  const html = renderToStaticMarkup(
+    <ContinueRun
+      run={{
+        id: "a".repeat(32),
+        repository_id: "b".repeat(32),
+        brief: "",
+        status: "paused",
+        agent: "bridge",
+        bridge_completion_hold: {},
+      }}
+      connection={{ base: "https://forge.invalid", token: "fictional" }}
+      onUpdated={() => undefined}
+    />,
+  );
+  expect(html).toContain("Resume run");
+  expect(html).not.toContain("Execution result needs review");
+});

@@ -34,6 +34,13 @@ class OwnedPostgresGuards(unittest.TestCase):
             "State": {"Running": True},
         }
 
+    def test_sql_binds_the_native_pid_file_not_the_later_server_start_event(self):
+        from scripts.ci_owned_postgres import SQL
+
+        self.assertIn("pg_read_file('postmaster.pid'", SQL)
+        self.assertIn("'postmaster_pid'", SQL)
+        self.assertNotIn("pg_postmaster_start_time()", SQL)
+
     def test_command_uses_runner_uid_same_absolute_private_mount_and_loopback(self):
         args = container_command(self.state)
         self.assertIn(f"{os.getuid()}:{os.getgid()}", args)
@@ -175,12 +182,17 @@ class OwnedPostgresGuards(unittest.TestCase):
                 "port": 5432,
                 "address": "127.0.0.1",
                 "started": 1000,
+                "postmaster_pid": 1,
                 "system_identifier": "1234567",
             }
             proof = validate_native_files(state, sql)
             self.assertEqual(proof["postmaster_pid_in_container"], 1)
             self.assertNotIn("host_pid", proof)
             for changed in (
+                {"postmaster_pid": 2},
+                {"postmaster_pid": True},
+                {"postmaster_pid": 1.0},
+                {"postmaster_pid": None},
                 {"system_identifier": "other"},
                 {"data_directory": "/other"},
                 {"started": 1001},

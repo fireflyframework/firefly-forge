@@ -143,6 +143,20 @@ A candidate identifies its retained outcome as `complete`, `blocked`, `clarifica
 
 The time window is for **claiming this saved decision**. Its wire label is `admission_window_purpose: "claim_only"`. Once claimed, that window does not become a new job or QA deadline. An explicitly captured work deadline and all original execution limits still apply.
 
+### Continue verification after recovery
+
+When an accepted report asks for verification, forge keeps the pending question on the same run. Review the current verification policy and adopt the exact command set for that request. The adoption records the current source and provider settings. Previously spent commands and continuations remain charged.
+
+```mermaid
+flowchart LR
+    A[Accept] --> B[Verify]
+    B --> C[Publish]
+```
+
+The completion receipt lets forge check the report's original authorization when later stages run. It still checks the current operator, project access and supported runtime. A missing or altered receipt keeps those stages unavailable. Accepting a report does not clear a Git delivery hold or turn an unknown command result into a successful one.
+
+A changed verification environment can require fresh checks even when the source is unchanged. Select only the reusable results offered by the current candidate. Frontend builds and database checks keep their own execution requirements. Read the resulting command receipts before requesting publication.
+
 ### Review in Studio
 
 In **Connections → Saved-work recovery**, a current factory administrator enables **Allow reviewed final-result continuations**. Open the original run's **Plan** tab and find **Saved agent result**. Select **Check saved result** to read the current candidate. Review the report's next step, original attempt and charged usage. A held candidate explains why the request cannot proceed.
@@ -240,6 +254,8 @@ The Python client provides `final_outcome_continuation_candidate`, `request_fina
 ## Reuse passed source checks
 
 After a saved final result requests verification, the next worker may need to finish its report and enter normal QA. Some source checks can use their earlier passed results. Their original executions remain charged to the same command budget. Database integration tests and checks of a deployment or external service still need a current execution.
+
+After the approved checks pass, a fresh worker round can finish the unchanged source. Its model report and checkpoint keep that round's usage; the run's request and token totals carry forward the usage already spent. If an artifact or delivery step is interrupted, those counters and accepted results stay recorded. Inspect the interrupted step before continuing; do not resubmit a consumed model response.
 
 Review the pending verification handoff before its commands start. The candidate's `reusable_build_candidates` lists checks supported by the current runner, with their original command index, arguments and command digest. Selecting a check is an explicit declaration that it tests the retained source and build inputs independently of time or external state. A recognized command name alone does not establish that property.
 

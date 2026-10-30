@@ -53,7 +53,8 @@ export function ContinueRun({
   const [error, setError] = useState("");
   const unknownOutcome =
     run.pause?.kind === "provider_outcome_unknown" ||
-    (run.agent === "bridge" && !!run.bridge_completion_hold);
+    (run.agent === "bridge" &&
+      Object.keys(run.bridge_completion_hold ?? {}).length > 0);
   async function resume(handoff: boolean) {
     if (unknownOutcome || run.worker_request?.status === "pending") return;
     setBusy(true);
