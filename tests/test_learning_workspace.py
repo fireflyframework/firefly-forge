@@ -18,7 +18,7 @@ from firefly_forge.learning_projection import LearningProjection
 
 @pytest.mark.asyncio
 async def test_new_project_workspace_fits_sdk_and_admits_one_scoped_source(store, tmp_path):
-    engine, run = await completed(store, tmp_path, scoped=True)
+    engine, run = await completed(store, tmp_path, scoped=True, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])

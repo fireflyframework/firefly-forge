@@ -11,7 +11,11 @@ from firefly_forge.models import Command, RunInput
 from firefly_forge.providers import AgentResult
 
 
-async def completed(store, tmp_path, *, scoped=False, framework_remote=None):
+async def completed(store, tmp_path, *, scoped=False, framework_remote=None, retained_knowledge=False):
+    if retained_knowledge:
+        from test_knowledge import retained_configuration
+
+        retained_configuration(store.configuration)
     initial = await fixture_run(store, tmp_path)
     source = tmp_path / "source"
     # Native positive callers explicitly select the same version as their admitted corpus.

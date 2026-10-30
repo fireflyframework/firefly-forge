@@ -12,7 +12,7 @@ from firefly_forge.learning import LearningLedger
 
 @pytest.mark.asyncio
 async def test_unknown_source_submission_is_persistent_and_never_automatically_replayed(store, tmp_path):
-    engine, run = await completed(store, tmp_path)
+    engine, run = await completed(store, tmp_path, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])
@@ -68,7 +68,7 @@ async def test_projection_requires_matching_indexed_source_and_citation(store, t
     import base64
     import hashlib
 
-    engine, run = await completed(store, tmp_path)
+    engine, run = await completed(store, tmp_path, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])
@@ -192,7 +192,7 @@ async def test_concurrent_and_cancelled_submission_has_one_intent_and_read_only_
     import base64
     import hashlib
 
-    engine, run = await completed(store, tmp_path)
+    engine, run = await completed(store, tmp_path, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])

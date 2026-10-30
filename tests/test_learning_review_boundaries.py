@@ -20,7 +20,7 @@ from firefly_forge.models import RunInput
 
 
 async def source_case(store, tmp_path):
-    engine, run = await completed(store, tmp_path)
+    engine, run = await completed(store, tmp_path, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])
@@ -190,7 +190,7 @@ async def test_review_revoked_during_workspace_read_prevents_source_post(store, 
     from firefly_forge.identity import Principal
     from firefly_forge.project_access import CURRENT_PRINCIPAL, ProjectAccess
 
-    engine, run = await completed(store, tmp_path, scoped=True)
+    engine, run = await completed(store, tmp_path, scoped=True, retained_knowledge=True)
     ledger = LearningLedger(store, engine.journal)
     ledger.engine = engine
     record = await ledger.capture_outcome(run["id"])
