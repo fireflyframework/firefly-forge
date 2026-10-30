@@ -543,6 +543,17 @@ def communication_facts(
             "recorded_condition": "execution_selection_configuration_or_reviewed_policy_no_longer_matches",
             "review_scope": ["execution_selection", "execution_configuration", "reviewed_policy"],
         }
+    elif status in {"failed", "needs_reconciliation"} and run.get("error") == (
+        "Retained verified source requires its current authenticated worker"
+    ):
+        facts["blocker"] = {
+            "kind": "worker_identity_guard",
+            "basis": "recorded_error",
+            "phase": "retained_verification_result_admission",
+            "recorded_condition": "current_worker_identity_unavailable_for_retained_result",
+            "cause": "not_established",
+            "next_step": "inspect_worker_identity_and_recorded_terminal_result",
+        }
     handoff = (
         verification_handoff(run)
         if isinstance(run.get("verification_handoff"), dict) and isinstance(run.get("worker_request"), dict)
@@ -691,7 +702,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         for path in sorted((facts.get("git_delivery") or {}).get("changed_files", []), key=len, reverse=True):
             if re.fullmatch(r"[\w./ -]+", path):
                 prose = prose.replace(path, "SOURCEPATH")
-        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", prose):
+        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*#|]|https?://|www\.|\b\w+://|%", prose):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
     required = {
@@ -794,13 +805,13 @@ def _render_card(
     elif draft.decision is not None:
         raise ValueError("Communication cannot invent a human decision")
     reject(narrative)
-    title = safe(draft.title.text)
+    title = safe(draft.title.text).replace("_", r"\_")
     from firefly_forge.communication_diagnostics import render_excerpt
 
     blocks = []
     for paragraph in draft.paragraphs:
-        parts = ["#### " + safe(paragraph.heading)] if paragraph.heading else []
-        parts.append(("- " if paragraph.format == "bullet" else "") + safe(paragraph.text))
+        parts = ["#### " + safe(paragraph.heading).replace("_", r"\_")] if paragraph.heading else []
+        parts.append(("- " if paragraph.format == "bullet" else "") + safe(paragraph.text).replace("_", r"\_"))
         if paragraph.diagnostic_id:
             excerpt = facts["check_diagnostics"][paragraph.diagnostic_id]
             reject(excerpt["text"])
