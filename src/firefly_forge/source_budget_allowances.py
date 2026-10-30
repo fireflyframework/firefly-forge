@@ -385,6 +385,7 @@ def admission_contract_digest() -> str:
                 "runtime_roles.py",
                 "runtime_role_persistence.py",
                 "policies.py",
+                "completed_final_epoch.py",
             )
         }
     )

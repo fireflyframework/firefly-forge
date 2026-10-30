@@ -155,6 +155,7 @@ def policy_digest() -> str:
         "sandbox.py",
         "sandbox_command_slots.py",
         "agent_restores.py",
+        "completed_final_epoch.py",
     )
     return digest({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names})
 
@@ -459,14 +460,33 @@ async def assert_active_mode(journal: Any, run_id: str) -> None:
 @asynccontextmanager
 async def mode_execution_scope(journal: Any, run_id: str) -> AsyncIterator[None]:
     run = await journal.store.get_run(run_id)
-    if not run.get("checkpoint_mode_adoption"):
-        yield
-        return
-    current = _CURRENT.get()
-    if current is None:
-        current = await prepare_current_mode(journal, run_id)
-        assert current is not None
-    with mode_adoption_scope(current):
-        await assert_active_mode(journal, run_id)
-        yield
-        await assert_active_mode(journal, run_id)
+    from firefly_forge.completed_final_epoch import validated_completed_final
+    from firefly_forge.invalid_read_epochs import _active, epoch_scope
+    from firefly_forge.unknown_command_proof import completed_final_command_scope
+
+    completed = None
+    if _CURRENT.get() is None and _active(run) is None:
+        completed = await validated_completed_final(journal, run)
+    with (
+        epoch_scope(completed.epoch if completed is not None else _active(run)),
+        completed_final_command_scope(completed),
+    ):
+        if not run.get("checkpoint_mode_adoption"):
+            if completed is not None:
+                await completed.current()
+            yield
+            if completed is not None:
+                await completed.current()
+            return
+        current = _CURRENT.get()
+        if current is None:
+            current = await prepare_current_mode(journal, run_id)
+            assert current is not None
+        with mode_adoption_scope(current):
+            await assert_active_mode(journal, run_id)
+            if completed is not None:
+                await completed.current()
+            yield
+            await assert_active_mode(journal, run_id)
+            if completed is not None:
+                await completed.current()

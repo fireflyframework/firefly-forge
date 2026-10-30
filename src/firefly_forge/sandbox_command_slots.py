@@ -265,7 +265,7 @@ async def command_intent(
                 ):
                     continue
                 actor = acknowledged_followup(
-                    row, values[row.id.hex], entries, current, ordinal, acknowledgement_policy
+                    row, values[row.id.hex], entries, current, ordinal, acknowledgement_policy, rows=rows, values=values
                 )
                 if actor is not None:
                     if task_id != "implement" or task.data.get("verification_handoff") != current.get(

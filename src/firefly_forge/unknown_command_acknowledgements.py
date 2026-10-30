@@ -54,6 +54,7 @@ def policy_digest() -> str:
                 "journal.py",
                 "engine.py",
                 "git_deliveries.py",
+                "completed_final_epoch.py",
             )
         }
     )

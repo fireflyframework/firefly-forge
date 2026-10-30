@@ -5,6 +5,14 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## 0.2.49
+
+Saved final-result recovery now carries its completed native custody into the following verification and Git checks. The factory checks the original response and completion receipt, current project access, provider settings and supported runtime before continuing the same run. Pending actions keep their existing claim and lease checks. Missing receipts, changed authorization or altered usage leave the operation unavailable.
+
+Verification can adopt the current policy after recovery while retaining the commands and continuations already spent. Later stages recognize the original acknowledged command history after worker feedback changes the pending question. This supplies no new coding grant and does not replay a consumed response or an uncertain command. The claim window remains separate from the project's QA duration. See [verification after recovery](checkpoint-continuations.md#continue-verification-after-recovery).
+
+The Studio documentation captures are refreshed for desktop and mobile in both appearances. They use controlled fixtures; a successful recovery screen does not establish that a generated product passed QA or reached GitHub.
+
 ## 0.2.48
 
 Stopped combined installations can move their private storage and selected verification runtimes through [offline location maintenance](runtime-roles.md#move-a-stopped-local-installation). A reviewed, authenticated receipt binds the new physical paths while preserving original topology, command arguments, source evidence and counters. A new verification environment requires fresh checks; maintenance itself starts no model or project work.

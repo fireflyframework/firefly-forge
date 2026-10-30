@@ -235,6 +235,7 @@ def runtime_contract() -> str:
                     "runtime_role_persistence.py",
                     "agent_roles.py",
                     "policies.py",
+                    "completed_final_epoch.py",
                 )
             },
         }
