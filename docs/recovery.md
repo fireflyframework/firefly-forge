@@ -575,9 +575,9 @@ For new runs that explicitly select `forge-work-duration-v2`, the top-level work
 
 The real Agentic implementation captures a closed native message history at the exact HTTP request boundary. Version-2 checkpoint envelopes bind the original composed instructions, runtime and prompt contracts, cumulative native usage and limits, absolute deadline, task attempt, file-tool state and retained owned workspace. The original Bridge intent and checkpoint commit together before POST. Both ordinary and restored results commit a consume receipt before reaching the native parser. Version-1 checkpoints and HTTP-only consume receipts retain their original semantics and cannot authorize restoration.
 
-### Native PyFly runtime upgrades
+### Native pyfly runtime upgrades
 
-New API and Bridge executions use `pyfly.agentic` from PyFly 26.10.16 with Pydantic AI 2.59.0. The separate `fireflyframework-agentic` package is no longer required. Retained runs keep their admitted runtime identity; installing a newer package does not authorize their restoration or replace their qualification.
+New API and Bridge executions use `pyfly.agentic` from [pyfly](https://fireflyframework.org/frameworks/python/) 26.10.16 with Pydantic AI 2.59.0. The separate `fireflyframework-agentic` package is no longer required. Retained runs keep their admitted runtime identity; installing a newer package does not authorize their restoration or replace their qualification.
 
 Fresh checkpoints identify both native packages and retain missing-usage provenance when the SDK reports it. Canonical historical Agentic 26.10.1 records from SDK 2.55.0 and 2.58.0 remain available for credential inspection under verified historical custody. Inspection grants no restore authority and does not rewrite those records.
 
