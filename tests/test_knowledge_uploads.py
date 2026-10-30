@@ -58,6 +58,9 @@ async def setup(store, tmp_path, failed=False):
             },
         )
 
+    from test_knowledge import retained_configuration
+
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(handler))
     knowledge.configure(
         KnowledgeConfiguration(

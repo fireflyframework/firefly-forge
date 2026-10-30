@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
+from test_knowledge import retained_configuration
 
 from firefly_forge.configuration import ConfigurationStore
 from firefly_forge.knowledge import KnowledgeConfiguration, KnowledgeManager, snapshot_knowledge
@@ -51,6 +52,7 @@ def test_new_install_requires_authenticated_retrieval_and_persists_same_secrets(
 
 def test_bootstrap_preserves_operator_credentials_and_frozen_run_settings(tmp_path):
     private = ConfigurationStore(tmp_path / "factory")
+    retained_configuration(private)
     manager = KnowledgeManager(SimpleNamespace(configuration=private))
     manager.configure(
         KnowledgeConfiguration(
@@ -172,11 +174,12 @@ async def test_managed_initialize_cannot_mark_empty_or_uncertain_retrieval_ready
         await manager.initialize_managed()
 
 
-def test_bootstrap_cli_prepares_service_without_disclosing_credentials(tmp_path):
+def test_retained_bootstrap_cli_preserves_service_without_disclosing_credentials(tmp_path):
     from click.testing import CliRunner
 
     from firefly_forge.cli import main
 
+    bootstrap(tmp_path)
     result = CliRunner().invoke(
         main,
         ["knowledge", "bootstrap", "--data-dir", str(tmp_path / "factory"), "--service-dir", str(tmp_path / "service")],
@@ -184,7 +187,7 @@ def test_bootstrap_cli_prepares_service_without_disclosing_credentials(tmp_path)
     assert result.exit_code == 0, result.output
     settings = KnowledgeManager(SimpleNamespace(configuration=ConfigurationStore(tmp_path / "factory"))).settings()
     assert settings["api_key"] not in result.output
-    assert "initialized" in result.output
+    assert "existing" in result.output
 
 
 async def test_managed_first_project_gets_its_own_workspace_before_retrieval(tmp_path):
@@ -253,6 +256,7 @@ async def test_service_api_client_does_not_replay_browser_csrf_cookies(tmp_path)
     manager = KnowledgeManager(
         SimpleNamespace(configuration=ConfigurationStore(tmp_path)), transport=httpx.MockTransport(handler)
     )
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={
@@ -277,7 +281,9 @@ async def test_uninitialized_factory_blocks_required_knowledge_instead_of_empty_
         return {"id": identifier}
 
     manager = KnowledgeManager(SimpleNamespace(configuration=ConfigurationStore(tmp_path), repository=repository))
-    with pytest.raises(ValueError, match="Initialize required flycanon"):
+    from firefly_forge.project_access import AccessDenied
+
+    with pytest.raises(AccessDenied, match="authenticated"):
         await manager.search("a" * 32, "build inventory")
     assert manager.public()["enabled"] and manager.public()["required"]
     assert manager.public()["readiness"]["state"] == "missing"

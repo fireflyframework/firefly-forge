@@ -34,6 +34,9 @@ from firefly_forge.store import identifier
 async def native_knowledge(store, tmp_path, framework="pyfly"):
     async with prepared(store, tmp_path) as (_, _, original_run, *_):
         remote = ControlledFlycanon()
+        from test_knowledge import retained_configuration
+
+        retained_configuration(store.configuration)
         knowledge = KnowledgeManager(store, transport=remote.transport())
         knowledge.configure(
             KnowledgeConfiguration(
@@ -307,6 +310,9 @@ def test_native_framework_http_routes_use_di_authority_and_strict_retained_opera
         assert "get" in documented["/api/v1/knowledge/frameworks/{framework}/generation-targets/{request_id}"]
         assert "get" in documented["/api/v1/knowledge/frameworks/{framework}/generation-candidates"]
         manager.transport, *_ = official_fixture("larafly")
+        from test_knowledge import retained_configuration
+
+        retained_configuration(manager.knowledge.private)
         configured = http.put(
             "/api/v1/knowledge/configuration",
             json={

@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/configure_koinon_knowledge
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Save an explicit Koinon tenant and repository scope mapping with a
+  scoped machine credential. Requires current factory administrator access; does not
+  migrate retained legacy data.
+required_variables: []
+metadata:
+  defaults: {}

@@ -63,6 +63,9 @@ async def test_new_project_workspace_fits_sdk_and_admits_one_scoped_source(store
         )
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={

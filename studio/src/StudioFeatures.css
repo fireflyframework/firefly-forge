@@ -442,13 +442,15 @@
   flex: 0 0 16px;
   accent-color: var(--accent-ink);
 }
-.repository-collaboration fieldset {
+.repository-collaboration fieldset,
+.koinon-knowledge-settings fieldset {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 16px;
   margin: 20px 0;
 }
-.repository-collaboration legend {
+.repository-collaboration legend,
+.koinon-knowledge-settings legend {
   font-size: 14px;
   font-weight: 600;
   padding: 0 8px;

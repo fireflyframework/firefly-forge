@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
     from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
     from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+    from firefly_forge.knowledge_platform import KoinonKnowledgeSettings, KoinonSqlInput
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -608,6 +609,86 @@ class ForgeClient:
             raise ValueError("Unknown application provider")
         return dict(
             self.request("POST", f"scm/connections/{provider}/repositories/connect", json={"repository_id": remote_id})
+        )
+
+    def knowledge_configuration(self) -> dict[str, Any]:
+        return dict(self.request("GET", "knowledge/configuration"))
+
+    def configure_koinon_knowledge(
+        self, settings: KoinonKnowledgeSettings | dict[str, Any], *, clear_access_token: bool = False
+    ) -> dict[str, Any]:
+        from firefly_forge.knowledge_platform import KoinonConnectionInput
+
+        try:
+            body = KoinonConnectionInput.model_validate(
+                {"settings": settings, "clear_access_token": clear_access_token}
+            )
+        except ValueError:
+            raise ValueError("Use explicit Koinon connection fields and mapped scope identities") from None
+        return dict(self.request("PUT", "knowledge/koinon/configuration", json=body.model_dump(mode="json")))
+
+    def check_koinon_knowledge(self, repository_id: str) -> dict[str, Any]:
+        return dict(
+            self.request("POST", "knowledge/test", json={"repository_id": self._recovery_identifier(repository_id)})
+        )
+
+    def knowledge_schema(self, repository_id: str, dataset_id: str) -> dict[str, Any]:
+        if type(dataset_id) is not str or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", dataset_id):
+            raise ValueError("Choose an exact mapped dataset identity")
+        return dict(
+            self.request(
+                "GET",
+                "knowledge/schema",
+                params={"repository_id": self._recovery_identifier(repository_id), "dataset_id": dataset_id},
+            )
+        )
+
+    def knowledge_chunks(
+        self,
+        repository_id: str,
+        document_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        expected_identity: str | None = None,
+    ) -> dict[str, Any]:
+        if (
+            type(document_id) is not str
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", document_id)
+            or type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or limit < 1
+            or expected_identity is not None
+            and not re.fullmatch(r"[a-f0-9]{64}", expected_identity)
+        ):
+            raise ValueError("Use the exact document, source identity and chunk page")
+        return dict(
+            self.request(
+                "GET",
+                "knowledge/chunks",
+                params={
+                    "repository_id": self._recovery_identifier(repository_id),
+                    "document_id": document_id,
+                    "offset": offset,
+                    "limit": limit,
+                    **({"expected_identity": expected_identity} if expected_identity is not None else {}),
+                },
+            )
+        )
+
+    def query_knowledge_sql(self, run_id: str, request: KoinonSqlInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.knowledge_platform import KoinonSqlInput
+
+        body = self._recovery_body(KoinonSqlInput, request)
+        return dict(self.request("POST", f"runs/{self._recovery_identifier(run_id)}/knowledge/queries", json=body))
+
+    def knowledge_sql_request(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{self._recovery_identifier(run_id)}/knowledge/queries/{self._recovery_identifier(request_id)}",
+            )
         )
 
     def search_knowledge(self, repository_id: str, query: str) -> dict[str, Any]:

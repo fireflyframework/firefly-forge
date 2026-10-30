@@ -349,6 +349,9 @@ async def test_full_official_fixture_uses_real_sdk_and_exact_workspace_citations
             )
         raise AssertionError(path)
 
+    from test_knowledge import retained_configuration
+
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store, transport=httpx.MockTransport(handler))
     knowledge.configure(
         KnowledgeConfiguration(
@@ -539,6 +542,9 @@ async def test_shared_controlled_flycanon_fixture_completes_real_sdk_ingestion(t
     store = Store(records)
     store.configuration = ConfigurationStore(tmp_path)
     remote = ControlledFlycanon()
+    from test_knowledge import retained_configuration
+
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store, transport=remote.transport())
     knowledge.configure(
         KnowledgeConfiguration(
@@ -590,6 +596,9 @@ async def test_budget_exhaustion_before_post_can_renew_without_uncertain_replay(
     store = Store(records)
     store.configuration = ConfigurationStore(tmp_path)
     remote = ControlledFlycanon()
+    from test_knowledge import retained_configuration
+
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store, transport=remote.transport())
     knowledge.configure(
         KnowledgeConfiguration(
@@ -646,6 +655,9 @@ async def host_refresh_case(tmp_path, *, transport=None):
     store = Store(records)
     store.configuration = ConfigurationStore(tmp_path)
     remote = ControlledFlycanon()
+    from test_knowledge import retained_configuration
+
+    retained_configuration(store.configuration)
     knowledge = KnowledgeManager(store, transport=remote.transport())
     knowledge.configure(
         KnowledgeConfiguration(

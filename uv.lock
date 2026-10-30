@@ -1029,6 +1029,7 @@ dependencies = [
     { name = "click" },
     { name = "cryptography" },
     { name = "filelock" },
+    { name = "firefly-koinon-sdk" },
     { name = "flycanon-sdk" },
     { name = "fonttools", extra = ["woff"] },
     { name = "httpx" },
@@ -1068,6 +1069,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.3,<9" },
     { name = "cryptography", specifier = ">=50.0.2,<51" },
     { name = "filelock", specifier = ">=3.20,<5" },
+    { name = "firefly-koinon-sdk", git = "https://github.com/fireflyframework/firefly-koinon.git?subdirectory=sdk%2Fpython&rev=17871694c7d85cfcfa0313397bb8ebda85f63342" },
     { name = "flycanon-sdk", url = "https://github.com/fireflyframework/flycanon/releases/download/v26.10.6/flycanon_sdk-26.10.6-py3-none-any.whl" },
     { name = "flyquery-sdk", marker = "extra == 'analytics'", url = "https://github.com/fireflyframework/flyquery/releases/download/v26.10.4/flyquery_sdk-26.10.4-py3-none-any.whl" },
     { name = "fonttools", extras = ["woff"], specifier = ">=4.62,<5" },
@@ -1097,6 +1099,15 @@ dev = [
 docs = [
     { name = "mkdocs", specifier = "==1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7,<10" },
+]
+
+[[package]]
+name = "firefly-koinon-sdk"
+version = "26.10.0a1"
+source = { git = "https://github.com/fireflyframework/firefly-koinon.git?subdirectory=sdk%2Fpython&rev=17871694c7d85cfcfa0313397bb8ebda85f63342#17871694c7d85cfcfa0313397bb8ebda85f63342" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]

@@ -341,6 +341,11 @@ class FrameworkKnowledge:
         from firefly_forge.knowledge import snapshot_knowledge
 
         settings = self.knowledge.settings()
+        if settings.get("provider") == "koinon":
+            raise ValueError(
+                "Koinon framework ingestion requires the versioned corpus migration workflow; "
+                "retained legacy corpora are not relabeled"
+            )
         if not settings["enabled"] or not settings["endpoint"] or not settings["api_key"]:
             raise ValueError("Initialize platform-authorized flycanon before importing official references")
         return snapshot_knowledge(self.store.configuration), digest(settings)

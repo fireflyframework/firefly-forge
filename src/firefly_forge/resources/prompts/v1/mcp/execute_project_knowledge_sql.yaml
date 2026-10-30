@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/execute_project_knowledge_sql
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Submit explicit SQL once to a mapped Koinon dataset under current run
+  execution access. Retain the request identity and inspect its status after an uncertain
+  reply. This operation does not generate SQL with a model.
+required_variables: []
+metadata:
+  defaults: {}

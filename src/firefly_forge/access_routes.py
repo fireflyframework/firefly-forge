@@ -131,7 +131,7 @@ class AccessRoutes:
             if safe or (request.method == "POST" and len(parts) == 4 and parts[-1] == "search"):
                 return  # The native service rechecks current identity and immutable corpus scope.
             raise AccessDenied("Framework knowledge updates require a current factory administrator")
-        if path == "knowledge/explore" and safe:
+        if path in {"knowledge/explore", "knowledge/schema", "knowledge/chunks"} and safe:
             await self.access.require_repository(user, request.query_params.get("repository_id", ""), "read")
             return
         if len(parts) >= 3 and parts[:2] == ["learning", "records"]:

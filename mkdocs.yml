@@ -122,7 +122,8 @@ nav:
   - Integrations:
       - Connect Git repositories: scm.md
       - Repository conversations: repository-workflow.md
-      - Cited knowledge and memory: knowledge.md
+      - Koinon headless candidate: koinon-headless.md
+      - Retained knowledge and memory: knowledge.md
       - Refresh framework references, in development: framework-knowledge-refresh.md
       - Structured project analytics: structured-knowledge.md
       - Learning and knowledge reuse: learning.md

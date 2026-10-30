@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_project_knowledge_schema
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the complete native schema and recorded snapshot identities of
+  an explicitly mapped Koinon dataset under current repository access.
+required_variables: []
+metadata:
+  defaults: {}

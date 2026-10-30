@@ -41,6 +41,9 @@ async def test_actual_engine_reuses_exact_receipted_local_outcome_without_web_ke
         return httpx.Response(200, json={"elapsed_ms": 1, "hits": []})
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(knowledge_response))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={

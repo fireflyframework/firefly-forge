@@ -36,6 +36,9 @@ async def test_unknown_source_submission_is_persistent_and_never_automatically_r
         raise httpx.ReadTimeout("Unknown submission receipt", request=request)
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={
@@ -129,6 +132,9 @@ async def test_projection_requires_matching_indexed_source_and_citation(store, t
         )
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={
@@ -243,6 +249,9 @@ async def test_concurrent_and_cancelled_submission_has_one_intent_and_read_only_
         )
 
     manager = KnowledgeManager(store, transport=httpx.MockTransport(remote))
+    from test_knowledge import retained_configuration
+
+    retained_configuration(manager.private)
     manager.configure(
         KnowledgeConfiguration(
             values={

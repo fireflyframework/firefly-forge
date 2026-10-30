@@ -1,11 +1,13 @@
 ---
-description: Configure required flycanon retrieval, inspect citations and retain verified project memory with repository scope and source provenance.
+description: Inspect retained Flycanon knowledge bindings, citations and verified project memory during the Koinon migration.
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
-# Retrieve knowledge and retain verified project memory
+# Read retained Flycanon knowledge and memory
 
-[flycanon](https://github.com/fireflyframework/flycanon) is part of the managed forge installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.6) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
+New configurations select the [Koinon headless candidate](koinon-headless.md). The following guide describes retained Flycanon bindings and the existing managed stack; it does not establish a completed Koinon migration.
+
+[flycanon](https://github.com/fireflyframework/flycanon) is part of that retained managed installation. The official [Flycanon Python SDK](https://github.com/fireflyframework/flycanon/releases/tag/v26.10.6) retrieves framework references, selected codebase context and verified project memory from its authenticated service. A fresh managed installation enables required knowledge and automatic verified memory. Existing configured installations retain their saved choices and queued snapshots.
 
 ## Framework release refresh
 

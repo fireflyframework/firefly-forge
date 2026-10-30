@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Real flycanon SDK retrieval, explicit source indexing and verified project memory."""
+"""Native Koinon knowledge and explicitly retained legacy knowledge bindings."""
 
 from __future__ import annotations
 
@@ -27,12 +27,17 @@ from flycanon_sdk import (  # type: ignore[import-untyped]
     SubmitSourceJsonPayload,
     WorkspaceCreate,
 )
+from koinon_sdk import ApiError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pyfly.container import service
 
 from firefly_forge.agentic_runtime import WorkspaceTools
 from firefly_forge.configuration import ConfigurationStore, redact_secrets, validate_endpoint
+from firefly_forge.journal import digest
+from firefly_forge.knowledge_platform import KoinonKnowledge, KoinonKnowledgeSettings, KoinonSqlInput
+from firefly_forge.knowledge_queries import KnowledgeQueries
 from firefly_forge.process import checked
+from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.prompts import prompt_text
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store, now
@@ -61,13 +66,13 @@ class KnowledgeSettings(BaseModel):
 class KnowledgeConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
     values: dict[str, Any] = Field(default_factory=dict, max_length=12)
-    clear_secrets: list[str] = Field(default_factory=list, max_length=2)
+    clear_secrets: list[str] = Field(default_factory=list, max_length=3)
 
 
 class KnowledgeSearch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     repository_id: str = Field(min_length=1, max_length=100)
-    query: str = Field(min_length=1, max_length=4000)
+    query: str = Field(min_length=1, max_length=8000)
 
 
 class KnowledgeIndex(BaseModel):
@@ -88,19 +93,26 @@ def project_workspace(repository_id: str) -> str:
 
 def _public(settings: dict[str, Any], revision: str) -> dict[str, Any]:
     return {
-        **{key: value for key, value in settings.items() if key not in {"api_key", "agent_token"}},
+        **{key: value for key, value in settings.items() if key not in {"api_key", "agent_token", "access_token"}},
         "api_key_configured": bool(settings.get("api_key")),
         "agent_token_configured": bool(settings.get("agent_token")),
+        **(
+            {"access_token_configured": bool(settings.get("access_token")), "binding_sha256": digest(settings)}
+            if settings.get("provider") == "koinon"
+            else {}
+        ),
         "revision": revision,
     }
 
 
 def _current(private: ConfigurationStore) -> tuple[dict[str, Any], str]:
     saved = private._read(private.directory / "knowledge.json")
-    defaults = {"enabled": True, "required": True, "auto_memory": True} if not saved else {}
-    return KnowledgeSettings.model_validate(saved.get("settings", defaults)).model_dump(), str(
-        saved.get("revision", "disabled")
+    model = (
+        KoinonKnowledgeSettings
+        if not saved or saved.get("settings", {}).get("provider") == "koinon"
+        else KnowledgeSettings
     )
+    return model.model_validate(saved.get("settings", {})).model_dump(), str(saved.get("revision", "disabled"))
 
 
 def snapshot_knowledge(private: ConfigurationStore) -> dict[str, Any]:
@@ -137,11 +149,13 @@ class KnowledgeConnection:
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = 20,
     ) -> AsyncIterator[CanonClient]:
+        if settings.get("provider") == "koinon":
+            raise ValueError("This legacy operation requires a retained Flycanon binding")
         headers = {"X-Tenant-Id": settings["tenant_id"], "X-Workspace-Id": workspace}
-        if settings["api_key"]:
-            headers["X-API-Key"] = settings["api_key"]
-        if settings["agent_token"]:
-            headers["X-Agent-Token"] = settings["agent_token"]
+        if settings.get("api_key", ""):
+            headers["X-API-Key"] = settings.get("api_key", "")
+        if settings.get("agent_token", ""):
+            headers["X-Agent-Token"] = settings.get("agent_token", "")
 
         async def discard_browser_cookies(response: httpx.Response) -> None:
             # API-key callers do not carry browser sessions or double-submit CSRF cookies.
@@ -163,7 +177,7 @@ class KnowledgeConnection:
                 client=http,
                 tenant_id=settings["tenant_id"],
                 workspace_id=workspace,
-                agent_token=settings["agent_token"] or None,
+                agent_token=settings.get("agent_token", "") or None,
             ) as client,
         ):
             yield client
@@ -178,6 +192,7 @@ class KnowledgeManager:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         connection: KnowledgeConnection | None = None,
+        access: ProjectAccess | None = None,
     ) -> None:
         self.store = store
         self.engine = engine
@@ -185,14 +200,20 @@ class KnowledgeManager:
         self.transport = transport
         self.frameworks: Any = None
         self.connection = connection or KnowledgeConnection(self.private)
+        self.access = access
+        self.platform = KoinonKnowledge(self)
         self.journal: Any = None
         self.readiness: dict[str, Any] = {
             "state": "missing",
             "checked_at": None,
-            "detail": "Required flycanon knowledge is missing; initialize the managed stack before product work",
+            "detail": "Required knowledge is missing; configure the scoped platform connection before product work",
         }
         settings, _ = _current(self.private)
-        if settings["enabled"] and settings["endpoint"] and (settings["api_key"] or settings["agent_token"]):
+        if (
+            settings["enabled"]
+            and settings["endpoint"]
+            and any(settings.get(k) for k in ("api_key", "agent_token", "access_token"))
+        ):
             self.readiness = {
                 "state": "configured",
                 "checked_at": None,
@@ -215,26 +236,39 @@ class KnowledgeManager:
 
     def configure(self, request: KnowledgeConfiguration) -> dict[str, Any]:
         settings, _ = _current(self.private)
-        if set(request.values) - KnowledgeSettings.model_fields.keys() or set(request.clear_secrets) - {
+        model = KoinonKnowledgeSettings if settings.get("provider") == "koinon" else KnowledgeSettings
+        if model is KnowledgeSettings and request.values.get("provider") == "koinon":
+            raise ValueError(
+                "Retained legacy knowledge requires a verified versioned migration before selecting Koinon"
+            )
+        if set(request.values) - model.model_fields.keys() or set(request.clear_secrets) - {
             "api_key",
             "agent_token",
+            "access_token",
         }:
             raise ValueError("Unknown knowledge configuration field")
-        values = {key: value for key, value in request.values.items() if key not in {"api_key", "agent_token"} or value}
+        values = {
+            key: value
+            for key, value in request.values.items()
+            if key not in {"api_key", "agent_token", "access_token"} or value
+        }
         settings.update(values)
         for key in request.clear_secrets:
             settings[key] = ""
-        settings = KnowledgeSettings.model_validate(settings).model_dump()
+        settings = model.model_validate(settings).model_dump()
         if settings["ca_certificate"]:
             knowledge_tls(settings["ca_certificate"])
         if settings["endpoint"]:
             settings["endpoint"] = validate_endpoint(settings["endpoint"])
+        if settings.get("provider") == "koinon" and settings["enabled"] and not settings["project_scopes"]:
+            raise ValueError("Enabled Koinon knowledge requires an explicit repository scope mapping")
         if settings["enabled"] and (
             not settings["endpoint"]
             or not settings["tenant_id"]
-            or not (settings["api_key"] or settings["agent_token"])
+            or not any(settings.get(k) for k in ("api_key", "agent_token", "access_token"))
         ):
-            raise ValueError("Enabled knowledge requires an endpoint, tenant and API key or scoped agent token")
+            credential = "scoped machine token" if model is KoinonKnowledgeSettings else "API key or scoped agent token"
+            raise ValueError(f"Enabled knowledge requires an endpoint, tenant and {credential}")
         with self.private.lock:
             self.private._write(
                 self.private.directory / "knowledge.json", {"revision": uuid.uuid4().hex, "settings": settings}
@@ -256,30 +290,45 @@ class KnowledgeManager:
         settings = self.private._read(self.private.revisions / f"knowledge-{revision}.json")
         if not settings:
             raise ValueError("Knowledge revision is unavailable")
+        if settings.get("provider") == "koinon":
+            result = KoinonKnowledgeSettings.model_validate(settings).model_dump()
+            if snapshot.get("binding_sha256") != digest(result):
+                raise ValueError("Frozen Koinon knowledge binding changed")
+            return result
         return KnowledgeSettings.model_validate(settings).model_dump()
 
     def credentials(self, run: dict[str, Any]) -> dict[str, str]:
         settings = self.settings(run)
-        return {"FORGE_KNOWLEDGE_API_KEY": settings["api_key"], "FORGE_KNOWLEDGE_AGENT_TOKEN": settings["agent_token"]}
+        return {
+            "FORGE_KNOWLEDGE_API_KEY": settings.get("api_key", ""),
+            "FORGE_KNOWLEDGE_AGENT_TOKEN": settings.get("agent_token", ""),
+            "FORGE_KNOWLEDGE_ACCESS_TOKEN": settings.get("access_token", ""),
+        }
 
     def redaction_settings(self, run: dict[str, Any] | None = None) -> dict[str, str]:
         settings = self.settings()
         registered = {
-            "FORGE_KNOWLEDGE_API_KEY": settings["api_key"],
-            "FORGE_KNOWLEDGE_AGENT_TOKEN": settings["agent_token"],
+            "FORGE_KNOWLEDGE_API_KEY": settings.get("api_key", ""),
+            "FORGE_KNOWLEDGE_AGENT_TOKEN": settings.get("agent_token", ""),
+            "FORGE_KNOWLEDGE_ACCESS_TOKEN": settings.get("access_token", ""),
         }
         if run and run.get("knowledge_snapshot"):
             frozen = self.settings(run)
             registered.update(
-                FORGE_KNOWLEDGE_FROZEN_API_KEY=frozen["api_key"],
-                FORGE_KNOWLEDGE_FROZEN_AGENT_TOKEN=frozen["agent_token"],
+                FORGE_KNOWLEDGE_FROZEN_API_KEY=frozen.get("api_key", ""),
+                FORGE_KNOWLEDGE_FROZEN_AGENT_TOKEN=frozen.get("agent_token", ""),
+                FORGE_KNOWLEDGE_FROZEN_ACCESS_TOKEN=frozen.get("access_token", ""),
             )
         return registered
 
     def safe(self, value: str, settings: dict[str, Any]) -> str:
         return redact_secrets(
             redact_environment(value),
-            {"KNOWLEDGE_API_KEY": settings["api_key"], "KNOWLEDGE_AGENT_TOKEN": settings["agent_token"]},
+            {
+                "KNOWLEDGE_API_KEY": settings.get("api_key", ""),
+                "KNOWLEDGE_AGENT_TOKEN": settings.get("agent_token", ""),
+                "KNOWLEDGE_ACCESS_TOKEN": settings.get("access_token", ""),
+            },
         )
 
     @asynccontextmanager
@@ -288,6 +337,11 @@ class KnowledgeManager:
             yield client
 
     async def initialize_managed(self) -> dict[str, Any]:
+        if self.settings().get("provider") == "koinon":
+            raise ValueError(
+                "Configure the Koinon service and explicit project mappings; managed Flycanon "
+                "initialization is retained-legacy only"
+            )
         from firefly_forge.managed_knowledge import ManagedKnowledgeProvisioner
 
         provisioner = ManagedKnowledgeProvisioner(self.connection, transport=self.transport)
@@ -298,7 +352,23 @@ class KnowledgeManager:
 
     async def test(self, request: KnowledgeTest) -> dict[str, Any]:
         settings = self.settings()
-        if not settings["enabled"] or not settings["api_key"]:
+        if settings.get("provider") == "koinon":
+            if not request.repository_id:
+                raise ValueError("Select a mapped repository before checking Koinon access")
+            await self.store.repository(request.repository_id)
+            try:
+                self.readiness = {**await self.platform.test(request.repository_id, settings), "checked_at": now()}
+            except (ApiError, httpx.HTTPError, ValidationError, ValueError, AccessDenied):
+                self.readiness = {
+                    "state": "failed",
+                    "checked_at": now(),
+                    "detail": (
+                        "Koinon scope or authentication is unavailable; check the tenant, project "
+                        "mapping and scoped machine token"
+                    ),
+                }
+            return self.public()
+        if not settings["enabled"] or not settings.get("api_key", ""):
             self.readiness = {
                 "state": "configured" if settings["enabled"] else "disabled",
                 "checked_at": now(),
@@ -345,12 +415,24 @@ class KnowledgeManager:
             if scoped:
                 raise ValueError("Required version-isolated framework knowledge is disabled")
             return {"hits": [], "warnings": [], "context": "", "citations": []}
-        if not settings["endpoint"] or not (settings["api_key"] or settings["agent_token"]):
+        if settings.get("provider") == "koinon":
+            result = await self.platform.search(repository_id, query, settings, run)
+            if scoped:
+                official = await self.frameworks.search_for_run(run, query)
+                from firefly_forge.framework_knowledge_evidence import evidence_context
+
+                result["context"] = evidence_context(official["hits"], result["hits"])
+                result["hits"] = official["hits"] + result["hits"]
+                result["citations"] = [
+                    {key: value for key, value in hit.items() if key != "content"} for hit in result["hits"]
+                ]
+            return result
+        if not settings["endpoint"] or not (settings.get("api_key", "") or settings.get("agent_token", "")):
             raise ValueError("Initialize required flycanon knowledge before starting product work")
         workspaces = [project_workspace(repository_id)]
         if not scoped and settings["framework_workspace"] and settings["framework_workspace"] not in workspaces:
             workspaces.append(settings["framework_workspace"])
-        if self.private._read(self.private.directory / "managed-knowledge.json") and settings["api_key"]:
+        if self.private._read(self.private.directory / "managed-knowledge.json") and settings.get("api_key", ""):
             try:
                 async with self.client(settings, project_workspace(repository_id)) as client:
                     await self.ensure_workspace(client, repository_id)
@@ -367,7 +449,7 @@ class KnowledgeManager:
                             SearchRequest(query=retrieval_query, top_k=settings["top_k"]),
                             idempotency_key=uuid.uuid4().hex,
                         )
-                        if settings["agent_token"]
+                        if settings.get("agent_token", "")
                         else await client.search(retrieval_query, top_k=settings["top_k"])
                     )
                 for hit in result.hits[: settings["top_k"]]:
@@ -421,11 +503,60 @@ class KnowledgeManager:
                 context = prompt_text("tools/knowledge-evidence", hits=json.dumps(hits, ensure_ascii=False)[:40000])
         return {"hits": hits, "warnings": warnings, "citations": citations, "context": context}
 
+    async def query_sql(self, run_id: str, body: KoinonSqlInput) -> dict[str, Any]:
+        return await KnowledgeQueries(self).execute(await self.store.get_run(run_id), body)
+
+    async def query_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        return await KnowledgeQueries(self).status(await self.store.get_run(run_id), request_id)
+
+    async def schema(self, repository_id: str, dataset_id: str) -> dict[str, Any]:
+        await self.store.repository(repository_id)
+        settings = self.settings()
+        if settings.get("provider") != "koinon":
+            raise ValueError("Structured Koinon schema requires an explicit Koinon binding")
+        return await self.platform.schema(repository_id, dataset_id, settings)
+
+    async def chunks(
+        self,
+        repository_id: str,
+        document_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        expected_identity: str | None = None,
+    ) -> dict[str, Any]:
+        await self.store.repository(repository_id)
+        settings = self.settings()
+        if settings.get("provider") != "koinon":
+            raise ValueError("Versioned Koinon chunks require an explicit Koinon binding")
+        return await self.platform.chunks(
+            repository_id, document_id, settings, offset=offset, limit=limit, expected_identity=expected_identity
+        )
+
     async def retrieve(self, run: dict[str, Any]) -> dict[str, Any]:
         return await self.search(run["repository_id"], run["brief"], run=run)
 
     async def explore(self, repository_id: str, scope: str = "project", offset: int = 0) -> dict[str, Any]:
         await self.store.repository(repository_id)
+        selected = self.settings()
+        if selected.get("provider") == "koinon":
+            verify = await self.platform.authority(repository_id, selected)
+            await verify()
+            return {
+                "workspace_id": "",
+                "scope": scope,
+                "sources": [],
+                "knowledge": [],
+                "offset": offset,
+                "limit": 0,
+                "totals": {"sources": 0, "knowledge": 0},
+                "browsing_available": False,
+                "warnings": [
+                    "Koinon catalog browsing and ingestion require the migration workflow. Use "
+                    "scoped search, schema and versioned chunk reads; no legacy data was "
+                    "converted."
+                ],
+            }
         if scope not in {"project", "framework"} or not 0 <= offset <= 10000:
             raise ValueError("Choose project/framework scope and an offset between 0 and 10000")
         settings = self.settings()
@@ -444,7 +575,7 @@ class KnowledgeManager:
         if not settings["enabled"] or not workspace:
             result["warnings"] = ["Configure the requested flycanon workspace before browsing"]
             return result
-        if not settings["api_key"]:
+        if not settings.get("api_key", ""):
             result["warnings"] = [
                 "Agent-token access supports cited search; corpus browsing requires a platform API key"
             ]
@@ -510,6 +641,10 @@ class KnowledgeManager:
         if self.engine is None:
             raise ValueError("Verified source indexing requires the factory engine")
         run = await self.store.get_run(identifier)
+        if self.settings().get("provider") == "koinon":
+            raise ValueError(
+                "Koinon source ingestion requires a versioned ingestion workflow; legacy writes are not used"
+            )
         workspace = await self.engine.validated_workspace(identifier)
         settings = self.settings()
         if not settings["enabled"]:
@@ -532,7 +667,7 @@ class KnowledgeManager:
         scope = project_workspace(run["repository_id"])
         try:
             async with self.client(settings, scope) as client:
-                if settings["api_key"]:
+                if settings.get("api_key", ""):
                     await self.ensure_workspace(client, run["repository_id"])
                 for path, content in contents:
                     task_id = (
@@ -580,7 +715,7 @@ class KnowledgeManager:
                                 f"forge-{identifier}-{uuid.uuid5(uuid.NAMESPACE_URL, path + run['source_tree']).hex}"
                             ),
                         )
-                        if settings["agent_token"]
+                        if settings.get("agent_token", "")
                         else await client.submit_source(payload)
                     )
                     evidence = {"source_id": source.id, "status": source.status, "path": path}
@@ -599,6 +734,11 @@ class KnowledgeManager:
         await self._assert_ownership()
         run = await self.store.get_run(run["id"])
         settings = self.settings(run) if automatic else self.settings()
+        if settings.get("provider") == "koinon":
+            raise ValueError(
+                "Koinon external-proposal memory requires the versioned intent and "
+                "confirmation workflow; legacy writes are not used"
+            )
         if automatic and not settings["auto_memory"]:
             return {"skipped": True}
         if run.get("knowledge_memory"):
@@ -608,7 +748,7 @@ class KnowledgeManager:
         if self.engine is None:
             raise ValueError("Verified project memory requires the factory engine")
         await self.engine.validated_workspace(run["id"])
-        if not settings["enabled"] or not settings["api_key"]:
+        if not settings["enabled"] or not settings.get("api_key", ""):
             raise ValueError("Verified memory requires enabled knowledge with a platform API key")
         scope = project_workspace(run["repository_id"])
         body = json.dumps(
