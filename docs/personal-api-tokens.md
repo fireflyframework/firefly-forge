@@ -12,6 +12,12 @@ Sign in through the configured OIDC provider before creating a token. Local boot
 
 ## Create and save a credential
 
+In Studio, open **Your account → Personal API tokens**. Choose **New token**, give it a useful name, select the projects it can read and choose an expiry in your local time zone. The screen shows only projects where your current session has read membership; the server checks membership again when issuing and using the credential.
+
+Save the one-time secret in your secret manager, then choose **I saved this token**. Closing the account dialog, changing identity or leaving the screen discards the displayed secret. The browser does not save it in local or session storage. The list shows safe metadata and offers **Rotate** and **Revoke**, with confirmation before either change. Rotation revokes the old secret immediately, so update its consumers with the replacement. After a connection failure, refresh the list and inspect the outcome before making another request; the screen does not replay mutations automatically.
+
+The same lifecycle is available through the API:
+
 1. Sign in and confirm that your account has a current membership in each intended project. Factory-administrator status alone does not grant a personal token access to every project.
 2. Use your authenticated browser session to send the request below to `POST /api/v1/identity/tokens`. Include the application's exact `Origin` and the native `X-XSRF-TOKEN` header with its matching CSRF cookie, as described in [browser login](identity.md#browser-login).
 3. Save the returned `token` in your script's secret manager. The response uses `Cache-Control: private, no-store`. The server stores its SHA-256 digest; it cannot retrieve the secret later.
@@ -90,6 +96,6 @@ Native `AuthenticationProvider` and `ProviderManager` validate personal tokens. 
 
 Controlled host tests exercise native SQLAlchemy repositories and transactions with a test-scoped SQLite JSON mapping, the native controller registrar, production authorization middleware and the Python SDK through an in-memory ASGI transport. They cover lifecycle rollback, restart, current membership, owner binding, expiry, secret handling and forbidden effects. Actual MCP tool dispatch exercises own-project observations, foreign-project refusals, global/admin reads, a credential-route probe and a denied cancellation through the same SDK and native API middleware. Project/run response payloads and the browser-session boundary in that host fixture are controlled; the MCP tools, client, authentication provider, authorization and relational credential records are real.
 
-A separate 12-case PostgreSQL 17 suite checks the revision 31-to-32 migration, native JSONB and timezone types, cold data-store restart, one-time concurrent issuance, competing rotations, both revocation/authentication orderings and membership loss during authentication. Ordered races inspect actual PostgreSQL backend blockers before releasing the first operation. The suite also verifies event rollback and checks the fixture's persisted files for raw token values after shutdown. These checks qualify the credential component; they do not replace installed-platform integration or a live OIDC/CSRF login test. No token-management Studio screen is introduced by this API change.
+A separate 12-case PostgreSQL 17 suite checks the revision 31-to-32 migration, native JSONB and timezone types, cold data-store restart, one-time concurrent issuance, competing rotations, both revocation/authentication orderings and membership loss during authentication. Ordered races inspect actual PostgreSQL backend blockers before releasing the first operation. The suite also verifies event rollback and checks the fixture's persisted files for raw token values after shutdown. These checks qualify the credential component; they do not replace installed-platform integration or a live OIDC/CSRF login test. Studio's owner token screen uses these same lifecycle endpoints and retains their session-only authority boundary.
 
 Continue with [identity and project roles](identity.md), [security boundaries](security.md) and the [HTTP API](api.md).

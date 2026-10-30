@@ -8,6 +8,8 @@ import {
 } from "react";
 import {
   ArrowRight,
+  ArrowLeft,
+  KeyRound,
   LogOut,
   RefreshCw,
   ShieldCheck,
@@ -16,6 +18,7 @@ import {
 } from "lucide-react";
 import { ApiError, normalizeBase, post, request, type Connection } from "./api";
 import "./Identity.css";
+import { PersonalTokens } from "./PersonalTokens";
 
 export type Permission =
   "read" | "edit" | "execute" | "review" | "release" | "members";
@@ -304,6 +307,7 @@ export function IdentityMenu({
       ? "Local operator"
       : "Signed-in user");
   const dialog = useRef<HTMLDialogElement>(null);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function signOut() {
@@ -333,9 +337,10 @@ export function IdentityMenu({
         className="identity-dialog"
         ref={dialog}
         aria-label="Your account"
+        onClose={() => setTokensOpen(false)}
       >
         <header>
-          <h2>Your account</h2>
+          <h2>{tokensOpen ? "Personal API tokens" : "Your account"}</h2>
           <button
             className="quiet"
             aria-label="Close account"
@@ -344,49 +349,70 @@ export function IdentityMenu({
             <X size={20} />
           </button>
         </header>
-        <strong>{displayName}</strong>
-        {session.user.email && <p>{session.user.email}</p>}
-        <p className="subtle">
-          {session.user.authentication_method === "local_bootstrap"
-            ? "Local developer session"
-            : "Organization session"}
-          {session.global_admin
-            ? " · factory administrator"
-            : " · project access assigned individually"}
-        </p>
-        <p>
-          Signing in does not grant access to another project. Its owner or a
-          factory administrator assigns membership.
-        </p>
-        <details>
-          <summary>Registered user identity</summary>
-          <code>{session.user.id}</code>
-        </details>
-        {error && (
-          <div className="alert" role="alert">
-            {error}
-          </div>
+        {tokensOpen ? (
+          <>
+            <button className="quiet" onClick={() => setTokensOpen(false)}>
+              <ArrowLeft size={16} />
+              Back to account
+            </button>
+            <PersonalTokens connection={connection} session={session} />
+          </>
+        ) : (
+          <>
+            <strong>{displayName}</strong>
+            {session.user.email && <p>{session.user.email}</p>}
+            <p className="subtle">
+              {session.user.authentication_method === "local_bootstrap"
+                ? "Local developer session"
+                : "Organization session"}
+              {session.global_admin
+                ? " · factory administrator"
+                : " · project access assigned individually"}
+            </p>
+            <p>
+              Signing in does not grant access to another project. Its owner or
+              a factory administrator assigns membership.
+            </p>
+            <details>
+              <summary>Registered user identity</summary>
+              <code>{session.user.id}</code>
+            </details>
+            {error && (
+              <div className="alert" role="alert">
+                {error}
+              </div>
+            )}
+            <div className="identity-account-actions">
+              {session.user.authentication_method === "oidc_session" && (
+                <button
+                  className="secondary"
+                  onClick={() => setTokensOpen(true)}
+                >
+                  <KeyRound size={18} />
+                  Personal API tokens
+                </button>
+              )}
+              <button
+                className="secondary"
+                onClick={() => {
+                  dialog.current?.close();
+                  onAccess();
+                }}
+              >
+                <ShieldCheck size={18} />
+                Project access
+              </button>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => void signOut()}
+              >
+                <LogOut size={18} />
+                {busy ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+          </>
         )}
-        <div className="identity-account-actions">
-          <button
-            className="secondary"
-            onClick={() => {
-              dialog.current?.close();
-              onAccess();
-            }}
-          >
-            <ShieldCheck size={18} />
-            Project access
-          </button>
-          <button
-            className="primary"
-            disabled={busy}
-            onClick={() => void signOut()}
-          >
-            <LogOut size={18} />
-            {busy ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
       </dialog>
     </div>
   );

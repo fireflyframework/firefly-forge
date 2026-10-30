@@ -86,6 +86,8 @@ Signed-in OIDC users can issue [personal project API tokens](personal-api-tokens
 
 ## Local bootstrap
 
+For local organization sign-in, the repository includes a [branded Keycloak sandbox](https://github.com/fireflyframework/firefly-forge/tree/main/deploy/keycloak). Its preparation command generates private client credentials and a matching server environment without starting any services. The realm has exact loopback callbacks, PKCE and a separate API audience. Users and project memberships are assigned deliberately. This development sandbox does not replace the production identity configuration above.
+
 `local_bootstrap` is an explicit loopback-only development mode. Submit the configured operator credential once to the login endpoint; the server issues the same opaque, durable cookie. Do not persist that credential in browser storage. An explicitly configured loopback API bearer credential remains available for development tooling.
 
 Browser login and loopback bearer access use the same persistent local operator identity. Bearer requests do not create browser sessions. Suspending that identity blocks both paths; signing in does not enable it again. Run admission checks the current identity before accepting work.
