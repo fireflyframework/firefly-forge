@@ -52,6 +52,10 @@ for (const width of [1440, 375])
         "learning-projection",
         "learning-provenance",
         "learning-candidate",
+        "native-learning-scope",
+        "native-learning-review",
+        "native-learning-recorded",
+        "native-learning-failure",
       ]) {
         const link = page.locator(
           `.forge-shot__link.theme-${theme}[href*="assets/screenshots/${stage}-"]`,

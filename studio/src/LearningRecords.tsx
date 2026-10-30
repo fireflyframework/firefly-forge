@@ -17,6 +17,7 @@ import {
 } from "./LearningRecordData";
 import { LearningInvalidation } from "./LearningInvalidation";
 import { LearningObservation } from "./LearningObservation";
+import { NativeLearningObservation } from "./NativeLearningObservation";
 import "./LearningRecords.css";
 const problem = (cause: unknown) =>
   (cause instanceof Error
@@ -333,7 +334,13 @@ function RecordDetail({
     heading.current?.focus();
   }, []);
   useEffect(() => {
-    if (record.kind !== "local_outcome") {
+    if (
+      record.kind !== "local_outcome" &&
+      !(
+        record.kind === "observed_failure" &&
+        record.knowledge_provider === "koinon"
+      )
+    ) {
       setLoading(false);
       return;
     }
@@ -345,16 +352,23 @@ function RecordDetail({
     )
       .then((value) => {
         if (!controller.signal.aborted)
-          setProjection(readLearningProjection(value, record.id));
+          setProjection(readLearningProjection(value, record.id, record));
       })
       .catch((cause) => {
         if (!controller.signal.aborted) {
           if (
-            projectionRevision > 0 &&
+            (projectionRevision > 0 ||
+              record.knowledge_provider === "koinon") &&
             cause instanceof ApiError &&
             [401, 403].includes(cause.status)
           )
             onDenied();
+          else if (
+            record.knowledge_provider === "koinon" &&
+            cause instanceof ApiError &&
+            cause.status === 404
+          )
+            setProjection(null);
           else setError(problem(cause));
         }
       })
@@ -362,7 +376,7 @@ function RecordDetail({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [connection, record.id, record.kind, projectionRevision, onDenied]);
+  }, [connection, record, projectionRevision, onDenied]);
   const envelope = record.envelope,
     context = envelope.context;
   return (
@@ -441,81 +455,105 @@ function RecordDetail({
           onConfirmed={onConfirmed}
         />
       )}
-      <section className="learning-record-projection">
-        <h4>
-          <Database size={18} />
-          flycanon projection
-        </h4>
-        {record.kind !== "local_outcome" ? (
-          <p>
-            Candidate observations do not have a verified local-outcome
-            projection.
-          </p>
-        ) : loading ? (
-          <p role="status">Reading projection status…</p>
-        ) : error ? (
-          <div className="alert" role="alert">
-            {error}
-          </div>
-        ) : (
-          projection && (
-            <>
-              <span className="learning-record-state">
-                {projections[projection.state]}
-              </span>
-              <p>
-                {projection.state === "unknown"
-                  ? "A previous submission has an unresolved outcome. This view does not retry it or create another source."
-                  : projection.state === "pending"
-                    ? "No projection has been submitted. Local verification and remote ingestion remain separate."
-                    : projection.state === "verified"
-                      ? "A source and citation were verified in the recorded workspace. Current reuse still requires eligible local evidence and the captured target."
-                      : projection.state === "executing"
-                        ? "A submission was recorded as running. Refreshing this view reads status without repeating the write."
-                        : "The remote source was admitted. Indexing and a matching citation still need verification."}
-              </p>
-              {(projection.workspace_id || projection.source_id) && (
-                <dl className="learning-record-summary">
-                  <div>
-                    <dt>Workspace</dt>
-                    <dd>{projection.workspace_id ?? "Not recorded"}</dd>
-                  </div>
-                  <div>
-                    <dt>Source</dt>
-                    <dd>{projection.source_id ?? "Not recorded"}</dd>
-                  </div>
-                  <div>
-                    <dt>Recorded source status</dt>
-                    <dd>{projection.source_status ?? "Not recorded"}</dd>
-                  </div>
-                  <div>
-                    <dt>Citations</dt>
-                    <dd>{projection.citations.length}</dd>
-                  </div>
-                </dl>
-              )}
-              <p className="subtle">
-                This panel shows saved status. Existing-source verification has
-                a separate review below. Source submission remains an authorized
-                CLI, SDK or MCP operation.
-              </p>
-            </>
-          )
-        )}
-      </section>
-      {session && record.kind === "local_outcome" && (
-        <LearningObservation
+      {record.knowledge_provider === "koinon" || projection?.native ? (
+        <NativeLearningObservation
           connection={connection}
           record={record}
           projection={projection}
           session={session}
+          loading={loading}
+          error={error}
           onDenied={onDenied}
+          onRefresh={() => {
+            setLoading(true);
+            setError("");
+            setProjectionRevision((value) => value + 1);
+          }}
           onConfirmed={(receipt) => {
             onConfirmed(receipt.current_record_state);
             setProjectionRevision((value) => value + 1);
           }}
         />
+      ) : (
+        <section className="learning-record-projection">
+          <h4>
+            <Database size={18} />
+            flycanon projection
+          </h4>
+          {record.kind !== "local_outcome" ? (
+            <p>
+              Candidate observations do not have a verified local-outcome
+              projection.
+            </p>
+          ) : loading ? (
+            <p role="status">Reading projection status…</p>
+          ) : error ? (
+            <div className="alert" role="alert">
+              {error}
+            </div>
+          ) : (
+            projection && (
+              <>
+                <span className="learning-record-state">
+                  {projections[projection.state]}
+                </span>
+                <p>
+                  {projection.state === "unknown"
+                    ? "A previous submission has an unresolved outcome. This view does not retry it or create another source."
+                    : projection.state === "pending"
+                      ? "No projection has been submitted. Local verification and remote ingestion remain separate."
+                      : projection.state === "verified"
+                        ? "A source and citation were verified in the recorded workspace. Current reuse still requires eligible local evidence and the captured target."
+                        : projection.state === "executing"
+                          ? "A submission was recorded as running. Refreshing this view reads status without repeating the write."
+                          : "The remote source was admitted. Indexing and a matching citation still need verification."}
+                </p>
+                {(projection.workspace_id || projection.source_id) && (
+                  <dl className="learning-record-summary">
+                    <div>
+                      <dt>Workspace</dt>
+                      <dd>{projection.workspace_id ?? "Not recorded"}</dd>
+                    </div>
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{projection.source_id ?? "Not recorded"}</dd>
+                    </div>
+                    <div>
+                      <dt>Recorded source status</dt>
+                      <dd>{projection.source_status ?? "Not recorded"}</dd>
+                    </div>
+                    <div>
+                      <dt>Citations</dt>
+                      <dd>{projection.citations.length}</dd>
+                    </div>
+                  </dl>
+                )}
+                <p className="subtle">
+                  This panel shows saved status. Existing-source verification
+                  has a separate review below. Source submission remains an
+                  authorized CLI, SDK or MCP operation.
+                </p>
+              </>
+            )
+          )}
+        </section>
       )}
+      {session &&
+        record.kind === "local_outcome" &&
+        record.knowledge_provider !== "koinon" &&
+        !projection?.native && (
+          <LearningObservation
+            connection={connection}
+            record={record}
+            projection={projection}
+            session={session}
+            onDenied={onDenied}
+            onConfirmed={(receipt) => {
+              onConfirmed(receipt.current_record_state);
+              setProjectionRevision((value) => value + 1);
+            }}
+          />
+        )}
       <details className="learning-record-provenance">
         <summary>Identifiers and verification receipts</summary>
         <dl className="learning-record-summary">

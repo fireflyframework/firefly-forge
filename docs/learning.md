@@ -9,7 +9,7 @@ A useful lesson explains which question it addresses, what was observed and wher
 
 !!! info "Implementation boundary"
 
-    Learning uses scoped PostgreSQL records, native receipt checks and knowledge-first decisions. Fresh Koinon-bound runs can project V2 operational source evidence and retrieve exact-context positive outcomes or unclassified failure hints. Retained Flycanon projections keep their V1 contract. Semantic similarity cannot authorize another lesson or suppress QA. Studio's retained projection-observation interface still uses V1; use the native API, CLI, SDK or MCP workflow below for V2 receipts. Live Koinon acceptance, native database and installed qualification remain pending for this candidate.
+    Learning uses scoped PostgreSQL records, native receipt checks and knowledge-first decisions. Fresh Koinon-bound runs can project V2 operational source evidence and retrieve exact-context positive outcomes or unclassified failure hints. Retained Flycanon projections keep their V1 contract. Semantic similarity cannot authorize another lesson or suppress QA. Studio reads typed native V2 source observations separately from retained V1 attempts. Live Koinon acceptance, native database and installed qualification remain pending for this candidate.
 
 ## Configure and inspect local learning
 
@@ -96,7 +96,79 @@ At a fresh knowledge lookup, positive reuse still requires the local ledger's ex
 
 An exact-context negative hint reports the observed failure and its citations with `failure_cause: not_classified` and `may_skip_independent_checks: false`. It appears before web dispatch in the knowledge decision, or as a candidate reference in a knowledge-only lookup. It cannot satisfy a positive outcome or establish that an approach always fails. Only the existing same-run native verification fingerprints and frozen repair policy can hold another identical repair proposal.
 
-Existing admitted V1 projections and their receipts stay on their original provider. A native submission cannot relabel them. Studio's V1 observation-attempt workflow remains separate from the V2 native source receipt; use the direct native observation commands here. This candidate has controlled SDK/HTTP coverage. Live Koinon ingestion and retrieval, native PostgreSQL concurrency and installed artifact qualification remain gates.
+Existing admitted V1 projections and their receipts stay on their original provider. A native submission cannot relabel them. Studio's V1 observation-attempt workflow remains separate from the V2 native source receipt. This candidate has controlled SDK/HTTP and browser coverage. Live Koinon ingestion and retrieval, native PostgreSQL concurrency and installed artifact qualification remain gates.
+
+### Observe a native source in Studio
+
+Open **Knowledge → Learning records** and select a record with an explicit Koinon origin. The provider hint comes from that authorized origin run's recorded snapshot; an absent hint stays unknown. An observed failure remains a candidate. Expand **Saved scope and source** to compare the remote tenant, workspace, project, collection and source with the intended destination. Factory project identity and knowledge project identity are separate.
+
+<figure class="forge-shot" markdown="1">
+
+![Koinon source evidence with its saved tenant, workspace, project, collection and source](assets/screenshots/native-learning-scope-desktop-light.png)
+
+<figcaption>Controlled fixture: inspect the admitted source scope. Saved status does not establish current reuse eligibility or live service acceptance.</figcaption>
+</figure>
+
+With current project edit and review permission, choose **Review source observation**. For an unknown upload outcome, supply the actual existing source ID after inspecting it in the saved scope. Check the acknowledgement, then choose **Observe this source**. Studio stores and reads back one request identity and body fingerprint before its POST. It creates no upload or memory approval.
+
+<figure class="forge-shot" markdown="1">
+
+![Review an existing source observation with an explicit scope acknowledgement and separate confirm and cancel actions](assets/screenshots/native-learning-review-desktop-light.png)
+
+<figcaption>Controlled fixture: acknowledge the existing source before observation. Storage failure removes the submission action before dispatch.</figcaption>
+</figure>
+
+**Source observation recorded** requires a fresh read of the exact event matching the saved request, actor, record, source, hashes and scope. The view separates the current local record from the readback state and lists native source versions, extraction IDs and citations. A denied read clears private evidence. A lost reply or reload offers **Read exact observation** and never repeats the POST. Keep the tab's saved identity until the outcome is resolved; tab storage is not a backup. A recorded historical receipt can also be read without claiming a new request from the current browser.
+
+<figure class="forge-shot" markdown="1">
+
+![Exact native observation receipt with source version, extraction and citation identifiers](assets/screenshots/native-learning-recorded-desktop-light.png)
+
+<figcaption>Controlled fixture: the exact source readback is recorded. The upstream material remains unverified, and current lookup still checks eligibility.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![A recorded native source observation whose local failure record remains a candidate](assets/screenshots/native-learning-failure-desktop-light.png)
+
+<figcaption>Controlled fixture: a failure record stays a candidate after source readback. Its cause remains unclassified and independent checks remain required.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Inspect native source observations on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Saved native source scope on a phone](assets/screenshots/native-learning-scope-mobile-light.png)
+
+<figcaption>Controlled fixture: expand the saved scope before observing the source.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Native source observation review on a phone](assets/screenshots/native-learning-review-mobile-light.png)
+
+<figcaption>Controlled fixture: review the acknowledgement and separate confirm and cancel actions.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Recorded native source versions and citations on a phone](assets/screenshots/native-learning-recorded-mobile-light.png)
+
+<figcaption>Controlled fixture: inspect the exact source version, extraction and citation readback.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![Observed failure candidate on a phone](assets/screenshots/native-learning-failure-mobile-light.png)
+
+<figcaption>Controlled fixture: source observation leaves the local failure candidate and independent checks unchanged.</figcaption>
+</figure>
+
+</div>
+</details>
 
 ### Inspect an uncertain invalidation
 
