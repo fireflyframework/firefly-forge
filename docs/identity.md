@@ -31,6 +31,7 @@ Set these server variables through your deployment's secret manager:
 | `FORGE_OIDC_CLIENT_ID` | Studio's confidential client. |
 | `FORGE_OIDC_CLIENT_SECRET` | Server-side client credential. |
 | `FORGE_OIDC_API_AUDIENCE` | Required access-token audience and client-role namespace. |
+| `FORGE_OIDC_TRUSTED_ID_TOKEN_AUDIENCES` | Optional JSON array of additional trusted ID-token audiences; defaults to `[]`. Studio's client ID is always trusted. |
 | `FORGE_OIDC_REDIRECT_URI` | Exact externally reachable callback URL. |
 | `FORGE_BROWSER_ORIGIN` | Optional exact browser origin when a proxy serves Studio at a separate origin. |
 | `FORGE_IDENTITY_ENCRYPTION_KEY` | Shared Fernet key for all replicas; required in OIDC mode. |
@@ -51,6 +52,8 @@ Keycloak documents its [OIDC endpoints and grant types](https://www.keycloak.org
 [pyfly](https://fireflyframework.org/frameworks/python/)'s native CSRF filter remains enabled. A safe initial request sets a readable `XSRF-TOKEN` cookie. The Studio copies that value into `X-XSRF-TOKEN` on every unsafe cookie-authenticated request, including login and logout. This CSRF cookie is separate from the HttpOnly identity cookie and is not an authentication token. Cookie-backed clients must satisfy both this check and the exact browser-origin check.
 
 The configured issuer supplies signing keys through pyfly's bounded asynchronous JWKS validator. Tokens require an allowed asymmetric algorithm, key identifier and expiration. A token's own header cannot redirect key retrieval to another URL.
+
+An ID token must include Studio's client ID as an audience. Additional audiences are rejected unless the installation explicitly lists them in `FORGE_OIDC_TRUSTED_ID_TOKEN_AUDIENCES`, for example `["trusted-companion-client"]`. List only clients trusted to share that identity token; this setting does not grant project membership or API access. An `azp` claim, when present, must still match Studio's client ID. Rejected login attempts remain consumed and require a new sign-in.
 
 Cookie-authenticated mutations must carry the configured application's `Origin`. It defaults to the callback's origin in OIDC mode. Set `FORGE_BROWSER_ORIGIN` when a development proxy or separate Studio origin needs a different exact origin. Paths, credentials, query strings and wildcard origins are rejected; HTTP requires the explicit loopback development option. API and MCP clients instead use signed API access tokens with the same issuer and audience checks. They do not receive browser tokens from the session endpoint.
 
