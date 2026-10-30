@@ -1,5 +1,6 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Colored forge identities retain Firefly's chevron accent across themes."""
+
 import hashlib
 import json
 from pathlib import Path
