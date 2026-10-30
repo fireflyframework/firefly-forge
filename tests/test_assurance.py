@@ -179,8 +179,12 @@ async def test_quota_resume_and_handoff_preserve_original_attempt_budget(store, 
     result = await store.get_run(run["id"])
     assert result["status"] == "failed" and result["repair_budget"] == 1
     assert result["implementation_rounds"] == 2 and provider.calls == 3
-    with pytest.raises(ValueError, match="Only a paused"):
+    entries = await journal.entries(run["id"])
+    with pytest.raises(ValueError, match="Failed resume requires its completed native final action"):
         await journal.resume(run["id"])
+    assert await store.get_run(run["id"]) == result
+    assert await journal.entries(run["id"]) == entries
+    assert provider.calls == 3
 
 
 async def test_source_tamper_after_approved_review_blocks_checkpoint(store, tmp_path):
