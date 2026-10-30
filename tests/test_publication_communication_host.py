@@ -647,3 +647,56 @@ async def test_native_store_publication_fence_refuses_without_reconnecting(tmp_p
         store.execution_stopping = True
     with pytest.raises(RuntimeError, match="ownership"):
         await store.update_publication("a" * 32, {}, ownership=token, publication_draft={"body": "stale"})
+
+
+async def test_publication_consumes_the_versioned_writer_and_reader_check_instructions(publication):
+    from firefly_forge.prompts import prompt_text
+
+    p = publication
+    calls = []
+    p.engine.communication_writer.model = reviewed_model(card(), calls=calls)
+    await p.engine.publish(p.run["id"])
+    for phase, template in [
+        ("draft", "collaboration/publication-system"),
+        ("review", "collaboration/publication-review-system"),
+    ]:
+        expected = prompt_text(template, version="1.0.1")
+        messages = next(messages for kind, messages, _ in calls if kind == phase)
+        instructions = "\n".join(
+            text
+            for message in messages
+            for text in [
+                getattr(message, "instructions", None),
+                *[part.content for part in message.parts if getattr(part, "part_kind", None) == "system-prompt"],
+            ]
+            if isinstance(text, str)
+        )
+        assert expected in instructions
+    assert p.state["effects"] == ["push", "pr"]
+
+
+async def test_publication_factual_support_with_failed_reader_check_corrects_before_push(publication):
+    p = publication
+    calls = []
+    p.engine.communication_writer.model = reviewed_model(
+        card(text="The recorded publication has a reported change and saved results."),
+        reader_checks={
+            "answers_question": False,
+            "relevant_detail": False,
+            "no_redundancy": True,
+            "plain_language": True,
+            "useful_excerpts": True,
+        },
+        issues=["insufficient_context"],
+        correction=card(text="Adds health checks so operators can inspect service readiness. One saved check passed."),
+        calls=calls,
+    )
+    await p.engine.publish(p.run["id"])
+    evidence = p.state["before_push"]["communication"]
+    assert [phase for phase, *_ in calls] == ["draft", "review", "draft"]
+    assert evidence["review"]["verdict"] == "supported"
+    assert evidence["review"]["reader_checks"]["answers_question"] is False
+    assert evidence["repair_attempted"] is True
+    assert evidence["review_applies_to"] == "original_candidate"
+    assert evidence["candidate_sha256"] != evidence["review_candidate_sha256"]
+    assert "Adds health checks so operators can inspect service readiness." in p.state["requests"][0]["body"]
