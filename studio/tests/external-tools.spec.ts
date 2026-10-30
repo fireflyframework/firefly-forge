@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -255,7 +255,8 @@ async function fixture(
   });
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
-  await navigate(page, "Administration");
+  if (options.admin !== false) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return { calls, writes, grants };
 }
 async function open(page: Page, saved = false) {
@@ -321,10 +322,13 @@ test("project users cannot read or mutate platform external tools", async ({
 }) => {
   const { calls } = await fixture(page, { admin: false });
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page
       .locator("main")
       .getByRole("button", { name: "External tools", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(calls.some((c) => c.includes("/tools/mcp"))).toBe(false);
 });
 test("catalog retains disabled templates and actual unmet prerequisites", async ({

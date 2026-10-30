@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 
 const legacy = {
   provider: "brave",
@@ -144,7 +144,8 @@ async function fixture(
   });
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
-  await navigate(page, "Administration");
+  if (options.admin !== false) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return { writes, calls };
 }
 async function openSearch(page: Page) {
@@ -351,8 +352,11 @@ test("project membership does not expose factory search configuration", async ({
 }) => {
   const { calls } = await fixture(page, { admin: false });
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("button", { name: "Internet search", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(calls.filter((value) => value.includes("/search/"))).toEqual([]);
 });
 

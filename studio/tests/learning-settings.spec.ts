@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 const original = {
   version: 1,
   revision: "a".repeat(32),
@@ -90,7 +90,8 @@ async function fixture(
     });
   });
   await page.goto("/");
-  await navigate(page, "Administration");
+  if (options.admin !== false) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return { writes, calls };
 }
 async function open(page: Page) {
@@ -149,8 +150,11 @@ test("non-administrator cannot load or save factory learning policy", async ({
 }) => {
   const { calls, writes } = await fixture(page, { admin: false });
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page.locator("main").getByRole("button", { name: "Learning", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(calls.some((call) => call.endsWith("/learning/policy"))).toBe(false);
   expect(writes).toEqual([]);
 });

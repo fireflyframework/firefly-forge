@@ -244,11 +244,7 @@ async function fixture(
   });
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
-  await navigate(page, "Administration");
-  await page
-    .locator("main")
-    .getByRole("button", { name: "Structured analytics", exact: true })
-    .click();
+  await navigate(page, "Structured analytics");
   await expect(
     page.getByRole("heading", { name: "Structured analytics", exact: true }),
   ).toBeVisible();

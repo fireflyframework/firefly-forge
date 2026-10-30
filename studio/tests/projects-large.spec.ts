@@ -300,7 +300,7 @@ test("large product components remain searchable and editable without truncation
   const finalCard = await page
       .locator(".project-topology-map article")
       .boundingBox(),
-    footer = await page.locator("footer").boundingBox();
+    footer = await page.locator(".workspace-main > footer").boundingBox();
   expect(finalCard!.y + finalCard!.height).toBeLessThanOrEqual(footer!.y + 1);
   if (evidence)
     await page.screenshot({
