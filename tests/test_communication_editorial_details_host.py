@@ -272,10 +272,15 @@ def test_selection_failure_explains_the_recorded_mismatch_and_review_scope(statu
         "unrecognized failure containing private runtime configuration",
     ],
 )
-def test_display_details_do_not_promote_arbitrary_errors_to_public_facts(error):
+def test_arbitrary_error_quotation_does_not_become_a_known_guard_reason_or_authority(error):
     facts = communication_facts({"status": "failed", "error": error})
     assert "blocker" not in facts
-    assert error not in json.dumps(facts)
+    assert facts["recorded_error"] == {
+        "source": "recorded_run_error",
+        "cause": "not_established",
+        "text": error,
+        "truncated": False,
+    }
 
 
 @pytest.mark.parametrize("length", [30021, 40000, 40001])

@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Public check excerpts preserve recorded bytes after explicit privacy redaction."""
+"""Public diagnostic excerpts preserve recorded bytes after explicit privacy redaction."""
 
 from __future__ import annotations
 
@@ -87,6 +87,16 @@ def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
                 "truncated": truncated,
             }
     return result
+
+
+def recorded_error(run: dict[str, Any]) -> dict[str, Any] | None:
+    if run.get("status") not in ("failed", "needs_reconciliation"):
+        return None
+    error = run.get("error")
+    if not isinstance(error, str) or not (excerpt := _public_excerpt(error, tail=True)):
+        return None
+    text, truncated = excerpt
+    return {"source": "recorded_run_error", "cause": "not_established", "text": text, "truncated": truncated}
 
 
 def render_excerpt(value: dict[str, Any]) -> str:

@@ -31,7 +31,7 @@ class CommunicationParagraph(BaseModel):
     fact_ids: list[str] = Field(min_length=1, max_length=4)
     heading: str | None = Field(default=None, min_length=1, max_length=100)
     format: Literal["paragraph", "bullet"] = "paragraph"
-    diagnostic_id: str | None = Field(default=None, pattern=r"^check-[1-9][0-9]*-(?:command|output)$")
+    diagnostic_id: str | None = Field(default=None, pattern=r"^(?:check-[1-9][0-9]*-(?:command|output)|run-error)$")
 
 
 class CommunicationDraft(BaseModel):
@@ -498,7 +498,8 @@ def communication_facts(
     if conversation_facts:
         facts["conversation"] = conversation_facts
     status = facts["state"]["status"]
-    if status in {"failed", "needs_reconciliation"} and run.get("error") == (
+    error = run.get("error") if isinstance(run.get("error"), str) else None
+    if status in {"failed", "needs_reconciliation"} and error == (
         "Generated changes contain private credentials or worker metadata; inspect the workspace"
     ):
         facts["blocker"] = {
@@ -507,7 +508,7 @@ def communication_facts(
             "credential_exposure": "not_established",
             "next_step": "inspect_workspace_and_recorded_checks",
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+    elif status in {"failed", "needs_reconciliation"} and error in {
         "Checkpoint source changed during final admission",
         "Checkpoint source selection changed during final admission",
         "Checkpoint source directory identity changed during final admission",
@@ -519,7 +520,7 @@ def communication_facts(
             "cause": "not_established",
             "next_step": "inspect_source_and_checkpoint_evidence",
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+    elif status in {"failed", "needs_reconciliation"} and error in {
         "native_agentic_checkpoint_wal_required",
         "bridge_completion_wal_required",
     }:
@@ -527,12 +528,12 @@ def communication_facts(
             "kind": "native_durability_mode_guard",
             "basis": "recorded_error",
             "requirement": "agentic_checkpoint_wal"
-            if run["error"] == "native_agentic_checkpoint_wal_required"
+            if error == "native_agentic_checkpoint_wal_required"
             else "bridge_completion_wal",
             "cause": "not_established",
             "next_step": "review_native_configuration_and_scoped_adoption",
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") == (
+    elif status in {"failed", "needs_reconciliation"} and error == (
         "Original selection, configuration or reviewed policy epoch changed"
     ):
         facts["blocker"] = {
@@ -543,7 +544,7 @@ def communication_facts(
             "recorded_condition": "execution_selection_configuration_or_reviewed_policy_no_longer_matches",
             "review_scope": ["execution_selection", "execution_configuration", "reviewed_policy"],
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") == (
+    elif status in {"failed", "needs_reconciliation"} and error == (
         "Retained verified source requires its current authenticated worker"
     ):
         facts["blocker"] = {
@@ -676,10 +677,12 @@ def communication_facts(
             "recorded": current,
             "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
-    from firefly_forge.communication_diagnostics import check_diagnostics
+    from firefly_forge.communication_diagnostics import check_diagnostics, recorded_error
 
     if diagnostics := check_diagnostics(run):
         facts["check_diagnostics"] = diagnostics
+    if detail := recorded_error(run):
+        facts["recorded_error"] = detail
     return facts
 
 
@@ -693,11 +696,15 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     for paragraph in paragraphs:
         if len(set(paragraph.fact_ids)) != len(paragraph.fact_ids) or set(paragraph.fact_ids) - facts.keys():
             raise ValueError("Communication contains an unknown fact reference")
-        if paragraph.diagnostic_id and (
-            "check_diagnostics" not in paragraph.fact_ids
-            or paragraph.diagnostic_id not in facts.get("check_diagnostics", {})
-        ):
-            raise ValueError("Communication excerpt must identify recorded check evidence")
+        if paragraph.diagnostic_id:
+            if paragraph.diagnostic_id == "run-error":
+                valid = "recorded_error" in paragraph.fact_ids and "recorded_error" in facts
+            else:
+                valid = "check_diagnostics" in paragraph.fact_ids and paragraph.diagnostic_id in facts.get(
+                    "check_diagnostics", {}
+                )
+            if not valid:
+                raise ValueError("Communication excerpt must identify its recorded diagnostic evidence")
         prose = paragraph.text + (paragraph.heading or "")
         for path in sorted((facts.get("git_delivery") or {}).get("changed_files", []), key=len, reverse=True):
             if re.fullmatch(r"[\w./ -]+", path):
@@ -707,6 +714,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
     required = {
         "blocker",
+        "recorded_error",
         "check_batch",
         "factory_verification",
         "conversation",
@@ -722,6 +730,9 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     } & facts.keys()
     if facts.get("conversation", {}).get("question_sha256"):
         required -= {"work", "requested_work", "product", "audience"}
+    if "blocker" in facts:
+        # The existing guard citation already covers the same recorded condition.
+        required.discard("recorded_error")
     if required - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
@@ -813,7 +824,11 @@ def _render_card(
         parts = ["#### " + safe(paragraph.heading).replace("_", r"\_")] if paragraph.heading else []
         parts.append(("- " if paragraph.format == "bullet" else "") + safe(paragraph.text).replace("_", r"\_"))
         if paragraph.diagnostic_id:
-            excerpt = facts["check_diagnostics"][paragraph.diagnostic_id]
+            excerpt = (
+                facts["recorded_error"]
+                if paragraph.diagnostic_id == "run-error"
+                else facts["check_diagnostics"][paragraph.diagnostic_id]
+            )
             reject(excerpt["text"])
             parts.append(render_excerpt({**excerpt, "text": safe(excerpt["text"])}))
         blocks.append("\n\n".join(parts))
@@ -972,7 +987,7 @@ class CommunicationWriter:
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system", version="1.0.1")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.8"),
+                else prompt_text("collaboration/communication-system", version="1.0.9"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -1038,7 +1053,7 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.1" if publication else "1.0.5",
+                    version="1.0.1" if publication else "1.0.6",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]

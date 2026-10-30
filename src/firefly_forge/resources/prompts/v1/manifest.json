@@ -3041,6 +3041,22 @@
       "sha256": "c0ba9b1240c8b8d2508b8fc0d36bb3166baee7cbed1a46efda5b9d654ea997d6",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.9",
+      "path": "collaboration/communication-system-1.0.9.yaml",
+      "sha256": "6bb0e6b4c89e74d84933d4acf65c53e684479bd1c82170c436e92ebacc7c0d46",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-review-system-1.0.6.yaml",
+      "sha256": "7aeadc77bbc44835d7ad5d64abeb94a117c5d504afa461ba25a3c8a533525b46",
+      "field": "user",
+      "variables": {}
     }
   ]
 }
