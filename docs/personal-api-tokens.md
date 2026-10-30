@@ -1,5 +1,5 @@
 ---
-description: Issue, rotate and revoke one-time personal credentials for read-only REST and Python SDK access to selected forge projects.
+description: Issue, rotate and revoke one-time personal credentials for read-only REST, Python SDK and MCP observations of selected forge projects.
 ---
 
 # Personal project API tokens
@@ -56,7 +56,11 @@ The existing Python client uses the same REST authorization as direct HTTP reque
 
 Underlying project and repository permissions still apply; list endpoints filter their results. A repository shared across projects retains its existing cross-project checks. Every authentication and project-access boundary rechecks the credential, its expiry, its owner and the owner's current selected memberships. Suspending the owner, changing its canonical issuer/subject, revoking the credential or removing its last selected membership prevents further authorized reads.
 
-All other routes and every unsafe method are denied for personal tokens, including previews, searches, execution, reviews, user administration, factory settings and credential management. **MCP is not supported by these credentials**: its POST transport requires a separate action-aware authorization contract. Use the existing signed API-client flow for authorized MCP operations. A personal token's service origin is never relabeled as a human decision or execution grant.
+All other routes and every unsafe method are denied for personal tokens, including previews, searches, execution, reviews, user administration, factory settings and credential management. A personal token's service origin is never relabeled as a human decision or execution grant.
+
+### Read through the official MCP server
+
+`forge mcp` uses **stdio**, then calls the same REST API through `ForgeClient`; it is not an HTTP POST endpoint on the factory. Set its `FORGE_URL` and `FORGE_API_TOKEN` environment variables from your secret manager. With a personal token, observation tools such as `get_run` and `get_project` can read only the selected projects covered by the table above. Tools that call other paths, including global configuration, and all mutative tools remain denied by the API. MCP does not expand the credential's permissions, and no personal-token issuance, listing, rotation or revocation tool is registered.
 
 ## Inspect, revoke and rotate
 
@@ -84,6 +88,6 @@ Creation, rotation and revocation use native pyfly transactions. Credential and 
 
 Native `AuthenticationProvider` and `ProviderManager` validate personal tokens. Native pyfly repositories, `SessionProvider` and transaction managers own persistence; forge does not maintain a second authentication database. Owner and credential locks use the same order during authentication and lifecycle changes. Schema revision 32 adds the credential and event tables without rewriting historical execution-authority contracts.
 
-Controlled host tests exercise native SQLAlchemy repositories and transactions with a test-scoped SQLite JSON mapping, the native controller registrar, production authorization middleware and the Python SDK through an in-memory ASGI transport. They cover lifecycle rollback, restart, current membership, owner binding, expiry, secret handling and forbidden effects. This is **not** PostgreSQL concurrency/migration qualification or a live Keycloak login test. Those deployment gates remain separate. No token-management Studio screen is introduced by this API change.
+Controlled host tests exercise native SQLAlchemy repositories and transactions with a test-scoped SQLite JSON mapping, the native controller registrar, production authorization middleware and the Python SDK through an in-memory ASGI transport. They cover lifecycle rollback, restart, current membership, owner binding, expiry, secret handling and forbidden effects. Actual MCP tool dispatch exercises own-project observations, foreign-project refusals, global/admin reads, a credential-route probe and a denied cancellation through the same SDK and native API middleware. Project/run response payloads and the browser-session boundary in that host fixture are controlled; the MCP tools, client, authentication provider, authorization and relational credential records are real. This is **not** PostgreSQL concurrency/migration qualification or a live Keycloak login test. Those deployment gates remain separate. No token-management Studio screen is introduced by this API change.
 
 Continue with [identity and project roles](identity.md), [security boundaries](security.md) and the [HTTP API](api.md).

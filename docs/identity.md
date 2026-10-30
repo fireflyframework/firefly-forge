@@ -82,7 +82,7 @@ A denied request needs current administrator or project membership-management au
 
 ## Personal project API tokens
 
-Signed-in OIDC users can issue [personal project API tokens](personal-api-tokens.md) for read-only REST and Python SDK observations. Each credential selects explicit current project memberships and an expiry. Creation and rotation disclose its secret once; the server retains only a digest. Personal tokens cannot execute work, approve decisions, administer the factory or use MCP.
+Signed-in OIDC users can issue [personal project API tokens](personal-api-tokens.md) for read-only REST and Python SDK observations. Each credential selects explicit current project memberships and an expiry. Creation and rotation disclose its secret once; the server retains only a digest. Personal tokens cannot execute work, approve decisions or administer the factory. Official stdio MCP observation tools share the same read-only REST scope; they cannot manage these credentials.
 
 ## Local bootstrap
 

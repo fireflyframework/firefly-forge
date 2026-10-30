@@ -347,7 +347,6 @@ def test_personal_format_is_redacted_and_rejected_across_activity_chunk_boundari
         ("GET", "/api/v1/projects/" + "a" * 32 + "/members"),
         ("POST", "/api/v1/knowledge/search"),
         ("POST", "/api/v1/runs"),
-        ("POST", "/mcp"),
     ],
 )
 async def test_observation_route_policy_denies_writes_global_configuration_and_credentials(method, path):
@@ -396,6 +395,7 @@ async def token_http(token_store, monkeypatch):
     from firefly_forge.identity import SESSION_COOKIE, IdentityConfiguration, IdentityService
     from firefly_forge.personal_token_controllers import PersonalTokenController
     from firefly_forge.personal_tokens import PersonalTokenAuthenticationProvider, PersonalTokens
+    from firefly_forge.project_controllers import ProjectController
 
     c = token_store
 
@@ -439,12 +439,23 @@ async def token_http(token_store, monkeypatch):
         return [row.copy() for row in run_rows]
 
     c.store.get_run, c.store.runs = get_run, runs
+    c.execution_attempts = []
+
+    async def cancel(value):
+        c.execution_attempts.append(value)
+
+    async def project_overview(value):
+        return {"id": value, "name": "Controlled project observation"}
+
     acl = ProjectAccess(c.store)
     container = Container()
     container.register_instance(PersonalTokens, c.service)
     container.register(PersonalTokenController)
     container.register_instance(OperatorErrors, OperatorErrors())
-    container.register_instance(RunController, RunController(SimpleNamespace(), c.store, SimpleNamespace(), acl))
+    container.register_instance(
+        RunController, RunController(SimpleNamespace(cancel=cancel), c.store, SimpleNamespace(), acl)
+    )
+    container.register_instance(ProjectController, ProjectController(SimpleNamespace(overview=project_overview), acl))
     context = SimpleNamespace(container=container, get_bean=container.resolve)
     app = Starlette(
         routes=ControllerRegistrar().collect_routes(context),
@@ -638,3 +649,97 @@ async def test_production_configuration_beans_share_native_personal_authority(to
             await access.require_project(principal, c.project.hex, "execute")
     finally:
         await identity.stop()
+
+
+@pytest.mark.parametrize(
+    "tool,selection,allowed",
+    [
+        ("get_run", "own-run", True),
+        ("get_project", "own-project", True),
+        ("get_run", "foreign-run", False),
+        ("get_project", "foreign-project", False),
+        ("cancel_run", "own-run", False),
+        ("list_model_profiles", None, False),
+        ("get_identity_administration", None, False),
+        ("get_run", "credential-route-probe", False),
+    ],
+)
+async def test_actual_stdio_mcp_dispatch_preserves_personal_project_read_scope(
+    token_http, monkeypatch, tool, selection, allowed
+):
+    import anyio
+    import httpx
+    from mcp.server.mcpserver.exceptions import UnexpectedToolError
+
+    from firefly_forge import cli
+    from firefly_forge.client import ForgeClient
+    from firefly_forge.mcp_server import create_server
+
+    c, native = token_http.context, token_http.client
+    created = await native.post(
+        "/api/v1/identity/tokens",
+        json=token_input(c).model_dump(mode="json"),
+        headers={"Cookie": "forge_session=controlled-owner-session", "Origin": "https://forge.example"},
+    )
+    raw = created.json()["token"]
+    seen = []
+
+    async def dispatch(request):
+        response = await native.request(
+            request.method, request.url.path, headers=request.headers, content=request.content
+        )
+        seen.append((request.method, request.url.path, response.status_code))
+        return httpx.Response(response.status_code, headers=response.headers, content=response.content)
+
+    def transport(request):
+        return anyio.from_thread.run(dispatch, request)
+
+    def native_sdk(base_url, credential):
+        connection = ForgeClient(base_url, credential)
+        connection.http.close()
+        connection.http = httpx.Client(
+            base_url=base_url.rstrip("/") + "/api/v1/",
+            headers={"Authorization": "Bearer " + credential},
+            transport=httpx.MockTransport(transport),
+        )
+        return connection
+
+    monkeypatch.setenv("FORGE_URL", "https://forge.example")
+    monkeypatch.setenv("FORGE_API_TOKEN", raw)
+    monkeypatch.setattr(cli, "ForgeClient", native_sdk)
+    identifier = {
+        "own-run": c.run_id,
+        "foreign-run": c.foreign_run,
+        "own-project": c.project.hex,
+        "foreign-project": c.other.hex,
+        "credential-route-probe": "../identity/tokens",
+        None: None,
+    }[selection]
+    arguments = {"project_id" if tool == "get_project" else "identifier": identifier} if identifier is not None else {}
+    server = create_server()
+    if allowed:
+        result = await server.call_tool(tool, arguments)
+        assert not result.is_error and result.structured_content["id"] == identifier
+        assert seen[-1][2] == 200
+    else:
+        with pytest.raises(UnexpectedToolError) as failure:
+            await server.call_tool(tool, arguments)
+        if raw in str(failure.value):
+            pytest.fail("Personal credential leaked into MCP error text")
+        assert seen[-1][2] == 403
+    assert len(seen) == 1 and c.execution_attempts == []
+    if selection == "credential-route-probe":
+        assert seen[0][1] == "/api/v1/identity/tokens"
+
+
+async def test_operator_mcp_does_not_expose_personal_credential_lifecycle_tools():
+    from firefly_forge.mcp_server import create_server
+
+    tools = {tool.name for tool in await create_server().list_tools()}
+    assert {"get_run", "get_project"} <= tools
+    assert not tools & {
+        "create_personal_token",
+        "list_personal_tokens",
+        "rotate_personal_token",
+        "revoke_personal_token",
+    }
