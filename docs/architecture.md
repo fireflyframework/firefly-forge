@@ -166,12 +166,50 @@ the retained central byte-bundle path. Existing local installations continue
 with that explicit binding when `object_storage` is absent; enabling a backend
 does not migrate or delete their files.
 
-The existing `SourceCatalogRefV1`, `SourceCatalogEntryV1` and `SourceCatalogPageV1`
-already provide paged immutable source metadata. A future file explorer should
-bind that catalog's source digest, paths, modes and hashes to retained object
-content, with the current project/run permission checked for every read. This
-artifact slice does not yet expose per-file content or grant access from an
-absolute local path or an object reference alone.
+#### Read recorded source
+
+The source explorer backend reuses `SourceCatalogRefV1`, `SourceCatalogEntryV1`
+and `SourceCatalogPageV1`. At the Engine snapshot boundary it captures the public
+catalog, stores each file through the native object publication ledger, and
+copies catalog pages into PostgreSQL. Roots have constant-size lineage and
+digest-chain fields; pages contain at most 128 entries. The source digest is
+recomputed from the ordered catalog before a page is returned. Source and owner
+fences cover publication, including the final compare-and-set. An incomplete or
+ambiguous archive stays unavailable and is never retried automatically.
+
+A factory with native object storage configured records fresh snapshots by
+default. Its private configuration requires `FORGE_OBJECT_STORAGE_TENANT_ID`
+alongside the existing `FORGE_OBJECT_STORAGE_*` provider settings. Administrators
+can set `FORGE_SOURCE_ARCHIVE_POLICY` to a JSON object with `enabled`, an
+`excluded_projects` array of exact project UUIDs, and
+`retention: "retain_until_explicit_admin_gc"`. This policy does not grant read
+access or delete retained data. Production GC and a portal storage setup wizard
+remain separate work; the implemented retention policy keeps recorded bytes.
+
+Authenticated GET routes list recorded snapshots and return catalog/file pages.
+Each response rechecks the native reader, current project access, run scope,
+tenant and immutable reference. An optional Git delivery request selects only a
+checkpoint with the same recorded source tree. Reads perform no Git or SCM
+network operation. `branch` and `head` describe the captured run baseline;
+`tree` describes the admitted snapshot, without claiming a remote branch update.
+
+File windows come only from verified object bytes, never the current workspace.
+Publication scans the complete file for configured credentials and verifies its
+SHA-256. Reads verify the bounded metadata chain, then fetch only chunks that
+intersect the requested window and its credential-scan overlap. They never
+restore the complete file or archive per window. The configured credential
+fingerprint must still match; a changed registry requires a fresh publication.
+Request-specific credential taints are checked against the returned byte range
+without changing that persistent fingerprint. Application memory scales with
+chunk/page width and the bounded response window. Publication scratch scales
+with the file being captured. Base64 carries binary or partial UTF-8 windows
+without inventing text. Private paths, aliases and symbolic links cannot become
+file capabilities.
+
+Existing installations without storage configuration are unchanged. Old runs
+and checkpoints without a complete publication explicitly have no archived
+content; there is no mutable fallback or retroactive migration. This backend
+does not provide an editor, a terminal or a complete live SCM branch browser.
 
 <figure class="forge-shot forge-architecture-diagram" markdown="1">
 <picture>
