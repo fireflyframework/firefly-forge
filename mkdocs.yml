@@ -141,6 +141,7 @@ nav:
       - Application health and maintenance: application-operations.md
       - Security: security.md
       - Sign in and manage project access: identity.md
+      - Personal project API tokens: personal-api-tokens.md
       - Add and manage users: user-administration.md
   - Reference:
       - Architecture: architecture.md

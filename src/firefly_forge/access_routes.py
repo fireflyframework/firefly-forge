@@ -1,6 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Deny unclassified routes and authorize resource identities before controller dispatch."""
 
+import re
 from typing import Any
 
 from starlette.requests import Request
@@ -33,6 +34,22 @@ class AccessRoutes:
         path = request.url.path.removeprefix("/api/v1/").strip("/")
         parts = path.split("/")
         safe = request.method in SAFE
+        if user.authentication_method == "personal_token":
+            observation = (
+                path in {"auth/session", "projects", "repositories", "runs"}
+                or re.fullmatch(r"projects/[a-f0-9]{32}(?:/revisions/[0-9]+)?", path)
+                or re.fullmatch(
+                    r"runs/[a-f0-9]{32}(?:/evidence(?:\.zip)?|/artifacts/changes\.zip|/diff/index"
+                    r"|/diff/files/[0-9]+|/activity/[a-f0-9]{32}/content)?",
+                    path,
+                )
+            )
+            if request.method not in {"GET", "HEAD"} or not observation:
+                raise AccessDenied("Personal credentials allow only scoped project observations")
+        if path.startswith("identity/tokens"):
+            if user.authentication_method != "oidc_session" or user.kind != "human":
+                raise AccessDenied("Manage personal credentials through your signed-in user session")
+            return
         if path == "auth/session" or safe and path in PUBLIC_CATALOGS:
             return
         if safe and path in {"projects", "repositories", "runs"}:
