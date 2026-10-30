@@ -15,6 +15,30 @@ Request and response bodies use JSON unless a route downloads an artifact or
 file. Project permissions apply to the authenticated identity. The actual
 running application's OpenAPI document is the authoritative schema.
 
+## Read recorded source
+
+These read-only endpoints require the current native identity and project read
+permission. Responses use `Cache-Control: private, no-store`. Snapshot IDs,
+catalog manifests and file indexes identify evidence; they do not grant access.
+
+| GET endpoint under `/api/v1/runs/{run_id}/source` | Result |
+| --- | --- |
+| `/revisions?after={snapshot_id}` | Up to 128 recorded snapshots and the next cursor; pending/failed publications remain explicit. |
+| `/revisions/{snapshot_id}/catalog?expected_manifest={sha256}&page=0` | An immutable source reference and a `SourceCatalogPageV1`. |
+| `/revisions/{snapshot_id}/files/{entry_index}?expected_manifest={sha256}&page=0&offset=0&limit=32768` | A verified byte window for an entry in that exact catalog page. |
+
+Catalog/file requests may include `request_id` for an existing Git delivery
+checkpoint; its recorded source tree must match the selected snapshot. File
+windows are at most 1 MiB and include exact byte offsets, a window SHA-256,
+Base64 content and optional UTF-8 text. `binary` describes the returned window,
+including a window that bisects a UTF-8 sequence; it does not guess a file type.
+
+The Python SDK exposes `run_source_revisions`, `run_source_catalog` and
+`run_source_file`. It validates response scope, indexes, extents and content
+hashes without retries. Unpublished snapshots have no content endpoint, and
+the server never substitutes a live workspace read. See
+[source storage and publication](architecture.md#read-recorded-source).
+
 ## Automatic verification handoffs
 
 New runs freeze `settings.automatic_verification` from `GET /tools/policy`.

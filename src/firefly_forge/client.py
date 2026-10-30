@@ -68,6 +68,7 @@ if TYPE_CHECKING:
         SourceBudgetProposal,
     )
     from firefly_forge.source_edit_models import SourceEditContinuationInput
+    from firefly_forge.source_explorer import SourceCatalogObservationV1, SourceFilePageV1
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
     from firefly_forge.unknown_command_models import UnknownCommandAcknowledgementV1
@@ -1416,6 +1417,139 @@ class ForgeClient:
             or hashlib.sha256(content).hexdigest() != result.content_sha256
         ):
             raise ValueError("The returned diff content differs from the requested verified window")
+        return result
+
+    def run_source_revisions(self, run_id: str, *, after: str | None = None) -> dict[str, Any]:
+        from firefly_forge.source_archive_index import SourceArchiveRefV1
+
+        run_id = self._id(run_id)
+        if after is not None:
+            after = self._id(after)
+        result = self.request("GET", f"runs/{run_id}/source/revisions", params={"after": after} if after else {})
+        if (
+            not isinstance(result, dict)
+            or set(result) != {"run_id", "items", "next_after", "recording_enabled", "availability"}
+            or result["run_id"] != run_id
+            or type(result["recording_enabled"]) is not bool
+            or result["availability"] not in {"recorded", "unavailable"}
+            or not isinstance(result["items"], list)
+            or len(result["items"]) > 128
+        ):
+            raise ValueError("The returned source revisions differ from the requested run")
+        previous = after
+        for item in result["items"]:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"reference", "status", "reason"}
+                or item["status"] not in {"pending", "published", "failed"}
+            ):
+                raise ValueError("The returned source revision status is invalid")
+            ref = SourceArchiveRefV1.model_validate(item["reference"])
+            if ref.run_id != run_id or previous is not None and ref.snapshot_id <= previous:
+                raise ValueError("The returned source revision cursor or scope changed")
+            previous = ref.snapshot_id
+        if (
+            result["next_after"] not in (None, previous)
+            or result["next_after"] is not None
+            and len(result["items"]) != 128
+        ):
+            raise ValueError("The returned source revision cursor changed")
+        return dict(result)
+
+    def _source_path(self, run_id: str, snapshot_id: str, expected_manifest: str) -> str:
+        if not isinstance(expected_manifest, str) or re.fullmatch(r"[a-f0-9]{64}", expected_manifest) is None:
+            raise ValueError("An exact source catalog manifest is required")
+        return f"runs/{self._id(run_id)}/source/revisions/{self._id(snapshot_id)}"
+
+    def run_source_catalog(
+        self, run_id: str, snapshot_id: str, expected_manifest: str, *, page: int = 0, request_id: str | None = None
+    ) -> SourceCatalogObservationV1:
+        from firefly_forge.source_archive import public_entry
+        from firefly_forge.source_explorer import SourceCatalogObservationV1
+
+        if type(page) is not int or page < 0:
+            raise ValueError("A nonnegative source catalog page is required")
+        path = self._source_path(run_id, snapshot_id, expected_manifest) + "/catalog"
+        params = {"expected_manifest": expected_manifest, "page": page}
+        if request_id is not None:
+            params["request_id"] = self._id(request_id)
+        result = SourceCatalogObservationV1.model_validate(self.request("GET", path, params=params))
+        ref = result.reference
+        if (
+            ref.run_id != self._id(run_id)
+            or ref.snapshot_id != self._id(snapshot_id)
+            or ref.catalog.manifest_sha256 != expected_manifest
+            or result.catalog.manifest_sha256 != expected_manifest
+            or result.catalog.artifact_id != ref.catalog.artifact_id
+            or result.catalog.page != page
+            or len(result.catalog.entries) > 128
+            or result.catalog.next_page != (page + 1 if page + 1 < ref.catalog.page_count else None)
+        ):
+            raise ValueError("The returned source catalog differs from the requested immutable page")
+        for entry in result.catalog.entries:
+            public_entry(entry)
+        return result
+
+    def run_source_file(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        expected_manifest: str,
+        *,
+        page: int,
+        entry_index: int,
+        offset: int = 0,
+        limit: int = 32768,
+        request_id: str | None = None,
+    ) -> SourceFilePageV1:
+        from firefly_forge.source_archive import public_entry
+        from firefly_forge.source_explorer import SourceFilePageV1
+
+        if (
+            type(page) is not int
+            or page < 0
+            or type(entry_index) is not int
+            or entry_index < 0
+            or type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 1048576
+        ):
+            raise ValueError("Use a bounded source file window and exact catalog indexes")
+        path = self._source_path(run_id, snapshot_id, expected_manifest) + f"/files/{entry_index}"
+        params = {"expected_manifest": expected_manifest, "page": page, "offset": offset, "limit": limit}
+        if request_id is not None:
+            params["request_id"] = self._id(request_id)
+        result = SourceFilePageV1.model_validate(self.request("GET", path, params=params))
+        public_entry(result.entry)
+        content = base64.b64decode(result.content_base64, validate=True)
+        text_value: str | None
+        try:
+            text_value = content.decode("utf-8", errors="strict")
+            if "\0" in text_value:
+                text_value = None
+        except UnicodeDecodeError:
+            text_value = None
+        if (
+            result.reference.run_id != self._id(run_id)
+            or result.reference.snapshot_id != self._id(snapshot_id)
+            or result.reference.catalog.manifest_sha256 != expected_manifest
+            or result.catalog_page != page
+            or result.entry_index != entry_index
+            or result.entry.kind != "file"
+            or result.offset != offset
+            or result.byte_count > limit
+            or len(content) != result.byte_count
+            or offset + len(content) > result.entry.byte_count
+            or not content
+            and offset < result.entry.byte_count
+            or result.next_offset
+            != (offset + len(content) if offset + len(content) < result.entry.byte_count else None)
+            or hashlib.sha256(content).hexdigest() != result.sha256
+            or result.text != text_value
+            or result.binary is not (text_value is None)
+        ):
+            raise ValueError("The returned source content differs from its verified byte window")
         return result
 
     def analytics_configuration(self, project_id: str) -> dict[str, Any]:

@@ -53,6 +53,7 @@ RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 if TYPE_CHECKING:
     from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
     from firefly_forge.git_deliveries import GitDeliveries
+    from firefly_forge.source_archive_service import SourceArchiveManager
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
@@ -191,6 +192,7 @@ class Engine:
         self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
         self.worker_evidence: Any = None
+        self.source_archives: SourceArchiveManager | None = None
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:
@@ -2615,6 +2617,8 @@ class Engine:
                 preview_bytes=preview_bytes,
                 preview_truncated=preview_bytes < artifact.byte_count,
             )
+            if archives := getattr(self, "source_archives", None):
+                await archives.publish(run, workspace, expected_head or base, tree, assert_current=current)
             return files, source, tree
 
     def _assert_git_metadata(self, workspace: Path) -> None:
