@@ -170,7 +170,7 @@ async def test_real_retained_policy_epoch_and_sdk_checkpoint_reaches_same_attemp
             payload = value["payload"]
             checkpoint = BoundaryCheckpoint.decode(payload["snapshot"].encode(), payload["checkpoint_digest"])
             record = json.loads(checkpoint.canonical_payload)
-            record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+            record["compatibility"] = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
             record["contract"]["parameters"].update(
                 _telemetry_mcp_url_ids=[], _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=[]
             )

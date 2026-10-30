@@ -111,7 +111,7 @@ async def test_native_concurrent_new_activity_invalidates_the_old_cut(store, sto
 
 @pytest.mark.parametrize("first_query", [{"limit": 1}, {}, {"tool_name": "execute_command"}])
 async def test_native_optin_agent_queries_only_its_original_run_without_effects(store, tmp_path, first_query):
-    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
 
     from firefly_forge.agent_roles import ProjectRoles
@@ -173,7 +173,7 @@ async def test_native_optin_agent_queries_only_its_original_run_without_effects(
                     },
                 },
             }
-            return ModelResponse(parts=[TextPart(json.dumps(report))])
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, report)])
 
         async def emit(*args):
             pass
