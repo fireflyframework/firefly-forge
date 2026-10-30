@@ -416,18 +416,6 @@ class Engine:
         if restoration is None:
             if not (await self.store.claim(identifier)):
                 return
-            if (await self.store.get_run(identifier)).get("consumed_terminal_recovery"):
-                from firefly_forge.consumed_terminal_completions import claimed_execution
-
-                try:
-                    restoration = await claimed_execution(self, identifier)
-                except Exception as error:
-                    await self.store.update(
-                        identifier,
-                        status="needs_reconciliation",
-                        error="Consumed terminal claim held: " + type(error).__name__,
-                    )
-                    return
         else:
             await restoration.guard_source()
         if restoration is not None:
@@ -482,6 +470,20 @@ class Engine:
 
         try:
             run = await self.store.get_run(identifier)
+            if restoration is None and run.get("consumed_terminal_recovery"):
+                from firefly_forge.consumed_terminal_completions import claimed_execution
+
+                try:
+                    restoration = await claimed_execution(self, identifier)
+                    consumed_execution = restoration
+                    run = await self.store.get_run(identifier)
+                except Exception as error:
+                    await self.store.update(
+                        identifier,
+                        status="needs_reconciliation",
+                        error="Consumed terminal claim held: " + type(error).__name__,
+                    )
+                    return
             from firefly_forge.project_access import ProjectAccess
 
             await ProjectAccess(self.store).authorize_execution(run)

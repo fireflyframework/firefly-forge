@@ -2049,8 +2049,6 @@ class Journal:
             count = 0
             for candidate in pending:
                 run = await self._run(candidate.run_id.hex)
-                if run.status == "failed" and candidate.task_id == "implement":
-                    continue
                 task = await self._task(run.id.hex, candidate.task_id)
                 if task.status not in {"running", "needs_reconciliation"}:
                     continue
@@ -2060,6 +2058,20 @@ class Journal:
                 if not self.verify_chain(entries) or any(entry["run_id"] != run.id.hex for entry in entries):
                     raise ValueError("Recovery requires an intact native journal")
                 key = task.data["idempotency_key"]
+                if (
+                    run.status == "failed"
+                    and task.task_id == "implement"
+                    and any(
+                        entry["kind"] == "bridge_request_intent"
+                        and entry["task_id"] == task.task_id
+                        and isinstance(entry["payload"], dict)
+                        and entry["payload"].get("task_key") == key
+                        for entry in entries
+                    )
+                ):
+                    # Saved provider custody has its own same-attempt recovery;
+                    # pre-dispatch failures still need the ordinary restart witness.
+                    continue
                 generation = _recovery_generation(entries, task.task_id, key)
                 for kind, pointer in _RECOVERY_CLAIMS.items():
                     claims = [

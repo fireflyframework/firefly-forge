@@ -135,8 +135,15 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     # A combined-service startup must preserve the failed final before any
     # explicit candidate or operator settlement is requested.
     startup_plan = copy.deepcopy(await c.journal.plan(c.run_id))
+    # prepared() also owns an unrelated unfinished run. Startup must recover
+    # that run while leaving this consumed result byte-exact.
+    async with c.store._unit():
+        unrelated = [row for row in await c.journal.tasks.find_pending_recovery() if row.run_id.hex != c.run_id]
+        assert len(unrelated) == 1 and unrelated[0].task_id == "implement"
+        unrelated_id = unrelated[0].run_id.hex
+    assert await c.journal.recover() == 1
     assert await c.journal.recover() == 0
-    assert await c.journal.recover() == 0
+    assert (await c.journal.entries(unrelated_id))[-1]["kind"] == "recovery"
     assert await c.store.get_run(c.run_id) == failed
     assert await c.journal.entries(c.run_id) == consumed
     assert await c.journal.plan(c.run_id) == startup_plan
