@@ -37,6 +37,8 @@ Lifecycle ordering initializes `Store` before topology and execution consumers. 
 
 ### Native knowledge services
 
+New configurations select the [Koinon headless candidate](koinon-headless.md). Its scoped source ingestion, external memory proposals and exact-version framework refresh use native durable records before remote writes. Memory approval stays in the upstream private application; a saved version requires exact receipt and version readback. Retained Flycanon/Flyquery bindings and the advanced legacy learned-outcome cache have separate migration boundaries. This candidate wiring does not establish live service, installed or source qualification.
+
 `FactoryConfiguration.knowledge_connection()` injects the private `ConfigurationStore` into `KnowledgeConnection`. `knowledge_manager()` injects `Store`, `Engine`, `Journal`, that connection and `KnowledgeFirst`; it connects the same manager to execution and native knowledge-first tools. `KnowledgeController` uses typed pyfly mappings for configuration, authentication tests, scoped search, source indexing and verified memory. `KnowledgeUploads` has its own injected repository for retained source-upload evidence.
 
 The connection owns authenticated SDK transport and TLS trust. The manager chooses the frozen connection revision, confines repository scope and handles source/canonical receipts. `KnowledgeFirst` combines those cited references with eligible PostgreSQL procedure outcomes before considering configured web search. It cannot treat a search hit as an approved procedure.
@@ -489,7 +491,7 @@ flowchart LR
 
 <p class="forge-flow-caption" id="coding-check-flow-guide">Review and grant before reserving the linked attempt. Each interactive call repeats current authority, source and budget checks; independent final verification follows separately. On a narrow screen, scroll horizontally or focus a diagram and use the arrow keys.</p>
 
-The coding channel is separate from the 192-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
+The coding channel is separate from the 198-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
@@ -633,7 +635,7 @@ Built-in model instructions are versioned YAML resources loaded and rendered by 
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Native PHP diagnostics | Explicit `profile_php` plus command grant, frozen Docker/archive/network-`none` runner | Runtime metrics or preinstalled Xdebug observations retain command receipts; they do not authorize or approve work. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 192 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 198 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 

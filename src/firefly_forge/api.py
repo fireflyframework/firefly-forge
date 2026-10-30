@@ -139,6 +139,7 @@ from firefly_forge.knowledge import (
     KnowledgeTest,
 )
 from firefly_forge.knowledge_first import KnowledgeFirst
+from firefly_forge.knowledge_ingestion import KoinonIngestionObservation, KoinonSourceInput
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadRepository
 from firefly_forge.knowledge_platform import KoinonConnectionInput, KoinonSqlInput
 from firefly_forge.knowledge_uploads import KnowledgeUploads, KnowledgeUploadsController
@@ -397,6 +398,10 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         ("/knowledge/chunks", "get", None),
         ("/runs/{id}/knowledge/queries", "post", "KoinonSqlInput"),
         ("/runs/{id}/knowledge/queries/{request_id}", "get", None),
+        ("/runs/{id}/knowledge/ingestion/source", "post", "KoinonSourceInput"),
+        ("/runs/{id}/knowledge/ingestion/{kind}/{request_id}", "get", None),
+        ("/runs/{id}/knowledge/ingestion/{kind}/{request_id}/observe", "post", "KoinonIngestionObservation"),
+        ("/repositories/{repository_id}/knowledge/koinon/uploads", "post", "KoinonSourceInput"),
         ("/runs/{id}/knowledge/index", "post", "KnowledgeIndex"),
         ("/runs/{id}/knowledge/remember", "post", None),
         ("/runs/{id}/plan", "get", None),
@@ -424,6 +429,8 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         KnowledgeTest,
         KoinonSqlInput,
         KoinonConnectionInput,
+        KoinonSourceInput,
+        KoinonIngestionObservation,
         ResumeRequest,
         VerificationAdoption,
     ]
@@ -451,6 +458,14 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
                     "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
                 }
             )
+        for parameter, schema in (
+            ("kind", {"type": "string", "enum": ["source", "memory"]}),
+            ("repository_id", {"type": "string", "pattern": "^[a-f0-9]{32}$"}),
+        ):
+            if "{" + parameter + "}" in path:
+                operation.setdefault("parameters", []).append(
+                    {"name": parameter, "in": "path", "required": True, "schema": schema}
+                )
         if path == "/runs/{id}/verification-handoffs/candidates":
             operation["parameters"].append(
                 {

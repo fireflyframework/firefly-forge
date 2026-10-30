@@ -37,6 +37,7 @@ from firefly_forge.knowledge import (
     KnowledgeSearch,
     KnowledgeTest,
 )
+from firefly_forge.knowledge_ingestion import KoinonIngestionObservation, KoinonSourceInput
 from firefly_forge.knowledge_platform import KoinonConnectionInput, KoinonSqlInput
 from firefly_forge.models import RepositoryInput, RunInput
 from firefly_forge.operations import DeploymentManager, DeploymentRequest, DeploymentTarget
@@ -435,6 +436,20 @@ class KnowledgeController:
     @get_mapping("/runs/{id}/knowledge/queries/{request_id}")
     async def query_status(self, id: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
         return await self.knowledge.query_status(id, request_id)
+
+    @post_mapping("/runs/{id}/knowledge/ingestion/source")
+    async def ingest_source(self, id: PathVar[str], body: Body[KoinonSourceInput]) -> dict[str, Any]:
+        return await self.knowledge.ingest_source(id, body)
+
+    @get_mapping("/runs/{id}/knowledge/ingestion/{kind}/{request_id}")
+    async def ingestion_status(self, id: PathVar[str], kind: PathVar[str], request_id: PathVar[str]) -> dict[str, Any]:
+        return await self.knowledge.ingestion_status(id, kind, request_id)
+
+    @post_mapping("/runs/{id}/knowledge/ingestion/{kind}/{request_id}/observe")
+    async def observe_ingestion(
+        self, id: PathVar[str], kind: PathVar[str], request_id: PathVar[str], body: Body[KoinonIngestionObservation]
+    ) -> dict[str, Any]:
+        return await self.knowledge.observe_ingestion(id, kind, request_id, body.remote_id)
 
     @post_mapping("/runs/{id}/knowledge/index")
     async def index(self, id: PathVar[str], body: Body[KnowledgeIndex]) -> dict[str, Any]:

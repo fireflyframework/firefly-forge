@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/observe_koinon_ingestion
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read back an exact native source or external memory review and retain
+  its verified observation without resending the write.
+required_variables: []
+metadata:
+  defaults: {}

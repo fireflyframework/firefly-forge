@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
     from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
     from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+    from firefly_forge.knowledge_ingestion import KoinonSourceInput
     from firefly_forge.knowledge_platform import KoinonKnowledgeSettings, KoinonSqlInput
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
@@ -816,6 +817,70 @@ class ForgeClient:
         framework = self._framework_name(framework)
         body = self._recovery_body(FrameworkSearchInput, request)
         return dict(self.request("POST", f"knowledge/frameworks/{framework}/search", json=body))
+
+    def ingest_koinon_source(self, run_id: str, request: KoinonSourceInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.knowledge_ingestion import KoinonSourceInput
+
+        body = self._recovery_body(KoinonSourceInput, request)
+        return dict(
+            self.request("POST", f"runs/{self._recovery_identifier(run_id)}/knowledge/ingestion/source", json=body)
+        )
+
+    def upload_koinon_document(self, repository_id: str, request: KoinonSourceInput | dict[str, Any]) -> dict[str, Any]:
+        from firefly_forge.knowledge_ingestion import KoinonSourceInput
+
+        body = self._recovery_body(KoinonSourceInput, request)
+        return dict(
+            self.request(
+                "POST", f"repositories/{self._recovery_identifier(repository_id)}/knowledge/koinon/uploads", json=body
+            )
+        )
+
+    def koinon_ingestion(self, run_id: str, kind: Literal["source", "memory"], request_id: str) -> dict[str, Any]:
+        if kind not in {"source", "memory"}:
+            raise ValueError("Choose a source or memory operation")
+        return dict(
+            self.request(
+                "GET",
+                f"runs/{self._recovery_identifier(run_id)}/knowledge/ingestion/{kind}/{self._recovery_identifier(request_id)}",
+            )
+        )
+
+    def observe_koinon_ingestion(
+        self, run_id: str, kind: Literal["source", "memory"], request_id: str, remote_id: str
+    ) -> dict[str, Any]:
+        from firefly_forge.knowledge_ingestion import KoinonIngestionObservation
+
+        if kind not in {"source", "memory"}:
+            raise ValueError("Choose a source or memory operation")
+        body = self._recovery_body(KoinonIngestionObservation, {"remote_id": remote_id})
+        return dict(
+            self.request(
+                "POST",
+                f"runs/{self._recovery_identifier(run_id)}/knowledge/ingestion/{kind}/{self._recovery_identifier(request_id)}/observe",
+                json=body,
+            )
+        )
+
+    def knowledge_upload(self, repository_id: str, request_id: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "GET",
+                f"repositories/{self._recovery_identifier(repository_id)}/knowledge/uploads/{self._recovery_identifier(request_id)}",
+            )
+        )
+
+    def reconcile_knowledge_upload(self, repository_id: str, request_id: str, source_id: str) -> dict[str, Any]:
+        from firefly_forge.knowledge_ingestion import KoinonIngestionObservation
+
+        body = self._recovery_body(KoinonIngestionObservation, {"remote_id": source_id})
+        return dict(
+            self.request(
+                "POST",
+                f"repositories/{self._recovery_identifier(repository_id)}/knowledge/uploads/{self._recovery_identifier(request_id)}/reconcile",
+                json={"source_id": body["remote_id"]},
+            )
+        )
 
     def index_source(self, identifier: str, paths: list[str]) -> dict[str, Any]:
         return dict(self.request("POST", f"runs/{identifier}/knowledge/index", json={"paths": paths}))

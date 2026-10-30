@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_knowledge_upload
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the original project upload and its scoped native source observation
+  without uploading again.
+required_variables: []
+metadata:
+  defaults: {}
