@@ -489,6 +489,7 @@ export async function captureWalkthrough(
     "studio/tests/auth-fixture.ts",
     "studio/tests/agent-lifecycle-fixture.ts",
     "studio/tests/learning-record-fixture.ts",
+    "studio/tests/native-learning-fixture.ts",
     "studio/tests/campaign-report-fixture.ts",
     "studio/tests/campaign-report-history-fixture.ts",
     "studio/tests/campaign-report-archive-fixture.json",
@@ -523,6 +524,7 @@ export async function captureWalkthrough(
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
+    "studio/tests/native-learning.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

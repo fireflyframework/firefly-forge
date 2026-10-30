@@ -24,6 +24,7 @@ CAPTURE_HELPERS = {
     "studio/tests/auth-fixture.ts",
     "studio/tests/agent-lifecycle-fixture.ts",
     "studio/tests/learning-record-fixture.ts",
+    "studio/tests/native-learning-fixture.ts",
     "studio/tests/campaign-report-fixture.ts",
     "studio/tests/campaign-report-history-fixture.ts",
     "studio/tests/campaign-report-archive-fixture.json",
@@ -58,6 +59,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
+    "studio/tests/native-learning.spec.ts",
 }
 
 
@@ -177,11 +179,25 @@ def _load_walkthrough(config, root=ROOT):
         reuse_stages = {"verification-reuse-checks", "verification-reuse-journal"}
         if stage.startswith("verification-reuse-") and stage not in reuse_stages:
             raise ValueError("Unknown verification reuse capture stage: " + name)
-        approval_stages = {"verification-approval-choose", "verification-approval-review", "verification-approval-recorded"}
+        approval_stages = {
+            "verification-approval-choose",
+            "verification-approval-review",
+            "verification-approval-recorded",
+        }
         if stage.startswith("verification-approval-") and stage not in approval_stages:
             raise ValueError("Unknown verification approval capture stage: " + name)
+        native_learning_stages = {
+            "native-learning-scope",
+            "native-learning-review",
+            "native-learning-recorded",
+            "native-learning-failure",
+        }
+        if stage.startswith("native-learning-") and stage not in native_learning_stages:
+            raise ValueError("Unknown native learning capture stage: " + name)
         expected_producer = (
-            "studio/tests/verification-adoption.spec.ts"
+            "studio/tests/native-learning.spec.ts"
+            if stage in native_learning_stages
+            else "studio/tests/verification-adoption.spec.ts"
             if stage in approval_stages
             else "studio/tests/verification-reuse.spec.ts"
             if stage in reuse_stages
@@ -207,8 +223,13 @@ def _load_walkthrough(config, root=ROOT):
             raise ValueError("Walkthrough screenshot stage differs from its producer: " + name)
         if (
             stage in reuse_stages
-            and (record.get("observation_only") is not True or record.get("action") is not None or record.get("captured_action") is not None)
-            or stage not in reuse_stages and "observation_only" in record
+            and (
+                record.get("observation_only") is not True
+                or record.get("action") is not None
+                or record.get("captured_action") is not None
+            )
+            or stage not in reuse_stages
+            and "observation_only" in record
         ):
             raise ValueError("Invalid verification reuse observation: " + name)
         if record.get("path") != "assets/screenshots/" + name or ".." in Path(name).parts:

@@ -15,8 +15,9 @@ export default defineConfig({
     "final-outcome-recovery.spec.ts",
     "verification-reuse.spec.ts",
     "verification-adoption.spec.ts",
+    "native-learning.spec.ts",
   ],
-  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements|guided checkpoint continuation frames|guided runner process setup frames|saved final-result wizard fits|reused verification fits|verification approval wizard fits/,
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements|guided checkpoint continuation frames|guided runner process setup frames|saved final-result wizard fits|reused verification fits|verification approval wizard fits|native learning observer fits/,
   workers: 1,
   timeout: 90000,
   use: {
