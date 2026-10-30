@@ -133,9 +133,9 @@ async def test_native_profile_hook_keeps_a_nonzero_observation_and_cannot_approv
 
 @pytest.mark.asyncio
 async def test_profile_arguments_reject_known_credentials_before_dispatch(tmp_path):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
+    from pyfly.agentic.exceptions import ToolError
 
     async def forbidden(*args):
         raise AssertionError("Credential-bearing request cannot dispatch")

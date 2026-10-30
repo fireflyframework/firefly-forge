@@ -56,7 +56,7 @@ async def test_public_tools_wait_then_use_service_without_model_polling(tmp_path
                 usage=SimpleNamespace(input_tokens=0, output_tokens=0, requests=0),
             )
 
-    monkeypatch.setattr("fireflyframework_agentic.agents.FireflyAgent", Agent)
+    monkeypatch.setattr("pyfly.agentic.agents.Agent", Agent)
 
     async def emit(*args):
         pass

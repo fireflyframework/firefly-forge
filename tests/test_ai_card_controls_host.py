@@ -32,12 +32,12 @@ def pending_request(**changes):
     ],
 )
 async def test_incomplete_or_collapsed_question_quotes_fall_back_before_model_creation(tmp_path, monkeypatch, changes):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     def forbidden(**kwargs):
         pytest.fail("Unsupported human quotations must not construct a model agent")
 
-    monkeypatch.setattr(agents, "FireflyAgent", forbidden)
+    monkeypatch.setattr(agents, "Agent", forbidden)
     result = await CommunicationWriter(await configured_store(tmp_path)).write(
         pending_request(**changes), "Exact native question", lambda value: value
     )

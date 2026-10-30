@@ -1235,7 +1235,7 @@ def provider_catalog(configuration: ConfigurationStore | None = None) -> list[di
     setup = {
         "codex": "https://developers.openai.com/codex/cli/",
         "claude": "https://code.claude.com/docs/en/setup",
-        "agentic": "https://github.com/fireflyframework/fireflyframework-agentic",
+        "agentic": "https://github.com/fireflyframework/fireflyframework-pyfly",
         "bridge": "https://github.com/fireflyframework/firefly-forge/blob/main/docs/bridge.md",
     }
     for name in FIELDS:

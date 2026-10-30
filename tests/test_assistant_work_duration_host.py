@@ -34,7 +34,7 @@ def test_new_conversation_rejects_untyped_or_nonpositive_deadline(timeout):
 
 @pytest.mark.parametrize("timeout", [None, 1, 864000])
 async def test_runtime_uses_selected_deadline_without_legacy_clamp(monkeypatch, timeout):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     calls = []
 
@@ -47,7 +47,7 @@ async def test_runtime_uses_selected_deadline_without_legacy_clamp(monkeypatch, 
             calls.append(kwargs["timeout"])
             return SimpleNamespace(output={"message": "Recorded model response"})
 
-    monkeypatch.setattr(agents, "FireflyAgent", Agent)
+    monkeypatch.setattr(agents, "Agent", Agent)
     settings = {
         "FORGE_PROVIDER_TIMEOUT": "2",
         POLICY_KEY: WorkDurationPolicyV2(timeout_seconds=timeout).model_dump_json(),
@@ -58,7 +58,7 @@ async def test_runtime_uses_selected_deadline_without_legacy_clamp(monkeypatch, 
 
 @pytest.mark.parametrize("configured,expected", [(None, 300), ("1", 1), ("864000", 300)])
 async def test_unmarked_runtime_keeps_original_deadline(monkeypatch, configured, expected):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     calls = []
 
@@ -70,7 +70,7 @@ async def test_unmarked_runtime_keeps_original_deadline(monkeypatch, configured,
             calls.append(kwargs["timeout"])
             return SimpleNamespace(output={"message": "Retained model response"})
 
-    monkeypatch.setattr(agents, "FireflyAgent", Agent)
+    monkeypatch.setattr(agents, "Agent", Agent)
     await runtime.design_reply(
         "Scoped request", {"FORGE_PROVIDER_TIMEOUT": configured} if configured else {}, model=object()
     )
@@ -81,7 +81,7 @@ async def test_unmarked_runtime_keeps_original_deadline(monkeypatch, configured,
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("outcome", ["completed", "failed", "cancelled"])
 async def test_selected_policy_reaches_provider_before_model(monkeypatch, provider_name, selected, outcome):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     calls = []
 
@@ -130,7 +130,7 @@ async def test_selected_policy_reaches_provider_before_model(monkeypatch, provid
 
     monkeypatch.setattr(runtime, "APIProvider", API)
     monkeypatch.setattr(runtime, "BridgeProvider", Bridge)
-    monkeypatch.setattr(agents, "FireflyAgent", Agent)
+    monkeypatch.setattr(agents, "Agent", Agent)
     settings = {"ASSISTANT_PROVIDER": provider_name}
     if selected:
         settings[POLICY_KEY] = WorkDurationPolicyV2().model_dump_json()

@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx2
-from fireflyframework_agentic.model_utils import serialize_model_messages
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
@@ -21,6 +20,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import RequestUsage
+from pyfly.agentic.model_utils import serialize_model_messages
 
 from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, ConsumePayload
 from firefly_forge.agentic_checkpoint_boundary import USAGE, AgenticBoundary, BoundaryCheckpoint, OriginalCompletion

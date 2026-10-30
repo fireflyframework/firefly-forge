@@ -388,9 +388,9 @@ async def test_native_every_text_tool_redacts_configured_credentials(tmp_path, m
 
 @pytest.mark.asyncio
 async def test_native_known_credential_write_input_is_refused_before_file_effect(tmp_path):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
+    from pyfly.agentic.exceptions import ToolError
 
     from firefly_forge.workspace_tools import ToolRuntimeContext
 
@@ -563,9 +563,9 @@ async def test_model_cannot_claim_vision_review_without_actual_image_evidence(tm
 
 @pytest.mark.asyncio
 async def test_typed_journey_arguments_reject_known_credentials_before_callback(tmp_path):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
+    from pyfly.agentic.exceptions import ToolError
 
     from firefly_forge.workspace_tools import ToolRuntimeContext
 

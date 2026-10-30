@@ -7,11 +7,11 @@ import json
 from contextlib import suppress
 
 import pytest
-from fireflyframework_agentic.agents import FireflyAgent
-from fireflyframework_agentic.model_utils import serialize_model_messages
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
+from pyfly.agentic.agents import Agent
+from pyfly.agentic.model_utils import serialize_model_messages
 
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint, OriginalCompletion
 
@@ -26,7 +26,7 @@ async def checkpoint():
         return ModelResponse(parts=[TextPart("Original")])
 
     with boundary.invocation():
-        await FireflyAgent(
+        await Agent(
             name="validation-fixture", model=FunctionModel(model), auto_register=False, capabilities=[boundary]
         ).run("Fictional checkpoint fixture")
     return captures[0]
@@ -81,7 +81,7 @@ async def test_noncomplete_lifecycle_refuses_before_the_public_function_model(st
 
     boundary = AgenticBoundary(lambda: {"files_written": []})
     with boundary.invocation(), pytest.raises(ValueError, match="lifecycle"):
-        await FireflyAgent(
+        await Agent(
             name="lifecycle-refusal",
             model=FunctionModel(model),
             auto_register=False,

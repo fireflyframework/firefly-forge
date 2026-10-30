@@ -10,7 +10,7 @@ from firefly_forge.run_evidence import EvidenceQuery
 
 @pytest.mark.parametrize("invalid", [{"tool_name": "execute_command"}, {"limit": 11}, {"after": 1}])
 async def test_model_can_correct_invalid_evidence_query_before_native_callback(tmp_path, invalid):
-    from pydantic_ai.messages import ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
+    from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart, ToolReturnPart
     from pydantic_ai.models.function import FunctionModel
 
     from firefly_forge.agentic_runtime import execute_agentic
@@ -36,26 +36,25 @@ async def test_model_can_correct_invalid_evidence_query_before_native_callback(t
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {}})])
         return ModelResponse(
             parts=[
-                TextPart(
-                    json.dumps(
-                        {
-                            "summary": "Read retained evidence",
-                            "worker_feedback": {
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "summary": "Read retained evidence",
+                        "worker_feedback": {
+                            "id": "review",
+                            "role_id": "implementer",
+                            "task_id": "implement",
+                            "attempt": 1,
+                            "disposition": "clarification",
+                            "summary": "Evidence reviewed",
+                            "request": {
                                 "id": "review",
-                                "role_id": "implementer",
-                                "task_id": "implement",
-                                "attempt": 1,
-                                "disposition": "clarification",
-                                "summary": "Evidence reviewed",
-                                "request": {
-                                    "id": "review",
-                                    "kind": "product_definition",
-                                    "question": "Proceed?",
-                                    "context": "Fixture",
-                                },
+                                "kind": "product_definition",
+                                "question": "Proceed?",
+                                "context": "Fixture",
                             },
-                        }
-                    )
+                        },
+                    },
                 )
             ]
         )
@@ -82,31 +81,30 @@ async def test_model_can_correct_invalid_evidence_query_before_native_callback(t
     assert len(turns) == 3
 
 
-def clarification_response():
-    from pydantic_ai.messages import ModelResponse, TextPart
+def clarification_response(info):
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
 
     return ModelResponse(
         parts=[
-            TextPart(
-                json.dumps(
-                    {
-                        "summary": "Read retained evidence",
-                        "worker_feedback": {
+            ToolCallPart(
+                info.output_tools[0].name,
+                {
+                    "summary": "Read retained evidence",
+                    "worker_feedback": {
+                        "id": "review",
+                        "role_id": "implementer",
+                        "task_id": "implement",
+                        "attempt": 1,
+                        "disposition": "clarification",
+                        "summary": "Evidence reviewed",
+                        "request": {
                             "id": "review",
-                            "role_id": "implementer",
-                            "task_id": "implement",
-                            "attempt": 1,
-                            "disposition": "clarification",
-                            "summary": "Evidence reviewed",
-                            "request": {
-                                "id": "review",
-                                "kind": "product_definition",
-                                "question": "Proceed?",
-                                "context": "Fixture",
-                            },
+                            "kind": "product_definition",
+                            "question": "Proceed?",
+                            "context": "Fixture",
                         },
-                    }
-                )
+                    },
+                },
             )
         ]
     )
@@ -164,7 +162,7 @@ async def test_advertised_schema_preserves_query_envelope_and_worker_bound(tmp_p
         assert query["properties"]["kind"]["enum"] == ["all", "journal", "activity", "tool", "artifact"]
         if not calls:
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {}})])
-        return clarification_response()
+        return clarification_response(info)
 
     await run_evidence_model(tmp_path, model, read)
     assert calls == [{"limit": 10}]
@@ -219,7 +217,7 @@ async def test_valid_pagination_is_forwarded_without_expanding_callback_authorit
     def model(messages, info):
         if not calls:
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": query})])
-        return clarification_response()
+        return clarification_response(info)
 
     await run_evidence_model(tmp_path, model, read)
     assert calls == [query]
@@ -262,8 +260,8 @@ async def test_invalid_input_consumes_existing_usage_budgets_without_native_read
 
 @pytest.mark.parametrize("failure", ["authorization", "integrity", "credential", "reconciliation"])
 async def test_native_security_failures_are_terminal_without_model_retry(tmp_path, failure):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pyfly.agentic.exceptions import ToolError
 
     from firefly_forge.project_access import AccessDenied
     from firefly_forge.run_evidence import EvidenceUnavailable
@@ -293,8 +291,8 @@ async def test_native_security_failures_are_terminal_without_model_retry(tmp_pat
 
 
 async def test_credential_admission_refuses_before_native_callback_without_retry(tmp_path):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pyfly.agentic.exceptions import ToolError
 
     turns, calls = [], []
 
@@ -343,15 +341,15 @@ async def test_malformed_envelope_returns_only_fixed_error_before_native_read(tm
         assert not any(isinstance(part, RetryPromptPart) for message in messages for part in message.parts)
         result = messages[-1].parts[-1]
         assert isinstance(result, ToolReturnPart) and result.content == {"status": "invalid_query"}
-        return clarification_response()
+        return clarification_response(info)
 
     await run_evidence_model(tmp_path, model, read)
     assert calls == [] and len(turns) == 2
 
 
 async def test_credential_guard_refuses_invalid_query_before_manual_validation(tmp_path):
-    from fireflyframework_agentic.exceptions import ToolError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pyfly.agentic.exceptions import ToolError
 
     turns, calls = [], []
     secret = "fictional-configured-evidence-token"
@@ -370,19 +368,19 @@ async def test_credential_guard_refuses_invalid_query_before_manual_validation(t
 
 
 async def test_malformed_json_returns_checkpointable_result_without_retry(tmp_path, monkeypatch):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
     from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart, ToolReturnPart
 
     from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint
 
     boundary = AgenticBoundary(lambda: {"files_written": []})
-    constructor = agents.FireflyAgent
+    constructor = agents.Agent
 
     def with_boundary(**kwargs):
         kwargs["capabilities"].append(boundary)
         return constructor(**kwargs)
 
-    monkeypatch.setattr(agents, "FireflyAgent", with_boundary)
+    monkeypatch.setattr(agents, "Agent", with_boundary)
     turns, calls, checkpoints = [], [], []
 
     async def read(query):
@@ -398,7 +396,7 @@ async def test_malformed_json_returns_checkpointable_result_without_retry(tmp_pa
         assert not any(isinstance(part, RetryPromptPart) for message in messages for part in message.parts)
         result = messages[-1].parts[-1]
         assert isinstance(result, ToolReturnPart) and result.content == {"status": "invalid_query"}
-        return clarification_response()
+        return clarification_response(info)
 
     with boundary.invocation():
         await run_evidence_model(tmp_path, model, read)
@@ -467,7 +465,7 @@ async def test_non_object_json_arguments_return_invalid_query_without_native_rea
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", arguments)])
         result = messages[-1].parts[-1]
         assert isinstance(result, ToolReturnPart) and result.content == {"status": "invalid_query"}
-        return clarification_response()
+        return clarification_response(info)
 
     await run_evidence_model(tmp_path, model, read)
     assert not calls and len(turns) == 2

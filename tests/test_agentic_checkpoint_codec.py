@@ -6,12 +6,12 @@ import json
 
 import httpx2
 import pytest
-from fireflyframework_agentic.agents import FireflyAgent
-from fireflyframework_agentic.config import FireflyAgenticConfig
-from fireflyframework_agentic.model_utils import serialize_model_messages
-from fireflyframework_agentic.tools import firefly_tool
 from pydantic_ai import models
 from pydantic_ai.usage import UsageLimits
+from pyfly.agentic.agents import Agent
+from pyfly.agentic.config import AgenticConfig
+from pyfly.agentic.model_utils import serialize_model_messages
+from pyfly.agentic.tools import agent_tool
 from test_agentic_checkpoint_boundary import CutAfterOriginalPost, completion
 from test_bridge_completion_native import mock_model_requests
 
@@ -32,15 +32,15 @@ async def test_actual_sdk_third_frame_compresses_and_restores_exact_request_with
         reads.append(path)
         return text
 
-    tool = firefly_tool("read_file", description="Read fictional source", auto_register=False)(read_file)
+    tool = agent_tool("read_file", description="Read fictional source", auto_register=False)(read_file)
 
     def agent(model, boundary):
-        return FireflyAgent(
+        return Agent(
             name="elastic-history",
             model=model,
             tools=[tool],
             auto_register=False,
-            config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+            config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             capabilities=[boundary],
         )
 
@@ -165,9 +165,9 @@ async def large_checkpoint():
         return ModelResponse(parts=[TextPart("Fictional")])
 
     with boundary.invocation():
-        await FireflyAgent(
-            name="large-codec", model=FunctionModel(model), auto_register=False, capabilities=[boundary]
-        ).run("Fictional source line.\n" * 6000)
+        await Agent(name="large-codec", model=FunctionModel(model), auto_register=False, capabilities=[boundary]).run(
+            "Fictional source line.\n" * 6000
+        )
     import base64
     import zlib
 

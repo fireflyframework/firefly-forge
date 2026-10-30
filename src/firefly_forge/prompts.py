@@ -12,9 +12,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from fireflyframework_agentic.prompts import PromptLoader, PromptRegistry
 from jinja2 import Environment, meta, nodes
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pyfly.agentic.prompts import PromptLoader, PromptRegistry
 
 _MAX_FILE = 65536
 _MAX_MANIFEST = 262144

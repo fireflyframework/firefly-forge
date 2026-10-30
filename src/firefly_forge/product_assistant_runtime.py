@@ -48,10 +48,10 @@ async def design_reply(
     images: list[dict[str, Any]] | None = None,
     image_input_receipt: dict[str, Any] | None = None,
 ) -> AssistantReply:
-    from fireflyframework_agentic.agents import FireflyAgent
-    from fireflyframework_agentic.config import FireflyAgenticConfig
     from pydantic_ai import BinaryContent, PromptedOutput
     from pydantic_ai.usage import UsageLimits
+    from pyfly.agentic.agents import Agent
+    from pyfly.agentic.config import AgenticConfig
 
     work_duration = (
         WorkDurationPolicyV2.model_validate_json(settings[WORK_DURATION_SETTING])
@@ -86,7 +86,7 @@ async def design_reply(
         single_attempt = functional or work_duration is not None
         reply_type = FunctionalAssistantReply if functional else AssistantReply
         output_spec: Any = PromptedOutput(reply_type) if settings.get("ASSISTANT_PROVIDER") == "bridge" else reply_type
-        agent: FireflyAgent[None, AssistantReply] = FireflyAgent(
+        agent: Agent[None, AssistantReply] = Agent(
             name="forge-product-designer",
             model=model,
             output_type=output_spec,
@@ -95,9 +95,9 @@ async def design_reply(
             retries=0 if single_attempt else None,
             auto_register=False,
             tools=[],
-            config=FireflyAgenticConfig(default_temperature=None, max_retries=0, rate_limit_max_retries=0)
+            config=AgenticConfig(default_temperature=None, max_retries=0, rate_limit_max_retries=0)
             if single_attempt
-            else FireflyAgenticConfig(default_temperature=None),
+            else AgenticConfig(default_temperature=None),
         )
         input_content: Any = (
             [prompt, *(BinaryContent(data=item["image"], media_type=item["mime_type"]) for item in images)]

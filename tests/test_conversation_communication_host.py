@@ -228,14 +228,14 @@ async def test_spanish_source_guard_distinguishes_a_bounded_nonclaim_from_exposu
 async def test_unconfigured_conversation_never_constructs_a_model_or_invents_state(monkeypatch):
     from types import SimpleNamespace
 
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     from firefly_forge.communication import CommunicationWriter
 
     def forbidden(**kwargs):
         pytest.fail("Unconfigured conversations must not construct a model")
 
-    monkeypatch.setattr(agents, "FireflyAgent", forbidden)
+    monkeypatch.setattr(agents, "Agent", forbidden)
     result = await CommunicationWriter(SimpleNamespace()).write(
         None, "Respuesta nativa", lambda value: value, conversation=conversation("missing", "es")
     )

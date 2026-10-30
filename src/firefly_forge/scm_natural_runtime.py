@@ -52,12 +52,12 @@ def catalog() -> PromptCatalog:
 async def classify(
     message: str, context: dict[str, Any], settings: dict[str, str], *, model: Any = None
 ) -> NaturalDecision:
-    from fireflyframework_agentic.agents import FireflyAgent
-    from fireflyframework_agentic.config import FireflyAgenticConfig
     from pydantic_ai import PromptedOutput, capture_run_messages
     from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
     from pydantic_ai.messages import ModelResponse
     from pydantic_ai.usage import UsageLimits
+    from pyfly.agentic.agents import Agent
+    from pyfly.agentic.config import AgenticConfig
 
     bridge = settings.get("ASSISTANT_PROVIDER") == "bridge"
     if model is None:
@@ -70,7 +70,7 @@ async def classify(
     if len(prompt.encode()) > 100000:
         raise ValueError("Natural conversation exceeds its bounded context")
     output_spec: Any = PromptedOutput(NaturalDecision) if bridge else NaturalDecision
-    agent: FireflyAgent[None, NaturalDecision] = FireflyAgent(
+    agent: Agent[None, NaturalDecision] = Agent(
         name="forge-natural-task-intent",
         model=model,
         output_type=output_spec,
@@ -78,7 +78,7 @@ async def classify(
         tools=[],
         retries=0,
         auto_register=False,
-        config=FireflyAgenticConfig(default_temperature=None, max_retries=0, rate_limit_max_retries=0),
+        config=AgenticConfig(default_temperature=None, max_retries=0, rate_limit_max_retries=0),
     )
     with capture_run_messages() as messages:
         try:

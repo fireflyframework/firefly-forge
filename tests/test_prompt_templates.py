@@ -5,7 +5,7 @@ import importlib
 
 
 def test_packaged_catalog_uses_native_agentic_templates():
-    from fireflyframework_agentic.prompts import PromptRegistry, PromptTemplate
+    from pyfly.agentic.prompts import PromptRegistry, PromptTemplate
 
     available = importlib.util.find_spec("firefly_forge.prompts")
     assert available is not None, "Forge needs its validated native packaged prompt catalog"

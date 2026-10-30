@@ -1,15 +1,13 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """An invalid read must remain correctable at actual checkpoint boundaries."""
 
-import json
-
 import pytest
 
 
 @pytest.mark.parametrize("invalid", [{"query": {"tool_name": "read_file"}}, '{"query":', "[]", "null"])
 async def test_invalid_evidence_query_can_be_corrected_with_checkpoint_capability(tmp_path, monkeypatch, invalid):
-    import fireflyframework_agentic.agents as agents
-    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+    import pyfly.agentic.agents as agents
+    from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
     from pydantic_ai.models.function import FunctionModel
 
     from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint
@@ -17,13 +15,13 @@ async def test_invalid_evidence_query_can_be_corrected_with_checkpoint_capabilit
     from firefly_forge.workspace_tools import ToolRuntimeContext
 
     boundary = AgenticBoundary(lambda: {"files_written": []})
-    constructor = agents.FireflyAgent
+    constructor = agents.Agent
 
     def with_boundary(**kwargs):
         kwargs["capabilities"].append(boundary)
         return constructor(**kwargs)
 
-    monkeypatch.setattr(agents, "FireflyAgent", with_boundary)
+    monkeypatch.setattr(agents, "Agent", with_boundary)
     calls, turns, checkpoints = [], [], []
 
     async def read(query):
@@ -43,26 +41,25 @@ async def test_invalid_evidence_query_can_be_corrected_with_checkpoint_capabilit
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {"limit": 1}})])
         return ModelResponse(
             parts=[
-                TextPart(
-                    json.dumps(
-                        {
-                            "summary": "Evidence read without replay",
-                            "worker_feedback": {
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "summary": "Evidence read without replay",
+                        "worker_feedback": {
+                            "id": "review",
+                            "role_id": "implementer",
+                            "task_id": "implement",
+                            "attempt": 1,
+                            "disposition": "clarification",
+                            "summary": "Review retained work",
+                            "request": {
                                 "id": "review",
-                                "role_id": "implementer",
-                                "task_id": "implement",
-                                "attempt": 1,
-                                "disposition": "clarification",
-                                "summary": "Review retained work",
-                                "request": {
-                                    "id": "review",
-                                    "kind": "product_definition",
-                                    "question": "Proceed?",
-                                    "context": "Fixture",
-                                },
+                                "kind": "product_definition",
+                                "question": "Proceed?",
+                                "context": "Fixture",
                             },
-                        }
-                    )
+                        },
+                    },
                 )
             ]
         )
@@ -95,7 +92,7 @@ async def test_invalid_evidence_query_can_be_corrected_with_checkpoint_capabilit
 
 
 async def test_restore_after_invalid_query_preserves_history_usage_and_does_not_replay(tmp_path, monkeypatch):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
     from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
     from pydantic_ai.models.function import FunctionModel
     from test_worker_evidence_tool_contract import clarification_response
@@ -108,7 +105,7 @@ async def test_restore_after_invalid_query_preserves_history_usage_and_does_not_
         pass
 
     boundary = AgenticBoundary(lambda: {"files_written": []})
-    constructor = agents.FireflyAgent
+    constructor = agents.Agent
     saved, checkpoints, native_reads, original_turns, restored_turns = [], [], [], [], []
 
     def with_boundary(**kwargs):
@@ -116,7 +113,7 @@ async def test_restore_after_invalid_query_preserves_history_usage_and_does_not_
         saved.append(kwargs)
         return constructor(**kwargs)
 
-    monkeypatch.setattr(agents, "FireflyAgent", with_boundary)
+    monkeypatch.setattr(agents, "Agent", with_boundary)
 
     async def read(query):
         native_reads.append(query)
@@ -162,7 +159,7 @@ async def test_restore_after_invalid_query_preserves_history_usage_and_does_not_
             assert isinstance(messages[-1].parts[-1], ToolReturnPart)
             assert messages[-1].parts[-1].content == {"status": "invalid_query"}
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {"limit": 1}})])
-        return clarification_response()
+        return clarification_response(info)
 
     options = {**saved[0], "model": FunctionModel(restored_model)}
     options["capabilities"] = [*options["capabilities"][:-1], restored]
