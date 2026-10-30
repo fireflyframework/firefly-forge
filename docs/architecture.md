@@ -53,6 +53,19 @@ Flycanon's server runs in a separate environment, with its own migration and ing
 
 Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/api.py) (`FactoryConfiguration`, `create_runtime`, `create_application`), [`worker_runtime.py`](https://github.com/fireflyframework/firefly-forge/blob/main/src/firefly_forge/worker_runtime.py) (`WorkerSupervision`).
 
+### Source contracts for delegated authority
+
+Checkpoint-runtime and source-budget admission digests cover the helpers that decide identity, scope, evidence admissibility and publication holds. The material lists retain their original ordered entries and add the delegated modules below. Changing a helper's bytes changes both contracts; missing bytes prevent a digest from being returned.
+
+| Boundary | Bound implementation | Decision it protects |
+| --- | --- | --- |
+| Knowledge | Koinon connection, ingestion, queries, source readback and framework ingestion | Exact tenant/project destinations, grant checks and native source/version receipts |
+| Identity and personal tokens | Identity and membership repositories, authentication, token controllers/models/service and provenance digests | Current canonical owner, selected-project reads, expiry/revocation and one-time lifecycle requests |
+| Learning | Ledger, frozen policy, typed envelopes, persistence, projections and failure fingerprints | Current native evidence, captured policy, scoped records and bounded failed-check hints |
+| Source-control replies | Communication, diagnostics, feedback facts, conversation models and collaboration | Exact questions, verified facts, privacy filtering and current delivery holds |
+
+Source freezing, these digests, installed dependency pins and native qualification remain separate checks. The combined platform uses prospective registry epoch 30 and loader `codex-exec-restricted-source/v31`. Its 26 retained measured profiles keep their original literals. Profile 29/loader v30 can establish historical provenance; it cannot grant execution under the new epoch. The combined native pyfly source needs its own exact qualification before source-only coding is admitted.
+
 ### Observed provider activity
 
 `activity_models.py` projects known Codex JSON into small typed summaries; `activity_claude.py` recognizes Claude stream-json content blocks and result messages. Both describe observed output. A requested tool, reported tool result and final provider report remain distinct from the factory's WAL receipts and verification. Claude format recognition supplies no authenticated provider attribution, cross-event tool correlation or inferred exit code.
