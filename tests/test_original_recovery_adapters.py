@@ -130,6 +130,9 @@ NEW_TOOLS = {case[1] for case in CASES} | {
     "get_scm_polling_functional_grant",
     "get_current_scm_polling_functional_grant",
     "review_scm_polling_functional",
+    "get_consumed_terminal_candidate",
+    "request_consumed_terminal",
+    "get_consumed_terminal_status",
     "get_final_outcome_candidate",
     "request_final_outcome_continuation",
     "get_final_outcome_status",
@@ -334,7 +337,7 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
         assert definitions.pop("WorkDurationPolicyV2") == WorkDurationPolicyV2.model_json_schema()
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 185
+    assert len(tools) == 188
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}

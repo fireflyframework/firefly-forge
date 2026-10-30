@@ -195,3 +195,74 @@ The automatic producer changes the protected runtime and admission closure.
 Historical registered profiles remain unchanged; a fresh source-qualified
 profile and native transaction proof are required before adopting this source.
 The existing bulk-journal retention boundaries remain unchanged.
+
+
+## Recover a consumed terminal result after failure
+
+A failed run may already hold its complete final model output. Version 2 of the
+worker-completion settlement contract lets an authorized operator review that
+saved result and request its remaining local postprocessing. It does not ask the
+provider to produce the result again. The version-1 known-worker settlement
+contract above remains available for its original eligible runs.
+
+The shared candidate endpoint returns the contract supported by that run:
+`GET /api/v1/runs/{run_id}/worker-completion-settlements/candidate`. The V2 SDK,
+CLI and MCP adapters require a version-2 response. They refuse a version-1
+candidate instead of treating it as permission for this recovery.
+
+1. Review the candidate's run, task attempt, source and complete custody hashes.
+   The response contains references and digests, not the terminal report or
+   provider output.
+2. Choose and retain one request identifier. Submit the candidate, policy, run,
+   journal and proof digests with all three explicit acknowledgments to
+   `POST /api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`.
+3. Read that same request path to follow `queued`, `claimed` and `accepted`.
+   If the submission response is lost, use this readback; do not select a new
+   identifier or automatically repeat the POST.
+
+The worker performs only the admitted local postprocessing of the known output,
+keeping the same task attempt. It then pauses before QA. An accepted receipt
+means that this recovery was accepted; it does not establish that the product
+passed verification or was released. Current authorization and the reviewed
+source, journal and custody bindings still apply. The request grants no new
+model calls, tools, verification, publication or execution authority.
+
+### Python SDK
+
+`ForgeClient.consumed_terminal_candidate(run_id)` reads the candidate.
+`request_consumed_terminal(run_id, request_id, request)` accepts the native
+`ConsumedTerminalInputV2` model or its exact JSON object.
+`consumed_terminal_status(run_id, request_id)` reads the receipt. The client
+validates the V2 contracts and the requested run/request scope before returning
+results; a POST receipt must also match the body that was submitted.
+
+### Operator CLI
+
+Use `forge consumed-terminal-completions candidate RUN` to review the saved
+candidate. Submission requires the five reviewed hashes and three explicit
+acknowledgments; there is no opaque input document or automatic candidate
+selection:
+
+```sh
+forge consumed-terminal-completions request RUN REQUEST \
+  --candidate-digest "$CANDIDATE_DIGEST" \
+  --policy-digest "$POLICY_DIGEST" \
+  --expected-run-digest "$RUN_DIGEST" \
+  --journal-digest "$JOURNAL_DIGEST" \
+  --proof-digest "$PROOF_DIGEST" \
+  --acknowledge-known-worker-output \
+  --acknowledge-no-execution-grant \
+  --acknowledge-local-postprocessing
+forge consumed-terminal-completions status RUN REQUEST
+```
+
+Replace `RUN`, `REQUEST` and the hash variables with the exact reviewed values.
+The CLI does not create additional authority or retry a failed delivery.
+
+### MCP
+
+`get_consumed_terminal_candidate` and `get_consumed_terminal_status` are
+read-only tools. `request_consumed_terminal` is explicitly mutating and exposes
+the strict version-2 input schema. All three call the same authenticated SDK and
+REST routes. They add no separate credentials or transport-based privileges.
+The descriptions are versioned resources in the packaged prompt catalog.

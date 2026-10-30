@@ -40,6 +40,79 @@ def main() -> None:
 main.add_command(native_locations)
 
 
+@main.group("consumed-terminal-completions")
+def consumed_terminal_completions() -> None:
+    """Review saved terminal output and request local postprocessing without a new execution grant."""
+
+
+@consumed_terminal_completions.command("candidate")
+@click.argument("run_id")
+def consumed_terminal_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_candidate(run_id))
+
+
+@consumed_terminal_completions.command("request")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.option("--candidate-digest", required=True, help="Exact digest of the reviewed version-2 candidate.")
+@click.option("--policy-digest", required=True, help="Policy digest from that candidate.")
+@click.option("--expected-run-digest", required=True, help="Run digest from that candidate.")
+@click.option("--journal-digest", required=True, help="Journal digest from that candidate.")
+@click.option("--proof-digest", required=True, help="Proof digest from that candidate.")
+@click.option(
+    "--acknowledge-known-worker-output",
+    is_flag=True,
+    required=True,
+    help="Confirm that the saved worker output is known.",
+)
+@click.option(
+    "--acknowledge-no-execution-grant",
+    is_flag=True,
+    required=True,
+    help="Confirm that this request grants no execution authority.",
+)
+@click.option(
+    "--acknowledge-local-postprocessing",
+    is_flag=True,
+    required=True,
+    help="Allow only the reviewed local postprocessing, then pause before QA.",
+)
+def request_consumed_terminal(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    policy_digest: str,
+    expected_run_digest: str,
+    journal_digest: str,
+    proof_digest: str,
+    acknowledge_known_worker_output: bool,
+    acknowledge_no_execution_grant: bool,
+    acknowledge_local_postprocessing: bool,
+) -> None:
+    request = dict(
+        version=2,
+        candidate_digest=candidate_digest,
+        policy_digest=policy_digest,
+        expected_run_digest=expected_run_digest,
+        journal_digest=journal_digest,
+        proof_digest=proof_digest,
+        acknowledge_known_worker_output=acknowledge_known_worker_output,
+        acknowledge_no_execution_grant=acknowledge_no_execution_grant,
+        acknowledge_local_postprocessing=acknowledge_local_postprocessing,
+    )
+    with client() as connection:
+        display(connection.request_consumed_terminal(run_id, request_id, request))
+
+
+@consumed_terminal_completions.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_status(run_id, request_id))
+
+
 @main.group("final-outcome-continuations")
 def final_outcome_continuations() -> None:
     """Review a final result that was already consumed and keep its original request."""
