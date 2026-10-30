@@ -80,6 +80,10 @@ These project roles differ from the [factory's agent instruction roles](agent-ro
 
 A denied request needs current administrator or project membership-management authority. A missing user needs local registration or provisioning. Assign another owner before removing the project's last active owner. After access changes, verify the affected user's actual permitted action; queued work also rechecks its authority before protected effects. Repository operations spanning several projects require permission in every project sharing that repository.
 
+## Personal project API tokens
+
+Signed-in OIDC users can issue [personal project API tokens](personal-api-tokens.md) for read-only REST and Python SDK observations. Each credential selects explicit current project memberships and an expiry. Creation and rotation disclose its secret once; the server retains only a digest. Personal tokens cannot execute work, approve decisions, administer the factory or use MCP.
+
 ## Local bootstrap
 
 `local_bootstrap` is an explicit loopback-only development mode. Submit the configured operator credential once to the login endpoint; the server issues the same opaque, durable cookie. Do not persist that credential in browser storage. An explicitly configured loopback API bearer credential remains available for development tooling.

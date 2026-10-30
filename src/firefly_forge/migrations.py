@@ -66,6 +66,7 @@ from firefly_forge.persistence import (
     ForgeRunEntity,
     ForgeTaskEntity,
 )
+from firefly_forge.personal_token_persistence import ForgePersonalTokenEntity, ForgePersonalTokenEventEntity
 from firefly_forge.project_campaign_persistence import (
     ForgeCampaignChildEntity,
     ForgeCampaignEntity,
@@ -85,7 +86,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 31
+SCHEMA_REVISION = 32
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -148,6 +149,8 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeIdentityUserEntity,
                 ForgeIdentitySessionEntity,
                 ForgeIdentityAttemptEntity,
+                ForgePersonalTokenEntity,
+                ForgePersonalTokenEventEntity,
                 ForgeMembershipEntity,
                 ForgeAccessEventEntity,
                 ForgeIdentityAdminOperationEntity,
