@@ -52,8 +52,8 @@ def selected_ignored_native_source(request, monkeypatch):
 
 @pytest.mark.parametrize(
     "interrupt",
-    [False, True, "receipt_source_race"],
-    ids=["accepted_cold_readback", "uncertain_after_charge", "tracked_ignored_receipt_rollback"],
+    [False, True, "receipt_source_race", "unrequested_qa"],
+    ids=["accepted_cold_readback", "uncertain_after_charge", "tracked_ignored_receipt_rollback", "unrequested_qa"],
 )
 async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     native_continuity, monkeypatch, interrupt
@@ -89,6 +89,11 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
         ),
         qa_report=None,
     )
+
+    if interrupt == "unrequested_qa":
+        from test_consumed_terminal_completion_host import UNREQUESTED_QA
+
+        report["qa_report"] = copy.deepcopy(UNREQUESTED_QA)
 
     def transport(request):
         if request.method == "GET":
@@ -222,6 +227,8 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     assert final["attempt"] == final["implementation_rounds"] == task_attempt
     assert final["implementation_pending"] is False
     assert final["usage"]["runtime_report"] == report
+    assert final["usage"]["qa_report"] is None
+    assert final["usage"]["browser_evidence"] == []
     for key, delta in (("requests", 2), ("input_tokens", 22), ("output_tokens", 6)):
         assert final["usage"][key] == before["usage"][key] + delta
     assert final["verification_handoff"] == before["verification_handoff"]

@@ -159,13 +159,18 @@ async def prepare(service: Any, run_id: str) -> PreparedConsumedTerminal:
         final = (await prepare_final_outcome(run, task, entries)).data
         report = final["report"]
         feedback = report.get("worker_feedback") or {}
+        qa = report.get("qa_report")
         if (
             feedback.get("disposition") != "completed"
             or feedback.get("request") is not None
             or feedback.get("role_id") != "implementer"
             or feedback.get("attempt") != run["attempt"]
             or feedback.get("task_id") != "implement"
-            or report.get("qa_report") is not None
+            or qa is not None
+            and (
+                qa["mode"] != "not_requested"
+                or any(qa[field] for field in ("reviewed_states", "reference_sha256", "findings", "not_reviewed"))
+            )
             or final["state"]["files_written"]
         ):
             raise ValueError("Consumed terminal recovery requires the exact completed unchanged-source report")

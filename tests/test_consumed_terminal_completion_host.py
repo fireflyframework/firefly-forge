@@ -24,7 +24,7 @@ pytest_plugins = ["test_invalid_read_retained_epoch_engine_host"]
 
 
 @pytest.fixture
-async def consumed_terminal(completed_legacy_final, monkeypatch, fresh_checkpoint_consumer):  # noqa: F811
+async def consumed_terminal(completed_legacy_final, monkeypatch, fresh_checkpoint_consumer, request):  # noqa: F811
     import firefly_forge.retained_verified_source as retained
     from firefly_forge.agent_checkpoints import AgentCheckpoints
 
@@ -51,7 +51,7 @@ async def consumed_terminal(completed_legacy_final, monkeypatch, fresh_checkpoin
             "evidence_paths": [],
             "request": None,
         },
-        "qa_report": None,
+        "qa_report": copy.deepcopy(getattr(request, "param", None)),
     }
 
     def transport(request):
@@ -628,3 +628,59 @@ async def test_startup_recovery_preserves_failed_consumed_implementation_for_any
         candidate = await KnownWorkerCompletions(env.store, env.journal).candidate(env.run_id)
         assert candidate["version"] == 2 and candidate["run_id"] == env.run_id
         assert state() == before
+
+
+UNREQUESTED_QA = {
+    "mode": "not_requested",
+    "reviewed_states": [],
+    "reference_sha256": [],
+    "findings": [],
+    "not_reviewed": [],
+    "summary": "Browser review was not requested for this API change.",
+}
+
+
+@pytest.mark.parametrize("consumed_terminal", [UNREQUESTED_QA], indirect=True)
+async def test_explicit_unrequested_qa_is_retained_without_granting_qa_authority(consumed_terminal, monkeypatch):
+    await test_local_terminal_acceptance_charges_once_and_pauses_without_provider_or_verification(
+        consumed_terminal, monkeypatch
+    )
+    current = await consumed_terminal.store.get_run(consumed_terminal.run_id)
+    assert current["usage"]["runtime_report"]["qa_report"] == UNREQUESTED_QA
+    assert current["usage"]["qa_report"] is None
+    assert current["usage"]["browser_evidence"] == []
+
+
+@pytest.mark.parametrize(
+    "consumed_terminal",
+    [
+        {**UNREQUESTED_QA, "mode": "vision"},
+        {**UNREQUESTED_QA, "mode": "dom_only"},
+        {**UNREQUESTED_QA, "reviewed_states": ["home"]},
+        {**UNREQUESTED_QA, "reference_sha256": ["a" * 64]},
+        {**UNREQUESTED_QA, "not_reviewed": ["home"]},
+        {
+            **UNREQUESTED_QA,
+            "findings": [
+                {
+                    "severity": "high",
+                    "journey_id": "customer",
+                    "state_id": "home",
+                    "path": "page",
+                    "expected": "Readable",
+                    "observed": "Clipped",
+                    "evidence_ids": ["unknown"],
+                }
+            ],
+        },
+    ],
+    indirect=True,
+    ids=["vision", "dom", "reviewed", "reference", "missing_state", "finding"],
+)
+async def test_terminal_recovery_refuses_unverified_browser_qa_claims(consumed_terminal):
+    env = consumed_terminal
+    before = copy.deepcopy((await env.store.get_run(env.run_id), await env.journal.entries(env.run_id)))
+    with pytest.raises(ValueError, match="unchanged-source report"):
+        await KnownWorkerCompletions(env.store, env.journal).candidate(env.run_id)
+    assert (await env.store.get_run(env.run_id), await env.journal.entries(env.run_id)) == before
+    assert len(env.posts) == env.initial_posts + 2

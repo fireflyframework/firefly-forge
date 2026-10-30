@@ -96,6 +96,29 @@ A failed implementation with a saved provider request bound to its current task 
 
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
 
+## Settle an already consumed implementation result
+
+A worker can finish its model call, retain the final response and stop during local
+postprocessing. An eligible failed run exposes a version 2 candidate through
+`GET /api/v1/runs/{run_id}/worker-completion-settlements/candidate`. Reading the
+candidate starts no execution. It requires the same task attempt, an intact
+journal, the exact consumed response, unchanged source and current operator access.
+
+Review the candidate before posting its exact digests and acknowledgements to
+`POST /api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`. The retained
+request identity makes the decision readable after a lost response. Recovery
+accepts the saved result and charges its recorded usage once; it pauses at the
+verification handoff before further checks. It does not request the model output
+again or reset previous consumption.
+
+The saved report may omit browser QA or explicitly declare `mode: not_requested`
+with empty reviewed states, references, findings and unreviewed states. That
+neutral declaration stays in the original runtime report. It creates no trusted QA
+report or browser evidence. This recovery refuses reports that claim visual or DOM
+review, reference an image, name a reviewed state or contain a finding; those
+claims need their normal evidence validation. Ordinary verification remains a
+separate authorized step against the retained source.
+
 ## Recover a known failed official CLI attempt
 
 On POSIX, a negative exit code matching `SIGXFSZ` (for example, `-25` on macOS) can indicate a file-size limit. With the stdlib asyncio event loop and a finite soft limit, the trusted CLI launcher preserves its inherited ignored `SIGXFSZ` disposition so an oversized write can return `EFBIG` without raising the limit. `forge serve` selects asyncio explicitly; the headless worker already uses `asyncio.run`.
