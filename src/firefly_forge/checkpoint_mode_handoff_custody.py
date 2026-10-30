@@ -47,7 +47,9 @@ def _one(entries: list[Data], kind: str, key: str, handoff_id: str | None = None
     return found[0]
 
 
-def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str, Data]) -> dict[str, str]:
+def _validate(
+    run: Data, entries: list[Data], rows: list[Any], values: dict[str, Data], *, before_dispatch: bool = False
+) -> dict[str, str]:
     if not entries or any(e["run_id"] != run["id"] for e in entries) or not Journal.verify_chain(entries):
         raise ValueError("Completed verification requires its intact native journal")
     state, request, response = (
@@ -102,7 +104,6 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         raise ValueError("Completed verification differs from its frozen request, commands or scope")
     answer = _one(entries, "worker_response", "worker-response:" + handoff_id, handoff_id)
     outcome = _one(entries, "verification_handoff_outcome", handoff_id + ":outcome", handoff_id)
-    coding = _one(entries, "verification_continuation_intent", handoff_id + ":coding", handoff_id)
     resumed = [
         e
         for e in entries
@@ -112,7 +113,17 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         raise ValueError("Completed verification requires its unique native resume")
     resume = resumed[0]
     task_key = uuid5(NAMESPACE_URL, f"forge:{run['id']}:implement:{intent['parent_round'] + 1}").hex
-    implementation = _one(entries, "intent", task_key)
+    coding = implementation = None
+    if before_dispatch:
+        if entries[-1]["digest"] != resume["digest"] or any(
+            (e["kind"] == "intent" and e["idempotency_key"] == task_key)
+            or (e["kind"] == "verification_continuation_intent" and e["payload"].get("id") == handoff_id)
+            for e in entries
+        ):
+            raise ValueError("Pre-dispatch verification cannot contain later execution or admission")
+    else:
+        coding = _one(entries, "verification_continuation_intent", handoff_id + ":coding", handoff_id)
+        implementation = _one(entries, "intent", task_key)
     responding_actor = {
         "version": 4,
         "authentication_method": "factory_verification",
@@ -141,26 +152,27 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         or resume["payload"].get("agent") != run["agent"]
         or resume["task_id"] != resume["kind"]
         or resume["payload"].get("config_revision") != run["config_revision"]
-        or implementation["payload"].get("config_revision") != run["config_revision"]
-        or digest(coding["payload"])
-        != digest(
-            {
-                "version": 1,
-                "id": handoff_id,
-                "request_id": intent["request_id"],
-                "parent_round": intent["parent_round"],
-                "next_round": intent["parent_round"] + 1,
-                "provider_digest": intent["provider_digest"],
-            }
-        )
-        or not handoff["sequence"]
-        < answer["sequence"]
-        < outcome["sequence"]
-        < resume["sequence"]
-        < implementation["sequence"]
-        < coding["sequence"]
+        or not handoff["sequence"] < answer["sequence"] < outcome["sequence"] < resume["sequence"]
     ):
         raise ValueError("Completed verification lacks its exact response and native continuation grant")
+    if not before_dispatch:
+        assert implementation is not None and coding is not None
+        if (
+            implementation["payload"].get("config_revision") != run["config_revision"]
+            or digest(coding["payload"])
+            != digest(
+                {
+                    "version": 1,
+                    "id": handoff_id,
+                    "request_id": intent["request_id"],
+                    "parent_round": intent["parent_round"],
+                    "next_round": intent["parent_round"] + 1,
+                    "provider_digest": intent["provider_digest"],
+                }
+            )
+            or not resume["sequence"] < implementation["sequence"] < coding["sequence"]
+        ):
+            raise ValueError("Completed verification lacks its exact response and native continuation grant")
     command_records = [
         e for e in entries if e["kind"] == "verification_handoff_command" and e["payload"].get("id") == handoff_id
     ]
@@ -273,18 +285,21 @@ def _validate(run: Data, entries: list[Data], rows: list[Any], values: dict[str,
         "response_digest": answer["digest"],
         "outcome_digest": outcome["digest"],
         "resume_digest": resume["digest"],
-        "implementation_intent_digest": implementation["digest"],
-        "continuation_intent_digest": coding["digest"],
+        **(
+            {"implementation_intent_digest": implementation["digest"], "continuation_intent_digest": coding["digest"]}
+            if implementation is not None and coding is not None
+            else {}
+        ),
         "command_custody_digest": digest({"commands": refs}),
     }
     return {**result, "digest": digest(result)}
 
 
 def validate_completed_handoff(
-    run: Data, entries: list[Data], rows: list[Any], values: dict[str, Data]
+    run: Data, entries: list[Data], rows: list[Any], values: dict[str, Data], *, before_dispatch: bool = False
 ) -> dict[str, str]:
     try:
-        return _validate(run, entries, rows, values)
+        return _validate(run, entries, rows, values, before_dispatch=before_dispatch)
     except (
         ValueError,
         TypeError,
