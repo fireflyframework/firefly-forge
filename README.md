@@ -4,17 +4,59 @@
 
 ![firefly forge: from brief to verified software](assets/banner.svg)
 
-firefly forge is the Firefly software factory. Describe a product's users, journeys and acceptance checks, connect its repositories, then choose a stack and coding provider. Review the implementation, actual checks and retained evidence before publishing a pull request.
+firefly forge is the Firefly software factory. Define a product through its users, journeys and acceptance criteria, connect its repositories, and follow the work from implementation to review, verification and delivery. GitHub, GitLab and Bitbucket conversations are part of that workflow; Studio provides the product workspace and execution history.
 
-The factory combines native [pyfly](https://fireflyframework.org/frameworks/python/) services and controllers, a PostgreSQL execution ledger, Firefly Agentic, Studio and official local coding agents. Build new software, maintain an existing source or run model-free tests. Every run retains its source baseline, configuration, plan, command results and recovery history.
+The application uses native [pyfly](https://fireflyframework.org/frameworks/python/) services, controllers and PostgreSQL persistence. Coding providers are configurable through Firefly Agentic or the [agent bridge](https://github.com/fireflyframework/firefly-agent-bridge). A run retains its source baseline, plan, command results and recovery history in the execution journal.
 
-[Documentation](https://fireflyframework.github.io/firefly-forge/) · [Installation](docs/installation.md) · [Studio walkthrough](docs/console-tour.md) · [Architecture](docs/architecture.md) · [Capabilities](docs/capabilities.md)
+[Documentation](https://fireflyframework.github.io/firefly-forge/) · [Installation](docs/installation.md) · [Studio walkthrough](docs/console-tour.md) · [Architecture](docs/architecture.md) · [Releases](https://github.com/fireflyframework/firefly-forge/releases)
 
-## Start locally
+## Knowledge and current development
 
-The managed local stack includes forge, its PostgreSQL ledger, Flycanon, a separate pgvector database, durable knowledge objects and local embeddings. Fresh setup requires knowledge retrieval and enables verified project memory. Use Docker Compose and a dedicated macOS or Linux development environment. Source development also needs Python 3.13+, Git and Node.js 22.12+.
+[Koinon](https://github.com/fireflyframework/firefly-koinon) is the unified knowledge platform selected for forge: framework references, project documents, structured knowledge and reviewed memory belong behind its headless interfaces. The [native platform integration](https://github.com/fireflyframework/firefly-forge/pull/73) is still in development. The published managed installer retains its earlier knowledge-service bindings; it does not yet install the completed Koinon composition. Follow the [current knowledge guide](docs/knowledge.md) for the behavior of the version you install. Preserve existing knowledge, credentials and captured run configuration during migration.
 
-Complete the [installation prerequisites](docs/installation.md#run-the-complete-local-stack), including the separately configured Keycloak client and private environment settings, before starting:
+Integration work also includes personal API tokens and local Keycloak account management, immutable source browsing, native object storage and distributed runner execution. Check the [capability boundaries](docs/capabilities.md) and [release notes](docs/release-notes.md) before selecting an installation for a project. These components have separate acceptance gates. The complete reference-product journey through source control, factory execution, QA and a usable delivered application remains under validation.
+
+## Follow a product journey
+
+A product can contain several journeys, features and integrations, with one repository or several component repositories. API-only products describe their consumers and observable behavior without a frontend. Start with [factory concepts and journeys](docs/factory-journeys.md).
+
+1. Connect the repositories and coding provider. Grant access through the source-control application's permissions and map the relevant accounts to current project access. [SCM setup](docs/scm.md) covers provider grants, signed deliveries and local polling.
+2. Define the users, problem and journeys. Map each journey to features, expected behavior, failure paths and acceptance checks. Choose [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) for supported backend generation. Review the architecture and, where applicable, the product's brand, design tokens, wireframes and mockups. See [product definition](docs/product-definition.md) and [your first product](docs/quickstart.md).
+3. Review the saved product revision and executable checks, then start the run. Follow its plan, source changes, command output and artifacts in Studio. The [walkthrough](docs/console-tour.md) includes successful checks, failures and unresolved operations.
+4. Review the implementation against the journeys and recorded QA. Publication rechecks the retained source before creating a remote branch or pull request. [Development checkpoints](docs/development-workflow.md) retain intermediate progress separately from final approval.
+5. Continue through the configured deployment and support processes. Deployment, rollback and health checks have their own targets and receipts. [Factory infrastructure](docs/factory-infrastructure.md) explains the available setup and remaining qualification requirements.
+
+[Incremental product changes](docs/product-lifecycle.md) update a saved revision. [Campaigns](docs/project-campaigns.md) group component evidence, reporting waves and milestones. A saved report preserves the observations it contains; it does not refresh source control or approve delivery.
+
+## Work with forge from source control
+
+Ask naturally in a connected issue, for example: `@forge, how is this going?` or `@forge, what should happen if the account owner changes?` The configured communication model uses the ticket's recorded context. When forge asks a confirmed question, answer in the same thread. A pending clarification, its answer and the permission to execute remain separate records.
+
+Source-control requests need current project permissions and the application's repository grant. Read requests, product proposals, approved implementation and publication have different effects. Ambiguous requests require clarification. See [natural ticket conversations](docs/scm.md#ask-about-the-current-ticket), [repository intake](docs/repository-workflow.md) and [agent questions](docs/agent-lifecycle.md#answer-an-agents-question) for the supported paths and provider-specific restrictions.
+
+Studio, the API, SDK, CLI and [factory MCP](docs/agent-integrations.md) use the application's authenticated contracts. The [evidence reader](docs/run-evidence.md) exposes tasks, activity, tool results and journal records. Reading an earlier result does not repeat a command or resolve an unknown outcome.
+
+## Agents, tools and execution
+
+Select the [agent roles](docs/agent-roles.md), project policies, model routing and runner capabilities required by the task. Native tools cover file inspection, search, editing, diffs, commands and browser checks. Internet search requires a configured Brave or Tavily connection. Python and PHP profiling require their diagnostic grants and an isolated Docker runner. See [agent tools](docs/agent-tools.md), [browser QA](docs/browser-qa.md) and the [policy catalog](https://github.com/fireflyframework/firefly-forge-policies).
+
+Official Codex and Claude Code launches follow their own CLI permissions. The separately installed [agent bridge](docs/bridge.md) connects local subscriptions for development and testing. Framework role tool lists do not override an official CLI's permission model.
+
+New work has no fixed deadline by default; a project can choose one. Request waits, ownership heartbeats and execution deadlines are configured separately. The combined service admits and executes work. Split installations provide API replicas and a single active execution leader with standby takeover. Standbys do not provide a distributed pool of active workers. Docker command pools require explicit configuration; Kubernetes and multi-host execution have separate acceptance requirements. Follow [runtime roles](docs/runtime-roles.md), [runners](docs/sandbox.md) and [security](docs/security.md).
+
+Choose an isolated runner for project execution. A Git worktree protects the source checkout, but host commands still use the worker's operating-system identity. Host coding and verification require current administrator authority.
+
+## Verification and recovery
+
+Provider-reported activity and factory verification are recorded separately. Inspect the actual checks, source revision, code diff and artifacts before approving delivery. Documentation screenshots use labeled controlled fixtures; they do not prove that a generated application passed its journeys.
+
+The journal retains intents and observed outcomes. Missing outcomes remain unresolved, including after restart. [Recovery](docs/recovery.md) and [checkpoint continuations](docs/checkpoint-continuations.md) explain supported readback and continuation paths, retained usage and explicit approvals. An intact journal hash chain alone cannot establish that an external operation succeeded.
+
+[Project learning](docs/learning.md) records verified outcomes and their applicability. Framework references retain versions and provenance; [framework refresh](docs/framework-knowledge-refresh.md) provides discovery, immutable corpora and version-specific lookup. Reusing knowledge requires current access and eligible evidence. Changing a model, restarting a worker or reading a receipt does not reset spent usage or authorize an uncertain operation again.
+
+## Run locally
+
+Use a dedicated macOS or Linux development environment. Source development requires Python 3.13+, Git and Node.js 22.12+. Complete the [installation prerequisites](docs/installation.md#run-the-complete-local-stack), including private environment settings and the identity client, before starting the managed stack:
 
 ```sh
 git clone https://github.com/fireflyframework/firefly-forge.git
@@ -23,86 +65,16 @@ docker compose up --build -d
 docker compose ps --all
 ```
 
-Open http://127.0.0.1:8787, sign in and verify the included [knowledge service](docs/knowledge.md). Connect a repository and an authorized coding provider before creating a run. Existing knowledge connections and queued configuration snapshots are preserved. [Factory infrastructure](docs/factory-infrastructure.md) covers server and cluster preparation, storage, backup and recovery.
+Open http://127.0.0.1:8787, sign in and verify the configured knowledge service before admitting work. The Compose stack follows the published installation's compatibility contract described above; review it before expecting the development Koinon integration. Keep database credentials, tokens and private configuration outside Git. Runtime acceptance is performed locally; cluster preparation is documented separately in [factory infrastructure](docs/factory-infrastructure.md).
 
-## Follow a product change
+## Develop and verify
 
-Start with [concepts and factory journeys](docs/factory-journeys.md) to distinguish the product contract, repository, component, project, campaign and run. The guide follows monorepo and multiple-repository setup, source-control conversations, execution evidence and product support.
+Follow the [source setup](docs/installation.md#source-development). Install Chromium with `npx --prefix studio playwright install chromium`. Set `FORGE_TEST_DATABASE_URL` to an isolated PostgreSQL test database and prepare PHP 8.3+ with `make php-fixture-check`.
 
-1. **Connect.** Sign in to the factory, verify the selected coding provider, and grant repository access through a native SCM application or register a local Generic Git source. GitHub, GitLab, Bitbucket Cloud, Azure DevOps and Gitea have their own grants and callback settings. See [SCM connections](docs/scm.md) and [provider configuration](docs/configuration.md).
-2. **Define.** Map users and journeys to features, observable behavior and failure paths. Choose [pyfly](https://fireflyframework.org/frameworks/python/) or [larafly](https://fireflyframework.org/frameworks/php/) as the project's backend. Review architecture, brand and journey references before saving the product revision. An API-only product still needs a process and acceptance criteria. Start with [your first product](docs/quickstart.md) and [product definition](docs/product-definition.md).
-3. **Review and run.** Inspect the brief, saved revision, foundation, executable checks and review policy. Follow the run's diff, command output, artifacts and journal. The [guided Studio tour](docs/console-tour.md) illustrates this path with labeled fixtures, including a failed check and an unresolved intent.
+- `make check` runs Python tests, lint and types, Studio checks and browser journeys, the frontend build and strict documentation checks.
+- `make docs-pages-check` validates the published repository path, local links, navigation, search and documentation captures.
+- `make package` builds installable distributions with Studio included.
 
-A passing run records its verified source and local checkpoint. Publication rechecks that retained source before creating a remote branch or pull request. Deployment and rollback have separate targets and receipts. An intent without an outcome requires [reconciliation](docs/recovery.md), even when its journal hash chain is valid. Keep failed checks and uncertain effects visible when deciding whether to continue.
+Model instructions and MCP descriptions live in versioned YAML resources and use the framework template loader and registry. See [prompt maintenance](docs/prompt-templates.md) for variables, digests and regression tests. The agent bridge is maintained in its own repository and is not bundled in forge distributions.
 
-Configure [development checkpoints](docs/development-workflow.md) under **Product projects > Development workflow** to save completed implementation rounds or safe pauses in Git. Choose local checkpoints or a draft review through a supported GitHub or GitLab adapter. A run keeps its recorded schedule; disabling checkpoints also stops further saves for existing runs. **Run > Plan > Saved development progress** shows complete commit and tree identifiers, with draft progress separate from final verification and approval. The SDK, CLI and MCP expose the same scoped operations.
-
-Review an [incremental product change](docs/product-lifecycle.md) against its saved revision before adding a feature or integration. Studio retains the original save request and any later draft separately when the outcome is uncertain. Journey references show linked behavior and acceptance criteria; review them against the product's intended experience before implementation.
-
-Read the run's [retained evidence](docs/run-evidence.md) to distinguish coding-provider activity from final factory verification. Studio distinguishes Codex command results and reported MCP activity from Claude tool requests, reported results and provider messages. Known configured-check calls use a human title with their exact tool identity available separately. Complete sanitized event content is available on demand within archive limits; provider reports remain separate from factory verification. SDK, CLI and MCP readers use the same current permissions and exact content descriptor.
-
-## Choose how the factory executes work
-
-New runs record their work-duration policy. Work has no fixed deadline by default; choose one when the project needs it. The [runner guide](docs/sandbox.md) explains ownership heartbeats, independent request waits and trusted-host process tools. Runner and provider capabilities determine which combinations can execute; captured older runs retain their original policy.
-
-The default combined service admits and executes work. A split installation separates API replicas from headless workers: one execution leader runs the jobs while other workers wait as standbys. Processes share the PostgreSQL ledger and retained private storage. Standbys provide takeover; they do not add a distributed pool of active workers. See [runtime roles](docs/runtime-roles.md) and [factory infrastructure](docs/factory-infrastructure.md).
-
-Choose and verify the execution environment before admitting a run. Git workspaces protect the consumer checkout; host commands still run with the worker's operating-system identity. Project users require isolated execution, while host coding and host verification require current administrator authority. [Runner configuration](docs/sandbox.md) and [security](docs/security.md) describe the enforced boundaries.
-
-With the stdlib asyncio event loop on POSIX, trusted Codex and Claude launches preserve an inherited ignored `SIGXFSZ` when the parent has a finite file-size limit. `forge serve` selects this loop explicitly. External ASGI hosts must also use asyncio; a known uvloop host with a finite file-size limit is refused before the provider dispatch intent or child launch. The kernel limit and spent recovery history remain unchanged. See [file-size failure recovery](docs/recovery.md#recover-a-known-failed-official-cli-attempt) for the launch conditions and qualification limits.
-
-After a known, drained fourth official-CLI failure, a native factory administrator can review [one final provider allowance](docs/recovery.md#review-the-final-allowance-in-studio) in the run's Plan tab. The wizard reviews the selected current CLI and source, records the administrator's mitigation attestation and reserves one fifth dispatch. The allowance is spent at reservation, even if its response is lost or dispatch never starts. Legacy recovery keeps its four-attempt limit; the final allowance cannot authorize a sixth dispatch or establish product QA.
-
-A recovery can also use [explicitly granted configured checks](docs/recovery.md#grant-configured-checks-for-the-final-recovery). Review the retained commands, runner and budget, grant access for one identified recovery, then reserve that final attempt separately. The scoped tool cannot submit arbitrary commands; successful interactive checks remain separate from independent final verification. SDK and CLI operators use the same grant and receipt contracts.
-
-In Studio, a run's Plan tab can review an original queued command for explicit continuation after one controller replacement. The original Factory worker must still be waiting. The browser retains the request before submission and reads its exact receipt after a lost response. Follow the [continuation guide](docs/sandbox.md#continue-one-queued-command-after-a-controller-restart) for the admission and recovery limits.
-
-Open a paused run’s **Agent questions** tab to review the agent’s question and context. Choose a suggested answer or use the Markdown editor, review it, then send it under a retained response identity. Readback confirms the recorded answer after reload or a lost response; answering leaves the run paused until you resume it. Current project permissions and the authenticated replying user are checked separately from the recorded actor label. See [operator decisions](docs/agent-lifecycle.md#answer-an-agents-question).
-
-Implementation handoffs retain bounded, authenticated question-and-answer history from the execution journal. Earlier diagnostics remain labeled as historical context; they do not grant new execution authority or establish that a check passed. The [handoff architecture](docs/architecture.md#retained-worker-context-across-handoffs) describes the source, size limits and current-access checks.
-
-Typed verification requests can let forge run the admitted checks through its authorized runner and record factory-attributed results. New runs default to one bounded verification continuation, separately from their repair budget; product decisions and credentials remain manual. Unknown effects stay held without replay. See [factory verification recovery](docs/recovery.md#inspect-a-factory-verification-handoff) for limits and explicit adoption of older paused requests. Authorized source-control conversations also receive milestone feedback from recorded run facts, with checks and publication reported separately.
-
-A factory administrator can review source-control delegation under **Project access**: choose an account asserted by a signed delivery, an existing Forge user, repository components and allowed requests. The wizard retains one request before saving and confirms its exact receipt. Agent questions display the historical delegation behind a mapped answer, while each new action still needs current permissions and application access. This grants no project membership or personal OAuth login. Follow the [delegation walkthrough](docs/console-tour.md#10-delegate-specific-source-control-requests).
-
-SDK, CLI and MCP clients can inspect those original-command candidates through the same authenticated read. Inspection never creates a continuation request or dispatches work. API-only installations report local admission and execution separately in health and metrics; accepting a request does not establish that a remote worker is ready.
-
-For a local factory without an incoming webhook route, an administrator can enable [GitHub App issue polling](docs/scm.md#use-github-issue-comments-from-a-local-factory) and map your account to current project read access. Ask in the issue: `@forge, how is this going?` or `@forge, ¿qué debería ocurrir si cambia el responsable?` The selected communication model answers from the ticket's verified context. Ambiguous work receives a question with readable labels, rather than an assumed run.
-
-When Forge has published a confirmed pending question to you, reply naturally in the same thread: `Sales reviews proposals. Operations may reassign them.` You need no mention, command or internal identifier. The retained question and answer survive a process restart; an execution grant expiring does not discard the conversation. Worker answers and requests such as `Continue the same task` still require fresh, separate effect authority. Unknown outcomes stay held without replay. Product requests such as `@forge, build a CRM with contact imports` are handed to the native product architect under a separate current model allowance; they do not approve a product or start execution. See [natural ticket conversations](docs/scm.md#ask-about-the-current-ticket) for scope, limits and the separate legacy command reference.
-
-For a new product, a separately consented signed GitHub conversation can use `/forge intake` to register its first project and functional definition. This requires current native administrator authority and the repository's explicit intake consent. Registration does not start implementation. Follow [repository intake](docs/repository-workflow.md#register-a-first-product-from-github) for the contract; local issue polling supports status, answers and separately consented clarification continuation on existing runs.
-
-Use the [run evidence reader](docs/run-evidence.md) to inspect or export a consistent cut of activity, tasks, WAL and tool results. A separately granted implementation agent can read bounded evidence from its own run. Reading evidence never replays a command or clears an unresolved outcome. Optional [Bridge original-request recovery](docs/bridge.md) also retains the first submission and its pending or terminal observations; it keeps the graph-continuation hold until a supported checkpoint exists.
-
-Checkpoint recovery uses a lossless shared-history codec while retaining version-1 and version-2 snapshot readability. The encoded snapshot remains limited to 192 KiB, the decoded record to 8 MiB, and per-run checkpoint/consume retention to 4 MiB; chunked overflow storage remains pending. See the [0.2.44 release notes](docs/release-notes.md#0244) for exact-wire, credential and no-replay guarantees. Backend 0.2.44 keeps the unchanged Studio 0.2.42 assets and captures.
-
-For a product spanning components, open **Product projects > Campaign reports** to read saved task, check and source evidence. Evidence state is separate from recorded workflow status; unresolved operations prevent verified delivery. The [campaign guide](docs/project-campaigns.md#read-a-report-in-studio) explains unavailable counts, component references and the SDK, CLI and MCP entry points. Studio's [report-and-review wizard](docs/project-campaigns.md#save-and-recover-in-studio) can save the selected report under a retained request identity and read that same historical result later. Saved history retains its original evidence boundary; it does not refresh source control or approve delivery.
-
-After admitting a campaign, use Studio’s waves, milestones and review wizard to save [reporting criteria](docs/project-campaigns.md#define-reporting-milestones-and-waves). Select an exact saved report to inspect component and task-receipt progress against that plan. The SDK, CLI and factory MCP expose the same contracts. These criteria support post-admission reporting; execution-wave orchestration remains separate work.
-
-Administrators can explicitly configure a mutually authenticated local command controller with frozen execution profiles and project quotas. Its isolated containers receive sanitized component source and return bounded command receipts and artifacts. This adapter has local qualification on a trusted Factory host; browser pools, full coding-provider isolation, Kubernetes and multi-host placement remain separate work. Follow the [local pool setup](docs/sandbox.md#administrator-opt-in-local-command-pools) before selecting it.
-
-## Give agents scoped context and tools
-
-flycanon supplies cited project and framework context. Fresh managed installations require retrieval and enable automatic memory after final verification. Knowledge and memory use a separate `forge-<repository_id>` workspace for each repository; a product spanning several components does not automatically create one combined memory scope. Read [knowledge and memory](docs/knowledge.md) before indexing source or changing scope grants.
-
-Optional [structured analytics](docs/structured-knowledge.md) connects a project to an independently provisioned flyquery service. Administrators configure its scope through a three-step wizard; authorized readers explicitly fetch its catalog, table metadata or a known schema object. Install the analytics SDK extra first. This integration does not run SQL, provision the service or replace required flycanon knowledge and memory.
-
-**Knowledge > Learning records** shows saved outcomes, failed-check candidates and projection provenance for an authorized repository. The [learning walkthrough](docs/learning.md#review-saved-records-in-studio) explains record inspection, separate lookup eligibility checks, reviewed invalidation and verification of an existing indexed source, with exact-request recovery. Receipts retain the original actor, reason, request and journal event; Studio, SDK, CLI and MCP readback does not authorize replay when a write response is missing. A frozen same-run proposal cap can hold repeated coding repairs after actual QA; it preserves verification and the existing no-progress guard.
-
-Select [agent roles](docs/agent-roles.md), project policies and the configured runner capabilities. Firefly Agentic and bridge execution use bounded native file, search, edit, diff, command and browser tools. Official Codex and Claude Code follow their own CLI permissions; a role tool list is advisory for those providers. Browser checks use a fresh restricted container context, and internet search requires explicit Brave or Tavily provider configuration and an authorized credential. The optional `profile_python`, `trace_python` and `profile_php` tools require their explicit diagnostic and command grants and an isolated Docker runner. They report bounded cProfile output, line-hit counts or PHP runtime observations with execution receipts. Diagnostic results do not approve the work or authorize replay. See [native tools](docs/agent-tools.md) and [browser journeys](docs/browser-qa.md).
-
-Project policies can use the public [central policy catalog](https://github.com/fireflyframework/firefly-forge-policies). Teams can connect a separately installed [Firefly Agent Bridge](docs/bridge.md). Studio, the CLI, SDK and the factory's own MCP tools operate the authenticated application contracts; [agent integrations](docs/agent-integrations.md) explains those entry points.
-
-Repository-scoped [learning](docs/learning.md) binds exact questions to verified local outcomes and current applicability. Invalidated or expired evidence cannot supply a cached answer. Explicit flycanon projection retains one submission identity and preserves uncertain outcomes. Opt-in retrieval can read the verified projection of an exact eligible local record. Automatic discovery of other projected lessons, cross-run failure classification and sharing lessons between projects remain open.
-
-## Development
-
-Follow the [source-development setup](docs/installation.md#source-development), then install Chromium with `npx --prefix studio playwright install chromium` before the first browser gate. Set `FORGE_TEST_DATABASE_URL` to an isolated PostgreSQL test database and prepare an existing PHP 8.3+ CLI for the recipe fixtures with `make php-fixture-check`. `make check` runs Python tests, lint and types, Studio checks/tests/browser journeys/build, and the strict documentation build. `make docs-pages-check` also checks every built local link and exercises navigation, search and screenshots under the published repository path.
-
-Built-in model instructions and MCP descriptions live in versioned YAML resources and use Firefly Agentic's native template loader and registry. Follow [maintain model instructions](docs/prompt-templates.md) for variable contracts, source digests and golden tests.
-
-`make package` creates installable distributions with Studio included. Agent bridge source is maintained separately and is never included in forge distributions. See the [release notes](docs/release-notes.md) for recorded validation and remaining live-acceptance boundaries. A fixture walkthrough demonstrates presentation; it does not establish provider authentication, generated-product correctness or a successful external deployment.
-
-Apache 2.0 for code. Firefly names and generated brand assets retain their separate trademark and asset rights notices.
+Copyright 2026 Firefly Software Foundation. Code is licensed under [Apache 2.0](LICENSE). Firefly names and generated brand assets retain their separate trademark and asset-rights notices.
