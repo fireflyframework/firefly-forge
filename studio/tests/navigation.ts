@@ -34,12 +34,8 @@ export async function navigate(page: Page, name: string | RegExp) {
       name: "Connect factory",
       exact: true,
     });
-    if (await connection.isVisible()) {
-      await connection.click();
-      return;
-    }
     if (!(await page.locator(".sidebar-bottom .identity-trigger").count())) {
-      await navigate(page, "Factory");
+      if (!(await connection.isVisible())) await navigate(page, "Factory");
       await connection.click();
       return;
     }
