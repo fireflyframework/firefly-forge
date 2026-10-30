@@ -201,7 +201,10 @@ async def test_same_unit_candidate_changes_after_validation_deny_cached_return(c
         await lookup()
     assert changed
     # This adversarial writer joined the cached-read unit; denial rolls its write back.
-    assert (await ledger.records(record["envelope"]["context"]["repository_id"]))[0] == record
+    assert (await ledger.records(record["envelope"]["context"]["repository_id"]))[0] == {
+        **record,
+        "knowledge_provider": "koinon",
+    }
     await retained_history(cached_case)
 
 
