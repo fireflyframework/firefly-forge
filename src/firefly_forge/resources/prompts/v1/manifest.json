@@ -3005,6 +3005,62 @@
       "sha256": "55312f568fc3c39e055713df23d556c8c8920dd4916837b8180cc2ac172a949f",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "mcp/ingest_koinon_source",
+      "version": "1.0.0",
+      "path": "mcp/ingest_koinon_source.yaml",
+      "sha256": "b37f411964805587c125ad795eef9110078d2ea376186f6536619edc8e09b490",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/upload_koinon_document",
+      "version": "1.0.0",
+      "path": "mcp/upload_koinon_document.yaml",
+      "sha256": "faf114ac417aa93835e4cd4c31259153c14c0a0e43f8a89336162e6d69b46d8b",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_koinon_ingestion",
+      "version": "1.0.0",
+      "path": "mcp/get_koinon_ingestion.yaml",
+      "sha256": "06a64f6f8ddc664c2bc80e405c0df9fe52973768ab28cc85c2ed3b25a8af147c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_koinon_ingestion",
+      "version": "1.0.0",
+      "path": "mcp/observe_koinon_ingestion.yaml",
+      "sha256": "909c632b9b0f7d70befd1729f40f42d32c427cf46fd221a5449ce227d36fe6a1",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_knowledge_upload",
+      "version": "1.0.0",
+      "path": "mcp/get_knowledge_upload.yaml",
+      "sha256": "ae181c2fab4ab99985d52539593d626c20ede221aff3875c056f8248c319cbcd",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/reconcile_knowledge_upload",
+      "version": "1.0.0",
+      "path": "mcp/reconcile_knowledge_upload.yaml",
+      "sha256": "19f1d5772187805e7463fc417a7074d301f18a29a6bc19c117104201bcb9fda4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/remember_verified_run",
+      "version": "1.0.1",
+      "path": "mcp/remember_verified_run-v1.0.1.yaml",
+      "sha256": "0ed3dfa5b2f8deb878735fffea466601ed86b073f699e767d6bab022ae43a1ea",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

@@ -250,7 +250,7 @@ class FrameworkSourceV1(StrictContract):
 
 
 class FrameworkSearchInput(StrictContract):
-    query: str = Field(min_length=1, max_length=2000)
+    query: str = Field(min_length=1, max_length=8000)
     corpus_ref: NativeID | None = None
     framework_version: str | None = None
 

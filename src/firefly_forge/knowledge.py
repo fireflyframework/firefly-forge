@@ -34,6 +34,7 @@ from pyfly.container import service
 from firefly_forge.agentic_runtime import WorkspaceTools
 from firefly_forge.configuration import ConfigurationStore, redact_secrets, validate_endpoint
 from firefly_forge.journal import digest
+from firefly_forge.knowledge_ingestion import KoinonIngestion, KoinonSourceInput
 from firefly_forge.knowledge_platform import KoinonKnowledge, KoinonKnowledgeSettings, KoinonSqlInput
 from firefly_forge.knowledge_queries import KnowledgeQueries
 from firefly_forge.process import checked
@@ -641,10 +642,8 @@ class KnowledgeManager:
         if self.engine is None:
             raise ValueError("Verified source indexing requires the factory engine")
         run = await self.store.get_run(identifier)
-        if self.settings().get("provider") == "koinon":
-            raise ValueError(
-                "Koinon source ingestion requires a versioned ingestion workflow; legacy writes are not used"
-            )
+        if self.settings(run).get("provider") == "koinon":
+            return await KoinonIngestion(self).index(run, paths)
         workspace = await self.engine.validated_workspace(identifier)
         settings = self.settings()
         if not settings["enabled"]:
@@ -730,15 +729,25 @@ class KnowledgeManager:
         await self.store.update(identifier, knowledge_sources=sources)
         return {"sources": sources, "workspace_id": scope}
 
+    async def ingest_source(self, run_id: str, body: KoinonSourceInput) -> dict[str, Any]:
+        return await KoinonIngestion(self).source(await self.store.get_run(run_id), body)
+
+    async def ingestion_status(self, run_id: str, kind: Any, request_id: str) -> dict[str, Any]:
+        if kind not in {"source", "memory"}:
+            raise ValueError("Choose a source or memory operation")
+        return await KoinonIngestion(self).status(await self.store.get_run(run_id), kind, request_id)
+
+    async def observe_ingestion(self, run_id: str, kind: Any, request_id: str, remote_id: str) -> dict[str, Any]:
+        if kind not in {"source", "memory"}:
+            raise ValueError("Choose a source or memory operation")
+        return await KoinonIngestion(self).observe(await self.store.get_run(run_id), kind, request_id, remote_id)
+
     async def remember(self, run: dict[str, Any], *, automatic: bool = False) -> dict[str, Any]:
         await self._assert_ownership()
         run = await self.store.get_run(run["id"])
         settings = self.settings(run) if automatic else self.settings()
         if settings.get("provider") == "koinon":
-            raise ValueError(
-                "Koinon external-proposal memory requires the versioned intent and "
-                "confirmation workflow; legacy writes are not used"
-            )
+            return await KoinonIngestion(self).remember(run, automatic=automatic)
         if automatic and not settings["auto_memory"]:
             return {"skipped": True}
         if run.get("knowledge_memory"):

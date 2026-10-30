@@ -375,6 +375,11 @@ class FrameworkKnowledgeWorker:
         ref = data["public"]["corpus"]["corpus_ref"]
         framework = data["public"]["framework"]
         settings = self.manager.knowledge.settings({"knowledge_snapshot": data["knowledge_snapshot"]})
+        if settings.get("provider") == "koinon":
+            from firefly_forge.framework_knowledge_koinon import submit
+
+            await submit(self, data, observe_only=observe_only)
+            return
         async with self.manager.knowledge.client(settings, data["public"]["corpus"]["workspace_id"]) as client:
             if not observe_only:
                 await self._workspace(client, data)
@@ -551,6 +556,21 @@ class FrameworkKnowledgeWorker:
         manifest_provenance = {"collector_revision": revision, "policy_digest": data["policy_digest"]}
         if revision != 1:
             manifest.update(json.dumps(manifest_provenance, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+        settings = self.manager.knowledge.settings({"knowledge_snapshot": data["knowledge_snapshot"]})
+        if settings.get("provider") == "koinon":
+            async for part in self._each("part", ref):
+                if part["state"] == "ready":
+                    receipt = part.get("koinon_receipt")
+                    if not receipt or receipt["version_state"] != "recorded":
+                        raise ValueError("Native official readiness requires recorded source versions")
+                    manifest.update(
+                        json.dumps(
+                            {"part_ref": part["part_ref"], "koinon_receipt": receipt},
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ).encode()
+                        + b"\n"
+                    )
         excluded_by_source: dict[str, list[Data]] = {}
         if revision >= 3:
             async for part in self._each("part", ref):

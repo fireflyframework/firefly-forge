@@ -12,6 +12,12 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "ingest_koinon_source",
+    "upload_koinon_document",
+    "get_koinon_ingestion",
+    "observe_koinon_ingestion",
+    "get_knowledge_upload",
+    "reconcile_knowledge_upload",
     "get_knowledge_configuration",
     "configure_koinon_knowledge",
     "check_koinon_knowledge",
@@ -71,7 +77,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 192
+    assert len(tools) == 198
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
@@ -103,6 +109,12 @@ async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extension
     assert search["description"] == "Retrieve cited project/framework references in the repository's flycanon scopes."
     search["description"] = (
         "Retrieve cited references through the repository’s configured knowledge platform and current mapped scopes."
+    )
+    memory = next(tool for tool in expected["tools"] if tool["name"] == "remember_verified_run")
+    assert memory["description"] == "Save verified run evidence as cited, retrievable project memory."
+    memory["description"] = (
+        "Retain verified run evidence through its configured knowledge workflow; "
+        "Koinon stages an external proposal for explicit private review."
     )
     assert json.loads(actual) == expected
 
@@ -169,7 +181,7 @@ def test_mcp_descriptions_have_one_packaged_source():
                     func=ast.Name(id="prompt_text", ctx=ast.Load()),
                     args=[ast.Constant("mcp/" + node.name)],
                     keywords=[ast.keyword(arg="version", value=ast.Constant("1.0.1"))]
-                    if node.name == "search_project_knowledge"
+                    if node.name in {"search_project_knowledge", "remember_verified_run"}
                     else [],
                 )
             )

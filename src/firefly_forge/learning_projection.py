@@ -321,6 +321,11 @@ class LearningProjection:
             if row.state != "pending":
                 raise ValueError("Learning projection requires explicit reconciliation; it cannot be replayed")
             settings = self.knowledge.settings()
+            if settings.get("provider") == "koinon":
+                raise ValueError(
+                    "Native learned-outcome cache projection requires a versioned receipt migration; "
+                    "use the separate external-proposal memory workflow without relabeling legacy cache evidence"
+                )
             if not settings["enabled"] or not settings["api_key"]:
                 raise ValueError("Learning projection requires enabled scoped knowledge and a platform API key")
             target = snapshot_knowledge(self.store.configuration)
