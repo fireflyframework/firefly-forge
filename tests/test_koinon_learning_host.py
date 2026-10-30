@@ -124,6 +124,7 @@ async def learning_case(sql_manager, monkeypatch):
 
     async def handler(request):
         path = request.url.path
+        state.setdefault("http_requests", []).append(path)
         if path.endswith("/context"):
             value = context()
             value["workspace_permissions"]["workspace"] += ["ingest:write", "catalog:write"]
@@ -575,3 +576,12 @@ async def test_retained_negative_hint_cannot_gain_a_fabricated_cause_or_skip_per
     selected["may_skip_independent_checks"] = True
     with pytest.raises(ValueError, match="changed|applicable|hint"):
         await c.service.retain(c.run["id"], context, selected)
+
+
+async def test_unknown_origin_binding_cannot_borrow_current_native_configuration(learning_case):
+    c = learning_case
+    c.run.pop("knowledge_snapshot")
+    with pytest.raises(ValueError, match="frozen|binding"):
+        await c.service.submit(c.record.id.hex, request_id="4" * 32)
+    assert c.state.get("http_requests", []) == []
+    assert c.state["projection"].state == "pending"

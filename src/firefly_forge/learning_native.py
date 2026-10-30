@@ -120,6 +120,10 @@ class NativeLearningProjection:
             record, row = await self._locked(record_id)
             payload = await self.evidence(record)
             run = await self.store.get_run(record.run_id.hex)
+            if not isinstance(run.get("knowledge_snapshot"), dict) or not run["knowledge_snapshot"].get(
+                "binding_sha256"
+            ):
+                raise ValueError("Native operational evidence requires an explicit frozen origin binding")
             settings = self.knowledge.settings(run)
             if settings.get("provider") != "koinon":
                 raise ValueError("Native operational evidence requires the originating run's frozen Koinon binding")
