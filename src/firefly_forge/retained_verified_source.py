@@ -203,3 +203,169 @@ def validate_retained_source_receipt(proof: RetainedVerifiedSourceV1, terminal: 
     ):
         raise ValueError("Retained source receipt changed its accepted blocker or verified continuation")
     validate_native_receipt(previous, entries)
+
+
+@dataclass(frozen=True)
+class PreparedVerifiedResume:
+    proof: Data
+    _admit: Callable[[], Awaitable[None]]
+    _source_current: Callable[[], Awaitable[None]]
+
+    async def admit(self) -> None:
+        await self._admit()
+
+    async def source_current(self) -> None:
+        await self._source_current()
+
+
+async def prepare_verified_resume(store: Any, journal: Any, run: Data) -> PreparedVerifiedResume:
+    """Requeue only the untouched native admission after passed QA, never a dispatched attempt."""
+    from pyfly.data.relational.sqlalchemy import LockMode
+
+    from firefly_forge import invalid_read_continuities
+    from firefly_forge.completed_final_epoch import validated_completed_final
+    from firefly_forge.invalid_read_lease import policy_snapshot
+    from firefly_forge.verification_dependencies import prepare_public_source_cut
+
+    _outside_unit()
+    completed = await validated_completed_final(journal, run)
+    if completed is None:
+        raise ValueError("Failed resume requires its completed native final action")
+    p = completed.record["payload"]
+    profile = invalid_read_continuities.current_profile_seal()
+    state = run.get("verification_handoff") or {}
+    if (
+        run.get("status") != "failed"
+        or p["candidate"]["outcome"] != "blocked"
+        or p["candidate"]["followup_kind"] != "verification"
+        or state.get("status") != "completed"
+        or type(state.get("failed_commands")) is not int
+        or state["failed_commands"] != 0
+        or type(run.get("attempt")) is not int
+        or run["attempt"] != p["candidate"]["attempt"]
+        or type(run.get("implementation_rounds")) is not int
+        or run["implementation_rounds"] != run["attempt"]
+        or run.get("implementation_pending") is not False
+        or not _same(run.get("usage"), p["run"].get("usage"))
+        or run.get("publication_status") == "publishing"
+    ):
+        raise ValueError("Failed resume requires unchanged spent progress after passed native verification")
+    actor = CURRENT_PRINCIPAL.get()
+    if actor is None or actor.authentication_method not in {"local_bootstrap", "oidc_session", "oidc_bearer"}:
+        raise AccessDenied("An authenticated native operator must explicitly resume this failed admission")
+    await store.assert_ownership()
+    ownership = store.execution_ownership_token
+    expected = copy.deepcopy(run)
+
+    async def cut() -> tuple[Data, Data, list[Data], Data, Data, list[Data]]:
+        requests = store.execution_requests
+        native, task, entries = await requests.invalid_read_continuities.recoveries._native(run["id"])
+        rows = await journal.sandboxes.for_run(identifier(run["id"]))
+        values = {row.id.hex: _canonical(row, entries, run["id"]) for row in rows}
+        custody = validate_completed_handoff(native, entries, rows, values, before_dispatch=True)
+        intent = next(e["payload"] for e in entries if e["digest"] == custody["handoff_intent_digest"])
+        if (
+            task["status"] != "queued"
+            or type(task["attempt"]) is not int
+            or task["attempt"] != native["attempt"] + 1
+            or task.get("idempotency_key") != p["task"]["idempotency_key"]
+            or intent["parent_attempt"] != native["attempt"]
+            or intent["parent_round"] != native["implementation_rounds"]
+            or completed.terminal["sequence"]
+            >= next(e["sequence"] for e in entries if e["digest"] == custody["handoff_intent_digest"])
+            or any(row.parent_attempt > native["attempt"] for row in rows)
+            or any(row.parent_attempt == native["attempt"] and row.ordinal > intent["ordinals"][-1] for row in rows)
+        ):
+            raise ValueError("Failed resume lost its untouched queued task or known command boundary")
+        request_row = await requests.records.find_by_id(
+            identifier(completed.ticket["id"]), lock=LockMode.PESSIMISTIC_WRITE
+        )
+        if request_row is None or request_row.status != "completed" or request_row.run_id.hex != run["id"]:
+            raise ValueError("Failed resume completed request columns changed")
+        ticket = await requests.get(completed.ticket["id"])
+        events = await read_recovery_events(requests, ticket["id"], maximum=LIMITS["journal"])
+        if not _same(ticket, completed.ticket):
+            raise ValueError("Failed resume completed ticket changed")
+        from firefly_forge.git_deliveries import GitDeliveries
+
+        GitDeliveries._remote_state(entries)
+        confirmed = {r["request_id"] for r in GitDeliveries._records(entries)}
+        if any(e["kind"] == "git_delivery_intent" and e["payload"]["request_id"] not in confirmed for e in entries):
+            raise ValueError("Failed resume cannot cross an unresolved Git effect")
+        if any(t.status == "running" for t in await journal.tasks.find_for_run(identifier(run["id"]))):
+            raise ValueError("Failed resume cannot replace an active task")
+        return native, task, entries, values, ticket, events
+
+    async with store._unit():
+        expected_cut = copy.deepcopy(await cut())
+    if not _same(expected_cut[0], expected):
+        raise ValueError("Failed resume changed before its native cut")
+    entries = expected_cut[2]
+    handoff = next(
+        e for e in entries if e["kind"] == "verification_handoff_intent" and e["payload"].get("id") == state["id"]
+    )
+    intent = handoff["payload"]
+    workspace = Path(intent["workspace"])
+
+    async def actor_current() -> None:
+        await store.assert_ownership()
+        if CURRENT_PRINCIPAL.get() != actor or store.execution_ownership_token is not ownership:
+            raise AccessDenied("Failed resume operator or native execution owner changed")
+        if not _same(invalid_read_continuities.current_profile_seal(), profile) or not _same(
+            policy_snapshot(store.configuration), p["lease_policy"]
+        ):
+            raise ValueError("Failed resume current qualified profile or continuity policy changed")
+        await ProjectAccess(store).authorize_execution(expected)
+        await ProjectAccess(store).authorize_actor(
+            ProjectAccess.actor_snapshot(actor), expected.get("project_id"), "execute"
+        )
+        await store.assert_campaign_current(expected)
+        check_verification_authority(store, expected, intent)
+
+    async def authority() -> None:
+        await actor_current()
+        async with store._unit():
+            if not _same(await cut(), expected_cut):
+                raise ValueError("Failed resume native run, task or completed command custody changed")
+
+    async def current() -> None:
+        await completed.current()
+        await authority()
+
+    await current()
+    catalog = verification_catalog_root(store.path, run["id"])
+    metadata = await prepare_public_source_cut(workspace, catalog, journal.source_catalog_budget)
+    source = await prepare_verification_source(
+        workspace, catalog, budget=journal.source_catalog_budget, assert_current=current
+    )
+    if source.source_digest != intent["source_digest"]:
+        raise ValueError("Failed resume source changed after passed native verification")
+    await source.revalidate(assert_current=current)
+
+    async def source_current() -> None:
+        source.fence()
+        await metadata.assert_current()
+        await actor_current()
+        async with store._unit():
+            if not _same(await store.execution_requests.get(completed.ticket["id"]), expected_cut[4]) or not _same(
+                await read_recovery_events(store.execution_requests, completed.ticket["id"], maximum=LIMITS["journal"]),
+                expected_cut[5],
+            ):
+                raise ValueError("Failed resume completed native action changed before commit")
+
+    async def admit() -> None:
+        await authority()
+        await source_current()
+
+    await admit()
+    proof = {
+        "version": 1,
+        "final_outcome_digest": completed.record["digest"],
+        "terminal_receipt_digest": completed.terminal["digest"],
+        "verification_handoff_digest": handoff["digest"],
+        "pre_dispatch_resume_digest": entries[-1]["digest"],
+        "failed_run_digest": digest(expected),
+        "task_digest": digest(expected_cut[1]),
+        "source_digest": source.source_digest,
+    }
+    return PreparedVerifiedResume(proof, admit, source_current)

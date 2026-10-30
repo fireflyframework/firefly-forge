@@ -12,15 +12,21 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+import httpx
 from flycanon_sdk import CanonAPIError, CanonError, SourceMetadata, SubmitSourceJsonPayload  # type: ignore[import-untyped]
-from pydantic import BaseModel, ConfigDict, Field
+from koinon_sdk import ApiError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pyfly.container import rest_controller
 from pyfly.data.relational.sqlalchemy import LockMode
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, request_mapping
 from sqlalchemy import text
 
+from firefly_forge.journal import digest as native_digest
 from firefly_forge.knowledge import KnowledgeManager, project_workspace, snapshot_knowledge
+from firefly_forge.knowledge_ingestion import KoinonSourceInput
+from firefly_forge.knowledge_native_sources import observe_source
 from firefly_forge.knowledge_persistence import ForgeKnowledgeUploadEntity, ForgeKnowledgeUploadRepository
+from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.secrets import redact_environment
 from firefly_forge.store import Store, identifier, now
 
@@ -92,11 +98,224 @@ class KnowledgeUploads:
             await self.records.save(row)
             return self.public(data)
 
+    async def native_upload(
+        self, repository_id: str, body: KoinonSourceInput, *, provenance: Data | None = None
+    ) -> Data:
+        await self.store.repository(repository_id)
+        settings = self.knowledge.settings()
+        if settings.get("provider") != "koinon":
+            raise ValueError("Use the retained legacy admission route for this binding")
+        platform = self.knowledge.platform
+        scope = platform.scope(settings, repository_id)
+        if scope.collection_id is None:
+            raise ValueError("Map a Koinon collection before project document ingestion")
+        verify = await platform.authority(repository_id, settings, permission="edit")
+        content = body.content()
+        provenance = copy.deepcopy(provenance or {})
+        if provenance:
+            if set(provenance) != {"analysis_id", "analysis_digest", "project_id", "project_digest", "component_ids"}:
+                raise ValueError("Use exact server-derived reviewed source provenance")
+            for key, size in (("analysis_id", 32), ("analysis_digest", 64), ("project_id", 32), ("project_digest", 64)):
+                value = provenance[key]
+                if (
+                    not isinstance(value, str)
+                    or len(value) != size
+                    or any(char not in "0123456789abcdef" for char in value)
+                ):
+                    raise ValueError("Reviewed source provenance has an invalid identity")
+            if not isinstance(provenance["component_ids"], list) or any(
+                not isinstance(value, str) or len(value) != 32 or any(char not in "0123456789abcdef" for char in value)
+                for value in provenance["component_ids"]
+            ):
+                raise ValueError("Reviewed source provenance has invalid component identities")
+        if any(
+            self.redact(value) != value or self.knowledge.safe(value, settings) != value
+            for value in (body.filename, content.decode(), json.dumps(provenance))
+        ):
+            raise ValueError("Remove registered credentials before project source ingestion")
+        async with platform.client(settings) as client:
+            await platform.grant(client, settings, scope, "ingest:write")
+            await platform.bind(client, settings, scope)
+            await verify()
+        content_sha = hashlib.sha256(content).hexdigest()
+        principal = CURRENT_PRINCIPAL.get()
+        if principal is None:
+            raise AccessDenied("Project source ingestion requires a current authenticated identity")
+        actor = ProjectAccess.actor_snapshot(principal)
+        bound = {
+            "filename": body.filename,
+            "content_sha256": content_sha,
+            "binding_sha256": native_digest(settings),
+            "scope": scope.model_dump(),
+            "provenance": provenance,
+        }
+        fingerprint = native_digest(bound)
+        await self.knowledge._assert_ownership()
+        async with self.store._unit() as session:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {"key": "forge:koinon-upload:" + repository_id + fingerprint},
+            )
+            original = await self.records.find_by_id(identifier(body.request_id), lock=LockMode.PESSIMISTIC_WRITE)
+            if original is not None:
+                if (
+                    original.repository_id != identifier(repository_id)
+                    or original.digest != fingerprint
+                    or original.data.get("actor") != actor
+                ):
+                    raise ValueError("Project source request identity already belongs to another input or actor")
+                await verify()
+                return self.public(original.data)
+            existing = await self.records.find_digest(identifier(repository_id), fingerprint)
+            if existing is not None:
+                await verify()
+                return self.public(existing.data)
+            data = {
+                "version": 2,
+                "provider": "koinon",
+                "id": body.request_id,
+                "repository_id": repository_id,
+                "filename": body.filename,
+                "title": body.filename,
+                "content_sha256": content_sha,
+                "content_bytes": len(content),
+                "workspace_id": scope.workspace_id,
+                "actor": actor,
+                "status": "submitting",
+                "created_at": now(),
+                "updated_at": now(),
+                "history": [{"status": "submitting", "at": now()}],
+                "knowledge_snapshot": snapshot_knowledge(self.store.configuration),
+                "provenance": provenance,
+            }
+            await self.records.save(
+                ForgeKnowledgeUploadEntity(
+                    id=identifier(body.request_id),
+                    repository_id=identifier(repository_id),
+                    digest=fingerprint,
+                    data=data,
+                )
+            )
+        self.active.add(body.request_id)
+        try:
+            async with platform.client(settings) as client:
+                await platform.grant(client, settings, scope, "ingest:write")
+                await platform.bind(client, settings, scope)
+                await verify()
+                result = await client.upload(
+                    settings["tenant_id"],
+                    filename=body.filename,
+                    content=content,
+                    parent_id=scope.collection_id,
+                    workspace_id=scope.workspace_id,
+                    project_id=scope.project_id,
+                    mode="document",
+                )
+                platform.scoped(result.source, settings, scope)
+                if (
+                    result.source.kind != "source"
+                    or result.source.parent_id != scope.collection_id
+                    or result.source.name != body.filename
+                    or result.source.metadata.get("sha256") != content_sha
+                ):
+                    raise ValueError("Native project source receipt differs from its admitted content")
+                for asset in result.assets:
+                    platform.scoped(asset, settings, scope)
+                    if asset.parent_id != result.source.id or asset.kind != "document":
+                        raise ValueError("Native project asset differs from its source")
+                evidence = {
+                    "source_id": result.source.id,
+                    "source_status": result.source.status,
+                    "asset_ids": [asset.id for asset in result.assets],
+                    "creation_causality": "observed_upload_response",
+                    "content_sha256": content_sha,
+                    "origin": "external_proposal",
+                    "version_state": "not_recorded",
+                }
+                if self.knowledge.safe(json.dumps(evidence), settings) != json.dumps(evidence):
+                    raise ValueError("Native source identity contains a registered credential")
+                saved = await self._change(
+                    body.request_id,
+                    status="submitted",
+                    source_id=result.source.id,
+                    source_status=result.source.status,
+                    native_receipt=evidence,
+                )
+                await platform.grant(client, settings, scope, "ingest:write")
+                await verify()
+                return saved
+        except (ApiError, httpx.HTTPError, ValidationError, ValueError):
+            return await self._change(
+                body.request_id,
+                status="needs_reconciliation",
+                detail="Native source outcome is uncertain; observe exact scoped content without resending",
+            )
+        finally:
+            self.active.discard(body.request_id)
+
+    async def native_observation(self, repository_id: str, data: Data, source_id: str, *, write: bool) -> Data:
+        try:
+            return await self._native_observation(repository_id, data, source_id, write=write)
+        except (ApiError, httpx.HTTPError, ValidationError):
+            raise ValueError(
+                "Native project source observation is unavailable; retain its original admission"
+            ) from None
+
+    async def _native_observation(self, repository_id: str, data: Data, source_id: str, *, write: bool) -> Data:
+        settings = self.knowledge.settings(data)
+        platform = self.knowledge.platform
+        scope = platform.scope(settings, repository_id)
+        verify = await platform.authority(repository_id, settings, permission="edit" if write else "read")
+        if data.get("source_id") and data["source_id"] != source_id:
+            raise ValueError("Read back the original native source identity")
+        async with platform.client(settings) as client:
+            await platform.grant(client, settings, scope, "catalog:read")
+            await platform.grant(client, settings, scope, "knowledge:search")
+            evidence = await observe_source(
+                platform,
+                client,
+                settings,
+                scope,
+                source_id,
+                data["filename"],
+                data["content_sha256"],
+                verify,
+                (data.get("native_receipt") or {}).get("asset_ids"),
+            )
+            if self.knowledge.safe(json.dumps(evidence), settings) != json.dumps(evidence):
+                raise ValueError("Native source identity contains a registered credential")
+            await platform.grant(client, settings, scope, "knowledge:search")
+            await verify()
+        if write:
+            await self.knowledge._assert_ownership()
+            principal = CURRENT_PRINCIPAL.get()
+            if principal is not None:
+                evidence["observer"] = ProjectAccess.actor_snapshot(principal)
+            saved = await self._change(
+                data["id"],
+                status="submitted",
+                source_id=source_id,
+                source_status=evidence["source_status"],
+                native_receipt=evidence,
+            )
+            await verify()
+            return saved
+        return {**self.public(data), "native_observation": evidence}
+
     async def upload(
         self, repository_id: str, request: KnowledgeUploadInput, *, provenance: Data | None = None
     ) -> Data:
         await self.store.repository(repository_id)
         settings = self.knowledge.settings()
+        if settings.get("provider") == "koinon":
+            request.content()
+            return await self.native_upload(
+                repository_id,
+                KoinonSourceInput(
+                    request_id=uuid.uuid4().hex, filename=request.filename, content_base64=request.content_base64
+                ),
+                provenance=provenance,
+            )
         if not settings["enabled"] or not settings["api_key"]:
             raise ValueError("Project document uploads require enabled flycanon with a platform API key")
         content = request.content()
@@ -215,6 +434,12 @@ class KnowledgeUploads:
             if row is None or row.repository_id != identifier(repository_id):
                 raise KeyError("Knowledge admission not found in this project")
             data = copy.deepcopy(row.data)
+        if data.get("provider") == "koinon":
+            return (
+                await self.native_observation(repository_id, data, data["source_id"], write=False)
+                if data.get("source_id")
+                else self.public(data)
+            )
         if data.get("source_id"):
             settings = self.knowledge.settings(data)
             try:
@@ -236,6 +461,10 @@ class KnowledgeUploads:
             if row is None or row.repository_id != identifier(repository_id):
                 raise KeyError("Knowledge admission not found in this project")
             data = copy.deepcopy(row.data)
+        if data.get("provider") == "koinon":
+            if upload_id in self.active:
+                raise ValueError("Wait for the original native upload before readback")
+            return await self.native_observation(repository_id, data, request.source_id, write=True)
         if data["status"] not in {"submitting", "needs_reconciliation"} or upload_id in self.active:
             raise ValueError("Reconcile only interrupted admissions after their active request ends")
         settings = self.knowledge.settings(data)
@@ -266,6 +495,10 @@ class KnowledgeUploadsController:
     @post_mapping("/uploads", status_code=202)
     async def upload(self, repository_id: PathVar[str], body: Body[KnowledgeUploadInput]) -> Data:
         return await self.manager.upload(repository_id, body)
+
+    @post_mapping("/koinon/uploads", status_code=202)
+    async def native_upload(self, repository_id: PathVar[str], body: Body[KoinonSourceInput]) -> Data:
+        return await self.manager.native_upload(repository_id, body)
 
     @get_mapping("/uploads/{id}")
     async def admission(self, repository_id: PathVar[str], id: PathVar[str]) -> Data:

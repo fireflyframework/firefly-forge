@@ -24,6 +24,7 @@ from firefly_forge.framework_knowledge_models import (
     FrameworkSearchInput,
 )
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
+from firefly_forge.knowledge_ingestion import KoinonSourceInput
 from firefly_forge.knowledge_platform import KoinonKnowledgeSettings, KoinonSqlInput
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
@@ -54,6 +55,7 @@ from firefly_forge.user_administration import (
 # Defer native validation to the SDK so argument errors cannot reflect uploaded bytes.
 KoinonSettingsRequest = SkipValidation[KoinonKnowledgeSettings]
 KoinonSqlRequest = SkipValidation[KoinonSqlInput]
+KoinonSourceRequest = SkipValidation[KoinonSourceInput]
 AttachmentUploadRequest = Annotated[Any, WithJsonSchema(AttachmentInput.model_json_schema())]
 EligibleUserQuery = Annotated[str, WithJsonSchema({"type": "string", "minLength": 3, "maxLength": 120})]
 MembershipRequest = Annotated[Any, WithJsonSchema(MembershipInput.model_json_schema())]
@@ -516,6 +518,84 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.knowledge_sql_request(run_id, request_id)
 
+    @server.tool(
+        description=prompt_text("mcp/ingest_koinon_source"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def ingest_koinon_source(run_id: RecoveryIdentifier, request: KoinonSourceRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.ingest_koinon_source(run_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/upload_koinon_document"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def upload_koinon_document(repository_id: RecoveryIdentifier, request: KoinonSourceRequest) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.upload_koinon_document(repository_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_koinon_ingestion"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_koinon_ingestion(
+        run_id: RecoveryIdentifier, kind: Literal["source", "memory"], request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.koinon_ingestion(run_id, kind, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/observe_koinon_ingestion"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def observe_koinon_ingestion(
+        run_id: RecoveryIdentifier, kind: Literal["source", "memory"], request_id: RecoveryIdentifier, remote_id: str
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.observe_koinon_ingestion(run_id, kind, request_id, remote_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_knowledge_upload"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def get_knowledge_upload(repository_id: RecoveryIdentifier, request_id: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.knowledge_upload(repository_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/reconcile_knowledge_upload"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def reconcile_knowledge_upload(
+        repository_id: RecoveryIdentifier, request_id: RecoveryIdentifier, source_id: str
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.reconcile_knowledge_upload(repository_id, request_id, source_id)
+
     @server.tool(description=prompt_text("mcp/search_project_knowledge", version="1.0.1"))
     def search_project_knowledge(repository_id: str, query: str) -> dict[str, Any]:
         from firefly_forge.cli import client
@@ -637,7 +717,7 @@ def create_server() -> MCPServer:
         with client() as connection:
             return connection.index_source(identifier, paths)
 
-    @server.tool(description=prompt_text("mcp/remember_verified_run"))
+    @server.tool(description=prompt_text("mcp/remember_verified_run", version="1.0.1"))
     def remember_verified_run(identifier: str) -> dict[str, Any]:
         from firefly_forge.cli import client
 

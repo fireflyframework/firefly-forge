@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/ingest_koinon_source
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Admit one explicit native source upload with its original request identity;
+  uncertain outcomes require scoped readback.
+required_variables: []
+metadata:
+  defaults: {}

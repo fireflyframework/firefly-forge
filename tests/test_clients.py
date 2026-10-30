@@ -30,6 +30,12 @@ def test_client_carries_authentication_and_validated_run():
 async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
+        "ingest_koinon_source",
+        "upload_koinon_document",
+        "get_koinon_ingestion",
+        "observe_koinon_ingestion",
+        "get_knowledge_upload",
+        "reconcile_knowledge_upload",
         "get_knowledge_configuration",
         "configure_koinon_knowledge",
         "check_koinon_knowledge",

@@ -244,12 +244,18 @@ class FrameworkKnowledge:
 
         public = corpus["public"]
         settings = self.knowledge.settings({"knowledge_snapshot": corpus["knowledge_snapshot"]})
+        if settings.get("provider") == "koinon":
+            from firefly_forge.framework_knowledge_koinon import search
+
+            return await search(self, corpus, body, guard, source_ids=source_ids, part_refs=part_refs)
         if not settings["enabled"] or not settings["api_key"]:
             raise ValueError("Version-isolated official knowledge requires its configured platform search authority")
         await guard()
         async with self.knowledge.client(settings, public["workspace_id"]) as client:
             result = await client.search(
-                body.query, top_k=settings["top_k"], **({"source_ids": source_ids} if source_ids is not None else {})
+                body.query[:2000],
+                top_k=settings["top_k"],
+                **({"source_ids": source_ids} if source_ids is not None else {}),
             )
             hits: list[Data] = []
             validated_sources: dict[str, Any] = {}
@@ -342,10 +348,10 @@ class FrameworkKnowledge:
 
         settings = self.knowledge.settings()
         if settings.get("provider") == "koinon":
-            raise ValueError(
-                "Koinon framework ingestion requires the versioned corpus migration workflow; "
-                "retained legacy corpora are not relabeled"
-            )
+            from firefly_forge.framework_knowledge_koinon import framework_scope
+
+            framework_scope(settings)
+            return snapshot_knowledge(self.store.configuration), digest(settings)
         if not settings["enabled"] or not settings["endpoint"] or not settings["api_key"]:
             raise ValueError("Initialize platform-authorized flycanon before importing official references")
         return snapshot_knowledge(self.store.configuration), digest(settings)
@@ -577,7 +583,11 @@ class FrameworkKnowledge:
             commit=release["commit"],
             manifest_sha256=None,
             license_sha256=release["license_sha256"],
-            workspace_id="ffw-" + selected + "-" + corpus_ref,
+            workspace_id=(
+                snapshot["framework_scope"]["workspace_id"]
+                if snapshot.get("provider") == "koinon"
+                else "ffw-" + selected + "-" + corpus_ref
+            ),
             state="queued",
         )
         public = dict(
@@ -1122,7 +1132,10 @@ class FrameworkKnowledge:
             await self.knowledge._assert_ownership()
             await self.assert_run_pin(run)
 
-        body = FrameworkSearchInput(query=query[:2000], corpus_ref=corpus["public"]["corpus_ref"])
+        native_settings = self.knowledge.settings({"knowledge_snapshot": corpus["knowledge_snapshot"]})
+        native = native_settings.get("provider") == "koinon"
+        body = FrameworkSearchInput(query=query[: 8000 if native else 2000], corpus_ref=corpus["public"]["corpus_ref"])
+        result_limit = native_settings["top_k"] if native else 2
         hits: list[Data] = []
         for kind in ("document", "example", "api"):
             cursor = None
@@ -1145,7 +1158,12 @@ class FrameworkKnowledge:
                         raise ValueError("Official retrieval source family differs from the native inventory")
                     best[hit["source_id"], hit["chunk_id"]] = hit
                 best = {
-                    key: hit for key, hit in sorted(best.items(), key=lambda item: item[1]["score"], reverse=True)[:2]
+                    key: hit
+                    for key, hit in sorted(
+                        best.items(),
+                        key=lambda item: item[1]["score"] if item[1]["score"] is not None else float("-inf"),
+                        reverse=True,
+                    )[:result_limit]
                 }
                 cursor = selected[-1][0]
             if not best:
