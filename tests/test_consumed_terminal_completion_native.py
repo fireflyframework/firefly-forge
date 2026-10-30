@@ -26,13 +26,43 @@ from firefly_forge.workspace_tools import WorkspaceTools
 pytest_plugins = ["test_invalid_read_continuity_native"]
 
 
-@pytest.mark.parametrize("interrupt", [False, True], ids=["accepted_cold_readback", "uncertain_after_charge"])
+@pytest.fixture(autouse=True)
+def selected_ignored_native_source(request, monkeypatch):
+    if (
+        getattr(request.node, "callspec", None) is None
+        or request.node.callspec.params.get("interrupt") != "receipt_source_race"
+    ):
+        return
+    import test_invalid_read_continuity_native as native_fixture
+    from test_checkpoint_source_identity_host import git
+
+    original = native_fixture.seed_restore_workspace
+
+    def seeded(workspace):
+        revision = original(workspace)
+        asset = workspace / "build" / "asset.txt"
+        asset.parent.mkdir()
+        asset.write_text("Selected ignored native source\n")
+        (workspace / ".git" / "info" / "exclude").write_text("/build/\n")
+        git(workspace, "add", "--force", "build/asset.txt")
+        return revision
+
+    monkeypatch.setattr(native_fixture, "seed_restore_workspace", seeded)
+
+
+@pytest.mark.parametrize(
+    "interrupt",
+    [False, True, "receipt_source_race"],
+    ids=["accepted_cold_readback", "uncertain_after_charge", "tracked_ignored_receipt_rollback"],
+)
 async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     native_continuity, monkeypatch, interrupt
 ):
     import firefly_forge.retained_verified_source as retained
 
     c = native_continuity
+    uncertain = interrupt is True
+    receipt_race = interrupt == "receipt_source_race"
     provider = c.engine.provider_factory("bridge")
     execute, consume, read = provider.execute, AgentCheckpoints._consume, WorkspaceTools.read_file
     source_prepare = retained.prepare_retained_source
@@ -137,16 +167,42 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     monkeypatch.setattr(WorkspaceTools, "write_file", forbidden)
     monkeypatch.setattr(c.engine, "_project_command", forbidden)
     monkeypatch.setattr(c.engine, "_independent_review", forbidden)
-    if interrupt:
+    native_receipt = c.engine._receipt
+    before_receipt = []
+    if receipt_race:
+        from firefly_forge.known_worker_completions import _entries
+        from firefly_forge.store import identifier
+
+        async def mutate_inside_receipt(*args, **kwargs):
+            before_receipt[:] = _entries(await c.journal.records.find_for_run(identifier(c.run_id)), c.run_id)
+            answer = await native_receipt(*args, **kwargs)
+            (c.engine.workspaces / c.run_id / "build" / "asset.txt").write_text("Changed during native receipt\n")
+            return answer
+
+        monkeypatch.setattr(c.engine, "_receipt", mutate_inside_receipt)
+    if uncertain:
         monkeypatch.setattr(c.journal, "worker_feedback", stop_after_charge)
+    from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+    closed = []
+    native_close = ConsumedTerminalExecution.close_snapshot
+
+    def close(execution):
+        native_close(execution)
+        closed.append(execution._snapshot)
+
+    monkeypatch.setattr(ConsumedTerminalExecution, "close_snapshot", close)
     token = CURRENT_PRINCIPAL.set(None)
     try:
         await asyncio.create_task(c.engine.execute_run(c.run_id))
     finally:
         CURRENT_PRINCIPAL.reset(token)
+    assert len(closed) == 1
+    if closed[0] is not None:
+        assert all(stream.closed for stream in closed[0].source_fence.streams)
     final = await c.store.get_run(c.run_id)
     entries = await c.journal.entries(c.run_id)
-    assert final["status"] == ("needs_reconciliation" if interrupt else "paused"), final.get("error")
+    assert final["status"] == ("needs_reconciliation" if uncertain or receipt_race else "paused"), final.get("error")
     assert final["attempt"] == final["implementation_rounds"] == task_attempt
     assert final["implementation_pending"] is False
     assert final["usage"]["runtime_report"] == report
@@ -163,6 +219,19 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
         e["kind"] == "agentic_tool_intent" for e in consumed
     )
     assert len(fresh_posts) == len(fresh_consumes) == 2
+    if receipt_race:
+        assert before_receipt
+        assert entries == before_receipt
+        assert final["consumed_terminal_recovery"]["state"] == "claimed"
+        async with c.store._unit():
+            task = await c.journal._task(c.run_id, "implement")
+            assert task.status == "running"
+        assert not [e for e in entries if e["kind"] == "receipt" and e["sequence"] > consumed[-1]["sequence"]]
+        # The already-durable feedback/known-output receipt survives; the new
+        # implementation receipt and accepted projection roll back together.
+        assert [e for e in entries if e["kind"] == "terminal_completion_receipt"] == [
+            e for e in before_receipt if e["kind"] == "terminal_completion_receipt"
+        ]
     reopened = Store(c.store.path, schema=c.store.schema, session_provider=c.store.session_provider)
     try:
         await reopened.initialize(existing_only=True)
@@ -173,7 +242,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
             repository._bind_transaction_managers(registry)
         cold = KnownWorkerCompletions(reopened, cold_journal)
         observed = await cold.get(c.run_id, action)
-        assert observed["state"] == ("claimed" if interrupt else "accepted")
+        assert observed["state"] == ("claimed" if uncertain or receipt_race else "accepted")
         assert await cold.request(c.run_id, action, body) == observed
     finally:
         await reopened.close()
@@ -182,7 +251,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     assert await c.journal.entries(c.run_id) == entries
     assert len(fresh_posts) == 2
 
-    if not interrupt:
+    if not uncertain and not receipt_race:
         await c.journal.resume(c.run_id)
         checkpoints = []
 
