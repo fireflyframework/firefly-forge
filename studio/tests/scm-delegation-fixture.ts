@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import packet from "./scm-delegation-contract-fixture.json" with { type: "json" };
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectSignedIn } from "./navigation";
 import type {
   DelegationHead,
   DelegationInput,
@@ -273,16 +273,14 @@ export async function setupDelegation(
     });
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await navigate(page, "Connections");
   if (options.existingSession) {
-    await expect(
-      page.getByRole("button", {
-        name: `Signed in as ${options.reader ? "Project reader" : "Test operator"}`,
-        exact: true,
-      }),
-    ).toBeVisible();
+    await expectSignedIn(
+      page,
+      options.reader ? "Project reader" : "Test operator",
+    );
     await expect(page.getByLabel("API token", { exact: true })).toHaveCount(0);
   } else {
+    await navigate(page, "Connections");
     await page
       .getByLabel("API token", { exact: true })
       .fill("fictional-scm-bootstrap-token-at-least24");

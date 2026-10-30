@@ -1,0 +1,69 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.foundation-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.foundation-credits,
+.foundation-made {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.foundation-credits {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.foundation-heart {
+  display: inline-flex;
+  color: var(--accent-ink);
+  animation: foundation-heart-beat 1.6s ease-in-out infinite;
+}
+.foundation-footer a:hover {
+  text-decoration: underline;
+}
+.workspace-main > footer.foundation-footer > .foundation-copyright {
+  display: inline;
+}
+.identity-dialog > .foundation-footer {
+  justify-content: center;
+  text-align: center;
+}
+@keyframes foundation-heart-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.15);
+  }
+  30% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foundation-heart {
+    animation: none;
+  }
+}
+
+.app .workspace-main main dialog:modal:not(.identity-dialog) {
+  inset-block: calc(var(--shell-content-top, 0px) + 8px)
+    calc(var(--shell-footer-extent, 0px) + 8px);
+  max-height: calc(var(--shell-content-height, 100dvh) - 16px);
+}
+@media (max-width: 600px) {
+  .app .workspace-main > .foundation-footer {
+    row-gap: 0;
+  }
+  .app .workspace-main > main {
+    padding-top: var(--content-gutter);
+  }
+}

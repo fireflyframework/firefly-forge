@@ -1,6 +1,49 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+export async function expectAuthenticated(page: Page) {
+  const account = page.locator(".sidebar-bottom .identity-trigger");
+  await expect(account).toBeAttached();
+  await expect(account).toHaveAttribute("aria-label", /^Signed in as /);
+}
+export async function expectSignedIn(page: Page, name: string) {
+  const account = page.getByRole("button", {
+    name: `Signed in as ${name}`,
+    exact: true,
+  });
+  let opened = false;
+  if (!(await account.isVisible())) {
+    const menu = page.getByRole("button", {
+      name: "Open navigation",
+      exact: true,
+    });
+    if (await menu.isVisible()) {
+      await menu.click();
+      opened = true;
+    }
+  }
+  await expect(account).toBeVisible();
+  if (opened)
+    await page
+      .getByRole("button", { name: "Close navigation", exact: true })
+      .click();
+}
 export async function navigate(page: Page, name: string | RegExp) {
+  await expect(page.locator(".app")).toHaveAttribute("aria-busy", "false");
+  if (name === "Connections") {
+    const connection = page.getByRole("button", {
+      name: "Connect factory",
+      exact: true,
+    });
+    if (await connection.isVisible()) {
+      await connection.click();
+      return;
+    }
+    if (!(await page.locator(".sidebar-bottom .identity-trigger").count())) {
+      await navigate(page, "Factory");
+      await connection.click();
+      return;
+    }
+  }
   const menu = page.getByRole("button", {
     name: "Open navigation",
     exact: true,

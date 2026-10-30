@@ -7,7 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import contract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 
 const runId = "2".repeat(32),
@@ -190,9 +190,7 @@ async function fixture(page: Page) {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   return state;
 }
 

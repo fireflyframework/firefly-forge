@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { createHash } from "node:crypto";
 import { test, expect } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 const ref = {
   version: 1,
@@ -147,9 +147,7 @@ for (const [width, theme] of [
     await page
       .getByRole("button", { name: "Save connection", exact: true })
       .click();
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toBeVisible();
+    await expectAuthenticated(page);
     await navigate(page, "Factory");
     await page
       .getByRole("button", { name: /Review warehouse migration changes/ })

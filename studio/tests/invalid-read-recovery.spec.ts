@@ -2,7 +2,7 @@
 // Fictional, fully intercepted API responses exercise Studio only.
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 
 test("administrator enables final-result recovery without changing retained policy options", async ({
@@ -397,9 +397,7 @@ async function setup(page: Page, mode = "valid", theme = "dark") {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
   await open(page);
   return state;

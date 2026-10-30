@@ -2,7 +2,7 @@
 // Controlled API evidence for browser presentation; no native recovery or model runs.
 import { expect, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 const run = {
   id: "2".repeat(32),
   repository_id: "3".repeat(32),
@@ -180,9 +180,7 @@ export async function setup(
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
   await open(page);
   return state;

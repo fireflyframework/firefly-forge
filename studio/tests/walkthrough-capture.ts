@@ -48,7 +48,11 @@ export async function captureWalkthrough(
   if (options.observationOnly !== undefined && !observationOnly)
     throw new Error("Unknown observation-only capture");
   const dialogStages: Record<string, string[]> = {
-    "studio/tests/docs-walkthrough.spec.ts": ["agent-question-preview"],
+    "studio/tests/docs-walkthrough.spec.ts": [
+      "agent-question-preview",
+      "account-profile",
+      "personal-token-create",
+    ],
     "studio/tests/docs-provider-allowance.spec.ts": [
       "provider-allowance-failure",
       "provider-allowance-mitigation",

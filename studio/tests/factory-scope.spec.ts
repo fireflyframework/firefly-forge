@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 const actorA = "f".repeat(32),
   actorB = "e".repeat(32);
 const a = "a".repeat(32),
@@ -216,9 +216,7 @@ async function changeActor(
   );
 }
 async function emptyFactory(page: Page) {
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await expect(page.getByLabel("Project", { exact: true })).toHaveValue("");
   await expect(page.locator(".production-floor")).toContainText(
     "No connected projects",
@@ -306,9 +304,7 @@ test("late prior-actor run detail cannot reappear after a fresh empty actor load
     await expect.poll(() => state.reads("detail")).toBeGreaterThan(0);
     await changeActor(page, state);
     await expect.poll(() => state.reads(actorB)).toBeGreaterThan(0);
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toBeVisible();
+    await expectAuthenticated(page);
     await expect(page.locator(".run-id")).toHaveCount(0);
     detail.release();
     await expect.poll(() => state.settled("detail")).toBeGreaterThan(0);
@@ -419,9 +415,6 @@ test("failed identity validation keeps retained actor data hidden", async ({
     ).toBeVisible();
     await navigate(page, "Factory");
     await expect(page.locator(".production-floor")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toHaveCount(0);
     expect(state.writes()).toBe(0);
   } finally {
     state.releaseAll();

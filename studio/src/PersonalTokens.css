@@ -47,6 +47,7 @@
 .token-project input {
   width: auto;
   flex: 0 0 auto;
+  accent-color: var(--amber);
 }
 .token-scope {
   color: var(--muted);

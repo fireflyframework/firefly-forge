@@ -68,7 +68,7 @@ def realm_configuration(api_origin: str, browser_origin: str) -> dict:
                 "redirectUris": [api_origin + "/api/v1/auth/callback"],
                 "webOrigins": [browser_origin],
                 "attributes": {"pkce.code.challenge.method": "S256"},
-                "defaultClientScopes": ["profile", "email", "roles"],
+                "defaultClientScopes": ["basic", "profile", "email", "roles"],
                 "protocolMappers": [
                     {
                         "name": "forge-api-audience",

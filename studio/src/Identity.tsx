@@ -10,15 +10,17 @@ import {
   ArrowRight,
   ArrowLeft,
   KeyRound,
+  ChevronUp,
   LogOut,
   RefreshCw,
   ShieldCheck,
-  UserRound,
   X,
 } from "lucide-react";
 import { ApiError, normalizeBase, post, request, type Connection } from "./api";
 import "./Identity.css";
 import { PersonalTokens } from "./PersonalTokens";
+import { FoundationFooter } from "./FoundationFooter";
+import type { Appearance } from "./appearance";
 
 export type Permission =
   "read" | "edit" | "execute" | "review" | "release" | "members";
@@ -289,24 +291,78 @@ export function SignIn({
   );
 }
 
+export function identityLabel(session: IdentitySession): string {
+  return (
+    session.user.display_name?.trim() ||
+    session.user.email ||
+    (session.user.authentication_method === "local_bootstrap"
+      ? "Local operator"
+      : "Signed-in user")
+  );
+}
+
+export function IdentitySummary({ session }: { session: IdentitySession }) {
+  const name = identityLabel(session);
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  return (
+    <>
+      <span className="identity-avatar" aria-hidden="true">
+        {initials}
+      </span>
+      <span className="identity-person">
+        <strong title={name}>{name}</strong>
+        <small
+          title={
+            session.global_admin
+              ? "Factory administrator"
+              : session.user.email || "Your account"
+          }
+        >
+          {session.global_admin
+            ? "Factory administrator"
+            : session.user.email || "Your account"}
+        </small>
+      </span>
+      <ChevronUp size={16} aria-hidden="true" />
+    </>
+  );
+}
+
 export function IdentityMenu({
   connection,
   session,
   onSignedOut,
   onAccess,
+  appearance,
+  onAppearance,
+  openRequest,
 }: {
   connection: Connection;
   session: IdentitySession;
   onSignedOut: () => void;
   onAccess: () => void;
+  appearance?: Appearance;
+  onAppearance?: (appearance: Appearance) => void;
+  openRequest?: number;
 }) {
-  const displayName =
-    session.user.display_name?.trim() ||
-    session.user.email ||
-    (session.user.authentication_method === "local_bootstrap"
-      ? "Local operator"
-      : "Signed-in user");
+  const displayName = identityLabel(session);
   const dialog = useRef<HTMLDialogElement>(null);
+  const previousRequest = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest !== previousRequest.current) {
+      previousRequest.current = openRequest;
+      dialog.current?.showModal();
+    }
+  }, [openRequest]);
+  useEffect(() => {
+    dialog.current?.close();
+  }, [session.user.id]);
   const [tokensOpen, setTokensOpen] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -328,10 +384,11 @@ export function IdentityMenu({
       <button
         className="secondary identity-trigger"
         aria-label={`Signed in as ${displayName}`}
+        aria-haspopup="dialog"
+        title={displayName}
         onClick={() => dialog.current?.showModal()}
       >
-        <UserRound size={18} />
-        <span>{displayName}</span>
+        <IdentitySummary session={session} />
       </button>
       <dialog
         className="identity-dialog"
@@ -359,24 +416,42 @@ export function IdentityMenu({
           </>
         ) : (
           <>
+            <h3>Profile</h3>
             <strong>{displayName}</strong>
             {session.user.email && <p>{session.user.email}</p>}
             <p className="subtle">
               {session.user.authentication_method === "local_bootstrap"
                 ? "Local developer session"
                 : "Organization session"}
-              {session.global_admin
-                ? " · factory administrator"
-                : " · project access assigned individually"}
-            </p>
-            <p>
-              Signing in does not grant access to another project. Its owner or
-              a factory administrator assigns membership.
+              {session.global_admin ? " · factory administrator" : ""}
             </p>
             <details>
               <summary>Registered user identity</summary>
               <code>{session.user.id}</code>
             </details>
+            {appearance && onAppearance && (
+              <section
+                className="identity-preferences"
+                aria-label="Preferences"
+              >
+                <h3>Preferences</h3>
+                <div className="field">
+                  <label htmlFor="account-appearance">Appearance</label>
+                  <select
+                    id="account-appearance"
+                    aria-label="Appearance preference"
+                    value={appearance}
+                    onChange={(event) =>
+                      onAppearance(event.target.value as Appearance)
+                    }
+                  >
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+              </section>
+            )}
             {error && (
               <div className="alert" role="alert">
                 {error}
@@ -413,6 +488,7 @@ export function IdentityMenu({
             </div>
           </>
         )}
+        <FoundationFooter className="identity-copyright" />
       </dialog>
     </div>
   );

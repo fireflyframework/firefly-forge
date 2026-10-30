@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import fixture from "./git-delivery-contract-fixture.json" with { type: "json" };
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 
 const component = {
@@ -371,9 +371,7 @@ async function openRun(
     await route.fulfill({ json });
   });
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
   await page
     .getByRole("button", { name: /Save inventory progress for review/ })

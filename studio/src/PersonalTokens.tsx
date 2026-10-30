@@ -252,7 +252,14 @@ function TokenManager({
       <div className="token-toolbar">
         <button
           className="primary"
-          disabled={busy || loading || !choices.length || !!secret}
+          disabled={
+            busy ||
+            loading ||
+            creating ||
+            !!action ||
+            !choices.length ||
+            !!secret
+          }
           onClick={() => start(null)}
         >
           <Plus size={16} />
@@ -425,7 +432,7 @@ function TokenManager({
       )}
       <div aria-busy={loading} className="token-list">
         {loading && <p role="status">Loading tokens…</p>}
-        {!loading && !page.items.length && (
+        {!loading && !creating && !action && !secret && !page.items.length && (
           <p>
             No personal tokens yet. Create one for a script that needs to read
             your projects.

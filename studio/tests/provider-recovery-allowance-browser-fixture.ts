@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import type { ForgeRun } from "../src/api";
 import {
   candidate,
@@ -131,9 +131,7 @@ export async function setup(
       .getByRole("button", { name: "Save connection", exact: true })
       .click();
   }
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await openPlan(page);
   return state;
 }

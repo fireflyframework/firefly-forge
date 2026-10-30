@@ -1,19 +1,30 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 @font-face { font-family: Manrope; font-style: normal; font-weight: 200 800; font-display: swap; src: url("../fonts/manrope-latin-wght-normal.woff2") format("woff2"); }
-:root { --forge-bg: #f3f1eb; --forge-surface: #ffffff; --forge-text: #272820; --forge-line: #d8d4ca; --forge-link: #855414; --forge-logo: url("../img/forge-lockup-light.svg"); }
-.pf-v5-theme-dark { --forge-bg: #10110f; --forge-surface: #1a1b17; --forge-text: #f3f1eb; --forge-line: #474a42; --forge-link: #ffb34a; --forge-logo: url("../img/forge-lockup-dark.svg"); }
+:root { --forge-bg: #f3f1eb; --forge-surface: #ffffff; --forge-input: #ffffff; --forge-text: #272820; --forge-line: #d8d4ca; --forge-link: #855414; --forge-logo: url("../img/forge-lockup-light.svg"); }
+.pf-v5-theme-dark { --forge-bg: #10110f; --forge-surface: #1a1b17; --forge-input: #10110f; --forge-text: #f3f1eb; --forge-line: #474a42; --forge-link: #ffb34a; --forge-logo: url("../img/forge-lockup-dark.svg"); }
 html, body, .pf-v5-c-login { font-family: Manrope, Arial, sans-serif; background: var(--forge-bg); color: var(--forge-text); }
-.pf-v5-c-login { min-height: 100dvh; padding: clamp(20px, 5vw, 64px); }
-.pf-v5-c-login__container { width: min(100%, 480px); margin-inline: auto; }
-#kc-header-wrapper { font-size: 0; padding: 0; }
-#kc-header-wrapper::before { content: ""; display: block; width: min(280px, 100%); height: 56px; background: var(--forge-logo) left center / contain no-repeat; margin-bottom: 32px; }
+.pf-v5-c-login { min-height: 100dvh; height: auto; display: flex; align-items: center; justify-content: center; padding: clamp(20px, 5vw, 64px); }
+.pf-v5-c-login__container { display: grid; width: 480px; max-width: 100%; padding: 0; margin-inline: auto; grid-template-columns: minmax(0, 1fr); grid-template-areas: "header" "main"; row-gap: 32px; }
+#kc-header { margin: 0; padding: 0; }
+#kc-header-wrapper { font-size: 0; padding: 0; margin: 0; }
+#kc-header-wrapper::before { content: ""; display: block; width: min(280px, 100%); height: 56px; background: var(--forge-logo) center / contain no-repeat; margin: 0 auto; }
 .pf-v5-c-login__main { border: 1px solid var(--forge-line); border-radius: 12px; background: var(--forge-surface); box-shadow: none; overflow: hidden; }
 .pf-v5-c-login__main-header, .pf-v5-c-login__main-body, .pf-v5-c-login__main-footer { padding-inline: clamp(20px, 5vw, 36px); }
-.pf-v5-c-login__main-header { padding-top: 32px; }
+.pf-v5-c-login__main-header { padding-top: 32px; border-top: 0; }
 .pf-v5-c-login__main-header h1 { font-family: Manrope, Arial, sans-serif; font-size: 26px; line-height: 1.3; font-weight: 650; }
 a { color: var(--forge-link); }
 .pf-v5-c-button.pf-m-primary { background: #ffb34a; color: #10110f; border: 1px solid #ffb34a; border-radius: 6px; font-family: inherit; font-weight: 700; min-height: 44px; }
 .pf-v5-c-button.pf-m-primary:hover { background: #facc8a; }
-.pf-v5-c-form-control { border-radius: 6px; }
+.pf-v5-c-form-control { border-radius: 6px; min-height: 44px; }
+.pf-v5-c-form-control > input { min-height: 44px; }
+.pf-v5-c-form-control, .pf-v5-c-form-control > input, .pf-v5-c-form-control .pf-v5-c-button { background: var(--forge-input); color: var(--forge-text); }
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control { background: var(--forge-input); color: var(--forge-text); }
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control::after { border-color: var(--forge-line); }
+.pf-v5-c-form-control:focus-within:not(.pf-m-error)::after { border-bottom-color: var(--forge-link); }
 :focus-visible { outline: 2px solid var(--forge-link); outline-offset: 3px; }
+.forge-login-copyright { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-block: 0 24px; color: var(--forge-text); font-size: 12px; line-height: 1.6; text-align: center; overflow-wrap: anywhere; }
+.forge-footer-credit, .forge-made-with { display: inline-flex; align-items: center; gap: 6px; }
+.forge-footer-credit { flex-wrap: wrap; justify-content: center; gap: 16px; }
+.forge-beating-heart { display: inline-flex; color: var(--forge-link); animation: forge-heart-beat 1.6s ease-in-out infinite; }
+@keyframes forge-heart-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.15); } 30% { transform: scale(1); } 45% { transform: scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

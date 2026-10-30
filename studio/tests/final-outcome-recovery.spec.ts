@@ -2,7 +2,7 @@
 // Intercepted Studio fixtures prove presentation and one-use submission, not native CRM recovery.
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 const run = {
   id: "2".repeat(32),
@@ -151,9 +151,7 @@ async function setup(page: Page, theme: "light" | "dark" = "light") {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await open(page);
   return state;
 }

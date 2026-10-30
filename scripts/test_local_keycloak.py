@@ -29,6 +29,7 @@ class LocalKeycloakTests(unittest.TestCase):
             self.assertFalse(client["serviceAccountsEnabled"])
             self.assertFalse(client["fullScopeAllowed"])
             self.assertEqual(client["attributes"]["pkce.code.challenge.method"], "S256")
+            self.assertIn("basic", client["defaultClientScopes"])
             self.assertEqual(realm["clientScopeMappings"]["forge-api"][0]["roles"], ["forge-admin"])
             self.assertNotIn("forge-worker", realm["clientScopeMappings"]["forge-api"][0]["roles"])
             self.assertFalse(
@@ -118,6 +119,14 @@ class LocalKeycloakTests(unittest.TestCase):
         theme = compose.parent / "themes/forge/login"
         self.assertIn("parent=keycloak.v2", (theme / "theme.properties").read_text())
         self.assertIn("styles=css/styles.css css/forge.css", (theme / "theme.properties").read_text())
+        footer = (theme / "footer.ftl").read_text()
+        self.assertIn('<footer class="forge-login-copyright">', footer)
+        self.assertIn("© 2026 Firefly Software Foundation", footer)
+        self.assertIn("Made with", footer)
+        self.assertIn('role="img" aria-label="love"', footer)
+        self.assertIn('href="https://www.apache.org/licenses/LICENSE-2.0"', footer)
+        self.assertIn('rel="noopener noreferrer"', footer)
+        self.assertNotIn("<form", footer)
         for filename in ["forge-lockup-light.svg", "forge-lockup-dark.svg"]:
             self.assertTrue((repo / "studio/public/assets" / filename).is_file())
         self.assertTrue((repo / "studio/public/fonts/manrope-latin-wght-normal.woff2").is_file())

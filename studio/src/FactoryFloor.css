@@ -45,7 +45,7 @@
 }
 .production-floor .factory-live-viewport {
   min-height: 180px;
-  height: clamp(180px, calc(100dvh - 560px), 320px);
+  height: clamp(180px, var(--factory-available-height, 320px), 320px);
 }
 .production-floor .production-inspector {
   padding: 16px 20px;
@@ -88,6 +88,6 @@
     padding-bottom: 4px;
   }
   .production-floor .factory-live-viewport {
-    height: clamp(180px, calc(100dvh - 650px), 240px);
+    height: clamp(180px, var(--factory-available-height, 240px), 240px);
   }
 }

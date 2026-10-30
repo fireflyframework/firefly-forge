@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 
 test("bootstrap exchanges a token for an opaque session and reconnects without retaining browser credentials", async ({
@@ -95,15 +95,13 @@ test("bootstrap exchanges a token for an opaque session and reconnects without r
     ),
   ).not.toMatch(/test-bootstrap-token|opaque-test/);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page
     .getByRole("button", { name: "Signed in as Local operator", exact: true })
     .click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Connect your API", exact: true }),
+    page.getByRole("button", { name: "Connect factory", exact: true }),
   ).toBeVisible();
   expect(writes).toEqual(["login", "logout"]);
 });
@@ -321,9 +319,7 @@ test("a project viewer keeps a valid session when the private provider catalog i
     });
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Administration");
   await expect(
     page.locator("main").getByRole("button", { name: "People", exact: true }),

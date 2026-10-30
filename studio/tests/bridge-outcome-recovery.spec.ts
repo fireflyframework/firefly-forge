@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 
 // Controlled API responses verify presentation, not a live Bridge execution.
 for (const width of [1440, 390]) {
@@ -63,9 +63,7 @@ for (const width of [1440, 390]) {
           .getByLabel("API token", { exact: true })
           .fill("fictional-ui-only-token");
         await page.getByRole("button", { name: "Save connection" }).click();
-        await expect(
-          page.getByRole("button", { name: "API connected" }),
-        ).toBeVisible();
+        await expectAuthenticated(page);
         await navigate(page, "Factory");
         await page.getByRole("button", { name: "Inspect run" }).click();
         const panel = page.getByRole("region", {

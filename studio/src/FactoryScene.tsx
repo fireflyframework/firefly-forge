@@ -50,6 +50,43 @@ async function loadModel(signal: AbortSignal): Promise<Model> {
 
 export function FactoryScene(props: FactorySceneProps) {
   const viewport = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = viewport.current;
+    const main = node?.closest<HTMLElement>("main");
+    if (!node || !main || !node.closest(".production-floor")) return;
+    let pending = 0;
+    const measure = () => {
+      const available =
+        main.getBoundingClientRect().bottom -
+        node.getBoundingClientRect().top -
+        main.scrollTop -
+        8;
+      node.style.setProperty(
+        "--factory-available-height",
+        `${Math.max(180, available)}px`,
+      );
+    };
+    const schedule = () => {
+      if (!pending)
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          measure();
+        });
+    };
+    measure();
+    const resize = new ResizeObserver(schedule);
+    resize.observe(main);
+    resize.observe(node.closest(".production-floor")!);
+    const changes = new MutationObserver(schedule);
+    changes.observe(main, { childList: true, subtree: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      resize.disconnect();
+      changes.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (pending) cancelAnimationFrame(pending);
+    };
+  }, []);
   const current = useRef({ ...props, focusSelected: false });
   const controller = useRef<Controller | null>(null);
   const [rendererType, setRendererType] = useState<"loading" | "webgl" | "svg">(

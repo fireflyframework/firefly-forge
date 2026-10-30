@@ -12,6 +12,7 @@ import { PersonalTokens } from "./PersonalTokens";
 import type { IdentitySession } from "./Identity";
 
 const project = "a".repeat(32);
+const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
 const session = {
   user: { id: "b".repeat(32), authentication_method: "oidc_session" },
   memberships: [{ project_id: project, permissions: ["read"] }],
@@ -73,7 +74,7 @@ it("creates an explicit read-only project credential and clears its one-time sec
     target: { value: "Release dashboard" },
   });
   fireEvent.change(screen.getByLabelText("Expires on"), {
-    target: { value: "2027-12-01T12:00" },
+    target: { value: future },
   });
   fireEvent.click(await screen.findByLabelText("Orbit CRM"));
   fireEvent.click(screen.getByRole("button", { name: "Create token" }));
@@ -125,7 +126,7 @@ it("rotates through the exact lifecycle endpoint without changing project grants
     fetcher.mock.calls.filter(([, options]) => options?.method === "POST"),
   ).toHaveLength(0);
   fireEvent.change(screen.getByLabelText("Expires on"), {
-    target: { value: "2027-12-02T12:00" },
+    target: { value: future },
   });
   fireEvent.click(screen.getByRole("button", { name: "Rotate token" }));
   await screen.findByDisplayValue("fictional-secret-only");
@@ -181,7 +182,7 @@ it("clears a displayed secret when identity changes", async () => {
     target: { value: "Release dashboard" },
   });
   fireEvent.change(screen.getByLabelText("Expires on"), {
-    target: { value: "2027-12-01T12:00" },
+    target: { value: future },
   });
   fireEvent.click(await screen.findByLabelText("Orbit CRM"));
   fireEvent.click(screen.getByRole("button", { name: "Create token" }));
@@ -226,7 +227,7 @@ it("does not recover or invent a one-time secret when the server returns retaine
     target: { value: "Release dashboard" },
   });
   fireEvent.change(screen.getByLabelText("Expires on"), {
-    target: { value: "2027-12-01T12:00" },
+    target: { value: future },
   });
   fireEvent.click(await screen.findByLabelText("Orbit CRM"));
   fetcher.mockImplementationOnce(async () =>
@@ -246,7 +247,7 @@ it("cannot disclose a late mutation response into a different user's screen", as
     target: { value: "Release dashboard" },
   });
   fireEvent.change(screen.getByLabelText("Expires on"), {
-    target: { value: "2027-12-01T12:00" },
+    target: { value: future },
   });
   fireEvent.click(await screen.findByLabelText("Orbit CRM"));
   let finish!: (response: Response) => void;

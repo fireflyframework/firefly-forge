@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 
 test.use({ launchOptions: { args: ["--enable-unsafe-swiftshader"] } });
 
@@ -98,9 +98,7 @@ for (const viewport of [
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(
-        page.getByRole("button", { name: "API connected" }),
-      ).toBeVisible();
+      await expectAuthenticated(page);
       await navigate(page, "Factory");
       await page
         .getByRole("combobox", { name: "Appearance", exact: true })
