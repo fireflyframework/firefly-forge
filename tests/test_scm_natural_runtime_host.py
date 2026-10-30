@@ -3,10 +3,43 @@
 
 import importlib
 import importlib.util
+import json
 
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
+
+
+@pytest.mark.parametrize("provider", ["agentic", "bridge"])
+@pytest.mark.parametrize("context_bytes", [101900, 1500000])
+async def test_long_natural_context_reaches_configured_model_without_truncation(provider, context_bytes):
+    from pydantic_ai.messages import TextPart, UserPromptPart
+
+    from firefly_forge.scm_natural_runtime import catalog, classify
+
+    evidence = "First retained fact. " + "á" * context_bytes + " Last retained fact."
+    context = {"history": [{"human": evidence}], "candidates": []}
+    expected = catalog().text(
+        "scm-natural/request",
+        context=json.dumps({**context, "question_choices": []}, ensure_ascii=False),
+        message="Status?",
+    )
+    calls = []
+
+    def model(messages, info):
+        calls.append(messages)
+        prompts = [part.content for message in messages for part in message.parts if isinstance(part, UserPromptPart)]
+        assert expected in prompts
+        assert not info.function_tools
+        value = {"intent": "status", "message": "I will check the recorded progress."}
+        return ModelResponse(
+            parts=[TextPart(json.dumps(value))]
+            if provider == "bridge"
+            else [ToolCallPart(info.output_tools[0].name, value)]
+        )
+
+    result = await classify("Status?", context, {"ASSISTANT_PROVIDER": provider}, model=FunctionModel(model))
+    assert result.intent == "status" and len(calls) == 1
 
 
 @pytest.mark.parametrize("provider", ["agentic", "bridge"])

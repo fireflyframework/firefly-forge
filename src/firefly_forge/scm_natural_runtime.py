@@ -67,8 +67,6 @@ async def classify(
         context=json.dumps({**context, "question_choices": question_choices(context)}, ensure_ascii=False),
         message=message,
     )
-    if len(prompt.encode()) > 100000:
-        raise ValueError("Natural conversation exceeds its bounded context")
     output_spec: Any = PromptedOutput(NaturalDecision) if bridge else NaturalDecision
     agent: FireflyAgent[None, NaturalDecision] = FireflyAgent(
         name="forge-natural-task-intent",
