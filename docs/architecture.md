@@ -813,6 +813,10 @@ flowchart LR
 
 A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation. A supported factual verdict proceeds directly only when every reader check passes and there are no issues. Supported facts with a false reader check may carry editorial issues and trigger one correction; contradictory factual issues remain invalid. Unsupported claims or uncertainty also trigger that correction. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
 
+Test and function names are plain text in the narrative. The renderer escapes underscores so a name such as `test_validation_responses` cannot become Markdown formatting or cause an otherwise valid correction to be withheld. Recorded command and error excerpts use a separate fenced-code path; their filtered bytes stay unchanged.
+
+A recorded worker-identity guard identifies the failed step as admission of a retained verification result. It does not establish why the identity was unavailable. This display fact grants no permission and does not resume the worker.
+
 Publication drafts use the same strict reader-check model and single-correction path. Both `collaboration/publication-system` and `collaboration/publication-review-system` are pinned to version `1.0.1`. Their editorial contract asks whether the proposed PR explains its objective, change and verification in professional American English. Selected excerpts must come from supplied diagnostics; a reported change or source hash still supplies no remote publication authority.
 
 ### Native Agentic tool custody

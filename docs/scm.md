@@ -904,6 +904,8 @@ validated reference receipt; changed or unavailable references block delivery.
 Selecting an AI communication profile does not authorize recorded wording after
 that profile fails.
 
+Updates can name the affected test or function and include a relevant saved command or error excerpt. Forge formats those excerpts as code blocks after privacy checks. When no command or trace explains a failure, the reply must say what is missing rather than inventing one. A worker-identity admission failure describes a factory step; it does not by itself establish a defect in the generated product.
+
 Every AI turn is reserved durably under the native repository lock before
 provider entry. A duplicate delivery cannot reserve another call. An unknown,
 interrupted, or unconfirmed result stays held and is not automatically retried
