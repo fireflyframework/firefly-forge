@@ -112,7 +112,7 @@ class ConsumedTerminalCandidateV2(StrictContract):
 
     @model_validator(mode="after")
     def exact_digest(self) -> "ConsumedTerminalCandidateV2":
-        if digest(self.model_dump(exclude={"digest"})) != self.digest:
+        if self.proof.run_id != self.run_id or digest(self.model_dump(exclude={"digest"})) != self.digest:
             raise ValueError("Consumed terminal candidate digest differs")
         return self
 
@@ -213,6 +213,13 @@ class ConsumedTerminalReceiptV2(StrictContract):
     run_status: str = Field(min_length=1, max_length=64)
     same_task_attempt: int = Field(ge=1, strict=True)
     no_execution_grant: Literal[True]
+
+    @field_validator("no_execution_grant", mode="before")
+    @classmethod
+    def exact_no_grant(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("Consumed terminal acceptance does not grant execution")
+        return value
 
     @model_validator(mode="after")
     def exact_receipt(self) -> "ConsumedTerminalReceiptV2":

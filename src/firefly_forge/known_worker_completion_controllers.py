@@ -6,7 +6,7 @@ from typing import Any
 from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, request_mapping
 
-from firefly_forge.known_worker_completion_models import WorkerCompletionInputV1
+from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2, WorkerCompletionInputV1
 from firefly_forge.known_worker_completions import KnownWorkerCompletions
 
 
@@ -22,7 +22,10 @@ class KnownWorkerCompletionController:
 
     @post_mapping("/{request_id}", status_code=201)
     async def request(
-        self, run_id: PathVar[str], request_id: PathVar[str], body: Body[WorkerCompletionInputV1]
+        self,
+        run_id: PathVar[str],
+        request_id: PathVar[str],
+        body: Body[WorkerCompletionInputV1 | ConsumedTerminalInputV2],
     ) -> dict[str, Any]:
         return await self.completions.request(run_id, request_id, body)
 

@@ -414,6 +414,18 @@ class Engine:
         if restoration is None:
             if not (await self.store.claim(identifier)):
                 return
+            if (await self.store.get_run(identifier)).get("consumed_terminal_recovery"):
+                from firefly_forge.consumed_terminal_completions import claimed_execution
+
+                try:
+                    restoration = await claimed_execution(self, identifier)
+                except Exception as error:
+                    await self.store.update(
+                        identifier,
+                        status="needs_reconciliation",
+                        error="Consumed terminal claim held: " + type(error).__name__,
+                    )
+                    return
         else:
             await restoration.guard_source()
         workspace = self.workspaces / identifier
@@ -1444,6 +1456,11 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+                if isinstance(restored_receipt, ConsumedTerminalExecution):
+                    await emit("paused", "The consumed worker result was accepted without another provider dispatch")
+                    return
                 if known_final:
                     # Native acceptance owns the consumed output; later QA is ordinary execution.
                     restoration = None

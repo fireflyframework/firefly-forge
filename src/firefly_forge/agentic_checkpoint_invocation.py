@@ -236,6 +236,7 @@ def runtime_contract() -> str:
                     "agent_roles.py",
                     "policies.py",
                     "completed_final_epoch.py",
+                    "consumed_terminal_completions.py",
                 )
             },
         }

@@ -7,7 +7,7 @@ import copy
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
 from firefly_forge.checkpoint_mode_handoff_custody import validate_completed_handoff
@@ -30,6 +30,9 @@ from firefly_forge.verification_source_preparation import (
 
 Data = dict[str, Any]
 
+if TYPE_CHECKING:
+    from firefly_forge.consumed_terminal_completions import PreparedTerminalAuthority
+
 
 @dataclass(frozen=True)
 class PreparedRetainedSource:
@@ -44,7 +47,14 @@ class PreparedRetainedSource:
         self.source.fence()
 
 
-async def prepare_retained_source(store: Any, journal: Any, run: Data, workspace: Path) -> PreparedRetainedSource:
+async def prepare_retained_source(
+    store: Any,
+    journal: Any,
+    run: Data,
+    workspace: Path,
+    *,
+    terminal_recovery: PreparedTerminalAuthority | None = None,
+) -> PreparedRetainedSource:
     _outside_unit()
     await store.assert_ownership()
     reader = CURRENT_PRINCIPAL.get()
@@ -55,7 +65,18 @@ async def prepare_retained_source(store: Any, journal: Any, run: Data, workspace
     if requests is None or requests.store is not store or not marker.get("request_id"):
         raise ValueError("Unchanged source requires its accepted native final-result action")
     completions = BridgeCompletions(store, journal)
-    await completions._execution(expected, reader)
+
+    async def execution_authority() -> None:
+        if terminal_recovery is None:
+            await completions._execution(expected, reader)
+        else:
+            from firefly_forge.consumed_terminal_completions import PreparedTerminalAuthority
+
+            if not isinstance(terminal_recovery, PreparedTerminalAuthority):
+                raise ValueError("Read-only terminal recovery requires its native prepared authority")
+            await terminal_recovery.current(expected)
+
+    await execution_authority()
     await assert_generic_dispatch_allowed(store, journal, run)
     async with store._unit():
         ticket = await requests.get(marker["request_id"])
@@ -108,7 +129,7 @@ async def prepare_retained_source(store: Any, journal: Any, run: Data, workspace
         await store.assert_ownership()
         if CURRENT_PRINCIPAL.get() != reader:
             raise AccessDenied("Retained source worker context changed")
-        await completions._execution(expected, reader)
+        await execution_authority()
         if reader is not None:
             await ProjectAccess(store).authorize_actor(
                 ProjectAccess.actor_snapshot(reader), expected.get("project_id"), "execute"
