@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import re
+import stat
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
@@ -12,10 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
-from firefly_forge.agentic_checkpoint_invocation import runtime_contract, workspace_cut
+from firefly_forge.agentic_checkpoint_invocation import runtime_contract, workspace_cut, workspace_source_capture
 from firefly_forge.bridge_completions import _outside_unit
 from firefly_forge.checkpoint_mode_handoff_custody import validate_completed_handoff
 from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+from firefly_forge.checkpoint_source_identity import SelectedSourceFence
 from firefly_forge.checkpoint_work_duration import checkpoint_payload
 from firefly_forge.completed_final_epoch import validated_completed_final
 from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
@@ -37,7 +41,9 @@ from firefly_forge.known_worker_completion_proof import (
 from firefly_forge.known_worker_completions import _actor, _entries, _task, policy_digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.sandbox_command_slots import _canonical
+from firefly_forge.source_snapshot import GitIndexIdentityV1, SourceDiffSnapshotV1, git_index_identity
 from firefly_forge.store import identifier, now, prepared_credential_rejection
+from firefly_forge.verification_source_preparation import PreparedVerificationSource
 
 Data = dict[str, Any]
 KIND = "consumed_terminal_recovery"
@@ -536,6 +542,30 @@ async def request(service: Any, run_id: str, request_id: str, body: ConsumedTerm
         return await readback(service, run_id, request_id, request=body)
 
 
+@dataclass(frozen=True)
+class CapturedConsumedSnapshot:
+    before_digest: str
+    after: bytes
+    index: GitIndexIdentityV1
+    source_fence: SelectedSourceFence
+    git_directory: tuple[int, ...]
+    engine: Any
+    base: str
+    files: tuple[str, ...]
+    source: SourceDiffSnapshotV1
+    tree: str
+
+    def evidence(self, attempt: int) -> Data:
+        return {
+            "source_tree": self.tree,
+            "changed_files": list(self.files),
+            "implementation_round": attempt,
+            "changed_file_count": self.source.artifact.file_count,
+            "changed_files_preview_truncated": len(self.files) < self.source.artifact.file_count,
+            "diff_artifact": self.source.artifact.model_dump(mode="json"),
+        }
+
+
 class ConsumedTerminalExecution(FinalOutcomeExecution):
     """Reuse the existing final-only Engine branch, without restoring a model graph."""
 
@@ -553,6 +583,9 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         self.ownership = service.store.execution_ownership_token
         self.generation = service.store.configuration.write_generation
         self.prefix = copy.deepcopy(entries)
+        self._catalog: PreparedVerificationSource | None = None
+        self._snapshot: CapturedConsumedSnapshot | None = None
+        self._snapshot_started = False
 
     async def operator(self) -> Any:
         from firefly_forge.identity import Principal
@@ -677,10 +710,9 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         elif run.get("bridge_completion_hold") != p["run"].get("bridge_completion_hold"):
             raise ValueError("Consumed terminal pending hold changed")
 
-    async def guard_source(self) -> None:
+    async def qualified(self) -> None:
         _outside_unit()
         from firefly_forge.invalid_read_continuities import current_profile_seal
-        from firefly_forge.native_location_projection import source_workspace_matches
 
         await self.guard()
         proof = self.witness["payload"]["candidate"]["proof"]
@@ -690,12 +722,153 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
             or policy_digest() != self.witness["payload"]["candidate"]["policy_digest"]
         ):
             raise ValueError("Consumed terminal current qualified runtime or profile changed")
-        actual = await workspace_cut(self.service.store, self.workspace, assert_current=self.guard)
-        if digest(actual) != proof["source_digest"] or not await source_workspace_matches(
+
+    async def source_current(self, actual: dict[str, str]) -> None:
+        from firefly_forge.native_location_projection import source_workspace_matches
+
+        proof = self.witness["payload"]["candidate"]["proof"]
+        if self._snapshot is not None:
+            if self._snapshot.before_digest != proof["source_digest"] or actual != json.loads(self._snapshot.after):
+                raise ValueError("Consumed terminal source changed after its native snapshot")
+            if git_index_identity(self.workspace) != self._snapshot.index:
+                raise ValueError("Consumed terminal staged index changed after its native snapshot")
+        elif digest(actual) != proof["source_digest"] or not await source_workspace_matches(
             self.service.store, self.run_id, actual, self.binding.workspace
         ):
             raise ValueError("Consumed terminal source, HEAD or private Git metadata changed")
         await self.guard()
+
+    async def guard_source(self) -> None:
+        await self.qualified()
+        actual = await workspace_cut(self.service.store, self.workspace, assert_current=self.guard)
+        await self.source_current(actual)
+
+    async def snapshot(
+        self, engine: Any, base: str, *, secrets: dict[str, str], expected_head: str | None
+    ) -> tuple[list[str], SourceDiffSnapshotV1, str]:
+        """A preexisting tombstone removed by staging remains a held selection change."""
+        if self._snapshot_started or self._catalog is None or engine is not self.service.engine:
+            raise ValueError("Consumed terminal snapshot requires its unique native Engine and prepared source")
+        await self.qualified()
+        before = await workspace_source_capture(self.service.store, self.workspace, assert_current=self.qualified)
+        after = None
+        try:
+            await self.source_current(before.cut)
+            await self._catalog.revalidate(assert_current=self.qualified)
+            self._snapshot_started = True
+            files, source, tree = await engine._snapshot(
+                self.workspace, base, secrets=secrets, expected_head=expected_head
+            )
+            admitted_index = git_index_identity(self.workspace)
+            if before.fence is None:
+                raise ValueError("Consumed terminal snapshot has no complete selected-source witnesses")
+            before.fence.revalidate(payload_only=True)
+            if (
+                not isinstance(source, SourceDiffSnapshotV1)
+                or re.fullmatch(r"(?:[a-f0-9]{40}|[a-f0-9]{64})", tree) is None
+            ):
+                raise ValueError("Consumed terminal snapshot lacks its actual typed native artifact and tree")
+            await self._catalog.revalidate(assert_current=self.qualified)
+            after = await workspace_source_capture(self.service.store, self.workspace, assert_current=self.qualified)
+            if (
+                before.physical_digest is None
+                or before.physical_digest != after.physical_digest
+                or {k: v for k, v in before.cut.items() if k != "source"}
+                != {k: v for k, v in after.cut.items() if k != "source"}
+                or after.index != admitted_index
+                or after.fence is None
+            ):
+                raise ValueError("Consumed terminal native snapshot changed selected source, identity or index")
+            from firefly_forge.git_workspace import git_environment, trusted_git
+            from firefly_forge.process import checked
+
+            await checked(
+                trusted_git(["git", "diff", "--cached", "--quiet", "--no-ext-diff", "--no-textconv", tree, "--"]),
+                self.workspace,
+                env=git_environment(),
+            )
+            await self.qualified()
+            if git_index_identity(self.workspace) != admitted_index:
+                raise ValueError("Consumed terminal snapshot tree lost its exact admitted index")
+            git = (self.workspace / ".git").lstat()
+            if not stat.S_ISDIR(git.st_mode):
+                raise ValueError("Consumed terminal Git directory changed")
+            self._snapshot = CapturedConsumedSnapshot(
+                digest(before.cut),
+                json.dumps(after.cut, sort_keys=True).encode(),
+                admitted_index,
+                after.fence,
+                (git.st_dev, git.st_ino, git.st_uid, git.st_mode),
+                engine,
+                base,
+                tuple(files),
+                source,
+                tree,
+            )
+            await self.guard_source()
+            return files, source, tree
+        except BaseException:
+            if after is not None and after.fence is not None:
+                after.fence.close()
+            raise
+        finally:
+            if before.fence is not None:
+                before.fence.close()
+
+    def close_snapshot(self) -> None:
+        if self._snapshot is not None:
+            self._snapshot.source_fence.close()
+
+    def snapshot_fence(self) -> None:
+        from firefly_forge.sandbox import _directory_fd
+
+        snapshot = self._snapshot
+        if snapshot is None or self._catalog is None:
+            raise ValueError("Consumed terminal receipt has no native snapshot")
+        self._catalog.fence()
+        snapshot.source_fence.revalidate()
+        root = git = index = None
+        try:
+            root = _directory_fd(self.workspace)
+            git = _directory_fd(".git", parent=root)
+            directory = os.fstat(git)
+            if (directory.st_dev, directory.st_ino, directory.st_uid, directory.st_mode) != snapshot.git_directory:
+                raise ValueError("Consumed terminal Git directory changed before receipt")
+            index = os.open("index", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=git)
+            info = os.fstat(index)
+            expected = snapshot.index
+            observed = (
+                info.st_dev,
+                info.st_ino,
+                info.st_uid,
+                info.st_mode,
+                info.st_size,
+                info.st_mtime_ns,
+                info.st_ctime_ns,
+            )
+            if (
+                info.st_nlink != 1
+                or observed
+                != (
+                    expected.device,
+                    expected.inode,
+                    expected.uid,
+                    expected.mode,
+                    expected.byte_count,
+                    expected.mtime_ns,
+                    expected.ctime_ns,
+                )
+                or tuple(
+                    getattr(os.stat("index", dir_fd=git, follow_symlinks=False), "st_" + k)
+                    for k in ("dev", "ino", "uid", "mode", "size", "mtime_ns", "ctime_ns")
+                )
+                != observed
+            ):
+                raise ValueError("Consumed terminal staged index changed before receipt")
+        finally:
+            for fd in (index, git, root):
+                if fd is not None:
+                    os.close(fd)
 
     async def consume(self, *args: Any, **kwargs: Any) -> None:
         raise ValueError("An already-consumed terminal response cannot be consumed again")
@@ -711,6 +884,7 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         retained = await prepare_retained_source(store, self.service.journal, run, self.workspace)
         if not _same(retained.proof.model_dump(mode="json"), p["usage"]["retained_source"]):
             raise ValueError("Consumed terminal retained-source authority changed")
+        self._catalog = retained.source
         await store.admit_credentials(p["usage"])
         async with store._unit():
             await self.service.completions._writer(run, await self.operator())
@@ -744,15 +918,27 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
 
     async def receipt(self, engine: Any, key: str, evidence: Data, checkpoint: Data) -> None:
         await self.guard_source()
+        snapshot = self._snapshot
+        if (
+            snapshot is None
+            or engine is not snapshot.engine
+            or key != self.witness["payload"]["task"]["idempotency_key"]
+            or evidence != snapshot.evidence(self.witness["payload"]["task"]["attempt"])
+            or checkpoint != {"base_revision": snapshot.base, "source_tree": snapshot.tree}
+        ):
+            raise ValueError("Consumed terminal receipt differs from its exact native snapshot")
         store = self.service.store
         with prepared_credential_rejection(store):
             await store.admit_credentials(evidence)
+            await self.guard_source()
             async with store._unit():
                 run = await store.get_run(self.run_id)
                 await self.service.completions._writer(run, await self.operator())
                 row = await self.service.journal._run(self.run_id)
                 await self.guard()
+                self.snapshot_fence()
                 await engine._receipt(self.run_id, key, evidence, checkpoint=checkpoint, prepared=True)
+                self.snapshot_fence()
                 row.data = {
                     **row.data,
                     "consumed_terminal_recovery": {
@@ -768,6 +954,15 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
                 }
                 row.status = "paused"
                 await store.run_records.save(row)
+                self.snapshot_fence()
+                await store.assert_ownership()
+                if (
+                    store.execution_ownership_token is not self.ownership
+                    or CURRENT_PRINCIPAL.get() != self.reader
+                    or store.configuration.write_generation is not self.generation
+                ):
+                    raise AccessDenied("Consumed terminal receipt lost its current owner or configuration")
+                self.snapshot_fence()
 
 
 @dataclass(frozen=True)

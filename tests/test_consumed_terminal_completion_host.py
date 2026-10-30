@@ -133,8 +133,6 @@ def consent(candidate):
 async def test_local_terminal_acceptance_charges_once_and_pauses_without_provider_or_verification(
     consumed_terminal, monkeypatch
 ):
-    from test_agentic_checkpoint_activation_host import controlled_source_snapshot
-
     env = consumed_terminal
     api = KnownWorkerCompletions(env.store, env.journal, env.engine)
     candidate = await api.candidate(env.run_id)
@@ -148,13 +146,9 @@ async def test_local_terminal_acceptance_charges_once_and_pauses_without_provide
     async def forbidden(*args, **kwargs):
         raise AssertionError("Terminal acceptance cannot replay coding, checks or independent QA")
 
-    async def snapshot(*args, **kwargs):
-        return ["existing.py"], controlled_source_snapshot("Retained verified source"), "c" * 40
-
     monkeypatch.setattr(env.provider, "execute", forbidden)
     monkeypatch.setattr(env.engine, "_project_command", forbidden)
     monkeypatch.setattr(env.engine, "_independent_review", forbidden)
-    monkeypatch.setattr(env.engine, "_snapshot", snapshot)
     token = CURRENT_PRINCIPAL.set(None)
     try:
         await env.engine.execute_run(env.run_id)
@@ -567,3 +561,38 @@ async def test_accepted_terminal_later_explicit_resume_reaches_native_verificati
     entries = await env.journal.entries(env.run_id)
     assert sum(e["kind"] == "consumed_terminal_claim" for e in entries) == 1
     assert sum(e["kind"] == "consumed_terminal_result" for e in entries) == 1
+
+
+async def test_consumed_terminal_uses_real_native_snapshot_staging(consumed_terminal, monkeypatch):
+    from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+    closed = []
+    native_close = ConsumedTerminalExecution.close_snapshot
+
+    def close(execution):
+        native_close(execution)
+        closed.append(execution._snapshot)
+
+    monkeypatch.setattr(ConsumedTerminalExecution, "close_snapshot", close)
+    env = consumed_terminal
+    api = KnownWorkerCompletions(env.store, env.journal, env.engine)
+    candidate = await api.candidate(env.run_id)
+    await api.request(env.run_id, uuid4().hex, consent(candidate))
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Consumed acceptance cannot replay a provider or verification")
+
+    monkeypatch.setattr(env.provider, "execute", forbidden)
+    monkeypatch.setattr(env.engine, "_project_command", forbidden)
+    monkeypatch.setattr(env.engine, "_independent_review", forbidden)
+    token = CURRENT_PRINCIPAL.set(None)
+    try:
+        await env.engine.execute_run(env.run_id)
+    finally:
+        CURRENT_PRINCIPAL.reset(token)
+    current = await env.store.get_run(env.run_id)
+    assert current["status"] == "paused", current.get("error")
+    assert current["usage"]["requests"] == env.failed["usage"]["requests"] + 2
+    assert len(env.posts) == env.initial_posts + 2
+    assert len(closed) == 1 and closed[0] is not None
+    assert all(stream.closed for stream in closed[0].source_fence.streams)

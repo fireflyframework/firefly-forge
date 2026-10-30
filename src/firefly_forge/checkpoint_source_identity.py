@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from firefly_forge.sandbox import _directory_fd, _parent_fd, _regular_data
 from firefly_forge.source_diff_admission import SourceDiffAdmission
@@ -241,6 +241,38 @@ async def stream_source_entries(
             raise ValueError("Checkpoint source inventory ended without an exact path boundary")
 
 
+@dataclass(frozen=True)
+class SelectedSourceFence:
+    workspace: Path
+    root_identity: tuple[int, ...]
+    streams: tuple[BinaryIO, BinaryIO, BinaryIO]
+    timeout_seconds: int
+
+    def revalidate(self, *, payload_only: bool = False) -> None:
+        root = _directory_fd(self.workspace)
+        try:
+            if _descriptor_path(root) != self.workspace or tuple(_stamp(os.fstat(root))[:4]) != self.root_identity:
+                raise ValueError("Selected source root changed after capture")
+            deadline = time.monotonic() + self.timeout_seconds
+            for stream in self.streams[:2] if payload_only else self.streams:
+                if stream.closed:
+                    raise ValueError("Selected source witness is closed")
+                _revalidate(root, stream, deadline, strict_directories=True)
+        finally:
+            os.close(root)
+
+    def close(self) -> None:
+        for stream in self.streams:
+            stream.close()
+
+
+@dataclass(frozen=True)
+class CapturedSourceIdentity:
+    source_digest: str
+    physical_digest: str
+    fence: SelectedSourceFence
+
+
 async def source_identity(
     workspace: Path,
     scanner: SourceDiffAdmission,
@@ -248,6 +280,31 @@ async def source_identity(
     finalize: Callable[[], Awaitable[None]],
     timeout_seconds: int = 300,
 ) -> str:
+    return (await _source_capture(workspace, scanner, finalize=finalize, timeout_seconds=timeout_seconds))[0]
+
+
+async def source_payload_identity(
+    workspace: Path,
+    scanner: SourceDiffAdmission,
+    *,
+    finalize: Callable[[], Awaitable[None]],
+    timeout_seconds: int = 300,
+) -> CapturedSourceIdentity:
+    full, physical, fence = await _source_capture(
+        workspace, scanner, finalize=finalize, timeout_seconds=timeout_seconds, physical=True
+    )
+    assert physical is not None and fence is not None
+    return CapturedSourceIdentity(full, physical, fence)
+
+
+async def _source_capture(
+    workspace: Path,
+    scanner: SourceDiffAdmission,
+    *,
+    finalize: Callable[[], Awaitable[None]],
+    timeout_seconds: int = 300,
+    physical: bool = False,
+) -> tuple[str, str | None, SelectedSourceFence | None]:
     """Hash complete selected source using bounded chunks and temporary metadata only."""
     root = _directory_fd(workspace)
     deadline = time.monotonic() + timeout_seconds
@@ -270,12 +327,16 @@ async def source_identity(
                     await _git_metadata_witnesses(git_directory, (".git",), metadata)
                 finally:
                     os.close(git_directory)
-                first = await _capture(canonical, root, scanner, records, timeout_seconds)
+                first = await _capture(
+                    canonical, root, scanner, records, timeout_seconds, physical=ignored if physical else None
+                )
                 records.seek(0)
                 records.truncate()
                 await _ignored_directories(canonical, ignored, timeout_seconds)
                 await _directory_witnesses(root, (), directories, ignored)
-                second = await _capture(canonical, root, scanner, records, timeout_seconds)
+                second = await _capture(
+                    canonical, root, scanner, records, timeout_seconds, physical=ignored if physical else None
+                )
                 if first != second:
                     raise ValueError("Checkpoint source selection or contents changed during capture")
                 await scanner(b"", True)
@@ -287,7 +348,24 @@ async def source_identity(
                         named, opened = os.stat(workspace, follow_symlinks=False), os.fstat(root)
                         if _stamp(named)[:4] != _stamp(opened)[:4]:
                             raise ValueError("Checkpoint source root changed during capture")
-                        return "git-source-v1:" + second[0]
+                        fence = None
+                        if physical:
+                            streams: list[BinaryIO] = []
+                            try:
+                                for stream in (records, directories, metadata):
+                                    stream.flush()
+                                    streams.append(cast(BinaryIO, os.fdopen(os.dup(stream.fileno()), "rb")))
+                                fence = SelectedSourceFence(
+                                    canonical,
+                                    tuple(_stamp(os.fstat(root))[:4]),
+                                    (streams[0], streams[1], streams[2]),
+                                    timeout_seconds,
+                                )
+                            except BaseException:
+                                for owned_stream in streams:
+                                    owned_stream.close()
+                                raise
+                        return "git-source-v1:" + second[0], second[2], fence
                     # Only canonical Git can distinguish new ignored output from selected source.
                     directories.seek(0)
                     directories.truncate()
@@ -301,11 +379,27 @@ async def source_identity(
 
 
 async def _capture(
-    workspace: Path, root: int, scanner: SourceDiffAdmission, records: BinaryIO, timeout_seconds: int
-) -> tuple[str, str]:
+    workspace: Path,
+    root: int,
+    scanner: SourceDiffAdmission,
+    records: BinaryIO,
+    timeout_seconds: int,
+    *,
+    physical: sqlite3.Connection | None = None,
+) -> tuple[str, str, str | None]:
     result = hashlib.sha256(b"forge-checkpoint-git-source-v1\0")
     inventory = hashlib.sha256()
     _remember(records, "", os.fstat(root))
+    if physical is not None:
+        physical.execute(
+            "CREATE TABLE IF NOT EXISTS physical (path TEXT PRIMARY KEY, data BLOB NOT NULL) WITHOUT ROWID"
+        )
+        physical.execute("DELETE FROM physical")
+
+    def retain(path: str, value: list[object]) -> None:
+        if physical is not None:
+            encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+            physical.execute("INSERT OR REPLACE INTO physical VALUES (?, ?)", (path, encoded))
 
     async def consume(entry: SourceEntry) -> None:
         parts = _parts(entry.path)
@@ -338,11 +432,15 @@ async def _capture(
             _remember(records, entry.path, after)
             result.update(b"file\0" + str(stat.S_IMODE(after.st_mode)).encode() + b"\0")
             result.update(size.to_bytes(8, "big") + content.digest())
+            retain(
+                entry.path, [entry.path, "file", stat.S_IMODE(after.st_mode), after.st_uid, size, content.hexdigest()]
+            )
         except FileNotFoundError:
             if entry.mode is None:
                 raise ValueError("Checkpoint source changed during inventory") from None
             records.write(json.dumps([entry.path, None], separators=(",", ":")).encode() + b"\n")
             result.update(b"deleted\0")
+            retain(entry.path, [entry.path, "deleted"])
         except OSError:
             raise ValueError("Checkpoint source requires regular files and directories without links") from None
         finally:
@@ -351,7 +449,25 @@ async def _capture(
                     os.close(fd)
 
     await stream_source_entries(workspace, consume, timeout_seconds=timeout_seconds)
-    return result.hexdigest(), inventory.hexdigest()
+    physical_digest = None
+    if physical is not None:
+        records.seek(0)
+        for encoded in records:
+            path, stamp = json.loads(encoded)
+            if stamp is not None and stat.S_ISDIR(stamp[3]):
+                retain(path + "/", [path, "directory", stat.S_IMODE(stamp[3]), stamp[2]])
+        selected = hashlib.sha256(b"forge-checkpoint-selected-physical-v1\0")
+        deadline = time.monotonic() + timeout_seconds
+        for ordinal, (encoded,) in enumerate(
+            physical.execute("SELECT data FROM physical ORDER BY path COLLATE BINARY")
+        ):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Selected physical source hashing exceeded its inspection window")
+            selected.update(len(encoded).to_bytes(8, "big") + encoded)
+            if ordinal % 128 == 0:
+                await asyncio.sleep(0)
+        physical_digest = selected.hexdigest()
+    return result.hexdigest(), inventory.hexdigest(), physical_digest
 
 
 async def _inventory_identity(workspace: Path, timeout_seconds: int) -> str:
