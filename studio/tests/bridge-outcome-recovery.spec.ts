@@ -89,7 +89,9 @@ for (const width of [1440, 390]) {
         );
         expect(overflow).toBe(false);
         const panelBounds = await panel.boundingBox();
-        const footerBounds = await page.locator("footer").boundingBox();
+        const footerBounds = await page
+          .locator(".workspace-main > footer")
+          .boundingBox();
         expect(panelBounds).not.toBeNull();
         expect(footerBounds).not.toBeNull();
         expect(panelBounds!.x).toBeGreaterThanOrEqual(0);

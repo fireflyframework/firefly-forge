@@ -27,8 +27,31 @@ export async function expectSignedIn(page: Page, name: string) {
       .getByRole("button", { name: "Close navigation", exact: true })
       .click();
 }
+export async function openAccount(page: Page) {
+  await expect(page.locator(".app")).toHaveAttribute("aria-busy", "false");
+  await expectAuthenticated(page);
+  const account = page.locator(".sidebar-bottom .identity-trigger");
+  if (await account.isVisible()) await account.click();
+  else {
+    await page
+      .getByRole("button", { name: "Open navigation", exact: true })
+      .click();
+    await page.locator(".mobile-account .identity-trigger").click();
+  }
+  await expect(
+    page.getByRole("dialog", { name: "Your account", exact: true }),
+  ).toBeVisible();
+}
 export async function navigate(page: Page, name: string | RegExp) {
   await expect(page.locator(".app")).toHaveAttribute("aria-busy", "false");
+  if (name === "Project access") {
+    await openAccount(page);
+    await page
+      .getByRole("dialog", { name: "Your account", exact: true })
+      .getByRole("button", { name, exact: true })
+      .click();
+    return;
+  }
   if (name === "Connections") {
     const connection = page.getByRole("button", {
       name: "Connect factory",
@@ -49,11 +72,9 @@ export async function navigate(page: Page, name: string | RegExp) {
     typeof name === "string" &&
     [
       "Connections",
-      "Project access",
       "Registered users",
       "People",
       "Repository workflow",
-      "Agents & skills",
     ].includes(name)
   ) {
     await page
