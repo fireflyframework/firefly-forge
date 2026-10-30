@@ -57,7 +57,7 @@ def add_sibling(env, name="list_files", arguments=None, *, retained_epoch=False)
             payload = data["payload"]
             original = BoundaryCheckpoint.decode(payload["snapshot"].encode(), payload["checkpoint_digest"])
             snapshot = json.loads(original.canonical_payload)
-            snapshot["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+            snapshot["compatibility"] = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
             snapshot["contract"]["parameters"].update(
                 _telemetry_mcp_url_ids=[], _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=[]
             )

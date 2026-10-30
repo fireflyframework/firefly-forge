@@ -16,7 +16,7 @@ RUN, REPO = "a" * 32, "b" * 32
 
 @pytest.mark.parametrize("granted", [True, False])
 async def test_actual_agentic_runtime_registers_only_the_granted_evidence_reader(tmp_path, granted):
-    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
 
     from firefly_forge.agentic_runtime import execute_agentic
@@ -35,26 +35,25 @@ async def test_actual_agentic_runtime_registers_only_the_granted_evidence_reader
             return ModelResponse(parts=[ToolCallPart("read_run_evidence", {"query": {"limit": 1}})])
         return ModelResponse(
             parts=[
-                TextPart(
-                    json.dumps(
-                        {
-                            "summary": "Retained evidence tool grant checked",
-                            "worker_feedback": {
-                                "id": "evidence-review",
-                                "role_id": "implementer",
-                                "task_id": "implement",
-                                "attempt": 1,
-                                "disposition": "clarification",
-                                "summary": "Review retained facts",
-                                "request": {
-                                    "id": "owner-review",
-                                    "kind": "product_definition",
-                                    "question": "Proceed with this evidence?",
-                                    "context": "Fictional fixture",
-                                },
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "summary": "Retained evidence tool grant checked",
+                        "worker_feedback": {
+                            "id": "evidence-review",
+                            "role_id": "implementer",
+                            "task_id": "implement",
+                            "attempt": 1,
+                            "disposition": "clarification",
+                            "summary": "Review retained facts",
+                            "request": {
+                                "id": "owner-review",
+                                "kind": "product_definition",
+                                "question": "Proceed with this evidence?",
+                                "context": "Fictional fixture",
                             },
-                        }
-                    )
+                        },
+                    },
                 )
             ]
         )
