@@ -10,6 +10,7 @@ import httpx
 import pytest
 from click.testing import CliRunner
 from jsonschema import Draft202012Validator
+from test_mcp_prompt_templates import KNOWLEDGE_DESCRIPTION_CHANGES, KOINON_TOOLS
 
 from firefly_forge import cli
 from firefly_forge.client import ForgeClient
@@ -229,7 +230,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 185
+    assert len(tools) == 198
     names = {
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
@@ -302,9 +303,9 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
         "get_final_outcome_status",
     }
     tools = await create_server().list_tools()
-    previous = [tool for tool in tools if tool.name not in new]
+    previous = [tool for tool in tools if tool.name not in new | KOINON_TOOLS]
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-product-change-baseline-v1.json").read_text())
-    assert len(previous) == 145 and len(tools) == 185
+    assert len(previous) == 145 and len(tools) == 198
     expected = json.loads(baseline["wire_json"])
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]
@@ -334,6 +335,10 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
         properties.update({field: runner["properties"][field] for field in additions})
         properties["pool_binding"] = binding
         definitions["WorkDurationPolicyV2"] = WorkDurationPolicyV2.model_json_schema()
+    for name, (retained, current) in KNOWLEDGE_DESCRIPTION_CHANGES.items():
+        tool = next(item for item in expected["tools"] if item["name"] == name)
+        assert tool["description"] == retained
+        tool["description"] = current
     assert ListToolsResult(tools=previous).model_dump_json(by_alias=True, exclude_none=True) == json.dumps(
         expected, ensure_ascii=False, separators=(",", ":")
     )
