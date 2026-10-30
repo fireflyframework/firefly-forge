@@ -54,6 +54,17 @@
   }
 }
 
+.app
+  .workspace-main
+  main
+  dialog:modal:not(.identity-dialog):not(.product-assistant-panel) {
+  inset-block: 8px calc(var(--shell-footer-extent, 0px) + 8px);
+  max-height: calc(
+    var(--shell-viewport-height, 100dvh) - var(--shell-footer-extent, 0px) -
+      16px
+  );
+}
+
 @media (max-width: 600px) {
   .app .workspace-main > .foundation-footer {
     row-gap: 0;
