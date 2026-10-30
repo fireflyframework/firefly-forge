@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/submit_learning_projection
+version: 1.0.1
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Submit retained local outcome evidence once through its frozen provider;
+  Koinon records positive outcomes and unclassified failure hints as versioned source evidence.
+  Unknown writes require readback without replay.
+required_variables: []
+metadata:
+  defaults: {}

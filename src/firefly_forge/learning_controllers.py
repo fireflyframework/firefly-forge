@@ -3,7 +3,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from pyfly.container import rest_controller
 from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, request_mapping
 
@@ -12,8 +12,8 @@ from firefly_forge.learning_configuration import configure_learning, learning_sn
 from firefly_forge.learning_models import (
     LearningInvalidationReceipt,
     LearningPolicy,
-    LearningProjectionObservationReceipt,
 )
+from firefly_forge.learning_native_models import LearningProjectionReceipt
 from firefly_forge.learning_observation_attempt_models import (
     LearningObservationAttemptInput,
     LearningObservationAttemptReceipt,
@@ -73,10 +73,8 @@ class LearningController:
         return await self.projection.status(id)
 
     @get_mapping("/learning/records/{id}/projection/observations/{request_id}")
-    async def observation_receipt(
-        self, id: PathVar[str], request_id: PathVar[str]
-    ) -> LearningProjectionObservationReceipt:
-        return LearningProjectionObservationReceipt.model_validate(
+    async def observation_receipt(self, id: PathVar[str], request_id: PathVar[str]) -> LearningProjectionReceipt:
+        return TypeAdapter(LearningProjectionReceipt).validate_python(
             await self.projection.observation_receipt(id, request_id)
         )
 
