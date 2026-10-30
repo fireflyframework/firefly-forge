@@ -143,7 +143,7 @@ async def test_token_and_event_custody_survive_cold_native_store_restart_without
     if raw in before:
         pytest.fail("A raw personal credential was persisted")
     await c.store.close()
-    restarted = Store(c.store.path, database_url=c.store.database_url, schema=c.store.schema, existing_only=True)
+    restarted = Store(c.store.path, database_url=c.store.database_url, schema=c.store.schema)
     try:
         await restarted.initialize(existing_only=True)
         tokens = PersonalTokens(restarted)
