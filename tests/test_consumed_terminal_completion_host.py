@@ -596,3 +596,35 @@ async def test_consumed_terminal_uses_real_native_snapshot_staging(consumed_term
     assert len(env.posts) == env.initial_posts + 2
     assert len(closed) == 1 and closed[0] is not None
     assert all(stream.closed for stream in closed[0].source_fence.streams)
+
+
+@pytest.mark.parametrize("provider", ["bridge", "configured-worker-provider"])
+async def test_startup_recovery_preserves_failed_consumed_implementation_for_any_provider(
+    consumed_terminal, monkeypatch, provider
+):
+    env = consumed_terminal
+    env.store.run.data["agent"] = provider
+
+    async def pending():
+        return [row for row in env.journal.tasks.rows if row.status in {"running", "needs_reconciliation"}]
+
+    monkeypatch.setattr(env.journal.tasks, "find_pending_recovery", pending, raising=False)
+
+    def state():
+        return copy.deepcopy(
+            (
+                env.store.run.data,
+                [(row.task_id, row.status, row.attempt, row.data) for row in env.journal.tasks.rows],
+                [row.data for row in env.journal.records.rows],
+                env.posts,
+            )
+        )
+
+    before = state()
+    assert await env.journal.recover() == 0
+    assert await env.journal.recover() == 0
+    assert state() == before
+    if provider == "bridge":
+        candidate = await KnownWorkerCompletions(env.store, env.journal).candidate(env.run_id)
+        assert candidate["version"] == 2 and candidate["run_id"] == env.run_id
+        assert state() == before

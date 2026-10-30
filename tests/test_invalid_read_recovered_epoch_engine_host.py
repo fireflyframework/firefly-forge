@@ -79,7 +79,19 @@ async def test_recovered_retained_sdk_epoch_restarts_and_reaches_real_engine(ret
         return [await env.journal._task(RUN, "implement")]
 
     env.journal.tasks.find_pending_recovery = pending
-    assert await env.journal.recover() == 1
+    startup_state = copy.deepcopy(
+        (
+            env.store.run.data,
+            [(r.task_id, r.status, r.attempt, r.data) for r in env.journal.tasks.rows],
+            [r.data for r in env.journal.records.rows],
+        )
+    )
+    assert await env.journal.recover() == 0
+    assert (
+        env.store.run.data,
+        [(r.task_id, r.status, r.attempt, r.data) for r in env.journal.tasks.rows],
+        [r.data for r in env.journal.records.rows],
+    ) == startup_state
     candidate = await env.continuity.recoveries.candidate(RUN, ticket["id"])
     restored = BoundaryCheckpoint.decode(ticket["checkpoint"].encode(), ticket["checkpoint_digest"])
     assert candidate["usage"]["requests"] == restored.usage.requests

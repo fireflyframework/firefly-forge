@@ -2049,11 +2049,7 @@ class Journal:
             count = 0
             for candidate in pending:
                 run = await self._run(candidate.run_id.hex)
-                if (
-                    run.status == "failed"
-                    and candidate.task_id == "implement"
-                    and run.data.get("agent") in {"codex", "claude"}
-                ):
+                if run.status == "failed" and candidate.task_id == "implement":
                     continue
                 task = await self._task(run.id.hex, candidate.task_id)
                 if task.status not in {"running", "needs_reconciliation"}:
