@@ -12,26 +12,26 @@ from firefly_forge import source_edit_qualification as qualification
 
 
 def test_post_final_verification_requires_a_new_loader_epoch():
-    assert qualification.REGISTRY_VERSION == 28
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v29"
+    assert qualification.REGISTRY_VERSION == 29
+    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v30"
 
 
-def test_all_twenty_four_registered_literals_remain_exact():
+def test_all_twenty_five_registered_literals_remain_exact():
     source = Path(qualification.__file__).with_name("source_edit_supported_profiles.py").read_text()
     node = next(
         node
         for node in ast.parse(source).body
         if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "PROFILES"
     )
-    assert len(node.value.elts) in (24, 25)
-    prefix = "\0".join(ast.get_source_segment(source, item) for item in node.value.elts[:24])
+    assert len(node.value.elts) in (25, 26)
+    prefix = "\0".join(ast.get_source_segment(source, item) for item in node.value.elts[:25])
     assert (
         hashlib.sha256(prefix.encode()).hexdigest()
-        == "95993bc735d70a7003b711a445297dbb9eb6785a9aee3e2907853c303f1d6cac"
+        == "b7b2a5034b3bf0ef750b1e631819f56285574151421a272723fa08926a7ebd10"
     )
 
 
-@pytest.mark.parametrize("index", range(24))
+@pytest.mark.parametrize("index", range(25))
 def test_registered_predecessor_has_only_immutable_historical_authority(index):
     profile = qualification._profiles()[index]
     seal = qualification.historical_profile_seal(profile)
@@ -42,9 +42,9 @@ def test_registered_predecessor_has_only_immutable_historical_authority(index):
         qualification.require_profile(profile)
 
 
-def test_registered_v28_proof_cannot_be_relabelled_as_current():
-    profile = qualification._profiles()[23]
-    assert profile.version == 27 and profile.loader_profile == "codex-exec-restricted-source/v28"
+def test_registered_v29_proof_cannot_be_relabelled_as_current():
+    profile = qualification._profiles()[24]
+    assert profile.version == 28 and profile.loader_profile == "codex-exec-restricted-source/v29"
     with pytest.raises(ValueError, match="registered provenance"):
         qualification.historical_profile_seal(
             replace(profile, version=qualification.REGISTRY_VERSION, loader_profile=qualification.LOADER_PROFILE)
