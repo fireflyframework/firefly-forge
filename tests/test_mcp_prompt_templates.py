@@ -11,7 +11,7 @@ from mcp.types import ListToolsResult
 from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
-NEW_TOOLS = {
+KOINON_TOOLS = {
     "ingest_koinon_source",
     "upload_koinon_document",
     "get_koinon_ingestion",
@@ -25,6 +25,30 @@ NEW_TOOLS = {
     "read_project_knowledge_chunks",
     "execute_project_knowledge_sql",
     "get_project_knowledge_sql_request",
+}
+KNOWLEDGE_DESCRIPTION_CHANGES = {
+    "search_project_knowledge": (
+        "Retrieve cited project/framework references in the repository's flycanon scopes.",
+        "Retrieve cited references through the repository’s configured knowledge platform and current mapped scopes.",
+    ),
+    "remember_verified_run": (
+        "Save verified run evidence as cited, retrievable project memory.",
+        "Retain verified run evidence through its configured knowledge workflow; "
+        "Koinon stages an external proposal for explicit private review.",
+    ),
+    "submit_learning_projection": (
+        "Submit a verified local outcome once; unknown effects cannot be automatically replayed.",
+        "Submit retained local outcome evidence once through its frozen provider; "
+        "Koinon records positive outcomes and unclassified failure hints as versioned source evidence. "
+        "Unknown writes require readback without replay.",
+    ),
+    "observe_learning_projection": (
+        "Verify admitted source content and retrievable citations without creating another source.",
+        "Read back the admitted source and scoped citations without another upload; "
+        "native operational evidence also requires exact source versions and extraction identities.",
+    ),
+}
+NEW_TOOLS = KOINON_TOOLS | {
     "get_framework_knowledge_status",
     "check_framework_updates",
     "refresh_framework_knowledge",
@@ -105,30 +129,10 @@ async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extension
         assert runner["properties"].keys() - properties.keys() == additions
         properties.update({field: runner["properties"][field] for field in additions})
         definitions["WorkDurationPolicyV2"] = WorkDurationPolicyV2.model_json_schema()
-    search = next(tool for tool in expected["tools"] if tool["name"] == "search_project_knowledge")
-    assert search["description"] == "Retrieve cited project/framework references in the repository's flycanon scopes."
-    search["description"] = (
-        "Retrieve cited references through the repository’s configured knowledge platform and current mapped scopes."
-    )
-    memory = next(tool for tool in expected["tools"] if tool["name"] == "remember_verified_run")
-    assert memory["description"] == "Save verified run evidence as cited, retrievable project memory."
-    memory["description"] = (
-        "Retain verified run evidence through its configured knowledge workflow; "
-        "Koinon stages an external proposal for explicit private review."
-    )
-    for name, description in {
-        "submit_learning_projection": (
-            "Submit retained local outcome evidence once through its frozen provider; "
-            "Koinon records positive outcomes and unclassified failure hints as versioned source evidence. "
-            "Unknown writes require readback without replay."
-        ),
-        "observe_learning_projection": (
-            "Read back the admitted source and scoped citations without another upload; "
-            "native operational evidence also requires exact source versions and extraction identities."
-        ),
-    }.items():
+    for name, (retained, current) in KNOWLEDGE_DESCRIPTION_CHANGES.items():
         tool = next(item for item in expected["tools"] if item["name"] == name)
-        tool["description"] = description
+        assert tool["description"] == retained
+        tool["description"] = current
     assert json.loads(actual) == expected
 
 

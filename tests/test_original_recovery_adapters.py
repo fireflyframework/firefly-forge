@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 from mcp import Client
 from mcp.server.mcpserver.exceptions import UnexpectedToolError
 from mcp.types import ListToolsResult
+from test_mcp_prompt_templates import KNOWLEDGE_DESCRIPTION_CHANGES, KOINON_TOOLS
 from test_original_recovery_sdk import (
     CANCEL,
     CANCELLED_DECISION,
@@ -289,7 +290,7 @@ def test_cli_requires_every_explicit_argument_without_io(monkeypatch, case):
 async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibility():
     tools = await create_server().list_tools()
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-recovery-additive-baseline-v1.json").read_text())
-    original = [tool for tool in tools if tool.name not in NEW_TOOLS]
+    original = [tool for tool in tools if tool.name not in NEW_TOOLS | KOINON_TOOLS]
     wire = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     assert len(original) == baseline["tool_count"] == 150
     expected = json.loads(wire)
@@ -332,19 +333,27 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
         for field in additions:
             assert properties.pop(field) == runner["properties"][field]
         assert definitions.pop("WorkDurationPolicyV2") == WorkDurationPolicyV2.model_json_schema()
+    for name, (retained, current) in KNOWLEDGE_DESCRIPTION_CHANGES.items():
+        tool = next(item for item in expected["tools"] if item["name"] == name)
+        assert tool["description"] == current
+        tool["description"] = retained
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 185
+    assert len(tools) == 198
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
-    entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}
+    entries = {
+        entry["id"]: entry
+        for entry in json.loads((root / "manifest.json").read_text())["templates"]
+        if entry["version"] == "1.0.0"
+    }
     for identity, digest in baseline["resource_sha256"].items():
         assert entries[identity]["sha256"] == digest
         assert hashlib.sha256((root / entries[identity]["path"]).read_bytes()).hexdigest() == digest
     tree = ast.parse(Path("src/firefly_forge/mcp_server.py").read_text())
     server = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "create_server")
     for node in server.body:
-        if isinstance(node, ast.FunctionDef) and node.name not in NEW_TOOLS:
+        if isinstance(node, ast.FunctionDef) and node.name not in NEW_TOOLS | KOINON_TOOLS:
             node.decorator_list = []
             assert (
                 hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
