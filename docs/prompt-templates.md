@@ -30,7 +30,7 @@ The resources cover implementation profiles, default roles and skills, product d
 
 ## Edit a template
 
-`collaboration/conversation-status` holds the explicit recorded-mode English and Spanish status-context copy. `collaboration/conversation-record` composes its native record disclosure. With a communication profile selected, system version `1.0.4` and `collaboration/communication-language` provide controlled English or Spanish instructions for every ticket selection, including missing or ambiguous links. Review-system version `1.0.1` applies the semantic classification to both languages. These resources cannot select a run or authorize a remote write.
+`collaboration/conversation-status` holds the explicit recorded-mode English and Spanish status-context copy. `collaboration/conversation-record` composes its native record disclosure. With a communication profile selected, system version `1.0.7` and `collaboration/communication-language` provide question-led English or Spanish instructions for every ticket selection, including missing or ambiguous links. Review-system version `1.0.4` checks factual support and editorial quality in both languages. Earlier template versions remain available for retained prompt identities. The current question guides which background belongs in the reply; it does not grant execution authority. These resources cannot select a run or authorize a remote write.
 
 A resource uses the native Agentic field names:
 

@@ -529,6 +529,8 @@ def communication_facts(
             "basis": "recorded_error",
             "cause": "not_established",
             "next_step": "review_execution_configuration_before_continuation",
+            "recorded_condition": "execution_selection_configuration_or_reviewed_policy_no_longer_matches",
+            "review_scope": ["execution_selection", "execution_configuration", "reviewed_policy"],
         }
     handoff = (
         verification_handoff(run)
@@ -948,7 +950,7 @@ class CommunicationWriter:
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.6"),
+                else prompt_text("collaboration/communication-system", version="1.0.7"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -1013,7 +1015,7 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.0" if publication else "1.0.3",
+                    version="1.0.0" if publication else "1.0.4",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]

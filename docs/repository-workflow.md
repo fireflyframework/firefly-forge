@@ -55,7 +55,7 @@ A provider user ID is separate from the factory session identity. Granting a com
 
 ## Read the bot's updates
 
-The bot answers the current question before recapping the product. An update explains what changed, the relevant checks, the present blocker and any decision needed from you. The selected communication model writes the title and explanation, chooses useful headings or bullets, and passes through the Humanizer instructions and a separate factual and editorial review.
+The bot answers your current question with the relevant result, checks and next step. It includes product background only when you ask for it or a recorded change or failure makes it relevant. The selected communication model writes the title and explanation, chooses useful headings or bullets, and uses the Humanizer instructions. A separate reviewer checks both factual support and whether the reply is clear and useful; unrelated recaps and repeated caveats need correction.
 
 When a recorded check helps explain a failure, the bot can include its command or an output excerpt in a code block. Those bytes come from the saved check, with privacy filtering; they are not code invented by the writer. Older results stay labeled as older results. If no diagnostic or cause is known, the bot must say what information is missing instead of guessing a faulty line. A status answer does not start another execution.
 
