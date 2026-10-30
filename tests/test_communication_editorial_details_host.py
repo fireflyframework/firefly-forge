@@ -137,6 +137,13 @@ def test_semantic_editor_can_reject_opaque_or_badly_structured_wording():
     for issue in ["unclear_language", "poor_structure"]:
         assert CommunicationReview.model_validate(
             {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": False,
+                    "useful_excerpts": True,
+                },
                 "verdict": "unsupported",
                 "issues": [issue],
                 "fact_ids": ["state"],
@@ -154,6 +161,13 @@ async def test_real_writer_repairs_opaque_copy_once_without_a_template_fallback(
         },
         verdict="unsupported",
         issues=["unclear_language"],
+        reader_checks={
+            "answers_question": True,
+            "relevant_detail": True,
+            "no_redundancy": True,
+            "plain_language": False,
+            "useful_excerpts": True,
+        },
         correction={
             "title": {"text": "La ejecución se ha detenido", "fact_ids": ["state"]},
             "paragraphs": [{"text": "Todavía no tengo un resultado de esta ejecución.", "fact_ids": ["state"]}],

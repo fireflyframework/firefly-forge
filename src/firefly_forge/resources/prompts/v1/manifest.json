@@ -2959,6 +2959,14 @@
       "variables": {}
     },
     {
+      "id": "collaboration/communication-system",
+      "version": "1.0.8",
+      "path": "collaboration/communication-system-1.0.8.yaml",
+      "sha256": "06fd24f330ce4dc99193538d300e4248d217b77a92f6158a718d102a21e2906c",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/communication-review-system",
       "version": "1.0.3",
       "path": "collaboration/communication-review-system-1.0.3.yaml",
@@ -2971,6 +2979,14 @@
       "version": "1.0.4",
       "path": "collaboration/communication-review-system-1.0.4.yaml",
       "sha256": "c06dc7eda1286e73ec0ba7c578a2ee72a869e04cce5abcc41c523206a5c6c831",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.5",
+      "path": "collaboration/communication-review-system-1.0.5.yaml",
+      "sha256": "2c57f6e5bd35854a420f461c7e26f6a388567db0027db91caddbc4498d7bc653",
       "field": "user",
       "variables": {}
     },

@@ -201,6 +201,13 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
             payload = draft
         else:
             payload = {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
                 "verdict": "supported",
                 "issues": [],
                 "fact_ids": sorted(
