@@ -35,6 +35,8 @@ class RunnerDockerAuthority:
     gid: int
 
     def __post_init__(self) -> None:
+        if self.profile.backend != "docker":
+            raise ValueError("Docker control cannot execute a different backend profile")
         if not self.docker_binary.is_absolute() or not self.docker_binary.is_file():
             raise ValueError("An explicit installed Docker executable is required")
         if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}", self.context):

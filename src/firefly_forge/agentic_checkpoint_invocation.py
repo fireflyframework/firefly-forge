@@ -243,6 +243,11 @@ def runtime_contract() -> str:
                     "policies.py",
                     "completed_final_epoch.py",
                     "consumed_terminal_completions.py",
+                    "object_storage.py",
+                    "runner_artifact_publications.py",
+                    "runner_object_artifacts.py",
+                    "runner_kubernetes_models.py",
+                    "runner_kubernetes.py",
                 )
             },
         }

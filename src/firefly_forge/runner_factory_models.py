@@ -28,15 +28,15 @@ UNCAPPED_POOL_REASON = "Uncapped pool work requires verified run-owned authoriza
 
 class FactoryPoolSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    protocol: Literal["forge-factory-pool-v1"] = "forge-factory-pool-v1"
+    protocol: Literal["forge-factory-pool-v1", "forge-factory-kubernetes-pool-v1"] = "forge-factory-pool-v1"
     mode: Literal["pool"] = "pool"
     profile: RunnerPoolProfile
     image: str = Field(max_length=512)
     workspace_transport: Literal["forge-project-bundle-v1"] = "forge-project-bundle-v1"
     workspace_max_bytes: int = Field(default=67_108_864, ge=1_048_576, le=268_435_456, strict=True)
-    cpus: float = Field(default=1, ge=0.1, le=4, allow_inf_nan=False)
-    memory_mb: int = Field(default=512, ge=128, le=8192, strict=True)
-    pids_limit: int = Field(default=128, ge=32, le=512, strict=True)
+    cpus: float = Field(default=1, gt=0, allow_inf_nan=False)
+    memory_mb: int = Field(default=512, ge=1, strict=True)
+    pids_limit: int = Field(default=128, ge=1, strict=True)
     timeout: int = Field(default=300, ge=1, le=3600, strict=True)
     work_duration: WorkDurationPolicyV2 | None = None
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=2_000_000, strict=True)
@@ -55,6 +55,15 @@ class FactoryPoolSelection(BaseModel):
 
     @model_validator(mode="after")
     def bounded_policy(self) -> FactoryPoolSelection:
+        if self.profile.backend == "kubernetes":
+            if self.protocol != "forge-factory-kubernetes-pool-v1" or self.work_duration is None:
+                raise ValueError("Kubernetes factory selection requires its explicit resource and duration protocol")
+            if not {"cpus", "memory_mb", "pids_limit"} <= self.model_fields_set:
+                raise ValueError("Kubernetes command resources must be selected explicitly")
+        elif self.protocol != "forge-factory-pool-v1" or not (
+            0.1 <= self.cpus <= 4 and 128 <= self.memory_mb <= 8192 and 32 <= self.pids_limit <= 512
+        ):
+            raise ValueError("Docker factory selection exceeds its legacy protocol bounds")
         if self.profile.run_liveness is not None and self.work_duration is None:
             raise ValueError("Run-owned pool selection requires the explicit new work-duration policy")
         self.profile.validate_budget(

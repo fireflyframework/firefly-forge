@@ -21,6 +21,7 @@ from pydantic import (
 )
 
 from firefly_forge.runner_bundle_models import ProjectBundleIdentity
+from firefly_forge.runner_kubernetes_models import KubernetesPoolPolicy, cpu_quantity, memory_quantity
 from firefly_forge.runner_run_liveness import RUN_LIVENESS_PROTOCOL, RunLivenessBindingV1
 from firefly_forge.sandbox_models import bounded_argv, pinned_image
 from firefly_forge.work_duration_models import WorkDurationPolicyV2
@@ -117,18 +118,40 @@ class RunnerProjectInvocation(RunnerInvocation):
 
     @model_validator(mode="after")
     def framed_identity(self) -> RunnerProjectInvocation:
-        if not self.bundle.git_archive_bytes:
-            raise ValueError("Project invocation requires the minimum frozen Git snapshot")
-        if (self.archive_digest, self.source_bytes, self.source_digest) != (
-            self.bundle.archive_digest,
-            self.bundle.archive_bytes,
-            self.bundle.source_digest,
-        ):
-            raise ValueError("Project invocation differs from its frozen bundle identity")
+        validate_project_identity(self, self.bundle)
+        return self
+
+
+def validate_project_identity(invocation: RunnerInvocation, bundle: ProjectBundleIdentity) -> None:
+    if not bundle.git_archive_bytes:
+        raise ValueError("Project invocation requires the minimum frozen Git snapshot")
+    if (invocation.archive_digest, invocation.source_bytes, invocation.source_digest) != (
+        bundle.archive_digest,
+        bundle.archive_bytes,
+        bundle.source_digest,
+    ):
+        raise ValueError("Project invocation differs from its frozen bundle identity")
+
+
+class KubernetesProjectInvocation(RunnerInvocation):
+    protocol: Literal["forge-kubernetes-project-invocation-v1"] = "forge-kubernetes-project-invocation-v1"
+    bundle: ProjectBundleIdentity
+    cpus: float = Field(gt=0, allow_inf_nan=False)
+    memory_mb: int = Field(ge=1, strict=True)
+    pids_limit: int = Field(ge=1, strict=True)
+    work_duration: WorkDurationPolicyV2
+
+    @model_validator(mode="after")
+    def framed_identity(self) -> KubernetesProjectInvocation:
+        cpu_quantity(self.cpus)
+        memory_quantity(self.memory_mb)
+        validate_project_identity(self, self.bundle)
         return self
 
 
 def parse_invocation(value: Any) -> RunnerInvocation:
+    if isinstance(value, dict) and value.get("protocol") == "forge-kubernetes-project-invocation-v1":
+        return KubernetesProjectInvocation.model_validate(value)
     if isinstance(value, dict) and "protocol" in value:
         return RunnerProjectInvocation.model_validate(value)
     return RunnerInvocation.model_validate(value)
@@ -136,21 +159,23 @@ def parse_invocation(value: Any) -> RunnerInvocation:
 
 class RunnerPoolProfile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    protocol: Literal["forge-local-pool-v1"] = "forge-local-pool-v1"
+    protocol: Literal["forge-local-pool-v1", "forge-kubernetes-pool-v1"] = "forge-local-pool-v1"
+    backend: Literal["docker", "kubernetes"] = "docker"
+    kubernetes: KubernetesPoolPolicy | None = None
     profile_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     daemon_id: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
     approved_images: tuple[str, ...] = Field(min_length=1, max_length=32)
     transfer_image: str = Field(max_length=512)
     network: Literal["none"] = "none"
-    slots: int = Field(default=2, ge=1, le=64, strict=True)
-    project_slots: int = Field(default=1, ge=1, le=64, strict=True)
-    cpu_budget: float = Field(default=2, ge=0.1, le=256, allow_inf_nan=False)
-    memory_budget_mb: int = Field(default=2048, ge=128, le=524288, strict=True)
-    project_cpu_budget: float = Field(default=4, ge=0.1, le=256, allow_inf_nan=False)
-    project_memory_budget_mb: int = Field(default=8192, ge=128, le=524288, strict=True)
-    max_cpus: float = Field(default=2, ge=0.1, le=4, allow_inf_nan=False)
-    max_memory_mb: int = Field(default=1024, ge=128, le=8192, strict=True)
-    max_pids: int = Field(default=128, ge=32, le=512, strict=True)
+    slots: int = Field(default=2, ge=1, strict=True)
+    project_slots: int = Field(default=1, ge=1, strict=True)
+    cpu_budget: float = Field(default=2, gt=0, allow_inf_nan=False)
+    memory_budget_mb: int = Field(default=2048, ge=1, strict=True)
+    project_cpu_budget: float = Field(default=4, gt=0, allow_inf_nan=False)
+    project_memory_budget_mb: int = Field(default=8192, ge=1, strict=True)
+    max_cpus: float = Field(default=2, gt=0, allow_inf_nan=False)
+    max_memory_mb: int = Field(default=1024, ge=1, strict=True)
+    max_pids: int = Field(default=128, ge=1, strict=True)
     max_timeout: int = Field(default=300, ge=1, le=3600, strict=True)
     work_duration: WorkDurationPolicyV2 | None = None
     run_liveness: Literal["forge-run-owned-liveness-v1"] | None = None
@@ -173,6 +198,39 @@ class RunnerPoolProfile(BaseModel):
 
     @model_validator(mode="after")
     def capacity(self) -> RunnerPoolProfile:
+        if self.backend == "kubernetes":
+            if self.protocol != "forge-kubernetes-pool-v1" or self.kubernetes is None:
+                raise ValueError("Kubernetes execution requires its explicit protocol and isolation policy")
+            required = {
+                "slots",
+                "project_slots",
+                "cpu_budget",
+                "memory_budget_mb",
+                "project_cpu_budget",
+                "project_memory_budget_mb",
+                "max_cpus",
+                "max_memory_mb",
+                "max_pids",
+                "max_timeout",
+            }
+            if not required <= self.model_fields_set:
+                raise ValueError("Kubernetes capacity and duration must be selected explicitly")
+        else:
+            if self.protocol != "forge-local-pool-v1" or self.kubernetes is not None:
+                raise ValueError("A Docker pool cannot inherit Kubernetes authority")
+            legacy_bounds = (
+                (self.slots, 1, 64),
+                (self.project_slots, 1, 64),
+                (self.cpu_budget, 0.1, 256),
+                (self.project_cpu_budget, 0.1, 256),
+                (self.memory_budget_mb, 128, 524288),
+                (self.project_memory_budget_mb, 128, 524288),
+                (self.max_cpus, 0.1, 4),
+                (self.max_memory_mb, 128, 8192),
+                (self.max_pids, 32, 512),
+            )
+            if any(not minimum <= value <= maximum for value, minimum, maximum in legacy_bounds):
+                raise ValueError("Docker capacity exceeds its legacy protocol bounds")
         if self.run_liveness is not None and self.work_duration is None:
             raise ValueError("Run ownership requires an explicit administrator work-duration policy")
         if self.project_slots > self.slots:
@@ -182,6 +240,9 @@ class RunnerPoolProfile(BaseModel):
     @model_serializer(mode="wrap")
     def retained_duration(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         value: dict[str, Any] = handler(self)
+        if self.backend == "docker":
+            value.pop("backend")
+            value.pop("kubernetes")
         if self.work_duration is None:
             value.pop("work_duration")
         if self.run_liveness is None:
@@ -193,6 +254,10 @@ class RunnerPoolProfile(BaseModel):
         return pool_digest(self.model_dump(mode="json"))
 
     def validate_invocation(self, value: RunnerInvocation) -> None:
+        if (self.backend == "kubernetes") != isinstance(value, KubernetesProjectInvocation):
+            raise ValueError(
+                "Invocation must select the exact Kubernetes invocation protocol or its legacy Docker backend"
+            )
         if (self.run_liveness == RUN_LIVENESS_PROTOCOL) != (value.run_liveness is not None):
             raise ValueError("Invocation run ownership differs from the immutable administrator profile")
         if value.profile_id != self.profile_id or value.profile_revision != self.revision:
