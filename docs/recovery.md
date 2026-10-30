@@ -91,6 +91,9 @@ A task marked done has a completion receipt. Inspect its evidence: completing a 
 
 Startup recovery records an observation for the current native intent or claim. A later claim can retain the original task key while receiving a distinct recovery event; the earlier witness stays historical. If a previous startup already left the task in `needs_reconciliation` without that later annotation, startup can append the exact observation without changing the task, earlier records, spent usage, or budgets. This bookkeeping never authorizes a retry or repeats a model or command effect. Older recovery records retain their original format.
 
+A failed implementation with a saved provider request bound to its current task key keeps that custody unchanged during startup. Its dedicated recovery flow must settle the saved result or unknown outcome. A failure before provider dispatch can still receive the ordinary restart observation, regardless of which provider the project selected. Other unfinished runs recover independently; preserving one consumed result does not prevent startup from inspecting another project.
+
+
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
 
 ## Recover a known failed official CLI attempt
