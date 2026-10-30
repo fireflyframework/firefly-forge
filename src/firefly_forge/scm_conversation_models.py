@@ -12,6 +12,8 @@ from pydantic import ConfigDict, Field, SerializerFunctionWrapHandler, model_ser
 
 from firefly_forge.scm_authority_models import Digest, NativeID, StrictContract
 
+SCM_SOURCE_QUESTION_LIMIT = 40000
+
 
 class AddressedStatusV1(StrictContract):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
@@ -96,7 +98,7 @@ class AddressedContextV1(StrictContract):
 
 def addressed_status(text: str, bot_addresses: tuple[str, ...] = ()) -> AddressedStatusV1 | None:
     """Recognize a bounded status grammar; unsupported addressed requests only clarify."""
-    if not text or len(text) > 40000:
+    if not text or len(text) > SCM_SOURCE_QUESTION_LIMIT:
         return None
     aliases = {"forge"} | {
         value.lower() for value in bot_addresses if re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}", value)

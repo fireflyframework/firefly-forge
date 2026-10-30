@@ -16,7 +16,7 @@ from test_addressed_status_native import natural
 from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.collaboration import CollaborationSettings
-from firefly_forge.communication import CommunicationConversationV1, communication_facts
+from firefly_forge.communication import CommunicationCard, CommunicationConversationV1, communication_facts
 from firefly_forge.journal import digest
 from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.scm_actor_authority import SCMActorAuthority
@@ -147,12 +147,15 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     evidence = intent["communication"]
     from firefly_forge.product_provenance import content_digest
 
+    question = body.removeprefix("@forge ") if transport == "polling" else body
     current_facts = communication_facts(
         c.http.portal.call(c.store.get_run, c.run["id"]),
         conversation=CommunicationConversationV1(
             selection="run",
             language=language,
             linked_runs=1 if transport == "polling" else len(result["conversation"]["candidate_ids"]),
+            question=question,
+            question_sha256=hashlib.sha256(question.encode()).hexdigest(),
         ),
     )
     assert evidence["facts"] == current_facts
@@ -160,12 +163,22 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert evidence["mode"] == "ai"
     assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
     assert [call[0] for call in calls] == ["draft", "review"]
+    for _, messages, _ in calls:
+        prompt = "\n".join(
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(getattr(part, "content", None), str)
+        )
+        assert json.dumps(question, ensure_ascii=False) in prompt
+        assert hashlib.sha256(question.encode()).hexdigest() in prompt
     assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
     if transport == "polling":
         assert evidence["natural_reply_source"] == "current_execution_facts"
         assert len(coordinator_calls) == 1
         assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
         assert result["natural_turn"]["decision"]["language"] == language
+        assert result["natural_turn"]["human_message"] == question
         assert result["natural_turn"]["reply"] not in intent["body"]
     assert (
         result["source_snapshot"] == delivery["source_snapshot"] and result["verification"] == delivery["verification"]
@@ -261,8 +274,14 @@ def test_native_signed_one_semantic_correction_is_published_once_without_second_
     assert result["feedback_status"] == "sent" and evidence["mode"] == "ai"
     assert evidence["repair_attempted"] is True and evidence["review"]["verdict"] == verdict
     assert evidence["review_applies_to"] == "original_candidate"
-    assert evidence["review_candidate_sha256"] == content_digest(candidate)
-    assert evidence["candidate_sha256"] == content_digest(corrected) != evidence["review_candidate_sha256"]
+    assert evidence["review_candidate_sha256"] == content_digest(
+        CommunicationCard.model_validate(candidate).model_dump()
+    )
+    assert (
+        evidence["candidate_sha256"]
+        == content_digest(CommunicationCard.model_validate(corrected).model_dump())
+        != evidence["review_candidate_sha256"]
+    )
     assert [call[0] for call in calls] == ["draft", "review", "draft"]
     assert corrected["paragraphs"][0]["text"] in intent["body"]
     assert candidate["paragraphs"][0]["text"] not in intent["body"]
