@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/upload_koinon_document
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Admit a project document through its explicit Koinon mapping with a
+  durable native receipt.
+required_variables: []
+metadata:
+  defaults: {}

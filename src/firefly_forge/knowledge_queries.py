@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from koinon_sdk import ApiError
@@ -24,16 +24,17 @@ INTENT, RECEIPT = "koinon_sql_intent", "koinon_sql_receipt"
 
 
 class KnowledgeQueries:
-    def __init__(self, manager: KnowledgeManager) -> None:
-        self.manager = manager
+    def __init__(self, manager: KnowledgeManager, *, operation: Literal["sql", "source", "memory"] = "sql") -> None:
+        self.manager, self.operation = manager, operation
 
     async def state(
         self, run: Data, request_id: str, *, create: Data | None = None, receipt: Data | None = None
     ) -> Data | None:
         journal = self.manager.journal
+        INTENT, RECEIPT = f"koinon_{self.operation}_intent", f"koinon_{self.operation}_receipt"
         if journal is None:
             raise ValueError("Koinon SQL requires native durable journal custody")
-        key = digest({"operation": "koinon_sql", "request_id": request_id})
+        key = digest({"operation": "koinon_" + self.operation, "request_id": request_id})
         writing = create is not None or receipt is not None
         if writing:
             await self.manager.store.assert_ownership()
@@ -55,7 +56,7 @@ class KnowledgeQueries:
                     "digest": native.digest,
                     "previous_hash": native.previous_hash,
                 }
-                if any(entry.get(k) != v for k, v in scalar.items()):
+                if native.run_id.hex != run["id"] or any(entry.get(k) != v for k, v in scalar.items()):
                     raise ValueError("Koinon SQL journal scalar custody changed")
             intents = [e for e in entries if e["kind"] == INTENT and e["idempotency_key"] == key]
             results = [e for e in entries if e["kind"] == RECEIPT and e["idempotency_key"] == key]

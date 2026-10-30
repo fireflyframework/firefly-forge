@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/remember_verified_run
+version: 1.0.1
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Retain verified run evidence through its configured knowledge workflow;
+  Koinon stages an external proposal for explicit private review.
+required_variables: []
+metadata:
+  defaults: {}
