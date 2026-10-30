@@ -12,12 +12,12 @@ from test_addressed_status_polling import configured_status
 from test_addressed_status_signed import grant
 from test_scm_polling import poll_case as poll_case  # noqa: PLC0414
 
-from firefly_forge.collaboration import CollaborationSettings
+from firefly_forge.collaboration import CollaborationSettings, RepositoryCommand
 
 QUESTION = "@forge What is blocked, and what is already verified? This is a follow-up, not a request to rerun."
 
 
-async def signed(c, *, installation="absent", signature=True, number=90, body=QUESTION):
+async def signed(c, *, retained=False, installation="absent", signature=True, number=90, body=QUESTION):
     if not c.state.get("repo_hook_settings"):
         await c.collaboration.configure(
             c.repository,
@@ -48,6 +48,13 @@ async def signed(c, *, installation="absent", signature=True, number=90, body=QU
         "x-hub-signature-256": "sha256="
         + hmac.new(b"owned-repository-hook-key" if signature else b"wrong", raw, hashlib.sha256).hexdigest(),
     }
+    if retained:
+        prepared = await c.collaboration._prepare_receive("github", c.repository, raw, headers)
+        if prepared["reason"] is None and prepared["event"].pop("api_observation", None) is not None:
+            prepared["event"]["command"] = RepositoryCommand.parse(
+                body, bot_addresses=c.scm.bot_addresses("github")
+            ).model_dump(exclude_none=True)
+        return await c.collaboration._retain_receive(prepared), raw, headers
     return await c.collaboration.receive("github", c.repository, raw, headers), raw, headers
 
 
@@ -84,12 +91,14 @@ async def test_present_invalid_app_installation_never_falls_back_to_repository_h
 
 
 @pytest.mark.parametrize("transport", ["repository", "application"])
-async def test_signed_natural_question_uses_same_classifier_and_current_read_scope_once(
+async def test_retained_signed_natural_question_uses_same_classifier_and_current_read_scope_once(
     poll_case, monkeypatch, transport
 ):
     async with poll_case() as c:
         await ready(c, monkeypatch)
-        delivery, raw, headers = await signed(c, installation={"id": 34} if transport == "application" else "absent")
+        delivery, raw, headers = await signed(
+            c, retained=True, installation={"id": 34} if transport == "application" else "absent"
+        )
         if transport == "application":
             await grant(c, delivery)
         before = copy.deepcopy(c.db["runs"][c.run_id].data)
@@ -107,7 +116,7 @@ async def test_signed_natural_question_uses_same_classifier_and_current_read_sco
 @pytest.mark.parametrize(
     "change", ["signature", "membership", "actor", "source", "permission", "webhook-key", "missing-consent"]
 )
-async def test_repository_hook_does_not_classify_before_current_source_and_actor_authority(
+async def test_retained_repository_hook_does_not_classify_before_current_source_and_actor_authority(
     poll_case, monkeypatch, change
 ):
     async with poll_case() as c:
@@ -116,7 +125,7 @@ async def test_repository_hook_does_not_classify_before_current_source_and_actor
         else:
             await configured_status(c, monkeypatch)
         before = len(c.state["posts"])
-        delivery, _, _ = await signed(c, signature=change != "signature")
+        delivery, _, _ = await signed(c, retained=True, signature=change != "signature")
         if change == "membership":
             c.db["memberships"]["member"].active = False
         if change == "actor":
@@ -133,10 +142,12 @@ async def test_repository_hook_does_not_classify_before_current_source_and_actor
         assert not c.db["journal"]
 
 
-async def test_unknown_signed_classifier_outcome_is_not_replayed_or_replaced_by_basic_status(poll_case, monkeypatch):
+async def test_retained_unknown_signed_classifier_outcome_is_not_replayed_or_replaced_by_basic_status(
+    poll_case, monkeypatch
+):
     async with poll_case() as c:
         await ready(c, monkeypatch)
-        delivery, _, _ = await signed(c)
+        delivery, _, _ = await signed(c, retained=True)
         calls = []
 
         async def unknown(*args, **kwargs):
@@ -152,35 +163,33 @@ async def test_unknown_signed_classifier_outcome_is_not_replayed_or_replaced_by_
 
 
 @pytest.mark.parametrize("first", ["webhook", "poll"])
-async def test_one_comment_has_one_native_receipt_and_one_classifier_across_ingress_transports(
-    poll_case, monkeypatch, first
-):
+async def test_one_comment_has_one_operational_receipt_and_separate_signed_delivery(poll_case, monkeypatch, first):
     async with poll_case() as c:
         await ready(c, monkeypatch)
-        if first == "webhook":
-            delivery, _, _ = await signed(c)
-        else:
+        if first == "poll":
             c.state["clock"] += 3600
             c.state["comments"].append(c.comment(90, QUESTION))
             for _ in range(3):
                 await c.service.step(c.repository)
-            delivery = next(row.data for row in c.db["inbox"].values() if row.source_key == "comment:90")
-        await c.collaboration.process(delivery["id"])
-        if first == "webhook":
-            c.state["clock"] += 3600
-            for _ in range(3):
-                await c.service.step(c.repository)
-        else:
-            observed, _, _ = await signed(c)
-            assert observed["id"] == delivery["id"]
+        signed_delivery, _, _ = await signed(c)
+        await c.collaboration.process(signed_delivery["id"])
+        for _ in range(3):
+            await c.service.step(c.repository)
         rows = [row for row in c.db["inbox"].values() if row.source_key == "comment:90"]
-        assert len(rows) == 1 and c.state["status_calls"] == 1
-        assert (await c.collaboration.process(rows[0].id.hex))["status"] == "processed"
+        assert len(rows) == 1 and rows[0].id.hex != signed_delivery["id"]
+        result = await c.collaboration.process(rows[0].id.hex)
+        assert result["status"] == "processed" and c.state["status_calls"] == 1
+        correlation = await c.collaboration.process(signed_delivery["id"])
+        assert correlation["api_observation"]["receipt_id"] == result["id"]
+        assert correlation["verification"] == signed_delivery["verification"]
+        assert (await c.collaboration.process(rows[0].id.hex)) == result
         assert len(c.state["posts"]) == 2 and not c.db["journal"]
 
 
 @pytest.mark.parametrize("family", ["answer", "product", "checkpoint"])
-async def test_signed_read_proof_never_admits_polling_effects_even_with_polling_grants(poll_case, monkeypatch, family):
+async def test_retained_signed_read_proof_never_admits_polling_effects_even_with_polling_grants(
+    poll_case, monkeypatch, family
+):
     from firefly_forge.project_access import AccessDenied
     from firefly_forge.scm_natural_checkpoints import SCMNaturalCheckpoints
     from firefly_forge.scm_natural_effects import NaturalEffects
@@ -189,7 +198,7 @@ async def test_signed_read_proof_never_admits_polling_effects_even_with_polling_
 
     async with poll_case() as c:
         await ready(c, monkeypatch)
-        delivery, _, _ = await signed(c)
+        delivery, _, _ = await signed(c, retained=True)
         result = await c.collaboration.process(delivery["id"])
         natural = SCMNaturalTasks(c.collaboration)
         before = copy.deepcopy((c.db["runs"][c.run_id].data, c.db["journal"], len(c.db["inbox"])))

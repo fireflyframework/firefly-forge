@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Signed human-comment snapshots preserve native verification and read-only scope."""
+"""Retained pre-wake signed read receipts keep their original verification and scope."""
 
 import hashlib
 import hmac
@@ -9,12 +9,14 @@ from uuid import uuid4
 import pytest
 from test_scm_polling import poll_case as poll_case
 
-from firefly_forge.collaboration import CollaborationSettings
+from firefly_forge.collaboration import CollaborationSettings, RepositoryCommand
 from firefly_forge.journal import digest
 from firefly_forge.scm_authority_models import SCMActorBindingInputV1
 
 
-async def signed_address(c, *, actor_type="User", issue_kind="issue", body="@forge how is this going?", number=90):
+async def retained_signed_address(
+    c, *, actor_type="User", issue_kind="issue", body="@forge how is this going?", number=90
+):
     if not c.state.get("signed_settings"):
         await c.collaboration.configure(
             c.repository,
@@ -43,12 +45,17 @@ async def signed_address(c, *, actor_type="User", issue_kind="issue", body="@for
         "x-github-delivery": uuid4().hex,
         "x-hub-signature-256": "sha256=" + hmac.new(b"signed-status-fixture", raw, hashlib.sha256).hexdigest(),
     }
-    return await c.collaboration.receive("github", c.repository, raw, headers), comment
+    prepared = await c.collaboration._prepare_receive("github", c.repository, raw, headers)
+    if prepared["reason"] is None and prepared["event"].pop("api_observation", None) is not None:
+        prepared["event"]["command"] = RepositoryCommand.parse(
+            body, bot_addresses=c.scm.bot_addresses("github")
+        ).model_dump(exclude_none=True)
+    return await c.collaboration._retain_receive(prepared), comment
 
 
 async def test_signed_address_retains_original_human_source_beside_unchanged_verified_reference(poll_case):
     async with poll_case() as c:
-        delivery, comment = await signed_address(c)
+        delivery, comment = await retained_signed_address(c)
         assert delivery["status"] == "received"
         assert delivery["command"]["adapter"] == "addressed_status_v1"
         assert delivery["source_snapshot"]["body"] == comment["body"]
@@ -61,7 +68,7 @@ async def test_signed_address_retains_original_human_source_beside_unchanged_ver
 
 async def test_signed_bot_address_is_not_a_human_read_request(poll_case):
     async with poll_case() as c:
-        delivery, _ = await signed_address(c, actor_type="Bot")
+        delivery, _ = await retained_signed_address(c, actor_type="Bot")
         assert delivery["status"] == "denied"
         assert not c.db["journal"] and not c.state["posts"]
 
@@ -88,7 +95,7 @@ async def grant(c, delivery):
 
 async def test_signed_status_uses_current_native_status_consent_without_an_invented_run(poll_case, monkeypatch):
     async with poll_case() as c:
-        delivery, comment = await signed_address(c)
+        delivery, comment = await retained_signed_address(c)
         c.state["comments"].append(comment)
         authority = c.service.authority
         consent = await grant(c, delivery)
@@ -111,7 +118,7 @@ async def test_signed_status_uses_current_native_status_consent_without_an_inven
 @pytest.mark.parametrize("change", ["user", "membership", "source", "permission", "actor", "command"])
 async def test_signed_conversation_rechecks_current_authority_before_any_reply(poll_case, change):
     async with poll_case() as c:
-        delivery, comment = await signed_address(c)
+        delivery, comment = await retained_signed_address(c)
         c.state["comments"].append(comment)
         await grant(c, delivery)
         if change == "user":
@@ -133,7 +140,7 @@ async def test_signed_conversation_rechecks_current_authority_before_any_reply(p
 
 async def test_signed_status_uses_authenticated_previous_ticket_receipt_for_api_created_run(poll_case, monkeypatch):
     async with poll_case() as c:
-        original, comment = await signed_address(c, body="/forge status " + json.dumps({"run_id": c.run_id}))
+        original, comment = await retained_signed_address(c, body="/forge status " + json.dumps({"run_id": c.run_id}))
         c.state["comments"].append(comment)
         await grant(c, original)
         previous = await c.collaboration.process(original["id"])
@@ -141,7 +148,7 @@ async def test_signed_status_uses_authenticated_previous_ticket_receipt_for_api_
         from test_addressed_status_polling import configured_status
 
         await configured_status(c, monkeypatch)
-        delivery, comment = await signed_address(c, number=91)
+        delivery, comment = await retained_signed_address(c, number=91)
         c.state["comments"].append(comment)
         result = await c.collaboration.process(delivery["id"])
         assert result["status"] == "processed" and result["run_id"] == c.run_id

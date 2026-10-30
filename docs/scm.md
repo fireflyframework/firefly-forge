@@ -603,19 +603,27 @@ webhook that supplies `installation.id` must still match its exact configured
 installation; a wrong or malformed value cannot fall back to the repository
 transport.
 
-This read path requires the existing current API-observed `status` consent for
-the same GitHub account, project and components, plus a configured communication
-profile. forge checks the current comment, author, ticket, repository grant and
-native membership before classification and before feedback. The same comment
-shares one retained identity with polling, so a later observation or redelivery
-does not classify or answer it twice. Unknown model or remote outcomes remain
-held rather than falling back to the basic command handler.
+New natural comments from either signed App or repository hooks retain their
+HMAC delivery separately and durably request an authenticated API observation.
+The worker checks that pending schedule each second, including after a restart;
+provider retry deadlines and the current scan cursor are preserved. A signed
+wake is not an action or a new consent. Configure the existing GitHub API
+polling pipeline and finish its baseline before using this path.
 
-Signed questions use the same natural classifier as polling. This read
-transport does not admit answers, continuations, product turns or checkpoints;
-those outcomes remain pending their separate supported authority. GitLab and
-Bitbucket retain their existing typed webhook commands. Their natural read
-adapters and fresh-provider checks are not implemented by this GitHub change.
+The API observation owns the comment identity and runs the existing natural
+classifier once. Status, answers, continuations, product turns and checkpoints
+retain their own current native permissions, source checks and consent. A
+redelivery or polling-first arrival cannot classify or answer the same comment
+twice. Unmentioned replies still require an exact retained question in that
+pipeline. Unknown model or remote outcomes remain held, and historical signed
+receipts are never automatically promoted or replayed.
+
+The receipt links the signed delivery to the API observation without claiming
+that the observation completed an action. forge rechecks the current comment,
+author, ticket, repository grant and native membership before classification and
+feedback. Repository scheduling uses bounded database pages rather than a global
+repository count limit. GitLab and Bitbucket retain their existing typed webhook
+commands; their natural observation adapters are not implemented by this change.
 
 ## Use GitHub issue comments from a local factory
 
