@@ -159,11 +159,11 @@ gh webhook forward --repo=OWNER/REPOSITORY --events=issue_comment \
   --url=http://127.0.0.1:8000/api/v1/webhooks/github/FORGE_REPOSITORY_ID
 ```
 
-Use the actual local API port and forge repository ID. This command creates a development repository hook; `--org` selects an organization hook. It does not forward the GitHub App's subscriptions or convert a repository payload into an installation payload. The existing signed App-bound contract requires the installation identity. A forwarded delivery can therefore reach the endpoint while its natural conversation is refused. Do not add a fabricated installation field or remove that check to make a local test pass.
+Use the actual local API port and forge repository ID. This command creates a development repository hook; `--org` selects an organization hook. It does not forward the GitHub App's subscriptions or convert a repository payload into an installation payload. Repository deliveries use the [separate read contract](#receive-natural-questions-through-a-signed-github-repository-webhook), including current native consent. App deliveries retain their installation check. Do not fabricate an installation field or remove that check to make a local test pass.
 
 Keep signature validation enabled. Configure the same private secret on the created provider hook and in forge's existing collaboration settings, preserving all other model and authority settings. Use private request bodies or standard input for those administrative writes; do not put the secret in a command argument or capture it in logs. Scope the test to its own repository and stop the forwarding process and remove only its development hook when finished.
 
-A local signed delivery was observed reaching ingress while natural processing remained refused at that source cut. That establishes transport delivery, not an automatic conversational reply. Inspect the retained receipt and confirmed outbound comment separately. Production GitHub App delivery still requires actual subscriptions, a reachable TLS endpoint and its own acceptance evidence; this local forwarding test establishes neither production readiness nor a cloud runtime deployment.
+Inspect the retained receipt and confirmed outbound comment separately: transport delivery alone does not establish an automatic conversational reply. Production GitHub App delivery still requires actual subscriptions, a reachable TLS endpoint and its own acceptance evidence. Local CLI forwarding establishes neither production readiness nor a cloud runtime deployment.
 
 ## GitLab OAuth application
 
@@ -595,7 +595,7 @@ this read-only conversation path.
 ### Receive natural questions through a signed GitHub repository webhook
 
 A repository webhook can deliver an addressed question such as `@forge what is
-blocked?` to `/webhooks/github/{repository_id}` without a slash command. Its
+blocked?` to `/api/v1/webhooks/github/{repository_id}` without a slash command. Its
 configured repository secret must verify the exact raw body. This transport is
 recorded as `github_repository_webhook_v1`: the configured App connection is
 separate metadata, not an installation assertion in the webhook payload. An App
@@ -605,7 +605,7 @@ transport.
 
 This read path requires the existing current API-observed `status` consent for
 the same GitHub account, project and components, plus a configured communication
-profile. Forge checks the current comment, author, ticket, repository grant and
+profile. forge checks the current comment, author, ticket, repository grant and
 native membership before classification and before feedback. The same comment
 shares one retained identity with polling, so a later observation or redelivery
 does not classify or answer it twice. Unknown model or remote outcomes remain
