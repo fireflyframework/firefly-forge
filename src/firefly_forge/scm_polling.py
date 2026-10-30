@@ -513,14 +513,15 @@ class SCMPolling:
             raise ValueError("Polling pagination left its exact bounded repository resource")
         return page + 1
 
-    async def step(self, repository: str) -> None:
+    async def step(self, repository: str) -> bool:
+        """Read one page; report only an available continuation of this scan."""
         if current_unit_of_work() is not None:
             raise ValueError("Read provider observations outside a caller transaction")
         await self.store.assert_ownership()
         policy, state = await self._policy(repository)
         cursor = copy.deepcopy(state["cursor"])
         if any(cursor[k] is not None and cursor[k] > time() for k in ("retry_at", "next_due_at")):
-            return
+            return False
         repo = await self._scope(repository, policy)
         response = await self.scm.github_poll_read(repo, cursor["phase"], page=cursor["page"])
         if response.status_code != 200:
@@ -538,7 +539,7 @@ class SCMPolling:
                     current["cursor"]["last_error"] = "provider_backoff"
                     row.data = {**row.data, STATE_KEY: current}
                     await self.settings.save(row)
-                return
+                return False
             raise AccessDenied("The provider polling resource is unavailable; preserve the cursor")
         entries = response.json()
         if not isinstance(entries, list) or len(entries) > 50 or any(not isinstance(item, dict) for item in entries):
@@ -731,6 +732,7 @@ class SCMPolling:
             row.data = {**row.data, STATE_KEY: current}
             self.store.reject_credentials(row.data)
             await self.settings.save(row)
+        return next_page is not None or cursor["phase"] == "comments"
 
     async def candidates(self, project: str, repository: str) -> Data:
         actor = CURRENT_PRINCIPAL.get()
@@ -1403,17 +1405,24 @@ class SCMPolling:
                 )
             if len(rows) > 100:
                 raise ValueError("Too many polling repositories for this bounded worker")
-            for row in rows:
-                try:
-                    await self.step(row.repository_id.hex)
-                except (ValueError, AccessDenied, KeyError):
-                    async with self.store._unit():
-                        await self.collaboration._repo_lock(row.repository_id.hex)
-                        current_row, current = await self._state(row.repository_id.hex)
-                        if current["cursor"] is not None:
-                            current["cursor"]["last_error"] = "poll_unavailable"
-                            current_row.data = {**current_row.data, STATE_KEY: current}
-                            await self.settings.save(current_row)
+            pending = rows
+            while pending:
+                continuing = []
+                for row in pending:
+                    try:
+                        if await self.step(row.repository_id.hex):
+                            continuing.append(row)
+                    except (ValueError, AccessDenied, KeyError):
+                        async with self.store._unit():
+                            await self.collaboration._repo_lock(row.repository_id.hex)
+                            current_row, current = await self._state(row.repository_id.hex)
+                            if current["cursor"] is not None:
+                                current["cursor"]["last_error"] = "poll_unavailable"
+                                current_row.data = {**current_row.data, STATE_KEY: current}
+                                await self.settings.save(current_row)
+                pending = continuing
+                if pending:
+                    await asyncio.sleep(0)
             await asyncio.sleep(60)
 
 

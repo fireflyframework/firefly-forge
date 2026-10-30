@@ -147,6 +147,24 @@ For GitHub Enterprise Server, set **Host** to its HTTPS origin. forge derives
 `/api/v3` from that origin and rejects clone URLs or pagination links from another
 host. App installation and permissions must exist on that same server.
 
+### Check webhook subscriptions and local development delivery
+
+App authentication and event delivery are separate settings. In the GitHub App registration, enable webhooks, configure a reachable HTTPS webhook URL and a private webhook secret, then subscribe to **Issue comment** for newly created issue comments. An App with an empty event subscription can still authenticate and support polling while receiving no conversation events. Verify the selected repository, delivery response and forge receipt after changing subscriptions. See [GitHub's App webhook guide](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps).
+
+For a local development test, the official [GitHub CLI webhook extension](https://github.com/cli/gh-webhook) can forward repository or organization hook events to a running local factory:
+
+```sh
+gh extension install cli/gh-webhook
+gh webhook forward --repo=OWNER/REPOSITORY --events=issue_comment \
+  --url=http://127.0.0.1:8000/api/v1/webhooks/github/FORGE_REPOSITORY_ID
+```
+
+Use the actual local API port and forge repository ID. This command creates a development repository hook; `--org` selects an organization hook. It does not forward the GitHub App's subscriptions or convert a repository payload into an installation payload. The existing signed App-bound contract requires the installation identity. A forwarded delivery can therefore reach the endpoint while its natural conversation is refused. Do not add a fabricated installation field or remove that check to make a local test pass.
+
+Keep signature validation enabled. Configure the same private secret on the created provider hook and in forge's existing collaboration settings, preserving all other model and authority settings. Use private request bodies or standard input for those administrative writes; do not put the secret in a command argument or capture it in logs. Scope the test to its own repository and stop the forwarding process and remove only its development hook when finished.
+
+A local signed delivery was observed reaching ingress while natural processing remained refused at that source cut. That establishes transport delivery, not an automatic conversational reply. Inspect the retained receipt and confirmed outbound comment separately. Production GitHub App delivery still requires actual subscriptions, a reachable TLS endpoint and its own acceptance evidence; this local forwarding test establishes neither production readiness nor a cloud runtime deployment.
+
 ## GitLab OAuth application
 
 [Register an OAuth application](https://docs.gitlab.com/integration/oauth_provider/)
@@ -644,7 +662,9 @@ forge project scm-polling configure PROJECT_ID REPOSITORY_ID configuration.json
 forge project scm-polling configuration PROJECT_ID REPOSITORY_ID CONFIGURATION_REQUEST_ID
 ```
 
-The setup read does not contact GitHub. The configuration write checks current repository access and the reviewed connection/project cut. An interval must be between 60 and 3600 seconds. Each repository has one current polling project. Moving its configuration to another project invalidates the previous project's action snapshots while preserving authorized historical reads. A concurrent change refuses the reviewed request instead of silently using another cut.
+The setup read does not contact GitHub. The configuration write checks current repository access and the reviewed connection/project cut. An interval must be between 60 and 3600 seconds. It applies between completed scans. Available issue and comment pages drain in rounds, with one page per repository before another turn and a cooperative yield between rounds. A repository that finishes, enters provider backoff or fails inspection leaves that batch until its next normal polling turn. Pagination does not add a full interval for every page. Existing page, byte and scope bounds still apply; a prompt reply also depends on classification, model latency and current provider access.
+
+Each repository has one current polling project. Moving its configuration to another project invalidates the previous project's action snapshots while preserving authorized historical reads. A concurrent change refuses the reviewed request instead of silently using another cut.
 
 ### 3. Finish the baseline before posting commands
 
