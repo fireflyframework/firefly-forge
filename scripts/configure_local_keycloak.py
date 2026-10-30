@@ -40,7 +40,7 @@ def realm_configuration(api_origin: str, browser_origin: str) -> dict:
         "bruteForceProtected": True,
         "sslRequired": "none",
         "roles": {"client": {"forge-api": [{"name": "forge-admin"}, {"name": "forge-worker"}]}},
-        "clientScopeMappings": {"forge-api": [{"client": "forge-studio", "roles": ["forge-admin", "forge-worker"]}]},
+        "clientScopeMappings": {"forge-api": [{"client": "forge-studio", "roles": ["forge-admin"]}]},
         "clients": [
             {
                 "clientId": "forge-api",

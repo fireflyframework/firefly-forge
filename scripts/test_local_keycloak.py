@@ -29,7 +29,17 @@ class LocalKeycloakTests(unittest.TestCase):
             self.assertFalse(client["serviceAccountsEnabled"])
             self.assertFalse(client["fullScopeAllowed"])
             self.assertEqual(client["attributes"]["pkce.code.challenge.method"], "S256")
-            self.assertEqual(realm["clientScopeMappings"]["forge-api"][0]["roles"], ["forge-admin", "forge-worker"])
+            self.assertEqual(realm["clientScopeMappings"]["forge-api"][0]["roles"], ["forge-admin"])
+            self.assertNotIn("forge-worker", realm["clientScopeMappings"]["forge-api"][0]["roles"])
+            self.assertFalse(
+                next(c for c in realm["clients"] if c["clientId"] == "forge-api")["serviceAccountsEnabled"]
+            )
+            audience = next(
+                mapper for mapper in client["protocolMappers"] if mapper["protocolMapper"] == "oidc-audience-mapper"
+            )
+            self.assertEqual(audience["config"]["included.client.audience"], "forge-api")
+            self.assertEqual(audience["config"]["access.token.claim"], "true")
+            self.assertEqual(audience["config"]["id.token.claim"], "false")
             self.assertNotIn("defaultRoles", realm)
             self.assertNotIn("defaultRoles", next(c for c in realm["clients"] if c["clientId"] == "forge-api"))
             env = {

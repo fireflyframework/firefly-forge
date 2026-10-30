@@ -41,7 +41,7 @@ The pinned image is `quay.io/keycloak/keycloak:26.8.1`. The compose file mounts 
 
 Open the Keycloak address. Read the bootstrap password from the private `keycloak.env` file in your local editor and sign in as `forge-admin`. Do not paste that password into issues, screenshots or application configuration forms.
 
-Select the `forge` realm. Create a user, give that user a password through Keycloak's credentials screen and complete any required account actions. For a deliberately chosen factory administrator, assign the **client role** `forge-api` → `forge-admin`. Ordinary users need no administrator role. The scope mapping allows a role to appear in an access token only when it has actually been assigned; it grants no role on its own. There is no default administrator application user.
+Select the `forge` realm. Create a user, give that user a password through Keycloak's credentials screen and complete any required account actions. For a deliberately chosen factory administrator, assign the **client role** `forge-api` → `forge-admin`. Ordinary users need no administrator role. Studio's scope mapping permits that administrator role only when it has actually been assigned. It excludes `forge-worker`; this sandbox enables no service-account or worker login. There is no default administrator application user.
 
 ## Connect forge and sign in
 
