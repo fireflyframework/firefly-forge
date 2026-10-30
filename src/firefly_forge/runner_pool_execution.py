@@ -79,12 +79,25 @@ class RunnerPoolExecutions:
                 await self._authorize_run(invocation, fence)
             await self.pools.check_factory_fence(fence)
             await self.dispatcher.verify_daemon()
+
+            async def artifact_authority() -> None:
+                if self.stopping:
+                    raise RuntimeError("Runner controller is stopping")
+                await self.pools.check_factory_fence(fence)
+                if invocation.run_liveness is not None:
+                    await self._authorize_run(invocation, fence)
+
+            await self.artifacts.retain_durable(
+                self.profile, invocation, "source", archive, fence, authorize=artifact_authority
+            )
             self.artifacts.prepare(self.profile, invocation, archive)
             if isinstance(invocation, RunnerProjectInvocation):
                 if self.git_snapshot is None:
                     raise RuntimeError("Project bundle controller capability is inactive")
                 await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
-            self.artifacts.retain(self.profile, invocation, "stdin", stdin)
+            await self.artifacts.retain_durable(
+                self.profile, invocation, "stdin", stdin, fence, authorize=artifact_authority
+            )
             lease = (
                 RunLease(
                     run_digest(invocation.model_dump(mode="json")),
@@ -180,7 +193,12 @@ class RunnerPoolExecutions:
                 raise RuntimeError("Runner controller is stopping")
             await self.pools.check_factory_fence(fence)
             await RunnerContinuationAuthority(self.pools).authorize(invocation, fence, request_id, request_digest)
-            self.artifacts.input_archive(self.profile, invocation)
+
+            async def artifact_authority() -> None:
+                await self.pools.check_factory_fence(fence)
+                await RunnerContinuationAuthority(self.pools).authorize(invocation, fence, request_id, request_digest)
+
+            await self.artifacts.input_archive_durable(self.profile, invocation, authorize=artifact_authority)
             if isinstance(invocation, RunnerProjectInvocation):
                 if self.git_snapshot is None:
                     raise RuntimeError("Project Git capability is unavailable")
@@ -332,7 +350,7 @@ class RunnerPoolExecutions:
             return output
 
         await guard()
-        carrier = self.artifacts.input_archive(self.profile, invocation)
+        carrier = await self.artifacts.input_archive_durable(self.profile, invocation, authorize=guard)
         metadata = None
         if isinstance(invocation, RunnerProjectInvocation):
             if self.git_snapshot is None:
@@ -511,8 +529,12 @@ class RunnerPoolExecutions:
         returned = await control(
             self.dispatcher.collect_plan(invocation, cid), timeout=30, limit=self.profile.max_source_bytes + 1_048_576
         )
-        output_receipt = self.artifacts.retain(self.profile, invocation, "output", logs)
-        result_receipt = self.artifacts.retain(self.profile, invocation, "result", returned)
+        output_receipt = await self.artifacts.retain_durable(
+            self.profile, invocation, "output", logs, fence, authorize=guard
+        )
+        result_receipt = await self.artifacts.retain_durable(
+            self.profile, invocation, "result", returned, fence, authorize=guard
+        )
         await self.pools.record_effect(
             self.profile,
             claim["id"],
@@ -599,7 +621,7 @@ class RunnerPoolExecutions:
         }
         if retained:
             for kind in ("output", "result"):
-                self.artifacts.read(self.profile, invocation, kind, retained[kind])
+                await self.artifacts.read_durable(self.profile, invocation, kind, retained[kind], authorize=guard)
             receipt.update(retained)
             receipt["outcome"] = "completed"
         if observations:

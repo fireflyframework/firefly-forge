@@ -6,12 +6,14 @@ from __future__ import annotations
 import ipaddress
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import click
 import uvicorn
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pyfly.core.config import Config
 
+from firefly_forge.object_storage import ObjectStorageSettings
 from firefly_forge.runner_controller import RunnerControllerSettings, create_runner_application
 from firefly_forge.runner_controller_config import RunnerServerTLS, private_tls_file
 from firefly_forge.runner_pool_dispatch import RunnerDockerAuthority
@@ -26,6 +28,8 @@ class RunnerControllerAdmin(BaseModel):
     token: SecretStr = Field(min_length=32, max_length=4096)
     active: bool = False
     git_binary: Path | None = None
+    object_storage: ObjectStorageSettings | None = None
+    object_tenant_id: UUID | None = None
     host: str = "127.0.0.1"
     port: int = Field(default=9917, ge=1024, le=65535, strict=True)
 
@@ -43,6 +47,8 @@ class RunnerControllerAdmin(BaseModel):
             tls=self.tls,
             active=self.active,
             git_binary=self.git_binary,
+            object_storage=self.object_storage,
+            object_tenant_id=self.object_tenant_id,
         )
 
 

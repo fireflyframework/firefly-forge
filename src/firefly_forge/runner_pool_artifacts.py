@@ -10,7 +10,7 @@ import os
 import re
 import stat
 import tarfile
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -23,7 +23,10 @@ from firefly_forge.sandbox import _directory_fd, pack_workspace, unpack_workspac
 from firefly_forge.secrets import contains_known_credential
 
 if TYPE_CHECKING:
+    from firefly_forge.object_storage import Authorize
     from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
+    from firefly_forge.runner_object_artifacts import RunnerObjectArtifacts
+    from firefly_forge.runner_pool_models import FactoryFence
 
 ArtifactKind = Literal["source", "output", "result", "stdin"]
 
@@ -71,7 +74,7 @@ def source_archive_digest(archive: bytes) -> str:
 
 @service
 class RunnerPoolArtifacts:
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, objects: RunnerObjectArtifacts | None = None) -> None:
         info = directory.stat(follow_symlinks=False)
         if (
             not directory.is_absolute()
@@ -81,7 +84,63 @@ class RunnerPoolArtifacts:
         ):
             raise ValueError("Runner artifact root must be a private real owner-controlled directory")
         self.directory = directory
+        self.objects = objects
         self.credential_registry: Callable[[], dict[str, str]] = dict
+
+    async def retain_durable(
+        self,
+        profile: RunnerPoolProfile,
+        invocation: RunnerInvocation,
+        kind: ArtifactKind,
+        data: bytes,
+        fence: FactoryFence,
+        *,
+        authorize: Authorize,
+    ) -> dict[str, Any]:
+        if self.objects is not None:
+            receipt = {"kind": kind, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+            width = self.objects.objects.settings.chunk_bytes
+
+            async def source() -> AsyncIterator[bytes]:
+                for offset in range(0, len(data), width):
+                    yield data[offset : offset + width]
+
+            self.objects.credential_registry = self.credential_registry
+            await self.objects.upload(profile, invocation, kind, receipt, source(), fence, authorize=authorize)
+        return self.retain(profile, invocation, kind, data)
+
+    async def read_durable(
+        self,
+        profile: RunnerPoolProfile,
+        invocation: RunnerInvocation,
+        kind: ArtifactKind,
+        receipt: dict[str, Any],
+        *,
+        authorize: Authorize,
+    ) -> bytes:
+        if self.objects is None:
+            return self.read(profile, invocation, kind, receipt)
+        self.objects.credential_registry = self.credential_registry
+        # Only the retained byte-bundle RPC buffers the complete declared artifact.
+        # The object reference stream/restore APIs below do not use this method.
+        data = bytearray()
+        async for chunk in self.objects.read(profile, invocation, kind, receipt, authorize=authorize):
+            data.extend(chunk)
+        return bytes(data)
+
+    async def input_archive_durable(
+        self, profile: RunnerPoolProfile, invocation: RunnerInvocation, *, authorize: Authorize
+    ) -> bytes:
+        if self.objects is not None:
+            inputs: tuple[tuple[ArtifactKind, int, str], ...] = (
+                ("source", invocation.source_bytes, invocation.archive_digest),
+                ("stdin", invocation.stdin_bytes, invocation.stdin_digest or hashlib.sha256(b"").hexdigest()),
+            )
+            for kind, size, digest in inputs:
+                receipt = {"kind": kind, "bytes": size, "sha256": digest}
+                data = await self.read_durable(profile, invocation, kind, receipt, authorize=authorize)
+                self.retain(profile, invocation, kind, data)
+        return self.input_archive(profile, invocation)
 
     def _folder(self, invocation: RunnerInvocation) -> Path:
         root = _directory_fd(self.directory)
