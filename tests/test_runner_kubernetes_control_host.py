@@ -134,7 +134,7 @@ def test_command_job_is_parked_without_credentials_or_automatic_retries(tmp_path
         "capabilities": {"drop": ["ALL"]},
         "seccompProfile": {"type": "RuntimeDefault"},
     }
-    assert container["command"][:3] == ["/app/.venv/bin/python", "-I", "-c"]
+    assert container["command"][:4] == ["/app/.venv/bin/python", "-I", "-S", "-c"]
     assert list(invocation.argv) != container["command"]
     assert any(
         env.get("valueFrom", {}).get("fieldRef", {}).get("fieldPath") == "metadata.uid" for env in container["env"]
@@ -355,9 +355,16 @@ async def test_pod_activation_identity_is_single_job_owned_uid_and_never_a_repla
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         control = module.KubernetesControlClient(authority, client=client)
+        pod["spec"].pop("nodeName")
+        assert await control.bind_pod(invocation, receipt, guard) is None
+        pod["spec"]["nodeName"] = profile.kubernetes.node_names[0]
         bound = await control.bind_pod(invocation, receipt, guard)
         assert bound.uid == pod["metadata"]["uid"] and bound.job_uid == receipt.uid
         assert await control.observe_pod(invocation, receipt, bound, guard) == pod
+        selected.append(copy.deepcopy(pod))
+        with pytest.raises(module.KubernetesIdentityChanged):
+            await control.observe_pod(invocation, receipt, bound, guard)
+        selected.pop()
         pod["metadata"]["uid"] = str(uuid4())
         with pytest.raises(module.KubernetesIdentityChanged):
             await control.observe_pod(invocation, receipt, bound, guard)

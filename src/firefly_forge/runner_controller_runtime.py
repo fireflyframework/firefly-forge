@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import ipaddress
+import ssl
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import click
@@ -16,12 +17,37 @@ from pyfly.core.config import Config
 from firefly_forge.object_storage import ObjectStorageSettings
 from firefly_forge.runner_controller import RunnerControllerSettings, create_runner_application
 from firefly_forge.runner_controller_config import RunnerServerTLS, private_tls_file
+from firefly_forge.runner_kubernetes import KubernetesAuthority
+from firefly_forge.runner_kubernetes_qualification import KubernetesQualificationPin
 from firefly_forge.runner_pool_dispatch import RunnerDockerAuthority
+from firefly_forge.runner_pool_models import RunnerPoolProfile
+
+
+class KubernetesAdminAuthority(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    backend: Literal["kubernetes"]
+    profile: RunnerPoolProfile
+    api_origin: str
+    ca_file: Path
+    token: SecretStr
+    state_directory: Path
+    qualification: KubernetesQualificationPin
+
+    def control_authority(self) -> KubernetesAuthority:
+        private_tls_file(self.ca_file)
+        return KubernetesAuthority(
+            profile=self.profile,
+            api_origin=self.api_origin,
+            tls=ssl.create_default_context(cafile=str(self.ca_file)),
+            token=self.token,
+            state_directory=self.state_directory,
+            qualification=self.qualification,
+        )
 
 
 class RunnerControllerAdmin(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    authority: RunnerDockerAuthority
+    authority: RunnerDockerAuthority | KubernetesAdminAuthority
     runner_schema: str
     factory_schema: str
     tls: RunnerServerTLS
@@ -40,7 +66,9 @@ class RunnerControllerAdmin(BaseModel):
 
     def settings(self) -> RunnerControllerSettings:
         return RunnerControllerSettings(
-            authority=self.authority,
+            authority=self.authority.control_authority()
+            if isinstance(self.authority, KubernetesAdminAuthority)
+            else self.authority,
             runner_schema=self.runner_schema,
             factory_schema=self.factory_schema,
             token=self.token,

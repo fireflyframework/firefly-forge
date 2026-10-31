@@ -16,6 +16,7 @@ from pyfly.container import service
 
 from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.runner_backends import _bounded_process
+from firefly_forge.runner_dispatch import RunnerPoolDispatcher
 from firefly_forge.runner_pool_launcher import LAUNCHER, OWNER_READER, RESULT_READER, owned_launcher
 from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile
 
@@ -54,7 +55,9 @@ class RunnerDockerAuthority:
 
 
 @service
-class DockerPoolDispatcher:
+class DockerPoolDispatcher(RunnerPoolDispatcher):
+    authority: RunnerDockerAuthority
+
     def __init__(self, authority: RunnerDockerAuthority, *, transport: Transport | None = None) -> None:
         self.authority = authority
         self.transport = transport or self._transport

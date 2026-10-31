@@ -9,17 +9,20 @@ import re
 import time
 from collections.abc import Callable
 from contextlib import nullcontext, suppress
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pyfly.container import service
 
+from firefly_forge.runner_dispatch import RunnerPoolDispatcher
 from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
+from firefly_forge.runner_kubernetes_dispatch import KubernetesPoolDispatcher
 from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
 from firefly_forge.runner_pool_dispatch import DockerPoolDispatcher, Guard
 from firefly_forge.runner_pool_models import (
     FactoryFence,
+    KubernetesProjectInvocation,
     RunnerInvocation,
     RunnerPoolProfile,
     RunnerProjectInvocation,
@@ -37,7 +40,7 @@ class RunnerPoolExecutions:
         self,
         pools: RunnerPools,
         artifacts: RunnerPoolArtifacts,
-        dispatcher: DockerPoolDispatcher,
+        dispatcher: RunnerPoolDispatcher,
         git_snapshot: RunnerGitSnapshot | None = None,
     ) -> None:
         self.pools, self.artifacts, self.dispatcher = pools, artifacts, dispatcher
@@ -57,7 +60,7 @@ class RunnerPoolExecutions:
         return self.dispatcher.authority.profile
 
     async def accept(
-        self, invocation: RunnerInvocation, fence: FactoryFence, archive: bytes, stdin: bytes
+        self, invocation: RunnerInvocation, fence: FactoryFence, archive: bytes | None, stdin: bytes | None
     ) -> dict[str, Any]:
         if invocation.work_duration is not None and invocation.timeout is None and invocation.run_liveness is None:
             raise ValueError(UNCAPPED_POOL_REASON)
@@ -87,17 +90,27 @@ class RunnerPoolExecutions:
                 if invocation.run_liveness is not None:
                     await self._authorize_run(invocation, fence)
 
-            await self.artifacts.retain_durable(
-                self.profile, invocation, "source", archive, fence, authorize=artifact_authority
-            )
-            self.artifacts.prepare(self.profile, invocation, archive)
-            if isinstance(invocation, RunnerProjectInvocation):
-                if self.git_snapshot is None:
-                    raise RuntimeError("Project bundle controller capability is inactive")
-                await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
-            await self.artifacts.retain_durable(
-                self.profile, invocation, "stdin", stdin, fence, authorize=artifact_authority
-            )
+            if isinstance(self.dispatcher, KubernetesPoolDispatcher):
+                if not isinstance(invocation, KubernetesProjectInvocation) or archive is not None or stdin is not None:
+                    raise ValueError("Kubernetes admission uses published object references, not a raw bundle")
+                if self.artifacts.objects is None or self.git_snapshot is None:
+                    raise ValueError("Kubernetes object storage and minimum Git capabilities are required")
+                references = self.dispatcher.input_references(self.artifacts.objects, invocation)
+                await self.dispatcher.validate_inputs(self.artifacts, invocation, *references, artifact_authority)
+            else:
+                if archive is None or stdin is None:
+                    raise ValueError("Docker admission requires its retained input wire")
+                await self.artifacts.retain_durable(
+                    self.profile, invocation, "source", archive, fence, authorize=artifact_authority
+                )
+                self.artifacts.prepare(self.profile, invocation, archive)
+                if isinstance(invocation, RunnerProjectInvocation):
+                    if self.git_snapshot is None:
+                        raise RuntimeError("Project bundle controller capability is inactive")
+                    await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
+                await self.artifacts.retain_durable(
+                    self.profile, invocation, "stdin", stdin, fence, authorize=artifact_authority
+                )
             lease = (
                 RunLease(
                     run_digest(invocation.model_dump(mode="json")),
@@ -165,9 +178,11 @@ class RunnerPoolExecutions:
         return acknowledgement
 
     def _run_owner_channel(self, invocation: RunnerInvocation, container_id: str, guard: Guard) -> RunOwnerChannel:
+        dispatcher = cast(DockerPoolDispatcher, self.dispatcher)
+
         async def exchange(materialize: Callable[[], bytes]) -> bytes:
-            code, raw = await self.dispatcher.fenced_control(
-                self.dispatcher.owner_plan(invocation, container_id),
+            code, raw = await dispatcher.fenced_control(
+                dispatcher.owner_plan(invocation, container_id),
                 guard,
                 timeout=3,
                 limit=4096,
@@ -241,6 +256,8 @@ class RunnerPoolExecutions:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self.tasks.clear()
+        if isinstance(self.dispatcher, KubernetesPoolDispatcher):
+            await self.dispatcher.control.stop()
 
     async def _renew(self, claim: dict[str, Any]) -> None:
         while True:
@@ -339,10 +356,22 @@ class RunnerPoolExecutions:
                     invocation, fence, continuation["request_id"], continuation["request_digest"]
                 )
 
+        if isinstance(self.dispatcher, KubernetesPoolDispatcher):
+            if not isinstance(invocation, KubernetesProjectInvocation):
+                raise ValueError("The Kubernetes dispatcher requires its exact invocation protocol")
+
+            def begin_cleanup() -> None:
+                nonlocal cleaning
+                cleaning = True
+
+            await self.dispatcher.execute(self, invocation, claim, fence, guard, begin_cleanup)
+            return
+        dispatcher = cast(DockerPoolDispatcher, self.dispatcher)
+
         async def control(
             argv: list[str], *, timeout: int = 30, limit: int = 500_000, input_data: bytes | None = None
         ) -> bytes:
-            code, output = await self.dispatcher.fenced_control(
+            code, output = await dispatcher.fenced_control(
                 argv, guard, timeout=timeout, limit=limit, input_data=input_data
             )
             if code:
@@ -356,22 +385,22 @@ class RunnerPoolExecutions:
             if self.git_snapshot is None:
                 raise RuntimeError("Project bundle controller capability is inactive")
             metadata = await self.artifacts.minimum_git(self.profile, invocation, self.git_snapshot)
-        name = self.dispatcher.name(invocation)
+        name = dispatcher.name(invocation)
         target = {
             "daemon_id": self.profile.daemon_id,
-            "namespace": self.dispatcher.authority.namespace,
+            "namespace": dispatcher.authority.namespace,
             "container_name": name,
             "transfer_name": name + "-transfer",
-            "labels": self.dispatcher.labels(invocation),
+            "labels": dispatcher.labels(invocation),
         }
         await guard()
         await self.pools.effect_intent(
             self.profile, claim["id"], self.owner, claim["epoch"], fence, "create", payload=target
         )
-        helper = (await control(self.dispatcher.transfer_plan(invocation))).decode().strip()
+        helper = (await control(dispatcher.transfer_plan(invocation))).decode().strip()
         if not re.fullmatch(r"[a-f0-9]{64}", helper):
             raise RuntimeError("Transfer create returned an unknown identity")
-        observed = await self.dispatcher.inspect(invocation, helper)
+        observed = await dispatcher.inspect(invocation, helper)
         if observed is None or observed["Id"] != helper:
             raise RuntimeError("Transfer resource identity was not observed")
         await self.pools.record_effect(
@@ -384,7 +413,7 @@ class RunnerPoolExecutions:
         if metadata is not None:
             await control(["cp", "--archive", "-", helper + ":/forge-git"], input_data=metadata)
         await control(["start", "--attach", helper])
-        observed = await self.dispatcher.inspect(invocation, helper)
+        observed = await dispatcher.inspect(invocation, helper)
         if observed is None or observed["State"]["Status"] != "exited" or observed["State"]["ExitCode"] != 0:
             raise RuntimeError("Transfer initialization outcome is unknown")
         volumes = {mount["Destination"]: mount["Name"] for mount in observed["Mounts"]}
@@ -400,13 +429,13 @@ class RunnerPoolExecutions:
             {"transfer_id": helper},
         )
         cid = (
-            (await control(self.dispatcher.container_plan(invocation, volumes["/workspace"], volumes["/forge-git"])))
+            (await control(dispatcher.container_plan(invocation, volumes["/workspace"], volumes["/forge-git"])))
             .decode()
             .strip()
         )
         if not re.fullmatch(r"[a-f0-9]{64}", cid):
             raise RuntimeError("Runner create returned an unknown identity")
-        observed = await self.dispatcher.inspect(invocation, cid)
+        observed = await dispatcher.inspect(invocation, cid)
         if observed is None or observed["Id"] != cid:
             raise RuntimeError("Created runner identity was not observed")
         await self.pools.effect_receipt(
@@ -428,7 +457,7 @@ class RunnerPoolExecutions:
         )
         async with asyncio.timeout(15):
             while True:
-                code, _ = await self.dispatcher.fenced_control(
+                code, _ = await dispatcher.fenced_control(
                     [
                         "exec",
                         cid,
@@ -456,7 +485,7 @@ class RunnerPoolExecutions:
             assert owner_key is not None and owner_challenge is not None
             owner_sequence += 1
             raw = await control(
-                self.dispatcher.owner_plan(invocation, cid),
+                dispatcher.owner_plan(invocation, cid),
                 timeout=3,
                 limit=4096,
                 input_data=owner_request(
@@ -469,7 +498,7 @@ class RunnerPoolExecutions:
 
         run_owner_channel: RunOwnerChannel | None = None
         if invocation.work_duration is None:
-            await control(self.dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
+            await control(dispatcher.release_plan(invocation, cid), timeout=5, limit=4096)
         elif invocation.run_liveness is not None:
             run_owner_channel = self._run_owner_channel(invocation, cid, guard)
             await run_owner_channel.start()
@@ -477,7 +506,7 @@ class RunnerPoolExecutions:
             from firefly_forge.runner_pool_owner import owner_reply
 
             raw = await control(
-                self.dispatcher.owner_plan(invocation, cid),
+                dispatcher.owner_plan(invocation, cid),
                 timeout=5,
                 limit=4096,
                 input_data=json.dumps(
@@ -504,8 +533,8 @@ class RunnerPoolExecutions:
         async with asyncio.timeout(None if invocation.timeout is None else invocation.timeout + 5):
             while True:
                 if invocation.work_duration is None:
-                    code, output = await self.dispatcher.fenced_control(
-                        self.dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
+                    code, output = await dispatcher.fenced_control(
+                        dispatcher.result_plan(invocation, cid), guard, timeout=3, limit=4096
                     )
                 else:
                     owned = (
@@ -521,13 +550,13 @@ class RunnerPoolExecutions:
                     ):
                         raise RuntimeError("Runner exit receipt does not match its invocation")
                     break
-                observed = await self.dispatcher.inspect(invocation, cid)
+                observed = await dispatcher.inspect(invocation, cid)
                 if observed is None or not observed["State"]["Running"]:
                     raise RuntimeError("Runner exited before bounded artifact collection")
                 await asyncio.sleep(0.1)
         logs = await control(["logs", cid], timeout=10, limit=invocation.max_output_bytes)
         returned = await control(
-            self.dispatcher.collect_plan(invocation, cid), timeout=30, limit=self.profile.max_source_bytes + 1_048_576
+            dispatcher.collect_plan(invocation, cid), timeout=30, limit=self.profile.max_source_bytes + 1_048_576
         )
         output_receipt = await self.artifacts.retain_durable(
             self.profile, invocation, "output", logs, fence, authorize=guard
@@ -547,10 +576,10 @@ class RunnerPoolExecutions:
         cleaning = True
         await self.pools.effect_intent(self.profile, claim["id"], self.owner, claim["epoch"], fence, "cleanup")
         for resource in (cid, helper):
-            observed = await self.dispatcher.inspect(invocation, resource)
+            observed = await dispatcher.inspect(invocation, resource)
             if observed is not None:
                 await control(["container", "rm", "--force", "--volumes", observed["Id"]], timeout=15, limit=8192)
-            if await self.dispatcher.inspect(invocation, resource) is not None:
+            if await dispatcher.inspect(invocation, resource) is not None:
                 raise RuntimeError("Runner resource drain is not established")
         await self.pools.finish(
             self.profile,
@@ -568,6 +597,9 @@ class RunnerPoolExecutions:
         )
 
     async def reconcile(self, execution_id: str, fence: FactoryFence) -> dict[str, Any]:
+        if isinstance(self.dispatcher, KubernetesPoolDispatcher):
+            return await self.dispatcher.reconcile(self, execution_id, fence)
+        dispatcher = cast(DockerPoolDispatcher, self.dispatcher)
         current = await self.pools.observe(self.profile, execution_id)
         if current["status"] != "quarantined":
             raise RuntimeError("Only quarantined invocations can be reconciled")
@@ -580,14 +612,14 @@ class RunnerPoolExecutions:
                 raise RuntimeError("Reconciliation authority changed")
 
         await guard()
-        await self.dispatcher.verify_daemon()
-        name = self.dispatcher.name(invocation)
+        await dispatcher.verify_daemon()
+        name = dispatcher.name(invocation)
         target = {
             "daemon_id": self.profile.daemon_id,
-            "namespace": self.dispatcher.authority.namespace,
+            "namespace": dispatcher.authority.namespace,
             "container_name": name,
             "transfer_name": name + "-transfer",
-            "labels": self.dispatcher.labels(invocation),
+            "labels": dispatcher.labels(invocation),
         }
         intents = [event for event in history if event["kind"] == "create_intent"]
         if intents and (len(intents) != 1 or intents[0]["payload"] != target):
@@ -604,7 +636,7 @@ class RunnerPoolExecutions:
         observations = []
         for key, resource_name in (("container_id", name), ("transfer_id", name + "-transfer")):
             receipt_id = created.get(key) or transfer.get(key)
-            observed = await self.dispatcher.inspect(invocation, receipt_id or resource_name)
+            observed = await dispatcher.inspect(invocation, receipt_id or resource_name)
             if observed is not None:
                 if receipt_id and receipt_id != observed["Id"]:
                     raise RuntimeError("Persisted resource identity differs from daemon observation")
@@ -637,10 +669,10 @@ class RunnerPoolExecutions:
                 self.profile, execution_id, fence, {**prior_observed, **identities}
             )
         for observed in observations:
-            code, _ = await self.dispatcher.fenced_control(
+            code, _ = await dispatcher.fenced_control(
                 ["container", "rm", "--force", "--volumes", observed["Id"]], guard, timeout=15, limit=8192
             )
-            if code or await self.dispatcher.inspect(invocation, observed["Id"]) is not None:
+            if code or await dispatcher.inspect(invocation, observed["Id"]) is not None:
                 raise RuntimeError("Reconciliation did not observe exact resource drain")
         await guard()
         await self.pools.reconcile(self.profile, execution_id, fence, receipt)

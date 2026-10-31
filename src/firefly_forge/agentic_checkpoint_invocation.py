@@ -249,6 +249,16 @@ def runtime_contract() -> str:
                     "runner_kubernetes_models.py",
                     "runner_kubernetes.py",
                     "runner_kubernetes_exec.py",
+                    "runner_kubernetes_activation.py",
+                    "runner_dispatch.py",
+                    "runner_kubernetes_qualification.py",
+                    "runner_kubernetes_dispatch.py",
+                    "runner_pool_bundle.py",
+                    "runner_bundle_models.py",
+                    "runner_git_snapshot.py",
+                    "runner_controller_config.py",
+                    "credential_text_stream.py",
+                    "runner_controller_runtime.py",
                 )
             },
         }

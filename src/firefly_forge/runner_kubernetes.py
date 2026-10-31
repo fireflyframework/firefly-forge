@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import os
 import ssl
@@ -10,12 +11,13 @@ import stat
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 from pydantic import SecretStr
 from pyfly.container import service
 
+from firefly_forge.execution_environment import container_python_environment
 from firefly_forge.runner_kubernetes_models import (
     KubernetesBoundVolumeReceipt,
     KubernetesJobReceipt,
@@ -29,6 +31,9 @@ from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile
 from firefly_forge.scm_authority_models import exact_origin
 
 Guard = Callable[[], Awaitable[None]]
+
+if TYPE_CHECKING:
+    from firefly_forge.runner_kubernetes_qualification import KubernetesQualificationPin
 
 
 class KubernetesIdentityChanged(RuntimeError):
@@ -46,6 +51,7 @@ class KubernetesAuthority:
     tls: ssl.SSLContext
     token: SecretStr
     state_directory: Path
+    qualification: KubernetesQualificationPin | None = None
     _state_identity: tuple[int, int] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -165,12 +171,24 @@ def command_job(authority: KubernetesAuthority, invocation: RunnerInvocation) ->
                             "command": [
                                 "/app/.venv/bin/python",
                                 "-I",
+                                "-S",
                                 "-c",
                                 owned_launcher() if invocation.work_duration is not None else LAUNCHER,
                             ],
                             "securityContext": security,
                             "env": [
-                                {"name": "FORGE_POD_UID", "valueFrom": {"fieldRef": {"fieldPath": "metadata.uid"}}}
+                                {"name": "FORGE_POD_UID", "valueFrom": {"fieldRef": {"fieldPath": "metadata.uid"}}},
+                                *[
+                                    {"name": name, "value": value}
+                                    for name, value in {
+                                        "HOME": "/tmp/forge-home",
+                                        "XDG_CACHE_HOME": "/tmp/forge-cache",
+                                        "GIT_CONFIG_NOSYSTEM": "1",
+                                        "GIT_CONFIG_GLOBAL": "/dev/null",
+                                        "GIT_ATTR_NOSYSTEM": "1",
+                                        **container_python_environment(),
+                                    }.items()
+                                ],
                             ],
                             "resources": {
                                 "requests": {
@@ -183,7 +201,13 @@ def command_job(authority: KubernetesAuthority, invocation: RunnerInvocation) ->
                                 },
                             },
                             "volumeMounts": [
-                                {"name": "input", "mountPath": "/forge-input", "readOnly": True},
+                                {"name": "input", "mountPath": "/forge-input", "subPath": "payload", "readOnly": True},
+                                {
+                                    "name": "input",
+                                    "mountPath": "/workspace/.git",
+                                    "subPath": "payload/git",
+                                    "readOnly": True,
+                                },
                                 {"name": "workspace", "mountPath": "/workspace"},
                                 {"name": "temporary", "mountPath": "/tmp"},
                             ],
@@ -248,7 +272,7 @@ def volume_claim(authority: KubernetesAuthority, invocation: RunnerInvocation, p
     if purpose not in {"input", "workspace"}:
         raise ValueError("Only separate native input and workspace claims are supported")
     storage = (
-        max(1, (invocation.source_bytes + invocation.stdin_bytes + 1048575) // 1048576)
+        max(1, (3 * invocation.source_bytes + invocation.stdin_bytes + 2097151) // 1048576)
         if purpose == "input"
         else policy.workspace_storage_mb
     )
@@ -372,11 +396,21 @@ class KubernetesControlClient:
             ) from None
 
     async def observe_volume(
-        self, invocation: RunnerInvocation, receipt: KubernetesVolumeReceipt, guard: Guard
+        self,
+        invocation: RunnerInvocation,
+        receipt: KubernetesVolumeReceipt,
+        guard: Guard,
+        *,
+        bound: KubernetesBoundVolumeReceipt | None = None,
     ) -> dict[str, Any] | None:
         value = await self._current_volume(invocation, receipt, guard)
-        if value is not None and pool_digest(value["spec"]) != receipt.spec_digest:
+        if bound is not None and bound.claim != receipt:
+            raise KubernetesIdentityChanged("A bound volume observation selected another claim")
+        expected = bound.claim_spec_digest if bound is not None else receipt.spec_digest
+        if value is not None and pool_digest(value["spec"]) != expected:
             raise KubernetesIdentityChanged("The owned volume specification changed")
+        if value is not None and bound is not None:
+            await self.bind_volume(invocation, receipt, guard, bound=bound)
         return value
 
     async def _current_volume(
@@ -455,6 +489,7 @@ class KubernetesControlClient:
             or spec.get("storageClassName") != planned["spec"]["storageClassName"]
             or spec.get("accessModes") != ["ReadWriteOncePod"]
             or spec.get("volumeMode") != "Filesystem"
+            or spec.get("persistentVolumeReclaimPolicy") != "Delete"
             or not isinstance(spec.get("claimRef"), dict)
             or any(
                 spec["claimRef"].get(k) != v
@@ -579,7 +614,7 @@ class KubernetesControlClient:
             or owners[0].get("name") != receipt.name
             or owners[0].get("uid") != receipt.uid
             or owners[0].get("controller") is not True
-            or spec.get("nodeName") not in policy.node_names
+            or ("nodeName" in spec and spec["nodeName"] not in policy.node_names)
             or (metadata.get("labels") or {}).get("forge.fireflyframework.org/execution") != receipt.execution_id
             or (metadata.get("labels") or {}).get("forge.fireflyframework.org/phase") != receipt.phase
             or not _contains_plan(spec, job["spec"]["template"]["spec"])
@@ -611,6 +646,8 @@ class KubernetesControlClient:
         if not items:
             return None
         pod = self._validate_pod(items[0], job, receipt)
+        if "nodeName" not in pod["spec"]:
+            return None
         try:
             return KubernetesPodReceipt(
                 name=pod["metadata"]["name"],
@@ -659,6 +696,24 @@ class KubernetesControlClient:
             or pool_digest(pod["spec"]) != receipt.spec_digest
         ):
             raise KubernetesIdentityChanged("The activated Pod UID or frozen specification changed")
+        response = await self._request(
+            "GET",
+            self._pod_path(receipt.namespace)
+            + "?limit=2&labelSelector=forge.fireflyframework.org%2Fexecution%3D"
+            + receipt.execution_id,
+            guard,
+        )
+        if response.status_code != 200:
+            raise KubernetesIdentityChanged("The activated Pod selection is unavailable")
+        selection = response.json()
+        items = selection.get("items")
+        if (
+            not isinstance(items, list)
+            or len(items) != 1
+            or selection.get("metadata", {}).get("continue")
+            or items[0].get("metadata", {}).get("uid") != receipt.uid
+        ):
+            raise KubernetesIdentityChanged("The native execution no longer has exactly one activated Pod")
         return pod
 
     async def delete_job(self, invocation: RunnerInvocation, receipt: KubernetesJobReceipt, guard: Guard) -> None:
@@ -677,6 +732,140 @@ class KubernetesControlClient:
         )
         if response.status_code not in {200, 202}:
             raise KubernetesEffectUnknown("Owned Job deletion remains unconfirmed; preserve its reservation")
+
+    async def collect_logs(
+        self,
+        invocation: RunnerInvocation,
+        job: KubernetesJobReceipt,
+        pod: KubernetesPodReceipt,
+        sink: Callable[[bytes], Awaitable[None]],
+        guard: Guard,
+    ) -> None:
+        await self.observe_pod(invocation, job, pod, guard)
+        self.authority.verify()
+        await guard()
+        size = 0
+        try:
+            async with self.client.stream(
+                "GET",
+                self.authority.api_origin
+                + self._pod_path(pod.namespace, pod.name)
+                + "/log?container=command&follow=false&timestamps=false",
+                headers={"Authorization": "Bearer " + self.authority.token.get_secret_value()},
+                follow_redirects=False,
+            ) as response:
+                if response.status_code != 200:
+                    raise KubernetesIdentityChanged("Owned command output is unavailable")
+                async for part in response.aiter_bytes(65536):
+                    await guard()
+                    self.authority.verify()
+                    size += len(part)
+                    if size > invocation.max_output_bytes:
+                        raise KubernetesIdentityChanged("Owned command output exceeds its admitted bound")
+                    await sink(part)
+                    await guard()
+        except httpx.HTTPError:
+            raise KubernetesIdentityChanged("Owned command output remains unconfirmed") from None
+        await self.observe_pod(invocation, job, pod, guard)
+
+    async def wait_terminated(
+        self,
+        invocation: RunnerInvocation,
+        job: KubernetesJobReceipt,
+        pod: KubernetesPodReceipt,
+        guard: Guard,
+    ) -> int:
+        async with asyncio.timeout(self.authority.profile.admission_seconds):
+            while True:
+                value = await self.observe_pod(invocation, job, pod, guard)
+                statuses = value.get("status", {}).get("containerStatuses", [])
+                if len(statuses) == 1 and statuses[0].get("name") == job.phase:
+                    terminated = statuses[0].get("state", {}).get("terminated")
+                    if isinstance(terminated, dict) and type(terminated.get("exitCode")) is int:
+                        return int(terminated["exitCode"])
+                await asyncio.sleep(0.1)
+
+    async def remove_drained_job(
+        self,
+        invocation: RunnerInvocation,
+        job: KubernetesJobReceipt,
+        pod: KubernetesPodReceipt,
+        guard: Guard,
+    ) -> None:
+        # The lifecycle calls this only after retained PID1 drain or exact transfer termination.
+        await self.observe_pod(invocation, job, pod, guard)
+        await self.delete_job(invocation, job, guard)
+        await self.confirm_removed_job(invocation, job, pod, guard)
+
+    async def confirm_removed_job(
+        self,
+        invocation: RunnerInvocation,
+        job: KubernetesJobReceipt,
+        pod: KubernetesPodReceipt,
+        guard: Guard,
+    ) -> None:
+        async with asyncio.timeout(self.authority.profile.admission_seconds):
+            while True:
+                current = await self.observe_job(invocation, job, guard)
+                response = await self._request("GET", self._pod_path(pod.namespace, pod.name), guard)
+                if response.status_code == 200 and response.json().get("metadata", {}).get("uid") != pod.uid:
+                    raise KubernetesIdentityChanged("A replacement Pod cannot complete owned cleanup")
+                if response.status_code not in {200, 404}:
+                    raise KubernetesIdentityChanged("Owned Pod removal is unconfirmed")
+                selected = await self._request(
+                    "GET",
+                    self._pod_path(pod.namespace)
+                    + "?limit=2&labelSelector=forge.fireflyframework.org%2Fexecution%3D"
+                    + invocation.execution_id,
+                    guard,
+                )
+                if selected.status_code != 200:
+                    raise KubernetesIdentityChanged("Owned Pod drain selection is unavailable")
+                listing = selected.json()
+                if (
+                    not isinstance(listing.get("items"), list)
+                    or listing.get("metadata", {}).get("continue")
+                    or any(item.get("metadata", {}).get("uid") != pod.uid for item in listing["items"])
+                ):
+                    raise KubernetesIdentityChanged("An additional Pod retains the execution identity")
+                if current is None and response.status_code == 404 and listing["items"] == []:
+                    return
+                await asyncio.sleep(0.1)
+
+    async def remove_volume(
+        self,
+        invocation: RunnerInvocation,
+        volume: KubernetesBoundVolumeReceipt,
+        guard: Guard,
+    ) -> None:
+        await self.bind_volume(invocation, volume.claim, guard, bound=volume)
+        response = await self._request(
+            "DELETE",
+            self._volume_path(volume.claim.name),
+            guard,
+            body={
+                "apiVersion": "v1",
+                "kind": "DeleteOptions",
+                "preconditions": {"uid": volume.claim.uid},
+            },
+        )
+        if response.status_code not in {200, 202}:
+            raise KubernetesEffectUnknown("Owned claim deletion remains unconfirmed")
+        await self.confirm_removed_volume(volume, guard)
+
+    async def confirm_removed_volume(self, volume: KubernetesBoundVolumeReceipt, guard: Guard) -> None:
+        async with asyncio.timeout(self.authority.profile.admission_seconds):
+            while True:
+                pvc = await self._request("GET", self._volume_path(volume.claim.name), guard)
+                pv = await self._request("GET", "/api/v1/persistentvolumes/" + volume.volume_name, guard)
+                for result, uid in ((pvc, volume.claim.uid), (pv, volume.volume_uid)):
+                    if result.status_code not in {200, 404} or (
+                        result.status_code == 200 and result.json().get("metadata", {}).get("uid") != uid
+                    ):
+                        raise KubernetesIdentityChanged("Owned volume removal or its retained identity is unconfirmed")
+                if pvc.status_code == pv.status_code == 404:
+                    return
+                await asyncio.sleep(0.1)
 
 
 def _contains_plan(current: Any, planned: Any) -> bool:

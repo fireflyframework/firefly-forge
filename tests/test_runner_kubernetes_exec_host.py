@@ -120,6 +120,54 @@ async def test_fixed_control_uses_v5_uid_gate_stdin_close_and_exact_success(tmp_
     assert "public-channel-fixture" not in connected[0][1]
 
 
+async def test_workspace_collection_streams_fixed_audited_program_without_control_buffer(tmp_path):
+    module = importlib.import_module("firefly_forge.runner_kubernetes_exec")
+    control, invocation, job, pod, observed = prepared(tmp_path)
+    parts = [b"a" * 65536, b"b" * 17]
+    socket = Socket([*(b"\x01" + part for part in parts), b'\x03{"status":"Success"}'])
+    connected, received = [], []
+
+    async def connector(authority, url):
+        connected.append(url)
+        return socket
+
+    async def guard():
+        return None
+
+    async def sink(part):
+        received.append(part)
+
+    await module.KubernetesExecChannel(control, connector=connector).collect_workspace(
+        invocation, job, pod, sink, guard
+    )
+    assert received == parts and socket.closed and observed == [pod.uid, pod.uid]
+    script = parse_qs(urlsplit(connected[0]).query)["command"][-1]
+    assert pod.uid in script and "pack_workspace(Path('/workspace')" in script
+    assert "import firefly_forge" not in script and "sys.stdout.buffer.write(data)" in script
+
+
+async def test_workspace_stream_stops_at_admitted_result_bound_and_closes_channel(tmp_path):
+    module = importlib.import_module("firefly_forge.runner_kubernetes_exec")
+    control, invocation, job, pod, _ = prepared(tmp_path)
+    socket = Socket([b"\x01" + b"x" * (control.authority.profile.max_source_bytes + 1048577)])
+    received = []
+
+    async def connector(authority, url):
+        return socket
+
+    async def guard():
+        return None
+
+    async def sink(part):
+        received.append(part)
+
+    with pytest.raises(KubernetesEffectUnknown):
+        await module.KubernetesExecChannel(control, connector=connector).collect_workspace(
+            invocation, job, pod, sink, guard
+        )
+    assert received == [] and socket.closed
+
+
 @pytest.mark.parametrize(
     "frames",
     [
@@ -421,6 +469,54 @@ def test_fixed_transfer_receiver_publishes_exact_bytes_without_overwriting(tmp_p
     with pytest.raises(FileExistsError):
         exec(code, {})
     assert target.read_bytes() == data and target.stat().st_ino == before.st_ino
+
+
+def test_fixed_prepared_input_receiver_uses_native_confined_extractor_and_never_overwrites(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import os
+    import sys
+    import tarfile
+
+    module = importlib.import_module("firefly_forge.runner_kubernetes_exec")
+    _, _, _, pod, _ = prepared(tmp_path, phase="transfer")
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w", format=tarfile.USTAR_FORMAT) as stream:
+        for name, data in (
+            ("source/main.py", b"print('fixture')\n"),
+            ("git/config", b"[core]\n bare = false\n"),
+            ("stdin.bin", b""),
+            ("invocation.json", b"{}"),
+        ):
+            item = tarfile.TarInfo(name)
+            item.mode, item.size = 0o644, len(data)
+            stream.addfile(item, io.BytesIO(data))
+    data = archive.getvalue()
+    receipt = {"kind": "prepared_input", "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    program = module.input_program(pod, receipt, 1048576)
+    assert program.count("Path('/forge-input/payload')") == 1
+    assert "def unpack_workspace(" in program and "os.O_EXCL | os.O_NOFOLLOW" in program
+    program = program.replace("Path('/forge-input/payload')", "Path(" + repr(str(tmp_path / "payload")) + ")")
+    original_open = os.open
+
+    def opened(path, flags, *args, **kwargs):
+        return original_open(tmp_path if path == "/tmp" else path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", opened)
+    monkeypatch.setenv("FORGE_POD_UID", pod.uid)
+    output = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", output)
+    body = json.dumps(receipt).encode() + b"\n" + data
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(body)))
+    exec(compile(program, "<fixed-input-carrier>", "exec"), {})
+    target = tmp_path / "payload/source/main.py"
+    assert target.read_bytes() == b"print('fixture')\n"
+    assert (tmp_path / "forge-input-ready").is_file() and json.loads(output.getvalue()) == receipt
+    before = target.stat()
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(body)))
+    with pytest.raises(FileExistsError):
+        exec(compile(program, "<fixed-input-carrier>", "exec"), {})
+    assert target.stat().st_ino == before.st_ino and target.read_bytes() == b"print('fixture')\n"
 
 
 async def test_transfer_source_mismatch_closes_stream_and_never_confirms_input(tmp_path):

@@ -18,7 +18,13 @@ from typing import TYPE_CHECKING, Any, Literal
 from pyfly.container import service
 
 from firefly_forge.private_identity import private_identity
-from firefly_forge.runner_pool_models import RunnerInvocation, RunnerPoolProfile, RunnerProjectInvocation, pool_digest
+from firefly_forge.runner_pool_models import (
+    KubernetesProjectInvocation,
+    RunnerInvocation,
+    RunnerPoolProfile,
+    RunnerProjectInvocation,
+    pool_digest,
+)
 from firefly_forge.sandbox import _directory_fd, pack_workspace, unpack_workspace
 from firefly_forge.secrets import contains_known_credential
 
@@ -129,7 +135,12 @@ class RunnerPoolArtifacts:
         return bytes(data)
 
     async def input_archive_durable(
-        self, profile: RunnerPoolProfile, invocation: RunnerInvocation, *, authorize: Authorize
+        self,
+        profile: RunnerPoolProfile,
+        invocation: RunnerInvocation,
+        *,
+        authorize: Authorize,
+        git_archive: bytes | None = None,
     ) -> bytes:
         if self.objects is not None:
             inputs: tuple[tuple[ArtifactKind, int, str], ...] = (
@@ -140,7 +151,7 @@ class RunnerPoolArtifacts:
                 receipt = {"kind": kind, "bytes": size, "sha256": digest}
                 data = await self.read_durable(profile, invocation, kind, receipt, authorize=authorize)
                 self.retain(profile, invocation, kind, data)
-        return self.input_archive(profile, invocation)
+        return self.input_archive(profile, invocation, git_archive=git_archive)
 
     def _folder(self, invocation: RunnerInvocation) -> Path:
         root = _directory_fd(self.directory)
@@ -189,7 +200,7 @@ class RunnerPoolArtifacts:
             raise ValueError("Source archive byte count or digest was changed")
         self.retain(profile, invocation, "source", archive)
         root = self._folder(invocation)
-        if isinstance(invocation, RunnerProjectInvocation):
+        if isinstance(invocation, (RunnerProjectInvocation, KubernetesProjectInvocation)):
             from firefly_forge.runner_pool_bundle import unpack_project_bundle
 
             destination = root / "project-bundle"
@@ -217,7 +228,7 @@ class RunnerPoolArtifacts:
     async def minimum_git(
         self, profile: RunnerPoolProfile, invocation: RunnerInvocation, builder: RunnerGitSnapshot
     ) -> bytes:
-        if not isinstance(invocation, RunnerProjectInvocation):
+        if not isinstance(invocation, (RunnerProjectInvocation, KubernetesProjectInvocation)):
             raise ValueError("Minimum Git requires an explicit project bundle invocation")
         archive = self.read(
             profile,
@@ -263,7 +274,9 @@ class RunnerPoolArtifacts:
             raise ValueError("Retained runner artifact cannot return configured credentials")
         return value
 
-    def input_archive(self, profile: RunnerPoolProfile, invocation: RunnerInvocation) -> bytes:
+    def input_archive(
+        self, profile: RunnerPoolProfile, invocation: RunnerInvocation, *, git_archive: bytes | None = None
+    ) -> bytes:
         source = self.read(
             profile,
             invocation,
@@ -301,6 +314,15 @@ class RunnerPoolArtifacts:
                 for item in incoming:
                     item.name = "source" if item.name == "." else "source/" + item.name
                     stream.addfile(item, incoming.extractfile(item) if item.isfile() else None)
+            if isinstance(invocation, KubernetesProjectInvocation):
+                if git_archive is None or source_archive_digest(git_archive) != invocation.bundle.git_digest:
+                    raise ValueError("Kubernetes input requires the validated minimum Git snapshot")
+                with tarfile.open(fileobj=io.BytesIO(git_archive), mode="r:") as incoming:
+                    for item in incoming:
+                        item.name = "git" if item.name == "." else "git/" + item.name
+                        stream.addfile(item, incoming.extractfile(item) if item.isfile() else None)
+            elif git_archive is not None:
+                raise ValueError("The retained Docker input wire does not embed Git metadata")
             for name, data in (("stdin.bin", stdin), ("invocation.json", command)):
                 item = tarfile.TarInfo(name)
                 item.size, item.mode = len(data), 0o444

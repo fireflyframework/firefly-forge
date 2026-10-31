@@ -149,6 +149,46 @@ neither object-store credentials nor a storage grant. Completed output/result
 reads use the existing authenticated observation scope separately from a live
 execution lease.
 
+The Kubernetes backend uses the same native claim, lease, effect intent and
+receipt ledger as the Docker backend. Its explicit pool policy selects the
+namespace UID, runtime class, qualified nodes, deny-all network policy and CSI
+storage class. A separate pinned, private runtime qualification records measured
+node PID enforcement, network isolation, exclusive CSI mounts and cached images.
+The controller rechecks current identities against that record. Kubernetes has
+no per-Pod PID-limit field: an invocation must select the measured node limit
+exactly, and a smaller requested value is refused rather than silently clamped.
+Missing qualification keeps the controller unavailable for execution.
+
+Workers upload source and stdin through the native object API, then submit only
+their immutable references to `/runner/v1/object-invocations`. The source remains
+in native object storage. Private controller scratch reconstructs and validates
+the minimum Git snapshot and bounded input carrier; it does not require a shared
+project checkout. A credential-free transfer Pod writes that carrier to its own
+CSI input claim. Its exact UID must be observed terminated and removed before
+the command Job mounts the input read-only. Source, Git metadata and invocation
+configuration are prepared before the fixed PID1 supervisor can release the
+project command. A native start intent precedes its one authenticated owner claim.
+An unknown create or start is never retried or replaced with another Pod.
+
+After PID1 confirms that the command and its descendants are drained, output and
+the sanitized result archive are captured with invocation byte bounds and
+published through the native artifact ledger. Only then does cleanup remove the
+owned Job and CSI claims with UID preconditions. Capacity is released after
+observing removal. Interrupted publication or cleanup stays quarantined. An
+explicit reconciliation can read back recorded publication and drain custody
+without another activation; a resource name alone cannot resolve a lost create.
+The optional work duration remains independent of the infrastructure admission
+and cleanup windows.
+
+`python -m firefly_forge.runner_controller_runtime --configuration ...` accepts an
+explicit Kubernetes administrator authority alongside the retained Docker
+configuration. The Kubernetes authority supplies the API origin, private CA,
+credential, scratch directory and pinned qualification. Those credentials and
+the object-store connection stay in the controller; neither enters Job argv or
+environment. Active operation requires the native object backend and minimum Git
+builder. Controlled HTTP/stream/ledger tests cover the backend flow; local-cluster,
+node-enforcement and deployment acceptance remain separate prerequisites.
+
 For local emulation, [the dedicated MinIO Compose file](https://github.com/fireflyframework/firefly-forge/blob/main/compose.object-storage.local.yaml)
 uses a Docker-owned volume and loopback ports. Supply an already installed image
 pinned by digest and private administrator secret files, then use

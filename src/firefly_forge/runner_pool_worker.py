@@ -25,7 +25,12 @@ from firefly_forge.runner_factory_models import UNCAPPED_POOL_REASON, uncapped_p
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
 from firefly_forge.runner_pool_artifacts import ArtifactKind, RunnerPoolArtifacts, validate_artifact_receipt
 from firefly_forge.runner_pool_bundle import frame_project_archives
-from firefly_forge.runner_pool_models import RunnerProjectInvocation, pool_digest
+from firefly_forge.runner_pool_models import (
+    KubernetesProjectInvocation,
+    RunnerProjectInvocation,
+    parse_invocation,
+    pool_digest,
+)
 from firefly_forge.runner_run_liveness import (
     RUN_ADMISSION_PROTOCOL,
     RUN_LIVENESS_PROTOCOL,
@@ -38,6 +43,13 @@ from firefly_forge.sandbox import collect_workspace, pack_workspace
 from firefly_forge.sandbox_models import bounded_argv
 from firefly_forge.secrets import contains_known_credential
 from firefly_forge.store import Store
+
+
+def project_invocation(value: Any) -> RunnerProjectInvocation | KubernetesProjectInvocation:
+    result = parse_invocation(value)
+    if not isinstance(result, (RunnerProjectInvocation, KubernetesProjectInvocation)):
+        raise ValueError("Factory command custody requires its exact project invocation protocol")
+    return result
 
 
 @service
@@ -71,6 +83,11 @@ class RunnerPoolWorker:
             return {"available": False, "mode": "pool", "status": "not_implemented", "reason": reason}
         policy.require_transport(self.client.transport)
         profile = await self.client.profile()
+        if policy.profile.backend == "kubernetes" and (
+            "forge-kubernetes-project-invocation-v1" not in profile.get("submission_protocols", [])
+            or "forge-object-artifact-v1" not in profile.get("artifact_protocols", [])
+        ):
+            raise RuntimeError("The Kubernetes object-reference dispatcher is unsupported by this controller")
         if policy.profile.run_liveness is not None and RUN_LIVENESS_PROTOCOL not in profile.get(
             "run_liveness_protocols", []
         ):
@@ -125,7 +142,9 @@ class RunnerPoolWorker:
             raise RuntimeError("Retained command output contains configured credentials; reconciliation required")
         return ProcessResult(argv, exit_code, output)
 
-    async def continuation_scope(self, request: dict[str, Any]) -> tuple[RunnerProjectInvocation, dict[str, Any]]:
+    async def continuation_scope(
+        self, request: dict[str, Any]
+    ) -> tuple[RunnerProjectInvocation | KubernetesProjectInvocation, dict[str, Any]]:
         active = self.waiting.get(request["execution_id"])
         if active is None:
             raise ValueError("Original Factory command is no longer actively waiting")
@@ -184,7 +203,7 @@ class RunnerPoolWorker:
         run = await self.store.get_run(run_id)
         policy = validate_factory_pool(run.get("sandbox_snapshot") or {})
         payload = row["request"]
-        invocation = RunnerProjectInvocation.model_validate(payload["request"])
+        invocation = project_invocation(payload["request"])
         policy.profile.validate_invocation(invocation)
         if (
             invocation.run_id.hex != run_id
@@ -317,41 +336,46 @@ class RunnerPoolWorker:
                     if retained["command"] != command:
                         raise ValueError("Frozen Factory invocation command changed")
                     return dict(retained)
-                invocation = RunnerProjectInvocation(
-                    execution_id=identity,
-                    profile_id=policy.profile.profile_id,
-                    profile_revision=policy.profile.revision,
-                    project_id=run.get("project_id"),
-                    repository_id=run["repository_id"],
-                    run_id=UUID(run_id),
-                    image=policy.image,
-                    argv=tuple(argv),
-                    cwd=relative,
-                    source_digest=bundle.source_digest,
-                    archive_digest=bundle.archive_digest,
-                    source_bytes=len(archive),
-                    bundle=bundle,
-                    cpus=policy.cpus,
-                    memory_mb=policy.memory_mb,
-                    pids_limit=policy.pids_limit,
-                    timeout=work_timeout,
-                    work_duration=None
-                    if policy.work_duration is None
-                    else WorkDurationPolicyV2(timeout_seconds=work_timeout),
-                    run_liveness=RunLivenessBindingV1.model_validate(
-                        {
-                            "task_id": task_id,
-                            "attempt": attempt,
-                            "snapshot_digest": snapshot["digest"],
-                            "actor_digest": run_digest(run.get("execution_actor")),
-                            "run_cut_digest": run_cut_digest(run),
-                            "factory_fence_digest": run_digest(scope["fence"].model_dump(mode="json")),
-                            "worker_epoch": uuid4().hex,
-                        }
+                invocation_type = (
+                    KubernetesProjectInvocation if policy.profile.backend == "kubernetes" else RunnerProjectInvocation
+                )
+                invocation = invocation_type.model_validate(
+                    dict(
+                        execution_id=identity,
+                        profile_id=policy.profile.profile_id,
+                        profile_revision=policy.profile.revision,
+                        project_id=run.get("project_id"),
+                        repository_id=run["repository_id"],
+                        run_id=UUID(run_id),
+                        image=policy.image,
+                        argv=tuple(argv),
+                        cwd=relative,
+                        source_digest=bundle.source_digest,
+                        archive_digest=bundle.archive_digest,
+                        source_bytes=len(archive),
+                        bundle=bundle,
+                        cpus=policy.cpus,
+                        memory_mb=policy.memory_mb,
+                        pids_limit=policy.pids_limit,
+                        timeout=work_timeout,
+                        work_duration=None
+                        if policy.work_duration is None
+                        else WorkDurationPolicyV2(timeout_seconds=work_timeout),
+                        run_liveness=RunLivenessBindingV1.model_validate(
+                            {
+                                "task_id": task_id,
+                                "attempt": attempt,
+                                "snapshot_digest": snapshot["digest"],
+                                "actor_digest": run_digest(run.get("execution_actor")),
+                                "run_cut_digest": run_cut_digest(run),
+                                "factory_fence_digest": run_digest(scope["fence"].model_dump(mode="json")),
+                                "worker_epoch": uuid4().hex,
+                            }
+                        )
+                        if policy.profile.run_liveness is not None
+                        else None,
+                        max_output_bytes=policy.max_output_bytes,
                     )
-                    if policy.profile.run_liveness is not None
-                    else None,
-                    max_output_bytes=policy.max_output_bytes,
                 )
                 payload = {
                     "parent_attempt": attempt,
@@ -376,7 +400,7 @@ class RunnerPoolWorker:
             )
             execution_id = created["execution"]["execution_id"]
             payload = created["execution"]["request"]
-            invocation = RunnerProjectInvocation.model_validate(payload["request"])
+            invocation = project_invocation(payload["request"])
             if not created["fresh"]:
                 previous = created["execution"]
                 evidence = previous["effects"].get("start", {}).get("evidence", {})
@@ -408,7 +432,28 @@ class RunnerPoolWorker:
                 "cwd": cwd,
             }
             try:
-                submitted = await self.client.submit(invocation, scope["fence"], archive)
+                if isinstance(invocation, KubernetesProjectInvocation):
+                    source_receipt = {"kind": "source", "bytes": len(archive), "sha256": invocation.archive_digest}
+                    stdin_receipt = self.artifacts.retain(policy.profile, invocation, "stdin", b"")
+                    source_ref = await self.client.upload_artifact_file(
+                        invocation,
+                        scope["fence"],
+                        "source",
+                        source_receipt,
+                        self.artifacts._folder(invocation) / "source.bin",
+                    )
+                    await self._current(run_id, task_id, scope)
+                    stdin_ref = await self.client.upload_artifact_file(
+                        invocation,
+                        scope["fence"],
+                        "stdin",
+                        stdin_receipt,
+                        self.artifacts._folder(invocation) / "stdin.bin",
+                    )
+                    await self._current(run_id, task_id, scope)
+                    submitted = await self.client.submit_objects(invocation, scope["fence"], source_ref, stdin_ref)
+                else:
+                    submitted = await self.client.submit(invocation, scope["fence"], archive)
                 run_ack: dict[str, Any] | None = None
                 renew_at = 0.0
                 if invocation.run_liveness is not None:

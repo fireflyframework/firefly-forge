@@ -115,7 +115,7 @@ async def test_lost_pvc_creation_reply_is_never_retried_or_relabelled_absent(tmp
     assert len(posts) == 1 and "private provider failure" not in str(error.value)
 
 
-@pytest.mark.parametrize("change", [None, "foreign-claim", "host-path", "replacement-pv"])
+@pytest.mark.parametrize("change", [None, "foreign-claim", "host-path", "replacement-pv", "retained-pv"])
 async def test_assigned_volume_requires_exact_claim_uid_and_retained_csi_binding(tmp_path, change):
     module, authority, invocation = setup(tmp_path)
     saved = None
@@ -146,12 +146,15 @@ async def test_assigned_volume_requires_exact_claim_uid_and_retained_csi_binding
                 "claimRef": {k: saved["metadata"][k] for k in ["name", "namespace", "uid"]},
                 "csi": {"driver": "csi.fixture.test", "volumeHandle": "opaque-volume"},
                 "capacity": {"storage": "1Gi"},
+                "persistentVolumeReclaimPolicy": "Delete",
             }
             if change == "foreign-claim":
                 spec["claimRef"]["uid"] = str(uuid4())
             if change == "host-path":
                 spec.pop("csi")
                 spec["hostPath"] = {"path": "/private"}
+            if change == "retained-pv":
+                spec["persistentVolumeReclaimPolicy"] = "Retain"
             return httpx.Response(
                 200,
                 json={
@@ -173,7 +176,7 @@ async def test_assigned_volume_requires_exact_claim_uid_and_retained_csi_binding
         receipt = await service.create_volume(invocation, "input", guard)
         assert await service.bind_volume(invocation, receipt, guard) is None
         assigned = True
-        if change in ["foreign-claim", "host-path"]:
+        if change in ["foreign-claim", "host-path", "retained-pv"]:
             with pytest.raises(module.KubernetesIdentityChanged):
                 await service.bind_volume(invocation, receipt, guard)
         else:
@@ -185,4 +188,5 @@ async def test_assigned_volume_requires_exact_claim_uid_and_retained_csi_binding
                     await service.bind_volume(invocation, receipt, guard, bound=bound)
             else:
                 assert await service.bind_volume(invocation, receipt, guard, bound=bound) == bound
+                assert await service.observe_volume(invocation, receipt, guard, bound=bound) is not None
     assert requests.count("POST") == 1 and "DELETE" not in requests

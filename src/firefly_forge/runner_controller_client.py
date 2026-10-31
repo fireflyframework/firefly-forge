@@ -16,11 +16,11 @@ from typing import Any
 import httpx
 from pyfly.container import service
 
-from firefly_forge.runner_controller import PoolObjectUpload, invocation_scope
+from firefly_forge.runner_controller import PoolObjectSubmission, PoolObjectUpload, invocation_scope
 from firefly_forge.runner_controller_config import RunnerWorkerTransport
-from firefly_forge.runner_object_artifacts import RunnerArtifactReadLease, RunnerObjectReference
+from firefly_forge.runner_object_artifacts import RunnerArtifactReadLease, RunnerObjectArtifacts, RunnerObjectReference
 from firefly_forge.runner_pool_artifacts import validate_artifact_receipt
-from firefly_forge.runner_pool_models import FactoryFence, RunnerInvocation, pool_digest
+from firefly_forge.runner_pool_models import FactoryFence, KubernetesProjectInvocation, RunnerInvocation, pool_digest
 from firefly_forge.runner_run_liveness import RunLeaseAckV1, RunRenewalV1, validate_run_ack
 
 RPC_DEADLINE_SECONDS = 30
@@ -111,6 +111,29 @@ class RunnerControllerClient:
         if value.get("request") != invocation.model_dump(mode="json"):
             raise RuntimeError("Observed invocation differs from frozen worker request")
         return value
+
+    async def submit_objects(
+        self,
+        invocation: KubernetesProjectInvocation,
+        fence: FactoryFence,
+        source: RunnerObjectReference,
+        stdin: RunnerObjectReference,
+    ) -> dict[str, Any]:
+        self._scope(invocation)
+        expected = tuple(
+            RunnerObjectArtifacts.reference(invocation, kind, {"kind": kind, "bytes": size, "sha256": digest})
+            for kind, size, digest in (
+                ("source", invocation.source_bytes, invocation.archive_digest),
+                ("stdin", invocation.stdin_bytes, invocation.stdin_digest or hashlib.sha256(b"").hexdigest()),
+            )
+        )
+        if (source, stdin) != expected:
+            raise ValueError("Kubernetes submission requires the exact published input references")
+        body = PoolObjectSubmission(invocation=invocation, fence=fence, source=source, stdin=stdin)
+        result = await self._request("object-invocations", body.model_dump(mode="json"))
+        if result.get("request") != invocation.model_dump(mode="json"):
+            raise RuntimeError("Object submission returned another invocation; reconcile without replay")
+        return result
 
     async def renew_run(
         self, invocation: RunnerInvocation, fence: FactoryFence, previous: dict[str, Any]

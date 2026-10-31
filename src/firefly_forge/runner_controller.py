@@ -38,13 +38,17 @@ from firefly_forge.runner_artifact_publications import (
     RunnerArtifactPublications,
 )
 from firefly_forge.runner_controller_config import RunnerServerTLS
+from firefly_forge.runner_dispatch import RunnerPoolDispatcher
 from firefly_forge.runner_git_snapshot import RunnerGitSnapshot
+from firefly_forge.runner_kubernetes import KubernetesAuthority
+from firefly_forge.runner_kubernetes_dispatch import KubernetesPoolDispatcher
 from firefly_forge.runner_object_artifacts import RunnerArtifactReadLease, RunnerObjectArtifacts, RunnerObjectReference
 from firefly_forge.runner_pool_artifacts import RunnerPoolArtifacts
 from firefly_forge.runner_pool_dispatch import DockerPoolDispatcher, RunnerDockerAuthority
 from firefly_forge.runner_pool_execution import RunnerPoolExecutions
 from firefly_forge.runner_pool_models import (
     FactoryFence,
+    KubernetesProjectInvocation,
     RunnerInvocation,
     RunnerProjectInvocation,
     parse_invocation,
@@ -65,7 +69,7 @@ UPLOAD_DEADLINE_SECONDS = 30
 
 @dataclass(frozen=True)
 class RunnerControllerSettings:
-    authority: RunnerDockerAuthority
+    authority: RunnerDockerAuthority | KubernetesAuthority
     runner_schema: str
     factory_schema: str
     token: SecretStr
@@ -125,7 +129,7 @@ class PoolArtifact(PoolLookup):
 
 class PoolObjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    invocation: RunnerProjectInvocation | RunnerInvocation
+    invocation: KubernetesProjectInvocation | RunnerProjectInvocation | RunnerInvocation
     fence: FactoryFence
     bytes: int = Field(ge=0, strict=True)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -133,6 +137,14 @@ class PoolObjectRequest(BaseModel):
 
 class PoolObjectUpload(PoolObjectRequest):
     kind: Literal["source", "stdin"]
+
+
+class PoolObjectSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    invocation: KubernetesProjectInvocation
+    fence: FactoryFence
+    source: RunnerObjectReference
+    stdin: RunnerObjectReference
 
 
 class PoolObjectRead(PoolLookup):
@@ -239,7 +251,7 @@ class RunnerControllerService:
         settings: RunnerControllerSettings,
         pools: RunnerPools,
         artifacts: RunnerPoolArtifacts,
-        dispatcher: DockerPoolDispatcher,
+        dispatcher: RunnerPoolDispatcher,
         executions: RunnerPoolExecutions,
     ) -> None:
         self.settings, self.pools, self.artifacts, self.dispatcher = settings, pools, artifacts, dispatcher
@@ -258,6 +270,13 @@ class RunnerControllerService:
 
     def profile(self) -> dict[str, Any]:
         return {
+            **(
+                {"submission_protocols": ["forge-kubernetes-project-invocation-v1"]}
+                if isinstance(self.dispatcher, KubernetesPoolDispatcher)
+                and self.artifacts.objects
+                and self.executions.git_snapshot
+                else {}
+            ),
             **({"artifact_protocols": ["forge-object-artifact-v1"]} if self.artifacts.objects else {}),
             **({"workspace_protocols": ["forge-project-bundle-v1"]} if self.executions.git_snapshot else {}),
             **(
@@ -278,6 +297,18 @@ class RunnerControllerService:
         archive = base64.b64decode(request.archive_base64, validate=True)
         stdin = base64.b64decode(request.stdin_base64, validate=True)
         return await self.executions.accept(request.invocation, request.fence, archive, stdin)
+
+    async def submit_objects(self, request: PoolObjectSubmission) -> dict[str, Any]:
+        if not self.settings.active or not self.ready:
+            raise RuntimeError("Administrator runner profile is inactive or runtime unverified")
+        if not isinstance(self.dispatcher, KubernetesPoolDispatcher) or self.artifacts.objects is None:
+            raise ValueError("Object-reference submission requires the explicit Kubernetes backend")
+        if contains_known_credential(request.invocation.model_dump_json(), self.artifacts.credential_registry()):
+            raise ValueError("Invocation metadata contains a private controller credential")
+        expected = self.dispatcher.input_references(self.artifacts.objects, request.invocation)
+        if (request.source, request.stdin) != expected:
+            raise ValueError("Object input references differ from the frozen invocation")
+        return await self.executions.accept(request.invocation, request.fence, None, None)
 
     async def observe(self, request: PoolLookup) -> dict[str, Any]:
         current = await self.pools.observe(self.settings.authority.profile, request.execution_id)
@@ -445,6 +476,10 @@ class PoolController:
     async def submit(self, request: Body[PoolSubmission]) -> dict[str, Any]:
         return await self.service.submit(request)
 
+    @post_mapping("/object-invocations")
+    async def submit_objects(self, request: Body[PoolObjectSubmission]) -> dict[str, Any]:
+        return await self.service.submit_objects(request)
+
     @post_mapping("/observe")
     async def observe(self, request: Body[PoolLookup]) -> dict[str, Any]:
         return await self.service.observe(request)
@@ -578,18 +613,25 @@ class RunnerControllerConfiguration:
             "FORGE_RUNNER_CONTROLLER_TOKEN": self.settings.token.get_secret_value(),
             "FORGE_RUNNER_DATABASE_PASSWORD": str(async_engine.url.password or ""),
             **(configuration.credential_registry() if configuration else {}),
+            **(
+                {"FORGE_KUBERNETES_CONTROL_TOKEN": self.settings.authority.token.get_secret_value()}
+                if isinstance(self.settings.authority, KubernetesAuthority)
+                else {}
+            ),
         }
         return artifacts
 
     @bean
     def runner_pool_executions(
-        self, pools: RunnerPools, artifacts: RunnerPoolArtifacts, dispatcher: DockerPoolDispatcher
+        self, pools: RunnerPools, artifacts: RunnerPoolArtifacts, dispatcher: RunnerPoolDispatcher
     ) -> RunnerPoolExecutions:
         builder = RunnerGitSnapshot(self.settings.git_binary) if self.settings.git_binary else None
         return RunnerPoolExecutions(pools, artifacts, dispatcher, builder)
 
     @bean
-    def runner_pool_dispatcher(self) -> DockerPoolDispatcher:
+    def runner_pool_dispatcher(self) -> RunnerPoolDispatcher:
+        if isinstance(self.settings.authority, KubernetesAuthority):
+            return KubernetesPoolDispatcher(self.settings.authority)
         return DockerPoolDispatcher(self.settings.authority)
 
 
