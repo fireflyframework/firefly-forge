@@ -14,6 +14,9 @@ import { captureWalkthrough } from "./walkthrough-capture";
 type Consent = "delegation" | "resume" | "product-edit";
 const producer = "studio/tests/scm-protected-consents.spec.ts";
 
+// Native scrollbar width is part of the protected-dialog fit contract.
+test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
+
 async function existingConsent(
   page: Page,
   consent: Exclude<Consent, "delegation">,
