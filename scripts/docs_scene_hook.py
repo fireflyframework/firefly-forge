@@ -60,6 +60,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
     "studio/tests/github-projects.spec.ts",
+    "studio/tests/scm-protected-consents.spec.ts",
 }
 
 
@@ -185,8 +186,27 @@ def _load_walkthrough(config, root=ROOT):
         board_stages = {"github-projects-account", "github-projects-private-board", "github-projects-board-statuses"}
         if stage.startswith("github-projects-") and stage not in board_stages:
             raise ValueError("Unknown GitHub Projects capture stage: " + name)
+        protected_stages = {
+            "scm-protected-delegation-search",
+            "scm-protected-delegation-scope",
+            "scm-protected-delegation-review",
+            "scm-protected-resume-scope",
+            "scm-protected-resume-review",
+            "scm-protected-product-edit-scope",
+            "scm-protected-product-edit-review",
+            "scm-protected-delegation-flow-scope",
+            "scm-protected-delegation-flow-review",
+            "scm-protected-resume-flow-scope",
+            "scm-protected-resume-flow-review",
+            "scm-protected-product-edit-flow-scope",
+            "scm-protected-product-edit-flow-review",
+        }
+        if stage.startswith("scm-protected-") and stage not in protected_stages:
+            raise ValueError("Unknown protected consent capture stage: " + name)
         expected_producer = (
-            "studio/tests/github-projects.spec.ts"
+            "studio/tests/scm-protected-consents.spec.ts"
+            if stage in protected_stages
+            else "studio/tests/github-projects.spec.ts"
             if stage in board_stages
             else "studio/tests/verification-adoption.spec.ts"
             if stage in approval_stages

@@ -66,3 +66,12 @@ it("offers descriptive rail steps and an accessible native selector without enab
   expect(html).toContain('aria-label="Setup step"');
   expect(html).toContain('<option value="1" disabled="">2. Review</option>');
 });
+it("opts into a stable protected field wrapper while keeping the actual flow layout", () => {
+  const html = renderToStaticMarkup(
+    <Wizard {...props} layout="flow" preserveFieldStructure />,
+  );
+  expect(html).toContain('data-layout="flow"');
+  expect(html).toContain("form-scroll-region");
+  expect(html).not.toContain('aria-label="Configure connection fields"');
+  expect(html).not.toContain('tabindex="0"');
+});

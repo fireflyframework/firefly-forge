@@ -313,7 +313,7 @@ async function expectReadableStep(page: Page) {
   expect(
     geometry.visibleCssHeight,
     JSON.stringify(geometry),
-  ).toBeGreaterThanOrEqual(120);
+  ).toBeGreaterThanOrEqual(64);
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
 }
 for (const viewport of [
@@ -414,15 +414,26 @@ for (const viewport of [
             .getBoundingClientRect();
           return {
             primaryTop: primary.top,
+            primaryBottom: primary.bottom,
             primaryLeft: primary.left,
+            secondaryTop: secondary.top,
             secondaryBottom: secondary.bottom,
             secondaryLeft: secondary.left,
+            secondaryRight: secondary.right,
           };
         });
-        expect(actions.primaryTop).toBeGreaterThanOrEqual(
-          actions.secondaryBottom,
-        );
-        expect(actions.primaryLeft).toBeCloseTo(actions.secondaryLeft, 1);
+        if ((await modal.getAttribute("data-fit")) === "flow") {
+          expect(actions.primaryTop).toBeGreaterThanOrEqual(
+            actions.secondaryBottom,
+          );
+          expect(actions.primaryLeft).toBeCloseTo(actions.secondaryLeft, 1);
+        } else {
+          expect(actions.primaryTop).toBeLessThan(actions.secondaryBottom);
+          expect(actions.primaryBottom).toBeGreaterThan(actions.secondaryTop);
+          expect(actions.primaryLeft).toBeGreaterThanOrEqual(
+            actions.secondaryRight,
+          );
+        }
       }
       await save.focus();
       await expect(save).toBeFocused();

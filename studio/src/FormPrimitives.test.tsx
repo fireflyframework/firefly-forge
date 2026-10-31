@@ -56,3 +56,21 @@ it("keeps page fields in native document flow without a second scroll region", (
   expect(html).not.toContain("form-scroll-region");
   expect(html).not.toContain("form-scroll-status");
 });
+it("retains the field wrapper only when explicitly requested, without flow-region semantics", () => {
+  const html = renderToStaticMarkup(
+    <ScrollRegion preserveFieldStructure label="Consent fields">
+      <input aria-label="Person" />
+    </ScrollRegion>,
+  );
+  expect(html).toContain("form-scroll-region");
+  expect(html).not.toContain('role="region"');
+  expect(html).not.toContain('tabindex="0"');
+  expect(html).not.toContain('aria-label="Consent fields"');
+  expect(
+    renderToStaticMarkup(
+      <ScrollRegion>
+        <input aria-label="Person" />
+      </ScrollRegion>,
+    ),
+  ).toBe('<div class="wizard-field-scroll"><input aria-label="Person"/></div>');
+});

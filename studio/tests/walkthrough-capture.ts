@@ -48,6 +48,21 @@ export async function captureWalkthrough(
   if (options.observationOnly !== undefined && !observationOnly)
     throw new Error("Unknown observation-only capture");
   const dialogStages: Record<string, string[]> = {
+    "studio/tests/scm-protected-consents.spec.ts": [
+      "scm-protected-delegation-search",
+      "scm-protected-delegation-scope",
+      "scm-protected-delegation-review",
+      "scm-protected-resume-scope",
+      "scm-protected-resume-review",
+      "scm-protected-product-edit-scope",
+      "scm-protected-product-edit-review",
+      "scm-protected-delegation-flow-scope",
+      "scm-protected-delegation-flow-review",
+      "scm-protected-resume-flow-scope",
+      "scm-protected-resume-flow-review",
+      "scm-protected-product-edit-flow-scope",
+      "scm-protected-product-edit-flow-review",
+    ],
     "studio/tests/docs-walkthrough.spec.ts": [
       "agent-question-preview",
       "account-profile",
@@ -156,6 +171,19 @@ export async function captureWalkthrough(
       .locator(".wizard-field-scroll")
       .evaluateAll((nodes) => nodes.forEach((node) => (node.scrollTop = 0)));
   const expectedStep: Record<string, string> = {
+    "scm-protected-delegation-search": "Scope",
+    "scm-protected-delegation-scope": "Scope",
+    "scm-protected-delegation-review": "Review",
+    "scm-protected-resume-scope": "Scope",
+    "scm-protected-resume-review": "Review",
+    "scm-protected-product-edit-scope": "Scope",
+    "scm-protected-product-edit-review": "Review",
+    "scm-protected-delegation-flow-scope": "Scope",
+    "scm-protected-delegation-flow-review": "Review",
+    "scm-protected-resume-flow-scope": "Scope",
+    "scm-protected-resume-flow-review": "Review",
+    "scm-protected-product-edit-flow-scope": "Scope",
+    "scm-protected-product-edit-flow-review": "Review",
     "github-projects-account": "Account",
     "github-projects-private-board": "Private board",
     "github-projects-board-statuses": "Board statuses",
@@ -557,6 +585,7 @@ export async function captureWalkthrough(
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
     "studio/tests/github-projects.spec.ts",
+    "studio/tests/scm-protected-consents.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {
