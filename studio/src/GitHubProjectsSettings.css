@@ -16,6 +16,37 @@
 .github-projects-dialog {
   width: min(900px, calc(100vw - 32px));
 }
+.github-projects-dialog .wizard-steps {
+  padding-block: 8px;
+  min-height: 44px;
+  margin-block: 0;
+}
+.github-projects-dialog .source-dialog-close {
+  margin-bottom: 4px;
+}
+.github-projects-dialog .wizard-frame .wizard-content {
+  padding-top: 12px;
+}
+.board-status-progress {
+  display: grid;
+  gap: 3px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.github-projects-dialog .wizard-field-scroll {
+  scrollbar-gutter: stable;
+}
+@media (max-height: 640px) {
+  .github-projects-dialog .wizard-heading h2 {
+    font-size: 19px;
+    line-height: 1.3;
+  }
+  .github-projects-dialog .wizard-heading p {
+    margin-block: 6px;
+  }
+}
 .github-projects-dialog fieldset {
   border: 0;
   padding: 0;

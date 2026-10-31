@@ -76,7 +76,7 @@ export function GitHubProjectsWizard({
     !creationHeld;
   return (
     <Wizard
-      steps={["Account", "Private board", "State mapping"]}
+      steps={["Account", "Private board", "Board statuses"]}
       active={step}
       onStep={onStep}
       locked={busy}
@@ -84,15 +84,32 @@ export function GitHubProjectsWizard({
         [
           "Verify your GitHub account",
           "Choose a private board",
-          "Review the managed field",
+          "Match factory progress to your board",
         ][step]
       }
       description={
         [
           "Use a separately consented connection for this project. Repository GitHub App permissions stay separate.",
           "Check a private board you can update, or explicitly create a private personal board.",
-          "Map each factory state to an existing option. Successful units stay subject to product review.",
+          "Completed work still needs product review.",
         ][step]
+      }
+      headingAction={
+        step === 2 ? (
+          <div className="board-status-progress" role="status">
+            <strong>
+              {
+                boardStates.filter((state) =>
+                  field?.options.some(
+                    (option) => option.id === draft.options[state],
+                  ),
+                ).length
+              }{" "}
+              of 8 statuses chosen
+            </strong>
+            <span>Scroll for all choices and final confirmation.</span>
+          </div>
+        ) : undefined
       }
     >
       <form
@@ -114,11 +131,9 @@ export function GitHubProjectsWizard({
         <fieldset disabled={busy}>
           <legend className="sr-only">
             {
-              [
-                "GitHub account",
-                "Private board selection",
-                "Managed state mapping",
-              ][step]
+              ["GitHub account", "Private board selection", "Board statuses"][
+                step
+              ]
             }
           </legend>
           {step === 0 && (
@@ -409,9 +424,9 @@ export function GitHubProjectsWizard({
                 ))}
               </div>
               <p className="subtle">
-                Succeeded means a verified unit, not whole-product acceptance.
-                Choose an option that keeps completed work available for review.
-                Human field changes are held as conflicts.
+                Completed work still needs product review. Choose an option that
+                keeps completed work available for review. Human field changes
+                are held as conflicts.
               </p>
               <label className="board-check">
                 <input
