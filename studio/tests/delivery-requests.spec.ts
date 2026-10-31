@@ -1,6 +1,10 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
 test("queued publication is not reported complete, cannot be duplicated, and follows its recorded outcome", async ({
   page,
@@ -23,6 +27,11 @@ test("queued publication is not reported complete, cannot be duplicated, and fol
     completed = false;
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/publish")) {
       writes++;
@@ -62,7 +71,7 @@ test("queued publication is not reported complete, cannot be duplicated, and fol
     .click();
   await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page.getByRole("button", { name: /Reservation API/ }).click();
+  await openFactoryRun(page, /Reservation API/);
   await page
     .getByRole("button", { name: "Publish pull request", exact: true })
     .click();
@@ -97,6 +106,11 @@ test("a cancellation request waits for worker acknowledgement without offering a
     acknowledged = false;
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/cancel")) {
       writes++;
@@ -135,7 +149,7 @@ test("a cancellation request waits for worker acknowledgement without offering a
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await navigate(page, "Factory");
-  await page.getByRole("button", { name: /Reservation cancellation/ }).click();
+  await openFactoryRun(page, /Reservation cancellation/);
   await page.getByRole("button", { name: "Cancel run", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Cancellation requested", exact: true }),

@@ -2,6 +2,10 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
 import contract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 import delegation from "./scm-delegation-contract-fixture.json" with { type: "json" };
@@ -97,6 +101,23 @@ async function setup(
   }
   await page.context().route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, {
+        projects: viewedRun.project_id
+          ? [
+              {
+                id: viewedRun.project_id,
+                name: "Delegated product fixture",
+                component_count: 1,
+                repository_count: 1,
+              },
+            ]
+          : [],
+        runs: [viewedRun],
+      }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     if (path.includes(bindingPath)) {
       expect(route.request().method()).toBe("GET");
@@ -175,9 +196,7 @@ async function setup(
     .click();
   await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Inventory decision fixture/ })
-    .click();
+  await openFactoryRun(page, /Inventory decision fixture/);
   await page.getByRole("tab", { name: "Agent questions", exact: true }).click();
   if (!delegated)
     await expect(
@@ -227,9 +246,7 @@ test("a lost delivery keeps its original identity and reload reconciles with GET
     page.getByRole("button", { name: "Check original answer", exact: true }),
   ).toBeVisible();
   await page.reload();
-  await page
-    .getByRole("button", { name: /Inventory decision fixture/ })
-    .click();
+  await openFactoryRun(page, /Inventory decision fixture/);
   await page.getByRole("tab", { name: "Agent questions", exact: true }).click();
   await expect(
     page.getByText(
@@ -359,9 +376,7 @@ test("two open tabs retain one original answer before either can dispatch", asyn
   const state = await setup(page);
   const second = await page.context().newPage();
   await second.goto("/");
-  await second
-    .getByRole("button", { name: /Inventory decision fixture/ })
-    .click();
+  await openFactoryRun(second, /Inventory decision fixture/);
   await second
     .getByRole("tab", { name: "Agent questions", exact: true })
     .click();

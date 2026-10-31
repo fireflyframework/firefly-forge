@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { test, expect } from "@playwright/test";
 import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 const ref = {
   version: 1,
   artifact_id: "a".repeat(32),
@@ -44,6 +48,11 @@ for (const [width, theme] of [
       writes = 0;
     await page.route("**/api/v1/**", async (route) => {
       if (await mockIdentity(route)) return;
+      if (
+        route.request().method() === "GET" &&
+        (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      )
+        return;
       const request = route.request(),
         url = new URL(request.url()),
         path = url.pathname;
@@ -149,9 +158,7 @@ for (const [width, theme] of [
       .click();
     await expectAuthenticated(page);
     await navigate(page, "Factory");
-    await page
-      .getByRole("button", { name: /Review warehouse migration changes/ })
-      .click();
+    await openFactoryRun(page, /Review warehouse migration changes/);
     await page.getByRole("tab", { name: "Changes", exact: true }).click();
     const panel = page.getByRole("region", {
       name: "Saved source changes",

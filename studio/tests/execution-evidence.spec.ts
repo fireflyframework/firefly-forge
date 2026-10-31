@@ -1,6 +1,10 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
 import { readFileSync } from "node:fs";
 const launcherFixture = JSON.parse(
@@ -148,6 +152,11 @@ async function openRun(
     : run;
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [selectedRun] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     const json = path.endsWith("/repositories")
       ? [
@@ -217,9 +226,7 @@ async function openRun(
     .click();
   await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Fixture reservation verification/ })
-    .click();
+  await openFactoryRun(page, /Fixture reservation verification/);
 }
 for (const viewport of [
   { width: 1440, height: 900 },
