@@ -31,6 +31,7 @@ from firefly_forge.known_worker_completion_models import (
     ConsumedTerminalInputV2,
     ConsumedTerminalProofV2,
     ConsumedTerminalReceiptV2,
+    ConsumedTerminalReconciliationCandidateV1,
 )
 from firefly_forge.known_worker_completion_proof import (
     CUSTODY,
@@ -393,10 +394,7 @@ def validate_projection(witness: Data, entries: list[Data], marker: Data) -> Non
         return
     from firefly_forge.native_terminal_completion_models import validate_native_receipt
 
-    expected = [
-        {**c, "consume_version": 1, "custody": "consumed_terminal_v2", "recovery_witness_digest": witness["digest"]}
-        for c in proof["completions"]
-    ]
+    expected = consumed_closures(witness, entries)
     terminals = [
         e
         for e in entries
@@ -424,6 +422,31 @@ def validate_projection(witness: Data, entries: list[Data], marker: Data) -> Non
         or receipts[0]["payload"].get("implementation_round") != proof["task_attempt"]
     ):
         raise ValueError("Consumed terminal native receipts belong to another result or attempt")
+
+
+def consumed_closures(witness: Data, entries: list[Data]) -> list[Data]:
+    from firefly_forge.consumed_terminal_reconciliations import KIND as RECONCILIATION
+    from firefly_forge.consumed_terminal_reconciliations import validate_record
+
+    records = [
+        e
+        for e in entries
+        if e["kind"] == RECONCILIATION and e["payload"].get("candidate", {}).get("recovery_digest") == witness["digest"]
+    ]
+    if len(records) > 1:
+        raise ValueError("Consumed terminal has multiple reconciliation authorities")
+    if records:
+        validate_record(records[0], entries)
+    return [
+        {
+            **c,
+            "consume_version": 1,
+            "custody": "consumed_terminal_v2",
+            "recovery_witness_digest": witness["digest"],
+            **({"reconciliation_record_digest": records[0]["digest"]} if records else {}),
+        }
+        for c in witness["payload"]["candidate"]["proof"]["completions"]
+    ]
 
 
 async def readback(
@@ -575,10 +598,40 @@ class CapturedConsumedSnapshot:
         }
 
 
+@dataclass(frozen=True)
+class PreparedConsumedReconciliationAuthority:
+    record: Data
+
+    @property
+    def candidate(self) -> ConsumedTerminalReconciliationCandidateV1:
+        return ConsumedTerminalReconciliationCandidateV1.model_validate(self.record["payload"]["candidate"])
+
+    @property
+    def run(self) -> Data:
+        value: Data = self.record["payload"]["run"]
+        return value
+
+    def validate(self, witness: Data, entries: list[Data]) -> None:
+        from firefly_forge.consumed_terminal_reconciliations import validate_record
+
+        value = validate_record(self.record, entries)
+        if value["candidate"]["recovery_digest"] != witness["digest"]:
+            raise ValueError("Consumed terminal reconciliation belongs to another original witness")
+
+
 class ConsumedTerminalExecution(FinalOutcomeExecution):
     """Reuse the existing final-only Engine branch, without restoring a model graph."""
 
-    def __init__(self, service: Any, witness: Data, entries: list[Data], claim: Data, final: Data) -> None:
+    def __init__(
+        self,
+        service: Any,
+        witness: Data,
+        entries: list[Data],
+        claim: Data,
+        final: Data,
+        *,
+        reconciliation: PreparedConsumedReconciliationAuthority | None = None,
+    ) -> None:
         self.service, self.witness, self.claim = service, witness, claim
         self.run_id = witness["run_id"]
         self.request_id = witness["payload"]["request_id"]
@@ -595,7 +648,12 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         self._catalog: PreparedVerificationSource | None = None
         self._snapshot: CapturedConsumedSnapshot | None = None
         self._snapshot_started = False
-        self._activity = {k: copy.deepcopy(v) for k, v in witness["payload"]["run"].items() if k == "events"}
+        if reconciliation is not None and not isinstance(reconciliation, PreparedConsumedReconciliationAuthority):
+            raise ValueError("Consumed terminal reconciliation requires its typed native-record authority")
+        self.reconciliation = copy.deepcopy(reconciliation)
+        self._slot = service.engine.active.get(self.run_id) if reconciliation else None
+        self._run_cut = copy.deepcopy(reconciliation.run if reconciliation else witness["payload"]["run"])
+        self._activity = {k: copy.deepcopy(v) for k, v in self._run_cut.items() if k == "events"}
         self._runner_attestation: Data | None = None
 
     async def operator(self) -> Any:
@@ -623,6 +681,10 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
             or store.configuration.write_generation is not self.generation
         ):
             raise AccessDenied("Consumed terminal worker identity, ownership or configuration changed")
+        if self.reconciliation is not None and (
+            self.service.engine.active.get(self.run_id) is not self._slot or self._slot is None or self._slot.done()
+        ):
+            raise AccessDenied("Consumed terminal reconciliation lost its owned native slot")
         run = await store.get_run(self.run_id)
         await self.operator()
         await self.service.completions._execution(run, self.reader)
@@ -630,6 +692,8 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
             entries = _entries(await journal.records.find_for_run(identifier(self.run_id)), self.run_id)
             task = _task(await journal._task(self.run_id, "implement"))
         p = validate_witness(self.witness, entries)
+        if self.reconciliation is not None:
+            self.reconciliation.validate(self.witness, entries)
         marker = run.get("consumed_terminal_recovery") or {}
         if (
             marker
@@ -665,7 +729,7 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         if {k: v for k, v in run.items() if k == "events"} != self._activity:
             raise ValueError("Consumed terminal recorded activity changed")
         if {k: v for k, v in run.items() if k not in mutable} != {
-            k: v for k, v in p["run"].items() if k not in mutable
+            k: v for k, v in self._run_cut.items() if k not in mutable
         }:
             raise ValueError("Consumed terminal original scope or invocation changed")
         projected = _same(run.get("usage"), p["usage"])
@@ -726,6 +790,8 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
 
     async def attest_runner(self) -> None:
         await self.guard()
+        if self.reconciliation is not None:
+            return
         events = self._activity.get("events")
         if self._runner_attestation is not None or type(events) is not list:
             raise ValueError("Consumed terminal requires its single native runner attestation")
@@ -753,10 +819,19 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
 
         await self.guard()
         proof = self.witness["payload"]["candidate"]["proof"]
+        authority = (
+            self.reconciliation.candidate.model_dump(mode="json")
+            if self.reconciliation
+            else {
+                "runtime_contract": proof["current_runtime_contract"],
+                "profile_digest": proof["current_profile_digest"],
+                "policy_digest": self.witness["payload"]["candidate"]["policy_digest"],
+            }
+        )
         if (
-            runtime_contract() != proof["current_runtime_contract"]
-            or digest(current_profile_seal()) != proof["current_profile_digest"]
-            or policy_digest() != self.witness["payload"]["candidate"]["policy_digest"]
+            runtime_contract() != authority["runtime_contract"]
+            or digest(current_profile_seal()) != authority["profile_digest"]
+            or policy_digest() != authority["policy_digest"]
         ):
             raise ValueError("Consumed terminal current qualified runtime or profile changed")
 
@@ -764,6 +839,15 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         from firefly_forge.native_location_projection import source_workspace_matches
 
         proof = self.witness["payload"]["candidate"]["proof"]
+        if (
+            self.reconciliation is not None
+            and self._snapshot is None
+            and (
+                digest(git_index_identity(self.workspace).model_dump(mode="json"))
+                != self.reconciliation.candidate.index_digest
+            )
+        ):
+            raise ValueError("Consumed terminal reconciliation staged index changed")
         if self._snapshot is not None:
             if self._snapshot.before_digest != proof["source_digest"] or actual != json.loads(self._snapshot.after):
                 raise ValueError("Consumed terminal source changed after its native snapshot")
@@ -910,6 +994,9 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
     async def consume(self, *args: Any, **kwargs: Any) -> None:
         raise ValueError("An already-consumed terminal response cannot be consumed again")
 
+    def retained_source_authority(self) -> PreparedReconciledSourceAuthority | None:
+        return PreparedReconciledSourceAuthority(self) if self.reconciliation is not None else None
+
     async def result(self) -> Any:
         from firefly_forge.providers import AgentResult
         from firefly_forge.retained_verified_source import prepare_retained_source
@@ -918,7 +1005,13 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         store = self.service.store
         run = await store.get_run(self.run_id)
         p = self.witness["payload"]
-        retained = await prepare_retained_source(store, self.service.journal, run, self.workspace)
+        retained = await prepare_retained_source(
+            store,
+            self.service.journal,
+            run,
+            self.workspace,
+            consumed_reconciliation=self.retained_source_authority(),
+        )
         if not _same(retained.proof.model_dump(mode="json"), p["usage"]["retained_source"]):
             raise ValueError("Consumed terminal retained-source authority changed")
         self._catalog = retained.source
@@ -1003,6 +1096,20 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
 
 
 @dataclass(frozen=True)
+class PreparedReconciledSourceAuthority:
+    execution: ConsumedTerminalExecution
+
+    async def current(self, run: Data, entries: list[Data]) -> tuple[Data, list[Data]]:
+        execution = self.execution
+        if execution.reconciliation is None or not _same(await execution.service.store.get_run(execution.run_id), run):
+            raise ValueError("Reconciled source authority requires its exact current claimed execution")
+        await execution.guard()
+        if entries[: len(execution.prefix)] != execution.prefix:
+            raise ValueError("Reconciled source lost its original native journal")
+        return execution.witness["payload"]["run"], entries[: execution.witness["sequence"] - 1]
+
+
+@dataclass(frozen=True)
 class PreparedConsumedAcceptance:
     restoration: ConsumedTerminalExecution
     prepared: PreparedWorkerCompletion
@@ -1024,15 +1131,7 @@ async def prepare_acceptance(execution: ConsumedTerminalExecution) -> PreparedCo
     if not _same(run.get("usage"), p["usage"]):
         raise ValueError("Consumed terminal acceptance lost its exactly charged result")
     proof = p["candidate"]["proof"]
-    closures = tuple(
-        {
-            **c,
-            "consume_version": 1,
-            "custody": "consumed_terminal_v2",
-            "recovery_witness_digest": execution.witness["digest"],
-        }
-        for c in proof["completions"]
-    )
+    closures = tuple(consumed_closures(execution.witness, entries))
     prepared = PreparedWorkerCompletion(
         len(entries),
         digest({"entries": entries}),
@@ -1040,7 +1139,9 @@ async def prepare_acceptance(execution: ConsumedTerminalExecution) -> PreparedCo
         copy.deepcopy(execution.final["report"]["worker_feedback"]),
         closures,
         proof["final_response_sha256"],
-        proof["current_runtime_contract"],
+        execution.reconciliation.candidate.runtime_contract
+        if execution.reconciliation
+        else proof["current_runtime_contract"],
         None,
         "",
         copy.deepcopy(execution.final["report"]),

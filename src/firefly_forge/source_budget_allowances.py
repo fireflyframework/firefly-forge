@@ -387,6 +387,7 @@ def admission_contract_digest() -> str:
                 "policies.py",
                 "completed_final_epoch.py",
                 "consumed_terminal_completions.py",
+                "consumed_terminal_reconciliations.py",
             )
         }
     )

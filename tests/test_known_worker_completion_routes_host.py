@@ -11,7 +11,7 @@ from pyfly.web.adapters.starlette.controller import ControllerRegistrar
 from starlette.applications import Starlette
 
 from firefly_forge.controllers import OperatorErrors
-from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController
+from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController, WorkerCompletionBody
 from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2, WorkerCompletionInputV1
 from firefly_forge.project_access import AccessDenied
 
@@ -135,7 +135,9 @@ async def test_native_registrar_requires_each_versioned_acknowledgment(routed, v
 
 async def test_native_registrar_exposes_original_versioned_wire_schema(routed):
     metadata = next(
-        value for value in routed.registrar.collect_route_metadata(routed.context) if value.http_method == "POST"
+        value
+        for value in routed.registrar.collect_route_metadata(routed.context)
+        if value.http_method == "POST" and value.request_body_model is WorkerCompletionBody
     )
     schema = metadata.request_body_model.model_json_schema()
     assert schema["anyOf"] == [{"$ref": "#/$defs/WorkerCompletionInputV1"}, {"$ref": "#/$defs/ConsumedTerminalInputV2"}]

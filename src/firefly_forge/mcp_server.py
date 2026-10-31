@@ -24,7 +24,10 @@ from firefly_forge.framework_knowledge_models import (
     FrameworkSearchInput,
 )
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
-from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2
+from firefly_forge.known_worker_completion_models import (
+    ConsumedTerminalInputV2,
+    ConsumedTerminalReconciliationInputV1,
+)
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
@@ -80,6 +83,9 @@ RunCreationCancelRequest = SkipValidation[RunCreationCancelInput]
 AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
 FinalOutcomeContinuationRequest = Annotated[Any, WithJsonSchema(FinalOutcomeContinuationInputV1.model_json_schema())]
 ConsumedTerminalRequest = Annotated[Any, WithJsonSchema(ConsumedTerminalInputV2.model_json_schema())]
+ConsumedTerminalReconciliationRequest = Annotated[
+    Any, WithJsonSchema(ConsumedTerminalReconciliationInputV1.model_json_schema())
+]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
 GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
 GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
@@ -138,6 +144,48 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.consumed_terminal_status(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_consumed_terminal_reconciliation_candidate"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_consumed_terminal_reconciliation_candidate(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.consumed_terminal_reconciliation_candidate(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/reconcile_consumed_terminal"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def reconcile_consumed_terminal(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier, request: ConsumedTerminalReconciliationRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.reconcile_consumed_terminal(identifier, request_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_consumed_terminal_reconciliation_status"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_consumed_terminal_reconciliation_status(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.consumed_terminal_reconciliation_status(identifier, request_id)
 
     @server.tool(
         description=prompt_text("mcp/get_final_outcome_candidate"),

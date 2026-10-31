@@ -19,7 +19,7 @@ from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.journal import Journal
 from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController, WorkerCompletionBody
 from firefly_forge.known_worker_completions import KnownWorkerCompletions
-from firefly_forge.project_access import CURRENT_PRINCIPAL
+from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied
 from firefly_forge.store import Store
 from firefly_forge.workspace_tools import WorkspaceTools
 
@@ -52,8 +52,14 @@ def selected_ignored_native_source(request, monkeypatch):
 
 @pytest.mark.parametrize(
     "interrupt",
-    [False, True, "receipt_source_race", "unrequested_qa"],
-    ids=["accepted_cold_readback", "uncertain_after_charge", "tracked_ignored_receipt_rollback", "unrequested_qa"],
+    [False, True, "receipt_source_race", "unrequested_qa", "reconcile_held"],
+    ids=[
+        "accepted_cold_readback",
+        "uncertain_after_charge",
+        "tracked_ignored_receipt_rollback",
+        "unrequested_qa",
+        "reconcile_held",
+    ],
 )
 async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     native_continuity, monkeypatch, interrupt
@@ -61,6 +67,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     import firefly_forge.retained_verified_source as retained
 
     c = native_continuity
+    reconciled = interrupt == "reconcile_held"
     uncertain = interrupt is True
     receipt_race = interrupt == "receipt_source_race"
     provider = c.engine.provider_factory("bridge")
@@ -213,11 +220,153 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
         closed.append(execution._snapshot)
 
     monkeypatch.setattr(ConsumedTerminalExecution, "close_snapshot", close)
-    token = CURRENT_PRINCIPAL.set(None)
-    try:
-        await asyncio.create_task(c.engine.execute_run(c.run_id))
-    finally:
-        CURRENT_PRINCIPAL.reset(token)
+    expected_handoff = before["verification_handoff"]
+    if reconciled:
+        from types import SimpleNamespace
+
+        import httpx
+        from pyfly.container import Container
+        from pyfly.web.adapters.starlette.controller import ControllerRegistrar
+        from starlette.applications import Starlette
+        from test_consumed_terminal_reconciliation_host import reconcile_input
+
+        from firefly_forge.consumed_terminal_completions import claimed_execution
+        from firefly_forge.controllers import OperatorErrors
+
+        token = CURRENT_PRINCIPAL.set(None)
+        try:
+            assert await c.store.claim(c.run_id)
+            claimed = await claimed_execution(c.engine, c.run_id)
+            await claimed.attest_runner()
+        finally:
+            CURRENT_PRINCIPAL.reset(token)
+        async with c.store._unit():
+            row = await c.journal._run(c.run_id)
+            expected_handoff = {
+                **row.data["verification_handoff"],
+                "status": "held",
+                "error": "Verification needs explicit reconciliation or renewed authority before continuation.",
+            }
+            await c.journal._append(
+                c.run_id,
+                "implement",
+                expected_handoff["id"] + ":held",
+                "verification_handoff_outcome",
+                expected_handoff,
+            )
+            task = await c.journal._task(c.run_id, "implement")
+            task.status = "paused"
+            task.data = {key: value for key, value in task.data.items() if key != "verification_handoff"}
+            await c.journal.tasks.save(task)
+            row.status = "paused"
+            row.data = {
+                **row.data,
+                "status": "paused",
+                "display_status": "paused_worker_request",
+                "verification_handoff": expected_handoff,
+                "error": "Consumed terminal original scope or invocation changed",
+            }
+            await c.store.run_records.save(row)
+        stopped_run, stopped_entries = await c.store.get_run(c.run_id), await c.journal.entries(c.run_id)
+        container = Container()
+        container.register_instance(KnownWorkerCompletionController, controller)
+        container.register_instance(OperatorErrors, OperatorErrors())
+        context = SimpleNamespace(container=container, get_bean=container.resolve)
+        app = Starlette(routes=ControllerRegistrar().collect_routes(context))
+        route = f"/api/v1/runs/{c.run_id}/worker-completion-settlements/{action}"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://fixture.invalid"
+        ) as client:
+            reviewed = await client.get(route + "/reconciliation-candidate")
+            assert reviewed.status_code == 200, reviewed.json()
+            reconciliation = reconcile_input(reviewed.json())
+            denied = await client.post(
+                route + "/reconcile",
+                json={**reconciliation.model_dump(mode="json"), "acknowledge_same_claimed_action": 1},
+            )
+            assert denied.status_code == 422
+            assert await c.store.get_run(c.run_id) == stopped_run
+            assert await c.journal.entries(c.run_id) == stopped_entries
+            save_task = c.journal.tasks.save
+
+            async def rollback_reconciliation(task):
+                answer = await save_task(task)
+                if task.task_id == "implement" and task.status == "running":
+                    raise RuntimeError("Controlled reconciliation atomic rollback")
+                return answer
+
+            with monkeypatch.context() as transaction:
+                transaction.setattr(c.journal.tasks, "save", rollback_reconciliation)
+                with pytest.raises(RuntimeError, match="atomic rollback"):
+                    await controller.reconcile(c.run_id, action, reconciliation)
+            assert await c.store.get_run(c.run_id) == stopped_run
+            assert await c.journal.entries(c.run_id) == stopped_entries
+            owner_assert = c.store.assert_ownership
+            owner_start = c.store._ownership_backend_start
+
+            async def revoke_after_native_check():
+                await owner_assert()
+                from firefly_forge.store import identifier
+
+                async with c.store._unit():
+                    current = await c.journal.records.find_for_run(identifier(c.run_id))
+                if any(e.kind == "consumed_terminal_reconciliation" for e in current):
+                    c.store._ownership_backend_start = "1900-01-01 00:00:00+00"
+
+            try:
+                with monkeypatch.context() as revoked:
+                    revoked.setattr(c.store, "assert_ownership", revoke_after_native_check)
+                    with pytest.raises((RuntimeError, AccessDenied)):
+                        await controller.reconcile(c.run_id, action, reconciliation)
+            finally:
+                c.store._ownership_backend_start = owner_start
+            assert await c.store.get_run(c.run_id) == stopped_run
+            assert await c.journal.entries(c.run_id) == stopped_entries
+            from sqlalchemy import text
+
+            owner_identity = c.store.execution_ownership_identity
+
+            async def unlock_after_native_check():
+                await owner_assert()
+                from firefly_forge.store import identifier
+
+                async with c.store._unit():
+                    current = await c.journal.records.find_for_run(identifier(c.run_id))
+                if any(e.kind == "consumed_terminal_reconciliation" for e in current):
+                    await c.store.execution_ownership_token.scalar(
+                        text("SELECT pg_advisory_unlock(hashtextextended(:key,0))"),
+                        {"key": "forge:execution:" + c.store.schema},
+                    )
+                    assert c.store.execution_ownership_identity == owner_identity
+
+            try:
+                with monkeypatch.context() as unlocked:
+                    unlocked.setattr(c.store, "assert_ownership", unlock_after_native_check)
+                    with pytest.raises((RuntimeError, AccessDenied)):
+                        await controller.reconcile(c.run_id, action, reconciliation)
+            finally:
+                connection = c.store.execution_ownership_token
+                await connection.scalar(
+                    text("SELECT pg_advisory_lock(hashtextextended(:key,0))"),
+                    {"key": "forge:execution:" + c.store.schema},
+                )
+                await connection.commit()
+            assert c.store.execution_ownership_identity == owner_identity
+            assert await c.store.get_run(c.run_id) == stopped_run
+            assert await c.journal.entries(c.run_id) == stopped_entries
+            accepted = await client.post(route + "/reconcile", json=reconciliation.model_dump(mode="json"))
+            assert accepted.status_code == 200, accepted.json()
+            assert accepted.json()["settlement"]["state"] == "accepted"
+            assert (await client.get(route + "/reconciliation")).json() == accepted.json()
+            assert await controller.reconcile(c.run_id, action, reconciliation) == accepted.json()
+        assert (await c.journal.entries(c.run_id))[: len(stopped_entries)] == stopped_entries
+        assert sum(e["kind"] == "consumed_terminal_reconciliation" for e in await c.journal.entries(c.run_id)) == 1
+    else:
+        token = CURRENT_PRINCIPAL.set(None)
+        try:
+            await asyncio.create_task(c.engine.execute_run(c.run_id))
+        finally:
+            CURRENT_PRINCIPAL.reset(token)
     assert len(closed) == 1
     if closed[0] is not None:
         assert all(stream.closed for stream in closed[0].source_fence.streams)
@@ -231,7 +380,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     assert final["usage"]["browser_evidence"] == []
     for key, delta in (("requests", 2), ("input_tokens", 22), ("output_tokens", 6)):
         assert final["usage"][key] == before["usage"][key] + delta
-    assert final["verification_handoff"] == before["verification_handoff"]
+    assert final["verification_handoff"] == expected_handoff
     assert await c.journal.sandbox_executions(c.run_id) == commands
     assert c.checkpoint_writes == old_writes
     assert entries[: len(consumed)] == consumed and Journal.verify_chain(entries)
@@ -274,7 +423,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     assert await c.journal.entries(c.run_id) == entries
     assert len(fresh_posts) == 2
 
-    if not uncertain and not receipt_race:
+    if not uncertain and not receipt_race and not reconciled:
         await c.journal.resume(c.run_id)
         checkpoints = []
 
