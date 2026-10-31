@@ -17,7 +17,7 @@ from test_final_outcome_continuation_native import (
 
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.journal import Journal
-from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController
+from firefly_forge.known_worker_completion_controllers import KnownWorkerCompletionController, WorkerCompletionBody
 from firefly_forge.known_worker_completions import KnownWorkerCompletions
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.store import Store
@@ -168,12 +168,12 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     with monkeypatch.context() as transaction:
         transaction.setattr(c.store.run_records, "save", rollback)
         with pytest.raises(RuntimeError, match="projection rollback"):
-            await controller.request(c.run_id, action, body)
+            await controller.request(c.run_id, action, WorkerCompletionBody(body))
     assert await c.store.get_run(c.run_id) == failed
     assert await c.journal.entries(c.run_id) == consumed
-    reserved = await controller.request(c.run_id, action, body)
+    reserved = await controller.request(c.run_id, action, WorkerCompletionBody(body))
     assert reserved["state"] == "queued" and reserved["same_task_attempt"] == task_attempt
-    assert await controller.request(c.run_id, action, body) == reserved
+    assert await controller.request(c.run_id, action, WorkerCompletionBody(body)) == reserved
     assert (await c.store.get_run(c.run_id))["usage"] == before["usage"]
 
     async def forbidden(*args, **kwargs):
