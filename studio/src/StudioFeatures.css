@@ -1197,40 +1197,30 @@
   margin-top: 8px;
 }
 @media (max-height: 600px) {
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .form-scroll-region {
+  .wizard-frame[data-layout="flow"] .form-scroll-region {
     display: block;
     overflow: visible;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"]) {
+  .wizard-frame[data-layout="flow"] {
     height: auto;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-body,
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-form,
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-field-scroll {
+  .wizard-frame[data-layout="flow"] .wizard-body,
+  .wizard-frame[data-layout="flow"] .wizard-form,
+  .wizard-frame[data-layout="flow"] .wizard-field-scroll {
     overflow: visible;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-content {
+  .wizard-frame[data-layout="flow"] .wizard-content {
     height: auto;
     display: block;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-form {
+  .wizard-frame[data-layout="flow"] .wizard-form {
     display: block;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
-    .wizard-field-scroll {
+  .wizard-frame[data-layout="flow"] .wizard-field-scroll {
     display: flex;
     max-height: none;
   }
-  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"]):not(
-      [data-layout="flow"]
-    )
-    .wizard-actions {
+  .wizard-frame[data-layout="flow"] .wizard-actions {
     position: static;
     padding: 12px 0;
   }
