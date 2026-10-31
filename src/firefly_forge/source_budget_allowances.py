@@ -386,6 +386,19 @@ def admission_contract_digest() -> str:
                 "runtime_role_persistence.py",
                 "policies.py",
                 "completed_final_epoch.py",
+                "personal_token_format.py",
+                "personal_token_controllers.py",
+                "personal_tokens.py",
+                "personal_token_models.py",
+                "personal_token_persistence.py",
+                "factory_dashboard.py",
+                "factory_dashboard_controllers.py",
+                "factory_dashboard_models.py",
+                "factory_dashboard_persistence.py",
+                "identity.py",
+                "identity_persistence.py",
+                "access_persistence.py",
+                "product_provenance.py",
             )
         }
     )

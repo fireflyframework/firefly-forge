@@ -20,7 +20,7 @@
   },
   "generator": "scripts/brand-assets.mjs",
   "identity": {
-    "forge": "Forged lowercase f: 148-unit ascender, 26-unit icon billets, 45-degree cut arms; wordmark stem optically normalized to Manrope Medium with74% horizontal scale and64-unit f advance; amber hot edge (gold on paper)",
+    "forge": "Forged lowercase f: 148-unit ascender, 26-unit icon billets, 45-degree cut arms; wordmark stem optically normalized to Manrope Medium with74% horizontal scale and64-unit f advance; amber hot edge matching the Firefly chevron in both themes",
     "bridge": "Architectural span: amber deck, two piers, open arch and terminal nodes"
   },
   "files": [
@@ -34,7 +34,7 @@
       "path": "assets/brand/forge-lockup-small-dark.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
-      "sha256": "cdcc3c51d22d301ca8ebb0babc2b50f36acd4da159c0b774a0a9fb2d408dec8f"
+      "sha256": "2104513e0b3234e6a5df5ab9eee25d046c0ddc8feeef62d8b85dc13166b8a325"
     },
     {
       "path": "assets/brand/forge-wordmark-dark.svg",
@@ -160,25 +160,25 @@
       "path": "assets/brand/forge-lockup-light.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
-      "sha256": "059dd7b86afcb14755cc8a204e299007a0043e8471d717bfec6f333ebfd91645"
+      "sha256": "3b0cc5fefec109e239c629109d527d1a4a9530b3d4e0b321ed97693d8f3c31cf"
     },
     {
       "path": "assets/brand/forge-lockup-small-light.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
-      "sha256": "c6f036f9ed1f17234160af5cb572f9388586d546f565df0ffdb51238cdb630b0"
+      "sha256": "07e9f89ff3f83715661507a6bac15851d3f926fa0ad0596c41fde9d8166e7470"
     },
     {
       "path": "assets/brand/forge-wordmark-light.svg",
       "owner": "Firefly Software Foundation",
       "license": "Apache-2.0; trademark reserved",
-      "sha256": "608132725b794a3af64da5e25b18776a0020056cb00ca1146bdfa7d61649ee5d"
+      "sha256": "3f289b0679d86f73074414d7d993fd3644d517d289bb2eeaeb33797bb31e0af1"
     },
     {
       "path": "assets/brand/forge-mark-light.svg",
       "owner": "Firefly Software Foundation",
       "license": "Apache-2.0; trademark reserved",
-      "sha256": "5520908460bc126ffe86da7dcf499100276737b2adc467726dfd29e3e1a57c77"
+      "sha256": "531d207373fc2674cbef685453cee6155da5834b0fa314dc351fdcf896d12926"
     },
     {
       "path": "assets/brand/forge-mark-mono-light.svg",
@@ -202,21 +202,21 @@
       "path": "assets/banner-light.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
-      "sha256": "307ff09e7bd9dd8c7536c611968e10b8e5b7d4564bfc62fd31ff689167e31b42"
+      "sha256": "6def480f58a88ea6b6940df98481821ac7fd58c05b899b9708e40d1c85a61f5a"
     },
     {
       "path": "studio/public/assets/forge-lockup-light.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-light.svg",
-      "sha256": "059dd7b86afcb14755cc8a204e299007a0043e8471d717bfec6f333ebfd91645"
+      "sha256": "3b0cc5fefec109e239c629109d527d1a4a9530b3d4e0b321ed97693d8f3c31cf"
     },
     {
       "path": "studio/public/assets/forge-mark-light.svg",
       "owner": "Firefly Software Foundation",
       "license": "Apache-2.0; trademark reserved",
       "source": "assets/brand/forge-mark-light.svg",
-      "sha256": "5520908460bc126ffe86da7dcf499100276737b2adc467726dfd29e3e1a57c77"
+      "sha256": "531d207373fc2674cbef685453cee6155da5834b0fa314dc351fdcf896d12926"
     },
     {
       "path": "studio/public/assets/forge-mark-mono-light.svg",
@@ -244,21 +244,21 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/banner-light.svg",
-      "sha256": "307ff09e7bd9dd8c7536c611968e10b8e5b7d4564bfc62fd31ff689167e31b42"
+      "sha256": "6def480f58a88ea6b6940df98481821ac7fd58c05b899b9708e40d1c85a61f5a"
     },
     {
       "path": "docs/assets/forge-lockup-light.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-light.svg",
-      "sha256": "059dd7b86afcb14755cc8a204e299007a0043e8471d717bfec6f333ebfd91645"
+      "sha256": "3b0cc5fefec109e239c629109d527d1a4a9530b3d4e0b321ed97693d8f3c31cf"
     },
     {
       "path": "docs/assets/forge-mark-light.svg",
       "owner": "Firefly Software Foundation",
       "license": "Apache-2.0; trademark reserved",
       "source": "assets/brand/forge-mark-light.svg",
-      "sha256": "5520908460bc126ffe86da7dcf499100276737b2adc467726dfd29e3e1a57c77"
+      "sha256": "531d207373fc2674cbef685453cee6155da5834b0fa314dc351fdcf896d12926"
     },
     {
       "path": "docs/assets/forge-mark-mono-light.svg",
@@ -286,14 +286,14 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/banner-light.svg",
-      "sha256": "307ff09e7bd9dd8c7536c611968e10b8e5b7d4564bfc62fd31ff689167e31b42"
+      "sha256": "6def480f58a88ea6b6940df98481821ac7fd58c05b899b9708e40d1c85a61f5a"
     },
     {
       "path": "assets/brand/forge-lockup-small.svg",
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-small-dark.svg",
-      "sha256": "cdcc3c51d22d301ca8ebb0babc2b50f36acd4da159c0b774a0a9fb2d408dec8f"
+      "sha256": "2104513e0b3234e6a5df5ab9eee25d046c0ddc8feeef62d8b85dc13166b8a325"
     },
     {
       "path": "assets/brand/forge-wordmark.svg",
@@ -314,7 +314,7 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-small-dark.svg",
-      "sha256": "cdcc3c51d22d301ca8ebb0babc2b50f36acd4da159c0b774a0a9fb2d408dec8f"
+      "sha256": "2104513e0b3234e6a5df5ab9eee25d046c0ddc8feeef62d8b85dc13166b8a325"
     },
     {
       "path": "studio/public/favicon.svg",
@@ -328,7 +328,7 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-small-dark.svg",
-      "sha256": "cdcc3c51d22d301ca8ebb0babc2b50f36acd4da159c0b774a0a9fb2d408dec8f"
+      "sha256": "2104513e0b3234e6a5df5ab9eee25d046c0ddc8feeef62d8b85dc13166b8a325"
     },
     {
       "path": "docs/assets/favicon.svg",
@@ -369,7 +369,7 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/banner-light.svg",
-      "sha256": "b3f6b615a3797eebaf84124b1fc1acb007b96816c34de1dbbae0719ed1eb66aa"
+      "sha256": "08ab9c563327e3ff7dd29fa937dbe734fd1f9cabdb761c0c69f5327e87189898"
     },
     {
       "path": "assets/brand/forge-lockup-dark.png",
@@ -383,7 +383,7 @@
       "owner": "Firefly Software Solutions Inc. and Firefly Software Foundation",
       "license": "Proprietary artwork; product redistribution only",
       "source": "assets/brand/forge-lockup-light.svg",
-      "sha256": "05a6a314b891ed125d543364d74b9138afa4b2ebddb1f451dfba38cd775acb98"
+      "sha256": "baad663d96a8a7d499ace459b854e44faf3cfdc7af39ba1e0fdd7c757d7c919e"
     },
     {
       "path": "assets/brand/forge-mark-dark.png",
@@ -397,7 +397,7 @@
       "owner": "Firefly Software Foundation",
       "license": "Apache-2.0; trademark reserved",
       "source": "assets/brand/forge-mark-light.svg",
-      "sha256": "e06cdd139ab4f2fdbe708a81c30ba545cfb9d20621c6eea5f76543f1dbc0dede"
+      "sha256": "d4a5d862d20ef5ff4f8d49b744f897e5fcd27a2ca9e3071b590ccd95c2275a8a"
     },
     {
       "path": "assets/brand/NOTICE",

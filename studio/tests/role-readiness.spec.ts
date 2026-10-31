@@ -1,7 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
+import { navigate, expectAuthenticated } from "./navigation";
 
 const healthyApi = {
   status: "ok",
@@ -60,6 +61,11 @@ for (const [name, health, alert] of [
   }, testInfo) => {
     await page.route("**/api/v1/**", async (route) => {
       if (await mockIdentity(route)) return;
+      if (
+        route.request().method() === "GET" &&
+        (await mockFactoryDashboard(route, { projects: [], runs: [] }))
+      )
+        return;
       const path = new URL(route.request().url()).pathname;
       await route.fulfill({
         json: path.endsWith("/health")
@@ -77,9 +83,7 @@ for (const [name, health, alert] of [
     await page
       .getByRole("button", { name: "Save connection", exact: true })
       .click();
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toBeVisible();
+    await expectAuthenticated(page);
     await navigate(page, "Factory");
     if (alert) await expect(page.getByRole("alert")).toContainText(alert);
     else await expect(page.getByRole("alert")).toHaveCount(0);

@@ -1,7 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
 
 test.use({ launchOptions: { args: ["--enable-unsafe-swiftshader"] } });
 
@@ -10,84 +11,113 @@ for (const viewport of [
   { width: 390, height: 844 },
 ])
   for (const theme of ["light", "dark"]) {
-    test(`the whole production scene fits its first screen ${viewport.width} ${theme}`, async ({
+    test(`the production scene and controls fit their first screen ${viewport.width} ${theme}`, async ({
       page,
     }, testInfo) => {
       test.setTimeout(60_000);
       await page.setViewportSize(viewport);
       const writes: string[] = [];
       const repository = {
-        id: "fixture-factory-repo",
+        id: "1".repeat(32),
         name: "Fixture Inventory API",
         provider: "git",
         url: "/fixture/inventory",
         default_branch: "main",
       };
       const run = {
-        id: "fixture-factory-run",
+        id: "2".repeat(32),
         repository_id: repository.id,
+        project_id: "a".repeat(32),
+        project_name: "Fixture inventory product",
         brief: "Fixture inventory reservation",
         status: "developing",
         agent: "codex",
         frontend: "none",
       };
+      const projects = [
+        {
+          id: run.project_id,
+          name: run.project_name,
+          component_count: 2,
+          repository_count: 1,
+        },
+        {
+          id: "b".repeat(32),
+          name: "Fixture empty product",
+          component_count: 1,
+          repository_count: 1,
+        },
+      ];
+      const plan = {
+        tasks: [
+          {
+            id: "prepare",
+            status: "done",
+            instructions: "Fixture source was inspected.",
+          },
+          {
+            id: "implement",
+            status: "running",
+            instructions: "Fixture implementation is recorded as active.",
+          },
+          {
+            id: "verify",
+            status: "queued",
+            instructions: "Fixture checks have not run.",
+          },
+          {
+            id: "checkpoint",
+            status: "queued",
+            instructions: "Fixture checkpoint is not recorded.",
+          },
+        ],
+      };
+      const planReads: string[] = [],
+        bulkReads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
         if (request.method() !== "GET")
           writes.push(request.method() + " " + path);
-        const json = path.endsWith("/repositories")
-          ? [
-              repository,
-              {
-                ...repository,
-                id: "fixture-empty-repo",
-                name: "Fixture empty project",
-              },
-            ]
-          : path.endsWith("/runs")
-            ? [run]
-            : path.endsWith("/plan")
-              ? {
-                  tasks: [
-                    {
-                      id: "prepare",
-                      status: "done",
-                      instructions: "Fixture source was inspected.",
-                    },
-                    {
-                      id: "implement",
-                      status: "running",
-                      instructions:
-                        "Fixture implementation is recorded as active.",
-                    },
-                    {
-                      id: "verify",
-                      status: "queued",
-                      instructions: "Fixture checks have not run.",
-                    },
-                    {
-                      id: "checkpoint",
-                      status: "queued",
-                      instructions: "Fixture checkpoint is not recorded.",
-                    },
-                  ],
-                }
-              : path.endsWith("/health")
-                ? {
-                    status: "ok",
-                    service_role: "api",
-                    admission_ready: true,
-                    execution_ready: false,
-                    execution: {
-                      local_enabled: false,
-                      remote_state: "unknown",
-                    },
-                  }
-                : path.endsWith("/profiles")
-                  ? {}
-                  : [];
+        if (path.endsWith("/repositories") || path.endsWith("/runs"))
+          bulkReads.push(path);
+        if (path.endsWith("/plan")) planReads.push(path);
+        const dashboard = factoryDashboardFixture(new URL(request.url()), {
+          projects,
+          runs: [run],
+          plans: { [run.id]: plan },
+        });
+        const json =
+          dashboard !== undefined
+            ? dashboard
+            : path.endsWith("/repositories")
+              ? [
+                  repository,
+                  {
+                    ...repository,
+                    id: "fixture-empty-repo",
+                    name: "Fixture empty project",
+                  },
+                ]
+              : path.endsWith("/runs")
+                ? [run]
+                : path.endsWith("/plan")
+                  ? plan
+                  : path.endsWith("/health")
+                    ? {
+                        status: "ok",
+                        service_role: "api",
+                        admission_ready: true,
+                        execution_ready: false,
+                        execution: {
+                          local_enabled: false,
+                          remote_state: "unknown",
+                        },
+                      }
+                    : path.endsWith("/profiles")
+                      ? {}
+                      : [];
         await route.fulfill({ json });
       });
       await page.goto("/");
@@ -98,9 +128,9 @@ for (const viewport of [
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(
-        page.getByRole("button", { name: "API connected" }),
-      ).toBeVisible();
+      await expectAuthenticated(page);
+      await expect(page.locator(".app")).toHaveAttribute("aria-busy", "false");
+      bulkReads.length = 0;
       await navigate(page, "Factory");
       await page
         .getByRole("combobox", { name: "Appearance", exact: true })
@@ -108,22 +138,28 @@ for (const viewport of [
       await page.evaluate(() => document.fonts.ready);
       const scene = page.getByRole("figure", { name: "Operational factory" });
       await expect(scene).toHaveAttribute("data-renderer", "webgl");
-      await expect(scene).toHaveAttribute("data-camera", "overview");
+      const startsFocused = viewport.width <= 600;
+      await expect(scene).toHaveAttribute(
+        "data-camera",
+        startsFocused ? "selected-stage" : "overview",
+      );
       await expect(
         scene.getByRole("button", {
-          name: "Focus selected stage",
+          name: startsFocused ? "Show full floor" : "Focus selected stage",
           exact: true,
         }),
-      ).toHaveAttribute("aria-pressed", "false");
-      await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
-        repository.id,
-      );
+      ).toHaveAttribute("aria-pressed", String(startsFocused));
       await expect(
-        page.getByLabel("Manufacturing run", { exact: true }),
-      ).toHaveValue(run.id);
-      await expect(page.locator(".production-status")).toContainText(
-        "1/4 tasks recorded",
+        page.getByRole("heading", { name: "Factory overview", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("navigation", { name: "Current factory context" }),
+      ).toContainText("All projects and standalone work");
+      await expect(page.locator(".factory-records-heading")).toContainText(
+        "1 shown on this page",
       );
+      expect(planReads).toEqual([]);
+      expect(bulkReads).toEqual([]);
       await expect
         .poll(() => page.locator("main").evaluate((node) => node.scrollTop))
         .toBe(0);
@@ -143,8 +179,8 @@ for (const viewport of [
           main: rect("main"),
           footer: rect(".workspace-main > footer"),
           canvas: rect(".factory-live-viewport"),
-          controls: rect(".production-filters"),
-          explanation: rect(".production-explanation"),
+          controls: rect(".production-context-dock"),
+          explanation: rect(".factory-scope-caption"),
           pageOverflow: document.documentElement.scrollWidth > innerWidth,
         };
       });
@@ -169,15 +205,31 @@ for (const viewport of [
       }
       expect(geometry.canvas.height).toBeGreaterThanOrEqual(180);
       expect(geometry.pageOverflow).toBe(false);
+      await page
+        .locator(".factory-run-record")
+        .filter({ hasText: run.brief })
+        .getByRole("button", { name: "Focus run", exact: true })
+        .click();
+      await expect(page.locator(".factory-inspection")).toContainText(
+        "Fixture source was inspected.",
+      );
+      expect(
+        planReads.every((path) => path.endsWith(`/runs/${run.id}/plan`)),
+      ).toBe(true);
+      expect(planReads.length).toBeGreaterThan(0);
       const stages = page.getByLabel("Recorded execution stages");
       await expect(stages.getByRole("button")).toHaveCount(7);
       await stages.getByRole("button", { name: /^Test / }).click();
       await expect(
         stages.getByRole("button", { name: /^Test / }),
       ).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator(".production-inspector")).toContainText(
+      await expect(page.locator(".factory-inspection")).toContainText(
         "Fixture checks have not run.",
       );
+      if (startsFocused)
+        await scene
+          .getByRole("button", { name: "Show full floor", exact: true })
+          .click();
       const focus = scene.getByRole("button", {
         name: "Focus selected stage",
         exact: true,
@@ -205,7 +257,7 @@ for (const viewport of [
       await expect(
         stages.getByRole("button", { name: /^Test / }),
       ).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator(".production-inspector")).toContainText(
+      await expect(page.locator(".factory-inspection")).toContainText(
         "Fixture checks have not run.",
       );
       await stages.getByRole("button", { name: /^Test / }).focus();
@@ -220,14 +272,25 @@ for (const viewport of [
         "",
       );
       await expect(page.locator(".production-guide")).toContainText(
-        "separate recorded actions",
+        "require separate recorded actions",
       );
       await page
-        .getByLabel("Project", { exact: true })
-        .selectOption("fixture-empty-repo");
-      await expect(page.locator(".production-status")).toContainText(
-        "Ready for your first run",
+        .getByRole("button", { name: "Browse work", exact: true })
+        .click();
+      await page
+        .getByRole("dialog", { name: "Factory work" })
+        .getByRole("button", { name: /^Fixture empty product / })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Fixture empty product",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.locator(".factory-empty")).toContainText(
+        "No recorded runs are visible in this scope",
       );
+      await expect(page.locator(".factory-run-record")).toHaveCount(0);
       expect(writes).toEqual([]);
     });
   }

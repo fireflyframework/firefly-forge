@@ -212,6 +212,7 @@ async def test_store_existing_only_initialization_never_migrates(tmp_path, monke
     from contextlib import asynccontextmanager
 
     import firefly_forge.store as module
+    from firefly_forge.migrations import SCHEMA_REVISION
 
     calls = []
 
@@ -221,7 +222,7 @@ async def test_store_existing_only_initialization_never_migrates(tmp_path, monke
 
         async def scalar(self, query, values=None):
             calls.append(str(query))
-            return 31
+            return SCHEMA_REVISION
 
     class Provider:
         @asynccontextmanager

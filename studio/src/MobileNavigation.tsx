@@ -1,15 +1,17 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, X, type LucideIcon } from "lucide-react";
 import "./MobileNavigation.css";
 export function MobileNavigation({
   items,
   current,
   onNavigate,
+  account,
 }: {
   items: { id: string; label: string; icon: LucideIcon; count?: number }[];
   current: string;
   onNavigate: (id: string) => void;
+  account?: { label: string; content: ReactNode; onOpen: () => void };
 }) {
   const [open, setOpen] = useState(false),
     dialog = useRef<HTMLDialogElement>(null);
@@ -73,6 +75,21 @@ export function MobileNavigation({
             </button>
           ))}
         </nav>
+        {account && (
+          <div className="mobile-account">
+            <button
+              className="secondary identity-trigger"
+              aria-label={account.label}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setOpen(false);
+                account.onOpen();
+              }}
+            >
+              {account.content}
+            </button>
+          </div>
+        )}
       </dialog>
     </div>
   );

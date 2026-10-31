@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import type { ForgeRun } from "../src/api";
 import {
   candidate,
@@ -37,6 +41,8 @@ export async function setup(
     run: structuredClone(run) as ForgeRun,
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [state.run] }))
+      return;
     if (await mockIdentity(route)) return;
     const request = route.request(),
       path = new URL(request.url()).pathname;
@@ -131,17 +137,13 @@ export async function setup(
       .getByRole("button", { name: "Save connection", exact: true })
       .click();
   }
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await openPlan(page);
   return state;
 }
 export async function openPlan(page: Page) {
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Controlled allowance UI fixture/ })
-    .click();
+  await openFactoryRun(page, /Controlled allowance UI fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
 }
 export async function open(page: Page) {

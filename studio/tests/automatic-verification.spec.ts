@@ -7,7 +7,11 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import { navigate, expectAuthenticated } from "./navigation";
 import contract from "./worker-dialogue-contract-fixture.json" with { type: "json" };
 
 const runId = "2".repeat(32),
@@ -144,6 +148,14 @@ async function fixture(page: Page) {
   }
   await page.context().route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, {
+        projects: [],
+        runs: [currentRun()],
+      }))
+    )
+      return;
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.method() !== "GET") {
@@ -190,17 +202,13 @@ async function fixture(page: Page) {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   return state;
 }
 
 async function openQuestions(page: Page) {
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Automatic verification UI fixture/ })
-    .click();
+  await openFactoryRun(page, /Automatic verification UI fixture/);
   await page.getByRole("tab", { name: "Agent questions", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: question, exact: true }),

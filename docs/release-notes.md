@@ -5,6 +5,10 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
+## Unreleased
+
+The factory runtime pins the verified official pyfly `26.10.22` wheel. Its web dependencies resolve to Starlette `1.10.0`, and the lock includes pyfly's required timezone data. The standalone Agentic `26.10.1` and Pydantic AI `2.55.0` dependencies remain unchanged; the upgrade does not enable pyfly's optional Agentic or Kubernetes sandbox extras. Existing runs retain their recorded runtime and require the documented compatibility checks before recovery.
+
 ## 0.2.49
 
 Saved final-result recovery now carries its completed native custody into the following verification and Git checks. The factory checks the original response and completion receipt, current project access, provider settings and supported runtime before continuing the same run. Pending actions keep their existing claim and lease checks. Missing receipts, changed authorization or altered usage leave the operation unavailable.

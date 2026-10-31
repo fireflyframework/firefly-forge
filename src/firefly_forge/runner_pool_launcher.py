@@ -188,7 +188,7 @@ def workspace_collector(limit: int) -> str:
     """Use the audited reader itself, without importing image or project packages."""
     import inspect
 
-    from firefly_forge import credential_text_stream, sandbox, secrets, workspace_tools
+    from firefly_forge import credential_text_stream, personal_token_format, sandbox, secrets, workspace_tools
 
     functions = (
         workspace_tools._private_name,
@@ -215,6 +215,9 @@ def workspace_collector(limit: int) -> str:
         "from contextvars import ContextVar\n"
         "_ephemeral=ContextVar('forge_ephemeral_credentials',default=())\n"
         f"TEXT_CHARS={credential_text_stream.TEXT_CHARS!r}\n"
+        f"PERSONAL_TOKEN_LENGTH={personal_token_format.PERSONAL_TOKEN_LENGTH!r}\n"
+        f"PERSONAL_TOKEN_PATTERN=re.compile({personal_token_format.PERSONAL_TOKEN_PATTERN.pattern!r},"
+        f"{personal_token_format.PERSONAL_TOKEN_PATTERN.flags!r})\n"
         f"PRIVATE_BASENAMES=frozenset({sorted(workspace_tools.PRIVATE_BASENAMES)!r})\n"
         f"PUBLIC_ENV_SUFFIXES={workspace_tools.PUBLIC_ENV_SUFFIXES!r}\n"
         f"PRIVATE_KEY_SUFFIXES={workspace_tools.PRIVATE_KEY_SUFFIXES!r}\n"

@@ -53,7 +53,7 @@ async def test_populated_actual_schema28_to29_preserves_authority_and_receipts_t
     import firefly_forge.store as store_module
 
     legacy = previous_module("schema28_migrations", "05afcf7c9d6f792206fccd8505e1d24f4d828b9f0d171062ac2b6bb98274b021")
-    assert legacy.SCHEMA_REVISION == 28 and SCHEMA_REVISION == 31
+    assert legacy.SCHEMA_REVISION == 28 and SCHEMA_REVISION == 32
     monkeypatch.setattr(store_module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema28" / "factory.db")
     async with store._unit() as session:

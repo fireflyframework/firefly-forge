@@ -1,50 +1,96 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-.administration-cards {
+.administration-groups {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  gap: 32px;
 }
-.administration-cards article {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+.administration-group {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 24px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
 }
-.administration-cards article > svg {
-  color: var(--accent-ink);
+.administration-group:last-child {
+  border-bottom: 0;
 }
-.administration-cards h2 {
-  font-size: 21px;
+.administration-group > header {
+  min-width: 0;
+}
+.administration-group h2 {
+  font-size: 20px;
   line-height: 1.4;
 }
-.administration-cards p {
-  font-size: 14px;
-  line-height: 1.7;
-}
-.administration-cards small,
-.administration-restriction {
-  font-size: 12px;
+.administration-group > header p {
+  max-width: 34ch;
+  font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
+  margin-top: 8px;
 }
-.administration-cards button {
-  margin-top: auto;
+.administration-rows {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
 }
-@media (max-width: 1200px) {
-  .administration-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.administration-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  padding: 20px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
 }
-@media (max-width: 600px) {
-  .administration-cards {
+.administration-row:last-child {
+  border-bottom: 0;
+}
+.administration-row:hover {
+  background: var(--surface-subtle);
+}
+.administration-row > span {
+  min-width: 0;
+}
+.administration-row strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.administration-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.administration-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+@media (max-width: 1000px) {
+  .administration-group {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
-  .administration-cards article {
-    padding: 24px;
+  .administration-group > header p {
+    max-width: 65ch;
+  }
+}
+@media (max-width: 600px) {
+  .administration-row {
+    padding: 16px;
+    gap: 12px;
   }
 }
