@@ -85,6 +85,7 @@ import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
 import { FactoryWelcome } from "./FactoryWelcome";
+import { FactoryProcessGuide } from "./FactoryProcessGuide";
 import {
   type ProductDraftBook,
   useProductDraftBook,
@@ -904,6 +905,12 @@ export default function App() {
                       New product
                     </button>
                   </div>
+                  <FactoryProcessGuide
+                    canConfigure={
+                      !requiresFactoryAdministrator("settings", identity.session)
+                    }
+                    onNavigate={navigate}
+                  />
                   <FactoryFloor
                     key={floorScope}
                     connection={connection}
