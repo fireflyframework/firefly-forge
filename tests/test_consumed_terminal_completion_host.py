@@ -443,33 +443,73 @@ async def test_actual_v3_consumed_frontier_preserves_duration_and_rejects_rehash
         await env.model.client.close()
 
 
-def test_named_historical_runtime_requires_the_exact_measured_profile_and_dependencies(monkeypatch):
+async def test_named_historical_runtime_requires_the_exact_measured_profile_and_dependencies(
+    consumed_terminal, monkeypatch
+):
+    import hashlib
     from dataclasses import replace
-    from types import SimpleNamespace
 
+    import firefly_forge.consumed_terminal_completions as recovery
     import firefly_forge.source_edit_qualification as qualification
+    from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
+    from firefly_forge.checkpoint_work_duration import checkpoint_payload
     from firefly_forge.consumed_terminal_completions import RECORDED_V30_RUNTIME, _runtime
 
-    compatibility = {
+    env = consumed_terminal
+    before = copy.deepcopy((env.store.run.data, env.entries))
+    payload = checkpoint_payload(next(e["payload"] for e in reversed(env.entries) if e["kind"] == "agent_checkpoint"))
+    checkpoint = BoundaryCheckpoint.decode(payload.snapshot.encode(), payload.checkpoint_digest)
+    assert checkpoint.record.compatibility == {
+        "fireflyframework-agentic": "26.10.1",
+        "pydantic-ai-slim": "2.55.0",
+    }
+    _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
+    with pytest.raises(ValueError, match="compatibility"):
+        _runtime("a" * 64, checkpoint, "f" * 64)
+    dependencies = {
         "pyfly": "26.10.7",
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
         "openai": "3.29.0",
     }
-    checkpoint = SimpleNamespace(canonical_payload=json.dumps({"compatibility": compatibility}).encode())
-    _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
-    with pytest.raises(ValueError, match="compatibility"):
-        _runtime("a" * 64, checkpoint, "f" * 64)
-    checkpoint.canonical_payload = json.dumps({"compatibility": {**compatibility, "pyfly": "26.10.16"}}).encode()
-    with pytest.raises(ValueError, match="compatibility"):
-        _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
-    checkpoint.canonical_payload = json.dumps({"compatibility": compatibility}).encode()
+    for changed in dependencies:
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                recovery,
+                "version",
+                lambda name, changed=changed: "unexpected" if name == changed else dependencies[name],
+            )
+            with pytest.raises(ValueError, match="compatibility"):
+                _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
+    native = json.loads(checkpoint.canonical_payload)
+    for compatibility in (
+        {**native["compatibility"], "pyfly": "26.10.7"},
+        {**native["compatibility"], "pydantic-ai-slim": "2.58.0"},
+        {"fireflyframework-agentic": "26.10.1"},
+    ):
+        raw = json.dumps(
+            {**native, "compatibility": compatibility}, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode()
+        changed_checkpoint = BoundaryCheckpoint(raw, hashlib.sha256(raw).hexdigest())
+        with pytest.raises(ValueError, match="runtime|compatibility"):
+            _runtime(RECORDED_V30_RUNTIME, changed_checkpoint, "f" * 64)
     original = [p for p in qualification._profiles() if p.version == 29][0]
+    for profiles in (
+        (),
+        (original, original),
+        (replace(original, proof=replace(original.proof, artifact_sha256="1" * 64)),),
+    ):
+        with monkeypatch.context() as patch:
+            patch.setattr(qualification, "_profiles", lambda profiles=profiles: profiles)
+            with pytest.raises(ValueError, match="compatibility"):
+                _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
     forged = replace(original, policy_digest="1" * 64)
     forged = replace(forged, proof=replace(forged.proof, contract_digest=qualification.profile_contract_digest(forged)))
     monkeypatch.setattr(qualification, "_profiles", lambda: (forged,))
     with pytest.raises(ValueError, match="compatibility"):
         _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
+    assert (env.store.run.data, await env.journal.entries(env.run_id)) == before
+    assert len(env.posts) == env.initial_posts + 2
 
 
 async def test_request_projection_failure_rolls_back_without_a_second_consume(consumed_terminal, monkeypatch):
