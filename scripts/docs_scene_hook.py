@@ -59,6 +59,7 @@ CAPTURE_PRODUCERS = {
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
+    "studio/tests/github-projects.spec.ts",
 }
 
 
@@ -181,8 +182,13 @@ def _load_walkthrough(config, root=ROOT):
         approval_stages = {"verification-approval-choose", "verification-approval-review", "verification-approval-recorded"}
         if stage.startswith("verification-approval-") and stage not in approval_stages:
             raise ValueError("Unknown verification approval capture stage: " + name)
+        board_stages = {"github-projects-account", "github-projects-private-board", "github-projects-board-statuses"}
+        if stage.startswith("github-projects-") and stage not in board_stages:
+            raise ValueError("Unknown GitHub Projects capture stage: " + name)
         expected_producer = (
-            "studio/tests/verification-adoption.spec.ts"
+            "studio/tests/github-projects.spec.ts"
+            if stage in board_stages
+            else "studio/tests/verification-adoption.spec.ts"
             if stage in approval_stages
             else "studio/tests/verification-reuse.spec.ts"
             if stage in reuse_stages

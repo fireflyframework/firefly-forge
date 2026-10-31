@@ -48,6 +48,11 @@ export async function captureWalkthrough(
   if (options.observationOnly !== undefined && !observationOnly)
     throw new Error("Unknown observation-only capture");
   const dialogStages: Record<string, string[]> = {
+    "studio/tests/github-projects.spec.ts": [
+      "github-projects-account",
+      "github-projects-private-board",
+      "github-projects-board-statuses",
+    ],
     "studio/tests/docs-walkthrough.spec.ts": [
       "agent-question-preview",
       "account-profile",
@@ -156,6 +161,9 @@ export async function captureWalkthrough(
       .locator(".wizard-field-scroll")
       .evaluateAll((nodes) => nodes.forEach((node) => (node.scrollTop = 0)));
   const expectedStep: Record<string, string> = {
+    "github-projects-account": "Account",
+    "github-projects-private-board": "Private board",
+    "github-projects-board-statuses": "Board statuses",
     "runner-setup-execution": "Execution",
     "runner-setup-processes": "Processes",
     "runner-setup-review": "Review",
@@ -553,6 +561,7 @@ export async function captureWalkthrough(
     "studio/tests/final-outcome-recovery.spec.ts",
     "studio/tests/verification-reuse.spec.ts",
     "studio/tests/verification-adoption.spec.ts",
+    "studio/tests/github-projects.spec.ts",
   ]);
   if (!(producer in producers)) throw new Error("Unknown capture producer");
   const config = {

@@ -37,7 +37,9 @@ GitHub documents the separate [Projects API permissions](https://docs.github.com
 
 In Studio, open **Product projects**, select the product and its GitHub repository, then choose **Set up GitHub Projects**. The guided setup reuses a project-scoped connection from **Connected accounts**; it does not ask for a GitHub token. **Verify connected account** reads the current GitHub viewer and the registered repository before board selection. Account verification is read-only and grants no new permissions.
 
-Choose an existing private personal or organization board by owner and number, or explicitly confirm a new private personal board under the verified account. Discovery displays the exact private board and its current update permission. Select its managed single-select field, map every factory state to an existing option, and acknowledge field management before saving. Setup remains unavailable when current factory administrator or project/repository release access is absent.
+Continue to **Private board**. To connect a board, choose its owner type, enter the organization login if needed, and enter the board number. Then select **Find private board**. The number is the last part of its GitHub Projects URL. Discovery displays the board title, owner, private visibility and current update permission. Personal boards use the verified account's owner; organization boards require that account's current update permission.
+
+To create a board, choose **Create a private personal board**, enter its title and confirm creation under the displayed account. Creation is a separate action from saving the status mapping. It does not add issues or grant repository access. Setup remains unavailable when current factory administrator or project/repository release access is absent.
 
 The browser retains each creation or configuration request ID before sending it. An unconfirmed creation remains visible after reload with **Read creation receipt**; that action cannot resend creation or authorize replay. An unconfirmed settings save requires **Refresh board settings** to inspect the current configuration. The original request remains retained and is never automatically sent again. Browser history is scoped to the API, native user, project and repository.
 
@@ -64,6 +66,25 @@ For an existing board, submit `BoardDiscoveryInputV1` with `version`, `connectio
 Discovery checks the registered GitHub repository's numeric identity and name, follows provider cursors, and returns the exact single-select fields and options. The GraphQL adapter accepts only its fixed operation documents. It follows no redirects, makes no automatic mutation retry, and refuses partial, ambiguous or oversized individual HTTP responses.
 
 ## Configure the managed field
+
+In **Board statuses**, choose the board's existing single-select field. Each of the eight factory states starts with **Choose an option**. Select an existing board option for every state; the counter reaches **8/8** when all choices are complete. Several states can use the same option.
+
+If discovery cannot find a usable single-select field with options, add or correct the field in GitHub and find the board again. Forge does not create fields or options during setup.
+
+| Factory state | Example board option |
+| --- | --- |
+| Queued | To do |
+| Running | In progress |
+| Paused | In review |
+| Needs reconciliation | Needs attention |
+| Failed | Needs attention |
+| Cancelled | Cancelled |
+| Interrupted | Needs attention |
+| Succeeded | In review |
+
+These are examples, not options that forge creates. Use the names and meanings on your board. Completed units still need product review: the current projection sends successful runs to the **Paused** mapping, so select a review option there as well. A successful unit does not establish whole-product acceptance.
+
+Choose whether to synchronize future verified progress and whether to include runs recorded before the first configuration. Review **Allow forge to update only this field for linked issues and pull requests**, then select **Save board settings**. Changing a field, mapping or synchronization choice clears that acknowledgement. Current human changes to the managed field are held as conflicts.
 
 Save `BoardConnectionInputV1` through `forge project github-projects configure PROJECT REPOSITORY connection.json`. Its discovery fields are extended with:
 

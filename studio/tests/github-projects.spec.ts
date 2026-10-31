@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { captureWalkthrough as capture } from "./walkthrough-capture";
 const projectId = "a".repeat(32),
   repositoryId = "b".repeat(32);
 const component = {
@@ -236,7 +237,11 @@ async function setup(page: Page, mode = "success") {
   await navigate(page, "Product projects");
   return state;
 }
-async function account(page: Page, screenshot?: string) {
+async function account(
+  page: Page,
+  screenshot?: string,
+  afterVerify?: () => Promise<void>,
+) {
   await page
     .getByRole("button", { name: "Set up GitHub Projects", exact: true })
     .click();
@@ -248,6 +253,7 @@ async function account(page: Page, screenshot?: string) {
     page.getByText("Connected as octocat", { exact: true }),
   ).toBeVisible();
   if (screenshot) await page.screenshot({ path: screenshot });
+  await afterVerify?.();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 }
 test("verified account and private discovery precede explicit state mapping", async ({
@@ -556,3 +562,61 @@ test("explicit private creation uses the proved owner and opens discovered mappi
   });
   expect(state.markerBeforeCreate).toBe(true);
 });
+
+for (const device of ["desktop", "mobile"] as const)
+  for (const theme of ["light", "dark"] as const)
+    test(`guided private board setup frames ${device} ${theme}`, async ({
+      page,
+    }, info) => {
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 900 }
+          : { width: 390, height: 844 },
+      );
+      const state = await setup(page);
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      const frame = async (stage: string) => {
+        await capture(page, stage, theme, device, {
+          producer: "studio/tests/github-projects.spec.ts",
+          boundary: "dialog",
+        });
+        if (!process.env.UPDATE_DOC_SCREENSHOTS)
+          await page.screenshot({ path: info.outputPath(stage + ".png") });
+      };
+      await account(page, undefined, () => frame("github-projects-account"));
+      await page.getByLabel("Board number").fill("9");
+      await page
+        .getByRole("button", { name: "Find private board", exact: true })
+        .click();
+      await expect(page.getByText("Delivery", { exact: true })).toBeVisible();
+      await frame("github-projects-private-board");
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page
+        .getByLabel("Managed field", { exact: true })
+        .selectOption("FIELD_1");
+      for (const name of [
+        "Queued",
+        "Running",
+        "Paused",
+        "Needs reconciliation",
+        "Failed",
+        "Cancelled",
+        "Interrupted",
+        "Succeeded",
+      ])
+        await page
+          .getByLabel(name, { exact: true })
+          .selectOption(name === "Queued" ? "TODO" : "REVIEW");
+      await page
+        .getByLabel(
+          "Allow forge to update only this field for linked issues and pull requests.",
+        )
+        .check();
+      await expect(
+        page.getByRole("button", { name: "Save board settings", exact: true }),
+      ).toBeEnabled();
+      await frame("github-projects-board-statuses");
+      expect(state.proofs).toBe(1);
+      expect(state.creates).toBe(0);
+      expect(state.saves).toBe(0);
+    });
