@@ -49,7 +49,7 @@ class OAuthGrantEntity(BaseEntity):
     revision: Mapped[int] = mapped_column(default=1)
     actor_id: Mapped[UUID] = mapped_column()
     status: Mapped[str] = mapped_column(String(32))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     encrypted_data: Mapped[str] = mapped_column(Text)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
 

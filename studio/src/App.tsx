@@ -982,6 +982,7 @@ export default function App() {
               )}
               {page === "projects" && (
                 <Projects
+                  onAccounts={() => navigate("browser-connections")}
                   session={identity.session}
                   connection={connection}
                   connected={connected}

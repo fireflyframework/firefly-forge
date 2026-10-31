@@ -38,6 +38,7 @@ import "./StudioFeatures.css";
 import { CampaignReports } from "./CampaignReports";
 import { DevelopmentWorkflowSettings } from "./DevelopmentWorkflowSettings";
 import { CampaignExecutionSettings } from "./CampaignExecutionSettings";
+import { GitHubProjectsSettings } from "./GitHubProjectsSettings";
 import type { IdentitySession } from "./Identity";
 type ComponentOverview = ProjectComponent & {
   latest_status: string;
@@ -174,8 +175,10 @@ export function Projects({
   onOpen,
   onProduct,
   session,
+  onAccounts,
 }: {
   session: IdentitySession | null;
+  onAccounts?: () => void;
   connection: Connection;
   connected: boolean;
   repositories: Repository[];
@@ -193,11 +196,13 @@ export function Projects({
     [editing, setEditing] = useState<ProjectSnapshot | "new" | null>(null),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
-    [loading, setLoading] = useState(false);
-  const [sourceView, setSourceView] = useState<{
-    projectId: string;
-    step: number;
-  } | null>(null);
+    [loading, setLoading] = useState(false),
+    [boardNotice, setBoardNotice] = useState("");
+  const [projectView, setProjectView] = useState<
+    | { kind: "board"; projectId: string; repositoryId: string; actor: string }
+    | { kind: "source"; projectId: string; step: number }
+    | null
+  >(null);
   const pageHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!connected) return;
@@ -254,34 +259,64 @@ export function Projects({
     }
   }
   const current = overview?.id === id ? overview : null;
-  if (connected && !editing && current && sourceView?.projectId === current.id)
-    return (
-      <SourceAnalysis
-        key={`${current.id}/source`}
-        connection={connection}
-        project={current}
-        repositories={repositories}
-        initialStep={sourceView.step}
-        onRefresh={() => setRevision((value) => value + 1)}
-        onContinueProduct={(source) =>
-          onProduct(
-            current.definition.product_repository_id ||
-              current.definition.components[0].repository_id,
-            current,
-            source,
-          )
-        }
-        onClose={() => {
-          setSourceView(null);
-          requestAnimationFrame(() => pageHeading.current?.focus());
-        }}
-      />
-    );
+  const closeProjectView = () => {
+    setProjectView(null);
+    requestAnimationFrame(() => pageHeading.current?.focus());
+  };
+  if (
+    connected &&
+    !editing &&
+    current &&
+    projectView?.projectId === current.id
+  ) {
+    if (
+      projectView.kind === "board" &&
+      session &&
+      projectView.actor === session.user.id
+    )
+      return (
+        <GitHubProjectsSettings
+          connection={connection}
+          session={session}
+          project={current}
+          repositories={repositories}
+          repositoryId={projectView.repositoryId}
+          onAccounts={onAccounts}
+          onClose={closeProjectView}
+          onUpdated={() => {
+            setBoardNotice(
+              "Board settings saved. Verified progress will use the selected field and options.",
+            );
+            setRevision((value) => value + 1);
+          }}
+        />
+      );
+    if (projectView.kind === "source")
+      return (
+        <SourceAnalysis
+          key={`${current.id}/source`}
+          connection={connection}
+          project={current}
+          repositories={repositories}
+          initialStep={projectView.step}
+          onRefresh={() => setRevision((value) => value + 1)}
+          onContinueProduct={(source) =>
+            onProduct(
+              current.definition.product_repository_id ||
+                current.definition.components[0].repository_id,
+              current,
+              source,
+            )
+          }
+          onClose={closeProjectView}
+        />
+      );
+  }
   return (
     <section className="projects-page">
       <div className="page-heading">
         <div>
-          <h1 ref={pageHeading} tabIndex={-1}>
+          <h1 id="product-projects-heading" ref={pageHeading} tabIndex={-1}>
             Product projects
           </h1>
           <p>
@@ -303,6 +338,7 @@ export function Projects({
           {error}
         </div>
       )}
+      {boardNotice && <p role="status">{boardNotice}</p>}
       {!connected ? (
         <div className="empty">
           <h3>Connect your factory first</h3>
@@ -448,6 +484,24 @@ export function Projects({
                 . Each component keeps its own source root, stack and executable
                 checks.
               </p>
+              {session && (
+                <GitHubProjectsSettings
+                  connection={connection}
+                  session={session}
+                  project={current}
+                  repositories={repositories}
+                  onAccounts={onAccounts}
+                  onSetup={(repositoryId) => {
+                    setBoardNotice("");
+                    setProjectView({
+                      kind: "board",
+                      projectId: current.id,
+                      repositoryId,
+                      actor: session.user.id,
+                    });
+                  }}
+                />
+              )}
               <ProjectMap
                 key={`${current.id}/${current.revision}`}
                 components={current.definition.components}
@@ -481,7 +535,11 @@ export function Projects({
                 project={current}
                 repositories={repositories}
                 onOpen={(step) =>
-                  setSourceView({ projectId: current.id, step })
+                  setProjectView({
+                    kind: "source",
+                    projectId: current.id,
+                    step,
+                  })
                 }
               />
               <div className="project-components">

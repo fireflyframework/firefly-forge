@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from firefly_forge.connection_oauth_models import OAuthPolicyBinding, OAuthProvider
+from firefly_forge.github_projects_oauth import github_policy
 from firefly_forge.identity import Principal
 from firefly_forge.journal import digest
 from firefly_forge.oauth_authority import require_oauth_administrator
@@ -103,6 +104,8 @@ class OAuthProviderPolicies:
         }
 
     async def lookup(self, session: AsyncSession, name: str) -> OAuthPolicyBinding | None:
+        if policy := github_policy(name):
+            return policy
         if name != LOCAL_PROVIDER or not self.local_development_available:
             return None
         row = await session.scalar(

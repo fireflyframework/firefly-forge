@@ -154,7 +154,9 @@ async function frame(page: Page, info: TestInfo, name: string) {
     const first = wizard?.querySelector<HTMLElement>(".step-number");
     const fields = wizard?.querySelector<HTMLElement>(".wizard-field-scroll");
     const action =
-      wizard?.querySelector<HTMLElement>(".wizard-actions button.primary") ??
+      wizard?.querySelector<HTMLElement>(
+        ".provider-editor-actions button.primary, .wizard-actions button.primary",
+      ) ??
       document.querySelector<HTMLElement>(
         ".consumed-terminal-reconciliation button.primary",
       );
