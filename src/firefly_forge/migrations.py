@@ -35,6 +35,7 @@ from firefly_forge.connection_oauth_persistence import (
     OAuthGrantEntity,
     OAuthRegistrationEntity,
 )
+from firefly_forge.engine_activity_persistence import ForgeEngineActivityEntity
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity, ForgeExecutionRequestEventEntity
 from firefly_forge.framework_knowledge_persistence import FrameworkKnowledgeRecord
 from firefly_forge.identity_persistence import (
@@ -86,7 +87,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 32
+SCHEMA_REVISION = 33
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -122,6 +123,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeDeploymentEntity,
                 ForgePlanEntity,
                 ForgeTaskEntity,
+                ForgeEngineActivityEntity,
                 ForgeJournalEntity,
                 ForgeObservationEntity,
                 ForgeIncidentEntity,

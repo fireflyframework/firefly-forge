@@ -347,3 +347,41 @@ async def test_final_scope_permission_await_cannot_return_a_revoked_reader_snaps
         await dashboard.service.observe(
             dashboard.actor, DashboardScope(kind="project", project_id="a" * 32), DashboardPageInput()
         )
+
+
+async def test_engine_stage_activity_keeps_earliest_expiry_and_rejects_unbounded_positive(dashboard):
+    from datetime import timedelta
+
+    original = dashboard.records.snapshot
+    now = datetime(2026, 10, 30, tzinfo=UTC)
+
+    async def snapshot(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        value["stages"] = [
+            {
+                "stage": "implement",
+                "state": "active",
+                "count": 2,
+                "recorded_running": 2,
+                "observed_until": now + timedelta(seconds=20),
+            },
+            {
+                "stage": "implement",
+                "state": "active",
+                "count": 3,
+                "recorded_running": 3,
+                "observed_until": now + timedelta(seconds=10),
+            },
+            {"stage": "verify", "state": "active", "count": 1, "recorded_running": 1, "observed_until": None},
+        ]
+        return value
+
+    dashboard.records.snapshot = snapshot
+    value = await dashboard.service.observe(dashboard.actor, DashboardScope(), DashboardPageInput())
+    implementation, verification = value["stages"][1:3]
+    assert implementation["active"] == 5 and implementation["unknown"] == 0
+    assert implementation["observed_until"] == (now + timedelta(seconds=10)).isoformat()
+    assert verification["active"] == 0 and verification["unknown"] == 1
+    assert verification["observed_until"] is None
+    assert "worker_liveness" in value["unavailable_metrics"]
+    assert dashboard.records.calls[0][3]["schema"] == dashboard.service.store.schema
