@@ -24,7 +24,7 @@ dependencies = [
   "filelock>=3.20,<5",
   "cryptography>=50.0.2,<51",
   "PyYAML>=6.0.3,<7",
-  "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.07/pyfly-26.10.7-py3-none-any.whl",
+  "pyfly[data-relational,oauth2-client,postgresql,security,web] @ https://github.com/fireflyframework/fireflyframework-pyfly/releases/download/v26.10.22/pyfly-26.10.22-py3-none-any.whl",
   "fireflyframework-agentic @ https://github.com/fireflyframework/fireflyframework-agentic/releases/download/v26.10.1/fireflyframework_agentic-26.10.1-py3-none-any.whl",
   "flycanon-sdk @ https://github.com/fireflyframework/flycanon/releases/download/v26.10.6/flycanon_sdk-26.10.6-py3-none-any.whl",
   "fonttools[woff]>=4.62,<5",

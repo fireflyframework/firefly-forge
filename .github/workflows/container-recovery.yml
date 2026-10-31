@@ -1,0 +1,75 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: Recover published release container
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing public stable release tag
+        required: true
+        type: string
+      expected_commit:
+        description: Reviewed full commit SHA to which the release tag must resolve
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: container-recovery-${{ inputs.release_tag }}
+  cancel-in-progress: false
+jobs:
+  container:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Preserve the trusted publication guard outside the image context
+        run: cp scripts/container_release_binding.py "$RUNNER_TEMP/forge-container-release-binding.py"
+      - name: Validate the existing public release and exact tag commit
+        id: binding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python "$RUNNER_TEMP/forge-container-release-binding.py" --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --expected-commit "$EXPECTED_COMMIT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.binding.outputs.commit }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Recheck publication identity and clean checkout immediately before building
+        id: confirmed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_OBJECT: ${{ steps.binding.outputs.tag_object }}
+          RELEASE_ID: ${{ steps.binding.outputs.release_id }}
+        run: python "$RUNNER_TEMP/forge-container-release-binding.py" --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --expected-commit "$EXPECTED_COMMIT" --previous-tag-object "$TAG_OBJECT" --previous-release-id "$RELEASE_ID" --checkout "$GITHUB_WORKSPACE"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: image
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ steps.confirmed.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.confirmed.outputs.commit }}
+            org.opencontainers.image.version=${{ steps.confirmed.outputs.tag }}
+            org.opencontainers.image.licenses=Apache-2.0
+          provenance: mode=max
+          sbom: true
+      - name: Record immutable image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: printf '%s@%s\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
