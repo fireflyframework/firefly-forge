@@ -106,6 +106,9 @@ from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestRepository,
 )
 from firefly_forge.execution_requests import ExecutionRequests
+from firefly_forge.factory_dashboard import FactoryDashboard
+from firefly_forge.factory_dashboard_controllers import FactoryDashboardController
+from firefly_forge.factory_dashboard_persistence import FactoryDashboardRepository
 from firefly_forge.final_outcome_controllers import FinalOutcomeContinuationController
 from firefly_forge.framework_knowledge import FrameworkKnowledge
 from firefly_forge.framework_knowledge_controllers import FrameworkKnowledgeController
@@ -532,6 +535,12 @@ class FactoryConfiguration:
     def __init__(self, data_dir: Path, token: str, identity: IdentityConfiguration, role: Role = "combined") -> None:
         self.data_dir, self.token, self.identity_configuration = data_dir, token, identity
         self.role = role
+
+    @bean
+    def factory_dashboard(
+        self, store: Store, access: ProjectAccess, records: FactoryDashboardRepository
+    ) -> FactoryDashboard:
+        return FactoryDashboard(store, access, records)
 
     @bean
     def runtime_roles(self, store: Store, records: ForgeRuntimeTopologyRepository) -> RuntimeRoles:
@@ -1324,6 +1333,8 @@ def create_runtime(
     container = runtime.context.container
     container.register_instance(FactoryConfiguration, FactoryConfiguration(data_dir, token, identity, role))
     for component in [
+        FactoryDashboardRepository,
+        FactoryDashboardController,
         ForgeAnalyticsBindingRepository,
         ProjectAnalyticsController,
         OAuthProviderPolicyRepository,

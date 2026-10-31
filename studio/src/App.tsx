@@ -24,7 +24,6 @@ import {
   Bot,
   BookOpen,
   Check,
-  CheckCircle2,
   ChevronRight,
   Circle,
   Database,
@@ -341,19 +340,21 @@ export default function App() {
   const [floorContext, setFloorContext] = useState<{
     scope: string | null;
     selection: FactorySelection;
-  }>({ scope: null, selection: { project: "", view: "floor", run: "" } });
+  }>({
+    scope: null,
+    selection: { kind: "factory", project: "", view: "floor", run: "" },
+  });
   const floorSelection: FactorySelection =
     floorContext.scope === floorScope
       ? floorContext.selection
-      : { project: "", view: "floor", run: "" };
-  const floorProject = floorSelection.project;
+      : { kind: "factory", project: "", view: "floor", run: "" };
   useEffect(() => {
     setFloorContext((current) =>
       current.scope === floorScope
         ? current
         : {
             scope: floorScope,
-            selection: { project: "", view: "floor", run: "" },
+            selection: { kind: "factory", project: "", view: "floor", run: "" },
           },
     );
   }, [floorScope]);
@@ -471,8 +472,12 @@ export default function App() {
           profileResult,
           healthResult,
         ] = await Promise.all([
-          request<Repository[]>(connection, "/repositories", { signal }),
-          request<ForgeRun[]>(connection, "/runs", { signal }),
+          page === "overview"
+            ? Promise.resolve([])
+            : request<Repository[]>(connection, "/repositories", { signal }),
+          page === "overview"
+            ? Promise.resolve([])
+            : request<ForgeRun[]>(connection, "/runs", { signal }),
           request<unknown>(connection, "/providers", { signal }).catch(
             (cause) => {
               if (cause instanceof ApiError && cause.status === 403)
@@ -500,7 +505,7 @@ export default function App() {
         if (current()) setLoading(false);
       }
     },
-    [connection, readScope],
+    [connection, readScope, page],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -509,6 +514,7 @@ export default function App() {
   }, [refresh]);
   useEffect(() => {
     if (
+      page === "overview" ||
       !connected ||
       !runs.some(
         (run) =>
@@ -522,7 +528,7 @@ export default function App() {
       void refresh();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [connected, runs, refresh]);
+  }, [connected, runs, refresh, page]);
   const linkedActor = identity.session?.user.id ?? null;
   useEffect(() => {
     if (identity.loading || !linkedActor || !connection.authenticated) {
@@ -591,10 +597,10 @@ export default function App() {
     connection,
     setSelected,
   ]);
-  async function openRun(run: ForgeRun) {
+  async function openRun(run: ForgeRun | { id: string }) {
     if (!readScope || currentScope.current !== readScope) return;
     setPage("run");
-    setSelected(run);
+    setSelected("status" in run ? run : null);
     setDetailError("");
     setBusy(true);
     try {
@@ -655,7 +661,6 @@ export default function App() {
   }
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
-  const projectRuns = runs.filter((run) => run.repository_id === floorProject);
   const nav = [
     { page: "overview" as const, icon: Layers3, label: "Factory" },
     { page: "new" as const, icon: Hammer, label: "Start a run" },
@@ -889,7 +894,7 @@ export default function App() {
                 <>
                   <div className="page-heading factory-overview-heading">
                     <div>
-                      <h1>Your factory.</h1>
+                      <h1>Factory</h1>
                     </div>
                     <button
                       className="primary"
@@ -903,120 +908,11 @@ export default function App() {
                     key={floorScope}
                     connection={connection}
                     connected={connected}
-                    repositories={repositories}
-                    runs={runs}
                     theme={theme}
-                    onOpen={(run) => void openRun(run)}
-                    onCreate={() => startStandalone(floorProject)}
+                    onOpen={(id) => void openRun({ id })}
                     selection={floorSelection}
                     onSelectionChange={selectFloor}
                   />
-                  <div className="metrics">
-                    <div>
-                      <span>Repositories</span>
-                      <strong>
-                        {repositories.length.toString().padStart(2, "0")}
-                      </strong>
-                      <FolderGit2 size={20} />
-                    </div>
-                    <div>
-                      <span>Factory active runs</span>
-                      <strong>
-                        {runs
-                          .filter((run) => working(run.status))
-                          .length.toString()
-                          .padStart(2, "0")}
-                      </strong>
-                      <Activity size={20} />
-                    </div>
-                    <div>
-                      <span>Factory completed runs</span>
-                      <strong>
-                        {runs
-                          .filter((run) =>
-                            ["completed", "succeeded"].includes(run.status),
-                          )
-                          .length.toString()
-                          .padStart(2, "0")}
-                      </strong>
-                      <CheckCircle2 size={20} />
-                    </div>
-                  </div>
-                  <section className="runs-section">
-                    <div className="section-heading">
-                      <h2>
-                        Project runs <span>{projectRuns.length}</span>
-                      </h2>
-                      <button
-                        className="quiet"
-                        onClick={() => void refresh()}
-                        disabled={!connected || loading}
-                      >
-                        <RefreshCw
-                          size={15}
-                          className={loading ? "spin" : ""}
-                        />
-                        Refresh
-                      </button>
-                    </div>
-                    {loading && !projectRuns.length ? (
-                      <Loading />
-                    ) : projectRuns.length ? (
-                      <div className="run-list">
-                        {projectRuns.map((run) => (
-                          <button
-                            className="run-row"
-                            key={run.id}
-                            onClick={() => void openRun(run)}
-                          >
-                            <span className="run-icon">
-                              <GitBranch size={19} />
-                            </span>
-                            <span className="run-description">
-                              <strong>
-                                {run.brief?.split("\n")[0] ||
-                                  "Software generation run"}
-                              </strong>
-                              <small>
-                                {repositoryName(run.repository_id)} ·{" "}
-                                {run.agent || "Agent"} ·{" "}
-                                {run.backend || "Stack"}
-                              </small>
-                            </span>
-                            <Badge status={run.status} />
-                            <time>{date(run.created_at)}</time>
-                            <ChevronRight size={17} />
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <Empty
-                        title={
-                          connected
-                            ? "Ready for your first run"
-                            : "Bring your workspace online"
-                        }
-                        body={
-                          connected
-                            ? "Start with a brief and a repository. The complete run history will appear here."
-                            : "Connect to your forge API to see repositories, provider readiness and real run history."
-                        }
-                        action={
-                          <button
-                            className="secondary"
-                            onClick={() =>
-                              navigate(connected ? "new" : "settings")
-                            }
-                          >
-                            {connected
-                              ? "Create a product"
-                              : "Connect your API"}
-                            <ArrowRight size={15} />
-                          </button>
-                        }
-                      />
-                    )}
-                  </section>
                 </>
               )}
               {page === "projects" && (

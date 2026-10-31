@@ -8,13 +8,25 @@ import type {
   MeshStandardMaterial,
 } from "three";
 import "./FactoryScene.css";
-import { FactoryMotion, syncStationClips } from "./FactoryMotion";
+import {
+  FactoryMotion,
+  syncStationClips,
+  aggregateActiveStations,
+} from "./FactoryMotion";
 
 export type FactoryStation = {
   id: string;
   label: string;
-  state: "waiting" | "active" | "done" | "failed" | "paused" | "skipped";
+  state:
+    "waiting" | "active" | "done" | "failed" | "paused" | "skipped" | "unknown";
   detail: string;
+  counts?: {
+    active: number;
+    waiting: number;
+    needs_action: number;
+    unknown: number;
+    done: number;
+  };
 };
 export type FactorySceneProps = {
   stations: FactoryStation[];
@@ -22,6 +34,8 @@ export type FactorySceneProps = {
   onSelect: (id: string) => void;
   selectedId: string | null;
   suspended?: boolean;
+  aggregate?: boolean;
+  observationLabel?: string;
 };
 type Model = {
   version: number;
@@ -56,11 +70,27 @@ export function FactoryScene(props: FactorySceneProps) {
     if (!node || !main || !node.closest(".production-floor")) return;
     let pending = 0;
     const measure = () => {
+      const rail =
+        node.parentElement?.querySelector("figcaption")?.getBoundingClientRect()
+          .height ?? 0;
+      const dock =
+        node
+          .closest(".production-floor")
+          ?.querySelector(".production-context-dock")
+          ?.getBoundingClientRect().height ?? 0;
+      const inspector =
+        node
+          .closest(".production-floor")
+          ?.querySelector(".factory-inspection")
+          ?.getBoundingClientRect().height ?? 0;
       const available =
         main.getBoundingClientRect().bottom -
         node.getBoundingClientRect().top -
         main.scrollTop -
-        8;
+        rail -
+        dock -
+        inspector -
+        16;
       node.style.setProperty(
         "--factory-available-height",
         `${Math.max(180, available)}px`,
@@ -95,7 +125,11 @@ export function FactoryScene(props: FactorySceneProps) {
   const [reason, setReason] = useState("");
   const [generation, setGeneration] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [focusSelected, setFocusSelected] = useState(false);
+  const [focusSelected, setFocusSelected] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 600px)").matches,
+  );
   useEffect(() => {
     const query = matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(query.matches);
@@ -312,7 +346,7 @@ export function FactoryScene(props: FactorySceneProps) {
             : null;
         const bounds = new THREE.Box3().setFromObject(focused ?? world),
           center = bounds.getCenter(new THREE.Vector3());
-        camera.position.copy(center).add(new THREE.Vector3(10, 14, 27));
+        camera.position.copy(center).add(new THREE.Vector3(17, 26, 30));
         camera.lookAt(center);
         camera.updateMatrixWorld(true);
         const corners = [];
@@ -330,7 +364,7 @@ export function FactoryScene(props: FactorySceneProps) {
         const vertical =
           Math.max(...corners.map((p) => p.y)) -
           Math.min(...corners.map((p) => p.y));
-        const span = Math.max(vertical, horizontal / (width / height)) * 1.18;
+        const span = Math.max(vertical, horizontal / (width / height)) * 1.08;
         camera.left = (-span * width) / height / 2;
         camera.right = -camera.left;
         camera.top = span / 2;
@@ -342,12 +376,20 @@ export function FactoryScene(props: FactorySceneProps) {
         if (!renderer || !isVisible()) return;
         const delta = Math.min((time - lastTime) / 1000, 0.05);
         lastTime = time;
+        const aggregate = current.current.aggregate;
+        const active = aggregateActiveStations(current.current.stations, {
+          hidden: window.document.hidden,
+          offscreen,
+          suspended: current.current.suspended,
+          reduced: motionQuery.matches,
+        });
         const from = motion.x;
-        motion.advance(delta);
+        if (!aggregate) motion.advance(delta);
         carrier.position.x = motion.x;
-        syncStationClips(actions, motion.workingStation);
-        if (motion.workingStation) mixer.update(delta);
-        if (motion.x !== from)
+        syncStationClips(actions, aggregate ? active : motion.workingStation);
+        if (aggregate ? active.size > 0 : motion.workingStation)
+          mixer.update(delta);
+        if (!aggregate && motion.x !== from)
           for (const belt of treadTextures)
             if (
               Math.max(from, motion.x) >= belt.from &&
@@ -355,7 +397,8 @@ export function FactoryScene(props: FactorySceneProps) {
             )
               belt.texture.offset.x -= Math.sign(motion.x - from) * delta * 0.6;
         renderer.render(scene, camera);
-        if (motion.needsMotion) frame = requestAnimationFrame(paint);
+        if (aggregate ? active.size > 0 : motion.needsMotion)
+          frame = requestAnimationFrame(paint);
       }
       function schedule() {
         if (!isVisible()) return;
@@ -410,9 +453,20 @@ export function FactoryScene(props: FactorySceneProps) {
           suspended: current.current.suspended,
           reduced: motionQuery.matches,
         });
-        carrier.visible = motion.targetStation !== null;
+        carrier.visible =
+          !current.current.aggregate && motion.targetStation !== null;
         carrier.position.x = motion.x;
-        syncStationClips(actions, motion.workingStation);
+        syncStationClips(
+          actions,
+          current.current.aggregate
+            ? aggregateActiveStations(stations, {
+                hidden: window.document.hidden,
+                offscreen,
+                suspended: current.current.suspended,
+                reduced: motionQuery.matches,
+              })
+            : motion.workingStation,
+        );
         fit();
         schedule();
       }
@@ -520,6 +574,7 @@ export function FactoryScene(props: FactorySceneProps) {
       data-theme={props.theme}
       data-reduced-motion={reducedMotion}
       data-camera={focusSelected ? "selected-stage" : "overview"}
+      data-carrier-mode={props.aggregate ? "hidden" : "single-run"}
     >
       <div ref={viewport} className="factory-live-viewport">
         {rendererType === "webgl" && (
@@ -547,21 +602,34 @@ export function FactoryScene(props: FactorySceneProps) {
         <div className="factory-live-caption">
           <span>
             {rendererType === "webgl"
-              ? "3D production floor"
+              ? focusSelected
+                ? `${props.stations.find((station) => station.id === props.selectedId)?.label ?? "Selected stage"} · stage view`
+                : "Production floor"
               : rendererType === "loading"
                 ? "Loading the 3D production floor"
                 : "Static factory view"}
           </span>
           <span>
-            {props.suspended
-              ? "Updates unavailable; showing last recorded state"
-              : reducedMotion
-                ? "Motion reduced"
-                : props.stations.some((station) => station.state === "paused")
-                  ? "Paused"
-                  : props.stations.some((station) => station.state === "active")
-                    ? "Recorded work is active"
-                    : "No active machinery"}
+            {props.observationLabel ??
+              (props.suspended
+                ? "Updates unavailable; showing last recorded state"
+                : reducedMotion
+                  ? "Motion reduced"
+                  : props.aggregate
+                    ? props.stations.some(
+                        (station) => station.state === "active",
+                      )
+                      ? "Recorded tasks are active across runs"
+                      : "No recorded active tasks"
+                    : props.stations.some(
+                          (station) => station.state === "paused",
+                        )
+                      ? "Paused"
+                      : props.stations.some(
+                            (station) => station.state === "active",
+                          )
+                        ? "Recorded work is active"
+                        : "No active machinery")}
           </span>
         </div>
       </div>
@@ -605,7 +673,19 @@ export function FactoryScene(props: FactorySceneProps) {
             title={station.detail}
           >
             <span>{station.label}</span>
-            <strong>{station.state}</strong>
+            <strong>
+              {props.aggregate && station.counts
+                ? station.counts.active ||
+                  station.counts.waiting ||
+                  station.counts.needs_action
+                  ? `${station.counts.active} active${station.counts.waiting ? ` · ${station.counts.waiting} queued` : ""}${station.counts.needs_action ? ` · ${station.counts.needs_action} need action` : ""}`
+                  : station.counts.unknown
+                    ? `${station.counts.unknown} unknown`
+                    : station.counts.done
+                      ? `${station.counts.done} completed`
+                      : "No stage records"
+                : station.state}
+            </strong>
             <small>{station.detail}</small>
           </button>
         ))}

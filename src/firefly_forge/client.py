@@ -7,7 +7,7 @@ import base64
 import hashlib
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 from uuid import UUID
 
 import httpx
@@ -2366,7 +2366,11 @@ class ForgeClient:
         result = self.request(
             "GET", f"learning/records/{self._id(record_id)}/projection/observations/{self._id(request_id)}"
         )
-        return TypeAdapter(LearningProjectionReceipt).validate_python(result).model_dump(mode="json")
+        return (
+            TypeAdapter[LearningProjectionReceipt](cast(Any, LearningProjectionReceipt))
+            .validate_python(result)
+            .model_dump(mode="json")
+        )
 
     def learning_projection(self, record_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"learning/records/{self._id(record_id)}/projection"))

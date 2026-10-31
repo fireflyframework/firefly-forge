@@ -8,20 +8,16 @@ it("keeps a concise floor instruction and an accessible complete stage guide", (
     <FactoryFloor
       connection={{ base: "/api/v1", token: "fictional" }}
       connected={true}
-      repositories={[]}
-      runs={[]}
       theme="dark"
       onOpen={() => undefined}
-      onCreate={() => undefined}
-      selection={{ project: "", view: "floor", run: "" }}
+      selection={{ kind: "factory", project: "", view: "floor", run: "" }}
       onSelectionChange={() => undefined}
     />,
   );
-  expect(html).toContain("Select a stage to inspect its work.");
-  expect(html).toContain("<summary>How stages work</summary>");
-  expect(html).toContain("Prepare inspects source");
-  expect(html).toContain("separate recorded actions");
+  expect(html).toContain("Factory overview");
+  expect(html).toContain("Browse work");
   expect(html).toContain('aria-label="Recorded execution stages"');
-  expect(html).toContain("No production is running in this view.");
-  expect(html).toContain("Start a run");
+  expect(html).toContain('data-carrier-mode="hidden"');
+  expect(html).not.toContain("<select");
+  expect(html).not.toContain("No production is running");
 });

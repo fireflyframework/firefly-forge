@@ -36,7 +36,7 @@ class AccessRoutes:
         safe = request.method in SAFE
         if user.authentication_method == "personal_token":
             observation = (
-                path in {"auth/session", "projects", "repositories", "runs"}
+                path in {"auth/session", "projects", "repositories", "runs", "factory-dashboard"}
                 or re.fullmatch(r"projects/[a-f0-9]{32}(?:/revisions/[0-9]+)?", path)
                 or re.fullmatch(
                     r"runs/[a-f0-9]{32}(?:/evidence(?:\.zip)?|/artifacts/changes\.zip|/diff/index"
@@ -52,6 +52,8 @@ class AccessRoutes:
             return
         if path == "auth/session" or safe and path in PUBLIC_CATALOGS:
             return
+        if request.method in {"GET", "HEAD"} and path in {"factory-dashboard", "factory-dashboard/projects"}:
+            return  # The projection applies current project membership inside its read snapshot.
         if safe and path in {"projects", "repositories", "runs"}:
             return  # Their controllers filter list results using the same authenticated principal.
         body: dict[str, Any] = {}

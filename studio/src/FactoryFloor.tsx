@@ -1,290 +1,466 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { repositoryLabels } from "./RepositoryLabels";
-import { useEffect, useState } from "react";
-import { ArrowRight, Hammer, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
-  request,
-  type Connection,
-  type ForgeRun,
-  type Repository,
-} from "./api";
-import { FlowBoard } from "./FlowBoard";
-import "./FactoryFloor.css";
+  ArrowLeft,
+  ChevronRight,
+  FolderTree,
+  LayoutGrid,
+  List,
+  RefreshCw,
+} from "lucide-react";
+import { request, type Connection } from "./api";
 import { FactoryScene } from "./FactoryScene";
 import {
-  manufacturingStations,
-  type DevelopmentPlan,
-  type DeploymentJob,
-} from "./factory";
-
-export type FactorySelection = {
-  project: string;
-  view: "floor" | "board";
-  run: string;
-};
+  aggregateStations,
+  recordedRunStations,
+  type DashboardBucket,
+  type DashboardRun,
+  type FactorySelection,
+} from "./FactoryDashboard";
+import {
+  FactoryRunLinks,
+  FactoryRunRecords,
+  bucketLabels,
+} from "./FactoryRunRecords";
+import { FactoryWorkDrawer } from "./FactoryWorkDrawer";
+import { useFactoryDashboard } from "./useFactoryDashboard";
+import type { DevelopmentPlan } from "./factory";
+import "./FactoryFloor.css";
+export type { FactorySelection } from "./FactoryDashboard";
 
 export function FactoryFloor({
   connection,
   connected,
-  repositories,
-  runs,
   theme,
   onOpen,
-  onCreate,
   selection,
   onSelectionChange,
 }: {
   connection: Connection;
   connected: boolean;
-  repositories: Repository[];
-  runs: ForgeRun[];
   theme: "light" | "dark";
-  onOpen: (run: ForgeRun) => void;
-  onCreate: () => void;
+  onOpen: (id: string) => void;
   selection: FactorySelection;
   onSelectionChange: (selection: FactorySelection) => void;
 }) {
-  const projectLabels = repositoryLabels(repositories);
-  const { project, view, run: chosenRun } = selection;
-  const activeProject =
-    repositories.find((item) => item.id === project)?.id ??
-    repositories.find((item) => item.id === runs[0]?.repository_id)?.id ??
-    repositories[0]?.id ??
-    "";
-  const [selectedStation, setStation] = useState("prepare");
-  const [planRun, setPlanRun] = useState("");
-  const [plan, setPlan] = useState<DevelopmentPlan | null>(null);
-  const [deployments, setDeployments] = useState<DeploymentJob[]>([]);
-  const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const projectRuns = runs.filter(
-    (run) => Boolean(activeProject) && run.repository_id === activeProject,
+  const [drawer, setDrawer] = useState(false);
+  const [, tick] = useState(0);
+  const [stationId, setStationId] = useState("prepare");
+  const [paging, setPaging] = useState<{
+    scope: string;
+    cursor: string | null;
+    history: (string | null)[];
+    bucket: DashboardBucket | null;
+  }>({ scope: "", cursor: null, history: [], bucket: null });
+  const scope = JSON.stringify([
+    selection.kind,
+    selection.project,
+    selection.run,
+  ]);
+  const page =
+    paging.scope === scope
+      ? paging
+      : { scope, cursor: null, history: [], bucket: null };
+  const data = useFactoryDashboard(
+    connection,
+    connected,
+    selection,
+    page.cursor,
+    page.bucket,
   );
+  const [plan, setPlan] = useState<{
+    run: string;
+    value: DevelopmentPlan | null;
+    error: string;
+  }>({ run: "", value: null, error: "" });
+  const records = useRef<HTMLElement>(null);
   const run =
-    projectRuns.find((item) => item.id === chosenRun) ??
-    projectRuns.find(
-      (item) => !["succeeded", "failed", "cancelled"].includes(item.status),
-    ) ??
-    projectRuns[0] ??
-    null;
-  const runId = run?.id;
+    selection.kind === "run"
+      ? (data.snapshot?.runs.items.find((item) => item.id === selection.run) ??
+        null)
+      : null;
   useEffect(() => {
-    if (project !== activeProject || chosenRun !== (runId ?? ""))
-      onSelectionChange({
-        ...selection,
-        project: activeProject,
-        run: runId ?? "",
-      });
-  }, [activeProject, chosenRun, onSelectionChange, project, runId, selection]);
-  useEffect(() => {
-    if (!connected || !runId) return;
-    const controller = new AbortController();
-    const identifier = runId;
-    async function update() {
-      try {
-        const [currentPlan, jobs] = await Promise.all([
-          request<DevelopmentPlan>(connection, `/runs/${identifier}/plan`, {
-            signal: controller.signal,
-          }),
-          request<DeploymentJob[]>(connection, "/deployments", {
-            signal: controller.signal,
-          }),
-        ]);
-        if (!controller.signal.aborted) {
-          setPlanRun(identifier);
-          setPlan(Array.isArray(currentPlan.tasks) ? currentPlan : null);
-          setDeployments(
-            Array.isArray(jobs)
-              ? jobs.filter((job) => job.run_id === identifier)
-              : [],
-          );
-          setError("");
-        }
-      } catch (cause) {
+    if (!connected || selection.kind !== "run" || !run) return;
+    const controller = new AbortController(),
+      id = run.id;
+    void request<DevelopmentPlan>(
+      connection,
+      `/runs/${encodeURIComponent(id)}/plan`,
+      { signal: controller.signal },
+    )
+      .then((value) => {
+        if (!Array.isArray(value.tasks))
+          throw new Error("The current plan is unavailable.");
+        if (!controller.signal.aborted) setPlan({ run: id, value, error: "" });
+      })
+      .catch((cause) => {
         if (!controller.signal.aborted)
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : "The production record could not be loaded.",
-          );
-      }
-    }
-    void update();
-    const timer = window.setInterval(() => void update(), 2500);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [connected, connection, runId, refresh]);
-  const currentPlan = planRun === runId ? plan : null;
-  const stations = manufacturingStations(
+          setPlan({
+            run: id,
+            value: null,
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "The current plan could not be read.",
+          });
+      });
+    return () => controller.abort();
+  }, [
+    connection,
+    connected,
+    selection.kind,
+    selection.run,
     run,
-    currentPlan,
-    deployments.find((job) => job.run_id === runId) ?? null,
-  );
+    data.snapshot?.observed_at,
+  ]);
+  const currentPlan = run && plan.run === run.id ? plan.value : null;
+  const received = useRef({ snapshot: data.snapshot, at: performance.now() });
+  if (received.current.snapshot !== data.snapshot)
+    received.current = { snapshot: data.snapshot, at: performance.now() };
+  useEffect(() => {
+    if (
+      !data.snapshot?.stages.some(
+        (stage) => stage.active && stage.observed_until,
+      )
+    )
+      return;
+    const timer = window.setInterval(() => tick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [data.snapshot]);
+  const asOf = data.snapshot
+    ? new Date(
+        Date.parse(data.snapshot.observed_at) +
+          Math.max(0, performance.now() - received.current.at),
+      ).toISOString()
+    : undefined;
+  const stations =
+    selection.kind === "run"
+      ? recordedRunStations(run, currentPlan, data.snapshot?.stages, asOf)
+      : aggregateStations(data.snapshot?.stages ?? [], asOf);
   const selected =
-    stations.find((station) => station.id === selectedStation) ?? stations[0];
-  const completed =
-    currentPlan?.tasks.filter((task) => task.status === "done").length ?? 0;
+    stations.find((item) => item.id === stationId) ?? stations[0];
+  const title =
+    selection.kind === "factory"
+      ? "Factory overview"
+      : selection.kind === "standalone"
+        ? "Standalone repository work"
+        : selection.kind === "project"
+          ? data.snapshot?.scope.project?.name || "Product project"
+          : "Run " + selection.run.slice(0, 8);
+  function choose(value: FactorySelection) {
+    setDrawer(false);
+    setPlan({ run: "", value: null, error: "" });
+    setStationId("prepare");
+    onSelectionChange(value);
+  }
+  function focus(value: DashboardRun) {
+    choose({
+      ...selection,
+      kind: "run",
+      project: value.project_id ?? "",
+      run: value.id,
+      parent: selection.kind === "run" ? selection.parent : selection.kind,
+    });
+  }
+  function bucket(value: DashboardBucket | null) {
+    setPaging({ scope, cursor: null, history: [], bucket: value });
+    records.current?.scrollIntoView({ block: "start" });
+  }
   return (
-    <section className="production-floor" aria-labelledby="production-title">
-      <div className="production-heading">
-        <h2 id="production-title">
-          <Hammer size={19} />
-          Production floor
-        </h2>
+    <section
+      className="production-floor production-dashboard"
+      aria-label="Factory observations"
+    >
+      <header className="factory-scope-caption">
+        <div>
+          <h2>{title}</h2>
+          <p>
+            {selection.kind === "project" && data.snapshot?.scope.project
+              ? `${data.snapshot.scope.project.component_count.toLocaleString()} components across ${data.snapshot.scope.project.repository_count.toLocaleString()} repositories`
+              : selection.kind === "run"
+                ? "One recorded execution, its plan and source-control links"
+                : data.snapshot
+                  ? `${data.snapshot.associations.projects.toLocaleString()} product projects · ${data.snapshot.associations.standalone_runs.toLocaleString()} standalone runs`
+                  : "Reading project and run records"}
+          </p>
+        </div>
         <button
-          className="quiet"
-          disabled={!connected || !run}
-          onClick={() => setRefresh((value) => value + 1)}
+          className="quiet icon-button"
+          aria-label="Refresh factory records"
+          disabled={!connected || data.loading}
+          onClick={data.refresh}
         >
-          <RefreshCw size={15} />
-          Refresh
+          <RefreshCw size={18} className={data.loading ? "spin" : ""} />
         </button>
-      </div>
-      <div className="production-filters">
-        <label>
-          Project
-          <select
-            aria-label="Project"
-            value={activeProject}
-            onChange={(event) => {
-              onSelectionChange({
-                ...selection,
-                project: event.target.value,
-                run: "",
-              });
-              setPlan(null);
-              setDeployments([]);
-            }}
-          >
-            {!repositories.length && (
-              <option value="">No connected projects</option>
-            )}
-            {repositories.map((item) => (
-              <option key={item.id} value={item.id}>
-                {projectLabels.get(item.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Manufacturing run
-          <select
-            aria-label="Manufacturing run"
-            title={run?.brief ?? "No recorded run"}
-            value={run?.id ?? ""}
-            disabled={!projectRuns.length}
-            onChange={(event) => {
-              onSelectionChange({ ...selection, run: event.target.value });
-              setPlan(null);
-              setDeployments([]);
-            }}
-          >
-            <option value="" disabled>
-              {projectRuns.length ? "Choose a run" : "No recorded runs"}
-            </option>
-            {projectRuns.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.id.slice(0, 8)} ·{" "}
-                {item.brief.split("\n")[0].length > 52
-                  ? `${item.brief
-                      .split("\n")[0]
-                      .slice(0, 48)
-                      .replace(/\s+\S*$/, "")}…`
-                  : item.brief.split("\n")[0]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="production-status" role="status">
-          {run
-            ? `${run.status.replaceAll("_", " ")} · ${completed}/${currentPlan?.tasks.length ?? 0} tasks recorded`
-            : connected
-              ? "Ready for your first run"
-              : "Connect your factory to see live work"}
-        </p>
-      </div>
-      <p className="production-explanation">
-        Select a stage to inspect its work.
-      </p>
-      <div
-        className="production-view-switch feature-tabs"
-        role="group"
-        aria-label="Production view"
-      >
-        <button
-          className="quiet"
-          aria-pressed={view === "floor"}
-          onClick={() => onSelectionChange({ ...selection, view: "floor" })}
-        >
-          Floor
-        </button>
-        <button
-          className="quiet"
-          aria-pressed={view === "board"}
-          onClick={() => onSelectionChange({ ...selection, view: "board" })}
-        >
-          Board
-        </button>
-      </div>
-      {view === "board" ? (
-        <FlowBoard
-          runs={projectRuns}
-          selected={run}
-          plan={currentPlan}
-          onOpen={onOpen}
-          onSelect={(run) => onSelectionChange({ ...selection, run })}
+      </header>
+      {selection.view === "floor" && (
+        <FactoryScene
+          theme={theme}
+          stations={stations}
+          selectedId={selected.id}
+          onSelect={setStationId}
+          aggregate={selection.kind !== "run" || !currentPlan}
+          observationLabel={
+            data.snapshot
+              ? `${data.snapshot.unavailable_metrics.includes("worker_liveness") ? "Runner activity unavailable" : `${stations.reduce((sum, stage) => sum + (stage.counts?.active ?? (stage.state === "active" ? 1 : 0)), 0).toLocaleString()} observed active tasks`} · Updated ${new Date(data.snapshot.observed_at).toLocaleTimeString()}${data.error ? " · updates unavailable" : ""}`
+              : data.loading
+                ? "Reading factory records…"
+                : "Observation unavailable"
+          }
+          suspended={
+            !connected ||
+            !data.snapshot ||
+            Boolean(data.error) ||
+            (selection.kind === "run" && !currentPlan)
+          }
         />
-      ) : (
-        <>
-          <FactoryScene
-            key={runId ?? "empty"}
-            theme={theme}
-            stations={stations}
-            selectedId={selected.id}
-            onSelect={setStation}
-            suspended={Boolean(error) || !connected}
-          />
-          <div className="production-inspector">
-            <div>
-              <strong>{selected.label}</strong>
-              <span className={`station-state ${selected.state}`}>
-                {selected.state}
-              </span>
-              <p>
-                {run
-                  ? selected.detail
-                  : "Stations become active when the factory records work. No production is running in this view."}
-              </p>
-            </div>
-            {run ? (
-              <button className="secondary" onClick={() => onOpen(run)}>
-                Inspect run
-                <ArrowRight size={15} />
-              </button>
-            ) : (
-              <button className="secondary" onClick={onCreate}>
-                Start a run
-                <ArrowRight size={15} />
-              </button>
-            )}
-          </div>
-        </>
       )}
-      <details className="production-guide">
-        <summary>How stages work</summary>
-        <p>
-          Prepare inspects source, Develop uses the coding provider, Test
-          records executable checks, and Checkpoint freezes verified source.
-          Publish, Deploy and Health checks require separate recorded actions.
-        </p>
-      </details>
-      {error && (
+      <div className="production-context-dock">
+        <button
+          className="secondary"
+          onClick={() => setDrawer(true)}
+          disabled={!connected}
+        >
+          <FolderTree size={18} />
+          Browse work
+        </button>
+        <nav aria-label="Current factory context">
+          {selection.kind === "factory" ? (
+            <span>All projects and standalone work</span>
+          ) : (
+            <button
+              className="quiet"
+              onClick={() =>
+                choose({
+                  kind: "factory",
+                  project: "",
+                  run: "",
+                  view: selection.view,
+                })
+              }
+            >
+              Factory
+            </button>
+          )}
+          {selection.kind !== "factory" && (
+            <>
+              <ChevronRight size={14} />
+              <span>
+                {selection.kind === "project"
+                  ? data.snapshot?.scope.project?.name || "Product project"
+                  : selection.kind === "standalone"
+                    ? "Standalone work"
+                    : run?.project_name ||
+                      (run?.association === "standalone"
+                        ? "Standalone run"
+                        : "Run")}
+              </span>
+            </>
+          )}
+          {selection.kind === "run" && (
+            <code title={selection.run}>{selection.run.slice(0, 8)}</code>
+          )}
+        </nav>
+        <div
+          className="factory-view-toggle"
+          role="group"
+          aria-label="Production view"
+        >
+          <button
+            className="quiet icon-button"
+            aria-pressed={selection.view === "floor"}
+            aria-label="Show production floor"
+            onClick={() => onSelectionChange({ ...selection, view: "floor" })}
+          >
+            <LayoutGrid size={18} />
+            <span>Floor</span>
+          </button>
+          <button
+            className="quiet icon-button"
+            aria-pressed={selection.view === "board"}
+            aria-label="Show run board"
+            onClick={() => onSelectionChange({ ...selection, view: "board" })}
+          >
+            <List size={18} />
+            <span>Board</span>
+          </button>
+        </div>
+      </div>
+      {data.error && (
         <div className="alert" role="alert">
-          {error}
+          {data.error}
+          {data.snapshot && (
+            <p>
+              Showing the previous observation. Machinery is paused until a
+              fresh read succeeds.
+            </p>
+          )}
+          <button className="quiet" onClick={data.refresh}>
+            Try reading again
+          </button>
         </div>
       )}
+      {!connected && (
+        <p className="factory-empty">
+          Sign in to read the factory's authorized work.
+        </p>
+      )}
+      {data.loading && !data.snapshot && (
+        <div className="factory-observation-loading" role="status">
+          Reading factory records…
+        </div>
+      )}
+      {data.snapshot && (
+        <>
+          <section
+            className="factory-inspection"
+            aria-labelledby="factory-stage-title"
+          >
+            <div>
+              <h3 id="factory-stage-title">
+                {selection.view === "floor"
+                  ? `${selected.label} tasks`
+                  : "Recorded work"}
+              </h3>
+              <p>
+                {selection.view === "floor"
+                  ? selected.detail
+                  : "Board totals cover the selected scope. Cards are paged; opening a state reads its matching records."}
+              </p>
+              {run && <FactoryRunLinks run={run} />}
+            </div>
+            <div>
+              <h4 className="factory-counts-title">Runs in this scope</h4>
+              <dl className="factory-run-counts">
+                {(["active", "queued", "needs_action", "unknown"] as const).map(
+                  (key) => (
+                    <div key={key}>
+                      <dt>{bucketLabels[key]}</dt>
+                      <dd>
+                        <button
+                          className="quiet"
+                          onClick={() => bucket(key)}
+                          aria-label={`Show ${bucketLabels[key].toLowerCase()} runs`}
+                        >
+                          {data.snapshot!.counts[key].toLocaleString()}
+                        </button>
+                      </dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+            </div>
+          </section>
+          {selection.kind === "run" && (
+            <div className="factory-run-actions">
+              <button
+                className="quiet"
+                onClick={() =>
+                  choose({
+                    kind: selection.parent ?? "factory",
+                    project: selection.project,
+                    run: "",
+                    view: selection.view,
+                  })
+                }
+              >
+                <ArrowLeft size={16} />
+                Back to work scope
+              </button>
+              <button
+                className="secondary"
+                onClick={() => onOpen(selection.run)}
+              >
+                Open this run
+                <ChevronRight size={16} />
+              </button>
+              {plan.run === selection.run && plan.error && (
+                <p role="status">
+                  Plan unavailable: {plan.error}. No single-run carrier is
+                  shown.
+                </p>
+              )}
+            </div>
+          )}
+          <details className="production-guide">
+            <summary>How to read this view</summary>
+            <p>
+              Counts cover every authorized record in this scope, not just the
+              current page. A product project can span several component
+              repositories; standalone work remains separate. Aggregate views
+              use no single-run carrier. Open a run to inspect its exact plan,
+              branch, ticket and PR.
+            </p>
+            <p>
+              Prepare inspects source, Develop uses the selected provider, Test
+              records checks and Checkpoint records source. Publish, Deploy and
+              Health checks require separate recorded actions. A stored active
+              state does not prove that a worker is alive. Per-run worker
+              liveness is unavailable in this deployment, so machines stay still
+              and running task records show unknown activity. Queue duration,
+              live deployment health and runtime metrics are also unavailable.
+            </p>
+            {data.snapshot.unmapped_active_tasks > 0 && (
+              <p>
+                {data.snapshot.unmapped_active_tasks.toLocaleString()} recorded
+                active tasks have no known station mapping.
+              </p>
+            )}
+            <dl className="factory-terminal-counts">
+              {(
+                [
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "expired",
+                  "quarantined",
+                ] as const
+              ).map((key) => (
+                <div key={key}>
+                  <dt>{bucketLabels[key]}</dt>
+                  <dd>{data.snapshot!.counts[key].toLocaleString()}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+          <section ref={records} className="factory-records-anchor">
+            <FactoryRunRecords
+              snapshot={data.snapshot}
+              board={selection.view === "board"}
+              bucket={page.bucket}
+              loading={data.loading}
+              canPrevious={page.history.length > 0}
+              onBucket={bucket}
+              onPrevious={() =>
+                setPaging({
+                  ...page,
+                  scope,
+                  cursor: page.history.at(-1) ?? null,
+                  history: page.history.slice(0, -1),
+                })
+              }
+              onNext={() =>
+                setPaging({
+                  ...page,
+                  scope,
+                  cursor: data.snapshot!.runs.next_cursor,
+                  history: [...page.history, page.cursor],
+                })
+              }
+              onFocus={focus}
+              onOpen={onOpen}
+            />
+          </section>
+        </>
+      )}
+      <FactoryWorkDrawer
+        connection={connection}
+        open={drawer}
+        standalone={data.snapshot?.standalone_available ?? false}
+        selection={selection}
+        onChoose={choose}
+        onClose={() => setDrawer(false)}
+      />
     </section>
   );
 }

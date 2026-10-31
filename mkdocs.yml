@@ -79,6 +79,7 @@ nav:
       - Install and start: installation.md
       - Your first product: quickstart.md
       - Studio console tour: console-tour.md
+      - Follow factory work: factory-dashboard.md
       - Capabilities and limits: capabilities.md
   - Products:
       - Define a product: product-definition.md
