@@ -112,6 +112,30 @@ export async function captureWalkthrough(
   )
     throw new Error("Final allowance captures require a visible native modal");
   await page.evaluate(() => document.fonts.ready);
+  const grammarLabels = new Set([
+    "Python",
+    "PHP",
+    "JavaScript",
+    "TypeScript",
+    "SQL",
+    "JSON",
+    "YAML",
+    "Bash",
+    "HTML / XML",
+    "CSS",
+    "Java",
+    "Rust",
+    "C#",
+    "Go",
+  ]);
+  for (const snippet of await page.locator(".code-snippet").all()) {
+    const { label, length } = await snippet.evaluate((node) => ({
+      label: node.querySelector("figcaption > span")?.textContent ?? "",
+      length: node.querySelector("pre > code")?.textContent?.length ?? 0,
+    }));
+    if (grammarLabels.has(label) && length > 0 && length <= 100_000)
+      await expect(snippet).toHaveAttribute("data-highlight", "grammar");
+  }
   const currentVersion = JSON.parse(
     readFileSync(resolve(root, "studio/package.json"), "utf8"),
   ).version;
