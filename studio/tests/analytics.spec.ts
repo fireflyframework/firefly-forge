@@ -7,6 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { navigate } from "./navigation";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
 
 const project = "a".repeat(32),
   repository = "b".repeat(32);
@@ -120,6 +121,19 @@ async function fixture(
           roles: { owner: ["read", "members"], viewer: ["read"] },
         },
       });
+    const dashboard = factoryDashboardFixture(url, {
+      projects: [
+        {
+          id: project,
+          name: "Stock product",
+          component_count: 1,
+          repository_count: 1,
+        },
+      ],
+      runs: [],
+      administrator: options.admin !== false,
+    });
+    if (dashboard !== undefined) return route.fulfill({ json: dashboard });
     if (url.pathname.endsWith("/projects"))
       return route.fulfill({
         json: [
@@ -509,6 +523,13 @@ for (const theme of ["light", "dark"] as const) {
       revision: 7,
     });
     await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    await expect(
+      page.getByRole("button", {
+        name: "Administration",
+        exact: true,
+        includeHidden: true,
+      }),
+    ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: /Set up Flyquery|Edit connection/ }),
     ).toHaveCount(0);
