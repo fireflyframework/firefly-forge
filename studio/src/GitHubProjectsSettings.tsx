@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useRef, useState } from "react";
-import { Columns3, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Columns3, RefreshCw } from "lucide-react";
 import {
   ApiError,
   normalizeBase,
@@ -60,12 +60,20 @@ export function GitHubProjectsSettings({
   project,
   repositories,
   onAccounts,
+  repositoryId,
+  onSetup,
+  onClose,
+  onUpdated,
 }: {
   connection: Connection;
   session: IdentitySession;
   project: ProjectSnapshot;
   repositories: Repository[];
   onAccounts?: () => void;
+  repositoryId?: string;
+  onSetup?: (repositoryId: string) => void;
+  onClose?: () => void;
+  onUpdated?: () => void;
 }) {
   const members = new Set(
     project.definition.components.map((item) => item.repository_id),
@@ -73,8 +81,10 @@ export function GitHubProjectsSettings({
   const choices = repositories.filter(
     (item) => members.has(item.id) && item.provider === "github",
   );
-  const [selected, setSelected] = useState("");
-  const repository = choices.find((item) => item.id === selected) ?? choices[0];
+  const [selected, setSelected] = useState(repositoryId ?? "");
+  const repository =
+    choices.find((item) => item.id === selected) ??
+    (onClose ? undefined : choices[0]);
   const context: BoardContext = {
     base: new URL(
       normalizeBase(connection.base),
@@ -92,6 +102,36 @@ export function GitHubProjectsSettings({
     session.memberships,
     project.digest,
   ]);
+  if (onClose)
+    return (
+      <section
+        className="github-projects-setup"
+        aria-label="GitHub Projects setup"
+      >
+        {repository ? (
+          <BoardPanel
+            key={scope}
+            connection={connection}
+            context={context}
+            projectName={project.definition.name}
+            repositoryName={repository.name}
+            onAccounts={onAccounts}
+            onClose={onClose}
+            onUpdated={onUpdated}
+          />
+        ) : (
+          <>
+            <button type="button" className="quiet" onClick={onClose}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back to project
+            </button>
+            <h1>GitHub Projects</h1>
+            <p role="alert">
+              This repository no longer belongs to the project.
+            </p>
+          </>
+        )}
+      </section>
+    );
   return (
     <section
       className="integration-card github-projects-settings"
@@ -134,6 +174,7 @@ export function GitHubProjectsSettings({
             context={context}
             repositoryName={repository.name}
             onAccounts={onAccounts}
+            onSetup={() => onSetup?.(repository.id)}
           />
         </>
       )}
@@ -145,11 +186,19 @@ function BoardPanel({
   context,
   repositoryName,
   onAccounts,
+  projectName,
+  onSetup,
+  onClose,
+  onUpdated,
 }: {
   connection: Connection;
   context: BoardContext;
   repositoryName: string;
   onAccounts?: () => void;
+  projectName?: string;
+  onSetup?: () => void;
+  onClose?: () => void;
+  onUpdated?: () => void;
 }) {
   const path = `/projects/${context.project}/repositories/${context.repository}/github-projects`;
   const [view, setView] = useState<BoardView | null>(null),
@@ -160,16 +209,14 @@ function BoardPanel({
     [draft, setDraft] = useState<BoardDraft>(emptyDraft);
   const [markers, setMarkers] = useState<BoardPending[]>([]),
     [storageError, setStorageError] = useState("");
-  const [open, setOpen] = useState(false),
-    [step, setStep] = useState(0),
+  const [step, setStep] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const alive = useRef(false),
     locked = useRef(false),
     active = useRef<AbortController | null>(null),
-    dialog = useRef<HTMLDialogElement>(null),
-    trigger = useRef<HTMLButtonElement>(null);
+    heading = useRef<HTMLHeadingElement>(null);
   const creationHeld = markers.some(
     (item) => item.kind === "create" && item.state === "unknown",
   );
@@ -198,7 +245,7 @@ function BoardPanel({
           setAccount(null);
           setDiscovery(null);
           setChoices([]);
-          setOpen(false);
+          onClose?.();
         }
       }
     } finally {
@@ -215,6 +262,7 @@ function BoardPanel({
     );
     if (signal.aborted || !alive.current) return;
     setView(current);
+    if (onClose && !name) setName(current.binding?.connection_name ?? "");
     if (current.permissions.configure) {
       const directory = readOAuthDirectory(
         await request<unknown>(connection, "/connection-oauth", { signal }),
@@ -236,7 +284,7 @@ function BoardPanel({
       setChoices([]);
       setAccount(null);
       setDiscovery(null);
-      setOpen(false);
+      onClose?.();
     }
     if (observeConfiguration) {
       const pending = pendingBoards(localStorage, context).filter(
@@ -251,6 +299,11 @@ function BoardPanel({
   }
   useEffect(() => {
     alive.current = true;
+    if (onClose) {
+      heading.current?.focus({ preventScroll: true });
+      const main = heading.current?.closest("main");
+      if (main) main.scrollTop = 0;
+    }
     try {
       setMarkers(pendingBoards(localStorage, context));
     } catch {
@@ -267,17 +320,6 @@ function BoardPanel({
     // The parent remounts this scope for API, identity, permissions, project, or repository changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => {
-    const node = dialog.current;
-    if (!open || !node) return;
-    node.showModal();
-    return () => node.close();
-  }, [open]);
-  function close() {
-    if (locked.current) return;
-    setOpen(false);
-    requestAnimationFrame(() => trigger.current?.focus());
-  }
   function changeName(value: string) {
     setName(value);
     setAccount(null);
@@ -469,8 +511,8 @@ function BoardPanel({
     setNotice(
       "Board settings saved. Verified progress will use the selected field and options.",
     );
-    setOpen(false);
-    requestAnimationFrame(() => trigger.current?.focus());
+    onUpdated?.();
+    onClose?.();
   }
   async function receipt(signal: AbortSignal, marker: BoardPending) {
     const result = boardCreation(
@@ -491,78 +533,14 @@ function BoardPanel({
         "Creation remains unknown. Attribution is unknown and replay is not authorized. You may connect an existing board while retaining this request.",
       );
   }
-  return (
+  const feedback = (
     <>
-      <p className="feature-meta">
-        {repositoryName} ·{" "}
-        {view
-          ? view.binding
-            ? `${view.binding.enabled ? "Synchronization enabled" : "Synchronization disabled"} · ${view.status.replaceAll("_", " ")}`
-            : "No private board configured"
-          : "Current board settings are unavailable"}
-      </p>
-      {view?.binding && (
-        <p>
-          <a
-            href={view.binding.board_url}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            Open saved board
-          </a>{" "}
-          · configuration revision {view.binding.revision}
-        </p>
-      )}
-      {view?.latest_request && (
-        <p className="feature-meta">
-          Latest synchronization: {view.latest_request.status} · request{" "}
-          <code>{view.latest_request.id}</code>
-        </p>
-      )}
       {notice && <p role="status">{notice}</p>}
-      {(storageError || (!open && error)) && (
+      {(storageError ||
+        ((!onClose || !view?.permissions.configure) && error)) && (
         <div role="alert" className="alert">
           {storageError || error}
         </div>
-      )}
-      <div className="board-actions">
-        <button
-          type="button"
-          ref={trigger}
-          className="secondary"
-          disabled={
-            busy ||
-            !view?.permissions.configure ||
-            !!storageError ||
-            configurationHeld
-          }
-          onClick={() => {
-            setStep(0);
-            setName(view?.binding?.connection_name ?? "");
-            setAccount(null);
-            setDiscovery(null);
-            setDraft(emptyDraft());
-            setOpen(true);
-            setError("");
-          }}
-        >
-          Set up GitHub Projects
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          disabled={busy}
-          onClick={() => void operation((signal) => read(signal, true))}
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-          Refresh board settings
-        </button>
-      </div>
-      {view && !view.permissions.configure && (
-        <p className="subtle">
-          Setup requires current factory administrator access and release
-          permission for this project and repository.
-        </p>
       )}
       {markers
         .filter((item) => item.state === "unknown")
@@ -593,26 +571,43 @@ function BoardPanel({
             )}
           </div>
         ))}
-      <dialog
-        ref={dialog}
-        className="feature-dialog source-analysis-dialog github-projects-dialog"
-        aria-label="GitHub Projects setup"
-        onCancel={(event) => {
-          event.preventDefault();
-          close();
-        }}
-      >
-        <button
-          type="button"
-          className="quiet source-dialog-close"
-          onClick={close}
-          disabled={busy}
-          aria-label="Close GitHub Projects setup"
-        >
-          <X size={18} aria-hidden="true" />
-          Close
-        </button>
-        {open && (
+    </>
+  );
+  const refresh = (
+    <button
+      type="button"
+      className="quiet"
+      disabled={busy}
+      onClick={() => void operation((signal) => read(signal, true))}
+    >
+      <RefreshCw size={16} aria-hidden="true" /> Refresh board settings
+    </button>
+  );
+  if (onClose)
+    return (
+      <>
+        <header className="board-setup-heading">
+          <button
+            type="button"
+            className="quiet"
+            disabled={busy}
+            onClick={() => {
+              if (!locked.current) onClose();
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden="true" /> Back to project
+          </button>
+          <h1 ref={heading} tabIndex={-1}>
+            GitHub Projects
+          </h1>
+          <p>
+            <strong>{projectName}</strong>
+            <span>{account?.repository.name_with_owner ?? repositoryName}</span>
+          </p>
+        </header>
+        {feedback}
+        {markers.some((item) => item.state === "unknown") && refresh}
+        {view?.permissions.configure && (
           <GitHubProjectsWizard
             step={step}
             onStep={setStep}
@@ -645,7 +640,61 @@ function BoardPanel({
             error={error}
           />
         )}
-      </dialog>
+      </>
+    );
+  return (
+    <>
+      <p className="feature-meta">
+        {repositoryName} ·{" "}
+        {view
+          ? view.binding
+            ? `${view.binding.enabled ? "Synchronization enabled" : "Synchronization disabled"} · ${view.status.replaceAll("_", " ")}`
+            : "No private board configured"
+          : "Current board settings are unavailable"}
+      </p>
+      {view?.binding && (
+        <p>
+          <a
+            href={view.binding.board_url}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Open saved board
+          </a>{" "}
+          · configuration revision {view.binding.revision}
+        </p>
+      )}
+      {view?.latest_request && (
+        <p className="feature-meta">
+          Latest synchronization: {view.latest_request.status} · request{" "}
+          <code>{view.latest_request.id}</code>
+        </p>
+      )}
+      {feedback}
+      <div className="board-actions">
+        <button
+          id="github-projects-setup-trigger"
+          type="button"
+          className="secondary"
+          disabled={
+            busy ||
+            !view?.permissions.configure ||
+            !!storageError ||
+            configurationHeld ||
+            !onSetup
+          }
+          onClick={onSetup}
+        >
+          Set up GitHub Projects
+        </button>
+        {refresh}
+      </div>
+      {view && !view.permissions.configure && (
+        <p className="subtle">
+          Setup requires current factory administrator access and release
+          permission for this project and repository.
+        </p>
+      )}
     </>
   );
 }

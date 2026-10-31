@@ -151,6 +151,10 @@ async function setup(page: Page, mode = "success") {
             revision: 1,
             board_url: board.url,
           };
+          if (mode === "save-lost") {
+            await route.abort();
+            return;
+          }
         }
         json = view();
       }
@@ -245,6 +249,14 @@ async function account(
   await page
     .getByRole("button", { name: "Set up GitHub Projects", exact: true })
     .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "GitHub Projects",
+      level: 1,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("Project OAuth connection").selectOption("delivery");
   await page
     .getByRole("button", { name: "Verify connected account", exact: true })
@@ -267,6 +279,9 @@ test("verified account and private discovery precede explicit state mapping", as
     .click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
+    page.getByLabel("Managed field", { exact: true }),
+  ).toHaveAccessibleDescription("Delivery team/product · Private board");
+  await expect(
     page.getByRole("button", { name: "Save board settings", exact: true }),
   ).toBeDisabled();
   await page
@@ -288,148 +303,94 @@ test("verified account and private discovery precede explicit state mapping", as
       "Allow forge to update only this field for linked issues and pull requests.",
     )
     .check();
+  const setupView = page.getByRole("region", {
+    name: "GitHub Projects setup",
+    exact: true,
+  });
+  const main = page.locator(".workspace-main > main");
   for (const theme of ["light", "dark"]) {
-    await page.evaluate(
-      (value) => (document.documentElement.dataset.theme = value),
-      theme,
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+    const logo = page.getByAltText("Firefly forge", { exact: true });
+    await expect(logo).toHaveAttribute(
+      "src",
+      `/assets/forge-lockup-${theme}.svg`,
     );
+    await logo.evaluate(async (node) => {
+      await (node as HTMLImageElement).decode();
+    });
     for (const [width, height] of [
       [1440, 900],
       [390, 844],
       [320, 568],
     ]) {
       await page.setViewportSize({ width, height });
-      const dialog = page.getByRole("dialog", {
-        name: "GitHub Projects setup",
-        exact: true,
+      await main.evaluate((node) => {
+        node.scrollTop = 0;
       });
-      const settle = () =>
-        dialog.evaluate(async (node) => {
-          let prior = "",
-            stable = 0;
-          for (let frame = 0; frame < 180; frame++) {
-            await new Promise(requestAnimationFrame);
-            const region = node.querySelector(".wizard-field-scroll")!;
-            const next = JSON.stringify([
-              node.getBoundingClientRect().toJSON(),
-              region.getBoundingClientRect().toJSON(),
-              region.scrollTop,
-            ]);
-            stable = next === prior ? stable + 1 : 0;
-            if (stable >= 6) return;
-            prior = next;
-          }
-          throw new Error("Board dialog geometry did not settle");
-        });
-      await settle();
-      const geometry = await page
-        .getByRole("dialog", { name: "GitHub Projects setup", exact: true })
-        .evaluate((dialog) => {
-          const r = dialog.getBoundingClientRect(),
-            actions = dialog
-              .querySelector(".wizard-actions")!
-              .getBoundingClientRect(),
-            field = dialog.querySelector(".wizard-field-scroll")!;
-          const close = dialog
-            .querySelector(".source-dialog-close")!
-            .getBoundingClientRect();
-          return {
-            width: r.width <= innerWidth,
-            height: r.height <= innerHeight,
-            actions: actions.bottom <= r.bottom,
-            overflow: field.scrollWidth > field.clientWidth,
-            close: close.top >= r.top && close.bottom <= r.bottom,
-            fields:
-              innerWidth > 600 || field.clientHeight >= innerHeight * 0.45,
-            compactLayout:
-              innerWidth > 600 ||
-              (r.width >= innerWidth - 1 &&
-                (innerHeight > 600 || r.height >= innerHeight - 1)),
-          };
-        });
+      await expect(setupView.locator(".wizard")).toHaveAttribute(
+        "data-layout",
+        "flow",
+      );
+      await expect(setupView.locator(".wizard")).toHaveClass(/wizard-rail/);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", {
+          name: "GitHub Projects",
+          level: 1,
+          exact: true,
+        }),
+      ).toBeVisible();
+      const fields = setupView.locator(".wizard-field-scroll");
+      await expect(fields).toHaveCSS("overflow-y", "visible");
+      const geometry = await fields.evaluate((node) => ({
+        client: node.clientHeight,
+        full: node.scrollHeight,
+        scroll: node.scrollTop,
+        width: document.documentElement.scrollWidth <= innerWidth,
+      }));
+      expect(geometry.full).toBeLessThanOrEqual(geometry.client + 1);
+      expect(geometry.scroll).toBe(0);
+      expect(geometry.width).toBe(true);
       await writeFile(
         info.outputPath(`board-geometry-${width}-${theme}.json`),
-        JSON.stringify(
-          await dialog.evaluate((node) => {
-            const field = node.querySelector(".wizard-field-scroll")!,
-              actions = node
-                .querySelector(".wizard-actions")!
-                .getBoundingClientRect();
-            return {
-              viewport: { width: innerWidth, height: innerHeight },
-              style: {
-                height: getComputedStyle(node).height,
-                maxHeight: getComputedStyle(node).maxHeight,
-                margin: getComputedStyle(node).margin,
-                position: getComputedStyle(node).position,
-                inset: getComputedStyle(node).inset,
-                boxSizing: getComputedStyle(node).boxSizing,
-                flex: getComputedStyle(node).flex,
-                visualHeight: visualViewport?.height,
-              },
-              dialog: node.getBoundingClientRect().toJSON(),
-              fields: { client: field.clientHeight, full: field.scrollHeight },
-              actions: { top: actions.top, bottom: actions.bottom },
-            };
-          }),
-          null,
-          2,
-        ),
+        JSON.stringify(geometry, null, 2),
       );
-      expect(geometry).toEqual({
-        width: true,
-        height: true,
-        actions: true,
-        overflow: false,
-        close: true,
-        fields: true,
-        compactLayout: true,
-      });
-      const fields = dialog.locator(".wizard-field-scroll");
-      if (width === 320) {
-        await fields.focus();
-        await page.keyboard.press("End");
-        await expect
-          .poll(() => fields.evaluate((node) => node.scrollTop))
-          .toBeGreaterThan(0);
-        const consent = page.getByLabel(
-          "Allow forge to update only this field for linked issues and pull requests.",
-        );
-        await consent.focus();
-        await expect(consent).toBeFocused();
-        await settle();
-        const finalBox = await consent.boundingBox(),
-          fieldBox = await fields.boundingBox();
-        expect(finalBox!.y).toBeGreaterThanOrEqual(fieldBox!.y);
-        expect(finalBox!.y + finalBox!.height).toBeLessThanOrEqual(
-          fieldBox!.y + fieldBox!.height + 1,
-        );
-        await page.screenshot({
-          path: info.outputPath(`board-mapping-${width}-end-${theme}.png`),
-        });
-        const end = await fields.evaluate((node) => node.scrollTop);
-        await fields.hover();
-        await page.mouse.wheel(0, -150);
-        await expect
-          .poll(() => fields.evaluate((node) => node.scrollTop))
-          .toBeLessThan(end);
-      }
-      await page
-        .locator(".github-projects-dialog .wizard-field-scroll")
-        .evaluate((element) => {
-          element.scrollTop = 0;
-        });
-      await settle();
-      const firstBox = await page
-          .getByLabel("Managed field", { exact: true })
-          .boundingBox(),
-        fieldBox = await fields.boundingBox();
-      expect(firstBox!.y + firstBox!.height).toBeLessThanOrEqual(
-        fieldBox!.y + fieldBox!.height + 1,
-      );
+      if (width < 760)
+        await expect(
+          page.getByLabel("Setup step", { exact: true }),
+        ).toBeVisible();
       await page.screenshot({
         path: info.outputPath(`board-mapping-${width}-${theme}.png`),
       });
+      await main.focus();
+      await page.keyboard.press("End");
+      await expect
+        .poll(() => main.evaluate((node) => node.scrollTop))
+        .toBeGreaterThan(0);
+      const consent = page.getByLabel(
+        "Allow forge to update only this field for linked issues and pull requests.",
+      );
+      await consent.focus();
+      await expect(consent).toBeFocused();
+      const action = page.getByRole("button", {
+        name: "Save board settings",
+        exact: true,
+      });
+      await action.focus();
+      await expect(action).toBeFocused();
+      await expect(action).toBeInViewport();
+      const actionBox = await action.boundingBox(),
+        footer = await page.locator(".workspace-main > footer").boundingBox();
+      expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(footer!.y);
+      await page.screenshot({
+        path: info.outputPath(`board-mapping-${width}-end-${theme}.png`),
+      });
+      const end = await main.evaluate((node) => node.scrollTop);
+      await main.hover();
+      await page.mouse.wheel(0, -150);
+      await expect
+        .poll(() => main.evaluate((node) => node.scrollTop))
+        .toBeLessThan(end);
     }
   }
   await page
@@ -480,6 +441,18 @@ test("a lost private creation retains its ID before dispatch and only permits re
     .click();
   await expect.poll(() => state.reads).toBe(1);
   await expect(page.getByText(/Creation remains unknown/)).toBeVisible();
+  await account(page);
+  await page.getByLabel("Board action").selectOption("create");
+  await page.getByLabel("Board title").fill("Delivery");
+  await page
+    .getByLabel("Create a private personal board under octocat.")
+    .check();
+  await expect(
+    page.getByRole("button", {
+      name: "Create private personal board",
+      exact: true,
+    }),
+  ).toBeDisabled();
   expect(state.creates).toBe(1);
 });
 test("read-only membership cannot reach creation", async ({ page }) => {
@@ -490,7 +463,86 @@ test("read-only membership cannot reach creation", async ({ page }) => {
   expect(state.proofs).toBe(0);
   expect(state.creates).toBe(0);
 });
-test("a foreign account proof clears setup authority and keyboard close restores focus", async ({
+test("a lost settings response survives returning to the project without repeating the save", async ({
+  page,
+}) => {
+  const state = await setup(page, "save-lost");
+  await account(page);
+  await page.getByLabel("Board number").fill("9");
+  await page
+    .getByRole("button", { name: "Find private board", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByLabel("Managed field", { exact: true })
+    .selectOption("FIELD_1");
+  const states = page.locator('select[id^="board-state-"]');
+  await expect(states).toHaveCount(8);
+  for (const select of await states.all()) await select.selectOption("REVIEW");
+  await page
+    .getByLabel(
+      "Allow forge to update only this field for linked issues and pull requests.",
+    )
+    .check();
+  await page
+    .getByRole("button", { name: "Save board settings", exact: true })
+    .click();
+  await expect.poll(() => state.saves).toBe(1);
+  await expect(page.getByRole("alert")).toBeVisible();
+  const request = String(state.body!.request_id);
+  await expect(page.getByText(request, { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to project", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Set up GitHub Projects", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByText(request, { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Refresh board settings", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Set up GitHub Projects", exact: true }),
+  ).toBeEnabled();
+  expect(state.saves).toBe(1);
+  expect(state.creates).toBe(0);
+});
+test("account verification keeps the dedicated view busy until its response is read", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  let release!: () => void;
+  const response = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/github-projects/account", async (route) => {
+    await response;
+    await route.fulfill({ json: proof });
+  });
+  await page
+    .getByRole("button", { name: "Set up GitHub Projects", exact: true })
+    .click();
+  await page.getByLabel("Project OAuth connection").selectOption("delivery");
+  await page
+    .getByRole("button", { name: "Verify connected account", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Back to project", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Verify connected account", exact: true }),
+  ).toBeDisabled();
+  release();
+  await expect(
+    page.getByText("Connected as octocat", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Back to project", exact: true }),
+  ).toBeEnabled();
+  expect(state.creates).toBe(0);
+  expect(state.saves).toBe(0);
+});
+test("a foreign account proof clears setup authority and returning to the project restores focus", async ({
   page,
 }) => {
   const state = await setup(page, "foreign");
@@ -503,24 +555,31 @@ test("a foreign account proof clears setup authority and keyboard close restores
     .click();
   await expect(
     page
-      .getByRole("dialog", { name: "GitHub Projects setup", exact: true })
+      .getByRole("region", { name: "GitHub Projects setup", exact: true })
       .getByRole("alert"),
   ).toBeVisible();
   await expect(
     page.getByRole("button", {
-      name: "Close GitHub Projects setup",
+      name: "Back to project",
       exact: true,
     }),
   ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Continue", exact: true }),
   ).toBeDisabled();
-  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Back to project", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("dialog", { name: "GitHub Projects setup", exact: true }),
+    page.getByRole("region", { name: "GitHub Projects setup", exact: true }),
   ).not.toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Set up GitHub Projects", exact: true }),
+    page.getByRole("heading", {
+      name: "Product projects",
+      level: 1,
+      exact: true,
+    }),
   ).toBeFocused();
   expect(state.creates).toBe(0);
   expect(state.saves).toBe(0);
@@ -540,10 +599,7 @@ test("explicit private creation uses the proved owner and opens discovered mappi
     [390, "light"],
   ] as const) {
     await page.setViewportSize({ width, height: 844 });
-    await page.evaluate(
-      (value) => (document.documentElement.dataset.theme = value),
-      theme,
-    );
+    await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
     await page.screenshot({
       path: info.outputPath(`board-creation-${width}-${theme}.png`),
     });
@@ -578,7 +634,6 @@ for (const device of ["desktop", "mobile"] as const)
       const frame = async (stage: string) => {
         await capture(page, stage, theme, device, {
           producer: "studio/tests/github-projects.spec.ts",
-          boundary: "dialog",
         });
         if (!process.env.UPDATE_DOC_SCREENSHOTS)
           await page.screenshot({ path: info.outputPath(stage + ".png") });

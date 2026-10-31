@@ -35,7 +35,9 @@ GitHub documents the separate [Projects API permissions](https://docs.github.com
 
 ## Create or discover the board
 
-In Studio, open **Product projects**, select the product and its GitHub repository, then choose **Set up GitHub Projects**. The guided setup reuses a project-scoped connection from **Connected accounts**; it does not ask for a GitHub token. **Verify connected account** reads the current GitHub viewer and the registered repository before board selection. Account verification is read-only and grants no new permissions.
+In Studio, open **Product projects**, select the product and its GitHub repository, then choose **Set up GitHub Projects**. Setup opens a dedicated configuration view for that project and repository. Use the desktop step rail or the mobile step selector to revisit earlier steps. **Back to project** returns to the selected product project.
+
+The guided setup reuses a project-scoped connection from **Connected accounts**; it does not ask for a GitHub token. **Verify connected account** reads the current GitHub viewer and the registered repository before board selection. Account verification is read-only and grants no new permissions.
 
 Continue to **Private board**. To connect a board, choose its owner type, enter the organization login if needed, and enter the board number. Then select **Find private board**. The number is the last part of its GitHub Projects URL. Discovery displays the board title, owner, private visibility and current update permission. Personal boards use the verified account's owner; organization boards require that account's current update permission.
 

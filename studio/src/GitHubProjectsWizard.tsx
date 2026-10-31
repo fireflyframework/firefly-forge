@@ -79,7 +79,14 @@ export function GitHubProjectsWizard({
     !creationHeld;
   return (
     <Wizard
+      variant="rail"
+      layout="flow"
       className={step === 2 ? "board-status-wizard" : ""}
+      stepDescriptions={[
+        "Verify the connected account",
+        "Find or create a private board",
+        "Choose the field and eight mappings",
+      ]}
       steps={["Account", "Private board", "Board statuses"]}
       active={step}
       onStep={onStep}
@@ -364,14 +371,17 @@ export function GitHubProjectsWizard({
           )}
           {step === 2 && discovery && account && (
             <>
-              <p className="board-destination">
-                <strong>{discovery.board.title}</strong> ·{" "}
-                {account.repository.name_with_owner} · private
-              </p>
               <div className="field">
+                <p id="board-field-context" className="board-destination">
+                  <strong>{discovery.board.title}</strong>
+                  <span>
+                    {account.repository.name_with_owner} · Private board
+                  </span>
+                </p>
                 <label htmlFor="board-field">Managed field</label>
                 <select
                   id="board-field"
+                  aria-describedby="board-field-context"
                   value={draft.field}
                   onChange={(event) =>
                     onDraft({

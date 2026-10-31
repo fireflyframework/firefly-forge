@@ -59,6 +59,9 @@ it("names board statuses plainly and keeps all eight choices and consent explici
   );
   expect(initial).toContain("Board statuses");
   expect(initial).toContain("Map board statuses");
+  expect(initial).toContain('aria-describedby="board-field-context"');
+  expect(initial).toContain('id="board-field-context"');
+  expect(initial).toContain("Private board");
   expect(initial).toContain(
     "Allow forge to update only this field for linked issues and pull requests.",
   );

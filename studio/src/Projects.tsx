@@ -190,7 +190,13 @@ export function Projects({
     [editing, setEditing] = useState<ProjectSnapshot | "new" | null>(null),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [boardSetup, setBoardSetup] = useState<{
+      projectId: string;
+      repositoryId: string;
+      actor: string;
+    } | null>(null),
+    [boardNotice, setBoardNotice] = useState("");
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -246,11 +252,42 @@ export function Projects({
     }
   }
   const current = overview?.id === id ? overview : null;
+  if (
+    connected &&
+    current &&
+    session &&
+    boardSetup?.projectId === current.id &&
+    boardSetup.actor === session.user.id
+  )
+    return (
+      <GitHubProjectsSettings
+        connection={connection}
+        session={session}
+        project={current}
+        repositories={repositories}
+        repositoryId={boardSetup.repositoryId}
+        onAccounts={onAccounts}
+        onClose={() => {
+          setBoardSetup(null);
+          requestAnimationFrame(() =>
+            document.getElementById("product-projects-heading")?.focus(),
+          );
+        }}
+        onUpdated={() => {
+          setBoardNotice(
+            "Board settings saved. Verified progress will use the selected field and options.",
+          );
+          setRevision((value) => value + 1);
+        }}
+      />
+    );
   return (
     <section className="projects-page">
       <div className="page-heading">
         <div>
-          <h1>Product projects</h1>
+          <h1 id="product-projects-heading" tabIndex={-1}>
+            Product projects
+          </h1>
           <p>
             Group source components into one logical product with explicit
             ownership, dependencies and a shared definition.
@@ -270,6 +307,7 @@ export function Projects({
           {error}
         </div>
       )}
+      {boardNotice && <p role="status">{boardNotice}</p>}
       {!connected ? (
         <div className="empty">
           <h3>Connect your factory first</h3>
@@ -422,6 +460,14 @@ export function Projects({
                   project={current}
                   repositories={repositories}
                   onAccounts={onAccounts}
+                  onSetup={(repositoryId) => {
+                    setBoardNotice("");
+                    setBoardSetup({
+                      projectId: current.id,
+                      repositoryId,
+                      actor: session.user.id,
+                    });
+                  }}
                 />
               )}
               <ProjectMap
